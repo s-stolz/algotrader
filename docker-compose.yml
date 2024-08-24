@@ -1,0 +1,59 @@
+version: '3.1'
+services:
+  timescaledb:
+    container_name: timescaledb
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5432:5432
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./timescaledb-init:/docker-entrypoint-initdb.d
+  backtester:
+    container_name: backtester
+    build:
+      context: ./backtester
+      dockerfile: Dockerfile
+    ports:
+      - 8765:8765
+    volumes:
+      - ./backtester:/app
+
+  backend:
+    container_name: backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - 8080:8080
+    volumes:
+      - frontend_data:/app/frontend/dist
+      - backend_data:/app
+      - ./backend:/app/backend
+      - /app/backend/node_modules
+    depends_on:
+      - timescaledb
+      - backtester
+    environment:
+      - MODE=${MODE}
+
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - 5173:5173
+    volumes:
+      - frontend_data:/app/dist
+      - ./frontend:/app/frontend    
+    environment:
+      - MODE=${MODE}
+
+volumes:
+  timescaledb_data:
+  frontend_data:
+  backend_data:
+

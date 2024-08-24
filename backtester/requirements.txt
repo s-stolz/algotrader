@@ -1,0 +1,9 @@
+python-decouple==3.8
+python-binance==1.0.19
+psycopg2-binary==2.9.9
+pandas==2.1.4
+numpy==1.26.3
+python-decouple==3.8
+websocket==0.2.1
+websocket-client==1.7.0
+git+https://github.com/rongardF/tvdatafeed.git
