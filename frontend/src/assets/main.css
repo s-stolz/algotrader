@@ -1,10 +1,13 @@
 @font-face {
   font-family: Tektur;
-  src: url('./fonts/Tektur/Tektur-Variable.ttf');
+  src: url('./fonts/Tektur/Tektur-VariableFont.ttf');
+}
+
+* {
+  font-family: Tektur;
 }
 
 body {
-  font-family: Tektur;
   background-color: #131722;
   color: white;
 }

@@ -5,7 +5,7 @@
         <button>Data</button>
     </header>
 
-    <hr />
+    <!-- <hr /> -->
 
     <main>
         <select v-model="selectedSymbol" @change="requestCandles">
@@ -29,7 +29,7 @@
             </option>
         </select>
 
-        <Chart
+        <lightweight-chart
             type="candlestick"
             :data="data"
             :chartOptions="chartOptions"
@@ -40,23 +40,17 @@
 </template>
 
 <script>
-import Chart from "./components/Chart.vue";
+import LightweightChart from "./components/LightweightChart.vue";
 
 export default {
     components: {
-        Chart,
+        "lightweight-chart": LightweightChart,
     },
 
     data() {
         return {
             markets: [],
-            selectedSymbol: {
-                exchange: "PEPPERSTONE",
-                market_type: "FOREX",
-                symbol: "EURUSD",
-                symbol_id: "4",
-                min_move: "0.00001",
-            },
+            selectedSymbol: undefined,
             selectedTimeframe: {
                 name: "1M",
                 value: 1,
@@ -103,6 +97,8 @@ export default {
                 .then((response) => response.json())
                 .then((data) => {
                     this.markets = data;
+                    this.selectedSymbol = this.markets[0];
+                    this.requestCandles();
                 });
         },
 
@@ -139,9 +135,23 @@ export default {
 
     mounted() {
         this.requestMarkets();
-        // this.requestCandles();
     },
 };
 </script>
 
-<style scoped></style>
+<style scoped>
+header button {
+    margin: 10px 8px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    background: none;
+    color: white;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+header button:hover {
+    background: rgba(41, 43, 51, 0.5);
+}
+</style>
