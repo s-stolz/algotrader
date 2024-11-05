@@ -11,15 +11,6 @@ services:
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./timescaledb-init:/docker-entrypoint-initdb.d
-  backtester:
-    container_name: backtester
-    build:
-      context: ./backtester
-      dockerfile: Dockerfile
-    ports:
-      - 8765:8765
-    volumes:
-      - ./backtester:/app
 
   backend:
     container_name: backend
@@ -28,6 +19,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - 8080:8080
+      - 8765:8765
     volumes:
       - frontend_data:/app/frontend/dist
       - backend_data:/app
@@ -51,6 +43,14 @@ services:
       - ./frontend:/app/frontend    
     environment:
       - MODE=${MODE}
+
+  backtester:
+    container_name: backtester
+    build:
+      context: ./backtester
+      dockerfile: Dockerfile
+    volumes:
+      - ./backtester:/app
 
 volumes:
   timescaledb_data:
