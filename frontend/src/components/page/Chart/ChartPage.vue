@@ -1,7 +1,7 @@
 <template>
     <div>
         <div id="wrapper-select">
-            <select id="market-select" v-model="selectedSymbol" @change="requestCandles">
+            <select v-model="selectedSymbol" @change="requestCandles">
                 <option v-for="market in markets" :key="market.symbol_id" :value="market">
                     {{ market.symbol }}
                 </option>
@@ -57,6 +57,9 @@ export default {
                 { name: "15M", value: 15 },
                 { name: "30M", value: 30 },
                 { name: "1H", value: 60 },
+                { name: "2H", value: 120 },
+                { name: "4H", value: 240 },
+                { name: "1D", value: 1440 },
             ],
             chartOptions: {
                 layout: {
@@ -88,7 +91,6 @@ export default {
 
     methods: {
         requestMarkets() {
-            // Fetch markets from the backend
             fetch("/api/markets")
                 .then((response) => response.json())
                 .then((data) => {
@@ -113,7 +115,6 @@ export default {
         requestCandles() {
             if (!this.selectedSymbol) return;
 
-            // Fetch markets from the backend
             fetch(
                 `/api/candles/${this.selectedSymbol.symbol_id}/${this.selectedTimeframe.value}`
             )
@@ -128,6 +129,8 @@ export default {
                             close: candle.close,
                         };
                     });
+
+                    console.log(this.data);
 
                     this.setMinMove(this.selectedSymbol.min_move);
                 });
@@ -144,10 +147,6 @@ export default {
 <style scoped>
 #wrapper-select {
     margin-bottom: 20px;
-}
-
-select {
-    font-size: medium;
 }
 
 #market-select {

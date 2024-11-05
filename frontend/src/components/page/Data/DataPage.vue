@@ -43,7 +43,7 @@
                     </td>
 
                     <td>
-                        <button @click="addMarket">Add</button>
+                        <button id="add-market-button" @click="addMarket">Add</button>
                     </td>
                 </tr>
             </tbody>
@@ -115,4 +115,8 @@ export default {
 };
 </script>
 
-<style scoped></style>
+<style scoped>
+#add-market-button {
+    border-radius: 5px;
+}
+</style>

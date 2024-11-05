@@ -17,3 +17,25 @@ html, body {
   margin: 0;
   padding: 0;
 }
+
+button, a{
+  cursor: pointer;
+}
+
+select {
+  background: rgba(44, 61, 93);
+  color: white;
+  margin: 0 8px;
+  border-radius: 8px;
+  padding: 5px 10px;
+  border: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+button {
+  background: rgba(44, 61, 93);
+  color: white;
+  border: none;
+  border-radius: 10px;
+}

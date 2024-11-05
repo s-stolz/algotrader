@@ -1,42 +1,19 @@
 <template>
-    <header>
-        <button>Charts</button>
+    <div>
+        <header>
+            <span>
+                <router-link to="/"> Charts </router-link>
+            </span>
 
-        <button>Data</button>
-    </header>
+            <span>
+                <router-link to="/Data"> Data </router-link>
+            </span>
+        </header>
 
-    <!-- <hr /> -->
-
-    <main>
-        <select v-model="selectedSymbol" @change="requestCandles">
-            <option v-for="market in markets" :key="market.symbol_id" :value="market">
-                {{ market.symbol }}
-            </option>
-        </select>
-
-        <select
-            name="timeframe"
-            id="timeframe-select"
-            v-model="selectedTimeframe"
-            @change="requestCandles"
-        >
-            <option
-                v-for="timeframe in timeframes"
-                :key="timeframe.value"
-                :value="timeframe"
-            >
-                {{ timeframe.name }}
-            </option>
-        </select>
-
-        <lightweight-chart
-            type="candlestick"
-            :data="data"
-            :chartOptions="chartOptions"
-            :seriesOptions="seriesOptions"
-            :timeScaleOptions="timeScaleOptions"
-        />
-    </main>
+        <main>
+            <router-view />
+        </main>
+    </div>
 </template>
 
 <script>
@@ -49,98 +26,36 @@ export default {
 
     data() {
         return {
-            markets: [],
-            selectedSymbol: undefined,
-            selectedTimeframe: {
-                name: "1M",
-                value: 1,
-            },
-            timeframes: [
-                { name: "1M", value: 1 },
-                { name: "5M", value: 5 },
-                { name: "15M", value: 15 },
-                { name: "30M", value: 30 },
-                { name: "1H", value: 60 },
-            ],
-            chartOptions: {
-                layout: {
-                    textColor: "#d1d4dc",
-                    background: { type: "solid", color: "transparent" },
-                },
-                grid: {
-                    vertLines: {
-                        color: "transparent",
-                    },
-                    horzLines: {
-                        color: "transparent",
-                    },
-                },
-            },
-            timeScaleOptions: {
-                timeVisible: true,
-                secondsVisible: false,
-            },
-            seriesOptions: {
-                priceFormat: {
-                    type: "price",
-                    minMove: 0.00001,
-                },
-            },
-            data: [],
+            ws: undefined,
         };
     },
 
-    methods: {
-        requestMarkets() {
-            // Fetch markets from the backend
-            fetch("/api/markets")
-                .then((response) => response.json())
-                .then((data) => {
-                    this.markets = data;
-                    this.selectedSymbol = this.markets[0];
-                    this.requestCandles();
-                });
-        },
-
-        setMinMove(minMove) {
-            this.seriesOptions = {
-                priceFormat: {
-                    type: "price",
-                    minMove: minMove,
-                },
-            };
-        },
-
-        requestCandles() {
-            // Fetch markets from the backend
-            fetch(
-                `/api/candles/${this.selectedSymbol.symbol_id}/${this.selectedTimeframe.value}`
-            )
-                .then((response) => response.json())
-                .then((data) => {
-                    this.data = data.map((candle) => {
-                        return {
-                            time: Date.parse(candle.timestamp) / 1000,
-                            open: candle.open,
-                            high: candle.high,
-                            low: candle.low,
-                            close: candle.close,
-                        };
-                    });
-
-                    this.setMinMove(this.selectedSymbol.min_move);
-                });
-        },
-    },
+    methods: {},
 
     mounted() {
-        this.requestMarkets();
+        this.ws = new WebSocket("ws://localhost:8765");
+
+        this.ws.addEventListener("open", () => {
+            console.log("We are connected");
+
+            let loginMessage = JSON.stringify({
+                type: "Login",
+                name: "Frontend",
+            });
+
+            this.ws.send(loginMessage);
+        });
+
+        this.ws.addEventListener("message", function (event) {
+            console.log(event.data);
+        });
     },
 };
 </script>
 
 <style scoped>
-header button {
+header a {
+    display: inline-flex;
     margin: 10px 8px;
     padding: 10px 20px;
     border: none;
@@ -149,9 +64,14 @@ header button {
     color: white;
     font-size: 20px;
     font-weight: 600;
+    text-decoration: none;
 }
 
-header button:hover {
-    background: rgba(41, 43, 51, 0.5);
+header a:hover:not(.router-link-active) {
+    background: rgba(44, 61, 93, 0.5);
+}
+
+a.router-link-active {
+    background: rgba(44, 61, 93);
 }
 </style>
