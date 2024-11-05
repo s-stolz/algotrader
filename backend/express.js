@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const websocket = require('./app/utils/websocket.js')
+const wss = require('./app/utils/websocketserver.js')
 
 module.exports = function() {
     const path =__dirname + '/../frontend/dist';
