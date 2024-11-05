@@ -45,31 +45,47 @@ exports.getCandles = async function (req, res) {
     const timeframe = req.params.timeframe;
     
     const query = `
-    WITH RoundedCandles AS (
+        WITH RoundedCandles AS (
+            SELECT
+                symbol_id,
+                -- Convert timestamp to total minutes since the start of the day (hours * 60 + minutes)
+                date_trunc('day', timestamp) + INTERVAL '1 minute' * (
+                    ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) - 
+                    ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % $2)
+                ) AS rounded_timestamp,
+                open,
+                high,
+                low,
+                close,
+                volume,
+                ROW_NUMBER() OVER (
+                    PARTITION BY symbol_id, date_trunc('day', timestamp) + INTERVAL '1 minute' * (
+                        ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) - 
+                        ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % $2)
+                    )
+                    ORDER BY timestamp ASC
+                ) AS rn_asc,
+                ROW_NUMBER() OVER (
+                    PARTITION BY symbol_id, date_trunc('day', timestamp) + INTERVAL '1 minute' * (
+                        ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) - 
+                        ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % $2)
+                    )
+                    ORDER BY timestamp DESC
+                ) AS rn_desc
+            FROM candles
+            WHERE symbol_id = $1
+        )
         SELECT
-          symbol_id,
-          date_trunc('minute', timestamp) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM timestamp)::integer % $2) AS rounded_timestamp,
-          open,
-          high,
-          low,
-          close,
-          volume,
-          ROW_NUMBER() OVER(PARTITION BY symbol_id, date_trunc('minute', timestamp) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM timestamp)::integer % $2) ORDER BY timestamp ASC) AS rn_asc,
-          ROW_NUMBER() OVER(PARTITION BY symbol_id, date_trunc('minute', timestamp) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM timestamp)::integer % $2) ORDER BY timestamp DESC) AS rn_desc
-        FROM candles
-        WHERE symbol_id = $1
-      )
-      SELECT
-        symbol_id,
-        rounded_timestamp AS timestamp,
-        MAX(open) FILTER (WHERE rn_asc = 1) AS open,
-        MAX(high) AS high,
-        MIN(low) AS low,
-        MAX(close) FILTER (WHERE rn_desc = 1) AS close,
-        SUM(volume) AS volume
-      FROM RoundedCandles
-      GROUP BY symbol_id, timestamp
-      ORDER BY timestamp;
+            symbol_id,
+            rounded_timestamp AS timestamp,
+            MAX(open) FILTER (WHERE rn_asc = 1) AS open,
+            MAX(high) AS high,
+            MIN(low) AS low,
+            MAX(close) FILTER (WHERE rn_desc = 1) AS close,
+            SUM(volume) AS volume
+        FROM RoundedCandles
+        GROUP BY symbol_id, timestamp
+        ORDER BY timestamp;
     `;
     const result = await psqlClient.query(query, [symbolID, timeframe]);
 
