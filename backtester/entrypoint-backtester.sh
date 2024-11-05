@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # set -x  # echo all commands
 ./wait-for-it.sh timescaledb:5432 --timeout=30 --strict -- echo "TimescaleDB is up"
+./wait-for-it.sh backend:8765 --timeout=10 --strict -- echo "Backend Websocket is up"
 
 pid=0
 
