@@ -130,7 +130,7 @@ export default {
                         };
                     });
 
-                    console.log(this.data);
+                    // console.log(this.data);
 
                     this.setMinMove(this.selectedSymbol.min_move);
                 });
