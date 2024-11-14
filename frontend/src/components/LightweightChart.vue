@@ -54,6 +54,7 @@ export default {
             legend: null,
             crossHairTimeout: null,
             loadedBars: 5000,
+            autosize: true,
         };
     },
 
@@ -76,8 +77,8 @@ export default {
         },
 
         resizeHandler() {
-            if (!this.chart || !this.$refs.chartContainer.value) return;
-            const dimensions = this.$refs.chartContainer.value.getBoundingClientRect();
+            if (!this.chart || !this.$refs.chartContainer) return;
+            const dimensions = this.$refs.chartContainer.getBoundingClientRect();
             this.chart.resize(dimensions.width, dimensions.height);
         },
 
@@ -154,7 +155,7 @@ export default {
 }
 
 #chart-container {
-    height: 600px;
+    height: calc(100vh - 120px);
     width: 100%;
     display: block;
     position: relative;
