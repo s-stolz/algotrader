@@ -1,6 +1,6 @@
 <template>
     <div>
-        <header>
+        <!-- <header>
             <span>
                 <router-link to="/"> Charts </router-link>
             </span>
@@ -8,7 +8,7 @@
             <span>
                 <router-link to="/Data"> Data </router-link>
             </span>
-        </header>
+        </header> -->
 
         <main>
             <router-view />
@@ -17,6 +17,7 @@
 </template>
 
 <script>
+import Ticket from "./utils/Ticket.js";
 import LightweightChart from "./components/LightweightChart.vue";
 
 export default {
@@ -33,27 +34,32 @@ export default {
     methods: {},
 
     mounted() {
-        this.ws = new WebSocket("ws://localhost:8765");
+        const wss = this.$wss;
 
-        this.ws.addEventListener("open", () => {
-            console.log("We are connected");
-
-            let loginMessage = JSON.stringify({
-                type: "Login",
-                name: "Frontend",
-            });
-
-            this.ws.send(loginMessage);
+        wss.on("message", (data) => {
+            try {
+                let message = JSON.parse(data);
+                // console.log(message);
+            } catch (error) {
+                console.error("Failed to parse message:", error);
+            }
         });
+    },
 
-        this.ws.addEventListener("message", function (event) {
-            console.log(event.data);
-        });
+    beforeUnmount() {
+        // Clean up the WebSocket connection
+        if (this.$ws) {
+            this.$ws.close();
+        }
     },
 };
 </script>
 
 <style scoped>
+main {
+    padding: 10px;
+}
+
 header a {
     display: inline-flex;
     margin: 10px 8px;

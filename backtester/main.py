@@ -1,35 +1,102 @@
 import asyncio
 import websockets
-#import threading
 import json
-import data.base as bdb
+import threading
+import logging
+from utils.ticket import Ticket
+import data as Data
+import time
 
-async def on_message(message):
-    print(f"Received: {message}")
+import indicators as Indicators
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(threadName)s: %(message)s")
+
+async def on_message(message, websocket):
+    logging.info(f"Received: {message}")
+    message = json.loads(message)
+
+    if message['type'] == 'list-indicators':
+        indicator_list = Indicators.get_available_indicators()
+        response = Ticket().from_object({
+            'receiver': message['sender'],
+            'type': 'list-indicators-response',
+            'data': indicator_list
+        })
+        logging.info(f"Send: {response}")
+        await websocket.send(response)
+
+    if message['type'] == 'get-indicator':
+        indicatorName = message['data']['name']
+        symbol_id = message['data']['symbolID']
+        timeframe = message['data']['timeframe']
+        customParameters = message['data'].get('parameters', {})
+        logging.info(customParameters)
+
+        indicator_info = Indicators.INDICATORS[indicatorName].info()
+
+        parameters = {}
+        for output in indicator_info['outputs']:
+            parameters_def = indicator_info['outputs'][output]['parameters']
+
+            for param_name, param_details in parameters_def.items():
+                param_default = param_details.get('default')
+                parameters[param_name] = customParameters.get(param_name, param_default)
+
+        logging.info(parameters)
+
+        data = Data.get_candles_single_symbol('db', symbol_id, timeframe)
+
+        indicator_instance = Indicators.get_indicator_instance(
+            indicatorName,
+            data,  # Positional argument
+            **parameters  # Additional parameters
+        )
+        indicator_data = indicator_instance.run().dropna()
+        indicator_reset = indicator_data.reset_index()
+        indicator_reset['timestamp'] = indicator_reset['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%SZ')
+
+        response = Ticket().from_object({
+            'receiver': message['sender'],
+            'type': 'indicator-info',
+            'data': {
+                'id': message['data'].get('id'),
+                'indicator_info': indicator_info,
+                'indicator_data': indicator_reset.to_dict(orient='records')
+            }
+        })
+
+        #logging.info(response)
+        
+        await websocket.send(response)
+
 
 async def websocket_client():
-    uri = "ws://backend:8765"  # WebSocket server URL
-    
+    uri = "ws://backend:8765"
+    logging.info('Attempting to connect...')
     # Connect to the server
     async with websockets.connect(uri) as websocket:
+        logging.info("Connected to server")
         # Send a message
-        message = {
-            'type': 'Login',
-            'name': 'Backtester'
-        }
-        message = json.dumps(message)
+        message = Ticket().from_object({
+            'receiver': 'Broker',
+            'type': 'Login'
+        })
         await websocket.send(message)
-        print(f"Sent: {message}")
+        logging.info(f"Sent: {message}")
 
+        # Receive messages
         async for message in websocket:
-            await on_message(message) 
-
+            await on_message(message, websocket)
 
 def run_server_in_thread():
-    asyncio.get_event_loop().run_until_complete(websocket_client())
-    #server_thread = threading.Thread(target=start_websocket_server)
-    #server_thread.start()
-    #print("WebSocket server has started on ws://0.0.0.0:8765")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(websocket_client())
 
 if __name__ == "__main__":
-    run_server_in_thread()
+    # Run websocket client in a separate thread
+    client_thread = threading.Thread(target=run_server_in_thread, name="WebSocketThread")
+    client_thread.start()
+    client_thread.join()  # Wait for the thread to finish if needed
+    logging.info("Exiting main thread")

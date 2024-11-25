@@ -46,3 +46,20 @@ def get_candles(feed: str, symbol_ids: list[int], timeframe: int, start_date=Non
         combined_df = pd.concat(all_dataframes, axis=1)
         
         return combined_df
+    
+def get_candles_single_symbol(feed: str, symbol_id: int, timeframe: int, start_date=None, end_date=None) -> pd.DataFrame:
+    """Retrieve candle data for a single symbol and return a normal DataFrame."""
+    if feed == "db":
+        fin_db = db.Database()
+        
+        symbol = fin_db.get_symbol(symbol_id)
+        
+        candles = fin_db.get_candles(symbol_id, timeframe, start_date, end_date)
+        
+        df = pd.DataFrame(data=candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        df.set_index('timestamp', inplace=True)
+        
+        df['symbol'] = symbol[0]
+        
+        return df

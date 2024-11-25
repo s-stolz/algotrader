@@ -1,11 +1,9 @@
 <template>
     <div>
         <div id="wrapper-select">
-            <select v-model="selectedSymbol" @change="requestCandles">
-                <option v-for="market in markets" :key="market.symbol_id" :value="market">
-                    {{ market.symbol }}
-                </option>
-            </select>
+            <button id="symbol-button" @click="showSymbolSelectModal = true">
+                {{ selectedSymbol?.symbol }}
+            </button>
 
             <select
                 name="timeframe"
@@ -21,30 +19,112 @@
                     {{ timeframe.name }}
                 </option>
             </select>
+
+            <button id="indicator-button" @click="showIndicatorModal = true">
+                Indicator
+            </button>
         </div>
 
         <lightweight-chart
+            id="candlestick-chart"
+            ref="candlestickChart"
             type="candlestick"
             :data="data"
             :chartOptions="chartOptions"
             :seriesOptions="seriesOptions"
             :timeScaleOptions="timeScaleOptions"
-        />
+        >
+            <div id="indicator-wrapper"></div>
+        </lightweight-chart>
+
+        <modal
+            v-model:visible="showSymbolSelectModal"
+            title="Symbol"
+            closeOnBackdrop
+            ref="symbolSearchModal"
+        >
+            <symbol-search
+                :markets="markets"
+                :selected-symbol="selectedSymbol"
+                @update-symbol="updateSymbol"
+                @add-symbol="addSymbol"
+            />
+
+            <template #footer>
+                <button @click="showSymbolSelectModal = false" class="footer-close-modal">
+                    Close
+                </button>
+            </template>
+        </modal>
+
+        <modal
+            v-model:visible="showAddSymbolModal"
+            title="New Symbol"
+            closeOnBackdrop
+            ref="addSymbolModal"
+        >
+            <symbol-form
+                :newSymbol="newSymbol"
+                ref="symbolForm"
+                @add-symbol-successful="showAddSymbolModal = false"
+            />
+
+            <template #footer>
+                <button
+                    @click="this.$refs.symbolForm.addSymbol()"
+                    class="footer-add-symbol"
+                >
+                    Add Symbol
+                </button>
+
+                <button @click="showAddSymbolModal = false" class="footer-close-modal">
+                    Close
+                </button>
+            </template>
+        </modal>
+
+        <modal
+            v-model:visible="showIndicatorModal"
+            title="Indicator"
+            closeOnBackdrop
+            ref="indicatorModal"
+        >
+            <indicator-search
+                :symbolID="selectedSymbol.symbol_id"
+                :timeframe="selectedTimeframe.value"
+            />
+        </modal>
     </div>
 </template>
 
 <script>
+import { createVNode, render, reactive } from "vue";
 import LightweightChart from "@/components/LightweightChart.vue";
+import SymbolSearch from "./SymbolSearch.vue";
+import SymbolForm from "./SymbolForm.vue";
+import IndicatorSearch from "./IndicatorSearch.vue";
+import Indicator from "./Indicator.vue";
+import Modal from "@/components/Modal.vue";
+import Ticket from "@/utils/Ticket";
 
 export default {
     name: "Chart",
 
     components: {
         "lightweight-chart": LightweightChart,
+        "symbol-search": SymbolSearch,
+        "symbol-form": SymbolForm,
+        "indicator-search": IndicatorSearch,
+        indicator: Indicator,
+        modal: Modal,
     },
 
     data() {
         return {
+            showSymbolSelectModal: false,
+            showAddSymbolModal: false,
+            showIndicatorModal: false,
+            newSymbol: undefined,
             markets: [],
             selectedSymbol: null,
             selectedTimeframe: {
@@ -86,6 +166,8 @@ export default {
                 },
             },
             data: [],
+            indicatorCounter: 0,
+            indicators: new Map(),
         };
     },
 
@@ -121,8 +203,9 @@ export default {
                 .then((response) => response.json())
                 .then((data) => {
                     this.data = data.map((candle) => {
+                        let utc = new Date(candle.timestamp).getTime() / 1000;
                         return {
-                            time: Date.parse(candle.timestamp) / 1000,
+                            time: utc,
                             open: candle.open,
                             high: candle.high,
                             low: candle.low,
@@ -135,11 +218,137 @@ export default {
                     this.setMinMove(this.selectedSymbol.min_move);
                 });
         },
+
+        updateSymbol(newSymbol) {
+            this.selectedSymbol = newSymbol;
+            this.requestCandles();
+            this.$refs.symbolSearchModal.close();
+        },
+
+        addSymbol(newSymbol) {
+            this.$refs.symbolSearchModal.close();
+            this.newSymbol = newSymbol;
+            this.showAddSymbolModal = true;
+        },
+
+        handleMessage(message) {
+            if (message.type == "indicator-info") {
+                this.addIndicator(
+                    message.data.id,
+                    message.data.indicator_info,
+                    message.data.indicator_data
+                );
+            }
+        },
+
+        addIndicator(existingID, indicatorInfo, indicatorData) {
+            // Transform indicator data
+            const transformedData = indicatorData.map((x) => ({
+                value: x.value,
+                time: Math.floor(new Date(x.timestamp).getTime() / 1000),
+            }));
+
+            if (existingID !== null) {
+                this.updateIndicator(existingID, indicatorInfo, transformedData);
+                return;
+            }
+            const id = this.indicatorCounter++;
+
+            if (this.indicators.has(id)) {
+                console.warn(`Indicator with ID ${id} already exists.`);
+                return;
+            }
+
+            const candlestickChart = this.$refs.candlestickChart.getChart();
+
+            // Create a unique container for this indicator
+            const container = document.createElement("div");
+            document.getElementById("indicator-wrapper").appendChild(container);
+
+            // Create reactive props
+            const reactiveProps = reactive({
+                chart: this.$refs.candlestickChart.getChart(),
+                data: transformedData,
+                info: indicatorInfo,
+            });
+
+            const indicatorVNode = createVNode(Indicator, {
+                ...reactiveProps,
+                onDestroy: () => this.removeIndicator(id),
+                onUpdateParameters: (eventPayload) =>
+                    this.requestIndicator(id, reactiveProps.info.name, eventPayload),
+            });
+
+            render(indicatorVNode, container);
+
+            this.indicators.set(id, {
+                id,
+                container,
+                vnode: indicatorVNode,
+                props: reactiveProps,
+            });
+        },
+
+        requestIndicator(id, name, parameters) {
+            console.log(parameters);
+
+            let message = new Ticket().fromObject({
+                receiver: "Backtester",
+                type: "get-indicator",
+                data: {
+                    id,
+                    name,
+                    symbolID: this.selectedSymbol.symbol_id,
+                    timeframe: this.selectedTimeframe.value,
+                    parameters,
+                },
+            });
+
+            this.$wss.send(message);
+        },
+
+        removeIndicator(id) {
+            const indicator = this.indicators.get(id);
+            if (!indicator) {
+                console.warn(`Indicator with ID ${id} does not exist.`);
+                return;
+            }
+
+            render(null, indicator.container);
+            indicator.container.remove();
+            this.indicators.delete(id);
+        },
+
+        updateIndicator(id, newInfo, newData) {
+            const indicator = this.indicators.get(id);
+            if (!indicator) {
+                console.warn(`Indicator with ID ${id} does not exist.`);
+                return;
+            }
+
+            // Use an exposed method to update the data reactively
+            const vnode = indicator.vnode.component;
+            vnode.proxy.updateData(newData);
+
+            // Update info prop directly (assuming this does not create circular reactivity)
+            indicator.props.info = newInfo;
+
+            console.log(`Indicator ${id} updated reactively.`);
+        },
     },
 
     mounted() {
         this.requestMarkets();
         this.requestCandles();
+
+        this.$wss.on("message", (data) => {
+            try {
+                let message = JSON.parse(data);
+                this.handleMessage(message);
+            } catch (error) {
+                console.error("Failed to parse message:", error);
+            }
+        });
     },
 };
 </script>
@@ -151,5 +360,28 @@ export default {
 
 #market-select {
     margin-right: 20px;
+}
+
+#symbol-button,
+#indicator-button {
+    padding: 10px 15px;
+}
+
+#timeframe-select {
+    padding: 10px 15px;
+}
+
+.footer-close-modal,
+.footer-add-symbol {
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    margin-right: 10px;
+}
+
+#indicator-wrapper {
+    position: absolute;
+    top: 30px;
+    left: 0;
+    z-index: 999;
 }
 </style>

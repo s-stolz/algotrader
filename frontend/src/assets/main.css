@@ -39,3 +39,14 @@ button {
   border: none;
   border-radius: 10px;
 }
+
+input, select {
+  outline: none;
+}
+
+input {
+  background: none;
+  color: white;
+  padding: 10px 15px;
+  font-size: 16px;
+}

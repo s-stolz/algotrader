@@ -1,7 +1,13 @@
 <template>
     <div>
-        <div ref="chartContainer" id="chart-container">
+        <div
+            v-if="this.parentChart === undefined"
+            ref="chartContainer"
+            id="chart-container"
+        >
             <div id="legend"></div>
+            <slot></slot>
+            <div id="indicator-wrapper"></div>
         </div>
     </div>
 </template>
@@ -13,6 +19,10 @@ export default {
     name: "LightweightChart",
 
     props: {
+        parentChart: {
+            type: Object,
+        },
+
         data: {
             type: Array,
             required: true,
@@ -47,6 +57,8 @@ export default {
         },
     },
 
+    expose: ["getChart", "remove"],
+
     data() {
         return {
             chart: null,
@@ -55,10 +67,16 @@ export default {
             crossHairTimeout: null,
             loadedBars: 5000,
             autosize: true,
+            indicators: new Map(),
+            indicatorCounter: 0,
         };
     },
 
     methods: {
+        getChart() {
+            return this.chart || this.parentChart;
+        },
+
         sliceBars() {
             let len = this.data.length;
             let start = Math.max(0, len - this.loadedBars);
@@ -71,9 +89,34 @@ export default {
         },
 
         addSeriesAndData() {
+            if (!this.chart) {
+                console.error("Chart instance is undefined. Cannot add series.");
+                return;
+            }
+
             const seriesConstructor = this.getchartSeriesConstructorName(this.type);
-            this.series = this.chart[seriesConstructor](this.seriesOptions);
-            this.series.setData(this.data);
+
+            try {
+                this.series = this.chart[seriesConstructor](this.seriesOptions);
+                this.sliceBars();
+            } catch (error) {
+                console.error("Failed to add series:", error);
+            }
+        },
+
+        remove() {
+            if (!this.chart) {
+                console.error("Chart instance is undefined. Cannot remove series.");
+                return;
+            }
+
+            if (!this.series) {
+                console.error("Series is undefined. Cannot remove series.");
+                return;
+            }
+
+            this.chart.removeSeries(this.series);
+            this.series = null;
         },
 
         resizeHandler() {
@@ -83,11 +126,13 @@ export default {
         },
 
         onVisibleLogicalRangeChanged(newVisibleLogicalRange) {
+            // TODO: Is triggered twice! Why?
+            if (!this.series) return;
             const barsInfo = this.series.barsInLogicalRange(newVisibleLogicalRange);
-            // if there less than 50 bars to the left of the visible area
+            // console.log(barsInfo);
             if (barsInfo !== null && barsInfo.barsBefore < 50) {
-                // try to load additional historical data and prepend it to the series data
-                console.log("add additional bars");
+                // Load additional price data
+                // console.log("Loading additional price bars...");
                 this.loadedBars += 5000;
                 this.sliceBars();
             }
@@ -96,10 +141,9 @@ export default {
 
     mounted() {
         this.legend = document.getElementById("legend");
-        this.chart = createChart(
-            document.getElementById("chart-container"),
-            this.chartOptions
-        );
+
+        this.chart =
+            this.parentChart || createChart(this.$refs.chartContainer, this.chartOptions);
 
         this.addSeriesAndData();
 
@@ -112,37 +156,47 @@ export default {
         }
 
         this.chart.subscribeCrosshairMove((param) => {
-            if (this.crossHairTimeout != null) {
-                clearTimeout(this.crossHairTimeout);
+            try {
+                if (this.crossHairTimeout != null) {
+                    clearTimeout(this.crossHairTimeout);
+                }
+
+                const validCrosshairPoint = !(
+                    param === undefined ||
+                    param.time === undefined ||
+                    param.point.x < 0 ||
+                    param.point.y < 0
+                );
+                if (!validCrosshairPoint || this.parentChart !== undefined) return;
+
+                this.crossHairTimeout = setTimeout(() => {
+                    let bar = this.data.find((bar) => bar.time === param.time);
+
+                    if (!bar) return;
+                    this.legend.innerHTML = `O: ${bar.open} | H: ${bar.high} | L: ${bar.low} | C: ${bar.close}`;
+
+                    this.crossHairTimeout = null;
+                }, 10);
+            } catch (error) {
+                console.log("Catch");
             }
-
-            const validCrosshairPoint = !(
-                param === undefined ||
-                param.time === undefined ||
-                param.point.x < 0 ||
-                param.point.y < 0
-            );
-            if (!validCrosshairPoint) return;
-
-            this.crossHairTimeout = setTimeout(() => {
-                let bar = this.data.find((bar) => bar.time === param.time);
-
-                if (!bar) return;
-                this.legend.innerHTML = `O: ${bar.open} | H: ${bar.high} | L: ${bar.low} | C: ${bar.close}`;
-
-                this.crossHairTimeout = null;
-            }, 10);
         });
 
         this.chart
             .timeScale()
             .subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChanged);
 
-        this.chart.timeScale().fitContent();
-
         if (this.autosize) {
             window.addEventListener("resize", this.resizeHandler);
         }
+    },
+
+    beforeUnmount() {
+        this.chart
+            .timeScale()
+            .unsubscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChanged);
+
+        window.removeEventListener("resize", this.resizeHandler);
     },
 };
 </script>
@@ -155,7 +209,7 @@ export default {
 }
 
 #chart-container {
-    height: calc(100vh - 120px);
+    height: calc(100vh - 80px);
     width: 100%;
     display: block;
     position: relative;
