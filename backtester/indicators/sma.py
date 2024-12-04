@@ -17,10 +17,6 @@ class SMA:
             'outputs': {
                 'sma': {
                     'type': 'line',
-                    'plotOptions': {
-                        'lineWidth': 3,
-                        'color': '#FCFC4E'
-                    },
                     'parameters': {
                         'window': {
                             'type': 'int',
@@ -34,6 +30,10 @@ class SMA:
                             'default': 'close',
                             'options': ['close', 'open', 'high', 'low']
                         }
+                    },
+                    'plotOptions': {
+                        'lineWidth': 3,
+                        'color': '#FCFC4E'
                     },
                 }
             }
