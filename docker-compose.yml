@@ -51,6 +51,10 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./backtester:/app
+    command: watchmedo auto-restart --directory=/app --pattern="*.py" --recursive -- python main.py
+    environment:
+      - PYTHONUNBUFFERED=1
+
 
 volumes:
   timescaledb_data:

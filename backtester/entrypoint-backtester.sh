@@ -6,7 +6,7 @@
 pid=0
 
 # run python3 main.py in the background and store its PID
-python3 main.py &
+exec watchmedo auto-restart --directory=/app --pattern="*.py" --recursive -- python main.py &
 
 # store the PID of the last background command
 pid=$!
