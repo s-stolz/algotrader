@@ -21,6 +21,7 @@
         >
             <table>
                 <template v-for="(output, key_out) in info.outputs" :key="key_out">
+                    <h3 class="parameter-header">{{ key_out }}</h3>
                     <tr
                         v-for="(parameter, key_param) in output['parameters']"
                         :key="key_param"
@@ -33,8 +34,27 @@
                         </td>
 
                         <td>
+                            <select
+                                v-if="
+                                    parameter.type == 'string' &&
+                                    parameter.options !== null
+                                "
+                                v-model="parameterValues[key_param]"
+                            >
+                                <option
+                                    v-for="(option, key_option) in parameter.options"
+                                    :key="key_option"
+                                    :value="option"
+                                >
+                                    {{ option }}
+                                </option>
+                            </select>
+
                             <input
-                                v-if="parameter.type == 'string'"
+                                v-else-if="
+                                    parameter.type == 'string' &&
+                                    parameter.options === null
+                                "
                                 type="text"
                                 v-model="parameterValues[key_param]"
                             />
@@ -88,6 +108,7 @@ export default {
     watch: {
         parameterValues: {
             handler(newParameters) {
+                console.log(newParameters);
                 this.$emit("update-parameters", newParameters);
             },
             deep: true,
@@ -119,6 +140,7 @@ export default {
 
         getParameterValues() {
             let values = {};
+            console.log(this.info.outputs);
             for (const [key_out, output] of Object.entries(this.info.outputs)) {
                 for (const [key_param, parameter] of Object.entries(output.parameters)) {
                     values[key_param] = parameter.default;
@@ -137,6 +159,10 @@ export default {
 <style scoped>
 .indicator-info {
     display: flex;
+}
+
+.parameter-header {
+    padding: 0 15px;
 }
 
 .indicator-info p,
@@ -170,5 +196,13 @@ export default {
     outline: none;
     border: 1px solid gray;
     border-radius: 8px;
+}
+
+.indicator-parameter td select {
+    padding: 10px 15px;
+    margin: 0;
+    width: 100px;
+    border-radius: 8px;
+    background: none;
 }
 </style>
