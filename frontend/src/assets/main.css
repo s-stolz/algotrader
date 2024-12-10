@@ -29,8 +29,8 @@ select {
   border-radius: 8px;
   padding: 5px 10px;
   border: none;
-  -webkit-appearance: none;
-  appearance: none;
+  border-right: 8px solid transparent !important;
+  outline: 1px solid gray;
 }
 
 button {
@@ -40,7 +40,7 @@ button {
   border-radius: 10px;
 }
 
-input, select {
+input {
   outline: none;
 }
 
