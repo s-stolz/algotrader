@@ -30,7 +30,7 @@ select {
   padding: 5px 10px;
   border: none;
   border-right: 8px solid transparent !important;
-  outline: 1px solid gray;
+  outline: none;
 }
 
 button {
