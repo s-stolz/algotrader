@@ -98,19 +98,19 @@ export default {
 
     computed: {
         validSymbol() {
-            return typeof this.symbol == String && this.symbol.trim() !== "";
+            return typeof this.symbol == "string" && this.symbol.trim() !== "";
         },
 
         validExchange() {
-            return typeof this.exchange == String && this.exchange.trim() !== "";
+            return typeof this.exchange == "string" && this.exchange.trim() !== "";
         },
 
         validMinMove() {
-            return typeof this.minMove == Number && this.minMove > 0;
+            return typeof this.minMove == "number" && this.minMove > 0;
         },
 
         validMarketType() {
-            return typeof this.marketType == String && this.marketType.trim !== "";
+            return typeof this.marketType == "string" && this.marketType.trim !== "";
         },
     },
 };
