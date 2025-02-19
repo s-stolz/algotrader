@@ -31,17 +31,15 @@ async def on_message(message, websocket):
         symbol_id = message['data']['symbolID']
         timeframe = message['data']['timeframe']
         customParameters = message['data'].get('parameters', {})
-        logging.info(customParameters)
+        # logging.info(customParameters)
 
         indicator_info = Indicators.INDICATORS[indicatorName].info()
 
         parameters = {}
-        for output in indicator_info['outputs']:
-            parameters_def = indicator_info['outputs'][output]['parameters']
 
-            for param_name, param_details in parameters_def.items():
-                param_default = param_details.get('default')
-                parameters[param_name] = customParameters.get(param_name, param_default)
+        for param_name, param_details in indicator_info['parameters'].items():
+            param_default = param_details.get('default')
+            parameters[param_name] = customParameters.get(param_name, {}).get('value', param_default)
 
         logging.info(parameters)
 
