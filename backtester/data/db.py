@@ -3,6 +3,7 @@ from psycopg2 import sql
 from decouple import config
 import logging
 import traceback
+import pandas as pd
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +17,11 @@ class Database:
         self.connection = None
         self.connect()
 
-    def connect(self):
+    def connect(self) -> None:
+        """
+        Connect to the PostgreSQL database.
+        """
+
         try:
             self.connection = psycopg2.connect(
                 host=self.host,
@@ -30,12 +35,27 @@ class Database:
             log.error("Error while connecting to PostgreSQL:", error)
             traceback.print_exc()
 
-    def disconnect(self):
+    def disconnect(self) -> None:
+        """
+        Disconnect from the PostgreSQL database.
+        """
+
         if self.connection:
             self.connection.close()
             log.info("Disconnected from the database.")
 
-    def market_exists(self, symbol, exchange):
+    def market_exists(self, symbol: str, exchange: str) -> bool:
+        """
+        Check if the market already exists in the database.
+
+        Parameters:
+            symbol (str): Symbol name.
+            exchange (str): Exchange name.
+
+        Returns:
+            bool: True if the market exists, False otherwise.
+        """
+
         cursor = self.connection.cursor()
 
         cursor.execute(
@@ -52,7 +72,20 @@ class Database:
         else:
             return False
         
-    def insert_market(self, symbol, exchange, market_type, min_move):
+    def insert_market(self, symbol: str, exchange: str, market_type: str, min_move: float) -> None:
+        """
+        Insert a market into the database.
+
+        Parameters:
+            symbol (str): Symbol name.
+            exchange (str): Exchange name.
+            market_type (str): Market type.
+            min_move (float): Minimum move.
+
+        Returns:
+            None
+        """
+
         if self.market_exists(symbol, exchange):
             log.warning("Market already exists in the database!")
             return
@@ -70,7 +103,17 @@ class Database:
         self.connection.commit()
         log.info("Market inserted into PostgreSQL database!")
 
-    def get_symbol(self, symbol_id: int):
+    def get_symbol(self, symbol_id: int) -> tuple[str, str]:
+        """
+        Get the symbol and exchange from the database.
+
+        Parameters:
+            symbol_id (int): Symbol ID.
+
+        Returns:
+            tuple: Symbol and exchange.
+        """
+
         cursor = self.connection.cursor()
         query = sql.SQL(
             """
@@ -81,14 +124,24 @@ class Database:
 
         cursor.execute(
             query,
-            (str(symbol_id))
+            (str(symbol_id),)
         )
 
         symbols = cursor.fetchone()
 
         return symbols
     
-    def get_symbol_id(self, symbol, exchange='%'):
+    def get_symbol_id(self, symbol, exchange='%') -> int:
+        """
+        Get the symbol_id from the database.
+
+        Parameters:
+            symbol (str): Symbol name.
+            exchange (str): Exchange name.
+
+        Returns:
+            int: The symbol_id from the database.
+        """
         cursor = self.connection.cursor()
         query = sql.SQL(
             """
@@ -112,7 +165,19 @@ class Database:
 
         return symbol_id[0][0]
         
-    def insert_candles(self, df, symbol, exchange):
+    def insert_candles(self, df: pd.DataFrame, symbol: str, exchange: str = '%') -> None:
+        """
+        Insert candle data into the database.
+
+        Parameters:
+            df (pd.DataFrame): OHLCV data for the symbol.
+            symbol (str): Symbol name.
+            exchange (str): Exchange name.
+
+        Returns:
+            None
+        """
+
         symbol_id = self.get_symbol_id(symbol, exchange)
         if not symbol_id:
             log.warning(f"Symbol {symbol} not found in the database!")
@@ -152,7 +217,20 @@ class Database:
             if cursor:
                 cursor.close()
 
-    def get_candles(self, symbol_id, timeframe, start_date=None, end_date=None):
+    def get_candles(self, symbol_id: int, timeframe: int, start_date: str = None, end_date: str = None) -> list:
+        """
+        Get candle data from the database.
+
+        Parameters:
+            symbol_id (int): Symbol ID.
+            timeframe (int): Timeframe in minutes.
+            start_date (str): Start date in 'YYYY-MM-DD' format.
+            end_date (str): End date in 'YYYY-MM-DD' format.
+
+        Returns:
+            list: List of candles.
+        """
+
         try:
             cursor = self.connection.cursor()
             
