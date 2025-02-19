@@ -7,19 +7,20 @@ async function marketExists(symbol, exchange) {
   return result.rows.length > 0;
 }
 
-exports.insertMarket = function (req, res) {
+exports.insertMarket = async function (req, res) {
     if (!req.body.symbol || !req.body.exchange) {
         res.status(400).send({error: "Missing required fields"});
         return;
     }
-    if (marketExists(req.body.symbol, req.body.exchange)) {
+    let exists = await marketExists(req.body.symbol, req.body.exchange);
+
+    if (exists) {
         res.status(400).send({error: "Market already exists"});
         return;
     }
 
-    const market = req.body;
-    const query = "INSERT INTO markets (symbol, exchange, market_type, min_move) VALUES ($1, $2) RETURNING *";
-    const values = [market.name, market.symbol];
+    const query = "INSERT INTO markets (symbol, exchange, market_type, min_move) VALUES ($1, $2, $3, $4) RETURNING *";
+    const values = [req.body.symbol, req.body.exchange, req.body.marketType, req.body.minMove];
     psqlClient.query(query, values, (err, result) => {
         if (err) {
             console.log(err);
