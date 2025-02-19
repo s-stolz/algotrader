@@ -3,17 +3,25 @@
         <div
             v-if="this.parentChart === undefined"
             ref="chartContainer"
-            id="chart-container"
+            class="chart-container"
         >
             <div id="legend"></div>
             <slot></slot>
-            <div id="indicator-wrapper"></div>
+            <!-- <div id="indicator-wrapper"></div> -->
         </div>
     </div>
 </template>
 
 <script>
 import { createChart } from "lightweight-charts";
+import {
+    LineSeries,
+    AreaSeries,
+    BarSeries,
+    BaselineSeries,
+    CandlestickSeries,
+    HistogramSeries,
+} from "lightweight-charts";
 
 export default {
     name: "LightweightChart",
@@ -25,7 +33,7 @@ export default {
 
         data: {
             type: Array,
-            required: true,
+            required: false,
         },
 
         chartOptions: {
@@ -48,26 +56,29 @@ export default {
 
     watch: {
         data() {
-            this.sliceBars();
+            let ohlc = this.seriesDataMap.get("ohlc");
+            ohlc["data"] = this.data;
+
+            this.sliceBars(this.data, ohlc["series"]);
         },
 
         seriesOptions(newOptions) {
-            if (!this.series) return;
-            this.series.applyOptions(newOptions);
+            if (this.seriesDataMap.size === 0) return;
+            // TODO: Handle Options
+            console.info("Apply Series Options", newOptions);
+            // this.series.applyOptions(newOptions);
         },
     },
 
-    expose: ["getChart", "remove"],
+    expose: ["getChart", "remove", "addSeriesAndData"],
 
     data() {
         return {
             chart: null,
-            series: null,
+            seriesDataMap: new Map(),
             legend: null,
             crossHairTimeout: null,
             loadedBars: 5000,
-            autosize: true,
-            indicators: new Map(),
             indicatorCounter: 0,
         };
     },
@@ -77,28 +88,48 @@ export default {
             return this.chart || this.parentChart;
         },
 
-        sliceBars() {
-            let len = this.data.length;
+        sliceBars(data, series) {
+            let len = data.length;
             let start = Math.max(0, len - this.loadedBars);
-            let slicedData = this.data.slice(start, len);
-            this.series.setData(slicedData);
+            let slicedData = data.slice(start, len);
+            series.setData(slicedData);
         },
 
         getchartSeriesConstructorName(type) {
-            return `add${type.charAt(0).toUpperCase() + type.slice(1)}Series`;
+            const seriesMap = {
+                line: LineSeries,
+                area: AreaSeries,
+                bar: BarSeries,
+                baseline: BaselineSeries,
+                candlestick: CandlestickSeries,
+                histogram: HistogramSeries,
+            };
+            return seriesMap[type] || null;
         },
 
-        addSeriesAndData() {
-            if (!this.chart) {
-                console.error("Chart instance is undefined. Cannot add series.");
+        addSeriesAndData(data, seriesKey, type, seriesOptions, paneID = 0) {
+            if (!this.chart || !data) {
                 return;
             }
 
-            const seriesConstructor = this.getchartSeriesConstructorName(this.type);
+            const SeriesConstructor = this.getchartSeriesConstructorName(type);
+            if (!SeriesConstructor) {
+                console.error("Invalid series type:", type);
+                return;
+            }
 
             try {
-                this.series = this.chart[seriesConstructor](this.seriesOptions);
-                this.sliceBars();
+                let series = this.chart.addSeries(
+                    SeriesConstructor,
+                    seriesOptions,
+                    paneID
+                );
+
+                this.seriesDataMap.set(seriesKey, {
+                    series,
+                    data,
+                });
+                this.sliceBars(data, series);
             } catch (error) {
                 console.error("Failed to add series:", error);
             }
@@ -110,32 +141,32 @@ export default {
                 return;
             }
 
-            if (!this.series) {
-                console.error("Series is undefined. Cannot remove series.");
+            if (this.seriesDataMap.size === 0) {
                 return;
             }
 
-            this.chart.removeSeries(this.series);
-            this.series = null;
-        },
-
-        resizeHandler() {
-            if (!this.chart || !this.$refs.chartContainer) return;
-            const dimensions = this.$refs.chartContainer.getBoundingClientRect();
-            this.chart.resize(dimensions.width, dimensions.height);
+            this.seriesDataMap.forEach((value, key) => {
+                this.chart.removeSeries(value["series"]);
+                this.seriesDataMap.delete(key);
+            });
         },
 
         onVisibleLogicalRangeChanged(newVisibleLogicalRange) {
             // TODO: Is triggered twice! Why?
-            if (!this.series) return;
-            const barsInfo = this.series.barsInLogicalRange(newVisibleLogicalRange);
-            // console.log(barsInfo);
-            if (barsInfo !== null && barsInfo.barsBefore < 50) {
-                // Load additional price data
-                // console.log("Loading additional price bars...");
-                this.loadedBars += 5000;
-                this.sliceBars();
-            }
+            if (this.seriesDataMap.size === 0) return;
+
+            this.seriesDataMap.forEach((value, key) => {
+                const barsInfo = value["series"].barsInLogicalRange(
+                    newVisibleLogicalRange
+                );
+
+                if (barsInfo !== null && barsInfo.barsBefore < 50) {
+                    // Load additional price data
+                    console.log("Loading additional price bars...");
+                    this.loadedBars += 5000;
+                    this.sliceBars(value["data"], value["series"]);
+                }
+            });
         },
     },
 
@@ -145,7 +176,7 @@ export default {
         this.chart =
             this.parentChart || createChart(this.$refs.chartContainer, this.chartOptions);
 
-        this.addSeriesAndData();
+        this.addSeriesAndData(this.data, "ohlc", this.type, this.seriesOptions);
 
         if (this.priceScaleOptions) {
             this.chart.priceScale().applyOptions(this.priceScaleOptions);
@@ -185,18 +216,12 @@ export default {
         this.chart
             .timeScale()
             .subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChanged);
-
-        if (this.autosize) {
-            window.addEventListener("resize", this.resizeHandler);
-        }
     },
 
     beforeUnmount() {
         this.chart
             .timeScale()
             .unsubscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChanged);
-
-        window.removeEventListener("resize", this.resizeHandler);
     },
 };
 </script>
@@ -208,8 +233,8 @@ export default {
     left: 0;
 }
 
-#chart-container {
-    height: calc(100vh - 80px);
+.chart-container {
+    height: 100%;
     width: 100%;
     display: block;
     position: relative;
