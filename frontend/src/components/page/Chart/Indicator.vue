@@ -1,7 +1,5 @@
 <template>
-    <div>
-        <lightweight-chart ref="indicatorChart" :parentChart="chart" :data="localData" />
-
+    <div class="indicator-wrapper">
         <div class="indicator-info">
             <p>{{ info.name }}</p>
             <button class="indicator-remove-button" @click="removeIndicator">x</button>
@@ -13,6 +11,12 @@
             </button>
         </div>
 
+        <lightweight-chart
+            id="indicator-chart"
+            ref="indicatorChart"
+            :parentChart="chart"
+        />
+
         <modal
             v-model:visible="showIndicatorSettingsModal"
             :title="info.name"
@@ -20,56 +24,53 @@
             ref="indicatorSettingsModal"
         >
             <table>
-                <template v-for="(output, key_out) in info.outputs" :key="key_out">
-                    <h3 class="parameter-header">{{ key_out }}</h3>
-                    <tr
-                        v-for="(parameter, key_param) in output['parameters']"
-                        :key="key_param"
-                        class="indicator-parameter"
-                    >
-                        <td class="">
-                            <p>
-                                {{ key_param }}
-                            </p>
-                        </td>
+                <tr
+                    v-for="(parameter, key_param) in parameters"
+                    :key="key_param"
+                    class="indicator-parameter"
+                >
+                    <td class="">
+                        <p>
+                            {{ key_param }}
+                        </p>
+                    </td>
 
-                        <td>
-                            <select
-                                v-if="
-                                    parameter.type == 'string' &&
-                                    parameter.options !== null
-                                "
-                                v-model="parameterValues[key_param]"
+                    <td>
+                        <select
+                            v-if="
+                                parameter.type == 'string' && parameter.options !== null
+                            "
+                            v-model="parameter.value"
+                        >
+                            <option
+                                v-for="(option, key_option) in parameter.options"
+                                :key="key_option"
+                                :value="option"
                             >
-                                <option
-                                    v-for="(option, key_option) in parameter.options"
-                                    :key="key_option"
-                                    :value="option"
-                                >
-                                    {{ option }}
-                                </option>
-                            </select>
+                                {{ option }}
+                            </option>
+                        </select>
 
-                            <input
-                                v-else-if="
-                                    parameter.type == 'string' &&
-                                    parameter.options === null
-                                "
-                                type="text"
-                                v-model="parameterValues[key_param]"
-                            />
+                        <input
+                            v-else-if="
+                                parameter.type == 'string' && parameter.options === null
+                            "
+                            type="text"
+                            v-model="parameter.value"
+                        />
 
-                            <input
-                                v-else-if="parameter.type == 'int'"
-                                type="number"
-                                v-model="parameterValues[key_param]"
-                                :min="parameter.min"
-                                :max="parameter.max"
-                                :step="parameter.step"
-                            />
-                        </td>
-                    </tr>
-                </template>
+                        <input
+                            v-else-if="
+                                parameter.type == 'int' || parameter.type == 'float'
+                            "
+                            type="number"
+                            v-model="parameter.value"
+                            :min="parameter.min"
+                            :max="parameter.max"
+                            :step="parameter.step"
+                        />
+                    </td>
+                </tr>
             </table>
         </modal>
     </div>
@@ -106,29 +107,35 @@ export default {
     },
 
     watch: {
-        parameterValues: {
+        parameters: {
             handler(newParameters) {
-                console.log(newParameters);
                 this.$emit("update-parameters", newParameters);
             },
             deep: true,
         },
-        data: {
-            deep: true, // Ensure nested changes are detected
-            immediate: true, // Run on initial render
-            handler(newData) {
-                if (this.$refs.indicatorChart) {
-                    this.localData = [...newData];
-                }
-            },
-        },
+
+        // data: {
+        //     deep: true, // Ensure nested changes are detected
+        //     immediate: true, // Run on initial render
+        //     handler(newData) {
+        //         if (this.$refs.indicatorChart) {
+        //             console.log("WATCH DATA");
+        //             this.updateData(newData);
+        //         }
+        //     },
+        // },
     },
 
     data() {
         return {
             showIndicatorSettingsModal: false,
-            parameterValues: this.getParameterValues(),
-            localData: [...this.data],
+            // localData: [...this.data],
+            parameters: Object.fromEntries(
+                Object.entries(this.info.parameters).map(([paramKey, paramValue]) => [
+                    paramKey,
+                    { ...paramValue, value: paramValue.default }, // Add `value` key
+                ])
+            ),
         };
     },
 
@@ -138,25 +145,45 @@ export default {
             this.$emit("destroy", this);
         },
 
-        getParameterValues() {
-            let values = {};
-            console.log(this.info.outputs);
-            for (const [key_out, output] of Object.entries(this.info.outputs)) {
-                for (const [key_param, parameter] of Object.entries(output.parameters)) {
-                    values[key_param] = parameter.default;
-                }
-            }
-            return values;
-        },
-
         updateData(newData) {
-            this.localData = [...newData];
+            this.$refs.indicatorChart.remove();
+            let panes = this.chart.panes();
+            let paneID = this.info.overlay ? 0 : panes.length;
+
+            for (let output of Object.keys(newData[0])) {
+                if (output == "timestamp") {
+                    continue;
+                }
+
+                const transformedData = newData.map((x) => ({
+                    value: x[output],
+                    time: Math.floor(new Date(x.timestamp).getTime() / 1000),
+                }));
+
+                this.$refs.indicatorChart.addSeriesAndData(
+                    transformedData,
+                    output,
+                    this.info.outputs[output].type,
+                    this.info.outputs[output].plotOptions || {},
+                    paneID
+                );
+            }
         },
+    },
+
+    mounted() {
+        // console.log(this.info);
+
+        this.updateData(this.data);
     },
 };
 </script>
 
 <style scoped>
+/* .indicator-wrapper {
+    display: block;
+} */
+
 .indicator-info {
     display: flex;
 }
@@ -173,8 +200,6 @@ export default {
 
 .indicator-remove-button,
 .indicator-settings-button {
-    padding: auto;
-    margin: auto;
     margin-left: 8px;
     height: 20px;
     width: 20px;
@@ -204,5 +229,6 @@ export default {
     width: 100px;
     border-radius: 8px;
     background: none;
+    outline: 1px solid gray;
 }
 </style>
