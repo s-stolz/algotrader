@@ -1,8 +1,7 @@
-version: '3.1'
 services:
   timescaledb:
     container_name: timescaledb
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:latest-pg17
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
