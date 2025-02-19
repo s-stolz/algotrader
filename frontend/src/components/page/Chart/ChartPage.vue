@@ -25,17 +25,19 @@
             </button>
         </div>
 
-        <lightweight-chart
-            id="candlestick-chart"
-            ref="candlestickChart"
-            type="candlestick"
-            :data="data"
-            :chartOptions="chartOptions"
-            :seriesOptions="seriesOptions"
-            :timeScaleOptions="timeScaleOptions"
-        >
-            <div id="indicator-wrapper"></div>
-        </lightweight-chart>
+        <div id="chart-wrapper">
+            <lightweight-chart
+                id="candlestick-chart"
+                ref="candlestickChart"
+                type="candlestick"
+                :data="data"
+                :chartOptions="chartOptions"
+                :seriesOptions="seriesOptions"
+                :timeScaleOptions="timeScaleOptions"
+            >
+                <div id="indicator-wrapper"></div>
+            </lightweight-chart>
+        </div>
 
         <modal
             v-model:visible="showSymbolSelectModal"
@@ -145,6 +147,9 @@ export default {
                 layout: {
                     textColor: "#d1d4dc",
                     background: { type: "solid", color: "transparent" },
+                    panes: {
+                        separatorColor: "rgba(96,96,96,0.3)",
+                    },
                 },
                 grid: {
                     vertLines: {
@@ -154,6 +159,7 @@ export default {
                         color: "transparent",
                     },
                 },
+                autoSize: true,
             },
             timeScaleOptions: {
                 timeVisible: true,
@@ -186,12 +192,7 @@ export default {
         },
 
         setMinMove(minMove) {
-            this.seriesOptions = {
-                priceFormat: {
-                    type: "price",
-                    minMove: minMove,
-                },
-            };
+            this.seriesOptions.priceFormat.minMove = minMove;
         },
 
         requestCandles() {
@@ -216,6 +217,7 @@ export default {
                     // console.log(this.data);
 
                     this.setMinMove(this.selectedSymbol.min_move);
+                    this.updateAllIdicators();
                 });
         },
 
@@ -223,6 +225,7 @@ export default {
             this.selectedSymbol = newSymbol;
             this.requestCandles();
             this.$refs.symbolSearchModal.close();
+            this.updateAllIdicators();
         },
 
         addSymbol(newSymbol) {
@@ -232,6 +235,7 @@ export default {
         },
 
         handleMessage(message) {
+            console.log(message);
             if (message.type == "indicator-info") {
                 this.addIndicator(
                     message.data.id,
@@ -241,15 +245,31 @@ export default {
             }
         },
 
-        addIndicator(existingID, indicatorInfo, indicatorData) {
-            // Transform indicator data
-            const transformedData = indicatorData.map((x) => ({
-                value: x.value,
-                time: Math.floor(new Date(x.timestamp).getTime() / 1000),
-            }));
+        updateAllIdicators() {
+            this.indicators.forEach((val, key) => {
+                console.log(val);
+                console.log(this.selectedSymbol);
+                let parameters = val.customParamerters;
 
+                let message = new Ticket().fromObject({
+                    receiver: "Backtester",
+                    type: "get-indicator",
+                    data: {
+                        id: val.id,
+                        name: val.props.info.name,
+                        symbolID: this.selectedSymbol.symbol_id,
+                        timeframe: this.selectedTimeframe.value,
+                        parameters,
+                    },
+                });
+
+                this.$wss.send(message);
+            });
+        },
+
+        addIndicator(existingID, indicatorInfo, indicatorData) {
             if (existingID !== null) {
-                this.updateIndicator(existingID, indicatorInfo, transformedData);
+                this.updateIndicator(existingID, indicatorInfo, indicatorData);
                 return;
             }
             const id = this.indicatorCounter++;
@@ -267,16 +287,19 @@ export default {
 
             // Create reactive props
             const reactiveProps = reactive({
-                chart: this.$refs.candlestickChart.getChart(),
-                data: transformedData,
+                chart: candlestickChart,
+                data: indicatorData,
                 info: indicatorInfo,
             });
 
             const indicatorVNode = createVNode(Indicator, {
                 ...reactiveProps,
                 onDestroy: () => this.removeIndicator(id),
-                onUpdateParameters: (eventPayload) =>
-                    this.requestIndicator(id, reactiveProps.info.name, eventPayload),
+                onUpdateParameters: (eventPayload) => {
+                    let indicator = this.indicators.get(id);
+                    indicator.customParamerters = eventPayload;
+                    this.requestIndicator(id, reactiveProps.info.name, eventPayload);
+                },
             });
 
             render(indicatorVNode, container);
@@ -333,7 +356,7 @@ export default {
             // Update info prop directly (assuming this does not create circular reactivity)
             indicator.props.info = newInfo;
 
-            console.log(`Indicator ${id} updated reactively.`);
+            // console.log(`Indicator ${id} updated reactively.`);
         },
     },
 
@@ -354,6 +377,10 @@ export default {
 </script>
 
 <style scoped>
+#candlestick-chart {
+    height: calc(100vh - 80px);
+}
+
 #wrapper-select {
     margin-bottom: 20px;
 }
