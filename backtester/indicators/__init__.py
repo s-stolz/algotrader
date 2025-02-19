@@ -1,7 +1,13 @@
 from .sma import SMA
+from .rsi import RSI
+from .bbands import BBANDS
+from .macd import MACD
 
 INDICATORS = {
-    'Simple Moving Average': SMA
+    'Simple Moving Average': SMA,
+    'Relative Strength Index': RSI,
+    'Bollinger Bands': BBANDS,
+    "Moving Average Convergence Divergence": MACD
 }
 
 def get_available_indicators() -> list[str]:

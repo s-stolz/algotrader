@@ -17,32 +17,32 @@ class SMA:
             'outputs': {
                 'sma': {
                     'type': 'line',
-                    'parameters': {
-                        'window': {
-                            'type': 'int',
-                            'default': 20,
-                            'min': 1,
-                            'max': 1e6,  # Use a large number instead of infinity
-                            'step': 1
-                        },
-                        'source': {
-                            'type': 'string',
-                            'default': 'close',
-                            'options': ['close', 'open', 'high', 'low']
-                        }
-                    },
                     'plotOptions': {
-                        'lineWidth': 3,
+                        'lineWidth': 2,
                         'color': '#FCFC4E'
                     },
                 }
-            }
+            },
+            'parameters': {
+                'window': {
+                    'type': 'int',
+                    'default': 20,
+                    'min': 1,
+                    'max': 1e6,  # Use a large number instead of infinity
+                    'step': 1
+                },
+                'source': {
+                    'type': 'string',
+                    'default': 'close',
+                    'options': ['close', 'open', 'high', 'low']
+                }
+            },
         }
 
     def run(self) -> pd.DataFrame:
         """Calculate the Simple Moving Average"""
         sma = self.data[self.source].rolling(
-            window=self.window).mean().to_frame(name='value')
+            window=self.window).mean().to_frame(name=f'sma')
         return sma
 
     def run_multi(self) -> pd.DataFrame:
