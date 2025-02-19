@@ -1,6 +1,7 @@
 .vscode
 .venv
-.env
+backend/.env
+backtester/.env
 node_modules
 __pycache__
 
