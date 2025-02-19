@@ -89,8 +89,6 @@ export default {
             })
                 .then((response) => response.json())
                 .then((data) => {
-                    console.log(data);
-                    this.markets.push(newMarket);
                     this.$emit("add-symbol-successful");
                 });
         },
