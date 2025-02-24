@@ -21,21 +21,30 @@ class MACD:
                 'Histogram': {
                     'type': 'histogram',
                     'plotOptions': {
-                        'color': '#089981'
+                        'color': '#089981',
+                        'priceFormat': {
+                            'minMove': 0.00001
+                        }
                     },
                 },
                 'MACD': {
                     'type': 'line',
                     'plotOptions': {
                         'lineWidth': 2,
-                        'color': '#2962ff'
+                        'color': '#2962ff',
+                        'priceFormat': {
+                            'minMove': 0.00001
+                        }
                     },
                 },
                 'Signal': {
                     'type': 'line',
                     'plotOptions': {
                         'lineWidth': 2,
-                        'color': '#f23645'
+                        'color': '#f23645',
+                        'priceFormat': {
+                            'minMove': 0.00001
+                        }
                     },
                 },
             }, 
