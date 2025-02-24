@@ -193,6 +193,7 @@ export default {
 
         setMinMove(minMove) {
             this.seriesOptions.priceFormat.minMove = minMove;
+            this.seriesOptions.priceFormat.precision = Math.log10(1 / minMove);
         },
 
         requestCandles() {

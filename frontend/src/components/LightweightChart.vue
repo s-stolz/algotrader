@@ -62,11 +62,14 @@ export default {
             this.sliceBars(this.data, ohlc["series"]);
         },
 
-        seriesOptions(newOptions) {
-            if (this.seriesDataMap.size === 0) return;
-            // TODO: Handle Options
-            console.info("Apply Series Options", newOptions);
-            // this.series.applyOptions(newOptions);
+        seriesOptions: {
+            handler(newOptions) {
+                if (this.seriesDataMap.size === 0) return;
+
+                let ohlc = this.seriesDataMap.get("ohlc");
+                ohlc.series.applyOptions(newOptions);
+            },
+            deep: true,
         },
     },
 
