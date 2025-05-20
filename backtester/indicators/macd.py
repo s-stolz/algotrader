@@ -1,17 +1,10 @@
 import pandas as pd
 import pandas_ta as ta
+from itertools import product
 import logging
 
 
 class MACD:
-    def __init__(self, data: pd.DataFrame, fast_length: int, slow_length: int, 
-                 source: str, signal_smoothing: int) -> None:
-        self.data = data
-        self.fast_length = fast_length
-        self.slow_lenght= slow_length
-        self.source = source
-        self.signal_smoothing = signal_smoothing
-
     @staticmethod
     def info() -> dict:
         return {
@@ -78,14 +71,15 @@ class MACD:
             },
         }
 
-    def run(self) -> pd.DataFrame:
+    @staticmethod
+    def run(data: pd.DataFrame, fast_length: int, slow_length: int, 
+                 source: str, signal_smoothing: int) -> pd.DataFrame:
         """Calculate the Moving Average Convergence Divergence"""
-        postfix = f'_{self.fast_length}_{self.slow_lenght}_{self.signal_smoothing}'
-
-        macd = ta.macd(self.data[self.source], 
-                       fast=self.fast_length, 
-                       slow=self.slow_lenght, 
-                       signal=self.signal_smoothing
+        postfix = f'_{fast_length}_{slow_length}_{signal_smoothing}'
+        macd = ta.macd(data[source], 
+                       fast=fast_length, 
+                       slow=slow_length, 
+                       signal=signal_smoothing
                        )
 
         macd.rename(columns={
@@ -95,3 +89,36 @@ class MACD:
         }, inplace=True)
 
         return macd
+
+    @staticmethod
+    def run_multi(data: pd.DataFrame, fast_length: int | list[int], 
+                  slow_length: int | list[int], source: str, 
+                  signal_smoothing: int | list[int]) -> pd.DataFrame:
+        """
+        Calculat the Moving Average Convergence Divergence with parameter variations
+        """
+        # TODO: FIX BUGs
+        fast_length = [fast_length] if type(fast_length) == int else fast_length
+        slow_length = [slow_length] if type(slow_length) == int else slow_length
+        signal_smoothing = [signal_smoothing] if type(signal_smoothing) == int else signal_smoothing
+
+        parameter_combinations = list(product(fast_length, slow_length, signal_smoothing))
+        #columns = pd.MultiIndex.from_product([[f"MACD_{fast}_{slow}_{signal}" for fast, slow, signal in parameter_combinations], symbols])
+        symbols = data.columns.get_level_values(1).unique().to_list()
+
+        macd = pd.DataFrame(None, index=data.index)
+
+        for s in symbols:
+            for fast, slow, signal in parameter_combinations:
+                print(fast, slow, signal)
+                post = f'_{fast}_{slow}_{signal}'
+                # macd[f'MACD'+post], macd[f'MACDh'+post], macd[f'MACDs'+post]
+                macd = ta.macd(data[source], 
+                    fast=fast, 
+                    slow=slow, 
+                    signal=signal
+                    )
+                print(macd)
+
+        return macd
+        

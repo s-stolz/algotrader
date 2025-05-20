@@ -4,13 +4,6 @@ import logging
 
 
 class BBANDS:
-    def __init__(self, data: pd.DataFrame, length: int, source: str, std: float, ma_mode: str) -> None:
-        self.data = data
-        self.length = length
-        self.source = source
-        self.std = std
-        self.ma_mode = ma_mode
-
     @staticmethod
     def info() -> dict:
         return {
@@ -57,7 +50,7 @@ class BBANDS:
                     'default': 2,
                     'min': 0,
                     'max': 1e6,
-                    'step': 1
+                    'step': .1
                 },
                 'source': {
                     'type': 'string',
@@ -67,12 +60,13 @@ class BBANDS:
             },
         }
 
-    def run(self) -> pd.DataFrame:
+    @staticmethod
+    def run(data: pd.DataFrame, length: int = 20, source: str = 'close', std: float = 2.0, ma_mode: str = 'SMA') -> pd.DataFrame:
         """Calculate the Bollinger Bands"""
-        std_str = f'{self.std}.0' if self.std % 1 == 0 else str(self.std)
-        postfix = f'_{self.length}_{std_str}'
-        bbands = ta.bbands(self.data[self.source],
-                           self.length, self.std, mamode=self.ma_mode)
+        std_str = f'{std}.0' if std % 1 == 0 else str(std)
+        postfix = f'_{length}_{std_str}'
+        bbands = ta.bbands(data[source],
+                           length, std, mamode=ma_mode)
         
         bbands = bbands.drop(columns=[f'BBB{postfix}', f'BBP{postfix}'])
         bbands.rename(columns={
@@ -82,3 +76,9 @@ class BBANDS:
         }, inplace=True)
 
         return bbands
+
+
+    @staticmethod
+    def run_multi():
+        # TODO
+        pass

@@ -4,11 +4,6 @@ import logging
 
 
 class SMA:
-    def __init__(self, data: pd.DataFrame, window: int, source: str) -> None:
-        self.data = data
-        self.window = window
-        self.source = source
-
     @staticmethod
     def info() -> dict:
         return {
@@ -38,23 +33,23 @@ class SMA:
                 }
             },
         }
+    
+    @staticmethod
+    def run(data: pd.DataFrame, source: str = 'close', window: int = 20):
+        sma = pd.DataFrame(None, index=data.index, columns=['sma'])
+        sma['sma'] = data[source].rolling(window=window).mean().values
 
-    def run(self) -> pd.DataFrame:
-        """Calculate the Simple Moving Average"""
-        sma = self.data[self.source].rolling(
-            window=self.window).mean().to_frame(name=f'sma')
         return sma
+    
+    @staticmethod
+    def run_multi(data: pd.DataFrame, source: str = 'close', window: int | list[int] = 20):
+        window = [window] if type(window) == int else window
+        symbols = data.columns.get_level_values(1).unique().to_list()
+        columns = pd.MultiIndex.from_product([[f"SMA_{w}" for w in window], symbols])
+        sma = pd.DataFrame(None, index=data.index, columns=columns)
 
-    def run_multi(self) -> pd.DataFrame:
-        """Calculate the Simple Moving Average"""
-        sma_results = []
+        for symbol in symbols:
+            for w in window:
+                sma[(f'SMA_{w}', symbol)] = data[source].rolling(window=w).mean().values
 
-        for window in self.windows:
-            sma_window = self.data[self.source].rolling(window=window).mean()
-            sma_window.columns = pd.MultiIndex.from_product(
-                [[f"SMA_{window}"], sma_window.columns])
-            sma_results.append(sma_window)
-
-        final_sma_df = pd.concat(sma_results, axis=1)
-
-        return final_sma_df
+        return sma

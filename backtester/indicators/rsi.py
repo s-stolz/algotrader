@@ -1,14 +1,8 @@
 import pandas as pd
 import pandas_ta as ta
-import logging
 
 
 class RSI:
-    def __init__(self, data: pd.DataFrame, length: int, source: str) -> None:
-        self.data = data
-        self.length = length
-        self.source = source
-
     @staticmethod
     def info() -> dict:
         return {
@@ -39,23 +33,24 @@ class RSI:
             },
         }
 
-    def run(self) -> pd.DataFrame:
-        """Calculate the Relative Strength Index"""
-        postfix = f'_{self.length}'
-        rsi = ta.rsi(self.data[self.source], length=self.length).to_frame()
-        rsi.rename(columns={f'RSI{postfix}': 'rsi'}, inplace=True)
+    @staticmethod
+    def run(data: pd.DataFrame, source: str = 'close', length: int = 14) -> pd.DataFrame:
+        """Calculate the Simple Moving Average"""
+        rsi = pd.DataFrame(None, index=data.index, columns=['rsi'])
+        rsi['rsi'] = ta.rsi(data[source], length=length).values
+
         return rsi
 
-    # def run_multi(self) -> pd.DataFrame:
-    #     """Calculate the Simple Moving Average"""
-    #     sma_results = []
+    @staticmethod
+    def run_multi(data: pd.DataFrame, source: str = 'close', length: list[int] | int = 14) -> pd.DataFrame:
+        """Calculate the Simple Moving Average"""
+        length = [length] if type(length) == int else length
+        symbols = data.columns.get_level_values(1).unique().to_list()
+        columns = pd.MultiIndex.from_product([[f'RSI_{x}' for x in length], symbols])
+        rsi = pd.DataFrame(None, index=data.index, columns=columns)
 
-    #     for window in self.windows:
-    #         sma_window = self.data[self.source].rolling(window=window).mean()
-    #         sma_window.columns = pd.MultiIndex.from_product(
-    #             [[f"SMA_{window}"], sma_window.columns])
-    #         sma_results.append(sma_window)
+        for symbol in symbols:
+            for l in length:
+                rsi[(f'RSI_{l}', symbol)] = ta.rsi(data[source][symbol], length=l).values
 
-    #     final_sma_df = pd.concat(sma_results, axis=1)
-
-    #     return final_sma_df
+        return rsi
