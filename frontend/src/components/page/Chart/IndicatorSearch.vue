@@ -1,20 +1,22 @@
 <template>
     <div>
-        <span id="search-bar">
-            <label for="symbol-input"><img src="/search.svg" alt="Search" /></label>
-            <input
-                id="indicator-input"
-                type="search"
-                v-model="indicatorInput"
-                autocomplete="off"
-                placeholder="Indicator"
-            />
+        <span id="search-bar-wrapper">
+            <span id="search-bar">
+                <label for="symbol-input"><img src="/search.svg" alt="Search" /></label>
+                <input
+                    id="indicator-input"
+                    type="search"
+                    v-model="indicatorInput"
+                    autocomplete="off"
+                    placeholder="Indicator"
+                />
+            </span>
+            <hr class="search-seperator" />
         </span>
-        <hr class="search-seperator" />
 
         <div
             class="table-container"
-            :class="{ 'has-scroll': filteredIndicators.length > 8 }"
+            :class="{ 'has-scroll': filteredIndicators.length > 4 }"
         >
             <table>
                 <tbody>
@@ -113,9 +115,21 @@ export default {
 </script>
 
 <style scoped>
+#search-bar-wrapper {
+    position: sticky;
+    top: -10px;
+    background: #131722;
+}
+
 #search-bar {
     display: flex;
     line-height: 49px;
+    background-color: #131722;
+    padding-bottom: 5px;
+}
+
+.search-seperator {
+    margin: 0;
 }
 
 input[type="search"]::-webkit-search-cancel-button {
@@ -165,7 +179,6 @@ input[type="search"]::-webkit-search-cancel-button {
 
 table {
     width: 100%;
-    height: 400px;
     overflow: hidden;
     padding: 0;
 }
