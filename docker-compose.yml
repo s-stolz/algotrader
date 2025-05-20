@@ -1,4 +1,19 @@
 services:
+  db_api:
+    container_name: db_api
+    build: 
+      context: ./api-db
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api-db:/app
+    depends_on:
+      - timescaledb
+    env_file:
+      - .env
+    restart: always
+
   timescaledb:
     container_name: timescaledb
     image: timescale/timescaledb:latest-pg17
