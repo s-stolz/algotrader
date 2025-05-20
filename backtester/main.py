@@ -43,14 +43,23 @@ async def on_message(message, websocket):
 
         logging.info(parameters)
 
-        data = Data.get_candles_single_symbol('db', symbol_id, timeframe)
+        input_data = indicator_info.get('inputs', None)
+        if input_data is None:
+            symbol_ids = [symbol_id]
+        else:
+            symbol_ids = Data.get_symbol_id(input_data)
+
+        data = Data.get_candles('db', symbol_ids, timeframe)
+        data = Data.get(data)
 
         indicator_instance = Indicators.get_indicator_instance(
-            indicatorName,
+            indicatorName
+        )
+        indicator_data = indicator_instance.run(
             data,  # Positional argument
             **parameters  # Additional parameters
-        )
-        indicator_data = indicator_instance.run().dropna()
+        ).dropna()
+        
         indicator_reset = indicator_data.reset_index()
         indicator_reset['timestamp'] = indicator_reset['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%SZ')
 

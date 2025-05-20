@@ -8,55 +8,41 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 class Database:
-    def __init__(self):
-        self.host = config('POSTGRES_HOST')
-        self.port = config('POSTGRES_PORT')
-        self.database = 'finance_data'
-        self.user = config('POSTGRES_USER')
-        self.password = config('POSTGRES_PASSWORD')
-        self.connection = None
-        self.connect()
+    connection = None  # Class-level connection
 
-    def connect(self) -> None:
+    @staticmethod
+    def connect():
         """
         Connect to the PostgreSQL database.
         """
+        if Database.connection is None:
+            try:
+                Database.connection = psycopg2.connect(
+                    host=config('POSTGRES_HOST'),
+                    port=config('POSTGRES_PORT'),
+                    database='finance_data',
+                    user=config('POSTGRES_USER'),
+                    password=config('POSTGRES_PASSWORD')
+                )
+                log.info("Connected to the database successfully!")
+            except (Exception, psycopg2.Error) as error:
+                log.error("Error while connecting to PostgreSQL:", error)
+                traceback.print_exc()
 
-        try:
-            self.connection = psycopg2.connect(
-                host=self.host,
-                port=self.port,
-                database=self.database,
-                user=self.user,
-                password=self.password
-            )
-            log.info("Connected to the database successfully!")
-        except (Exception, psycopg2.Error) as error:
-            log.error("Error while connecting to PostgreSQL:", error)
-            traceback.print_exc()
-
-    def disconnect(self) -> None:
+    @staticmethod
+    def disconnect():
         """
         Disconnect from the PostgreSQL database.
         """
-
-        if self.connection:
-            self.connection.close()
+        if Database.connection:
+            Database.connection.close()
+            Database.connection = None
             log.info("Disconnected from the database.")
 
-    def market_exists(self, symbol: str, exchange: str) -> bool:
-        """
-        Check if the market already exists in the database.
-
-        Parameters:
-            symbol (str): Symbol name.
-            exchange (str): Exchange name.
-
-        Returns:
-            bool: True if the market exists, False otherwise.
-        """
-
-        cursor = self.connection.cursor()
+    @staticmethod
+    def market_exists(symbol: str, exchange: str) -> bool:
+        Database.connect()
+        cursor = Database.connection.cursor()
 
         cursor.execute(
             """
@@ -66,31 +52,19 @@ class Database:
             (symbol, exchange)
         )
         market = cursor.fetchone()
+        cursor.close()
 
-        if market:
-            return True
-        else:
-            return False
-        
-    def insert_market(self, symbol: str, exchange: str, market_type: str, min_move: float) -> None:
-        """
-        Insert a market into the database.
+        return bool(market)
 
-        Parameters:
-            symbol (str): Symbol name.
-            exchange (str): Exchange name.
-            market_type (str): Market type.
-            min_move (float): Minimum move.
+    @staticmethod
+    def insert_market(symbol: str, exchange: str, market_type: str, min_move: float):
+        Database.connect()
 
-        Returns:
-            None
-        """
-
-        if self.market_exists(symbol, exchange):
+        if Database.market_exists(symbol, exchange):
             log.warning("Market already exists in the database!")
             return
         
-        cursor = self.connection.cursor()
+        cursor = Database.connection.cursor()
 
         cursor.execute(
             """
@@ -100,62 +74,41 @@ class Database:
             """,
             (symbol, exchange, market_type, min_move)
         )
-        self.connection.commit()
+        Database.connection.commit()
+        cursor.close()
         log.info("Market inserted into PostgreSQL database!")
 
-    def get_symbol(self, symbol_id: int) -> tuple[str, str]:
-        """
-        Get the symbol and exchange from the database.
+    @staticmethod
+    def get_symbol(symbol_id: int) -> tuple[str, str]:
+        Database.connect()
+        cursor = Database.connection.cursor()
 
-        Parameters:
-            symbol_id (int): Symbol ID.
-
-        Returns:
-            tuple: Symbol and exchange.
-        """
-
-        cursor = self.connection.cursor()
         query = sql.SQL(
             """
             SELECT symbol, exchange FROM markets
             WHERE symbol_id = %s;
             """
         )
-
-        cursor.execute(
-            query,
-            (str(symbol_id),)
-        )
-
+        cursor.execute(query, (str(symbol_id),))
         symbols = cursor.fetchone()
+        cursor.close()
 
         return symbols
-    
-    def get_symbol_id(self, symbol, exchange='%') -> int:
-        """
-        Get the symbol_id from the database.
 
-        Parameters:
-            symbol (str): Symbol name.
-            exchange (str): Exchange name.
+    @staticmethod
+    def get_symbol_id(symbol, exchange='%') -> int:
+        Database.connect()
+        cursor = Database.connection.cursor()
 
-        Returns:
-            int: The symbol_id from the database.
-        """
-        cursor = self.connection.cursor()
         query = sql.SQL(
             """
             SELECT symbol_id FROM markets
             WHERE symbol = %s AND exchange LIKE %s;
             """
         )
-
-        cursor.execute(
-            query,
-            (symbol, exchange)
-        )
-
+        cursor.execute(query, (symbol, exchange))
         symbol_id = cursor.fetchall()
+        cursor.close()
 
         if len(symbol_id) == 0:
             return None
@@ -164,28 +117,17 @@ class Database:
             log.warning("Multiple symbol_ids found! Returning the first one.", symbol_id)
 
         return symbol_id[0][0]
-        
-    def insert_candles(self, df: pd.DataFrame, symbol: str, exchange: str = '%') -> None:
-        """
-        Insert candle data into the database.
 
-        Parameters:
-            df (pd.DataFrame): OHLCV data for the symbol.
-            symbol (str): Symbol name.
-            exchange (str): Exchange name.
-
-        Returns:
-            None
-        """
-
-        symbol_id = self.get_symbol_id(symbol, exchange)
+    @staticmethod
+    def insert_candles(df: pd.DataFrame, symbol: str, exchange: str = '%'):
+        Database.connect()
+        symbol_id = Database.get_symbol_id(symbol, exchange)
         if not symbol_id:
             log.warning(f"Symbol {symbol} not found in the database!")
             return
         
         try:
-            cursor = self.connection.cursor()
-
+            cursor = Database.connection.cursor()
             insert_query = sql.SQL(
                 """
                 INSERT INTO candles (symbol_id, timestamp, open, high, low, close, volume)
@@ -193,48 +135,29 @@ class Database:
                 ON CONFLICT (symbol_id, timestamp) DO NOTHING;
                 """
             )
-            
+
             for index, row in df.iterrows():
                 cursor.execute(
                     insert_query,
                     (symbol_id, index, row["open"], row["high"], row["low"], row["close"], row["volume"])
                 )
 
-            self.connection.commit()
+            Database.connection.commit()
+            cursor.close()
         
         except psycopg2.DatabaseError as error:
             log.error("Database Error", error)
             traceback.print_exc()
-            if self.connection:
-                self.connection.rollback()
+            if Database.connection:
+                Database.connection.rollback()
                 log.info("Transaction rolled back!")
 
-        except Exception as error:
-            log.error("Error", error)
-            traceback.print_exc()
-
-        finally:
-            if cursor:
-                cursor.close()
-
-    def get_candles(self, symbol_id: int, timeframe: int, start_date: str = None, end_date: str = None) -> list:
-        """
-        Get candle data from the database.
-
-        Parameters:
-            symbol_id (int): Symbol ID.
-            timeframe (int): Timeframe in minutes.
-            start_date (str): Start date in 'YYYY-MM-DD' format.
-            end_date (str): End date in 'YYYY-MM-DD' format.
-
-        Returns:
-            list: List of candles.
-        """
-
+    @staticmethod
+    def get_candles(symbol_id: int, timeframe: int, start_date: str = None, end_date: str = None) -> list:
+        Database.connect()
+        
         try:
-            cursor = self.connection.cursor()
-            
-            # SQL query with conditional date filters
+            cursor = Database.connection.cursor()
             query = sql.SQL(
                 """
                 WITH RoundedCandles AS (
@@ -280,20 +203,16 @@ class Database:
                 """
             )
 
-            # Execute the query with the timeframe, symbol_id, start_date, and end_date parameters
             cursor.execute(
                 query,
                 (timeframe, timeframe, timeframe, symbol_id, start_date, start_date, end_date, end_date)
             )
 
             candles = cursor.fetchall()
+            cursor.close()
 
             return candles
 
         except psycopg2.DatabaseError as error:
             log.error("Database Error", error)
             traceback.print_exc()
-
-        finally:
-            if cursor:
-                cursor.close()
