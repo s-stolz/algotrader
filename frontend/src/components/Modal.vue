@@ -89,7 +89,7 @@ export default {
     background: #131722;
     border-radius: 15px;
     border: 3px solid rgb(13, 14, 16);
-    max-width: 500px;
+    max-width: 550px;
     width: 100%;
     padding: 0;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -123,6 +123,11 @@ export default {
 .modal-footer {
     margin-top: 16px;
     text-align: right;
+}
+
+.modal-body {
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .close-button {
