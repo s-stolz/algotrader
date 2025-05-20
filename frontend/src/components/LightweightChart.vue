@@ -73,7 +73,7 @@ export default {
         },
     },
 
-    expose: ["getChart", "remove", "addSeriesAndData"],
+    expose: ["getChart", "remove", "addSeriesAndData", "updateOptions"],
 
     data() {
         return {
@@ -170,6 +170,10 @@ export default {
                     this.sliceBars(value["data"], value["series"]);
                 }
             });
+        },
+
+        updateOptions(seriesKey, seriesOptions) {
+            this.seriesDataMap.get(seriesKey).series.applyOptions(seriesOptions);
         },
     },
 
