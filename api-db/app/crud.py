@@ -5,6 +5,15 @@ from datetime import datetime
 
 
 async def get_market_by_id(session, symbol_id: int):
+    """
+    Get market by symbol_id
+
+    :param session: SQLAlchemy session
+    :param symbol_id: Market symbol_id
+
+    :return: Market data as a dictionary
+    :rtype: dict or None
+    """
     stmt = select(markets).where(markets.c.symbol_id == symbol_id)
     result = await session.execute(stmt)
     row = result.fetchone()
@@ -12,6 +21,15 @@ async def get_market_by_id(session, symbol_id: int):
 
 
 async def insert_market(session, market_data: dict):
+    """
+    Insert a new market into the database
+
+    :param session: SQLAlchemy session
+    :param market_data: Market data as a dictionary
+
+    :return: The symbol_id of the newly inserted market
+    :rtype: int
+    """
     stmt = insert(markets).values(**market_data).returning(markets.c.symbol_id)
     result = await session.execute(stmt)
     await session.commit()
@@ -19,6 +37,15 @@ async def insert_market(session, market_data: dict):
 
 
 async def delete_market(session, symbol_id: int):
+    """
+    Delete a market from the database
+
+    :param session: SQLAlchemy session
+    :param symbol_id: Market symbol_id
+
+    :return: Number of rows deleted
+    :rtype: int
+    """
     stmt = delete(markets).where(markets.c.symbol_id == symbol_id)
     result = await session.execute(stmt)
     await session.commit()
@@ -26,6 +53,13 @@ async def delete_market(session, symbol_id: int):
 
 
 async def get_markets(session):
+    """
+    Get all markets from the database
+
+    :param session: SQLAlchemy session
+    
+    :return: List of markets as dictionaries
+    """
     stmt = select(markets)
     result = await session.execute(stmt)
     rows = result.fetchall()
@@ -33,6 +67,25 @@ async def get_markets(session):
 
 
 async def get_symbol_id(session, symbol: str, exchange: str):
+    """
+    Get symbol_id from the markets table based on symbol and exchange
+    
+    :param session: SQLAlchemy session
+    :param symbol: Market symbol
+    :param exchange: Market exchange
+
+    :return: symbol_id if found, None otherwise
+    :rtype: int or None
+
+    :raises ValueError: If symbol or exchange is not provided
+    :raises TypeError: If symbol or exchange is not a string
+    """
+
+    if not symbol or not exchange:
+        raise ValueError("Symbol and exchange must be provided")
+    if not isinstance(symbol, str) or not isinstance(exchange, str):
+        raise TypeError("Symbol and exchange must be strings")
+
     query = text("""
         SELECT symbol_id FROM markets WHERE symbol = :symbol AND exchange LIKE :exchange
     """)
@@ -42,6 +95,17 @@ async def get_symbol_id(session, symbol: str, exchange: str):
 
 
 async def insert_candles(session, symbol: str, exchange: str, candles: list[dict]):
+    """
+    Insert candles into the database
+
+    :param session: SQLAlchemy session
+    :param symbol: Market symbol
+    :param exchange: Market exchange
+    :param candles: List of candles to insert
+
+    :return: True if candles were inserted successfully, None otherwise
+    :rtype: bool or None
+    """
     symbol_id = await get_symbol_id(session, symbol, exchange)
     if not symbol_id:
         return None
@@ -63,6 +127,19 @@ async def insert_candles(session, symbol: str, exchange: str, candles: list[dict
 
 
 async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    """
+    Get candles from the database
+
+    :param session: SQLAlchemy session
+    :param symbol_id: Market symbol_id
+    :param timeframe: Timeframe in minutes
+    :param start_date: Start date in ISO format (optional)
+    :param end_date: End date in ISO format (optional)
+
+    :return: List of candles as dictionaries
+    :rtype: list[dict]
+    """
+
     sql = text("""
         WITH RoundedCandles AS (
             SELECT
