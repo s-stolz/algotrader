@@ -157,9 +157,9 @@ export default {
         },
 
         onVisibleLogicalRangeChanged(newVisibleLogicalRange) {
-            // TODO: Is triggered twice! Why?
             if (this.seriesDataMap.size === 0) return;
 
+            let updatedOnce = false;
             this.seriesDataMap.forEach((value, key) => {
                 const barsInfo = value["series"].barsInLogicalRange(
                     newVisibleLogicalRange
@@ -167,9 +167,13 @@ export default {
 
                 if (barsInfo !== null && barsInfo.barsBefore < 50) {
                     // Load additional price data
-                    console.log("Loading additional price bars...");
+                    if (updatedOnce) {
+                        return;
+                    }
+                    console.log("Loading additional data...");
                     this.loadedBars += 5000;
                     this.sliceBars(value["data"], value["series"]);
+                    updatedOnce = true;
                 }
             });
         },
