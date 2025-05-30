@@ -3,36 +3,24 @@
         <span id="search-bar-wrapper">
             <span id="search-bar">
                 <label for="symbol-input"><img src="/search.svg" alt="Search" /></label>
-                <input
-                    id="indicator-input"
-                    type="search"
-                    v-model="indicatorInput"
-                    autocomplete="off"
-                    placeholder="Indicator"
-                />
+                <input id="indicator-input" type="search" v-model="indicatorInput" autocomplete="off"
+                    placeholder="Indicator" />
             </span>
             <hr class="search-seperator" />
         </span>
 
-        <div
-            class="table-container"
-            :class="{ 'has-scroll': filteredIndicators.length > 4 }"
-        >
+        <div class="table-container" :class="{ 'has-scroll': filteredIndicators.length > 4 }">
             <table>
                 <tbody>
-                    <span
-                        v-for="(indicator, key) in filteredIndicators"
-                        :key="key"
-                        @click="applyIndicator(indicator)"
-                    >
-                        <tr>
-                            <p>
+                    <template v-for="(indicator, key) in filteredIndicators" :key="key">
+                        <tr @click="applyIndicator(indicator)">
+                            <td>
                                 {{ indicator }}
-                            </p>
+                            </td>
                         </tr>
 
                         <hr class="row-seperator" />
-                    </span>
+                    </template>
                 </tbody>
             </table>
         </div>
@@ -197,6 +185,7 @@ tr {
 
 td {
     line-height: 20px;
+    padding: 10px 0;
 }
 
 .row-seperator {

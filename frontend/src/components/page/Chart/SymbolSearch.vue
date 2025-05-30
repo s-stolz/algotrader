@@ -2,24 +2,15 @@
     <div>
         <span id="search-bar">
             <label for="symbol-input"><img src="/search.svg" alt="Search" /></label>
-            <input
-                id="symbol-input"
-                type="search"
-                v-model="symbolInput.symbol"
-                autocomplete="off"
-                placeholder="Symbol"
-                @keyup.enter="inputKeypressEnter"
-            />
+            <input id="symbol-input" type="search" v-model="symbolInput.symbol" autocomplete="off" placeholder="Symbol"
+                @keyup.enter="inputKeypressEnter" />
         </span>
         <hr class="search-seperator" />
 
-        <div
-            class="table-container"
-            :class="{ 'has-scroll': filteredMarkets.length > 8 }"
-        >
+        <div class="table-container" :class="{ 'has-scroll': filteredMarkets.length > 8 }">
             <table>
                 <tbody>
-                    <span v-for="symbol of filteredMarkets" :key="symbol.symbol_id">
+                    <template v-for="symbol of filteredMarkets" :key="symbol.symbol_id">
                         <tr @click="symbolSelected(symbol)">
                             <td>{{ symbol.symbol }}</td>
                             <td>
@@ -28,9 +19,11 @@
                             </td>
                         </tr>
                         <hr class="row-seperator" />
-                    </span>
+                    </template>
 
-                    <button id="add-market" @click="addMarket()">+</button>
+                    <tr @click="addMarket()">
+                        <td id="add-market">+</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -145,8 +138,10 @@ input[type="search"]::-webkit-search-cancel-button {
     overflow-y: hidden;
     border-radius: 4px;
 }
+
 .table-container.has-scroll {
-    overflow-y: auto; /* Add scrolling only when needed */
+    overflow-y: auto;
+    /* Add scrolling only when needed */
 }
 
 .table-container::-webkit-scrollbar {
@@ -188,8 +183,7 @@ td {
     line-height: 20px;
 }
 
-tr:hover,
-button#add-market:hover {
+tr:hover {
     background-color: #36363661;
 }
 
@@ -198,11 +192,12 @@ button#add-market:hover {
     vertical-align: middle;
 }
 
-button#add-market {
+#add-market {
     width: 100%;
     height: 40px;
     background: none;
     font-size: 20px;
     border-radius: 0;
+    text-align: center;
 }
 </style>
