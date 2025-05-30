@@ -244,7 +244,7 @@ export default {
                     this.crossHairTimeout = null;
                 }, 10);
             } catch (error) {
-                console.log("Catch");
+                console.log("Error in crosshair move handler:", error);
             }
         });
 
