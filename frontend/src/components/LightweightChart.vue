@@ -1,13 +1,8 @@
 <template>
     <div>
-        <div
-            v-if="this.parentChart === undefined"
-            ref="chartContainer"
-            class="chart-container"
-        >
+        <div v-if="this.parentChart === undefined" ref="chartContainer" class="chart-container">
             <div id="legend"></div>
             <slot></slot>
-            <!-- <div id="indicator-wrapper"></div> -->
         </div>
     </div>
 </template>
@@ -73,7 +68,14 @@ export default {
         },
     },
 
-    expose: ["getChart", "remove", "addSeriesAndData", "updateOptions"],
+    expose: [
+        "getChart",
+        "remove",
+        "addSeriesAndData",
+        "updateOptions",
+        "subscribeVisibleLogicalRangeChange",
+        "unsubscribeVisibleLogicalRangeChange",
+    ],
 
     data() {
         return {
@@ -175,6 +177,32 @@ export default {
         updateOptions(seriesKey, seriesOptions) {
             this.seriesDataMap.get(seriesKey).series.applyOptions(seriesOptions);
         },
+
+        subscribeVisibleLogicalRangeChange() {
+            if (!this.chart) {
+                console.error(
+                    "Chart instance is undefined. Cannot subscribe to range changes."
+                );
+                return;
+            }
+
+            this.chart
+                .timeScale()
+                .subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChanged);
+        },
+
+        unsubscribeVisibleLogicalRangeChange() {
+            if (!this.chart) {
+                console.error(
+                    "Chart instance is undefined. Cannot unsubscribe from range changes."
+                );
+                return;
+            }
+
+            this.chart
+                .timeScale()
+                .unsubscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChanged);
+        },
     },
 
     mounted() {
@@ -220,15 +248,11 @@ export default {
             }
         });
 
-        this.chart
-            .timeScale()
-            .subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChanged);
+        this.subscribeVisibleLogicalRangeChange();
     },
 
     beforeUnmount() {
-        this.chart
-            .timeScale()
-            .unsubscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChanged);
+        this.unsubscribeVisibleLogicalRangeChange();
     },
 };
 </script>

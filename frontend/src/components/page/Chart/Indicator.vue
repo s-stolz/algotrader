@@ -244,6 +244,7 @@ export default {
         },
 
         updateData(newData) {
+            this.$refs.indicatorChart.unsubscribeVisibleLogicalRangeChange();
             this.$refs.indicatorChart.remove();
             let panes = this.chart.panes();
             let paneID = this.info.overlay ? 0 : panes.length;
@@ -266,6 +267,7 @@ export default {
                     paneID
                 );
             }
+            this.$refs.indicatorChart.subscribeVisibleLogicalRangeChange();
         },
 
         updateStyles(output) {
