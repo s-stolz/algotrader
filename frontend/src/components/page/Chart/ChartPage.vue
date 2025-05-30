@@ -248,8 +248,6 @@ export default {
 
         updateAllIdicators() {
             this.indicators.forEach((val, key) => {
-                console.log(val);
-                console.log(this.selectedSymbol);
                 let parameters = val.customParamerters;
 
                 let message = new Ticket().fromObject({
