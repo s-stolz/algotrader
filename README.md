@@ -6,6 +6,11 @@ AlgoTrader is an experimental trading project that uses the [Lightweight Charts]
 
 This project is in active development and may undergo significant changes. **Backward compatibility is not guaranteed**—things might break! Please use this repository **for reference only** and not as a stable library.
 
+## Prerequisites
+- [Docker](https://docs.docker.com/get-started/get-docker/) installed on your machine.
+
+Note: Historical market data currently needs to be manually inserted into the database. This is a temporary solution until a more automated data ingestion process is implemented.
+
 ## Follow the Development
 
 I'm sharing the development process on YouTube! Check it out here:
