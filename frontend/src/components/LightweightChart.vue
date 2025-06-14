@@ -8,8 +8,8 @@
 </template>
 
 <script>
-import { createChart } from "lightweight-charts";
 import {
+    createChart,
     LineSeries,
     AreaSeries,
     BarSeries,
