@@ -68,6 +68,11 @@ class BBANDS:
         bbands = ta.bbands(data[source],
                            length, std, mamode=ma_mode)
         
+        if bbands is None:
+            logging.error(
+                "Bollinger Bands calculation failed. Check the input data and parameters.")
+            return None
+
         bbands = bbands.drop(columns=[f'BBB{postfix}', f'BBP{postfix}'])
         bbands.rename(columns={
             f'BBL{postfix}': 'lower',
