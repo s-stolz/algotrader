@@ -11,12 +11,6 @@ This project is in active development and may undergo significant changes. **Bac
 
 Note: Historical market data currently needs to be manually inserted into the database. This is a temporary solution until a more automated data ingestion process is implemented.
 
-## Follow the Development
-
-I'm sharing the development process on YouTube! Check it out here:
-
-[Trading Nerd on YouTube](https://youtube.com/playlist?list=PLaqitSpR8hexOLbvtjkdOt_FRcu2mmwY1&si=ygHgsfvDMnBwl8rV)
-
 ## Getting Started
 
 1. Clone the repository:
