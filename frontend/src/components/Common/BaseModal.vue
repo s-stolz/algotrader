@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="visible"
+    v-if="isModalOpen"
     class="modal-backdrop"
     @mousedown="onMouseDown"
     @mouseup="onMouseUp"
@@ -9,13 +9,20 @@
       <header class="modal-header">
         <div class="header-content">
           <h2 class="title">{{ title }}</h2>
-          <button class="close-button" @click="close">&times;</button>
+          <n-button text class="close-button" @click="close">
+            <n-icon size="24">
+              <CloseCircleOutline />
+            </n-icon>
+          </n-button>
         </div>
         <hr class="separator" />
       </header>
       <div class="modal-body">
         <slot></slot>
       </div>
+      <template v-if="$slots.footer">
+        <hr class="separator" />
+      </template>
       <footer class="modal-footer">
         <slot name="footer"></slot>
       </footer>
@@ -24,12 +31,23 @@
 </template>
 
 <script>
+import { useModalStore } from "@/stores/modalStore";
+
+import { NButton, NIcon } from "naive-ui";
+import { CloseCircleOutline } from "@/icons";
+
 export default {
   name: "BaseModal",
 
+  components: {
+    NButton,
+    NIcon,
+    CloseCircleOutline,
+  },
+
   props: {
-    visible: {
-      type: Boolean,
+    modalId: {
+      type: String,
       required: true,
     },
     title: {
@@ -42,31 +60,34 @@ export default {
     },
   },
 
-  emits: ["update:visible"],
-
-  expose: ["close"],
-
   data() {
     return {
       isMouseDownInside: false,
+      modalStore: useModalStore(),
     };
+  },
+
+  computed: {
+    isModalOpen() {
+      return this.modalStore.isModalOpen(this.modalId);
+    },
   },
 
   methods: {
     close() {
-      this.$emit("update:visible", false);
+      this.modalStore.closeModal();
     },
     onMouseDown(event) {
-      // Check if the mouse is pressed inside the modal
       this.isMouseDownInside = event.target.closest(".modal") !== null;
     },
-    onMouseUp(event) {
-      // Only close if the mouse started and ended outside the modal
+    onMouseUp() {
       if (!this.isMouseDownInside && this.closeOnBackdrop) {
         this.close();
       }
     },
   },
+
+  expose: ["close"],
 };
 </script>
 
@@ -81,7 +102,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2000;
 }
 
 .modal {
@@ -98,7 +119,7 @@ export default {
 .modal-header {
   display: flex;
   flex-direction: column;
-  gap: 8px; /* Add space between the header content and the hr */
+  gap: 8px;
 }
 
 .header-content {
@@ -113,7 +134,7 @@ export default {
   padding-left: 15px;
 }
 
-.modal-header .separator {
+.modal .separator {
   border: none;
   height: 1px;
   background-color: #ddd;
@@ -121,7 +142,7 @@ export default {
 }
 
 .modal-footer {
-  margin-top: 16px;
+  padding: 10px 15px;
   text-align: right;
 }
 
@@ -134,10 +155,9 @@ export default {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  line-height: 1;
-  cursor: pointer;
+}
+
+.close-button:hover {
+  color: #e98b8b;
 }
 </style>

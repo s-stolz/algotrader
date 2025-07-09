@@ -6,7 +6,8 @@
     "scripts": {
         "dev": "vite",
         "build": "vite build",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "lint": "eslint . --ext .js,.vue"
     },
     "dependencies": {
         "lightweight-charts": "^5.0.2",
@@ -17,7 +18,12 @@
         "ws": "^8.18.0"
     },
     "devDependencies": {
+        "@vicons/ionicons5": "^0.13.0",
         "@vitejs/plugin-vue": "^5.0.3",
-        "vite": "^6.3.5"
+        "eslint": "^9.29.0",
+        "eslint-plugin-vue": "^10.2.0",
+        "naive-ui": "^2.42.0",
+        "vite": "^6.3.5",
+        "vue-eslint-parser": "^10.1.3"
     }
 }

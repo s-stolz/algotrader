@@ -9,59 +9,19 @@
 
 body {
   background-color: #131722;
-  color: white;
+  color: #ffffffd1;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
   padding: 0;
 }
 
-button, a{
-  cursor: pointer;
-}
-
-select {
-  background: rgba(44, 61, 93);
-  color: white;
-  margin: 0 8px;
-  border-radius: 8px;
-  padding: 5px 10px;
+.separator {
   border: none;
-  border-right: 8px solid transparent !important;
-  outline: none;
+  height: 1px;
+  background-color: #ddd;
+  margin: 0;
 }
-
-button {
-  background: rgba(44, 61, 93);
-  color: white;
-  border: none;
-  border-radius: 10px;
-}
-
-input {
-  outline: none;
-}
-
-input {
-  background: none;
-  color: white;
-  padding: 10px 15px;
-  font-size: 16px;
-}
-
-/* .scrollbar-styles::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-.scrollbar-styles::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 6px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.scrollbar-styles::-webkit-scrollbar-thumb:hover {
-  background: #555;
-} */

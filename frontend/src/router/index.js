@@ -1,4 +1,4 @@
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { createMemoryHistory, createRouter } from 'vue-router';
 
 import ChartView from '../views/ChartView.vue';
 

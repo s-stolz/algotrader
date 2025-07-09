@@ -1,48 +1,54 @@
 <template>
-  <div id="new-symbol-input-wrapper">
-    <input
-      class="new-symbol-input text-uppercase"
-      type="text"
-      v-model="symbol"
-      placeholder="Symbol"
-    />
+  <base-modal :modalId="'symbolForm'" :title="'New Symbol'">
+    <div id="new-symbol-input-wrapper">
+      <input
+        class="new-symbol-input text-uppercase"
+        type="text"
+        v-model="symbol"
+        placeholder="Symbol"
+      />
 
-    <hr />
+      <hr />
 
-    <input
-      class="new-symbol-input text-uppercase"
-      type="text"
-      v-model="exchange"
-      placeholder="Exchange"
-    />
+      <input
+        class="new-symbol-input text-uppercase"
+        type="text"
+        v-model="exchange"
+        placeholder="Exchange"
+      />
 
-    <hr />
+      <hr />
 
-    <input
-      class="new-symbol-input"
-      type="number"
-      v-model="minMove"
-      min="0"
-      step="0.0001"
-    />
-    <hr />
-    <input
-      list="market-options"
-      class="new-symbol-input"
-      v-model="marketType"
-      placeholder="Market Type"
-    />
-    <datalist id="market-options">
-      <option value="Forex"></option>
-      <option value="Crypto"></option>
-      <option value="Stock"></option>
-    </datalist>
-  </div>
+      <input
+        class="new-symbol-input"
+        type="number"
+        v-model="minMove"
+        min="0"
+        step="0.0001"
+      />
+      <hr />
+      <input
+        list="market-options"
+        class="new-symbol-input"
+        v-model="marketType"
+        placeholder="Market Type"
+      />
+      <datalist id="market-options">
+        <option value="Forex"></option>
+        <option value="Crypto"></option>
+        <option value="Stock"></option>
+      </datalist>
+    </div>
+  </base-modal>
 </template>
 
 <script>
+import BaseModal from "@/components/Common/BaseModal.vue";
+
 export default {
   name: "SymbolFormModal",
+  
+  components: { BaseModal },
 
   props: {
     newSymbol: {
@@ -57,41 +63,7 @@ export default {
       exchange: "",
       minMove: 0.00001,
       marketType: "",
-      symbolChanged: false, // Tracks if the input has been modified
     };
-  },
-
-  methods: {
-    addSymbol() {
-      if (
-        !this.validSymbol ||
-        !this.validExchange ||
-        !this.validMinMove ||
-        !this.validMarketType
-      ) {
-        console.error("Invalid Inputs!");
-        return;
-      }
-
-      console.log(this.symbol, this.exchange, this.minMove, this.marketType);
-      let newMarket = {
-        symbol: this.symbol.toUpperCase().trim(),
-        exchange: this.exchange.toUpperCase().trim(),
-        minMove: this.minMove,
-        marketType: this.marketType.trim(),
-      };
-      fetch("/api/markets", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(newMarket),
-      })
-        .then((response) => response.json())
-        .then((data) => {
-          this.$emit("add-symbol-successful");
-        });
-    },
   },
 
   computed: {
@@ -109,6 +81,41 @@ export default {
 
     validMarketType() {
       return typeof this.marketType == "string" && this.marketType.trim !== "";
+    },
+  },
+
+  methods: {
+    // TODO: Use this
+    /* eslint-disable-next-line */
+    addSymbol() {
+      if (
+        !this.validSymbol ||
+        !this.validExchange ||
+        !this.validMinMove ||
+        !this.validMarketType
+      ) {
+        console.error("Invalid Inputs!");
+        return;
+      }
+
+      let newMarket = {
+        symbol: this.symbol.toUpperCase().trim(),
+        exchange: this.exchange.toUpperCase().trim(),
+        minMove: this.minMove,
+        marketType: this.marketType.trim(),
+      };
+
+      fetch("/api/markets", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newMarket),
+      })
+        .then((response) => response.json())
+        .then(() => {
+          this.$emit("add-symbol-successful");
+        });
     },
   },
 };
