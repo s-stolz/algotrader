@@ -1,6 +1,6 @@
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({port: 8765});
+const wss = new WebSocket.Server({ port: 8765 });
 let clients = [];
 
 function handleMessage(ws, messageJSON) {
@@ -14,7 +14,7 @@ function handleMessage(ws, messageJSON) {
 		return
 	}
 
-	if (message.receiver == 'Backend'){
+	if (message.receiver == 'Backend') {
 		// handle message
 	} else {
 		// redirect message
@@ -29,17 +29,17 @@ function handleMessage(ws, messageJSON) {
 }
 
 wss.on('connection', (ws) => {
-		ws.on("message", data => {
-			try {
-				handleMessage(ws, data);
-			} catch (error) {
-				console.error(error);
-			}
-		});
-		
-		ws.on("close", () => {
-			clients = clients.filter(client => client.ws !== ws);
-		});
+	ws.on("message", data => {
+		try {
+			handleMessage(ws, data);
+		} catch (error) {
+			console.error(error);
+		}
+	});
+
+	ws.on("close", () => {
+		clients = clients.filter(client => client.ws !== ws);
+	});
 })
 
 console.log("WSS is running...")
