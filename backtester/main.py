@@ -29,7 +29,7 @@ async def on_message(message, websocket):
 
     if message['type'] == 'get-indicator':
         indicatorName = message['data']['name']
-        symbol_id = message['data']['symbolID']
+        symbol_id = message['data']['symbol_id']
         timeframe = message['data']['timeframe']
         customParameters = message['data'].get('parameters', {})
         # logging.info(customParameters)
