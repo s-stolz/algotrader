@@ -32,15 +32,8 @@
     </div>
 
     <template #footer>
-      <n-button
-        round
-        class="new-symbol-button"
-        @click="addSymbol"
-      >
-        Add Symbol
-      </n-button>
+      <n-button round class="new-symbol-button" @click="addSymbol"> Add Symbol </n-button>
     </template>
-
   </base-modal>
 </template>
 
