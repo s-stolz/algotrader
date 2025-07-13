@@ -1,68 +1,76 @@
 <template>
-  <base-modal :modalId="'symbolForm'" :title="'New Symbol'">
+  <base-modal ref="symbolForm" :modalId="'symbolForm'" :title="'New Symbol'">
     <div id="new-symbol-input-wrapper">
-      <input
+      <n-input
         class="new-symbol-input text-uppercase"
-        type="text"
-        v-model="symbol"
+        v-model:value="symbol"
+        :status="validSymbol || symbol === undefined ? 'success' : 'error'"
         placeholder="Symbol"
       />
 
-      <hr />
-
-      <input
+      <n-input
         class="new-symbol-input text-uppercase"
-        type="text"
-        v-model="exchange"
+        v-model:value="exchange"
+        :status="validExchange || exchange === undefined ? 'success' : 'error'"
         placeholder="Exchange"
       />
 
-      <hr />
-
-      <input
+      <n-input-number
         class="new-symbol-input"
-        type="number"
-        v-model="minMove"
+        v-model:value="minMove"
         min="0"
         step="0.0001"
       />
-      <hr />
-      <input
-        list="market-options"
+
+      <n-select
         class="new-symbol-input"
-        v-model="marketType"
+        v-model:value="marketType"
         placeholder="Market Type"
+        :status="validMarketType || marketType === undefined ? 'success' : 'error'"
+        :options="options"
       />
-      <datalist id="market-options">
-        <option value="Forex"></option>
-        <option value="Crypto"></option>
-        <option value="Stock"></option>
-      </datalist>
     </div>
+
+    <template #footer>
+      <n-button
+        round
+        class="new-symbol-button"
+        @click="addSymbol"
+      >
+        Add Symbol
+      </n-button>
+    </template>
+
   </base-modal>
 </template>
 
 <script>
+import { NInput, NInputNumber, NSelect, NButton } from "naive-ui";
 import BaseModal from "@/components/Common/BaseModal.vue";
 
 export default {
   name: "SymbolFormModal",
-  
-  components: { BaseModal },
 
-  props: {
-    newSymbol: {
-      type: String,
-      default: "",
-    },
-  },
+  components: { NInput, NInputNumber, NSelect, NButton, BaseModal },
+
+  // props: {
+  //   newSymbol: {
+  //     type: String,
+  //     default: "",
+  //   },
+  // },
 
   data() {
     return {
-      symbol: this.newSymbol,
-      exchange: "",
+      symbol: undefined,
+      exchange: undefined,
       minMove: 0.00001,
-      marketType: "",
+      marketType: undefined,
+      options: [
+        { label: "Forex", value: "Forex" },
+        { label: "Crypto", value: "Crypto" },
+        { label: "Stock", value: "Stock" },
+      ],
     };
   },
 
@@ -85,8 +93,6 @@ export default {
   },
 
   methods: {
-    // TODO: Use this
-    /* eslint-disable-next-line */
     addSymbol() {
       if (
         !this.validSymbol ||
@@ -94,6 +100,7 @@ export default {
         !this.validMinMove ||
         !this.validMarketType
       ) {
+        this.setInvalidInputs();
         console.error("Invalid Inputs!");
         return;
       }
@@ -105,55 +112,48 @@ export default {
         marketType: this.marketType.trim(),
       };
 
-      fetch("/api/markets", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(newMarket),
-      })
-        .then((response) => response.json())
-        .then(() => {
-          this.$emit("add-symbol-successful");
-        });
+      console.log("Adding new market:", newMarket);
+      this.$refs.symbolForm.close();
+
+      // TODO: Implement API call to add the new market
+      //   fetch("/api/markets", {
+      //     method: "PUT",
+      //     headers: {
+      //       "Content-Type": "application/json",
+      //     },
+      //     body: JSON.stringify(newMarket),
+      //   })
+      //     .then((response) => response.json())
+      //     .then(() => {
+      //       this.$emit("add-symbol-successful");
+      //     });
+    },
+
+    setInvalidInputs() {
+      if (!this.validSymbol) this.symbol = null;
+      if (!this.validExchange) this.exchange = null;
+      if (!this.validMinMove) this.minMove = 0.00001;
+      if (!this.validMarketType) this.marketType = null;
     },
   },
 };
 </script>
 
 <style scoped>
-#new-symbol-input-wrapper {
-  display: block;
-}
-
 .new-symbol-input {
   width: calc(100% - 30px);
-  margin: 5px 0;
-  border: none;
+  margin: 10px 15px 0 15px;
 }
 
-.new-symbol-input.valid-input,
-.new-symbol-input.invalid-input {
-  width: calc(100% - 34px);
-  margin: 3px 0;
+.new-symbol-input:last-child {
+  margin-bottom: 10px;
 }
 
-hr {
-  border: none;
-  height: 1px;
-  background-color: #a0a0a029;
-  margin: 0;
+.new-symbol-button {
+  width: 100%;
 }
 
-.text-uppercase {
+.text-uppercase ::v-deep input {
   text-transform: uppercase;
-}
-
-.valid-input {
-  background-color: 1px solid rgb(13, 103, 13);
-}
-
-.invalid-input {
-  border: 1px solid rgb(65, 8, 8);
 }
 </style>
