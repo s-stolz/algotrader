@@ -5,5 +5,9 @@
   "workspaces": [
     "frontend",
     "backend"
-  ]
+  ],
+  "scripts": {
+    "version:frontend": "npm version patch --workspace frontend && git add . && git commit -m \"Bump frontend version\" && git tag -a \"frontend-v$(node -p \"require('./frontend/package.json').version\")\" -m \"Frontend version $(node -p \"require('./frontend/package.json').version\")\"",
+    "version:backend": "npm version patch --workspace backend && git add . && git commit -m \"Bump backend version\" && git tag -a \"backend-v$(node -p \"require('./backend/package.json').version\")\" -m \"Backend version $(node -p \"require('./backend/package.json').version\")\""
+  }
 }
