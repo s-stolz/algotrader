@@ -1,6 +1,6 @@
 export default class Ticket {
     constructor() {
-        this.sender = "Frontend"
+        this.sender = "Frontend";
         this.receiver = undefined;
         this.type = undefined;
         this.data = undefined;
@@ -16,6 +16,6 @@ export default class Ticket {
             "receiver": this.receiver,
             "type": this.type,
             "data": this.data
-        })
+        });
     }
 }

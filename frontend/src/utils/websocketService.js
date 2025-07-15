@@ -12,7 +12,6 @@ class WebSocketService {
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
-            console.log("WebSocket connection established");
             const loginMessage = new Ticket().fromObject({
                 receiver: "Broker",
                 type: "Login",
@@ -22,7 +21,6 @@ class WebSocketService {
         };
 
         this.ws.onmessage = (message) => {
-            // Emit a message event
             emitter.emit("message", message.data);
         };
 
@@ -35,9 +33,15 @@ class WebSocketService {
         };
     }
 
-    send(data) {
+    send(receiver, type, data) {
+        const ticket = new Ticket().fromObject({
+            receiver,
+            type,
+            data,
+        });
+
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(data);
+            this.ws.send(ticket);
         }
     }
 

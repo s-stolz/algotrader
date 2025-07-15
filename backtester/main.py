@@ -12,6 +12,7 @@ import indicators as Indicators
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(threadName)s: %(message)s")
 
+
 async def on_message(message, websocket):
     logging.info(f"Received: {message}")
     message = json.loads(message)
@@ -28,7 +29,7 @@ async def on_message(message, websocket):
 
     if message['type'] == 'get-indicator':
         indicatorName = message['data']['name']
-        symbol_id = message['data']['symbolID']
+        symbol_id = message['data']['symbol_id']
         timeframe = message['data']['timeframe']
         customParameters = message['data'].get('parameters', {})
         # logging.info(customParameters)
@@ -39,7 +40,8 @@ async def on_message(message, websocket):
 
         for param_name, param_details in indicator_info['parameters'].items():
             param_default = param_details.get('default')
-            parameters[param_name] = customParameters.get(param_name, {}).get('value', param_default)
+            parameters[param_name] = customParameters.get(
+                param_name, {}).get('value', param_default)
 
         logging.info(parameters)
 
@@ -59,9 +61,10 @@ async def on_message(message, websocket):
             data,  # Positional argument
             **parameters  # Additional parameters
         ).dropna()
-        
+
         indicator_reset = indicator_data.reset_index()
-        indicator_reset['timestamp'] = indicator_reset['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%SZ')
+        indicator_reset['timestamp'] = indicator_reset['timestamp'].dt.strftime(
+            '%Y-%m-%d %H:%M:%SZ')
 
         response = Ticket().from_object({
             'receiver': message['sender'],
@@ -73,8 +76,8 @@ async def on_message(message, websocket):
             }
         })
 
-        #logging.info(response)
-        
+        # logging.info(response)
+
         await websocket.send(response)
 
 
@@ -96,14 +99,17 @@ async def websocket_client():
         async for message in websocket:
             await on_message(message, websocket)
 
+
 def run_server_in_thread():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(websocket_client())
 
+
 if __name__ == "__main__":
     # Run websocket client in a separate thread
-    client_thread = threading.Thread(target=run_server_in_thread, name="WebSocketThread")
+    client_thread = threading.Thread(
+        target=run_server_in_thread, name="WebSocketThread")
     client_thread.start()
     client_thread.join()  # Wait for the thread to finish if needed
     logging.info("Exiting main thread")

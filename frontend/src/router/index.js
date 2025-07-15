@@ -1,11 +1,9 @@
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { createMemoryHistory, createRouter } from 'vue-router';
 
-import ChartPage from '../components/page/Chart/ChartPage.vue';
-import DataPage from '../components/page/Data/DataPage.vue';
+import ChartView from '../views/ChartView.vue';
 
 const routes = [
-    { path: '/', component: ChartPage },
-    { path: '/Data', component: DataPage }
+    { path: '/', component: ChartView },
 ];
 
 const router = createRouter({
