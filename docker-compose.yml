@@ -1,13 +1,13 @@
 services:
-  db_api:
-    container_name: db_api
+  database-accessor-api:
+    container_name: database-accessor-api
     build: 
-      context: ./api-db
+      context: ./database-accessor-api
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./api-db:/app
+      - ./database-accessor-api:/app
     depends_on:
       - timescaledb
     env_file:

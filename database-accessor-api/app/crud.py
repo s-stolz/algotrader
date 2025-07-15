@@ -1,5 +1,5 @@
 from sqlalchemy import select, insert, delete, text
-from app.models import markets
+from app.models import markets, candles
 from typing import Optional
 from datetime import datetime
 
@@ -38,18 +38,26 @@ async def insert_market(session, market_data: dict):
 
 async def delete_market(session, symbol_id: int):
     """
-    Delete a market from the database
+    Delete a market and all candles from that market from the database
 
     :param session: SQLAlchemy session
     :param symbol_id: Market symbol_id
 
-    :return: Number of rows deleted
+    :return: Number of rows in candles deleted
     :rtype: int
     """
     stmt = delete(markets).where(markets.c.symbol_id == symbol_id)
-    result = await session.execute(stmt)
+    market_result = await session.execute(stmt)
     await session.commit()
-    return result.rowcount
+
+    stmt = delete(candles).where(candles.c.symbol_id == symbol_id)
+    candles_result = await session.execute(stmt)
+    await session.commit()
+
+    return {
+        "market_deleted": bool(market_result.rowcount),
+        "deleted_candles": candles_result.rowcount,
+    }
 
 
 async def get_markets(session):
@@ -57,7 +65,7 @@ async def get_markets(session):
     Get all markets from the database
 
     :param session: SQLAlchemy session
-    
+
     :return: List of markets as dictionaries
     """
     stmt = select(markets)
@@ -69,7 +77,7 @@ async def get_markets(session):
 async def get_symbol_id(session, symbol: str, exchange: str):
     """
     Get symbol_id from the markets table based on symbol and exchange
-    
+
     :param session: SQLAlchemy session
     :param symbol: Market symbol
     :param exchange: Market exchange
@@ -121,9 +129,11 @@ async def insert_candles(session, symbol: str, exchange: str, candles: list[dict
     stmt = insert(candles).values(values)
     stmt = stmt.on_conflict_do_nothing(
         index_elements=["symbol_id", "timestamp"])
-    await session.execute(stmt)
+    result = await session.execute(stmt)
     await session.commit()
-    return True
+    # result.rowcount may be None for some DBs, fallback to len(values) if not available
+    added = result.rowcount if result.rowcount is not None else len(values)
+    return added
 
 
 async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optional[str] = None, end_date: Optional[str] = None):

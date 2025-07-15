@@ -17,6 +17,11 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the Database Accessor API"}
+
+
 @app.get("/markets/{symbol_id}")
 async def get_market(symbol_id: int, db: AsyncSession = Depends(get_db)):
     market = await crud.get_market_by_id(db, symbol_id)
@@ -40,7 +45,7 @@ async def create_market(market: MarketIn, db: AsyncSession = Depends(get_db)):
 async def delete_market(symbol_id: int, db: AsyncSession = Depends(get_db)):
     deleted = await crud.delete_market(db, symbol_id)
     if deleted:
-        return {"status": "deleted"}
+        return {"status": "deleted", "deleted_count": deleted}
     return {"status": "not found"}
 
 
@@ -57,8 +62,10 @@ async def read_aggregated_candles(
 
 @app.post("/candles")
 async def insert_candle_batch(data: CandleBatchIn, db: AsyncSession = Depends(get_db)):
-    candles = [candle.dict() for candle in data.candles]
-    success = await crud.insert_candles(db, data.symbol, data.exchange, candles)
-    if success:
-        return {"status": "ok"}
-    return {"status": "symbol not found"}
+    candles = [candle.model_dump() for candle in data.candles]
+    added_candles = await crud.insert_candles(db, data.symbol, data.exchange, candles)
+
+    if added_candles is None:
+        return {"status": "error", "detail": "Symbol not found or exchange mismatch"}
+
+    return {"status": "ok", "added_candles": added_candles}
