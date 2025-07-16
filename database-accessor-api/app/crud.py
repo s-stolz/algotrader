@@ -1,4 +1,5 @@
 from sqlalchemy import select, insert, delete, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.models import markets, candles
 from typing import Optional
 from datetime import datetime
@@ -46,12 +47,12 @@ async def delete_market(session, symbol_id: int):
     :return: Number of rows in candles deleted
     :rtype: int
     """
-    stmt = delete(markets).where(markets.c.symbol_id == symbol_id)
-    market_result = await session.execute(stmt)
-    await session.commit()
-
     stmt = delete(candles).where(candles.c.symbol_id == symbol_id)
     candles_result = await session.execute(stmt)
+
+    stmt = delete(markets).where(markets.c.symbol_id == symbol_id)
+    market_result = await session.execute(stmt)
+
     await session.commit()
 
     return {
@@ -102,14 +103,14 @@ async def get_symbol_id(session, symbol: str, exchange: str):
     return row[0] if row else None
 
 
-async def insert_candles(session, symbol: str, exchange: str, candles: list[dict]):
+async def insert_candles(session, symbol: str, exchange: str, candles_data: list[dict]):
     """
     Insert candles into the database
 
     :param session: SQLAlchemy session
     :param symbol: Market symbol
     :param exchange: Market exchange
-    :param candles: List of candles to insert
+    :param candles_data: List of candles to insert
 
     :return: True if candles were inserted successfully, None otherwise
     :rtype: bool or None
@@ -123,10 +124,10 @@ async def insert_candles(session, symbol: str, exchange: str, candles: list[dict
             "symbol_id": symbol_id,
             **candle
         }
-        for candle in candles
+        for candle in candles_data
     ]
 
-    stmt = insert(candles).values(values)
+    stmt = pg_insert(candles).values(values)
     stmt = stmt.on_conflict_do_nothing(
         index_elements=["symbol_id", "timestamp"])
     result = await session.execute(stmt)
@@ -136,7 +137,7 @@ async def insert_candles(session, symbol: str, exchange: str, candles: list[dict
     return added
 
 
-async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optional[str] = None, end_date: Optional[str] = None):
+async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optional[str] = None, end_date: Optional[str] = None, limit: Optional[int] = None):
     """
     Get candles from the database
 
@@ -145,6 +146,7 @@ async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optio
     :param timeframe: Timeframe in minutes
     :param start_date: Start date in ISO format (optional)
     :param end_date: End date in ISO format (optional)
+    :param limit: Maximum number of candles to return (optional)
 
     :return: List of candles as dictionaries
     :rtype: list[dict]
@@ -190,8 +192,12 @@ async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optio
             SUM(volume) AS volume
         FROM RoundedCandles
         GROUP BY timestamp
-        ORDER BY timestamp
-    """)
+        ORDER BY timestamp {order_direction}
+        {limit_clause}
+    """.format(
+        order_direction="DESC" if limit else "ASC",
+        limit_clause="LIMIT :limit" if limit else ""
+    ))
 
     start_date = datetime.fromisoformat(start_date) if start_date else None
     end_date = datetime.fromisoformat(end_date) if end_date else None
@@ -199,9 +205,16 @@ async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optio
         "symbol_id": symbol_id,
         "timeframe": timeframe,
         "start_date": start_date,
-        "end_date": end_date
+        "end_date": end_date,
     }
+
+    if limit is not None:
+        params["limit"] = limit
 
     result = await session.execute(sql, params)
     rows = result.fetchall()
+
+    if limit is not None:
+        rows = list(reversed(rows))
+
     return [dict(row._mapping) for row in rows]
