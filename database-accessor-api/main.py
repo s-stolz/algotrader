@@ -55,9 +55,10 @@ async def read_aggregated_candles(
     timeframe: int = Query(..., description="Timeframe in minutes"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    limit: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
-    return await crud.get_candles(db, symbol_id, timeframe, start_date, end_date)
+    return await crud.get_candles(db, symbol_id, timeframe, start_date, end_date, limit)
 
 
 @app.post("/candles")
