@@ -6,8 +6,13 @@ from typing import Optional
 from app.database import get_db
 from app.schemas import CandleBatchIn, MarketIn
 from app import crud
+from . import __version__
 
-app = FastAPI()
+app = FastAPI(
+    title="Database Accessor API",
+    description="Database accessor API for algotrader",
+    version=__version__
+)
 
 app.add_middleware(
     CORSMiddleware,
