@@ -81,3 +81,10 @@ async def insert_candle_batch(data: CandleBatchIn, db: AsyncSession = Depends(ge
         total_added += added_candles
 
     return {"status": "ok", "added_candles": total_added, "total_candles": len(candles)}
+
+
+@app.delete("/candles/{symbol_id}")
+async def delete_candles(symbol_id: int, db: AsyncSession = Depends(get_db)):
+    deleted_count = await crud.delete_candles(db, symbol_id)
+
+    return {"status": "deleted", "deleted_count": deleted_count}

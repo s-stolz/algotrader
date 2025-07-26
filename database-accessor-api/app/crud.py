@@ -213,3 +213,19 @@ async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optio
         rows = list(reversed(rows))
 
     return [dict(row._mapping) for row in rows]
+
+
+async def delete_candles(session, symbol_id: int):
+    """
+    Delete all candles for a given symbol_id
+
+    :param session: SQLAlchemy session
+    :param symbol_id: Market symbol_id
+
+    :return: Number of candles deleted
+    :rtype: int
+    """
+    stmt = delete(candles).where(candles.c.symbol_id == symbol_id)
+    result = await session.execute(stmt)
+    await session.commit()
+    return result.rowcount
