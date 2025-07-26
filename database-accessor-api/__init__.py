@@ -1,3 +1,3 @@
 """Database Accessor API for AlgoTrader."""
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
