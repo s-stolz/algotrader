@@ -38,8 +38,13 @@ async def get_market(symbol_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/markets")
-async def read_markets(db: AsyncSession = Depends(get_db)):
-    return await crud.get_markets(db)
+async def read_markets(
+    db: AsyncSession = Depends(get_db),
+    symbol: Optional[str] = Query(None, description="Filter by market symbol"),
+    exchange: Optional[str] = Query(
+        None, description="Filter by market exchange"),
+):
+    return await crud.get_markets(db, symbol=symbol, exchange=exchange)
 
 
 @app.post("/markets")

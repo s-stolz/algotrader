@@ -61,7 +61,7 @@ async def delete_market(session, symbol_id: int):
     }
 
 
-async def get_markets(session):
+async def get_markets(session, symbol: Optional[str] = None, exchange: Optional[str] = None):
     """
     Get all markets from the database
 
@@ -70,6 +70,11 @@ async def get_markets(session):
     :return: List of markets as dictionaries
     """
     stmt = select(markets)
+    if symbol:
+        stmt = stmt.where(markets.c.symbol == symbol)
+    if exchange:
+        stmt = stmt.where(markets.c.exchange == exchange)
+
     result = await session.execute(stmt)
     rows = result.fetchall()
     return [dict(row._mapping) for row in rows]

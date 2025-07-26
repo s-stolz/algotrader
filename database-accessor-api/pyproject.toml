@@ -6,8 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "database-accessor-api"
 version = "0.0.3"
 description = "Database accessor API for algotrader"
-authors = [{name = "Sebastian Stolz", email = "your.email@example.com"}]
-license = {text = "MIT"}
+authors = [{ name = "Sebastian Stolz", email = "admin@tradingnerd.io" }]
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
