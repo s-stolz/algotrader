@@ -5,5 +5,5 @@ backtester/.env
 node_modules
 __pycache__
 
-backtester/data/backup
+backtester/src/data/backup
 ctrader

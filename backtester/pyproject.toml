@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backtester"
+version = "0.0.1"
+description = "Backtesting module for algotrader"
+authors = [{ name = "Sebastian Stolz", email = "admin@tradingnerd.io" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  "python-decouple==3.8",
+  "pandas==2.1.4",
+  "numpy==1.26.3",
+  "websocket==0.2.1",
+  "websocket-client==1.7.0",
+  "watchdog",
+  "pandas_ta",
+]
+
+[project.urls]
+Homepage = "https://github.com/s-stolz/algotrader"
+Repository = "https://github.com/s-stolz/algotrader"
