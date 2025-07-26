@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "database-accessor-api"
-version = "0.0.1"
+version = "0.0.2"
 description = "Database accessor API for algotrader"
 authors = [{name = "Sebastian Stolz", email = "your.email@example.com"}]
 license = {text = "MIT"}
