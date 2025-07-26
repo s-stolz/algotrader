@@ -39,9 +39,6 @@ services:
       - backend_data:/app
       - ./backend:/app/backend
       - /app/backend/node_modules
-    depends_on:
-      - timescaledb
-      - backtester
     environment:
       - MODE=${MODE}
 
@@ -55,6 +52,8 @@ services:
     volumes:
       - frontend_data:/app/dist
       - ./frontend:/app/frontend    
+    depends_on:
+      - backend
     environment:
       - MODE=${MODE}
 
@@ -65,6 +64,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./backtester:/app
+    depends_on:
+      - backend
     command: watchmedo auto-restart --directory=/app --pattern="*.py" --recursive -- python main.py
     environment:
       - PYTHONUNBUFFERED=1
