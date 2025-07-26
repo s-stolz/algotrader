@@ -24,6 +24,5 @@ class CandleIn(BaseModel):
 
 
 class CandleBatchIn(BaseModel):
-    symbol: str
-    exchange: str = "%"
+    symbol_id: int
     candles: List[CandleIn]

@@ -6,7 +6,9 @@ from typing import Optional
 from app.database import get_db
 from app.schemas import CandleBatchIn, MarketIn
 from app import crud
-from . import __version__
+from __init__ import __version__
+
+print(f"Starting Database Accessor API version {__version__}")
 
 app = FastAPI(
     title="Database Accessor API",
@@ -69,9 +71,13 @@ async def read_aggregated_candles(
 @app.post("/candles")
 async def insert_candle_batch(data: CandleBatchIn, db: AsyncSession = Depends(get_db)):
     candles = [candle.model_dump() for candle in data.candles]
-    added_candles = await crud.insert_candles(db, data.symbol, data.exchange, candles)
+    batch_size = 4000
+    total_added = 0
 
-    if added_candles is None:
-        return {"status": "error", "detail": "Symbol not found or exchange mismatch"}
+    for i in range(0, len(candles), batch_size):
+        batch = candles[i:i + batch_size]
+        added_candles = await crud.insert_candles(db, data.symbol_id, batch)
 
-    return {"status": "ok", "added_candles": added_candles}
+        total_added += added_candles
+
+    return {"status": "ok", "added_candles": total_added, "total_candles": len(candles)}

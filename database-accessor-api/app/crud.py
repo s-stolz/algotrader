@@ -103,22 +103,17 @@ async def get_symbol_id(session, symbol: str, exchange: str):
     return row[0] if row else None
 
 
-async def insert_candles(session, symbol: str, exchange: str, candles_data: list[dict]):
+async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
     """
     Insert candles into the database
 
     :param session: SQLAlchemy session
-    :param symbol: Market symbol
-    :param exchange: Market exchange
+    :param symbol_id: Market symbol_id
     :param candles_data: List of candles to insert
 
-    :return: True if candles were inserted successfully, None otherwise
-    :rtype: bool or None
+    :return: Number of candles added
+    :rtype: int
     """
-    symbol_id = await get_symbol_id(session, symbol, exchange)
-    if not symbol_id:
-        return None
-
     values = [
         {
             "symbol_id": symbol_id,
@@ -132,7 +127,7 @@ async def insert_candles(session, symbol: str, exchange: str, candles_data: list
         index_elements=["symbol_id", "timestamp"])
     result = await session.execute(stmt)
     await session.commit()
-    # result.rowcount may be None for some DBs, fallback to len(values) if not available
+
     added = result.rowcount if result.rowcount is not None else len(values)
     return added
 
