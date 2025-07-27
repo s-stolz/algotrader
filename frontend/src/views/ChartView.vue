@@ -1,8 +1,8 @@
 <template>
   <div>
     <the-top-bar />
-    <chart-area 
-      id="chart-area" 
+    <chart-area
+      id="chart-area"
       ref="chartArea"
     />
   </div>
@@ -48,7 +48,7 @@ export default {
 
       this.currentMarketStore.setMarket(this.marketsStore.all[0]);
     },
-  }
+  },
 };
 </script>
 

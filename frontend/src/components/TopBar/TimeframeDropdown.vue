@@ -27,7 +27,7 @@ export default {
 
   components: {
     NPopselect,
-    NButton
+    NButton,
   },
 
   data() {
@@ -51,7 +51,7 @@ export default {
   methods: {
     onTimeframeChange(value, option) {
       this.currentTimeframeStore.setCurrentTimeframe(option);
-      
+
       const symbolID  = this.currentMarketStore.symbol_id;
       this.candlesticksStore.fetch(symbolID, value);
     },

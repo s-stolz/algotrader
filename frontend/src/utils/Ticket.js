@@ -15,7 +15,7 @@ export default class Ticket {
             "sender": this.sender,
             "receiver": this.receiver,
             "type": this.type,
-            "data": this.data
+            "data": this.data,
         });
     }
 }

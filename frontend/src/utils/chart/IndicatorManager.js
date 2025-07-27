@@ -31,10 +31,10 @@ export class IndicatorManager {
   }
 
   handleMessageIndicatorInfo(messageData) {
-    const { 
+    const {
       id: indicatorId,
       indicator_info: indicatorInfo,
-      indicator_data: indicatorData
+      indicator_data: indicatorData,
     } = messageData;
     const indicatorExists = indicatorId !== null;
     let newIndicatorId;
@@ -93,7 +93,7 @@ export class IndicatorManager {
   transformIndicatorData(data, outputKey) {
     return data.map(item => ({
       time: Math.floor(new Date(item.timestamp).getTime() / 1000),
-      value: item[outputKey]
+      value: item[outputKey],
     })).filter(item => item.value !== undefined && item.value !== null);
   }
 

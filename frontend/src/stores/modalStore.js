@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 
 export const useModalStore = defineStore('modal', {
   state: () => ({
-    activeModal: null // e.g. 'indicatorSearch' | 'symbolForm' | 'symbolSearch'
+    activeModal: null,
   }),
   actions: {
     openModal(name) {
@@ -13,6 +13,6 @@ export const useModalStore = defineStore('modal', {
     },
     isModalOpen(name) {
       return this.activeModal === name;
-    }
-  }
+    },
+  },
 });

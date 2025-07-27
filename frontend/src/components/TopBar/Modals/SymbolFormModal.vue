@@ -38,6 +38,7 @@
 </template>
 
 <script>
+import { useMarketsStore } from "@/stores/marketsStore";
 import { NInput, NInputNumber, NSelect, NButton } from "naive-ui";
 import BaseModal from "@/components/Common/BaseModal.vue";
 
@@ -46,15 +47,9 @@ export default {
 
   components: { NInput, NInputNumber, NSelect, NButton, BaseModal },
 
-  // props: {
-  //   newSymbol: {
-  //     type: String,
-  //     default: "",
-  //   },
-  // },
-
   data() {
     return {
+      marketsStore: useMarketsStore(),
       symbol: undefined,
       exchange: undefined,
       minMove: 0.00001,
@@ -86,7 +81,7 @@ export default {
   },
 
   methods: {
-    addSymbol() {
+    async addSymbol() {
       if (
         !this.validSymbol ||
         !this.validExchange ||
@@ -101,25 +96,22 @@ export default {
       let newMarket = {
         symbol: this.symbol.toUpperCase().trim(),
         exchange: this.exchange.toUpperCase().trim(),
-        minMove: this.minMove,
-        marketType: this.marketType.trim(),
+        min_move: this.minMove,
+        market_type: this.marketType.trim(),
       };
 
-      console.log("Adding new market:", newMarket);
-      this.$refs.symbolForm.close();
+      const result = await fetch("/api/data-accessor/markets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newMarket),
+      });
 
-      // TODO: Implement API call to add the new market
-      //   fetch("/api/markets", {
-      //     method: "PUT",
-      //     headers: {
-      //       "Content-Type": "application/json",
-      //     },
-      //     body: JSON.stringify(newMarket),
-      //   })
-      //     .then((response) => response.json())
-      //     .then(() => {
-      //       this.$emit("add-symbol-successful");
-      //     });
+      if (result.ok) {
+        this.$refs.symbolForm.close();
+        this.marketsStore.fetch();
+      }
     },
 
     setInvalidInputs() {

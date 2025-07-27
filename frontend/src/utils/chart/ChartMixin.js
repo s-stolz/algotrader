@@ -7,7 +7,7 @@ export const ChartMixin = {
       chartManager: null,
       indicatorManager: null,
       chartInitialized: false,
-      chartError: null
+      chartError: null,
     };
   },
 
@@ -24,7 +24,7 @@ export const ChartMixin = {
       try {
         this.chartManager = new ChartManager(this.getChartOptions());
         this.indicatorManager = new IndicatorManager(this.chartManager);
-        
+
         if (this.$refs.chartContainer) {
           this.chartInitialized = this.chartManager.init(
             this.$refs.chartContainer,
@@ -46,7 +46,7 @@ export const ChartMixin = {
           type: 'price',
           minMove: 0.00001,
         },
-        ...seriesOptions
+        ...seriesOptions,
       };
 
       return this.chartManager.addSeries('ohlc', 'candlestick', data, defaultOptions);
@@ -61,13 +61,13 @@ export const ChartMixin = {
         this.indicatorManager.destroy();
         this.indicatorManager = null;
       }
-      
+
       if (this.chartManager) {
         this.chartManager.destroy();
         this.chartManager = null;
       }
-      
+
       this.chartInitialized = false;
-    }
+    },
   },
 };

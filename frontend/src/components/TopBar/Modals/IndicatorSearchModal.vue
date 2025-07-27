@@ -72,7 +72,7 @@ export default {
     filteredIndicators() {
       return this.indicators
         .filter((indicator) =>
-          indicator.toUpperCase().includes(this.indicatorInput.toUpperCase())
+          indicator.toUpperCase().includes(this.indicatorInput.toUpperCase()),
         )
         .sort((a, b) => a.localeCompare(b));
     },

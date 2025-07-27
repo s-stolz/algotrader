@@ -45,6 +45,23 @@ export default [
       }],
       'vue/no-empty-component-block': 'error',
       'vue/multi-word-component-names': 'off',
+      'vue/custom-event-name-casing': ['error', 'kebab-case'],
+      'vue/html-closing-bracket-newline': ['error', {
+        'singleline': 'never',
+        'multiline': 'always'
+      }],
+      'vue/max-attributes-per-line': ['error', {
+        'singleline': {
+          'max': 99
+        },
+        'multiline': {
+          'max': 1
+        }
+      }],
+      'vue/first-attribute-linebreak': ['error', {
+        'singleline': 'ignore',
+        'multiline': 'below'
+      }],
       'no-unused-vars': ['error', {
         'vars': 'all',
         'args': 'after-used',
@@ -66,7 +83,14 @@ export default [
         'max': 200,
         'skipBlankLines': true,
         'skipComments': true
-      }]
+      }],
+      'no-trailing-spaces': 'error',
+      'no-multiple-empty-lines': ['error', {
+        'max': 2,
+        'maxEOF': 1,
+        'maxBOF': 0
+      }],
+      'comma-dangle': ['error', 'always-multiline']
     }
   },
 ]

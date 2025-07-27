@@ -10,14 +10,18 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
   },
   publicPath: "",
   server: {
     host: '0.0.0.0',
     proxy: {
-      "/api": "http://backend:8080"
-    }
-  }
+      "/api/data-accessor": {
+        target: "http://database-accessor-api:8000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/data-accessor/, ''),
+      },
+    },
+  },
 });

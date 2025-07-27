@@ -66,7 +66,10 @@ export default {
       handler(newData) {
         this.setMinMove(this.currentMarketMinMove);
         this.addCandlestickData(newData, this.seriesOptions);
-        this.indicatorsStore.requestAllIndicators(this.currentMarketStore.symbol_id, this.currentTimeframeStore.value);
+        this.indicatorsStore.requestAllIndicators(
+          this.currentMarketStore.symbol_id,
+          this.currentTimeframeStore.value,
+        );
       },
       deep: true,
     },

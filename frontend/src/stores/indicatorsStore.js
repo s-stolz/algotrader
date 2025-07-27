@@ -42,7 +42,7 @@ export const useIndicatorsStore = defineStore('indicators', {
       for (const [key, paramInfo] of Object.entries(info.parameters)) {
         finalParameters[key] = {
           ...paramInfo,
-          value: paramInfo.default
+          value: paramInfo.default,
         };
       }
 
@@ -101,7 +101,7 @@ export const useIndicatorsStore = defineStore('indicators', {
       for (const outputKey in outputs) {
         if (outputKey !== 'timestamp') {
           styles[outputKey] = {
-            ...outputs[outputKey].plotOptions || {}
+            ...outputs[outputKey].plotOptions || {},
           };
         }
       }
@@ -137,6 +137,6 @@ export const useIndicatorsStore = defineStore('indicators', {
     clear() {
       this.indicators.clear();
       this.paneCount = 1;
-    }
-  }
+    },
+  },
 });

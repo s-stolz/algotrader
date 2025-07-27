@@ -9,11 +9,11 @@ export const useCandlesticksStore = defineStore('candlesticks', {
   actions: {
     async fetch(symbolID, timeframe) {
       try {
-        const response = await fetch(`/api/candles/${symbolID}/${timeframe}`);
+        const response = await fetch(`/api/data-accessor/candles/${symbolID}?timeframe=${timeframe}`);
         const data = await response.json();
 
         this.data = data.map((candle) => {
-          const utc = new Date(candle.timestamp).getTime() / 1000;
+          const utc = new Date(`${candle.timestamp}Z`).getTime() / 1000;
           return {
             time: utc,
             open: candle.open,
@@ -26,5 +26,5 @@ export const useCandlesticksStore = defineStore('candlesticks', {
         console.error('Failed to fetch candlestick data:', err);
       }
     },
-  }
+  },
 });

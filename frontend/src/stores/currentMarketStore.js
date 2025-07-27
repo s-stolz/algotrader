@@ -6,7 +6,7 @@ export const useCurrentMarketStore = defineStore('currentMarket', {
     market_type: null,
     min_move: null,
     symbol: null,
-    symbol_id: null
+    symbol_id: null,
   }),
   actions: {
     setMarket(market) {

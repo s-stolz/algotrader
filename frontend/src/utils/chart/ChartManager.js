@@ -28,7 +28,7 @@ export class ChartManager {
         horzLines: { color: 'transparent' },
       },
       autoSize: true,
-      ...options
+      ...options,
     };
 
     this.timeScaleOptions = {
@@ -75,7 +75,7 @@ export class ChartManager {
         series: newSeries,
         type,
         data: [...data],
-        options: { ...seriesOptions }
+        options: { ...seriesOptions },
       });
     }
 
@@ -161,11 +161,11 @@ export class ChartManager {
   isValidPaneIndex(paneIndex) {
     const panes = this.chart.panes();
     const isValid = paneIndex >= 0 && paneIndex < panes.length;
-    
+
     if (!isValid) {
       console.error(`Invalid pane index: ${paneIndex}. Available panes: ${panes.length}`);
     }
-    
+
     return isValid;
   }
 
@@ -175,12 +175,12 @@ export class ChartManager {
       if (element) {
         return element;
       }
-      
+
       if (attempt < maxAttempts - 1) {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
-    
+
     console.warn('Pane HTML element not available after maximum attempts');
     return null;
   }
@@ -216,7 +216,7 @@ export class ChartManager {
       this.series.forEach((_, key) => {
         this.removeSeries(key);
       });
-      
+
       this.chart.remove();
       this.chart = null;
       this.container = null;

@@ -1,0 +1,191 @@
+<template>
+  <base-modal
+    ref="baseModal"
+    :modalId="'uploadData'"
+    :title="`Upload Data for ${market.symbol}`"
+  >
+    <div class="upload-content">
+      <n-tabs default-value="upload" type="line" :tabs-padding="20">
+        <n-tab-pane name="upload" tab="Upload & Options">
+          <upload-data-section
+            :file-list="fileList"
+            @file-change="handleFileChange"
+            @file-remove="handleFileRemove"
+            class="upload-data-section"
+          />
+        </n-tab-pane>
+
+        <n-tab-pane
+          name="preview"
+          tab="Preview & Mapping"
+          :disabled="fileList.length === 0"
+        >
+          <upload-data-preview
+            :header-line="headerLine"
+            v-model:column-mapping="columnMapping"
+            class="upload-data-preview"
+          />
+        </n-tab-pane>
+      </n-tabs>
+    </div>
+
+    <template #footer>
+      <div class="modal-actions">
+        <n-button @click="closeModal" class="button-cancel">Cancel</n-button>
+        <n-button
+          type="primary"
+          @click="uploadData"
+          :loading="isUploading"
+          :disabled="!canUpload"
+          class="button-upload"
+        >
+          Upload Data
+        </n-button>
+      </div>
+    </template>
+  </base-modal>
+</template>
+
+<script>
+import { NButton, NTabs, NTabPane } from "naive-ui";
+import BaseModal from "@/components/Common/BaseModal.vue";
+import UploadDataPreview from "./UploadDataPreview.vue";
+import UploadDataSection from "./UploadDataSection.vue";
+import {
+  getCsvFileText,
+  getHeaderLine,
+  getSeparator,
+  getColumnMapping,
+  parseCsvToCandles,
+} from "./utils.js";
+
+export default {
+  name: "UploadDataModal",
+
+  components: {
+    NButton,
+    NTabs,
+    NTabPane,
+    BaseModal,
+    UploadDataPreview,
+    UploadDataSection,
+  },
+
+  props: {
+    market: {
+      type: Object,
+      required: true,
+    },
+  },
+
+  emits: ["upload-successful"],
+
+  data() {
+    return {
+      isUploading: false,
+      fileList: [],
+      headerLine: [],
+      separator: undefined,
+      columnMapping: {},
+      separatorOptions: [",", "\t", ";", "|"],
+    };
+  },
+
+  computed: {
+    canUpload() {
+      return this.fileList.length > 0 && !this.isUploading;
+    },
+  },
+
+  methods: {
+    closeModal() {
+      this.$refs.baseModal.close();
+      this.resetForm();
+    },
+
+    resetForm() {
+      this.isUploading = false;
+      this.fileList = [];
+      this.headerLine = [];
+      this.separator = null;
+      this.columnMapping = {};
+    },
+
+    handleFileRemove() {
+      this.fileList = [];
+      this.headerLine = [];
+      this.columnMapping = {};
+    },
+
+    async handleFileChange(data) {
+      this.fileList = data.fileList;
+      if (this.fileList.length == 0) {
+        this.resetForm();
+        return;
+      }
+
+      this.csvFileText = await getCsvFileText(this.fileList[0].file);
+      this.separator = getSeparator(this.csvFileText, this.separatorOptions);
+      this.headerLine = getHeaderLine(this.csvFileText, this.separator);
+      this.columnMapping = getColumnMapping(this.headerLine);
+    },
+
+    async uploadData() {
+      if (!this.canUpload || !this.market) return;
+
+      this.isUploading = true;
+
+      try {
+        const file = this.fileList[0].file;
+        const text = await getCsvFileText(file);
+
+        const candleData = parseCsvToCandles(text, this.separator, this.columnMapping);
+
+        if (!candleData || candleData.length === 0) {
+          throw new Error("No valid candle data found in CSV file");
+        }
+
+        const payload = {
+          symbol_id: this.market.symbol_id,
+          candles: candleData,
+        };
+
+        const response = await fetch("/api/data-accessor/candles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          this.$emit("upload-successful", this.market);
+          this.closeModal();
+        } else {
+          console.error("Failed to upload data:", response);
+        }
+      } catch (error) {
+        console.error("Error uploading data:", error);
+        alert(`Error uploading data: ${error.message}`);
+      } finally {
+        this.isUploading = false;
+      }
+    },
+  },
+};
+</script>
+
+<style scoped>
+.upload-content {
+  height: 300px;
+}
+
+.upload-data-section,
+.upload-data-preview {
+  padding: 0 20px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+</style>

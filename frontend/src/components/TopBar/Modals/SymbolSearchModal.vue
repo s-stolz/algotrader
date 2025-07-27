@@ -25,13 +25,12 @@
         <table>
           <tbody>
             <template v-for="market of filteredMarketList" :key="market.symbol_id">
-              <tr @click="onMarketClick(market)">
-                <td>{{ market.symbol }}</td>
-                <td>
-                  <span class="market-type">{{ market.market_type }}</span>
-                  {{ market.exchange }}
-                </td>
-              </tr>
+              <symbol-row
+                :market="market"
+                @market-click="onMarketClick"
+                @remove-market="$emit('remove-market', $event)"
+                @upload-data="$emit('upload-data', $event)"
+              />
               <hr class="separator row-separator" />
             </template>
 
@@ -58,8 +57,12 @@ import { useCandlesticksStore } from "@/stores/candlesticksStore";
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
 
 import { NScrollbar, NInput, NIcon, NButton } from "naive-ui";
-import { SearchOutline, AddCircleOutline } from "@/icons";
+import {
+  SearchOutline,
+  AddCircleOutline,
+} from "@/icons";
 import BaseModal from "@/components/Common/BaseModal.vue";
+import SymbolRow from "./SymbolRow.vue";
 
 export default {
   name: "SymbolSearchModal",
@@ -72,9 +75,10 @@ export default {
     SearchOutline,
     AddCircleOutline,
     BaseModal,
+    SymbolRow,
   },
 
-  emits: ["openSymbolFormModal"],
+  emits: ["open-symbol-form-modal", "remove-market", "upload-data"],
 
   data() {
     return {
@@ -122,7 +126,7 @@ export default {
     },
 
     onAddMarketClick() {
-      this.$emit("openSymbolFormModal");
+      this.$emit("open-symbol-form-modal");
     },
 
     onKeypressEnter() {
@@ -133,6 +137,8 @@ export default {
       this.updateCurrentMarket(this.filteredMarketList[0]);
     },
   },
+
+  expose: ["updateCurrentMarket"],
 };
 </script>
 
