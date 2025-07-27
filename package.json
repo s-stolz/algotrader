@@ -7,8 +7,8 @@
     "backend"
   ],
   "scripts": {
-    "version:frontend": "npm version patch --workspace frontend && git add . && git commit -m \"Bump frontend version\" && git tag -a \"frontend-v$(node -p \"require('./frontend/package.json').version\")\" -m \"Frontend version $(node -p \"require('./frontend/package.json').version\")\"",
-    "version:backend": "npm version patch --workspace backend && git add . && git commit -m \"Bump backend version\" && git tag -a \"backend-v$(node -p \"require('./backend/package.json').version\")\" -m \"Backend version $(node -p \"require('./backend/package.json').version\")\"",
+    "version:frontend": "npm version patch --workspace frontend --no-git-tag-version && git add . && git commit -m \"Bump frontend version\" && git tag -a \"frontend-v$(node -p \"require('./frontend/package.json').version\")\" -m \"Frontend version $(node -p \"require('./frontend/package.json').version\")\"",
+    "version:backend": "npm version patch --workspace backend --no-git-tag-version && git add . && git commit -m \"Bump backend version\" && git tag -a \"backend-v$(node -p \"require('./backend/package.json').version\")\" -m \"Backend version $(node -p \"require('./backend/package.json').version\")\"",
     "version:database-api": "sh -c 'VERSION_TYPE=${1:-patch}; if git diff --quiet --exit-code database-accessor-api/; then cd database-accessor-api && bump2version --allow-dirty \"$VERSION_TYPE\"; else echo \"Error: database-accessor-api directory has uncommitted changes. Please commit or stash them first.\"; exit 1; fi' --",
     "version:backtester": "sh -c 'VERSION_TYPE=${1:-patch}; if git diff --quiet --exit-code backtester/; then cd backtester && bump2version --allow-dirty \"$VERSION_TYPE\"; else echo \"Error: backtester directory has uncommitted changes. Please commit or stash them first.\"; exit 1; fi' --"
   }
