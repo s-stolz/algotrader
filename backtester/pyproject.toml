@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "backtester"
-version = "0.0.1"
+version = "0.0.2"
 description = "Backtesting module for algotrader"
 authors = [{ name = "Sebastian Stolz", email = "admin@tradingnerd.io" }]
 license = { text = "MIT" }
