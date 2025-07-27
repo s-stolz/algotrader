@@ -23,3 +23,10 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/s-stolz/algotrader"
 Repository = "https://github.com/s-stolz/algotrader"
+
+[tool.pylint]
+# Pylint configuration is in .pylintrc
+
+[project.scripts]
+lint = "pylint src/ *.py --rcfile=.pylintrc"
+lint-verbose = "pylint src/ *.py --rcfile=.pylintrc --verbose"

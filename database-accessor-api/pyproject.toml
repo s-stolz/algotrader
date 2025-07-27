@@ -26,3 +26,10 @@ Repository = "https://github.com/s-stolz/algotrader"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.pylint]
+# Pylint configuration is in .pylintrc
+
+[project.scripts]
+lint = "pylint app/ *.py --rcfile=.pylintrc"
+lint-verbose = "pylint app/ *.py --rcfile=.pylintrc --verbose"

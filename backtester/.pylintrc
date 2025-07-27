@@ -1,0 +1,140 @@
+[MAIN]
+# Use multiple processes to speed up Pylint
+jobs=0
+
+# Files or directories to be skipped
+ignore=CVS,__pycache__,test
+
+# Python code to execute, usually for sys.path manipulation
+init-hook='import sys; sys.path.append(".")'
+
+[MESSAGES CONTROL]
+# Disable specific warnings that are too strict for practical development
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    fixme,
+    import-outside-toplevel,
+    broad-exception-caught,
+    broad-exception-raised
+
+# Enable specific checks
+enable=
+    useless-suppression,
+    deprecated-pragma,
+    use-symbolic-message-instead
+
+[REPORTS]
+# Set the output format
+output-format=text
+reports=no
+score=yes
+
+[REFACTORING]
+# Maximum number of nested blocks for function / method body
+max-nested-blocks=5
+
+[BASIC]
+# Good variable names which should always be accepted
+good-names=i,j,k,ex,Run,_,id,db,df,x,y,z
+
+# Bad variable names which should always be refused
+bad-names=foo,bar,baz,toto,tutu,tata
+
+# Regular expression matching correct function names
+function-rgx=[a-z_][a-z0-9_]{2,30}$
+
+# Regular expression matching correct variable names
+variable-rgx=[a-z_][a-z0-9_]{1,30}$
+
+# Regular expression matching correct constant names
+const-rgx=(([A-Z_][A-Z0-9_]*)|(__.*__))$
+
+# Regular expression matching correct attribute names
+attr-rgx=[a-z_][a-z0-9_]{2,30}$
+
+# Regular expression matching correct argument names
+argument-rgx=[a-z_][a-z0-9_]{2,30}$
+
+# Regular expression matching correct class attribute names
+class-attribute-rgx=([A-Za-z_][A-Za-z0-9_]{2,30}|(__.*__))$
+
+# Regular expression matching correct method names
+method-rgx=[a-z_][a-z0-9_]{2,30}$
+
+# Regular expression matching correct module names
+module-rgx=(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
+
+# Regular expression matching correct class names
+class-rgx=[A-Z_][a-zA-Z0-9]+$
+
+[FORMAT]
+# Maximum number of characters on a single line
+max-line-length=100
+
+# Maximum number of lines in a module
+max-module-lines=1000
+
+# String used as indentation unit
+indent-string='    '
+
+# Expected format of line ending
+expected-line-ending-format=LF
+
+[VARIABLES]
+# A regular expression matching the name of dummy variables
+dummy-variables-rgx=_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_
+
+# List of additional names supposed to be defined in builtins
+additional-builtins=
+
+[CLASSES]
+# List of method names used to declare (i.e. assign) instance attributes
+defining-attr-methods=__init__,__new__,setUp,__post_init__
+
+# List of member names, which should be excluded from the protected access warning
+exclude-protected=_asdict,_fields,_replace,_source,_make
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args=7
+
+# Maximum number of attributes for a class
+max-attributes=15
+
+# Maximum number of boolean expressions in an if statement
+max-bool-expr=5
+
+# Maximum number of branch for function / method body
+max-branches=12
+
+# Maximum number of locals for function / method body
+max-locals=15
+
+# Maximum number of parents for a class
+max-parents=7
+
+# Maximum number of public methods for a class
+max-public-methods=20
+
+# Maximum number of return / yield for function / method body
+max-returns=6
+
+# Maximum number of statements in function / method body
+max-statements=50
+
+# Minimum number of public methods for a class
+min-public-methods=2
+
+[IMPORTS]
+# List of modules that can be imported at any level, not just the top level
+allow-any-import-level=
+
+# Allow wildcard imports from modules that define __all__
+allow-wildcard-with-all=no
+
+[EXCEPTIONS]
+# Exceptions that will emit a warning when being caught
+overgeneral-exceptions=builtins.BaseException,builtins.Exception
