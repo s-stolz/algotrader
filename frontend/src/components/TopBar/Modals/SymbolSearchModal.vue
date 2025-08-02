@@ -53,8 +53,6 @@
 <script>
 import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useMarketsStore } from "@/stores/marketsStore";
-import { useCandlesticksStore } from "@/stores/candlesticksStore";
-import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
 
 import { NScrollbar, NInput, NIcon, NButton } from "naive-ui";
 import {
@@ -85,8 +83,6 @@ export default {
       symbolInput: "",
       currentMarketStore: useCurrentMarketStore(),
       marketsStore: useMarketsStore(),
-      candlesticksStore: useCandlesticksStore(),
-      currentTimeframeStore: useCurrentTimeframeStore(),
     };
   },
 
@@ -116,11 +112,6 @@ export default {
 
     updateCurrentMarket(market) {
       this.currentMarketStore.setMarket(market);
-
-      const symbolID = market.symbol_id;
-      const timeframe = this.currentTimeframeStore.value;
-
-      this.candlesticksStore.fetch(symbolID, timeframe);
 
       this.closeModal();
     },
