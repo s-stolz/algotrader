@@ -51,7 +51,7 @@ export default {
     },
   },
 
-  emits: ["marketClick", "removeMarket", "uploadData"],
+  emits: ["market-click", "remove-market", "upload-data"],
 
   computed: {
     menuOptions() {

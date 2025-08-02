@@ -17,8 +17,6 @@
 
 <script>
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
-import { useCurrentMarketStore } from "@/stores/currentMarketStore";
-import { useCandlesticksStore } from "@/stores/candlesticksStore";
 
 import { NPopselect, NButton } from "naive-ui";
 
@@ -33,8 +31,6 @@ export default {
   data() {
     return {
       currentTimeframeStore: useCurrentTimeframeStore(),
-      currentMarketStore: useCurrentMarketStore(),
-      candlesticksStore: useCandlesticksStore(),
       timeframes: [
         { label: "1M", value: 1 },
         { label: "5M", value: 5 },
@@ -51,9 +47,6 @@ export default {
   methods: {
     onTimeframeChange(value, option) {
       this.currentTimeframeStore.setCurrentTimeframe(option);
-
-      const symbolID  = this.currentMarketStore.symbol_id;
-      this.candlesticksStore.fetch(symbolID, value);
     },
   },
 };

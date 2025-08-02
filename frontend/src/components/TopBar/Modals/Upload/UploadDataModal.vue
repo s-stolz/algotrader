@@ -52,11 +52,11 @@ import BaseModal from "@/components/Common/BaseModal.vue";
 import UploadDataPreview from "./UploadDataPreview.vue";
 import UploadDataSection from "./UploadDataSection.vue";
 import {
-  getCsvFileText,
   getHeaderLine,
   getSeparator,
   getColumnMapping,
   parseCsvToCandles,
+  uploadCandlesInBatches,
 } from "./utils.js";
 
 export default {
@@ -124,9 +124,15 @@ export default {
         return;
       }
 
-      this.csvFileText = await getCsvFileText(this.fileList[0].file);
-      this.separator = getSeparator(this.csvFileText, this.separatorOptions);
-      this.headerLine = getHeaderLine(this.csvFileText, this.separator);
+      const file = this.fileList[0].file;
+      const fileSize = file.size;
+
+      const sampleSize = Math.min(10 * 1024, fileSize);
+      const sampleBlob = file.slice(0, sampleSize);
+      const csvSample = await sampleBlob.text();
+
+      this.separator = getSeparator(csvSample, this.separatorOptions);
+      this.headerLine = getHeaderLine(csvSample, this.separator);
       this.columnMapping = getColumnMapping(this.headerLine);
     },
 
@@ -137,31 +143,35 @@ export default {
 
       try {
         const file = this.fileList[0].file;
-        const text = await getCsvFileText(file);
+        const fileSize = file.size;
 
-        const candleData = parseCsvToCandles(text, this.separator, this.columnMapping);
+        console.log(`Processing file (${(fileSize / 1024 / 1024).toFixed(1)}MB)...`);
+
+        const candleData = await parseCsvToCandles(
+          file,
+          this.separator,
+          this.columnMapping,
+          (progress, rowCount) => {
+            console.log(`Processing: ${progress.toFixed(1)}% (${rowCount} rows)`);
+          },
+        );
 
         if (!candleData || candleData.length === 0) {
           throw new Error("No valid candle data found in CSV file");
         }
 
-        const payload = {
-          symbol_id: this.market.symbol_id,
-          candles: candleData,
-        };
+        console.log(`Parsed ${candleData.length} candles, uploading...`);
 
-        const response = await fetch("/api/data-accessor/candles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await uploadCandlesInBatches(
+          this.market.symbol_id,
+          candleData,
+          (progress, uploadedCount) => {
+            console.log(`Upload progress: ${progress.toFixed(1)}% (${uploadedCount} candles)`);
+          },
+        );
 
-        if (response.ok) {
-          this.$emit("upload-successful", this.market);
-          this.closeModal();
-        } else {
-          console.error("Failed to upload data:", response);
-        }
+        this.$emit("upload-successful", this.market);
+        this.closeModal();
       } catch (error) {
         console.error("Error uploading data:", error);
         alert(`Error uploading data: ${error.message}`);
