@@ -22,6 +22,7 @@ Note: Historical market data currently needs to be manually inserted into the da
    ```sh
    mv backend/sample.env backend/.env
    mv backtester/sample.env backtester/.env
+   mv database-accessor-api/sample.env database-accessor-api/.env
    ```
    Edit the `.env` files to set up the necessary configurations.
 3. Run the project and explore!  
