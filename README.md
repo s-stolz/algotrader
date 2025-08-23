@@ -16,8 +16,6 @@ investors. There is a possibility of losing the entire initial investment or eve
 
 If AlgoTrader has helped you with your algorithmic trading journey, you can support its continued development by using my [IC Trading affiliate link](https://www.ictrading.com?camp=86158) when opening a trading account. IC Trading offers competitive spreads and reliable execution for algorithmic traders.
 
-[![IC Trading](https://www.ictrading.com/assets/svgs/ICT-white.svg)](https://www.ictrading.com?camp=86158)
-
 *Using this link costs you nothing extra but helps fund the development of new features and improvements.*
 
 ## Prerequisites
