@@ -40,6 +40,10 @@ export const ChartMixin = {
       return this.chartOptions || {};
     },
 
+    getSeries() {
+      return this.chartManager.series;
+    },
+
     addCandlestickData(data, seriesOptions = {}) {
       const defaultOptions = {
         priceFormat: {
@@ -54,6 +58,18 @@ export const ChartMixin = {
 
     subscribeCrosshairMove(callback) {
       this.chartManager.subscribeCrosshairMove(callback);
+    },
+
+    unsubscribeCrosshairMove() {
+      this.chartManager.unsubscribeCrosshairMove();
+    },
+
+    subscribeVisibleLogicalRangeChange(callback) {
+      this.chartManager.subscribeVisibleLogicalRangeChange(callback);
+    },
+
+    unsubscribeVisibleLogicalRangeChange() {
+      this.chartManager.unsubscribeVisibleLogicalRangeChange();
     },
 
     cleanupChart() {

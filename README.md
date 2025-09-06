@@ -2,9 +2,21 @@
 
 AlgoTrader is an experimental trading project that uses the [Lightweight Charts](https://tradingview.github.io/lightweight-charts/) library to visualize historical market data.
 
-## Disclaimer
+## Development Disclaimer
 
 This project is in active development and may undergo significant changes. **Backward compatibility is not guaranteed**—things might break! Please use this repository **for reference only** and not as a stable library.
+
+## Trading Risk Disclaimer
+
+Trading in derivative instruments—including futures, options, CFDs, Forex, and
+certificates—carries significant risk and may not be appropriate for all
+investors. There is a possibility of losing the entire initial investment or even more. **Use this project at your own risk.**
+
+## Support the Project
+
+If AlgoTrader has helped you with your algorithmic trading journey, you can support its continued development by using my [IC Trading affiliate link](https://www.ictrading.com?camp=86158) when opening a trading account. IC Trading offers competitive spreads and reliable execution for algorithmic traders.
+
+*Using this link costs you nothing extra but helps fund the development of new features and improvements.*
 
 ## Prerequisites
 - [Docker](https://docs.docker.com/get-started/get-docker/) installed on your machine.
@@ -22,6 +34,7 @@ Note: Historical market data currently needs to be manually inserted into the da
    ```sh
    mv backend/sample.env backend/.env
    mv backtester/sample.env backtester/.env
+   mv database-accessor-api/sample.env database-accessor-api/.env
    ```
    Edit the `.env` files to set up the necessary configurations.
 3. Run the project and explore!  

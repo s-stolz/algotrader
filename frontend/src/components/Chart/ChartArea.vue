@@ -52,6 +52,8 @@ export default {
       },
       crossHairTimeout: null,
       candlestickOhlc: undefined,
+      isFetchingCandles: false,
+      candlesFetchLimit: 5000,
     };
   },
 
@@ -80,6 +82,13 @@ export default {
       },
       immediate: true,
     },
+
+    "currentTimeframeStore.value": {
+      handler() {
+        this.fetchCandlesticks();
+      },
+      immediate: true,
+    },
   },
 
   mounted() {
@@ -89,6 +98,7 @@ export default {
   methods: {
     async initializeChartComponent() {
       this.subscribeCrosshairMove(this.onCrosshairMove);
+      this.subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChange);
 
       await this.fetchCandlesticks();
     },
@@ -99,7 +109,7 @@ export default {
       const symbolID = this.currentMarketStore.symbol_id;
       const timeframe = this.currentTimeframeStore.value;
 
-      await this.candlesticksStore.fetch(symbolID, timeframe);
+      await this.candlesticksStore.fetch(symbolID, timeframe, null, null, this.candlesFetchLimit);
     },
 
     setMinMove(minMove) {
@@ -136,6 +146,30 @@ export default {
       } catch (error) {
         console.log("Error in crosshair move handler:", error);
       }
+    },
+
+    onVisibleLogicalRangeChange(newVisibleLogicalRange) {
+      const series = this.getSeries();
+
+      for (const [, value] of series.entries()) {
+        const barsInfo = value.series.barsInLogicalRange(newVisibleLogicalRange);
+
+        if (barsInfo !== null && barsInfo.barsBefore < 100 && !this.isFetchingCandles) {
+          this.isFetchingCandles = true;
+
+          this.loadMoreBars();
+        }
+      }
+    },
+
+    async loadMoreBars() {
+      const symbolID = this.currentMarketStore.symbol_id;
+      const timeframe = this.currentTimeframeStore.value;
+      const firstBarTime = this.candlesticksStore.data[0].time;
+      const firstBarDate = new Date(firstBarTime * 1000).toISOString().slice(0, -5);
+
+      await this.candlesticksStore.fetch(symbolID, timeframe, null, firstBarDate, this.candlesFetchLimit, true);
+      this.isFetchingCandles = false;
     },
 
     isValidCrosshairPoint(param) {

@@ -137,7 +137,11 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
     return added
 
 
-async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optional[str] = None, end_date: Optional[str] = None, limit: Optional[int] = None):
+async def get_candles(
+    session, symbol_id: int, timeframe: int,
+    _start_date: Optional[str] = None, _end_date: Optional[str] = None,
+    limit: Optional[int] = None
+):
     """
     Get candles from the database
 
@@ -181,7 +185,7 @@ async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optio
             FROM candles
             WHERE symbol_id = :symbol_id
             AND (timestamp >= :start_date OR :start_date IS NULL)
-            AND (timestamp <= :end_date OR :end_date IS NULL)
+            AND (timestamp < :end_date OR :end_date IS NULL)
         )
         SELECT
             rounded_timestamp AS timestamp,
@@ -199,8 +203,8 @@ async def get_candles(session, symbol_id: int, timeframe: int, start_date: Optio
         limit_clause="LIMIT :limit" if limit else ""
     ))
 
-    start_date = datetime.fromisoformat(start_date) if start_date else None
-    end_date = datetime.fromisoformat(end_date) if end_date else None
+    start_date = datetime.fromisoformat(_start_date) if _start_date else None
+    end_date = datetime.fromisoformat(_end_date) if _end_date else None
     params = {
         "symbol_id": symbol_id,
         "timeframe": timeframe,

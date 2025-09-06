@@ -1,11 +1,11 @@
 import {
-  createChart,
-  LineSeries,
   AreaSeries,
   BarSeries,
   BaselineSeries,
   CandlestickSeries,
+  createChart,
   HistogramSeries,
+  LineSeries,
 } from 'lightweight-charts';
 
 export class ChartManager {
@@ -13,7 +13,7 @@ export class ChartManager {
     this.chart = null;
     this.series = new Map();
     this.container = null;
-    this.loadedBars = 5000;
+    this.loadedBars = 500;
 
     this.defaultOptions = {
       layout: {
@@ -103,24 +103,6 @@ export class ChartManager {
     }
   }
 
-  updateSeriesData(key, data) {
-    const seriesInfo = this.series.get(key);
-    if (!seriesInfo) {
-      console.error(`Series '${key}' not found`);
-      return false;
-    }
-
-    try {
-      const slicedData = this.sliceData(data);
-      seriesInfo.series.setData(slicedData);
-      seriesInfo.data = [...data];
-      return true;
-    } catch (error) {
-      console.error(`Failed to update series '${key}':`, error);
-      return false;
-    }
-  }
-
   removeSeries(key) {
     const seriesInfo = this.series.get(key);
 
@@ -203,12 +185,6 @@ export class ChartManager {
     if (this.chart) {
       this.chart.timeScale().subscribeVisibleLogicalRangeChange(callback);
     }
-  }
-
-  sliceData(data) {
-    const len = data.length;
-    const start = Math.max(0, len - this.loadedBars);
-    return data.slice(start, len);
   }
 
   destroy() {
