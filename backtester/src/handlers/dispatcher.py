@@ -3,7 +3,7 @@ Message dispatcher to route messages to appropriate handlers.
 """
 import json
 import logging
-from typing import List
+from typing import List, Optional
 from .base import BaseHandler
 
 
@@ -30,7 +30,7 @@ class MessageDispatcher:
                 self.logger.warning("Message has no type field")
                 return
 
-            handler = self.find_handler(message_type)
+            handler = await self.find_handler(message_type)
             if handler is None:
                 self.logger.warning(
                     f"No handler found for message type: {message_type}"
@@ -44,9 +44,9 @@ class MessageDispatcher:
         except Exception as e:
             self.logger.error(f"Error dispatching message: {e}")
 
-    def find_handler(self, message_type: str) -> BaseHandler:
+    async def find_handler(self, message_type: str) -> Optional[BaseHandler]:
         """Find a handler that can process the given message type."""
         for handler in self.handlers:
-            if handler.can_handle(message_type):
+            if await handler.can_handle(message_type):
                 return handler
         return None
