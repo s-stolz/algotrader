@@ -25,7 +25,6 @@ class BaseHandler(ABC):
     async def send_response(self, websocket, response_data: dict) -> None:
         """Send a response back through the websocket."""
         response = Ticket().from_object(response_data)
-        self.logger.info(f"Sending: {response}")
         await websocket.send(response)
 
     def log_received(self, message: dict) -> None:
