@@ -1,6 +1,9 @@
-FROM python:3.10
+FROM python:3.12-slim
 
 WORKDIR /app
+
+# Upgrade pip to latest version
+RUN pip install --upgrade pip
 
 COPY requirements.txt .
 
