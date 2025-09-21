@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "indicator-api"
+version = "0.0.1"
+description = "Indicator API for algotrader"
+authors = [{ name = "Sebastian Stolz", email = "admin@tradingnerd.io" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy[asyncio]",
+    "asyncpg",
+    "python-dotenv",
+    "pydantic",
+]
+
+[project.urls]
+Homepage = "https://github.com/s-stolz/algotrader"
+Repository = "https://github.com/s-stolz/algotrader"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pylint]
+# Pylint configuration is in .pylintrc
+
+[project.scripts]
+lint = "pylint app/ *.py --rcfile=.pylintrc"
+lint-verbose = "pylint app/ *.py --rcfile=.pylintrc --verbose"

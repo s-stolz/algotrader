@@ -14,6 +14,21 @@ services:
       - .env
     restart: always
 
+  indicator-api:
+    container_name: indicator-api
+    build: 
+      context: ./indicator-api
+      dockerfile: Dockerfile
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./indicator-api:/app
+    depends_on:
+      - database-accessor-api
+    env_file:
+      - .env
+    restart: always
+
   timescaledb:
     container_name: timescaledb
     image: timescale/timescaledb:latest-pg17
