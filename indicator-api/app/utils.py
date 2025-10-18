@@ -67,20 +67,21 @@ def prepare_parameters(
 
 
 def format_indicator_response(
-        indicator_data: pd.DataFrame, indicator_id: int, metadata: dict) -> dict:
+    indicator_data: pd.DataFrame,
+    metadata: dict,
+) -> dict:
     # Format the response
     indicator_reset = indicator_data.reset_index()
     indicator_reset['timestamp'] = indicator_reset['timestamp'].dt.strftime(
         '%Y-%m-%d %H:%M:%SZ')
 
-    # response_data = {
-    #     'data': {
-    #         'id': indicator_id,
-    #         'indicator_info': metadata,
-    #         'indicator_data': indicator_reset.to_dict(orient='records')
-    #     }
-    # }
-    return {'data': indicator_reset.to_dict(orient='records')}
+    response_data = {
+        'data': {
+            'indicator_info': metadata,
+            'indicator_data': indicator_reset.to_dict(orient='records')
+        }
+    }
+    return response_data
 
 
 def adjust_fetch_bounds(

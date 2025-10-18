@@ -63,8 +63,21 @@ export class ChartManager {
       return null;
     }
 
+    // If series already exists, update its data instead of removing and recreating
     if (this.series.has(key)) {
-      this.removeSeries(key);
+      const existingSeriesInfo = this.series.get(key);
+
+      // Update the data
+      existingSeriesInfo.series.setData(data);
+      existingSeriesInfo.data = [...data];
+
+      // Update options if they've changed
+      if (JSON.stringify(existingSeriesInfo.options) !== JSON.stringify(seriesOptions)) {
+        existingSeriesInfo.series.applyOptions(seriesOptions);
+        existingSeriesInfo.options = { ...seriesOptions };
+      }
+
+      return existingSeriesInfo.series;
     }
 
     const newSeries = this.createSeries(type, seriesOptions, paneIndex);

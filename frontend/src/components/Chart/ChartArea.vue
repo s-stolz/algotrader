@@ -11,7 +11,7 @@
     <div>
       <indicator
         v-for="indicator in getAllIndicators()"
-        :key="indicator.id"
+        :key="indicator._id"
         :indicator="indicator"
         :indicator-manager="indicatorManager"
       />
@@ -54,6 +54,8 @@ export default {
       candlestickOhlc: undefined,
       isFetchingCandles: false,
       candlesFetchLimit: 5000,
+      isFetchingIndicators: false,
+      indicatorBatchSize: 5000,
     };
   },
 
@@ -154,10 +156,16 @@ export default {
       for (const [, value] of series.entries()) {
         const barsInfo = value.series.barsInLogicalRange(newVisibleLogicalRange);
 
-        if (barsInfo !== null && barsInfo.barsBefore < 100 && !this.isFetchingCandles) {
-          this.isFetchingCandles = true;
+        if (barsInfo === null) continue;
 
+        if (barsInfo.barsBefore < 100 && !this.isFetchingCandles) {
+          this.isFetchingCandles = true;
           this.loadMoreBars();
+        }
+
+        if (barsInfo.barsBefore < 100 && !this.isFetchingIndicators) {
+          this.isFetchingIndicators = true;
+          this.loadMoreIndicatorHistory();
         }
       }
     },
@@ -170,6 +178,17 @@ export default {
 
       await this.candlesticksStore.fetch(symbolID, timeframe, null, firstBarDate, this.candlesFetchLimit, true);
       this.isFetchingCandles = false;
+    },
+
+    async loadMoreIndicatorHistory() {
+      const symbolID = this.currentMarketStore.symbol_id;
+      const timeframe = this.currentTimeframeStore.value;
+
+      try {
+        await this.indicatorsStore.fetchOlderForAll(symbolID, timeframe, this.indicatorBatchSize);
+      } finally {
+        this.isFetchingIndicators = false;
+      }
     },
 
     isValidCrosshairPoint(param) {

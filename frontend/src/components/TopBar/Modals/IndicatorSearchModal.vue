@@ -22,10 +22,10 @@
       <n-scrollbar style="height: 300px">
         <table>
           <tbody>
-            <template v-for="(indicatorName, key) in filteredIndicators" :key="key">
-              <tr @click="onApplyIndicator(indicatorName)">
+            <template v-for="(indicator) in filteredIndicators" :key="indicator.id">
+              <tr @click="onApplyIndicator(indicator)">
                 <td>
-                  {{ indicatorName }}
+                  {{ indicator.name }}
                 </td>
               </tr>
 
@@ -72,9 +72,9 @@ export default {
     filteredIndicators() {
       return this.indicators
         .filter((indicator) =>
-          indicator.toUpperCase().includes(this.indicatorInput.toUpperCase()),
+          indicator.name.toUpperCase().includes(this.indicatorInput.toUpperCase()),
         )
-        .sort((a, b) => a.localeCompare(b));
+        .sort((a, b) => a.name.localeCompare(b.name));
     },
 
     symbolID() {
@@ -87,46 +87,30 @@ export default {
   },
 
   mounted() {
-    this.$wss.on("message", this.wssMessageHandler);
-    this.$wss.send("Backtester", "list-indicators");
-  },
-
-  beforeUnmount() {
-    this.$wss.off("message", this.wssMessageHandler);
+    this.getIndicators();
   },
 
   methods: {
-    wssMessageHandler(data) {
-      const message = this.parseMessage(data);
-      this.handleMessage(message);
+    getIndicators() {
+      fetch("/api/indicator-api/indicators")
+        .then((response) => response.json())
+        .then((data) => {
+          this.indicators = data;
+          console.log(data);
+        })
+        .catch((error) => {
+          console.error("Error fetching indicators:", error);
+        });
     },
 
-    parseMessage(data) {
-      try {
-        return JSON.parse(data);
-      } catch (error) {
-        console.error("Failed to parse message:", error);
-      }
-    },
-
-    handleMessage(message) {
-      if (message.type === "list-indicators-response")
-        this.handleListIndicatorsResponse(message.data);
-    },
-
-    handleListIndicatorsResponse(indicators) {
-      this.indicators = indicators;
-    },
-
-    onApplyIndicator(indicatorName) {
-      const data = {
-        id: null,
-        name: indicatorName,
+    onApplyIndicator(indicator) {
+      const queryParams = {
         symbol_id: this.symbolID,
         timeframe: this.timeframe,
+        limit: 5000,
       };
 
-      this.indicatorsStore.requestIndicator(data);
+      this.indicatorsStore.requestIndicator(null, indicator.id, queryParams, {});
     },
   },
 };

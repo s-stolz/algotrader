@@ -6,6 +6,8 @@ import sys
 import pandas as pd
 from logger import logger
 
+log = logger(__name__)
+
 
 class Indicator(Protocol):
     """Protocol every indicator class should satisfy.
@@ -122,7 +124,7 @@ def execute_indicator(
                 f"Indicator {indicator_cls.__name__} received unexpected parameters: {sorted(extras)}"
             )
         elif warn_extra:
-            logger.warning(
+            log.warning(
                 f"[{indicator_cls.__name__}] Ignored extra parameters: {sorted(extras)}",
                 stacklevel=2,
             )

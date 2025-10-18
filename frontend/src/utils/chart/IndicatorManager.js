@@ -1,58 +1,9 @@
-import { wsService } from "../websocketService";
 import { useIndicatorsStore } from "@/stores/indicatorsStore";
 
 export class IndicatorManager {
   constructor(chartManager = null) {
     this.indicatorsStore = useIndicatorsStore();
     this.chartManager = chartManager;
-
-    this.startListening();
-  }
-
-  startListening() {
-    wsService.on("message", (data) => {
-      const message = this.tryParseMessage(data);
-      this.handleMessage(message);
-    });
-  }
-
-  tryParseMessage(data) {
-    try {
-      return JSON.parse(data);
-    } catch (error) {
-      console.error("Failed to parse message data:", error);
-    }
-  }
-
-  handleMessage(message) {
-    if (message.type === "indicator-info") {
-      this.handleMessageIndicatorInfo(message.data);
-    }
-  }
-
-  handleMessageIndicatorInfo(messageData) {
-    const {
-      id: indicatorId,
-      indicator_info: indicatorInfo,
-      indicator_data: indicatorData,
-    } = messageData;
-    const indicatorExists = indicatorId !== null;
-    let newIndicatorId;
-
-    if (!indicatorExists) {
-      newIndicatorId = this.indicatorsStore.addIndicator(
-        indicatorInfo,
-        indicatorData,
-      );
-    } else {
-      this.indicatorsStore.updateIndicatorData(
-        indicatorId,
-        indicatorData,
-      );
-    }
-
-    const id = indicatorId || newIndicatorId;
-    this.addIndicatorSeries(id);
   }
 
   async addIndicatorSeries(id) {
@@ -107,11 +58,32 @@ export class IndicatorManager {
     this.indicatorsStore.removeIndicator(id);
   }
 
+  refreshIndicatorSeries(id) {
+    const indicator = this.indicatorsStore.getById(id);
+
+    if (!indicator) return;
+
+    const { info, data } = indicator;
+
+    for (const outputKey in info.outputs) {
+      if (outputKey === 'timestamp') continue;
+
+      const seriesKey = `${id}_${outputKey}`;
+      const seriesInfo = this.chartManager.series.get(seriesKey);
+
+      if (!seriesInfo) continue;
+
+      const transformed = this.transformIndicatorData(data, outputKey);
+      seriesInfo.series.setData(transformed);
+      seriesInfo.data = transformed;
+    }
+  }
+
   removeIndicatorSeries(id) {
     const indicator = this.indicatorsStore.getById(id);
     if (!indicator || !this.chartManager) return;
 
-    for(const indicatorOutput in indicator.info.outputs) {
+    for (const indicatorOutput in indicator.info.outputs) {
       if (indicatorOutput === 'timestamp') {
         continue;
       }
@@ -125,7 +97,7 @@ export class IndicatorManager {
     for (const indicator of this.indicatorsStore.all) {
       if (indicator.paneHtmlElement === null) {
         const paneHtmlElement = await this.chartManager.getPaneHtmlElement(indicator.paneIndex);
-        this.indicatorsStore.updateIndicatorPaneElement(indicator.id, paneHtmlElement);
+        this.indicatorsStore.updateIndicatorPaneElement(indicator._id, paneHtmlElement);
       }
     }
   }

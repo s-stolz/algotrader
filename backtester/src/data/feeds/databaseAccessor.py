@@ -1,8 +1,8 @@
 import requests
 import logging
-import pandas as pd
 from decouple import config
-from typing import List
+from typing import Optional
+import json
 
 log = logging.getLogger(__name__)
 
@@ -32,9 +32,17 @@ class Database:
             return response
         except requests.exceptions.RequestException as e:
             log.error(f"API request failed: {method} {url} - {e}")
+            response = requests.Response()
+            response.status_code = 500
+            try:
+                response._content = json.dumps({'error': str(e)}).encode('utf-8')
+                response.headers['Content-Type'] = 'application/json'
+            except Exception:
+                response._content = b'{"error":"internal_error"}'
+            return response
 
     @staticmethod
-    def get_market(symbol_id: int) -> tuple[str, str]:
+    def get_market(symbol_id: int) -> tuple[str, str] | None:
         """Get market by symbol_id."""
         try:
             response = Database._make_request('GET', f'/markets/{symbol_id}')
@@ -45,7 +53,7 @@ class Database:
             return None
 
     @staticmethod
-    def get_symbol_id(symbol: str, exchange: str = None) -> int:
+    def get_symbol_id(symbol: str, exchange: Optional[str] = None) -> int | None:
         """Get symbol_id by symbol and exchange."""
         try:
             params = {'symbol': symbol, 'exchange': exchange}
@@ -62,10 +70,15 @@ class Database:
             return None
 
     @staticmethod
-    def get_candles(symbol_id: int, timeframe: int, start_date: str = None, end_date: str = None, limit: int = None) -> list:
+    def get_candles(symbol_id: int,
+                    timeframe: int,
+                    start_date: Optional[str] = None,
+                    end_date: Optional[str] = None,
+                    limit: Optional[int] = None,
+                    ) -> list:
         """Get aggregated candles from the database."""
         try:
-            params = {
+            params: dict[str, object] = {
                 'timeframe': timeframe
             }
             if start_date:

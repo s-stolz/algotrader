@@ -1,5 +1,4 @@
 import { defineStore } from "pinia";
-import { wsService } from "../utils/websocketService";
 
 export const useIndicatorsStore = defineStore('indicators', {
   state: () => ({
@@ -9,118 +8,193 @@ export const useIndicatorsStore = defineStore('indicators', {
 
   getters: {
     all: (state) => Array.from(state.indicators.values()),
-    getById: (state) => (id) => state.indicators.get(id),
-    exists: (state) => (id) => state.indicators.has(id),
+    getById: (state) => (_id) => state.indicators.get(_id),
+    exists: (state) => (_id) => state.indicators.has(_id),
   },
 
   actions: {
     requestAllIndicators(symbolID, timeframe) {
-      const currentMarketData = {
-        symbol_id: symbolID,
-        timeframe: timeframe,
-      };
-
       for (const indicator of this.all) {
-        const indicatorData = {
-          id: indicator.id,
-          name: indicator.info.name,
-          ...currentMarketData,
+        if (indicator.hasExpandedHistory) continue;
+
+        const queryParams = {
+          symbol_id: symbolID,
+          timeframe: timeframe,
+          limit: indicator.currentLimit || 5000,
         };
 
-        this.requestIndicator(indicatorData);
+        const body = {
+          parameters: this.extractParameterValues(indicator.parameters),
+        };
+
+        this.requestIndicator(indicator._id, indicator.indicatorId, queryParams, body);
       }
     },
 
-    requestIndicator(data) {
-      wsService.send("Backtester", "get-indicator", data);
+    async fetchOlderForAll(symbolID, timeframe, batchSize = 5000) {
+      for (const indicator of this.all) {
+        if (!indicator.data.length) continue;
+        indicator.hasExpandedHistory = true;
+
+        const earliestTs = indicator.data[0].timestamp.replace(/Z$/, '');
+        const queryParams = { symbol_id: symbolID, timeframe, end_date: earliestTs, limit: batchSize };
+        const body = { parameters: this.extractParameterValues(indicator.parameters) };
+
+        await this.requestIndicatorPrepend(indicator._id, indicator.indicatorId, queryParams, body);
+      }
     },
 
-    addIndicator(info, data, parameters = {}) {
-      const id = String(Date.now());
-      let finalParameters = { ...parameters };
+    async requestIndicator(_id, indicatorId, query, body = {}) {
+      const params = new URLSearchParams(query).toString();
+
+      try {
+        const response = await fetch(`/api/indicator-api/indicators/${indicatorId}?${params}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+
+        const { data } = await response.json();
+
+        this.handleMessageIndicatorInfo({
+          _id,
+          indicatorId,
+          ...data,
+        });
+      } catch (error) {
+        console.error("Error fetching indicator:", error);
+      }
+    },
+
+    async requestIndicatorPrepend(_id, indicatorId, query, body = {}) {
+      const indicator = this.indicators.get(_id);
+
+      if (!indicator || !indicator.data.length) return;
+
+      const params = new URLSearchParams(query).toString();
+
+      try {
+        const response = await fetch(`/api/indicator-api/indicators/${indicatorId}?${params}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await response.json();
+
+        const { indicator_data: newData } = data.data;
+
+        const mergedData = [...newData, ...indicator.data];
+        this.updateIndicatorData(_id, mergedData);
+      } catch (error) {
+        console.error('Failed to prepend indicator data', error);
+      }
+    },
+
+    // mergePrepend(existing, incoming) {
+    //   if (!Array.isArray(incoming) || incoming.length === 0) return existing;
+
+    //   const existingSet = new Set(existing.map(d => d.timestamp));
+    //   const uniqueOlder = incoming.filter(d => !existingSet.has(d.timestamp));
+
+    //   if (!uniqueOlder.length) return existing;
+
+    //   const merged = [...incoming, ...existing];
+    //   merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    //   return merged;
+    // },
+
+    // Data processing
+    handleMessageIndicatorInfo(indicatorResponse) {
+      const {
+        _id,
+        indicatorId,
+        indicator_info: indicatorInfo,
+        indicator_data: indicatorData,
+      } = indicatorResponse;
+      const indicatorExists = _id !== null && this.indicators.has(_id);
+      let newLocalId = _id;
+
+      if (!indicatorExists) {
+        newLocalId = this.addIndicator(
+          indicatorInfo,
+          indicatorData,
+          indicatorId,
+        );
+      } else {
+        this.updateIndicatorData(_id, indicatorData);
+      }
+
+      return newLocalId;
+    },
+
+    addIndicator(info, data, indicatorId, providedParameters = {}) {
+      const _id = String(Date.now());
+      let finalParameters = { ...providedParameters };
 
       for (const [key, paramInfo] of Object.entries(info.parameters)) {
-        finalParameters[key] = {
-          ...paramInfo,
-          value: paramInfo.default,
-        };
+        if (!(key in finalParameters)) {
+          finalParameters[key] = {
+            ...paramInfo,
+            value: paramInfo.default,
+          };
+        } else if (!('value' in finalParameters[key])) {
+          finalParameters[key].value = paramInfo.default;
+        }
       }
 
       const indicator = {
-        id,
+        _id,
+        indicatorId,
         info: { ...info },
         paneIndex: info.overlay ? 0 : this.paneCount++,
         paneHtmlElement: null,
         data: [...data],
         parameters: finalParameters,
         styles: this.createStyles(info.outputs || {}),
+        currentLimit: data.length || 5000,
+        hasExpandedHistory: false,
       };
-      this.indicators.set(id, indicator);
+      this.indicators.set(_id, indicator);
 
-      return id;
+      return _id;
     },
 
-    updateIndicatorData(id, newData) {
-      const indicator = this.indicators.get(id);
+    updateIndicatorData(_id, newData) {
+      const indicator = this.indicators.get(_id);
 
-      indicator.data = [...newData];
+      if (!indicator) return;
+
+      indicator.data = Array.isArray(newData) ? [...newData] : [];
+      indicator.currentLimit = indicator.data.length;
     },
 
-    updateIndicatorParameters(id, newParameters) {
-      const indicator = this.indicators.get(id);
+    updateIndicatorParameters(_id, newParameters) {
+      const indicator = this.indicators.get(_id);
 
-      for (const [key, { value: paramValue }] of Object.entries(newParameters)) {
-        indicator.parameters[key].value = paramValue;
+      for (const [key, paramVal] of Object.entries(newParameters)) {
+        if (!indicator.parameters[key]) continue;
+        if (paramVal && typeof paramVal === 'object' && 'value' in paramVal) {
+          indicator.parameters[key].value = paramVal.value;
+        } else {
+          indicator.parameters[key].value = paramVal;
+        }
       }
 
       return indicator.parameters;
     },
 
-    // updateIndicatorStyles(id, outputKey, newStyles) {
-    //   const indicator = this.indicators.get(id);
-    //   if (!indicator) {
-    //     console.warn(`Indicator ${id} not found`);
-    //     return false;
-    //   }
-
-    //   if (!indicator.styles[outputKey]) {
-    //     indicator.styles[outputKey] = {};
-    //   }
-
-    //   indicator.styles[outputKey] = {
-    //     ...indicator.styles[outputKey],
-    //     ...newStyles
-    //   };
-
-    //   return true;
-    // },
-
-    createStyles(outputs) {
-      const styles = {};
-
-      for (const outputKey in outputs) {
-        if (outputKey !== 'timestamp') {
-          styles[outputKey] = {
-            ...outputs[outputKey].plotOptions || {},
-          };
-        }
-      }
-      return styles;
-    },
-
-    updateIndicatorPaneElement(id, paneHtmlElement) {
-      const indicator = this.indicators.get(id);
-      indicator.paneHtmlElement = paneHtmlElement;
-    },
-
-    removeIndicator(id) {
-      const indicator = this.indicators.get(id);
+    removeIndicator(_id) {
+      const indicator = this.indicators.get(_id);
+      if (!indicator) return;
       const paneIndex = indicator.paneIndex;
       if (paneIndex > 0) {
         this.updateIndicatorsPaneIndex(paneIndex);
       }
 
-      this.indicators.delete(id);
+      this.indicators.delete(_id);
     },
 
     updateIndicatorsPaneIndex(changedPaneIndex) {
@@ -134,9 +208,35 @@ export const useIndicatorsStore = defineStore('indicators', {
       this.paneCount = Math.max(1, this.paneCount - 1);
     },
 
+    updateIndicatorPaneElement(_id, paneHtmlElement) {
+      const indicator = this.indicators.get(_id);
+      indicator.paneHtmlElement = paneHtmlElement;
+    },
+
     clear() {
       this.indicators.clear();
       this.paneCount = 1;
+    },
+
+    extractParameterValues(parameters) {
+      const out = {};
+      for (const [k, v] of Object.entries(parameters)) {
+        out[k] = v.value !== undefined ? v.value : v.default;
+      }
+      return out;
+    },
+
+    createStyles(outputs) {
+      const styles = {};
+
+      for (const outputKey in outputs) {
+        if (outputKey !== 'timestamp') {
+          styles[outputKey] = {
+            ...outputs[outputKey].plotOptions || {},
+          };
+        }
+      }
+      return styles;
     },
   },
 });

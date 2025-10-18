@@ -83,14 +83,6 @@ export default {
       return this.currentTimeframeStore.value;
     },
 
-    indicatorId() {
-      return this.indicator.id;
-    },
-
-    indicatorInfo() {
-      return this.indicator?.info;
-    },
-
     indicatorParameters() {
       return this.indicator?.parameters;
     },
@@ -124,31 +116,38 @@ export default {
 
     handleParameterUpdate() {
       const customParameters = this.buildCustomParameters();
-      this.updateIndicatorStoreParameters(this.indicatorId, customParameters);
+      this.updateIndicatorStoreParameters(this.indicator._id, customParameters);
 
-      const requestData = {
-        id: this.indicatorId,
-        name: this.indicatorInfo.name,
+      const queryParams = {
         symbol_id: this.symbolID,
         timeframe: this.timeframe,
+        limit: 5000,
+      };
+      const body = {
         parameters: customParameters,
       };
-      this.requestIndicatorWithNewParameters(requestData);
+
+      this.requestIndicatorWithNewParameters(
+        this.indicator._id,
+        this.indicator.indicatorId,
+        queryParams,
+        body,
+      );
     },
 
-    updateIndicatorStoreParameters(indicatorId, newParameters) {
-      this.indicatorsStore.updateIndicatorParameters(indicatorId, newParameters);
+    updateIndicatorStoreParameters(_id, newParameters) {
+      this.indicatorsStore.updateIndicatorParameters(_id, newParameters);
     },
 
-    requestIndicatorWithNewParameters(requestData) {
-      this.indicatorsStore.requestIndicator(requestData);
+    requestIndicatorWithNewParameters(_id, indicatorId, queryParams, body) {
+      this.indicatorsStore.requestIndicator(_id, indicatorId, queryParams, body);
     },
 
     buildCustomParameters() {
       const customParameters = {};
 
       for (const [key, param] of Object.entries(this.indicatorParameters)) {
-        customParameters[key] = { value: param.value };
+        customParameters[key] = param.value;
       }
       return customParameters;
     },

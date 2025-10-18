@@ -11,7 +11,7 @@
 
     <indicator-settings-modal
       :indicator="indicator"
-      :modalId="`indicatorSettings_${indicator.id}`"
+      :modalId="`indicatorSettings_${indicator._id}`"
       @update-styles="onUpdateStyles"
     />
   </div>
@@ -48,6 +48,23 @@ export default {
   },
 
   watch: {
+    indicator: {
+      handler(newVal, _oldVal) {
+        if (!newVal) return;
+
+        this.indicatorManager.addIndicatorSeries(newVal._id);
+      },
+      immediate: true,
+    },
+
+    "indicator.data": {
+      handler() {
+        if (!this.indicator || !this.indicator._id) return;
+
+        this.indicatorManager.refreshIndicatorSeries(this.indicator._id);
+      },
+    },
+
     "indicator.paneIndex": {
       handler(paneIndex) {
         if (paneIndex === null || paneIndex === undefined) {
@@ -83,7 +100,7 @@ export default {
     },
 
     onUpdateStyles({ outputKey, styles }) {
-      this.indicatorManager.updateIndicatorStyles(this.indicator.id, outputKey, styles);
+      this.indicatorManager.updateIndicatorStyles(this.indicator._id, outputKey, styles);
     },
 
     createNewIndicatorsWrapper() {

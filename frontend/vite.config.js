@@ -1,7 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 
-import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { defineConfig } from 'vite';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -21,6 +21,11 @@ export default defineConfig({
         target: "http://database-accessor-api:8000",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/data-accessor/, ''),
+      },
+      "/api/indicator-api": {
+        target: "http://indicator-api:8010",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/indicator-api/, ''),
       },
     },
   },

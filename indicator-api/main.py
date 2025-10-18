@@ -2,7 +2,7 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
-from logger import logger, LOG_LEVEL
+from logger import logger, LOG_LEVEL_UVICORN
 from app.schemas import IndicatorParameters
 from app.candles import get_candles
 from app.utils import (
@@ -21,7 +21,8 @@ import os
 
 from __init__ import __version__
 
-logger.info(f"Starting Indicator API version {__version__}")
+log = logger(__name__)
+log.info(f"Starting Indicator API version {__version__}")
 
 
 @asynccontextmanager
@@ -34,9 +35,9 @@ async def lifespan(app: FastAPI):
     """
     try:
         await load_symbols()
-        logger.info("[lifespan] Loaded %d symbols into cache", len(markets.SYMBOL_MAPPING))
+        log.info("Loaded %d symbols into cache", len(markets.SYMBOL_MAPPING))
     except Exception as exc:
-        logger.warning("[lifespan] Failed to preload symbols: %s", exc)
+        log.warning("Failed to preload symbols: %s", exc)
 
     yield
 
@@ -63,7 +64,9 @@ async def root():
 
 @app.get("/indicators")
 async def get_indicators() -> list[dict]:
-    return get_available_indicators()
+    indicators = get_available_indicators()
+    log.debug(f"Available indicators: {indicators}")
+    return indicators
 
 
 @app.post("/indicators/{indicator_id}")
@@ -98,7 +101,7 @@ async def run_indicator(
         warmup=warmup,
     )
 
-    logger.info(
+    log.info(
         f"Adjusted fetch bounds: start_date={fetch_start}, limit={fetch_limit} (orig_start={orig_start}, orig_limit={orig_limit}, warmup={warmup})"
     )
 
@@ -111,7 +114,7 @@ async def run_indicator(
         limit=fetch_limit,
     )
 
-    logger.debug(f"Fetched candles:\n{candles}")
+    log.debug(f"Fetched candles:\n{candles}")
 
     indicator_cls = get_indicator_by_id(indicator_id)
     indicator_raw = execute_indicator(
@@ -126,7 +129,7 @@ async def run_indicator(
         original_limit=orig_limit,
     )
 
-    response = format_indicator_response(indicator_data, indicator_id, metadata)
+    response = format_indicator_response(indicator_data, metadata)
     return response
 
 
@@ -140,5 +143,5 @@ if __name__ == "__main__":
         port=port,
         reload=True,
         reload_dirs=["/app"],
-        log_level=LOG_LEVEL,
+        log_level=LOG_LEVEL_UVICORN,
     )

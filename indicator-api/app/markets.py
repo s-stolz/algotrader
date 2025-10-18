@@ -6,6 +6,7 @@ from logger import logger
 from typing import Dict
 
 load_dotenv()
+log = logger(__name__)
 
 DB_ACCESSOR_API_HOST = getenv("DB_ACCESSOR_API_HOST", "database-accessor-api")
 DB_ACCESSOR_API_PORT = getenv("DB_ACCESSOR_API_PORT", 8000)
@@ -44,7 +45,7 @@ async def get_markets() -> list[dict]:
             resp.raise_for_status()
             return resp.json()
         except Exception as e:  # network boundary
-            logger.warning("Error fetching markets: %s", e)
+            log.warning("Error fetching markets: %s", e)
             return []
 
     return await asyncio.to_thread(_fetch)
@@ -55,14 +56,14 @@ def get_symbol_mapping(symbols: list[str]) -> Dict[str, int]:
     missing_symbols = [s for s in symbols if s not in SYMBOL_MAPPING]
 
     if missing_symbols:
-        logger.info("Symbols not found in cache: %s", missing_symbols)
+        log.info("Symbols not found in cache: %s", missing_symbols)
         missing_symbols_mapping = get_symbol_id_sync(missing_symbols)
 
         if missing_symbols_mapping:
             SYMBOL_MAPPING.update(missing_symbols_mapping)
-            logger.info("Updated SYMBOL_MAPPING with %d new entries", len(missing_symbols_mapping))
+            log.info("Updated SYMBOL_MAPPING with %d new entries", len(missing_symbols_mapping))
         else:
-            logger.info("No new symbols found to update SYMBOL_MAPPING")
+            log.info("No new symbols found to update SYMBOL_MAPPING")
 
     return {s: SYMBOL_MAPPING[s] for s in symbols if s in SYMBOL_MAPPING}
 
@@ -80,7 +81,7 @@ def get_symbol_id_sync(symbols: list[str]) -> dict[str, int]:
         else:
             missing.append(sym)
     if missing:
-        logger.info("Symbols not found (skipped): %s", missing)
+        log.info("Symbols not found (skipped): %s", missing)
     return mapping
 
 
@@ -95,11 +96,11 @@ def _fetch_symbol_id_sync(symbol: str) -> tuple[str, int | None]:
         markets = resp.json()
         if markets:
             symbol_id = markets[0]["symbol_id"]
-            logger.debug("Found ID %s for symbol %s", symbol_id, symbol)
+            log.debug("Found ID %s for symbol %s", symbol_id, symbol)
             return symbol, symbol_id
         else:
-            logger.debug("No market found for symbol: %s", symbol)
+            log.debug("No market found for symbol: %s", symbol)
             return symbol, None
     except Exception as e:  # broad catch acceptable for I/O boundary
-        logger.warning("Error fetching symbol ID for %s: %s", symbol, e)
+        log.warning("Error fetching symbol ID for %s: %s", symbol, e)
         return symbol, None

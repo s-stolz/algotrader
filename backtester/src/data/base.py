@@ -1,8 +1,9 @@
 from src.data.feeds.databaseAccessor import Database
 import pandas as pd
+from typing import Optional
 
 
-def get(df: pd.DataFrame, symbol: str = None) -> pd.DataFrame:
+def get(df: pd.DataFrame, symbol: Optional[str] = None) -> pd.DataFrame:
     """
     Retrieve data for a specific symbol from a DataFrame.
 
@@ -42,7 +43,13 @@ def get_symbol_id(symbols: list[str]) -> list[int]:
     return symbol_ids
 
 
-def get_candles(feed: str, symbol_ids: list[int], timeframe: int, start_date=None, end_date=None) -> pd.DataFrame:
+def get_candles(
+        feed: str,
+        symbol_ids: list[int],
+        timeframe: int,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+) -> pd.DataFrame:
     """
     Retrieve candlestick data for given symbols and timeframe
 
@@ -81,3 +88,5 @@ def get_candles(feed: str, symbol_ids: list[int], timeframe: int, start_date=Non
         combined_df = pd.concat(all_dataframes, axis=1)
 
         return combined_df
+    else:
+        raise ValueError(f"Feed '{feed}' is not supported.")

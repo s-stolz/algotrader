@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from logger import logger
 
 load_dotenv()
+log = logger(__name__)
 
 DB_ACCESSOR_API_HOST = getenv("DB_ACCESSOR_API_HOST", "database-accessor-api")
 DB_ACCESSOR_API_PORT = getenv("DB_ACCESSOR_API_PORT", 8000)
@@ -76,7 +77,7 @@ async def get_candles(
         results = pd.concat([results, df])
         df.columns = pd.MultiIndex.from_product([df.columns, [symbol_id]])
         all_dataframes.append(df)
-        logger.debug(f"Fetched candles for symbol {symbol_id}:\n{df}")
+        log.debug(f"Fetched candles for symbol {symbol_id}:\n{df}")
 
     results = pd.concat(all_dataframes, axis=1)
     return results
@@ -105,7 +106,7 @@ def _fetch_candles_sync(
             df.set_index("timestamp", inplace=True)
         return df
     except Exception as e:
-        logger.error(f"Error in _fetch_candles_sync for symbol {symbol_id}: {e}")
+        log.error(f"Error in _fetch_candles_sync for symbol {symbol_id}: {e}")
         return pd.DataFrame()
 
 

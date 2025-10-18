@@ -49,11 +49,11 @@ export default {
 
   methods: {
     onOpenSettings() {
-      this.modalStore.openModal(`indicatorSettings_${this.indicator.id}`);
+      this.modalStore.openModal(`indicatorSettings_${this.indicator._id}`);
     },
 
     onRemoveIndicator() {
-      this.$emit("remove-indicator", this.indicator.id);
+      this.$emit("remove-indicator", this.indicator._id);
     },
   },
 };
