@@ -85,9 +85,19 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
 
+  redis:
+    container_name: redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: always
 
 volumes:
   timescaledb_data:
   frontend_data:
   backend_data:
+  redis_data:
 
