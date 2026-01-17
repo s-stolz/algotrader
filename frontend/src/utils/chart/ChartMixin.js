@@ -72,6 +72,12 @@ export const ChartMixin = {
       this.chartManager.unsubscribeVisibleLogicalRangeChange();
     },
 
+    scrollToRealTime() {
+      if (this.chartManager) {
+        this.chartManager.scrollToRealTime();
+      }
+    },
+
     cleanupChart() {
       if (this.indicatorManager) {
         this.indicatorManager.destroy();

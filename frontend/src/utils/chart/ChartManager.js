@@ -127,6 +127,12 @@ export class ChartManager {
     }
   }
 
+  scrollToRealTime() {
+    if (this.chart) {
+      this.chart.timeScale().scrollToRealTime();
+    }
+  }
+
   updateSeriesOptions(key, newOptions) {
     const seriesInfo = this.series.get(key);
     if (!seriesInfo) {

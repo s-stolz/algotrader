@@ -13,6 +13,13 @@ export const useIndicatorsStore = defineStore('indicators', {
   },
 
   actions: {
+    resetHistoryFlags() {
+      for (const indicator of this.all) {
+        indicator.hasExpandedHistory = false;
+        indicator.currentLimit = 5000;
+      }
+    },
+
     requestAllIndicators(symbolID, timeframe) {
       for (const indicator of this.all) {
         if (indicator.hasExpandedHistory) continue;

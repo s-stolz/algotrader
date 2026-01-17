@@ -56,6 +56,7 @@ export default {
       candlesFetchLimit: 5000,
       isFetchingIndicators: false,
       indicatorBatchSize: 5000,
+      shouldScrollToRealTime: false,
     };
   },
 
@@ -70,6 +71,14 @@ export default {
       handler(newData) {
         this.setMinMove(this.currentMarketMinMove);
         this.addCandlestickData(newData, this.seriesOptions);
+
+        if (this.shouldScrollToRealTime) {
+          this.scrollToRealTime();
+          setTimeout(() => {
+            this.shouldScrollToRealTime = false;
+          }, 100);
+        }
+
         this.indicatorsStore.requestAllIndicators(
           this.currentMarketStore.symbol_id,
           this.currentTimeframeStore.value,
@@ -80,6 +89,8 @@ export default {
 
     "currentMarketStore.symbol_id": {
       handler() {
+        this.indicatorsStore.resetHistoryFlags();
+        this.shouldScrollToRealTime = true;
         this.fetchCandlesticks();
       },
       immediate: true,
@@ -87,6 +98,8 @@ export default {
 
     "currentTimeframeStore.value": {
       handler() {
+        this.indicatorsStore.resetHistoryFlags();
+        this.shouldScrollToRealTime = true;
         this.fetchCandlesticks();
       },
       immediate: true,
@@ -102,6 +115,7 @@ export default {
       this.subscribeCrosshairMove(this.onCrosshairMove);
       this.subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChange);
 
+      this.shouldScrollToRealTime = true;
       await this.fetchCandlesticks();
     },
 
@@ -151,6 +165,8 @@ export default {
     },
 
     onVisibleLogicalRangeChange(newVisibleLogicalRange) {
+      if (this.shouldScrollToRealTime) return;
+
       const series = this.getSeries();
 
       for (const [, value] of series.entries()) {
