@@ -136,4 +136,6 @@ class Order(BaseModel):
         "frozen": True,
         "populate_by_name": True,
         "json_encoders": {Decimal: float},
+        "validate_assignment": False,
+        "validate_default": False,
     }

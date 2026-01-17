@@ -30,4 +30,6 @@ class Trendbar(BaseModel):
     model_config = {
         "frozen": True,
         "json_encoders": {Decimal: float},
+        "validate_assignment": False,
+        "validate_default": False,
     }

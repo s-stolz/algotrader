@@ -47,4 +47,6 @@ class Account(BaseModel):
         "arbitrary_types_allowed": True,
         "frozen": True,
         "json_encoders": {Decimal: float},
+        "validate_assignment": False,
+        "validate_default": False,
     }

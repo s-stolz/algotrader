@@ -24,6 +24,8 @@ class SymbolResponse(Symbol):
 
     model_config = {
         "populate_by_name": True,
+        "validate_assignment": False,
+        "validate_default": False,
     }
 
 
@@ -64,6 +66,8 @@ class OrderRequest(BaseModel):
 
     model_config = {
         "populate_by_name": True,
+        "validate_assignment": False,
+        "validate_default": False,
     }
 
 
@@ -76,6 +80,8 @@ class ClosePositionRequest(BaseModel):
 
     model_config = {
         "populate_by_name": True,
+        "validate_assignment": False,
+        "validate_default": False,
     }
 
 
@@ -95,6 +101,8 @@ class TickStreamRequest(BaseModel):
 
     model_config = {
         "populate_by_name": True,
+        "validate_assignment": False,
+        "validate_default": False,
     }
 
 
@@ -107,6 +115,8 @@ class TickStreamStatusResponse(BaseModel):
 
     model_config = {
         "populate_by_name": True,
+        "validate_assignment": False,
+        "validate_default": False,
     }
 
 
@@ -114,10 +124,20 @@ class HealthComponent(BaseModel):
     status: str
     detail: str | None = None
 
+    model_config = {
+        "validate_assignment": False,
+        "validate_default": False,
+    }
+
 
 class HealthResponse(BaseModel):
     status: str
     components: dict[str, HealthComponent]
+
+    model_config = {
+        "validate_assignment": False,
+        "validate_default": False,
+    }
 
 
 class TrendbarStreamStatusResponse(BaseModel):
@@ -129,6 +149,8 @@ class TrendbarStreamStatusResponse(BaseModel):
 
     model_config = {
         "populate_by_name": True,
+        "validate_assignment": False,
+        "validate_default": False,
     }
 
 
@@ -144,4 +166,6 @@ class TrendbarResponse(BaseModel):
 
     model_config = {
         "json_encoders": {Decimal: float},
+        "validate_assignment": False,
+        "validate_default": False,
     }
