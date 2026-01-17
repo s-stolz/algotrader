@@ -46,3 +46,9 @@ To start the project using Docker Compose, navigate to the project directory and
    docker compose up --build
    ```
 This will build and start all necessary services as defined in the `docker-compose.yml` file.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+This project makes use of third-party software so please check the [ATTRIBUTIONS.md](ATTRIBUTIONS.md) file for more information.
