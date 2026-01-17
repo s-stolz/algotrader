@@ -59,7 +59,6 @@ from app.domain.value_objects import (
     OrderId,
     PositionId,
     SymbolDescriptor,
-    SymbolId,
     Timeframe,
 )
 from app.infrastructure.ctrader_mappers import (
@@ -503,7 +502,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         try:
             self._client.startService()
             reactor.run(installSignalHandlers=0)  # type: ignore[attr-defined]
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 "Twisted reactor crashed while running cTrader client service "
                 "(shutting_down=%s, thread=%s, reactor_running=%s)",
