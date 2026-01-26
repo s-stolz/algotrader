@@ -56,6 +56,24 @@ class MarketDataService:
             limit,
         )
 
+    def stream_trendbars(
+        self,
+        account_id: AccountId,
+        symbol: str,
+        timeframe: Timeframe,
+        from_ts: int,
+        to_ts: int | None,
+        limit: int | None,
+    ):
+        return self._market_data_port.stream_trendbars(
+            account_id,
+            symbol,
+            timeframe,
+            from_ts,
+            to_ts,
+            limit,
+        )
+
     async def list_symbols(self, account_id: AccountId | None = None) -> list[SymbolDescriptor]:
         return await self._market_data_port.list_symbols(account_id)
 
