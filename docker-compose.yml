@@ -41,21 +41,53 @@ services:
       - timescaledb_data:/var/lib/postgresql/data
       - ./timescaledb-init:/docker-entrypoint-initdb.d
 
-  backend:
-    container_name: backend
+  broker-service:
+    container_name: broker-service
     build:
-      context: ./backend
+      context: ./broker-service
       dockerfile: Dockerfile
     ports:
-      - 8080:8080
+      - "8050:8050"
+    volumes:
+      - ./broker-service:/app
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    restart: always
+
+  ingestion-service:
+    container_name: ingestion-service
+    build:
+      context: ./ingestion-service
+      dockerfile: Dockerfile
+    volumes:
+      - ./ingestion-service:/app
+    depends_on:
+      - timescaledb
+      - broker-service
+      - redis
+    env_file:
+      - .env
+    restart: always
+
+  webserver:
+    container_name: webserver
+    build:
+      context: ./webserver
+      dockerfile: Dockerfile
+    ports:
       - 8765:8765
     volumes:
-      - frontend_data:/app/frontend/dist
-      - backend_data:/app
-      - ./backend:/app/backend
-      - /app/backend/node_modules
+      - ./webserver:/app
+    depends_on:
+      - redis
+      - broker-service
+    env_file:
+      - ./webserver/.env
     environment:
       - MODE=${MODE}
+    restart: always
 
   frontend:
     container_name: frontend
@@ -68,22 +100,9 @@ services:
       - frontend_data:/app/dist
       - ./frontend:/app/frontend    
     depends_on:
-      - backend
+      - webserver
     environment:
       - MODE=${MODE}
-
-  backtester:
-    container_name: backtester
-    build:
-      context: ./backtester
-      dockerfile: Dockerfile
-    volumes:
-      - ./backtester:/app
-    depends_on:
-      - backend
-    command: watchmedo auto-restart --directory=/app --pattern="*.py" --recursive -- python main.py
-    environment:
-      - PYTHONUNBUFFERED=1
 
   redis:
     container_name: redis
@@ -98,6 +117,5 @@ services:
 volumes:
   timescaledb_data:
   frontend_data:
-  backend_data:
   redis_data:
 

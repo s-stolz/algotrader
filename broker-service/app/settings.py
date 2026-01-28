@@ -23,7 +23,7 @@ class CtraderCredentials(BaseSettings):
 class Settings(BaseSettings):
     app_name: str = "broker-service"
     service_port: int = Field(default=8050, alias="BROKER_SERVICE_PORT")
-    redis_url: str = Field(default="redis://localhost:6379/0")
+    redis_url: str = Field(default="redis://redis:6379/0")
     tick_queue_size: int = 1000
     tick_stream_maxlen: int | None = None
     candle_stream_maxlen: int | None = None
