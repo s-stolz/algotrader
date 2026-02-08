@@ -39,5 +39,29 @@ export const useCandlesticksStore = defineStore('candlesticks', {
         console.error('Failed to fetch candlestick data:', err);
       }
     },
+
+    updateCandle(candleData) {
+      if (!candleData?.t) return;
+
+      const newCandle = {
+        time: candleData.t,
+        open: candleData.o,
+        high: candleData.h,
+        low: candleData.l,
+        close: candleData.c,
+      };
+
+      const existingIndex = this.data.findIndex(candle => candle.time === newCandle.time);
+
+      if (existingIndex >= 0) {
+        this.data[existingIndex] = newCandle;
+      } else {
+        this.data.push(newCandle);
+      }
+    },
+
+    clear() {
+      this.data = [];
+    },
   },
 });

@@ -56,6 +56,25 @@ export const ChartMixin = {
       return this.chartManager.addSeries('ohlc', 'candlestick', data, defaultOptions);
     },
 
+    updateCandlestick(candle) {
+      if (this.chartManager) {
+        return this.chartManager.updateCandle('ohlc', candle);
+      }
+      return false;
+    },
+
+    setMinMove(minMove) {
+      if (this.chartManager) {
+        this.chartManager.updateSeriesOptions('ohlc', {
+          priceFormat: {
+            type: 'price',
+            minMove: minMove,
+            precision: Math.log10(1 / minMove),
+          },
+        });
+      }
+    },
+
     subscribeCrosshairMove(callback) {
       this.chartManager.subscribeCrosshairMove(callback);
     },
