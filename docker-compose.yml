@@ -1,7 +1,7 @@
 services:
   database-accessor-api:
     container_name: database-accessor-api
-    build: 
+    build:
       context: ./database-accessor-api
       dockerfile: Dockerfile
     ports:
@@ -9,14 +9,21 @@ services:
     volumes:
       - ./database-accessor-api:/app
     depends_on:
-      - timescaledb
+      timescaledb:
+        condition: service_healthy
     env_file:
       - .env
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   indicator-api:
     container_name: indicator-api
-    build: 
+    build:
       context: ./indicator-api
       dockerfile: Dockerfile
     ports:
@@ -24,10 +31,17 @@ services:
     volumes:
       - ./indicator-api:/app
     depends_on:
-      - database-accessor-api
+      database-accessor-api:
+        condition: service_healthy
     env_file:
       - .env
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   timescaledb:
     container_name: timescaledb
@@ -40,6 +54,12 @@ services:
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./timescaledb-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   broker-service:
     container_name: broker-service
@@ -51,10 +71,17 @@ services:
     volumes:
       - ./broker-service:/app
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8050/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   ingestion-service:
     container_name: ingestion-service
@@ -64,9 +91,14 @@ services:
     volumes:
       - ./ingestion-service:/app
     depends_on:
-      - timescaledb
-      - broker-service
-      - redis
+      database-accessor-api:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      broker-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     restart: always
@@ -78,16 +110,25 @@ services:
       dockerfile: Dockerfile
     ports:
       - 8765:8765
+      - 8080:8080
     volumes:
       - ./webserver:/app
     depends_on:
-      - redis
-      - broker-service
+      redis:
+        condition: service_healthy
+      broker-service:
+        condition: service_healthy
     env_file:
       - ./webserver/.env
     environment:
       - MODE=${MODE}
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   frontend:
     container_name: frontend
@@ -98,9 +139,10 @@ services:
       - 5173:5173
     volumes:
       - frontend_data:/app/dist
-      - ./frontend:/app/frontend    
+      - ./frontend:/app/frontend
     depends_on:
-      - webserver
+      webserver:
+        condition: service_healthy
     environment:
       - MODE=${MODE}
 
@@ -113,6 +155,12 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   timescaledb_data:

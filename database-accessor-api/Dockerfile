@@ -1,6 +1,6 @@
 FROM python:3.11-alpine
 
-RUN apk update && apk upgrade --no-cache
+RUN apk update && apk upgrade --no-cache && apk add --no-cache curl
 
 WORKDIR /app
 

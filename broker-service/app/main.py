@@ -39,6 +39,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(deals.router)
     app.include_router(market_data.router)
 
+    @app.get("/health")
+    async def health():
+        return {"status": "healthy"}
+
     return app
 
 

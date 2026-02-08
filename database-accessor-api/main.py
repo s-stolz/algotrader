@@ -29,6 +29,11 @@ async def root():
     return {"message": "Welcome to the Database Accessor API"}
 
 
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
 @app.get("/markets/{symbol_id}")
 async def get_market(symbol_id: int, db: AsyncSession = Depends(get_db)):
     market = await crud.get_market_by_id(db, symbol_id)
