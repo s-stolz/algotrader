@@ -46,6 +46,10 @@ export default {
         return;
       }
 
+      if (this.currentMarketStore.isValid(this.marketsStore.all)) {
+        return;
+      }
+
       this.currentMarketStore.setMarket(this.marketsStore.all[0]);
     },
   },
