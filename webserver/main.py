@@ -1,0 +1,199 @@
+import asyncio
+import json
+import logging
+import os
+import signal
+import sys
+from typing import Optional, Union
+
+import websockets
+from aiohttp import web
+from websockets.asyncio.server import ServerConnection
+
+from app.broker_client import BrokerClient
+from app.redis_consumer import RedisConsumer
+from app.subscription_manager import SubscriptionManager
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class WebSocketServer:
+    def __init__(self, config: dict):
+        self.config = config
+        self.broker_client: Optional[BrokerClient] = None
+        self.redis_consumer: Optional[RedisConsumer] = None
+        self.subscription_manager: Optional[SubscriptionManager] = None
+        self.health_app: Optional[web.Application] = None
+        self.health_runner: Optional[web.AppRunner] = None
+
+    async def initialize(self):
+        self.broker_client = BrokerClient(
+            self.config['broker_service_url'],
+            self.config['account_id']
+        )
+
+        self.redis_consumer = RedisConsumer(
+            redis_host=self.config['redis_host'],
+            redis_port=self.config['redis_port'],
+            account_id=self.config['account_id'],
+            block_ms=self.config['redis_block_ms'],
+            batch_size=self.config['redis_batch_size']
+        )
+
+        self.subscription_manager = SubscriptionManager(
+            self.broker_client,
+            self.redis_consumer
+        )
+
+        self.redis_consumer.subscription_manager = self.subscription_manager
+        await self.redis_consumer.connect()
+
+    async def handle_client(self, websocket: ServerConnection):
+        assert self.subscription_manager is not None
+        client_id = self.subscription_manager.register_client(websocket)
+        logger.info(f"Client {client_id} connected")
+
+        try:
+            async for message_data in websocket:
+                try:
+                    await self.handle_message(websocket, client_id, message_data)
+                except Exception as e:
+                    logger.error(f"Error handling message: {e}")
+                    await websocket.send(json.dumps({
+                        'type': 'error',
+                        'error': str(e)
+                    }))
+        except websockets.exceptions.ConnectionClosed:
+            pass
+        finally:
+            await self.subscription_manager.unregister_client(client_id)
+
+    async def handle_message(
+        self,
+        websocket: ServerConnection,
+        client_id: int,
+        message_data: Union[str, bytes]
+    ):
+        assert self.subscription_manager is not None
+        if isinstance(message_data, bytes):
+            message_data = message_data.decode('utf-8')
+        message = json.loads(message_data)
+        message_type = message.get('type')
+
+        if message_type == 'subscribeCandles':
+            symbol = message.get('symbol')
+            timeframe = message.get('timeframe')
+
+            if not symbol or timeframe is None:
+                raise ValueError('Missing symbol or timeframe')
+
+            await self.subscription_manager.subscribe_candles(client_id, symbol, timeframe)
+            await websocket.send(json.dumps({
+                'type': 'subscribed',
+                'symbol': symbol,
+                'timeframe': timeframe
+            }))
+
+        elif message_type == 'unsubscribeCandles':
+            symbol = message.get('symbol')
+            timeframe = message.get('timeframe')
+
+            if not symbol or timeframe is None:
+                raise ValueError('Missing symbol or timeframe')
+
+            await self.subscription_manager.unsubscribe_candles(client_id, symbol, timeframe)
+
+        elif message_type == 'subscribeTicks':
+            symbol = message.get('symbol')
+
+            if not symbol:
+                raise ValueError('Missing symbol')
+
+            await self.subscription_manager.subscribe_ticks(client_id, symbol)
+            await websocket.send(json.dumps({
+                'type': 'subscribed',
+                'symbol': symbol
+            }))
+
+        elif message_type == 'unsubscribeTicks':
+            symbol = message.get('symbol')
+
+            if not symbol:
+                raise ValueError('Missing symbol')
+
+            await self.subscription_manager.unsubscribe_ticks(client_id, symbol)
+
+        else:
+            logger.warning(f"Unknown message type: {message_type}")
+
+    async def health_handler(self, request):
+        """HTTP health check endpoint"""
+        return web.Response(text='{"status": "healthy"}', content_type='application/json')
+
+    async def start_health_server(self):
+        """Start a simple HTTP server for health checks"""
+        self.health_app = web.Application()
+        self.health_app.router.add_get('/health', self.health_handler)
+
+        self.health_runner = web.AppRunner(self.health_app)
+        await self.health_runner.setup()
+
+        health_port = self.config.get('health_port', 8080)
+        site = web.TCPSite(self.health_runner, '0.0.0.0', health_port)
+        await site.start()
+        logger.info(f"Health check server running on port {health_port}")
+
+    async def start(self):
+        await self.initialize()
+        await self.start_health_server()
+
+        async with websockets.serve(self.handle_client, "0.0.0.0", self.config['ws_port']):
+            logger.info(f"WebSocket server running on port {self.config['ws_port']}")
+            await asyncio.Future()
+
+    async def shutdown(self):
+        if self.health_runner:
+            await self.health_runner.cleanup()
+        if self.redis_consumer:
+            await self.redis_consumer.disconnect()
+
+
+async def main():
+    config = {
+        'ws_port': int(os.getenv('WS_PORT', '8765')),
+        'health_port': int(os.getenv('HEALTH_PORT', '8080')),
+        'redis_host': os.getenv('REDIS_HOST', 'redis'),
+        'redis_port': int(os.getenv('REDIS_PORT', '6379')),
+        'broker_service_url': os.getenv('BROKER_SERVICE_URL', 'http://broker-service:8050'),
+        'account_id': os.getenv('ACCOUNT_ID'),
+        'redis_block_ms': int(os.getenv('REDIS_BLOCK_MS', '5000')),
+        'redis_batch_size': int(os.getenv('REDIS_BATCH_SIZE', '100'))
+    }
+
+    if not config['account_id']:
+        logger.error('ACCOUNT_ID environment variable required')
+        sys.exit(1)
+
+    server = WebSocketServer(config)
+
+    loop = asyncio.get_event_loop()
+
+    def signal_handler():
+        asyncio.create_task(server.shutdown())
+        loop.stop()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, signal_handler)
+
+    try:
+        await server.start()
+    except KeyboardInterrupt:
+        await server.shutdown()
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
