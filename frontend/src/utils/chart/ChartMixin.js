@@ -48,7 +48,7 @@ export const ChartMixin = {
       const defaultOptions = {
         priceFormat: {
           type: 'price',
-          minMove: 0.00001,
+          ...seriesOptions.priceFormat,
         },
         ...seriesOptions,
       };

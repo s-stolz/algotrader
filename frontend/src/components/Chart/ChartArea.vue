@@ -47,8 +47,8 @@ export default {
       seriesOptions: {
         priceFormat: {
           type: "price",
-          minMove: 0.00001,
-          precision: 5,
+          minMove: null,
+          precision: null,
         },
       },
       crossHairTimeout: null,
@@ -101,6 +101,12 @@ export default {
         );
       },
       deep: true,
+    },
+
+    currentMarketMinMove(newMinMove) {
+      if (newMinMove && newMinMove > 0) {
+        this.setMinMove(newMinMove);
+      }
     },
 
     "currentMarketStore.symbol_id": {
