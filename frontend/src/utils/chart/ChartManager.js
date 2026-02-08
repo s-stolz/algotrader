@@ -157,10 +157,8 @@ export class ChartManager {
   updateSeriesOptions(key, newOptions) {
     const seriesInfo = this.series.get(key);
     if (!seriesInfo) {
-      console.error(`Series '${key}' not found`);
       return false;
     }
-
     try {
       seriesInfo.series.applyOptions(newOptions);
       seriesInfo.options = { ...seriesInfo.options, ...newOptions };
