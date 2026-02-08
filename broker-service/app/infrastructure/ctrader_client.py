@@ -631,10 +631,18 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 self._tick_handlers.pop(key, None)
 
                 if key in self._active_tick_streams:
-                    await self._unsubscribe_spots(
-                        subscription.account_id,
-                        subscription.symbol_id
-                    )
+                    has_trendbar_subscriptions = False
+                    async with self._trendbar_lock:
+                        for (acc_id, sym_id, _) in self._trendbar_handlers.keys():
+                            if acc_id == subscription.account_id and sym_id == subscription.symbol_id:
+                                has_trendbar_subscriptions = True
+                                break
+
+                    if not has_trendbar_subscriptions:
+                        await self._unsubscribe_spots(
+                            subscription.account_id,
+                            subscription.symbol_id
+                        )
 
                     self._active_tick_streams.remove(key)
 
