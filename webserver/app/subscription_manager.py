@@ -116,8 +116,8 @@ class SubscriptionManager:
 
         if count == 0:
             try:
-                queue_size = int(os.getenv('STREAM_QUEUE_SIZE', '1000'))
-                max_stream_length = int(os.getenv('MAX_STREAM_LENGTH', '10000'))
+                queue_size = int(os.getenv('WEBSERVER_STREAM_QUEUE_SIZE', '1000'))
+                max_stream_length = int(os.getenv('WEBSERVER_MAX_STREAM_LENGTH', '10000'))
 
                 await self.broker_client.start_tick_stream(
                     symbol, queue_size, max_stream_length

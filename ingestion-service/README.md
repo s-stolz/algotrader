@@ -12,16 +12,19 @@ A Python service that consumes market data from Redis streams and persists it to
 
 ## Configuration
 
-Copy `sample.env` to `.env` and configure:
+Configuration is centralized at the repository root.
 
 ```bash
-cp sample.env .env
+cd ..
+cp config/.env.secrets.example config/.env.secrets.local
+python scripts/generate_env.py
+cd ingestion-service
 ```
 
 Key settings:
 - `REDIS_URL`: Redis connection string
-- `DB_ACCESSOR_API_HOST/PORT`: Database accessor API endpoint
-- `BROKER_ACCOUNT_ID`: cTrader account ID for stream keys
+- `DATABASE_ACCESSOR_HOST` / `DATABASE_ACCESSOR_PORT`: Database accessor API endpoint
+- `ACCOUNT_ID`: cTrader account ID for Redis stream keys
 
 ## Running
 

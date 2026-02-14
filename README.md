@@ -30,22 +30,57 @@ Note: Historical market data currently needs to be manually inserted into the da
    git clone https://github.com/iamProud/algotrader.git
    cd algotrader
    ```
-2. Rename the environment files and adjust parameters:
+2. Create local secrets from the example:
    ```sh
-   mv backend/sample.env backend/.env
-   mv backtester/sample.env backtester/.env
-   mv database-accessor-api/sample.env database-accessor-api/.env
+   cp config/.env.secrets.example config/.env.secrets.local
    ```
-   Edit the `.env` files to set up the necessary configurations.
-3. Run the project and explore!  
+3. Generate the root `.env` from the tracked topology + local secrets:
+   ```sh
+   python scripts/generate_env.py
+   ```
+4. Edit `config/topology.yaml` for shared non-secret settings (ports, hosts, tuning), and edit `config/.env.secrets.local` for credentials/secrets.
+5. Run the project and explore.
 
 ## Running with Docker Compose
 
-To start the project using Docker Compose, navigate to the project directory and run:
+Default workflow (auto-regenerates `.env` before Compose):
    ```sh
+   make up
+   ```
+
+Direct Docker Compose usage:
+   ```sh
+   python scripts/generate_env.py --force
    docker compose up --build
    ```
 This will build and start all necessary services as defined in the `docker-compose.yml` file.
+
+## Central Configuration Model
+
+- Tracked shared topology: `config/topology.yaml`
+- Gitignored secrets: `config/.env.secrets.local`
+- Generated runtime env files: `config/.env.shared`, `config/.env.secrets.db`, `config/.env.secrets.runtime`, `config/.env.secrets.broker`
+- Generator script: `scripts/generate_env.py`
+
+### Validation and overwrite
+
+```sh
+python scripts/generate_env.py --validate
+python scripts/generate_env.py --force
+```
+
+### Make targets
+
+```sh
+make config
+make validate-config
+make up
+make build
+make down
+make restart
+make logs
+make ps
+```
 
 ## License
 

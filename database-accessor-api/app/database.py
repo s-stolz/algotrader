@@ -1,18 +1,12 @@
-# app/database.py
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from dotenv import load_dotenv
 import os
 
-# Load .env file
-load_dotenv()
-
-# Get values from env vars
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
-DB_ECHO = os.getenv("DB_ECHO", "false").lower() == "true"
+DB_USER = os.getenv("TIMESCALEDB_USER")
+DB_PASSWORD = os.getenv("TIMESCALEDB_PASSWORD")
+DB_HOST = os.getenv("TIMESCALEDB_HOST")
+DB_PORT = os.getenv("TIMESCALEDB_PORT")
+DB_NAME = os.getenv("TIMESCALEDB_DB")
+DB_ECHO = os.getenv("TIMESCALEDB_ECHO", "false").lower() == "true"
 
 # Construct URL
 DATABASE_URL = (

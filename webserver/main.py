@@ -163,15 +163,21 @@ class WebSocketServer:
 
 
 async def main():
+    broker_host = os.getenv("BROKER_SERVICE_HOST", "broker-service")
+    broker_port = int(os.getenv("BROKER_SERVICE_PORT", "8050"))
+    broker_service_url = os.getenv(
+        "BROKER_SERVICE_BASE_URL",
+        f"http://{broker_host}:{broker_port}",
+    )
     config = {
-        'ws_port': int(os.getenv('WS_PORT', '8765')),
-        'health_port': int(os.getenv('HEALTH_PORT', '8080')),
+        'ws_port': int(os.getenv('WEBSERVER_WS_PORT', '8765')),
+        'health_port': int(os.getenv('WEBSERVER_HEALTH_PORT', '8080')),
         'redis_host': os.getenv('REDIS_HOST', 'redis'),
         'redis_port': int(os.getenv('REDIS_PORT', '6379')),
-        'broker_service_url': os.getenv('BROKER_SERVICE_URL', 'http://broker-service:8050'),
+        'broker_service_url': broker_service_url,
         'account_id': os.getenv('ACCOUNT_ID'),
-        'redis_block_ms': int(os.getenv('REDIS_BLOCK_MS', '5000')),
-        'redis_batch_size': int(os.getenv('REDIS_BATCH_SIZE', '100'))
+        'redis_block_ms': int(os.getenv('WEBSERVER_REDIS_BLOCK_MS', '5000')),
+        'redis_batch_size': int(os.getenv('WEBSERVER_REDIS_BATCH_SIZE', '100'))
     }
 
     if not config['account_id']:

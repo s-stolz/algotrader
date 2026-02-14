@@ -8,7 +8,8 @@ import { wsService } from "./utils/websocketService";
 
 const app = createApp(App);
 
-wsService.connect("ws://localhost:8765");
+const websocketUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8765";
+wsService.connect(websocketUrl);
 app.config.globalProperties.$wss = wsService;
 
 app

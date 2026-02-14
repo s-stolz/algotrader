@@ -1,17 +1,12 @@
 import asyncio
-from os import getenv
+import os
 from typing import Dict, Iterable
 
 import pandas as pd
 import requests
-from dotenv import load_dotenv
 from logger import logger
 
-load_dotenv()
 log = logger(__name__)
-
-DB_ACCESSOR_API_HOST = getenv("DB_ACCESSOR_API_HOST", "database-accessor-api")
-DB_ACCESSOR_API_PORT = getenv("DB_ACCESSOR_API_PORT", 8000)
 
 
 def get_candles_sync(
@@ -93,7 +88,9 @@ def _fetch_candles_sync(
     """Synchronous HTTP fetch and DataFrame construction.
     Separated to allow running in a thread from async callers.
     """
-    base_url = f"http://{DB_ACCESSOR_API_HOST}:{DB_ACCESSOR_API_PORT}/candles/{symbol_id}"
+    db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
+    db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
+    base_url = f"http://{db_host}:{db_port}/candles/{symbol_id}"
     params = _build_params(timeframe, start_date, end_date, limit)
     try:
         response = requests.get(base_url, params=params, timeout=30)

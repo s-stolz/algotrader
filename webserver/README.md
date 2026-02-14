@@ -29,26 +29,21 @@ WebSocket Server (port 8765)
 
 ## Configuration
 
-Copy `sample.env` to `.env` and configure:
+Configuration is centralized at the repository root.
 
 ```bash
-# WebSocket Server
-WS_PORT=8765
-
-# Redis
-REDIS_HOST=redis
-REDIS_PORT=6379
-
-# Broker Service
-BROKER_SERVICE_URL=http://broker-service:8050
-ACCOUNT_ID=your_account_id_here
-
-# Stream Settings
-REDIS_BLOCK_MS=5000
-REDIS_BATCH_SIZE=100
-STREAM_QUEUE_SIZE=1000
-MAX_STREAM_LENGTH=10000
+cd ..
+cp config/.env.secrets.example config/.env.secrets.local
+python scripts/generate_env.py
+cd webserver
 ```
+
+Key settings:
+- `WEBSERVER_WS_PORT` / `WEBSERVER_HEALTH_PORT`
+- `BROKER_SERVICE_HOST` / `BROKER_SERVICE_PORT`
+- `ACCOUNT_ID`
+- `WEBSERVER_REDIS_BLOCK_MS` / `WEBSERVER_REDIS_BATCH_SIZE`
+- `WEBSERVER_STREAM_QUEUE_SIZE` / `WEBSERVER_MAX_STREAM_LENGTH`
 
 ## Message Protocol
 
@@ -224,8 +219,10 @@ HTTP client for broker-service API. Starts/stops tick and trendbar streams via R
 npm install
 
 # Set up environment
-cp sample.env .env
-# Edit .env with your configuration
+cd ..
+cp config/.env.secrets.example config/.env.secrets.local
+python scripts/generate_env.py
+cd webserver
 
 # Run
 npm start

@@ -1,5 +1,7 @@
 .vscode
 .venv
+config/.env*
+!config/.env.secrets.example
 */.env
 node_modules
 __pycache__

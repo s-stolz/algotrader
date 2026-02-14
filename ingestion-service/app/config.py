@@ -2,8 +2,6 @@
 import os
 from dataclasses import dataclass
 
-from dotenv import load_dotenv
-
 
 @dataclass
 class Config:
@@ -31,16 +29,14 @@ class Config:
 
 
 def load_config() -> Config:
-    """Load configuration from .env file and environment variables."""
-    load_dotenv()
-    
+    """Load configuration from environment variables."""
     return Config(
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-        db_api_host=os.getenv("DB_ACCESSOR_API_HOST", "database-accessor-api"),
-        db_api_port=int(os.getenv("DB_ACCESSOR_API_PORT", "8000")),
+        db_api_host=os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api"),
+        db_api_port=int(os.getenv("DATABASE_ACCESSOR_PORT", "8000")),
         broker_service_host=os.getenv("BROKER_SERVICE_HOST", "broker-service"),
-        broker_service_port=int(os.getenv("BROKER_SERVICE_PORT", "8080")),
-        broker_account_id=os.getenv("BROKER_ACCOUNT_ID", "12345"),
+        broker_service_port=int(os.getenv("BROKER_SERVICE_PORT", "8050")),
+        broker_account_id=os.getenv("ACCOUNT_ID", "12345"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         consumer_batch_size=int(os.getenv("CONSUMER_BATCH_SIZE", "100")),
         consumer_block_ms=int(os.getenv("CONSUMER_BLOCK_MS", "5000")),

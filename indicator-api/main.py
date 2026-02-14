@@ -139,8 +139,8 @@ async def run_indicator(
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8010))
-    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("INDICATOR_API_PORT", 8010))
+    host = os.getenv("INDICATOR_API_HOST", "0.0.0.0")
 
     uvicorn.run(
         "main:app",
