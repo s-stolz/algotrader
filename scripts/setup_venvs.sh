@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PYTHON_BIN="${PYTHON:-python3}"
-SHARED_CONSTRAINTS="${REPO_ROOT}/requirements/constraints-shared.txt"
+SHARED_CONSTRAINTS="${REPO_ROOT}/constraints-shared.txt"
 
 SERVICES=(
   "broker-service"

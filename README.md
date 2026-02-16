@@ -88,7 +88,7 @@ Use one virtual environment per Python service instead of one shared root enviro
 
 ### Shared constraints + service requirements
 
-- Shared versions live in `requirements/constraints-shared.txt`.
+- Shared versions live in `constraints-shared.txt`.
 - Each service keeps its own `requirements.txt`.
 - If a service must diverge, add `<service>/constraints.override.txt` with a short rationale comment.
 
