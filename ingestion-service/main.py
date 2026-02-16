@@ -41,12 +41,12 @@ class IngestionService:
             'close': candle['c'],
             'volume': candle['v']
         }
-    
+
     def __init__(self):
         """Initialize the ingestion service."""
         self.config = load_config()
         self.logger = setup_logging(self.config.log_level)
-        
+
         self.db_client = DatabaseClient(self.config.db_api_base_url)
         self.broker_client = BrokerClient(
             self.config.broker_service_base_url,
@@ -54,7 +54,7 @@ class IngestionService:
         )
         self.redis: Redis | None = None
         self.consumer: StreamConsumer | None = None
-        
+
         self.markets: List[Dict[str, Any]] = []
         self.consumer_tasks: List[asyncio.Task] = []
         self._shutdown = False
@@ -226,7 +226,7 @@ class IngestionService:
     async def start_consumers(self) -> None:
         """Start consuming from all configured streams."""
         self.logger.info("Starting stream consumers...")
-        
+
         for market in self.markets:
             symbol_id = market["symbol_id"]
             symbol = market["symbol"]
@@ -239,7 +239,7 @@ class IngestionService:
                 timeframe=timeframe_code,
                 only_completed_bars=True,
             )
-            
+
             task = asyncio.create_task(
                 self.consumer.consume_stream(
                     stream_key=stream_key,
@@ -249,7 +249,7 @@ class IngestionService:
                 )
             )
             self.consumer_tasks.append(task)
-            
+
             self.logger.info(f"Started consumer for {stream_key}")
 
         self.logger.info(f"Started {len(self.consumer_tasks)} stream consumers")
@@ -258,27 +258,27 @@ class IngestionService:
         """Gracefully shutdown the service."""
         self.logger.info("Shutting down ingestion service...")
         self._shutdown = True
-        
+
         # Stop consumer
         if self.consumer:
             self.consumer.stop()
-        
+
         # Cancel all consumer tasks
         for task in self.consumer_tasks:
             task.cancel()
-        
+
         if self.consumer_tasks:
             await asyncio.gather(*self.consumer_tasks, return_exceptions=True)
-        
+
         # Close Redis connection
         if self.redis:
             await self.redis.close()
             self.logger.info("Closed Redis connection")
-        
+
         # Close broker client
         await self.broker_client.aclose()
         self.logger.info("Closed broker client")
-        
+
         # Close database client
         self.db_client.close()
         self.logger.info("Closed database client")
@@ -289,14 +289,14 @@ class IngestionService:
         """Main run loop."""
         try:
             await self.startup()
-            
+
             await self.check_and_backfill()
-            
+
             await self.start_consumers()
-            
+
             while not self._shutdown:
                 await asyncio.sleep(1)
-                
+
         except KeyboardInterrupt:
             self.logger.info("Received keyboard interrupt")
         except Exception as e:
@@ -308,18 +308,18 @@ class IngestionService:
 async def main():
     """Main entry point."""
     service = IngestionService()
-    
+
     # Setup signal handlers for graceful shutdown
     loop = asyncio.get_event_loop()
-    
+
     def handle_shutdown(sig):
         service.logger.info(f"Received signal {sig}")
         asyncio.create_task(service.shutdown())
-    
+
     # Register signal handlers
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, lambda s=sig: handle_shutdown(s))
-    
+
     await service.run()
 
 

@@ -1,6 +1,13 @@
 from sqlalchemy import (
-    Table, Column, Integer, String, Float, TIMESTAMP, ForeignKey,
-    MetaData, PrimaryKeyConstraint
+    TIMESTAMP,
+    Column,
+    Float,
+    ForeignKey,
+    Integer,
+    MetaData,
+    PrimaryKeyConstraint,
+    String,
+    Table,
 )
 
 metadata = MetaData()

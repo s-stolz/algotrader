@@ -1,6 +1,7 @@
-from src.data.feeds.databaseAccessor import Database
-import pandas as pd
 from typing import Optional
+
+import pandas as pd
+from src.data.feeds.databaseAccessor import Database
 
 
 def get(df: pd.DataFrame, symbol: Optional[str] = None) -> pd.DataFrame:

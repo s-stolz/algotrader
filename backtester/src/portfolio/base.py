@@ -1,5 +1,5 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 class Portfolio:
@@ -13,7 +13,7 @@ class Portfolio:
 
     def get_stats(self):
         return self.stats
-    
+
     def calculate_stats(self) -> pd.DataFrame:
         """Calculate portfolio statistics per symbol."""
         profit_percentage = self.strat_rets.sum() * 100
@@ -30,7 +30,7 @@ class Portfolio:
         })
 
         return stats
-    
+
     @staticmethod
     def calculate_returns(data: pd.DataFrame, positions: pd.DataFrame) -> pd.DataFrame:
         entry_price = data['open'].shift(-1)
@@ -39,10 +39,10 @@ class Portfolio:
 
         strat_rets = (returns * positions).fillna(0)
         return strat_rets
-    
+
     @staticmethod
     def signals_to_positions(buy_signals: pd.DataFrame, sell_signals: pd.DataFrame) -> pd.DataFrame:
-        signals = np.where(buy_signals, 1, 
+        signals = np.where(buy_signals, 1,
                         np.where(sell_signals, -1, np.nan))
 
         ffill_signals = pd.DataFrame(signals, columns=buy_signals.columns, index=buy_signals.index)
@@ -55,4 +55,3 @@ class Portfolio:
         positions = cls.signals_to_positions(buy_signals, sell_signals)
 
         return cls(data, positions)
-    

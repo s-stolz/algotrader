@@ -1,5 +1,6 @@
-import threading
 import logging
+import threading
+
 from websocket_client import WebSocketClient
 
 logging.basicConfig(level=logging.INFO, format="%(threadName)s: %(message)s")

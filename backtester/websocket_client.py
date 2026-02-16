@@ -1,8 +1,9 @@
 import asyncio
-import websockets
 import logging
+
+import websockets
+from src.handlers import IndicatorHandler, MessageDispatcher
 from src.utils.ticket import Ticket
-from src.handlers import MessageDispatcher, IndicatorHandler
 
 
 class WebSocketClient:
@@ -27,7 +28,7 @@ class WebSocketClient:
 
     async def _connect(self) -> None:
         self.logger.info(
-            f'Attempting to connect...')
+            'Attempting to connect...')
 
         async with websockets.connect(self.uri) as websocket:
             self.logger.info("Connected to server")

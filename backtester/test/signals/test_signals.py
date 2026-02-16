@@ -1,11 +1,12 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from signals import signal as Signal
 import pandas as pd
 import pandas.testing as pdt
+from signals import signal as Signal
 
 
 class TestSignals(unittest.TestCase):
@@ -36,31 +37,31 @@ class TestSignals(unittest.TestCase):
     def test_crossover(self):
         crossovers = Signal.crossover(self.df_cross['source1'], self.df_cross['source2'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, True, False]})
-        
+
         pdt.assert_frame_equal(crossovers, expected_df, check_dtype=False, obj='crossover DataFrame')
 
     def test_no_crossover1(self):
         crossovers = Signal.crossover(self.df_no_cross['source1'], self.df_no_cross['source2'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, False, False]})
-        
+
         pdt.assert_frame_equal(crossovers, expected_df, check_dtype=False, obj='no crossover DataFrame')
 
     def test_no_crossover2(self):
         crossovers = Signal.crossover(self.df_no_cross['source2'], self.df_no_cross['source1'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, False, False]})
-        
+
         pdt.assert_frame_equal(crossovers, expected_df, check_dtype=False, obj='no crossover DataFrame')
 
     def test_crossover_with_nan(self):
         crossovers = Signal.crossover(self.df_with_nan['source1'], self.df_with_nan['source2'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, False, False]})
-        
+
         pdt.assert_frame_equal(crossovers, expected_df, check_dtype=False, obj='crossover with NaN DataFrame')
 
     def test_crossover_with_nan2(self):
         crossovers = Signal.crossover(self.df_with_nan2['source2'], self.df_with_nan2['source1'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, False, False]})
-        
+
         pdt.assert_frame_equal(crossovers, expected_df, check_dtype=False, obj='crossover with NaN DataFrame')
 
     '''
@@ -75,25 +76,25 @@ class TestSignals(unittest.TestCase):
     def test_no_crossunder1(self):
         crossunders = Signal.crossover(self.df_no_cross['source1'], self.df_no_cross['source2'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, False, False]})
-        
+
         pdt.assert_frame_equal(crossunders, expected_df, check_dtype=False, obj='no crossunder DataFrame')
-    
+
     def test_no_crossunder2(self):
         crossunders = Signal.crossover(self.df_no_cross['source2'], self.df_no_cross['source1'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, False, False]})
-        
+
         pdt.assert_frame_equal(crossunders, expected_df, check_dtype=False, obj='no crossunder DataFrame')
 
     def test_crossunder_with_nan(self):
         crossunders = Signal.crossunder(self.df_with_nan['source2'], self.df_with_nan['source1'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, False, False]})
-        
+
         pdt.assert_frame_equal(crossunders, expected_df, check_dtype=False, obj='crossunder with NaN DataFrame')
 
     def test_crossunder_with_nan2(self):
         crossunders = Signal.crossunder(self.df_with_nan2['source1'], self.df_with_nan2['source2'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, False, False]})
-        
+
         pdt.assert_frame_equal(crossunders, expected_df, check_dtype=False, obj='crossunder with NaN DataFrame')
 
     '''
@@ -124,7 +125,7 @@ class TestSignals(unittest.TestCase):
         belows = Signal.below(self.df_with_nan2['source1'], self.df_with_nan2['source2'])
         expected_df = pd.DataFrame(data={'Symbol1': [False, False, True, True]})
 
-        pdt.assert_frame_equal(belows, expected_df, check_dtype=False)   
+        pdt.assert_frame_equal(belows, expected_df, check_dtype=False)
 
 if __name__ == '__main__':
     unittest.main()

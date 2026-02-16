@@ -1,7 +1,7 @@
-import pandas as pd
-import pandas_ta as ta
 import logging
 
+import pandas as pd
+import pandas_ta as ta
 
 METADATA: dict = {
     'name': 'Bollinger Bands',

@@ -22,7 +22,7 @@ TIMEFRAME_TO_MINUTES = {
 
 class StreamConsumer:
     """Consumes candle data from Redis streams using XREAD."""
-    
+
     def __init__(
         self,
         redis: Redis,
@@ -44,7 +44,7 @@ class StreamConsumer:
         self.block_ms = block_ms
         self._running = False
         self._last_ids: Dict[str, str] = {}  # stream_key -> last_message_id
-    
+
     def get_stream_key(self, symbol: str, timeframe: str) -> str:
         """Build Redis stream key for a symbol/timeframe.
         
@@ -56,7 +56,7 @@ class StreamConsumer:
             Stream key (e.g., "candles:12345:EURUSD:M1")
         """
         return f"candles:{self.account_id}:{symbol}:{timeframe}"
-    
+
     def set_last_id(self, stream_key: str, last_id: str) -> None:
         """Set the last processed message ID for a stream.
 
@@ -196,10 +196,10 @@ class StreamConsumer:
             Number of candles backfilled
         """
         logger.info(f"Backfilling {stream_key} from {start_id} to {end_id}")
-        
+
         current_id = start_id
         total_candles = 0
-        
+
         while True:
             try:
                 # Use XRANGE for backfilling historical data
@@ -209,10 +209,10 @@ class StreamConsumer:
                     max=end_id,
                     count=self.batch_size
                 )
-                
+
                 if not messages:
                     break
-                
+
                 candles = []
                 for msg_id, data in messages:
                     msg_id_str = self._decode_bytes(msg_id)
@@ -224,20 +224,20 @@ class StreamConsumer:
                     except Exception as e:
                         logger.error(f"Error transforming message {msg_id_str}: {e}")
                         continue
-                
+
                 if candles:
                     await callback(symbol_id, candles)
                     total_candles += len(candles)
                     logger.info(f"Backfilled {len(candles)} candles from {stream_key}")
-                
+
                 if len(messages) < self.batch_size:
                     # Reached the end
                     break
-                    
+
             except Exception as e:
                 logger.error(f"Error during backfill of {stream_key}: {e}")
                 break
-        
+
         logger.info(f"Backfill complete: {total_candles} candles from {stream_key}")
         return total_candles
 

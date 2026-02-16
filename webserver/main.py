@@ -8,11 +8,10 @@ from typing import Optional, Union
 
 import websockets
 from aiohttp import web
-from websockets.asyncio.server import ServerConnection
-
 from app.broker_client import BrokerClient
 from app.redis_consumer import RedisConsumer
 from app.subscription_manager import SubscriptionManager
+from websockets.asyncio.server import ServerConnection
 
 logging.basicConfig(
     level=logging.INFO,

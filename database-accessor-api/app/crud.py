@@ -1,8 +1,9 @@
-from sqlalchemy import select, insert, delete, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from app.models import markets, candles
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from app.models import candles, markets
+from sqlalchemy import delete, insert, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 async def get_market_by_id(session, symbol_id: int):

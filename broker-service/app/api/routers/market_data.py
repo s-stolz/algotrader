@@ -147,21 +147,21 @@ async def get_trendbars(
         tf = Timeframe(timeframe)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    
+
     # Validate parameters
     if from_ts is None and limit is None:
         raise HTTPException(
             status_code=400,
             detail="Either 'fromTs' or 'limit' must be specified"
         )
-    
+
     # Set defaults
     import time
     now_ms = int(time.time() * 1000)
-    
+
     if to_ts is None:
         to_ts = now_ms
-    
+
     if from_ts is None and limit:
         # Calculate from_ts based on limit and timeframe to get most recent bars
         timeframe_minutes = {
@@ -243,7 +243,7 @@ async def stream_trendbars(
                 "digits": trendbar.digits,
             }
             yield json.dumps(bar_dict) + "\n"
-    
+
     return StreamingResponse(
         generate_ndjson(),
         media_type="application/x-ndjson",

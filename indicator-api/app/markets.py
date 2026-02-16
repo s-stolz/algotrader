@@ -1,8 +1,9 @@
 import asyncio
 import os
+from typing import Dict
+
 import requests
 from logger import logger
-from typing import Dict
 
 log = logger(__name__)
 

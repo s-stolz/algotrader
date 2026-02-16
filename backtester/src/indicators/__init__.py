@@ -1,8 +1,8 @@
-from .sma import SMA
-from .rsi import RSI
 from .bbands import BBANDS
-from .macd import MACD
 from .currencyStrength import CURRENCY_STRENGTH
+from .macd import MACD
+from .rsi import RSI
+from .sma import SMA
 
 INDICATORS = {
     'Simple Moving Average': SMA,

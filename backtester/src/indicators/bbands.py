@@ -1,6 +1,7 @@
+import logging
+
 import pandas as pd
 import pandas_ta as ta
-import logging
 
 
 class BBANDS:
@@ -31,7 +32,7 @@ class BBANDS:
                         'color': '#f23645'
                     },
                 },
-            }, 
+            },
             'parameters': {
                 'length': {
                     'type': 'int',
@@ -67,7 +68,7 @@ class BBANDS:
         postfix = f'_{length}_{std_str}'
         bbands = ta.bbands(data[source],
                            length, std, mamode=ma_mode)
-        
+
         if bbands is None:
             logging.error(
                 "Bollinger Bands calculation failed. Check the input data and parameters.")

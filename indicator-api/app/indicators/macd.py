@@ -1,8 +1,7 @@
-from re import M
+from itertools import product
+
 import pandas as pd
 import pandas_ta as ta
-from itertools import product
-import logging
 
 METADATA: dict = {
     'name': 'Moving Average Convergence Divergence',

@@ -3,6 +3,10 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Callable
 
+from app.domain.models import Account, Deal, Order, Position, Symbol, Tick, Trendbar
+from app.domain.models.deal import ClosePositionDetail
+from app.domain.models.position import TradeData
+from app.domain.value_objects import SymbolDescriptor, Timeframe
 from ctrader_open_api.messages.OpenApiModelMessages_pb2 import (
     ProtoOACommissionType,
     ProtoOADeal,
@@ -11,17 +15,11 @@ from ctrader_open_api.messages.OpenApiModelMessages_pb2 import (
     ProtoOAOrderStatus,
     ProtoOAOrderType,
     ProtoOAPosition,
-    ProtoOATrendbar,
-    ProtoOATrendbarPeriod,
     ProtoOATimeInForce,
     ProtoOATradeSide,
+    ProtoOATrendbar,
+    ProtoOATrendbarPeriod,
 )
-
-from app.domain.models import Account, Deal, Order, Position, Symbol, Tick, Trendbar
-from app.domain.models.deal import ClosePositionDetail
-from app.domain.models.position import TradeData
-from app.domain.value_objects import SymbolDescriptor, Timeframe
-
 
 # Type alias for symbol lookup function
 SymbolLookup = Callable[[int], SymbolDescriptor | None]

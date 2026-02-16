@@ -9,7 +9,7 @@ logger = logging.getLogger("ingestion-service.db_client")
 
 class DatabaseClient:
     """Client for interacting with the database-accessor-api."""
-    
+
     def __init__(self, base_url: str, timeout: int = 30):
         """Initialize the database client.
         
@@ -20,7 +20,7 @@ class DatabaseClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.client = httpx.Client(timeout=timeout)
-    
+
     def get_markets(self) -> List[Dict[str, Any]]:
         """Fetch all markets/symbols from the database.
         
@@ -37,10 +37,10 @@ class DatabaseClient:
         except Exception as e:
             logger.error(f"Error fetching markets: {e}")
             raise
-    
+
     def get_latest_candle(
-        self, 
-        symbol_id: int, 
+        self,
+        symbol_id: int,
         timeframe: int
     ) -> Optional[Dict[str, Any]]:
         """Fetch the most recent candle for a symbol/timeframe.
@@ -54,22 +54,22 @@ class DatabaseClient:
         """
         url = f"{self.base_url}/candles/{symbol_id}"
         params = {"timeframe": timeframe, "limit": 1}
-        
+
         try:
             response = self.client.get(url, params=params)
             response.raise_for_status()
             candles = response.json()
-            
+
             if candles and len(candles) > 0:
                 return candles[0]
             return None
         except Exception as e:
             logger.error(f"Error fetching latest candle for symbol {symbol_id}: {e}")
             return None
-    
+
     def write_candles(
-        self, 
-        symbol_id: int, 
+        self,
+        symbol_id: int,
         candles: List[Dict[str, Any]]
     ) -> bool:
         """Write candles to the database in batch.
@@ -83,13 +83,13 @@ class DatabaseClient:
         """
         if not candles:
             return True
-            
+
         url = f"{self.base_url}/candles"
         payload = {
             "symbol_id": symbol_id,
             "candles": candles
         }
-        
+
         try:
             logger.debug(f"Sending {len(candles)} candles to {url}")
             response = self.client.post(url, json=payload)

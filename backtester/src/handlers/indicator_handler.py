@@ -1,10 +1,10 @@
 """
 Handler for indicator-related messages.
 """
-import logging
-from .base import BaseHandler
 import src.data as Data
 import src.indicators as Indicators
+
+from .base import BaseHandler
 
 
 class IndicatorHandler(BaseHandler):

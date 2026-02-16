@@ -1,5 +1,6 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 import os
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 DB_USER = os.getenv("TIMESCALEDB_USER")
 DB_PASSWORD = os.getenv("TIMESCALEDB_PASSWORD")

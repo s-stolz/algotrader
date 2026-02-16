@@ -189,7 +189,7 @@ class TrendbarStreamRegistry:
                 logger.exception(
                     "Failed to stop trendbar stream during shutdown: account=%s symbol=%s timeframe=%s",
                     account_id,
-                    symbol, 
+                    symbol,
                     timeframe_value,
                 )
 

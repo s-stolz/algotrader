@@ -6,7 +6,7 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     """Service configuration loaded from environment variables."""
-    
+
     redis_url: str
     db_api_host: str
     db_api_port: int
@@ -16,12 +16,12 @@ class Config:
     log_level: str
     consumer_batch_size: int
     consumer_block_ms: int
-    
+
     @property
     def db_api_base_url(self) -> str:
         """Full base URL for the database accessor API."""
         return f"http://{self.db_api_host}:{self.db_api_port}"
-    
+
     @property
     def broker_service_base_url(self) -> str:
         """Full base URL for the broker service API."""

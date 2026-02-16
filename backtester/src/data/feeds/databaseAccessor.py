@@ -1,8 +1,9 @@
-import requests
-import logging
-from decouple import config
-from typing import Optional
 import json
+import logging
+from typing import Optional
+
+import requests
+from decouple import config
 
 log = logging.getLogger(__name__)
 

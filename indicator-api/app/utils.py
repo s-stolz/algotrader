@@ -1,7 +1,8 @@
-import pandas as pd
-import pandas as _pd  # alias for internal date handling without shadowing
 from datetime import timedelta
 from typing import Any
+
+import pandas as _pd  # alias for internal date handling without shadowing
+import pandas as pd
 
 
 def _is_int(v: Any) -> bool:

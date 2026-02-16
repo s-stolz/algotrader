@@ -1,12 +1,12 @@
-from fastapi import FastAPI, Depends, Query, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 
+from __init__ import __version__
+from app import crud
 from app.database import get_db
 from app.schemas import CandleBatchIn, MarketIn
-from app import crud
-from __init__ import __version__
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
 
 print(f"Starting Database Accessor API version {__version__}")
 

@@ -1,25 +1,25 @@
-from typing import Optional
+import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, Body
-from fastapi.middleware.cors import CORSMiddleware
-from logger import logger, LOG_LEVEL_UVICORN
-from app.schemas import IndicatorParameters
+from typing import Optional
+
+import app.markets as markets
+import uvicorn
+from __init__ import __version__
+from app import get_available_indicators, get_indicator_by_id, get_indicator_metadata
 from app.candles import get_candles
+from app.indicators.base import execute_indicator
+from app.markets import load_symbols
+from app.schemas import IndicatorParameters
 from app.utils import (
-    prepare_parameters,
-    format_indicator_response,
-    estimate_warmup,
     adjust_fetch_bounds,
+    estimate_warmup,
+    format_indicator_response,
+    prepare_parameters,
     trim_indicator_output,
 )
-from app.markets import load_symbols
-import app.markets as markets
-from app import get_available_indicators, get_indicator_by_id, get_indicator_metadata
-from app.indicators.base import execute_indicator
-import uvicorn
-import os
-
-from __init__ import __version__
+from fastapi import Body, FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from logger import LOG_LEVEL_UVICORN, logger
 
 log = logger(__name__)
 log.info(f"Starting Indicator API version {__version__}")

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Protocol, Any, Callable, Dict, Set
 import inspect
 import sys
+from typing import Any, Callable, Dict, Protocol, Set
+
 import pandas as pd
 from logger import logger
 

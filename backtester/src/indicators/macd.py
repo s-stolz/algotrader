@@ -1,7 +1,7 @@
+from itertools import product
+
 import pandas as pd
 import pandas_ta as ta
-from itertools import product
-import logging
 
 
 class MACD:
@@ -40,7 +40,7 @@ class MACD:
                         }
                     },
                 },
-            }, 
+            },
             'parameters': {
                 'fast_length': {
                     'type': 'int',
@@ -72,13 +72,13 @@ class MACD:
         }
 
     @staticmethod
-    def run(data: pd.DataFrame, fast_length: int, slow_length: int, 
+    def run(data: pd.DataFrame, fast_length: int, slow_length: int,
                  source: str, signal_smoothing: int) -> pd.DataFrame:
         """Calculate the Moving Average Convergence Divergence"""
         postfix = f'_{fast_length}_{slow_length}_{signal_smoothing}'
-        macd = ta.macd(data[source], 
-                       fast=fast_length, 
-                       slow=slow_length, 
+        macd = ta.macd(data[source],
+                       fast=fast_length,
+                       slow=slow_length,
                        signal=signal_smoothing
                        )
 
@@ -91,8 +91,8 @@ class MACD:
         return macd
 
     @staticmethod
-    def run_multi(data: pd.DataFrame, fast_length: int | list[int], 
-                  slow_length: int | list[int], source: str, 
+    def run_multi(data: pd.DataFrame, fast_length: int | list[int],
+                  slow_length: int | list[int], source: str,
                   signal_smoothing: int | list[int]) -> pd.DataFrame:
         """
         Calculat the Moving Average Convergence Divergence with parameter variations
@@ -113,12 +113,11 @@ class MACD:
                 print(fast, slow, signal)
                 post = f'_{fast}_{slow}_{signal}'
                 # macd[f'MACD'+post], macd[f'MACDh'+post], macd[f'MACDs'+post]
-                macd = ta.macd(data[source], 
-                    fast=fast, 
-                    slow=slow, 
+                macd = ta.macd(data[source],
+                    fast=fast,
+                    slow=slow,
                     signal=signal
                     )
                 print(macd)
 
         return macd
-        

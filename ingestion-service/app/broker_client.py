@@ -12,7 +12,7 @@ logger = logging.getLogger("ingestion-service.broker_client")
 
 class BrokerClient:
     """Client for interacting with the broker-service API."""
-    
+
     def __init__(self, base_url: str, account_id: str, timeout: int = 30):
         """Initialize the broker client.
         
@@ -27,7 +27,7 @@ class BrokerClient:
         headers = {"X-Account-Id": account_id}
         self.client = httpx.Client(timeout=timeout, headers=headers)
         self.async_client = httpx.AsyncClient(timeout=timeout, headers=headers)
-    
+
     def get_trendbars(
         self,
         symbol: str,
@@ -59,10 +59,10 @@ class BrokerClient:
 
         if end_time:
             params["toTs"] = normalize_timestamp_to_epoch_ms(end_time)
-        
+
         if limit:
             params["limit"] = min(limit, 1000)  # Enforce max limit
-        
+
         try:
             logger.debug(f"Fetching trendbars: {url} with params {params}")
             response = self.client.get(url, params=params)
@@ -76,7 +76,7 @@ class BrokerClient:
         except Exception as e:
             logger.error(f"Error fetching trendbars: {e}")
             raise
-    
+
     async def stream_trendbars(
         self,
         symbol: str,
@@ -111,32 +111,32 @@ class BrokerClient:
 
         if end_time:
             params["toTs"] = normalize_timestamp_to_epoch_ms(end_time)
-        
+
         if limit:
             params["limit"] = limit
-        
+
         try:
             logger.debug(f"Streaming trendbars: {url} with params {params}")
             count = 0
-            
+
             async with self.async_client.stream("GET", url, params=params) as response:
                 response.raise_for_status()
-                
+
                 async for line in response.aiter_lines():
                     if line.strip():
                         trendbar = json.loads(line)
                         count += 1
                         yield trendbar
-            
+
             logger.info(f"Streamed {count} trendbars for {symbol} {timeframe}")
-            
+
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error streaming trendbars: {e.response.status_code}")
             raise
         except Exception as e:
             logger.error(f"Error streaming trendbars: {e}")
             raise
-    
+
     async def start_trendbar_stream(
         self,
         symbol: str,
@@ -158,7 +158,7 @@ class BrokerClient:
             "timeframe": timeframe,
             "onlyCompletedBars": str(only_completed_bars).lower()
         }
-        
+
         try:
             logger.info(f"Starting trendbar stream for {symbol} {timeframe}")
             response = await self.async_client.get(url, params=params)
@@ -172,7 +172,7 @@ class BrokerClient:
         except Exception as e:
             logger.error(f"Error starting trendbar stream: {e}")
             raise
-    
+
     async def stop_trendbar_stream(
         self,
         symbol: str,
@@ -189,7 +189,7 @@ class BrokerClient:
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbar-stream/stop"
         params = {"timeframe": timeframe}
-        
+
         try:
             logger.info(f"Stopping trendbar stream for {symbol} {timeframe}")
             response = await self.async_client.get(url, params=params)
@@ -203,7 +203,7 @@ class BrokerClient:
         except Exception as e:
             logger.error(f"Error stopping trendbar stream: {e}")
             raise
-    
+
     def close(self) -> None:
         """Close the HTTP client."""
         self.client.close()

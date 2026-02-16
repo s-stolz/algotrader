@@ -1,6 +1,6 @@
 from app.application.interfaces import BrokerPort
-from app.domain.value_objects import AccountId, PositionId
 from app.domain.models import Deal
+from app.domain.value_objects import AccountId, PositionId
 
 
 class PositionService:

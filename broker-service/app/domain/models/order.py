@@ -3,7 +3,6 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 from ..value_objects import OrderType, TimeInForce
-
 from .position import TradeData
 
 

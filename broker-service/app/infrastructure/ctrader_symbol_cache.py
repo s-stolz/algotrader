@@ -1,6 +1,9 @@
 import logging
 from typing import TYPE_CHECKING, Dict, cast
 
+from app.domain.models import Symbol
+from app.domain.value_objects import SymbolDescriptor, SymbolId
+from app.infrastructure.ctrader_mappers import map_symbol_data
 from ctrader_open_api.messages.OpenApiMessages_pb2 import (
     ProtoOASymbolByIdReq,
     ProtoOASymbolByIdRes,
@@ -8,13 +11,10 @@ from ctrader_open_api.messages.OpenApiMessages_pb2 import (
     ProtoOASymbolsListRes,
 )
 
-from app.domain.models import Symbol
-from app.domain.value_objects import SymbolDescriptor, SymbolId
-from app.infrastructure.ctrader_mappers import map_symbol_data
-
 if TYPE_CHECKING:
-    from google.protobuf.message import Message
     from typing import Awaitable, Callable
+
+    from google.protobuf.message import Message
 
     SendRequestFn = Callable[[Message], Awaitable[Message]]
     AuthorizeFn = Callable[[int], Awaitable[None]]
