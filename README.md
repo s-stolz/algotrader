@@ -82,6 +82,52 @@ make logs
 make ps
 ```
 
+## Local Python Environments (Per Service)
+
+Use one virtual environment per Python service instead of one shared root environment.
+
+### Shared constraints + service requirements
+
+- Shared versions live in `requirements/constraints-shared.txt`.
+- Each service keeps its own `requirements.txt`.
+- If a service must diverge, add `<service>/constraints.override.txt` with a short rationale comment.
+
+### Bootstrap all service venvs
+
+```sh
+make venvs
+```
+
+Equivalent direct command:
+
+```sh
+./scripts/setup_venvs.sh all
+```
+
+### Setup one service
+
+```sh
+make venv SERVICE=broker-service
+```
+
+### Recreate all service venvs
+
+```sh
+make venvs-recreate
+```
+
+### Validate existing environments
+
+```sh
+make venvs-check
+```
+
+## VS Code Multi-Venv Workflow
+
+1. Open `algotrader.code-workspace` in VS Code (not only the repo root folder).
+2. The workspace uses `python.defaultInterpreterPath = ${workspaceFolder}/.venv/bin/python`, so each service folder resolves to its own `.venv`.
+3. If a service interpreter is not picked up immediately, run `Python: Select Interpreter` once while a file from that service is active.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
