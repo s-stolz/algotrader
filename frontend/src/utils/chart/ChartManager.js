@@ -14,6 +14,7 @@ export class ChartManager {
     this.series = new Map();
     this.container = null;
     this.loadedBars = 500;
+    this.initialVisibleCandles = 50;
 
     this.defaultOptions = {
       layout: {
@@ -34,6 +35,7 @@ export class ChartManager {
     this.timeScaleOptions = {
       timeVisible: true,
       secondsVisible: false,
+      rightOffset: 5,
     };
 
     this.seriesTypes = {
@@ -149,9 +151,18 @@ export class ChartManager {
   }
 
   scrollToRealTime() {
-    if (this.chart) {
-      this.chart.timeScale().scrollToRealTime();
+    if (!this.chart) return;
+
+    const ohlcSeriesInfo = this.series.get('ohlc');
+    const candleCount = ohlcSeriesInfo?.data?.length || 0;
+
+    if (candleCount > 0) {
+      const to = candleCount - 1;
+      const from = Math.max(0, to - this.initialVisibleCandles + 1);
+      this.chart.timeScale().setVisibleLogicalRange({ from, to });
     }
+
+    this.chart.timeScale().scrollToRealTime();
   }
 
   updateSeriesOptions(key, newOptions) {
