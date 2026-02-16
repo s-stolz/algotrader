@@ -19,7 +19,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = []
+dev = [
+  "ruff>=0.14.11",
+  "black>=24.4.2",
+]
 
 [project.scripts]
 broker-service = "app.main:run"
+lint = "ruff check app/ *.py && black --check app/ *.py"
+lint-fix = "ruff check --fix app/ *.py && black app/ *.py"

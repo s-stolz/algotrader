@@ -1,0 +1,29 @@
+[tool.black]
+line-length = 100
+target-version = ["py38"]
+extend-exclude = '''
+(
+  /(
+    \.git
+    | \.venv
+    | node_modules
+    | dist
+    | build
+  )/
+)
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+extend-exclude = [
+  "node_modules",
+  "timescaledb-init",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]
