@@ -3,33 +3,10 @@
     {
       "name": "algotrader",
       "path": "."
-    },
-    {
-      "name": "broker-service",
-      "path": "broker-service"
-    },
-    {
-      "name": "indicator-api",
-      "path": "indicator-api"
-    },
-    {
-      "name": "database-accessor-api",
-      "path": "database-accessor-api"
-    },
-    {
-      "name": "ingestion-service",
-      "path": "ingestion-service"
-    },
-    {
-      "name": "webserver",
-      "path": "webserver"
-    },
-    {
-      "name": "backtester",
-      "path": "backtester"
     }
   ],
   "settings": {
-    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python"
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "makefile.configureOnOpen": false
   }
 }
