@@ -15,7 +15,7 @@ class BrokerClient:
 
     def __init__(self, base_url: str, account_id: str, timeout: int = 30):
         """Initialize the broker client.
-        
+
         Args:
             base_url: Base URL of the broker-service (e.g., http://localhost:8080)
             account_id: Broker account ID for API requests
@@ -37,14 +37,14 @@ class BrokerClient:
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Fetch historical trendbars (candles) from the broker-service.
-        
+
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             timeframe: Timeframe enum (e.g., "M1", "H1", "D1")
             start_time: Optional start timestamp (ISO format or epoch millis)
             end_time: Optional end timestamp (ISO format or epoch millis)
             limit: Optional maximum number of bars to return (1-1000)
-        
+
         Returns:
             List of trendbar dictionaries with OHLC data
         """
@@ -86,17 +86,17 @@ class BrokerClient:
         limit: Optional[int] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream historical trendbars from the broker-service.
-        
+
         Uses the streaming endpoint for memory-efficient processing of large
         historical data requests. Yields trendbars one at a time.
-        
+
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             timeframe: Timeframe enum (e.g., "M1", "H1", "D1")
             start_time: Optional start timestamp (ISO format or epoch millis)
             end_time: Optional end timestamp (ISO format or epoch millis)
             limit: Optional maximum number of bars to return
-        
+
         Yields:
             Trendbar dictionaries with OHLC data
         """
@@ -144,12 +144,12 @@ class BrokerClient:
         only_completed_bars: bool = True
     ) -> Dict[str, Any]:
         """Start a live trendbar stream that publishes to Redis.
-        
+
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             timeframe: Timeframe enum (e.g., "M1", "H1", "D1")
             only_completed_bars: If True, only publish bars when they close
-        
+
         Returns:
             Stream status dictionary
         """
@@ -179,11 +179,11 @@ class BrokerClient:
         timeframe: str = "M1"
     ) -> Dict[str, Any]:
         """Stop a live trendbar stream.
-        
+
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             timeframe: Timeframe enum (e.g., "M1", "H1", "D1")
-        
+
         Returns:
             Stream status dictionary
         """

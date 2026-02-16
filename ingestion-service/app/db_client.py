@@ -12,7 +12,7 @@ class DatabaseClient:
 
     def __init__(self, base_url: str, timeout: int = 30):
         """Initialize the database client.
-        
+
         Args:
             base_url: Base URL of the database-accessor-api (e.g., http://localhost:8000)
             timeout: Request timeout in seconds
@@ -23,7 +23,7 @@ class DatabaseClient:
 
     def get_markets(self) -> List[Dict[str, Any]]:
         """Fetch all markets/symbols from the database.
-        
+
         Returns:
             List of market dictionaries with keys: id, symbol, exchange, market_type, etc.
         """
@@ -44,11 +44,11 @@ class DatabaseClient:
         timeframe: int
     ) -> Optional[Dict[str, Any]]:
         """Fetch the most recent candle for a symbol/timeframe.
-        
+
         Args:
             symbol_id: Database ID of the symbol
             timeframe: Timeframe in minutes (e.g., 1 for M1, 5 for M5)
-            
+
         Returns:
             Candle dictionary or None if no candles exist
         """
@@ -73,11 +73,11 @@ class DatabaseClient:
         candles: List[Dict[str, Any]]
     ) -> bool:
         """Write candles to the database in batch.
-        
+
         Args:
             symbol_id: Database ID of the symbol
             candles: List of candle dictionaries with keys: timestamp, open, high, low, close, volume
-            
+
         Returns:
             True if successful, False otherwise
         """

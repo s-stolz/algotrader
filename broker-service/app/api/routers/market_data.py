@@ -205,7 +205,7 @@ async def stream_trendbars(
         service: MarketDataService = Depends(get_market_data_service),
 ):
     """Stream trendbars in NDJSON format for memory-efficient processing.
-    
+
     This endpoint streams trendbars in chunks, making it ideal for large
     historical data requests. Each line is a JSON object representing one trendbar.
     """

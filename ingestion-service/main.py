@@ -26,10 +26,10 @@ class IngestionService:
     @staticmethod
     def _format_candle_for_db(candle: Dict[str, Any]) -> Dict[str, Any]:
         """Transform broker candle format to database format.
-        
+
         Args:
             candle: Broker candle with keys: o, h, l, c, v, t, digits
-            
+
         Returns:
             Database candle with keys: timestamp, open, high, low, close, volume
         """

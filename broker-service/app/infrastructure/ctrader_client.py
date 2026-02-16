@@ -350,7 +350,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         limit: int | None,
     ) -> list[Trendbar]:
         """Fetch trendbars with automatic chunking for large requests.
-        
+
         The cTrader API caps responses at ~14000 bars. This method automatically
         chunks requests into 10000-bar segments and aggregates results.
         """
@@ -486,7 +486,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         limit: int | None,
     ):
         """Stream trendbars in chunks for memory-efficient processing.
-        
+
         Yields trendbars in chunks of up to 10,000 bars at a time.
         """
         info = await self._get_symbol(int(account_id), symbol.upper())

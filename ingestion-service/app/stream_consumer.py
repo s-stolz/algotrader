@@ -31,7 +31,7 @@ class StreamConsumer:
         block_ms: int = 5000
     ):
         """Initialize the stream consumer.
-        
+
         Args:
             redis: Async Redis client
             account_id: Broker account ID for stream key construction
@@ -47,11 +47,11 @@ class StreamConsumer:
 
     def get_stream_key(self, symbol: str, timeframe: str) -> str:
         """Build Redis stream key for a symbol/timeframe.
-        
+
         Args:
             symbol: Symbol name (e.g., "EURUSD")
             timeframe: Timeframe code (e.g., "M1")
-            
+
         Returns:
             Stream key (e.g., "candles:12345:EURUSD:M1")
         """
@@ -81,10 +81,10 @@ class StreamConsumer:
 
     def _parse_redis_candle(self, redis_data: Dict[bytes, bytes]) -> Dict[str, Any]:
         """Transform Redis stream message to candle dictionary.
-        
+
         Args:
             redis_data: Raw data from Redis stream (bytes keys/values)
-            
+
         Returns:
             Candle dictionary with keys: timestamp, open, high, low, close, volume
         """
@@ -136,7 +136,7 @@ class StreamConsumer:
         start_id: str = "0-0"
     ):
         """Consume messages from a single Redis stream.
-        
+
         Args:
             stream_key: Redis stream key to consume
             symbol_id: Database symbol ID for the callback
@@ -184,14 +184,14 @@ class StreamConsumer:
         callback: callable
     ) -> int:
         """Backfill historical data from a stream between two message IDs.
-        
+
         Args:
             stream_key: Redis stream key
             symbol_id: Database symbol ID
             start_id: Starting message ID (exclusive)
             end_id: Ending message ID (inclusive, or "+" for latest)
             callback: Async function(symbol_id, candles) called with batched candles
-            
+
         Returns:
             Number of candles backfilled
         """
