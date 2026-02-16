@@ -2,12 +2,18 @@ PYTHON ?= python
 COMPOSE ?= docker compose --env-file config/.env.shared
 SERVICE ?=
 
-.PHONY: config validate-config up build down restart logs ps venvs venv venvs-recreate venvs-check
+.PHONY: ensure-pyyaml config validate-config up build down restart logs ps venvs venv venvs-recreate venvs-check
 
-config:
+ensure-pyyaml:
+	@$(PYTHON) -c "import yaml" >/dev/null 2>&1 || { \
+		echo "PyYAML missing for $(PYTHON); installing..."; \
+		$(PYTHON) -m pip install pyyaml; \
+	}
+
+config: ensure-pyyaml
 	$(PYTHON) scripts/generate_env.py --force
 
-validate-config:
+validate-config: ensure-pyyaml
 	$(PYTHON) scripts/generate_env.py --validate
 
 up: config
