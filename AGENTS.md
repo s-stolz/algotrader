@@ -17,12 +17,12 @@ This repo is a multi-service trading platform.
 - `npm --workspace frontend run dev`: start frontend dev server.
 - `npm --workspace frontend run build`: production frontend build.
 - `npm --workspace frontend run lint`: lint JS/Vue code.
-- `./lint-python.sh`: run Pylint across Python services configured for linting.
+- `./lint-python.sh`: run Ruff and Black checks across Python services.
 - `cd backtester && python main.py`: run backtester locally.
 - `cd broker-service && uvicorn app.main:app --host 0.0.0.0 --port 8050`: run broker API locally.
 
 ## Coding Style & Naming Conventions
-- Python: 4-space indentation, `snake_case` functions/variables, `PascalCase` classes, max line length 100 (see `.pylintrc`, `webserver/pyproject.toml`).
+- Python: 4-space indentation, `snake_case` functions/variables, `PascalCase` classes, max line length 100 (see `pyproject.toml` and `webserver/pyproject.toml`).
 - Vue/JS: follow `frontend/eslint.config.mjs`; semicolons required, trailing commas on multiline structures, kebab-case custom event names.
 - Keep modules focused by domain (`api/`, `application/`, `domain/`, `infrastructure/` pattern in `broker-service`).
 
