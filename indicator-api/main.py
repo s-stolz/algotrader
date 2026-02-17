@@ -54,6 +54,7 @@ app = FastAPI(
 async def health():
     return {"status": "healthy"}
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -90,10 +91,10 @@ async def run_indicator(
         "timeframe": timeframe,
         "start_date": start_date,
         "end_date": end_date,
-        "limit": limit
+        "limit": limit,
     }
 
-    custom_parameters = getattr(body, 'parameters', {})
+    custom_parameters = getattr(body, "parameters", {})
     parameters = prepare_parameters(metadata, custom_parameters, **query_params)
 
     # Determine warmup period to fetch extra history so user limit/start_date are honored.
@@ -140,7 +141,7 @@ async def run_indicator(
 
 if __name__ == "__main__":
     port = int(os.getenv("INDICATOR_API_PORT", 8010))
-    host = os.getenv("INDICATOR_API_HOST", "0.0.0.0")
+    host = os.getenv("INDICATOR_API_BIND_HOST", "0.0.0.0")
 
     uvicorn.run(
         "main:app",
