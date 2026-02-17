@@ -1,8 +1,14 @@
 PYTHON ?= python
 COMPOSE ?= docker compose --env-file config/.env.shared
 SERVICE ?=
+DETACH ?= 0
+UP_FLAGS ?=
 
-.PHONY: ensure-pyyaml config validate-config up build down restart logs ps venvs venv venvs-recreate venvs-check
+.PHONY: ensure-pyyaml config validate-config up up-detached build down restart logs ps venvs venv venvs-recreate venvs-check
+
+ifeq ($(DETACH),1)
+UP_FLAGS += -d
+endif
 
 ensure-pyyaml:
 	@$(PYTHON) -c "import yaml" >/dev/null 2>&1 || { \
@@ -17,7 +23,10 @@ validate-config: ensure-pyyaml
 	$(PYTHON) scripts/generate_env.py --validate
 
 up: config
-	$(COMPOSE) up --build
+	$(COMPOSE) up --build $(UP_FLAGS)
+
+up-detached: config
+	$(COMPOSE) up --build -d
 
 build: config
 	$(COMPOSE) build
@@ -27,7 +36,7 @@ down:
 
 restart: config
 	$(COMPOSE) down
-	$(COMPOSE) up --build
+	$(COMPOSE) up --build $(UP_FLAGS)
 
 logs:
 	$(COMPOSE) logs -f
