@@ -28,6 +28,8 @@ class WebSocketServer:
         self.subscription_manager: Optional[SubscriptionManager] = None
         self.health_app: Optional[web.Application] = None
         self.health_runner: Optional[web.AppRunner] = None
+        self._shutdown_lock = asyncio.Lock()
+        self._is_shutdown = False
 
     async def initialize(self):
         self.broker_client = BrokerClient(
@@ -146,19 +148,31 @@ class WebSocketServer:
         await site.start()
         logger.info(f"Health check server running on port {health_port}")
 
-    async def start(self):
+    async def start(self, stop_event: asyncio.Event):
         await self.initialize()
         await self.start_health_server()
 
-        async with websockets.serve(self.handle_client, "0.0.0.0", self.config['ws_port']):
-            logger.info(f"WebSocket server running on port {self.config['ws_port']}")
-            await asyncio.Future()
+        try:
+            async with websockets.serve(self.handle_client, "0.0.0.0", self.config['ws_port']):
+                logger.info(f"WebSocket server running on port {self.config['ws_port']}")
+                await stop_event.wait()
+                logger.info("Shutdown signal received, stopping WebSocket server")
+        finally:
+            await self.shutdown()
 
     async def shutdown(self):
-        if self.health_runner:
-            await self.health_runner.cleanup()
-        if self.redis_consumer:
-            await self.redis_consumer.disconnect()
+        async with self._shutdown_lock:
+            if self._is_shutdown:
+                return
+            self._is_shutdown = True
+
+            if self.health_runner:
+                await self.health_runner.cleanup()
+                self.health_runner = None
+
+            if self.redis_consumer:
+                await self.redis_consumer.disconnect()
+                self.redis_consumer = None
 
 
 async def main():
@@ -185,20 +199,30 @@ async def main():
 
     server = WebSocketServer(config)
 
-    loop = asyncio.get_event_loop()
+    stop_event = asyncio.Event()
 
     def signal_handler():
-        asyncio.create_task(server.shutdown())
-        loop.stop()
+        stop_event.set()
 
+    loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, signal_handler)
 
     try:
-        await server.start()
+        await server.start(stop_event)
     except KeyboardInterrupt:
+        stop_event.set()
+    finally:
         await server.shutdown()
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except RuntimeError as exc:
+        # Defensive fallback: some runtimes can stop the loop during shutdown,
+        # which should be treated as graceful termination.
+        if str(exc) == 'Event loop stopped before Future completed.':
+            logger.info('Event loop stopped during shutdown; exiting cleanly')
+        else:
+            raise
