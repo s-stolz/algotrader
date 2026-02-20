@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from redis.asyncio import Redis
-
 from app.application.interfaces import RedisPublisherPort
 from app.domain.models import Tick, Trendbar
 from app.domain.value_objects import AccountId, Timeframe
 from app.settings import Settings
+from redis.asyncio import Redis
 
 
 class RedisStreamsPublisher(RedisPublisherPort):

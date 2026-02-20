@@ -94,7 +94,8 @@ app/
 
 ## Configuration knobs
 
-Environment variables (dotenv compatible) control connectivity:
+Environment variables control connectivity. In this repository they are generated
+centrally in root `.env` via `python scripts/generate_env.py`.
 
 | Variable | Description | Default |
 | --- | --- | --- |
@@ -125,7 +126,14 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-2. Copy `sample.env` to `.env` and fill in your cTrader credentials (`CTRADER_CLIENT_ID`, `CTRADER_SECRET`, `CTRADER_HOST_TYPE`, `CTRADER_ACCESS_TOKEN`).
+2. From repository root, create secrets + generated env:
+
+```bash
+cd ..
+cp config/.env.secrets.example config/.env.secrets.local
+python scripts/generate_env.py
+cd broker-service
+```
 
 3. Start the API using the CLI command or Uvicorn:
 

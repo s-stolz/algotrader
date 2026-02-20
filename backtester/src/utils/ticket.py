@@ -1,5 +1,6 @@
 import json
 
+
 class Ticket:
     def __init__(self) -> None:
         self.sender = "Backtester"

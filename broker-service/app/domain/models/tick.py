@@ -18,4 +18,6 @@ class Tick(BaseModel):
 
     model_config = {
         "frozen": True,
+        "validate_assignment": False,
+        "validate_default": False,
     }

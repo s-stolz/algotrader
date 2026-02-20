@@ -48,12 +48,31 @@ export const ChartMixin = {
       const defaultOptions = {
         priceFormat: {
           type: 'price',
-          minMove: 0.00001,
+          ...seriesOptions.priceFormat,
         },
         ...seriesOptions,
       };
 
       return this.chartManager.addSeries('ohlc', 'candlestick', data, defaultOptions);
+    },
+
+    updateCandlestick(candle) {
+      if (this.chartManager) {
+        return this.chartManager.updateCandle('ohlc', candle);
+      }
+      return false;
+    },
+
+    setMinMove(minMove) {
+      if (this.chartManager) {
+        this.chartManager.updateSeriesOptions('ohlc', {
+          priceFormat: {
+            type: 'price',
+            minMove: minMove,
+            precision: Math.log10(1 / minMove),
+          },
+        });
+      }
     },
 
     subscribeCrosshairMove(callback) {
@@ -70,6 +89,12 @@ export const ChartMixin = {
 
     unsubscribeVisibleLogicalRangeChange() {
       this.chartManager.unsubscribeVisibleLogicalRangeChange();
+    },
+
+    scrollToRealTime() {
+      if (this.chartManager) {
+        this.chartManager.scrollToRealTime();
+      }
     },
 
     cleanupChart() {

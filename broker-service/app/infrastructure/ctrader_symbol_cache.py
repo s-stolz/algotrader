@@ -1,20 +1,21 @@
 import logging
 from typing import TYPE_CHECKING, Dict, cast
 
+from app.domain.models import Symbol
+from app.domain.value_objects import SymbolDescriptor, SymbolId
+from app.infrastructure.ctrader_mappers import map_symbol_data
 from ctrader_open_api.messages.OpenApiMessages_pb2 import (
+    ProtoOAErrorRes,
     ProtoOASymbolByIdReq,
     ProtoOASymbolByIdRes,
     ProtoOASymbolsListReq,
     ProtoOASymbolsListRes,
 )
 
-from app.domain.models import Symbol
-from app.domain.value_objects import SymbolDescriptor, SymbolId
-from app.infrastructure.ctrader_mappers import map_symbol_data
-
 if TYPE_CHECKING:
-    from google.protobuf.message import Message
     from typing import Awaitable, Callable
+
+    from google.protobuf.message import Message
 
     SendRequestFn = Callable[[Message], Awaitable[Message]]
     AuthorizeFn = Callable[[int], Awaitable[None]]
@@ -87,7 +88,13 @@ class SymbolCache:
             ctidTraderAccountId=account_id,
             includeArchivedSymbols=False,
         )
-        res = cast(ProtoOASymbolsListRes, await send_request_fn(req))
+        res = await send_request_fn(req)
+        if isinstance(res, ProtoOAErrorRes):
+            error_res = cast(ProtoOAErrorRes, res)
+            raise RuntimeError(
+                f"cTrader API error (code {error_res.errorCode}): {error_res.description}"
+            )
+        res = cast(ProtoOASymbolsListRes, res)
 
         for light in res.symbol:
             enabled = getattr(light, "enabled", None)
@@ -136,7 +143,13 @@ class SymbolCache:
         # Fetch detailed info from API
         req = ProtoOASymbolByIdReq(ctidTraderAccountId=account_id)
         req.symbolId.append(descriptor.symbol_id)
-        res = cast(ProtoOASymbolByIdRes, await send_request_fn(req))
+        res = await send_request_fn(req)
+        if isinstance(res, ProtoOAErrorRes):
+            error_res = cast(ProtoOAErrorRes, res)
+            raise RuntimeError(
+                f"cTrader API error (code {error_res.errorCode}): {error_res.description}"
+            )
+        res = cast(ProtoOASymbolByIdRes, res)
 
         if not res.symbol:
             raise ValueError(f"Symbol details not found for {name}")

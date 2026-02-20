@@ -13,6 +13,13 @@ export const useIndicatorsStore = defineStore('indicators', {
   },
 
   actions: {
+    resetHistoryFlags() {
+      for (const indicator of this.all) {
+        indicator.hasExpandedHistory = false;
+        indicator.currentLimit = 5000;
+      }
+    },
+
     requestAllIndicators(symbolID, timeframe) {
       for (const indicator of this.all) {
         if (indicator.hasExpandedHistory) continue;
@@ -114,16 +121,20 @@ export const useIndicatorsStore = defineStore('indicators', {
         indicator_info: indicatorInfo,
         indicator_data: indicatorData,
       } = indicatorResponse;
-      const indicatorExists = _id !== null && this.indicators.has(_id);
+      const isNewIndicatorRequest = _id === null || _id === undefined;
       let newLocalId = _id;
 
-      if (!indicatorExists) {
+      if (isNewIndicatorRequest) {
         newLocalId = this.addIndicator(
           indicatorInfo,
           indicatorData,
           indicatorId,
         );
       } else {
+        if (!this.indicators.has(_id)) {
+          return null;
+        }
+
         this.updateIndicatorData(_id, indicatorData);
       }
 

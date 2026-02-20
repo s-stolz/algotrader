@@ -24,9 +24,12 @@ dependencies = [
 Homepage = "https://github.com/s-stolz/algotrader"
 Repository = "https://github.com/s-stolz/algotrader"
 
-[tool.pylint]
-# Pylint configuration is in .pylintrc
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.14.11",
+  "black>=24.4.2",
+]
 
 [project.scripts]
-lint = "pylint src/ *.py --rcfile=.pylintrc"
-lint-verbose = "pylint src/ *.py --rcfile=.pylintrc --verbose"
+lint = "ruff check src/ *.py && black --check src/ *.py"
+lint-fix = "ruff check --fix src/ *.py && black src/ *.py"

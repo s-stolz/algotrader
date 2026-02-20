@@ -1,0 +1,11 @@
+[project]
+name = "webserver"
+version = "1.0.0"
+description = "WebSocket server for real-time market data streaming"
+requires-python = ">=3.11"
+dependencies = [
+    "websockets>=16.0",
+    "redis>=7.1.0",
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.1"
+]

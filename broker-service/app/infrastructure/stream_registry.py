@@ -2,20 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import time
 import logging
+import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Dict, Tuple
 
 from app.application.interfaces import StreamRegistryPort
 from app.domain.models import Tick
-from app.domain.value_objects import (
-    AccountId,
-    TickStreamOptions,
-    TickStreamStatus
-)
+from app.domain.value_objects import AccountId, TickStreamOptions, TickStreamStatus, Timeframe
 from app.settings import Settings
-from app.domain.value_objects import Timeframe
 
 TickHandler = Callable[[Tick], Awaitable[None]]
 TickPublisher = Callable[[Tick, AccountId, str], Awaitable[None]]

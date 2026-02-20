@@ -71,6 +71,17 @@ class MarketDataPort(Protocol):
     ) -> list[Trendbar]: ...
 
     @abstractmethod
+    def stream_trendbars(
+        self,
+        account_id: AccountId,
+        symbol: str,
+        timeframe: Timeframe,
+        from_ts: int,
+        to_ts: int | None,
+        limit: int | None,
+    ): ...
+
+    @abstractmethod
     async def list_symbols(self, account_id: AccountId | None = None) -> list[SymbolDescriptor]: ...
 
     @abstractmethod

@@ -1,61 +1,154 @@
 services:
   database-accessor-api:
     container_name: database-accessor-api
-    build: 
+    build:
       context: ./database-accessor-api
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "${DATABASE_ACCESSOR_PUBLISHED_PORT:-8000}:${DATABASE_ACCESSOR_PORT:-8000}"
     volumes:
       - ./database-accessor-api:/app
     depends_on:
-      - timescaledb
+      timescaledb:
+        condition: service_healthy
     env_file:
-      - .env
+      - ./config/.env.shared
+      - ./config/.env.secrets.db
+    command: [
+      "uvicorn",
+      "main:app",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "${DATABASE_ACCESSOR_PORT:-8000}"
+    ]
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${DATABASE_ACCESSOR_PORT:-8000}/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   indicator-api:
     container_name: indicator-api
-    build: 
+    build:
       context: ./indicator-api
       dockerfile: Dockerfile
     ports:
-      - "8010:8010"
+      - "${INDICATOR_API_PUBLISHED_PORT:-8010}:${INDICATOR_API_PORT:-8010}"
     volumes:
       - ./indicator-api:/app
     depends_on:
-      - database-accessor-api
+      database-accessor-api:
+        condition: service_healthy
     env_file:
-      - .env
+      - ./config/.env.shared
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${INDICATOR_API_PORT:-8010}/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   timescaledb:
     container_name: timescaledb
     image: timescale/timescaledb:latest-pg17
+    env_file:
+      - ./config/.env.secrets.db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ${TIMESCALEDB_USER:-postgres}
     ports:
-      - 5432:5432
+      - ${TIMESCALEDB_PUBLISHED_PORT:-5432}:5432
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./timescaledb-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
-  backend:
-    container_name: backend
+  broker-service:
+    container_name: broker-service
     build:
-      context: ./backend
+      context: ./broker-service
       dockerfile: Dockerfile
     ports:
-      - 8080:8080
-      - 8765:8765
+      - "${BROKER_SERVICE_PUBLISHED_PORT:-8050}:${BROKER_SERVICE_PORT:-8050}"
     volumes:
-      - frontend_data:/app/frontend/dist
-      - backend_data:/app
-      - ./backend:/app/backend
-      - /app/backend/node_modules
-    environment:
-      - MODE=${MODE}
+      - ./broker-service:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./config/.env.shared
+      - ./config/.env.secrets.broker
+    command: [
+      "uvicorn",
+      "app.main:app",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "${BROKER_SERVICE_PORT:-8050}",
+      "--reload"
+    ]
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${BROKER_SERVICE_PORT:-8050}/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  ingestion-service:
+    container_name: ingestion-service
+    build:
+      context: ./ingestion-service
+      dockerfile: Dockerfile
+    volumes:
+      - ./ingestion-service:/app
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      broker-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./config/.env.shared
+      - ./config/.env.secrets.runtime
+    restart: always
+
+  webserver:
+    container_name: webserver
+    build:
+      context: ./webserver
+      dockerfile: Dockerfile
+    ports:
+      - ${WEBSERVER_WS_PUBLISHED_PORT:-8765}:${WEBSERVER_WS_PORT:-8765}
+      - ${WEBSERVER_HEALTH_PUBLISHED_PORT:-8080}:${WEBSERVER_HEALTH_PORT:-8080}
+    volumes:
+      - ./webserver:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      broker-service:
+        condition: service_healthy
+    env_file:
+      - ./config/.env.shared
+      - ./config/.env.secrets.runtime
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${WEBSERVER_HEALTH_PORT:-8080}/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   frontend:
     container_name: frontend
@@ -63,41 +156,33 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - 5173:5173
+      - ${FRONTEND_PUBLISHED_PORT:-5173}:${FRONTEND_PORT:-5173}
     volumes:
       - frontend_data:/app/dist
-      - ./frontend:/app/frontend    
+      - ./frontend:/app/frontend
     depends_on:
-      - backend
-    environment:
-      - MODE=${MODE}
-
-  backtester:
-    container_name: backtester
-    build:
-      context: ./backtester
-      dockerfile: Dockerfile
-    volumes:
-      - ./backtester:/app
-    depends_on:
-      - backend
-    command: watchmedo auto-restart --directory=/app --pattern="*.py" --recursive -- python main.py
-    environment:
-      - PYTHONUNBUFFERED=1
+      webserver:
+        condition: service_healthy
+    env_file:
+      - ./config/.env.shared
 
   redis:
     container_name: redis
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PUBLISHED_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   timescaledb_data:
   frontend_data:
-  backend_data:
   redis_data:
-

@@ -1,8 +1,9 @@
-import requests
-import logging
-from decouple import config
-from typing import Optional
 import json
+import logging
+from typing import Optional
+
+import requests
+from decouple import config
 
 log = logging.getLogger(__name__)
 
@@ -16,8 +17,8 @@ class Database:
     def _get_api_url():
         """Get the API base URL from environment or use default."""
         if Database.api_base_url is None:
-            HOST = config('DATABASE_API_HOST', default='database-accessor-api')
-            PORT = config('DATABASE_API_PORT', default='8000')
+            HOST = config('DATABASE_ACCESSOR_HOST', default='database-accessor-api')
+            PORT = config('DATABASE_ACCESSOR_PORT', default='8000')
 
             Database.api_base_url = f"http://{HOST}:{PORT}"
         return Database.api_base_url

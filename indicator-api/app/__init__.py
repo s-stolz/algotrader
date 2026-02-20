@@ -1,13 +1,13 @@
-from .indicators.sma import SMA
-from .indicators.sma import METADATA as SMA_METADATA
-from .indicators.rsi import RSI
-from .indicators.rsi import METADATA as RSI_METADATA
 from .indicators.bbands import BBANDS
 from .indicators.bbands import METADATA as BBANDS_METADATA
-from .indicators.macd import MACD
-from .indicators.macd import METADATA as MACD_METADATA
 from .indicators.currencyStrength import CURRENCY_STRENGTH
 from .indicators.currencyStrength import METADATA as CURRENCY_STRENGTH_METADATA
+from .indicators.macd import MACD
+from .indicators.macd import METADATA as MACD_METADATA
+from .indicators.rsi import METADATA as RSI_METADATA
+from .indicators.rsi import RSI
+from .indicators.sma import METADATA as SMA_METADATA
+from .indicators.sma import SMA
 
 INDICATORS = {
     1: {

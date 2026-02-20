@@ -1,9 +1,6 @@
 import pandas as pd
-import numpy as np
-
-from app.markets import get_symbol_mapping
 from app.candles import get_candles_sync
-
+from app.markets import get_symbol_mapping
 
 METADATA: dict = {
     'name': 'Currency Strength',

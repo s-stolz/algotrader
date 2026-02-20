@@ -1,15 +1,11 @@
 import asyncio
-from os import getenv
-from dotenv import load_dotenv
-import requests
-from logger import logger
+import os
 from typing import Dict
 
-load_dotenv()
-log = logger(__name__)
+import requests
+from logger import logger
 
-DB_ACCESSOR_API_HOST = getenv("DB_ACCESSOR_API_HOST", "database-accessor-api")
-DB_ACCESSOR_API_PORT = getenv("DB_ACCESSOR_API_PORT", 8000)
+log = logger(__name__)
 
 SYMBOL_MAPPING: Dict[str, int] = {}
 _SYMBOLS_LOCK = asyncio.Lock()
@@ -37,7 +33,9 @@ async def get_markets() -> list[dict]:
 
     Runs the blocking requests.get call in a thread via asyncio.to_thread.
     """
-    base_url = f"http://{DB_ACCESSOR_API_HOST}:{DB_ACCESSOR_API_PORT}/markets"
+    db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
+    db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
+    base_url = f"http://{db_host}:{db_port}/markets"
 
     def _fetch():
         try:
@@ -87,7 +85,9 @@ def get_symbol_id_sync(symbols: list[str]) -> dict[str, int]:
 
 def _fetch_symbol_id_sync(symbol: str) -> tuple[str, int | None]:
     """Blocking fetch for a single symbol's ID. Returns (symbol, symbol_id|None)."""
-    base_url = f"http://{DB_ACCESSOR_API_HOST}:{DB_ACCESSOR_API_PORT}/markets"
+    db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
+    db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
+    base_url = f"http://{db_host}:{db_port}/markets"
 
     try:
         params = {"symbol": symbol}

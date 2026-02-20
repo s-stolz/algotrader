@@ -3,6 +3,7 @@ Base handler class for websocket message handlers.
 """
 import logging
 from abc import ABC, abstractmethod
+
 from src.utils.ticket import Ticket
 
 

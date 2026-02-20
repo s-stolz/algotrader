@@ -80,7 +80,7 @@ export default [
       }],
       'semi': ['error', 'always'],
       'max-lines': ['warn', {
-        'max': 200,
+        'max': 500,
         'skipBlankLines': true,
         'skipComments': true
       }],

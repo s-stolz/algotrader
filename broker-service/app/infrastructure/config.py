@@ -1,7 +1,5 @@
 import logging
 
-from redis.asyncio import Redis
-
 from app.application.services import (
     AccountService,
     MarketDataService,
@@ -13,6 +11,7 @@ from app.infrastructure.redis_streams_publisher import RedisStreamsPublisher
 from app.infrastructure.stream_registry import StreamRegistry
 from app.infrastructure.trendbar_stream_registry import TrendbarStreamRegistry
 from app.settings import Settings
+from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)
 

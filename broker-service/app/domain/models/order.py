@@ -3,7 +3,6 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 from ..value_objects import OrderType, TimeInForce
-
 from .position import TradeData
 
 
@@ -136,4 +135,6 @@ class Order(BaseModel):
         "frozen": True,
         "populate_by_name": True,
         "json_encoders": {Decimal: float},
+        "validate_assignment": False,
+        "validate_default": False,
     }

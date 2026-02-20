@@ -1,6 +1,5 @@
+
 import pandas as pd
-import math
-import logging
 
 
 class SMA:
@@ -33,14 +32,14 @@ class SMA:
                 }
             },
         }
-    
+
     @staticmethod
     def run(data: pd.DataFrame, source: str = 'close', window: int = 20):
         sma = pd.DataFrame(None, index=data.index, columns=['sma'])
         sma['sma'] = data[source].rolling(window=window).mean().values
 
         return sma
-    
+
     @staticmethod
     def run_multi(data: pd.DataFrame, source: str = 'close', window: int | list[int] = 20):
         window = [window] if type(window) == int else window

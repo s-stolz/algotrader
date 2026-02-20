@@ -1,0 +1,63 @@
+mode: development
+
+public:
+  host: localhost
+
+services:
+  database_accessor_api:
+    host: database-accessor-api
+    port: 8000
+    published_port: 8000
+  indicator_api:
+    host: indicator-api
+    port: 8010
+    published_port: 8010
+  broker_service:
+    host: broker-service
+    port: 8050
+    published_port: 8050
+  webserver:
+    host: webserver
+    ws_port: 8765
+    ws_published_port: 8765
+    health_port: 8080
+    health_published_port: 8080
+  frontend:
+    host: frontend
+    port: 5173
+    published_port: 5173
+
+infrastructure:
+  redis:
+    host: redis
+    port: 6379
+    published_port: 6379
+    db: 0
+  timescaledb:
+    host: timescaledb
+    port: 5432
+    published_port: 5432
+    user: postgres
+    database: finance_data
+    echo: false
+
+webserver:
+  redis_block_ms: 5000
+  redis_batch_size: 100
+  stream_queue_size: 1000
+  max_stream_length: 10000
+
+ingestion:
+  log_level: INFO
+  consumer_batch_size: 100
+  consumer_block_ms: 5000
+
+broker:
+  redis_stream_db: 0
+  tick_queue_size: 1000
+  tick_stream_maxlen:
+  candle_stream_maxlen:
+  max_symbol_streams: 20
+  max_trendbar_streams: 10
+  log_level: INFO
+  ctrader_request_timeout_seconds: 20.0

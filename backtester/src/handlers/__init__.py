@@ -1,6 +1,6 @@
 from .base import BaseHandler
-from .indicator_handler import IndicatorHandler
 from .dispatcher import MessageDispatcher
+from .indicator_handler import IndicatorHandler
 
 __all__ = [
     'BaseHandler',

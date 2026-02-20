@@ -1,0 +1,177 @@
+import asyncio
+import logging
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+import redis.asyncio as aioredis
+
+if TYPE_CHECKING:
+    from app.subscription_manager import SubscriptionManager
+
+logger = logging.getLogger(__name__)
+
+
+class RedisConsumer:
+
+    def __init__(
+        self,
+        redis_host: str,
+        redis_port: int,
+        account_id: str,
+        block_ms: int = 5000,
+        batch_size: int = 100
+    ):
+        self.redis_host = redis_host
+        self.redis_port = redis_port
+        self.account_id = account_id
+        self.block_ms = block_ms
+        self.batch_size = batch_size
+
+        self.redis: Optional[aioredis.Redis] = None
+        self.subscription_manager: Optional['SubscriptionManager'] = None
+
+        self.active_streams: Dict[str, dict] = {}  # streamKey -> {lastId, task, running}
+        self.is_connected = False
+
+    async def connect(self):
+        try:
+            self.redis = await aioredis.from_url(
+                f"redis://{self.redis_host}:{self.redis_port}",
+                decode_responses=True
+            )
+            self.redis.ping()
+            self.is_connected = True
+        except Exception as e:
+            logger.error(f'Failed to connect to Redis: {e}')
+            raise
+
+    async def disconnect(self):
+        self.is_connected = False
+
+        for _, stream_info in list(self.active_streams.items()):
+            stream_info['running'] = False
+            if 'task' in stream_info:
+                stream_info['task'].cancel()
+                try:
+                    await stream_info['task']
+                except asyncio.CancelledError:
+                    pass
+
+        self.active_streams.clear()
+
+        if self.redis:
+            await self.redis.close()
+
+    def get_candle_stream_key(self, symbol: str, timeframe: str) -> str:
+        return f"candles:{self.account_id}:{symbol}:{timeframe}"
+
+    def get_tick_stream_key(self, symbol: str) -> str:
+        return f"ticks:{self.account_id}:{symbol}"
+
+    async def start_candle_stream(self, symbol: str, timeframe: str):
+        stream_key = self.get_candle_stream_key(symbol, timeframe)
+
+        if stream_key in self.active_streams:
+            return
+
+        stream_info = {
+            'last_id': '$',
+            'running': True,
+            'type': 'candle',
+            'symbol': symbol,
+            'timeframe': timeframe
+        }
+
+        self.active_streams[stream_key] = stream_info
+        stream_info['task'] = asyncio.create_task(self._consume_stream(stream_key, stream_info))
+
+    async def start_tick_stream(self, symbol: str):
+        stream_key = self.get_tick_stream_key(symbol)
+
+        if stream_key in self.active_streams:
+            return
+
+        stream_info = {
+            'last_id': '$',
+            'running': True,
+            'type': 'tick',
+            'symbol': symbol
+        }
+
+        self.active_streams[stream_key] = stream_info
+        stream_info['task'] = asyncio.create_task(self._consume_stream(stream_key, stream_info))
+
+    def stop_stream(self, stream_key: str):
+        stream_info = self.active_streams.get(stream_key)
+        if stream_info:
+            stream_info['running'] = False
+            if 'task' in stream_info:
+                stream_info['task'].cancel()
+            self.active_streams.pop(stream_key, None)
+
+    async def _consume_stream(self, stream_key: str, stream_info: dict):
+        try:
+            while stream_info['running'] and self.is_connected:
+                if not self.redis:
+                    break
+                try:
+                    results = await self.redis.xread(
+                        {stream_key: stream_info['last_id']},
+                        count=self.batch_size,
+                        block=self.block_ms
+                    )
+
+                    if not results:
+                        continue
+
+                    for _, messages in results:
+                        for message_id, fields in messages:
+                            stream_info['last_id'] = message_id
+                            data = self._parse_redis_message(fields)
+
+                            if not self.subscription_manager:
+                                continue
+
+                            if stream_info['type'] == 'candle':
+                                self.subscription_manager.broadcast_candle(
+                                    stream_info['symbol'],
+                                    stream_info['timeframe'],
+                                    data
+                                )
+                            elif stream_info['type'] == 'tick':
+                                self.subscription_manager.broadcast_tick(
+                                    stream_info['symbol'],
+                                    data
+                                )
+
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    if stream_info['running']:
+                        logger.error(f"Error consuming stream {stream_key}: {e}")
+                        await asyncio.sleep(1)
+        finally:
+            pass
+
+    def _parse_redis_message(self, fields: Dict[str, str]) -> Dict[str, Any]:
+        data = {}
+        numeric_fields = {'t', 'o', 'h', 'l', 'c', 'v', 'bid', 'ask', 'b', 'a'}
+
+        # Map short field names to full names
+        field_mapping = {
+            'b': 'bid',
+            'a': 'ask'
+        }
+
+        for key, value in fields.items():
+            # Use mapped key name if available
+            output_key = field_mapping.get(key, key)
+
+            if key in numeric_fields:
+                if key == 't':
+                    data[output_key] = int(value) // 1000
+                else:
+                    data[output_key] = float(value)
+            else:
+                data[output_key] = value
+
+        return data

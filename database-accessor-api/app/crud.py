@@ -1,8 +1,9 @@
-from sqlalchemy import select, insert, delete, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from app.models import markets, candles
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from app.models import candles, markets
+from sqlalchemy import delete, insert, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 async def get_market_by_id(session, symbol_id: int):
@@ -160,7 +161,7 @@ async def get_candles(
         WITH RoundedCandles AS (
             SELECT
                 date_trunc('day', timestamp) + INTERVAL '1 minute' * (
-                    ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) - 
+                    ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) -
                     ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % :timeframe)
                 ) AS rounded_timestamp,
                 open,
@@ -170,14 +171,14 @@ async def get_candles(
                 volume,
                 ROW_NUMBER() OVER (
                     PARTITION BY symbol_id, date_trunc('day', timestamp) + INTERVAL '1 minute' * (
-                        ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) - 
+                        ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) -
                         ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % :timeframe)
                     )
                     ORDER BY timestamp ASC
                 ) AS rn_asc,
                 ROW_NUMBER() OVER (
                     PARTITION BY symbol_id, date_trunc('day', timestamp) + INTERVAL '1 minute' * (
-                        ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) - 
+                        ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) -
                         ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % :timeframe)
                     )
                     ORDER BY timestamp DESC

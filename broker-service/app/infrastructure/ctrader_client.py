@@ -4,6 +4,30 @@ import threading
 import uuid
 from typing import Any, Awaitable, Callable, Dict, Tuple, cast
 
+from app.application.interfaces import BrokerPort, MarketDataPort
+from app.domain.models import Account, Deal, Order, Position, Symbol, Tick, Trendbar
+from app.domain.value_objects import (
+    AccountId,
+    OrderId,
+    PositionId,
+    SymbolDescriptor,
+    Timeframe,
+)
+from app.infrastructure.ctrader_mappers import (
+    map_deal,
+    map_order,
+    map_position,
+    map_tick,
+    map_trader,
+    map_trendbar,
+    resolve_timeframe,
+)
+from app.infrastructure.ctrader_symbol_cache import SymbolCache
+from app.infrastructure.stream_registry import (
+    TickSubscription,
+    TrendbarSubscription,
+)
+from app.settings import CtraderCredentials
 from ctrader_open_api import Client, Protobuf, TcpProtocol
 from ctrader_open_api.endpoints import EndPoints
 from ctrader_open_api.messages.OpenApiMessages_pb2 import (
@@ -35,53 +59,40 @@ from ctrader_open_api.messages.OpenApiMessages_pb2 import (
     ProtoOAUnsubscribeSpotsReq,
 )
 from ctrader_open_api.messages.OpenApiModelMessages_pb2 import (
-    ProtoOATrendbarPeriod,
     ProtoOAOrderType,
-    ProtoOATradeSide,
     ProtoOATimeInForce,
+    ProtoOATradeSide,
+    ProtoOATrendbarPeriod,
 )
 from google.protobuf.message import Message
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 
-from app.application.interfaces import BrokerPort, MarketDataPort
-from app.domain.models import (
-    Account,
-    Deal,
-    Order,
-    Position,
-    Symbol,
-    Tick,
-    Trendbar
-)
-from app.domain.value_objects import (
-    AccountId,
-    OrderId,
-    PositionId,
-    SymbolDescriptor,
-    SymbolId,
-    Timeframe,
-)
-from app.infrastructure.ctrader_mappers import (
-    map_deal,
-    map_order,
-    map_position,
-    map_tick,
-    map_trader,
-    map_trendbar,
-    resolve_timeframe,
-)
-from app.infrastructure.ctrader_symbol_cache import SymbolCache
-from app.infrastructure.stream_registry import (
-    TickSubscription,
-    TrendbarSubscription,
-)
-from app.settings import CtraderCredentials
-
 logger = logging.getLogger(__name__)
 
 TickHandler = Callable[[Tick], Awaitable[None]]
 TrendbarHandler = Callable[[Trendbar], Awaitable[None]]
+
+
+def _timeframe_to_minutes(timeframe: Timeframe) -> int:
+    """Convert timeframe to minutes for chunk size calculation."""
+    mapping = {
+        Timeframe.M1: 1,
+        Timeframe.M2: 2,
+        Timeframe.M3: 3,
+        Timeframe.M4: 4,
+        Timeframe.M5: 5,
+        Timeframe.M10: 10,
+        Timeframe.M15: 15,
+        Timeframe.M30: 30,
+        Timeframe.H1: 60,
+        Timeframe.H4: 240,
+        Timeframe.H12: 720,
+        Timeframe.D1: 1440,
+        Timeframe.W1: 10080,
+        Timeframe.MN1: 43200,  # Approximate
+    }
+    return mapping.get(timeframe, 1)
 
 
 class CtraderClient(BrokerPort, MarketDataPort):
@@ -338,10 +349,110 @@ class CtraderClient(BrokerPort, MarketDataPort):
         to_ts: int | None,
         limit: int | None,
     ) -> list[Trendbar]:
+        """Fetch trendbars with automatic chunking for large requests.
+
+        The cTrader API caps responses at ~14000 bars. This method automatically
+        chunks requests into 10000-bar segments and aggregates results.
+        """
         info = await self._get_symbol(int(account_id), symbol.upper())
+
+        # If limit is specified and <= 10000, make single request
+        if limit and limit <= 10000:
+            return await self._fetch_trendbar_chunk(
+                int(account_id),
+                info.symbol_id,
+                info.digits,
+                timeframe,
+                from_ts,
+                to_ts,
+                limit
+            )
+
+        # Otherwise, chunk the request
+        all_bars: list[Trendbar] = []
+        chunk_size = 10000
+        timeframe_minutes = _timeframe_to_minutes(timeframe)
+        chunk_time_span_ms = chunk_size * timeframe_minutes * 60 * 1000
+
+        current_from = from_ts
+        final_to = to_ts or (from_ts + (limit * timeframe_minutes * 60 * 1000) if limit else None)
+
+        while True:
+            # Calculate chunk boundaries
+            chunk_to = None
+            if final_to:
+                chunk_to = min(current_from + chunk_time_span_ms, final_to)
+            else:
+                chunk_to = current_from + chunk_time_span_ms
+
+            # Determine how many bars to fetch in this chunk
+            chunk_limit = chunk_size
+            if limit:
+                remaining = limit - len(all_bars)
+                chunk_limit = min(chunk_size, remaining)
+
+            logger.debug(
+                f"Fetching chunk: from_ts={current_from}, to_ts={chunk_to}, "
+                f"limit={chunk_limit}, total_bars={len(all_bars)}"
+            )
+
+            # Fetch chunk
+            chunk_bars = await self._fetch_trendbar_chunk(
+                int(account_id),
+                info.symbol_id,
+                info.digits,
+                timeframe,
+                current_from,
+                chunk_to,
+                chunk_limit
+            )
+
+            if not chunk_bars:
+                break
+
+            all_bars.extend(chunk_bars)
+
+            # Check if we're done
+            if limit and len(all_bars) >= limit:
+                all_bars = all_bars[:limit]
+                break
+
+            # Check if we've reached the end timestamp
+            if final_to and chunk_to >= final_to:
+                break
+
+            # Move to next chunk using the last bar's timestamp
+            last_bar_ts = chunk_bars[-1].t
+            current_from = last_bar_ts + (timeframe_minutes * 60 * 1000)
+
+            # Safety check: if we didn't move forward in time, break to avoid infinite loop
+            if current_from <= chunk_bars[0].t:
+                logger.warning(
+                    f"Timestamp not advancing, breaking loop at {current_from}"
+                )
+                break
+
+        logger.info(
+            f"Fetched {len(all_bars)} trendbars for {symbol} {timeframe.value} "
+            f"(from_ts={from_ts}, to_ts={to_ts}, limit={limit})"
+        )
+
+        return all_bars
+
+    async def _fetch_trendbar_chunk(
+        self,
+        account_id: int,
+        symbol_id: int,
+        digits: int,
+        timeframe: Timeframe,
+        from_ts: int,
+        to_ts: int | None,
+        limit: int | None,
+    ) -> list[Trendbar]:
+        """Fetch a single chunk of trendbars from the cTrader API."""
         req = ProtoOAGetTrendbarsReq(
-            ctidTraderAccountId=int(account_id),
-            symbolId=info.symbol_id,
+            ctidTraderAccountId=account_id,
+            symbolId=symbol_id,
             period=ProtoOATrendbarPeriod.Value(timeframe.value),
             fromTimestamp=from_ts,
         )
@@ -349,6 +460,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             req.toTimestamp = to_ts
         if limit:
             req.count = limit
+
         res = await self._send_request(req)
 
         if isinstance(res, ProtoOAErrorRes):
@@ -360,9 +472,104 @@ class CtraderClient(BrokerPort, MarketDataPort):
         res = cast(ProtoOAGetTrendbarsRes, res)
 
         return [
-            map_trendbar(tb, digits=info.digits)
+            map_trendbar(tb, digits=digits)
             for tb in res.trendbar
         ]
+
+    async def stream_trendbars(
+        self,
+        account_id: AccountId,
+        symbol: str,
+        timeframe: Timeframe,
+        from_ts: int,
+        to_ts: int | None,
+        limit: int | None,
+    ):
+        """Stream trendbars in chunks for memory-efficient processing.
+
+        Yields trendbars in chunks of up to 10,000 bars at a time.
+        """
+        info = await self._get_symbol(int(account_id), symbol.upper())
+
+        chunk_size = 10000
+        timeframe_minutes = _timeframe_to_minutes(timeframe)
+        chunk_time_span_ms = chunk_size * timeframe_minutes * 60 * 1000
+
+        current_from = from_ts
+        final_to = to_ts or (from_ts + (limit * timeframe_minutes * 60 * 1000) if limit else None)
+        total_yielded = 0
+
+        while True:
+            # Calculate chunk boundaries
+            chunk_to = None
+            if final_to:
+                chunk_to = min(current_from + chunk_time_span_ms, final_to)
+            else:
+                chunk_to = current_from + chunk_time_span_ms
+
+            # Determine how many bars to fetch in this chunk
+            chunk_limit = chunk_size
+            if limit:
+                remaining = limit - total_yielded
+                chunk_limit = min(chunk_size, remaining)
+
+            logger.debug(
+                f"Streaming chunk: from_ts={current_from}, to_ts={chunk_to}, "
+                f"limit={chunk_limit}, total_yielded={total_yielded}"
+            )
+
+            # Fetch chunk
+            chunk_bars = await self._fetch_trendbar_chunk(
+                int(account_id),
+                info.symbol_id,
+                info.digits,
+                timeframe,
+                current_from,
+                chunk_to,
+                chunk_limit
+            )
+
+            if not chunk_bars:
+                # Empty chunk - skip to next chunk instead of breaking
+                # This handles cases where data doesn't exist for early time periods
+                logger.debug(f"Empty chunk from {current_from} to {chunk_to}, continuing...")
+
+                # Check if we've reached the end timestamp
+                if final_to and chunk_to >= final_to:
+                    break
+
+                # Move to next chunk
+                current_from = chunk_to + 1
+                continue
+
+            # Yield each bar from this chunk
+            for bar in chunk_bars:
+                yield bar
+                total_yielded += 1
+
+            # Check if we're done
+            if limit and total_yielded >= limit:
+                break
+
+            # Check if we've reached the end timestamp
+            if final_to and chunk_to >= final_to:
+                break
+
+            # Move to next chunk using the last bar's timestamp
+            last_bar_ts = chunk_bars[-1].t
+            current_from = last_bar_ts + (timeframe_minutes * 60 * 1000)
+
+            # Safety check: if we didn't move forward in time, break to avoid infinite loop
+            if current_from <= chunk_bars[0].t:
+                logger.warning(
+                    f"Timestamp not advancing, breaking loop at {current_from}"
+                )
+                break
+
+        logger.info(
+            f"Streamed {total_yielded} trendbars for {symbol} {timeframe.value} "
+            f"(from_ts={from_ts}, to_ts={to_ts}, limit={limit})"
+        )
 
     async def list_symbols(
         self,
@@ -424,10 +631,18 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 self._tick_handlers.pop(key, None)
 
                 if key in self._active_tick_streams:
-                    await self._unsubscribe_spots(
-                        subscription.account_id,
-                        subscription.symbol_id
-                    )
+                    has_trendbar_subscriptions = False
+                    async with self._trendbar_lock:
+                        for (acc_id, sym_id, _) in self._trendbar_handlers.keys():
+                            if acc_id == subscription.account_id and sym_id == subscription.symbol_id:
+                                has_trendbar_subscriptions = True
+                                break
+
+                    if not has_trendbar_subscriptions:
+                        await self._unsubscribe_spots(
+                            subscription.account_id,
+                            subscription.symbol_id
+                        )
 
                     self._active_tick_streams.remove(key)
 
@@ -503,7 +718,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         try:
             self._client.startService()
             reactor.run(installSignalHandlers=0)  # type: ignore[attr-defined]
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 "Twisted reactor crashed while running cTrader client service "
                 "(shutting_down=%s, thread=%s, reactor_running=%s)",

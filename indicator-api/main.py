@@ -1,25 +1,25 @@
-from typing import Optional
+import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, Body
-from fastapi.middleware.cors import CORSMiddleware
-from logger import logger, LOG_LEVEL_UVICORN
-from app.schemas import IndicatorParameters
+from typing import Optional
+
+import app.markets as markets
+import uvicorn
+from __init__ import __version__
+from app import get_available_indicators, get_indicator_by_id, get_indicator_metadata
 from app.candles import get_candles
+from app.indicators.base import execute_indicator
+from app.markets import load_symbols
+from app.schemas import IndicatorParameters
 from app.utils import (
-    prepare_parameters,
-    format_indicator_response,
-    estimate_warmup,
     adjust_fetch_bounds,
+    estimate_warmup,
+    format_indicator_response,
+    prepare_parameters,
     trim_indicator_output,
 )
-from app.markets import load_symbols
-import app.markets as markets
-from app import get_available_indicators, get_indicator_by_id, get_indicator_metadata
-from app.indicators.base import execute_indicator
-import uvicorn
-import os
-
-from __init__ import __version__
+from fastapi import Body, FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from logger import LOG_LEVEL_UVICORN, logger
 
 log = logger(__name__)
 log.info(f"Starting Indicator API version {__version__}")
@@ -48,6 +48,12 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,10 +91,10 @@ async def run_indicator(
         "timeframe": timeframe,
         "start_date": start_date,
         "end_date": end_date,
-        "limit": limit
+        "limit": limit,
     }
 
-    custom_parameters = getattr(body, 'parameters', {})
+    custom_parameters = getattr(body, "parameters", {})
     parameters = prepare_parameters(metadata, custom_parameters, **query_params)
 
     # Determine warmup period to fetch extra history so user limit/start_date are honored.
@@ -134,8 +140,8 @@ async def run_indicator(
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8010))
-    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("INDICATOR_API_PORT", 8010))
+    host = os.getenv("INDICATOR_API_BIND_HOST", "0.0.0.0")
 
     uvicorn.run(
         "main:app",

@@ -30,4 +30,6 @@ class Symbol(BaseModel):
     model_config = {
         "frozen": True,
         "populate_by_name": True,
+        "validate_assignment": False,
+        "validate_default": False,
     }
