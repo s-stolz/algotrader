@@ -4,4 +4,3 @@ sqlalchemy[asyncio]
 asyncpg
 python-dotenv
 pydantic
-bump2version

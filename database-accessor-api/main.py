@@ -1,6 +1,5 @@
 from typing import Optional
 
-from __init__ import __version__
 from app import crud
 from app.database import get_db
 from app.schemas import CandleBatchIn, MarketIn
@@ -8,12 +7,9 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
-print(f"Starting Database Accessor API version {__version__}")
-
 app = FastAPI(
     title="Database Accessor API",
     description="Database accessor API for algotrader",
-    version=__version__
 )
 
 app.add_middleware(

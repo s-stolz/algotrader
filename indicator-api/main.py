@@ -4,7 +4,6 @@ from typing import Optional
 
 import app.markets as markets
 import uvicorn
-from __init__ import __version__
 from app import get_available_indicators, get_indicator_by_id, get_indicator_metadata
 from app.candles import get_candles
 from app.indicators.base import execute_indicator
@@ -22,7 +21,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from logger import LOG_LEVEL_UVICORN, logger
 
 log = logger(__name__)
-log.info(f"Starting Indicator API version {__version__}")
 
 
 @asynccontextmanager
@@ -45,7 +43,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Indicator API",
     description="Indicator API for algotrader",
-    version=__version__,
     lifespan=lifespan,
 )
 

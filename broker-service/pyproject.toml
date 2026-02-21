@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "broker-service"
-version = "0.0.1"
+version = "0.0.0"
 description = "FastAPI broker microservice for cTrader Open API"
 authors = [{ name = "Sebastian Stolz" }]
 readme = "README.md"
