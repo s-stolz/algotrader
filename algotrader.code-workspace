@@ -1,0 +1,35 @@
+{
+  "folders": [
+    {
+      "name": "algotrader",
+      "path": "."
+    },
+    {
+      "name": "backtester",
+      "path": "backtester"
+    },
+    {
+      "name": "broker-service",
+      "path": "broker-service"
+    },
+    {
+      "name": "database-accessor-api",
+      "path": "database-accessor-api"
+    },
+    {
+      "name": "indicator-api",
+      "path": "indicator-api"
+    },
+    {
+      "name": "ingestion-service",
+      "path": "ingestion-service"
+    },
+    {
+      "name": "webserver",
+      "path": "webserver"
+    }
+  ],
+  "settings": {
+    "makefile.configureOnOpen": false
+  }
+}
