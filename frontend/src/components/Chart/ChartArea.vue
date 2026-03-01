@@ -81,28 +81,6 @@ export default {
   },
 
   watch: {
-    "candlesticksStore.data": {
-      handler(newData) {
-        this.seriesOptions.priceFormat.minMove = this.currentMarketMinMove;
-        this.seriesOptions.priceFormat.precision = Math.log10(1 / this.currentMarketMinMove);
-
-        this.addCandlestickData(newData, this.seriesOptions);
-
-        if (this.shouldScrollToRealTime) {
-          this.scrollToRealTime();
-          setTimeout(() => {
-            this.shouldScrollToRealTime = false;
-          }, 100);
-        }
-
-        this.indicatorsStore.requestAllIndicators(
-          this.currentMarketStore.symbol_id,
-          this.currentTimeframeStore.value,
-        );
-      },
-      deep: true,
-    },
-
     currentMarketMinMove(newMinMove) {
       if (newMinMove && newMinMove > 0) {
         this.setMinMove(newMinMove);
@@ -162,6 +140,21 @@ export default {
       const timeframe = this.currentTimeframeStore.value;
 
       await this.candlesticksStore.fetch(symbolID, timeframe, null, null, this.candlesFetchLimit);
+      this.renderCandlesticks(this.candlesticksStore.data, { scrollToRealtime: this.shouldScrollToRealTime });
+      this.indicatorsStore.requestAllIndicators(symbolID, timeframe);
+    },
+
+    renderCandlesticks(data, { scrollToRealtime = false } = {}) {
+      this.seriesOptions.priceFormat.minMove = this.currentMarketMinMove;
+      this.seriesOptions.priceFormat.precision = Math.log10(1 / this.currentMarketMinMove);
+      this.addCandlestickData(data, this.seriesOptions);
+
+      if (scrollToRealtime) {
+        this.scrollToRealTime();
+        setTimeout(() => {
+          this.shouldScrollToRealTime = false;
+        }, 100);
+      }
     },
 
     async subscribeToCandles() {
@@ -373,10 +366,21 @@ export default {
     async loadMoreBars() {
       const symbolID = this.currentMarketStore.symbol_id;
       const timeframe = this.currentTimeframeStore.value;
-      const firstBarTime = this.candlesticksStore.data[0].time;
-      const firstBarDate = new Date(firstBarTime * 1000).toISOString().slice(0, -5);
+      if (!this.candlesticksStore.data.length) {
+        this.isFetchingCandles = false;
+        return;
+      }
+      const firstBarTimestampMs = this.candlesticksStore.data[0].timestamp_ms;
 
-      await this.candlesticksStore.fetch(symbolID, timeframe, null, firstBarDate, this.candlesFetchLimit, true);
+      await this.candlesticksStore.fetch(
+        symbolID,
+        timeframe,
+        null,
+        firstBarTimestampMs,
+        this.candlesFetchLimit,
+        true,
+      );
+      this.renderCandlesticks(this.candlesticksStore.data);
       this.isFetchingCandles = false;
     },
 

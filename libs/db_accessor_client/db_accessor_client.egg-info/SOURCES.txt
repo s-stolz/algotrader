@@ -1,0 +1,10 @@
+pyproject.toml
+db_accessor_client/__init__.py
+db_accessor_client/client.py
+db_accessor_client/errors.py
+db_accessor_client.egg-info/PKG-INFO
+db_accessor_client.egg-info/SOURCES.txt
+db_accessor_client.egg-info/dependency_links.txt
+db_accessor_client.egg-info/requires.txt
+db_accessor_client.egg-info/top_level.txt
+tests/test_client.py

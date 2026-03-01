@@ -2,7 +2,11 @@ import asyncio
 import os
 from typing import Dict
 
-import requests
+from db_accessor_client import (
+    AsyncDatabaseAccessorClient,
+    DatabaseAccessorClient,
+    DatabaseAccessorClientError,
+)
 from logger import logger
 
 log = logger(__name__)
@@ -29,24 +33,17 @@ async def load_symbols() -> Dict[str, int]:
 
 
 async def get_markets() -> list[dict]:
-    """Fetch all markets from the database accessor API without blocking the loop.
-
-    Runs the blocking requests.get call in a thread via asyncio.to_thread.
-    """
+    """Fetch all markets from the database accessor API."""
     db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
     db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
-    base_url = f"http://{db_host}:{db_port}/markets"
+    base_url = f"http://{db_host}:{db_port}"
 
-    def _fetch():
-        try:
-            resp = requests.get(base_url, timeout=10)
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as e:  # network boundary
-            log.warning("Error fetching markets: %s", e)
-            return []
-
-    return await asyncio.to_thread(_fetch)
+    try:
+        async with AsyncDatabaseAccessorClient(base_url=base_url, timeout=10) as client:
+            return await client.get_markets()
+    except DatabaseAccessorClientError as e:  # network boundary
+        log.warning("Error fetching markets: %s", e)
+        return []
 
 
 def get_symbol_mapping(symbols: list[str]) -> Dict[str, int]:
@@ -87,20 +84,17 @@ def _fetch_symbol_id_sync(symbol: str) -> tuple[str, int | None]:
     """Blocking fetch for a single symbol's ID. Returns (symbol, symbol_id|None)."""
     db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
     db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
-    base_url = f"http://{db_host}:{db_port}/markets"
+    base_url = f"http://{db_host}:{db_port}"
 
     try:
-        params = {"symbol": symbol}
-        resp = requests.get(base_url, params=params, timeout=10)
-        resp.raise_for_status()
-        markets = resp.json()
-        if markets:
-            symbol_id = markets[0]["symbol_id"]
-            log.debug("Found ID %s for symbol %s", symbol_id, symbol)
-            return symbol, symbol_id
-        else:
+        with DatabaseAccessorClient(base_url=base_url, timeout=10) as client:
+            markets = client.get_markets(symbol=symbol)
+            if markets:
+                symbol_id = markets[0]["symbol_id"]
+                log.debug("Found ID %s for symbol %s", symbol_id, symbol)
+                return symbol, symbol_id
             log.debug("No market found for symbol: %s", symbol)
             return symbol, None
-    except Exception as e:  # broad catch acceptable for I/O boundary
+    except DatabaseAccessorClientError as e:  # broad catch acceptable for I/O boundary
         log.warning("Error fetching symbol ID for %s: %s", symbol, e)
         return symbol, None

@@ -42,10 +42,16 @@ export class IndicatorManager {
   }
 
   transformIndicatorData(data, outputKey) {
-    return data.map(item => ({
-      time: Math.floor(item.timestamp_ms / 1000),
-      value: item[outputKey],
-    })).filter(item => item.value !== undefined && item.value !== null);
+    return data
+      .map(item => ({
+        time: Math.floor(Number(item.timestamp_ms) / 1000),
+        value: item[outputKey],
+      }))
+      .filter(item =>
+        item.value !== undefined &&
+        item.value !== null &&
+        Number.isFinite(item.time),
+      );
   }
 
   updateIndicatorStyles(id, outputKey, newStyles) {

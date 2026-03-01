@@ -1,3 +1,4 @@
+from numbers import Real
 from typing import Any
 
 import pandas as pd
@@ -5,6 +6,29 @@ import pandas as pd
 
 def _is_int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _to_epoch_ms(value: Any) -> int | None:
+    if pd.isna(value):
+        return None
+
+    if isinstance(value, pd.Timestamp):
+        return int(value.value // 1_000_000)
+
+    if isinstance(value, Real) and not isinstance(value, bool):
+        raw = int(value)
+        magnitude = abs(raw)
+        if magnitude >= 1_000_000_000_000_000:
+            return raw // 1_000_000  # ns -> ms
+        if magnitude >= 1_000_000_000_000:
+            return raw  # already ms
+        # Epoch-seconds are intentionally not supported in indicator-api responses.
+        return None
+
+    ts = pd.to_datetime(value, utc=True, errors='coerce')
+    if pd.isna(ts):
+        return None
+    return int(ts.value // 1_000_000)
 
 
 def estimate_warmup(metadata: dict, params: dict) -> int:
@@ -69,12 +93,19 @@ def format_indicator_response(
     indicator_data: pd.DataFrame,
     metadata: dict,
 ) -> dict:
-    # Format timestamps as epoch milliseconds in UTC.
+    if indicator_data is None or indicator_data.empty:
+        return {
+            'data': {
+                'indicator_info': metadata,
+                'indicator_data': [],
+            }
+        }
+
     indicator_reset = indicator_data.reset_index()
-    indicator_reset['timestamp_ms'] = (
-        indicator_reset['timestamp'].astype('int64') // 1_000_000
-    )
+    indicator_reset['timestamp_ms'] = indicator_reset['timestamp'].map(_to_epoch_ms)
     indicator_reset = indicator_reset.drop(columns=['timestamp'])
+    indicator_reset = indicator_reset.dropna(subset=['timestamp_ms'])
+    indicator_reset['timestamp_ms'] = indicator_reset['timestamp_ms'].astype('int64')
 
     response_data = {
         'data': {
@@ -132,6 +163,7 @@ def trim_indicator_output(
         return df
 
     out = df.dropna(how='any')
+
     if original_start_ms is not None:
         out = out[out.index >= pd.to_datetime(original_start_ms, unit='ms', utc=True)]
 

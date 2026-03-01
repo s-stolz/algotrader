@@ -30,6 +30,9 @@
     }
   ],
   "settings": {
-    "makefile.configureOnOpen": false
+    "makefile.configureOnOpen": false,
+    "python.analysis.extraPaths": [
+      "${workspaceFolder:algotrader}/libs/db_accessor_client"
+    ]
   }
 }

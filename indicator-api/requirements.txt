@@ -1,4 +1,4 @@
-requests>=2.32.5
+-e ../libs/db_accessor_client
 fastapi>=0.116.1
 uvicorn[standard]>=0.24.0
 python-dotenv>=1.0.0
@@ -7,3 +7,4 @@ watchdog>=3.0.0
 pandas>=2.3.2
 pandas_ta>=0.4.67b0
 numpy>=2.2.6
+httpx>=0.28.1

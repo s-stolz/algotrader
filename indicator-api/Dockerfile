@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-WORKDIR /app
+WORKDIR /workspace/indicator-api
 
 # Install curl for health checks
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
@@ -8,11 +8,13 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 # Upgrade pip to latest version
 RUN pip install --upgrade pip
 
-COPY requirements.txt .
+COPY indicator-api /workspace/indicator-api
+COPY libs/db_accessor_client /workspace/libs/db_accessor_client
 
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+WORKDIR /app
+COPY indicator-api /app
 
 EXPOSE 8010
 
