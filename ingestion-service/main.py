@@ -31,7 +31,7 @@ class IngestionService:
     TIMEFRAME_M1 = 1
     TIMEFRAME_CODE_M1 = "M1"
     CHUNK_SIZE = 10000
-    MAX_BACKFILL_DAYS = 365
+    MAX_BACKFILL_DAYS = 365 * 5
     REDIS_STREAM_START = "0-0"
 
     @staticmethod
