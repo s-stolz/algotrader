@@ -60,6 +60,8 @@ export default {
       shouldScrollToRealTime: false,
       messageHandler: null,
       tickMessageHandler: null,
+      candlesFetchPromise: null,
+      candlesFetchKey: null,
       currentTick: null,
       useTickPriceField: 'bid', // 'bid', 'ask', or 'mid' for (bid+ask)/2
       timeframeMap: {
@@ -128,9 +130,6 @@ export default {
     async initializeChartComponent() {
       this.subscribeCrosshairMove(this.onCrosshairMove);
       this.subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChange);
-
-      this.shouldScrollToRealTime = true;
-      await this.fetchCandlesticks();
     },
 
     async fetchCandlesticks() {
@@ -138,10 +137,27 @@ export default {
 
       const symbolID = this.currentMarketStore.symbol_id;
       const timeframe = this.currentTimeframeStore.value;
+      const fetchKey = `${symbolID}:${timeframe}:${this.candlesFetchLimit}`;
 
-      await this.candlesticksStore.fetch(symbolID, timeframe, null, null, this.candlesFetchLimit);
-      this.renderCandlesticks(this.candlesticksStore.data, { scrollToRealtime: this.shouldScrollToRealTime });
-      this.indicatorsStore.requestAllIndicators(symbolID, timeframe);
+      if (this.candlesFetchPromise && this.candlesFetchKey === fetchKey) {
+        await this.candlesFetchPromise;
+        return;
+      }
+
+      this.candlesFetchKey = fetchKey;
+      this.candlesFetchPromise = (async () => {
+        await this.candlesticksStore.fetch(symbolID, timeframe, null, null, this.candlesFetchLimit);
+        this.renderCandlesticks(this.candlesticksStore.data, { scrollToRealtime: this.shouldScrollToRealTime });
+        this.indicatorsStore.requestAllIndicators(symbolID, timeframe);
+      })();
+
+      try {
+        await this.candlesFetchPromise;
+      } finally {
+        if (this.candlesFetchKey === fetchKey) {
+          this.candlesFetchPromise = null;
+        }
+      }
     },
 
     renderCandlesticks(data, { scrollToRealtime = false } = {}) {
