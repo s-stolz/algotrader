@@ -204,6 +204,20 @@ class BrokerClient:
             logger.error(f"Error stopping trendbar stream: {e}")
             raise
 
+    async def get_meta_health(self) -> Dict[str, Any]:
+        """Get broker-service health information."""
+        url = f"{self.base_url}/meta/health"
+        try:
+            response = await self.async_client.get(url)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error fetching broker health: {e.response.status_code} - {e.response.text}")
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching broker health: {e}")
+            raise
+
     def close(self) -> None:
         """Close the HTTP client."""
         self.client.close()
