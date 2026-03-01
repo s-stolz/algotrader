@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from app.application.interfaces import RedisPublisherPort
 from app.domain.models import Tick, Trendbar
@@ -16,12 +16,12 @@ class RedisStreamsPublisher(RedisPublisherPort):
 
     async def publish_tick(self, tick: Tick, account_id: AccountId, symbol: str) -> None:
         key = f"ticks:{account_id}:{symbol}"
-        payload = {
+        fields = {
             "b": f"{tick.b:.{tick.digits}f}",
             "a": f"{tick.a:.{tick.digits}f}",
             "t": str(tick.t),
         }
-        await self._xadd(key, payload, self._settings.tick_stream_maxlen)
+        await self._xadd(key, fields, self._settings.tick_stream_maxlen)
 
     async def publish_candle(
         self,
@@ -32,7 +32,7 @@ class RedisStreamsPublisher(RedisPublisherPort):
     ) -> None:
         key = f"candles:{account_id}:{symbol}:{timeframe.value}"
         d = candle.digits
-        payload = {
+        fields = {
             "o": f"{candle.o:.{d}f}",
             "h": f"{candle.h:.{d}f}",
             "l": f"{candle.l:.{d}f}",
@@ -40,7 +40,7 @@ class RedisStreamsPublisher(RedisPublisherPort):
             "v": str(candle.v),
             "t": str(candle.t),
         }
-        await self._xadd(key, payload, self._settings.candle_stream_maxlen)
+        await self._xadd(key, fields, self._settings.candle_stream_maxlen)
 
     async def publish_order_event(self, account_id: AccountId, event: dict) -> None:
         key = f"order-events:{account_id}"
@@ -50,13 +50,17 @@ class RedisStreamsPublisher(RedisPublisherPort):
         key = f"trade-events:{account_id}"
         await self._xadd(key, self._stringify(event), None)
 
-    async def _xadd(self, key: str, payload: dict[str, Any], max_len: int | None) -> None:
-        kwargs = {}
+    async def _xadd(self, key: str, fields: dict[str, str], max_len: int | None) -> None:
         if max_len:
-            kwargs["maxlen"] = max_len
-            kwargs["approximate"] = True
-        fields = cast(dict[str, str], self._stringify(payload))
-        await self._redis.xadd(key, fields, **kwargs)  # type: ignore[arg-type]
+            await self._redis.xadd(
+                key,
+                fields,
+                maxlen=max_len,
+                approximate=True,
+            )  # type: ignore[arg-type]
+            return
+
+        await self._redis.xadd(key, fields)  # type: ignore[arg-type]
 
     @staticmethod
     def _stringify(payload: dict[str, Any]) -> dict[str, str]:

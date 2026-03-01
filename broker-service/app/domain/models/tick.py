@@ -1,23 +1,11 @@
-from pydantic import BaseModel, Field
+from __future__ import annotations
+
+from dataclasses import dataclass
 
 
-class Tick(BaseModel):
-    b: float = Field(
-        description="Bid price",
-    )
-    a: float = Field(
-        description="Ask price",
-    )
-    t: int = Field(
-        description="Tick timestamp in milliseconds",
-    )
-    digits: int = Field(
-        default=5,
-        description="Number of decimal places for price formatting",
-    )
-
-    model_config = {
-        "frozen": True,
-        "validate_assignment": False,
-        "validate_default": False,
-    }
+@dataclass(frozen=True, slots=True)
+class Tick:
+    b: float
+    a: float
+    t: int
+    digits: int = 5

@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import TYPE_CHECKING, Dict, cast
 
 from app.domain.models import Symbol
@@ -38,6 +39,7 @@ class SymbolCache:
         self._by_id: Dict[int, SymbolDescriptor] = {}
         # Full symbol cache: id -> Symbol (with digits, pip position, etc.)
         self._full_by_id: Dict[int, Symbol] = {}
+        self._populate_lock = asyncio.Lock()
 
     @property
     def is_populated(self) -> bool:
@@ -82,28 +84,32 @@ class SymbolCache:
         if self.is_populated:
             return
 
-        await authorize_fn(account_id)
+        async with self._populate_lock:
+            if self.is_populated:
+                return
 
-        req = ProtoOASymbolsListReq(
-            ctidTraderAccountId=account_id,
-            includeArchivedSymbols=False,
-        )
-        res = await send_request_fn(req)
-        if isinstance(res, ProtoOAErrorRes):
-            error_res = cast(ProtoOAErrorRes, res)
-            raise RuntimeError(
-                f"cTrader API error (code {error_res.errorCode}): {error_res.description}"
-            )
-        res = cast(ProtoOASymbolsListRes, res)
+            await authorize_fn(account_id)
 
-        for light in res.symbol:
-            enabled = getattr(light, "enabled", None)
-            descriptor = SymbolDescriptor(
-                symbol_id=SymbolId(light.symbolId),
-                symbol_name=light.symbolName.upper(),
-                enabled=enabled,
+            req = ProtoOASymbolsListReq(
+                ctidTraderAccountId=account_id,
+                includeArchivedSymbols=False,
             )
-            self.store_descriptor(descriptor)
+            res = await send_request_fn(req)
+            if isinstance(res, ProtoOAErrorRes):
+                error_res = cast(ProtoOAErrorRes, res)
+                raise RuntimeError(
+                    f"cTrader API error (code {error_res.errorCode}): {error_res.description}"
+                )
+            res = cast(ProtoOASymbolsListRes, res)
+
+            for light in res.symbol:
+                enabled = getattr(light, "enabled", None)
+                descriptor = SymbolDescriptor(
+                    symbol_id=SymbolId(light.symbolId),
+                    symbol_name=light.symbolName.upper(),
+                    enabled=enabled,
+                )
+                self.store_descriptor(descriptor)
 
     async def get_or_fetch_symbol(
         self,

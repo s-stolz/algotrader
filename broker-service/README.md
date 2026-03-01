@@ -16,7 +16,9 @@ app/
       deals.py
       market_data.py
       meta.py
-    schemas.py
+    contracts.py
+    validation.py
+    serialization.py
     dependencies.py
   application/
     interfaces.py
@@ -47,7 +49,7 @@ app/
     config.py
 ```
 
-- **API Layer** – FastAPI routers with dependency injection, DTOs, and request/response schemas.
+- **API Layer** – FastAPI routers with dependency injection, request validation helpers, and explicit serializers.
 - **Application Layer** – Stateless services wired to abstract ports defined in `interfaces.py`.
 - **Domain Layer** – Value objects and models describing accounts, orders, positions, deals, trades, ticks, and candles.
 - **Infrastructure Layer** – Async wrappers for cTrader Open API, symbol caching, Redis Streams publishing, and dual-registry for tick and trendbar streaming.
@@ -66,10 +68,10 @@ app/
 - **Symbol caching** (`CtraderSymbolCache`) – Local cache of symbol metadata to reduce API calls
 - **Symbol lookups** – Fast symbol info retrieval with support for both symbol names and IDs
 
-### Configuration via Pydantic Settings
-- Environment-based configuration with `.env` file support
+### Configuration via dataclass settings
+- Environment-based configuration with `.env` support
 - Separate credential loading for cTrader API
-- Type-safe settings with validation
+- Typed parsing/validation in `app/settings.py`
 
 ### Dependency injection
 - `ServiceContainer` manages service lifecycle and wiring
@@ -150,26 +152,26 @@ uvicorn app.main:app --host 0.0.0.0 --port 8050
 
 ## Testing
 
-> **Note**: No test suite currently exists. The project structure supports future testing following these guidelines:
+The broker-service has a unittest suite under `tests/` and mirrors the `app/` structure.
 
-When tests are added, install the development dependencies and run the layered pytest suite:
+Run all tests:
 
 ```bash
 cd broker-service
-pip install -e .[dev]
-pytest              # run full suite with coverage
-pytest test/unit    # run only unit layer
-pytest -m integration  # run integration layer (no external services needed)
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
-The test tree should mirror the `app/` structure so that every router, service, and infrastructure component has a dedicated home for its tests. Additional markers can be used for `contract`, `e2e`, and `slow` scenarios when introducing heavier checks.
+Run via helper module:
 
-### Available dev dependencies for testing:
-- `pytest` – Test framework
-- `pytest-asyncio` – Async test support
-- `pytest-cov` – Coverage reporting
-- `pytest-mock` – Mocking utilities
-- `pytest-timeout` – Test timeout handling
-- `httpx` – HTTP client for API testing
-- `fakeredis[asyncio]` – Redis mock for testing
-- `freezegun` – Time mocking utilities
+```bash
+cd broker-service
+python -m tests.run_tests
+```
+
+Run via script entrypoint (after editable install):
+
+```bash
+cd broker-service
+pip install -e .
+broker-service-test
+```

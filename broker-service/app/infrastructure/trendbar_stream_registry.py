@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from dataclasses import dataclass
@@ -18,16 +19,9 @@ from app.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-TrendbarHandler = Callable[
-    [Trendbar],
-    Awaitable[None],
-]
-TrendbarPublisher = Callable[
-    [AccountId, str, Timeframe, Trendbar],
-    Awaitable[None],
-]
+TrendbarHandler = Callable[[Trendbar], Awaitable[None]]
+TrendbarPublisher = Callable[[AccountId, str, Timeframe, Trendbar], Awaitable[None]]
 
-# Type for subscribe/unsubscribe functions from CtraderClient
 TrendbarSubscribeFn = Callable[
     [int, str, Timeframe, TrendbarHandler],
     Awaitable[TrendbarSubscription],
@@ -38,21 +32,21 @@ TrendbarUnsubscribeFn = Callable[[TrendbarSubscription], Awaitable[None]]
 @dataclass(slots=True)
 class TrendbarStreamEntry:
     subscription: TrendbarSubscription
+    queue: asyncio.Queue[Trendbar]
+    writer_task: asyncio.Task[None]
+    account_id: AccountId
+    symbol: str
+    timeframe: Timeframe
     started_at: float
     only_completed_bars: bool
-    last_bar_timestamp: int | None = None  # For deduplication
-    pending_bar: Trendbar | None = None  # Buffer for the last update of current bar
+    last_bar_timestamp: int | None = None
+    pending_bar: Trendbar | None = None
     last_bar_at: float | None = None
     error: str | None = None
 
 
 class TrendbarStreamRegistry:
-    """Manages trendbar streaming lifecycle per account, symbol, and timeframe.
-
-    Uses push-based live trendbar subscriptions from cTrader API instead of polling.
-    Trendbars are delivered via ProtoOASpotEvent when subscribed to live trendbars
-    and published directly to Redis as they arrive.
-    """
+    """Manages trendbar streaming lifecycle per account, symbol, and timeframe."""
 
     def __init__(
         self,
@@ -78,72 +72,74 @@ class TrendbarStreamRegistry:
         if options is None:
             options = TrendbarStreamOptions()
 
+        normalized_symbol = symbol.upper()
+        key = (int(account_id), normalized_symbol, timeframe.value)
         async with self._lock:
-            key = (int(account_id), symbol.upper(), timeframe.value)
-            if key in self._streams:
-                return self._to_status(self._streams[key])
+            existing = self._streams.get(key)
+            if existing is not None:
+                return self._to_status(existing)
 
             if len(self._streams) >= self._settings.broker_max_trendbar_streams:
                 raise RuntimeError("Reached maximum number of concurrent trendbar streams")
 
-            # Create entry first so the handler can access it
+            queue: asyncio.Queue[Trendbar] = asyncio.Queue(maxsize=self._settings.tick_queue_size)
+
+            # Placeholder entry to make handler registration re-entrant safe.
+            placeholder_subscription = TrendbarSubscription(
+                account_id=int(account_id),
+                symbol=normalized_symbol,
+                symbol_id=0,
+                timeframe=timeframe,
+                token="pending",
+            )
+            placeholder_task = asyncio.create_task(asyncio.sleep(0))
             entry = TrendbarStreamEntry(
-                subscription=None,  # type: ignore[arg-type] # Will be set below
+                subscription=placeholder_subscription,
+                queue=queue,
+                writer_task=placeholder_task,
+                account_id=account_id,
+                symbol=normalized_symbol,
+                timeframe=timeframe,
                 started_at=time.time(),
                 only_completed_bars=options.only_completed_bars,
             )
             self._streams[key] = entry
 
+            async def enqueue_bar(bar: Trendbar) -> None:
+                stream_entry = self._streams.get(key)
+                if stream_entry is None:
+                    return
+                try:
+                    stream_entry.queue.put_nowait(bar)
+                except asyncio.QueueFull:
+                    _ = stream_entry.queue.get_nowait()
+                    stream_entry.queue.put_nowait(bar)
+
             async def on_trendbar(bar: Trendbar) -> None:
-                # TODO: Refactor and cleanup
-                """Handler called by CtraderClient when a live trendbar arrives."""
                 stream_entry = self._streams.get(key)
                 if stream_entry is None:
                     return
 
                 if stream_entry.only_completed_bars:
-                    # Check if this is a new bar (different timestamp)
                     if stream_entry.last_bar_timestamp is not None and bar.t > stream_entry.last_bar_timestamp:
-                        # New bar started - publish the previous completed bar
                         if stream_entry.pending_bar is not None:
-                            try:
-                                await self._publish_candle(
-                                    account_id,
-                                    symbol.upper(),
-                                    timeframe,
-                                    stream_entry.pending_bar,
-                                )
-                                stream_entry.last_bar_at = time.time()
-                            except Exception as exc:
-                                logger.exception("Failed to publish trendbar to Redis")
-                                stream_entry.error = str(exc)
+                            await enqueue_bar(stream_entry.pending_bar)
 
-                    # Always update the pending bar and timestamp
                     stream_entry.last_bar_timestamp = bar.t
                     stream_entry.pending_bar = bar
-                else:
-                    # Publish every update
-                    try:
-                        await self._publish_candle(
-                            account_id,
-                            symbol.upper(),
-                            timeframe,
-                            bar,
-                        )
-                        stream_entry.last_bar_at = time.time()
-                    except Exception as exc:
-                        logger.exception("Failed to publish trendbar to Redis")
-                        stream_entry.error = str(exc)
+                    return
 
-            # Subscribe to live trendbars via cTrader
+                await enqueue_bar(bar)
+
             subscription = await self._subscribe_fn(
                 int(account_id),
-                symbol.upper(),
+                normalized_symbol,
                 timeframe,
                 on_trendbar,
             )
             entry.subscription = subscription
-
+            entry.writer_task = asyncio.create_task(self._writer(entry))
+            entry.writer_task.add_done_callback(lambda task, e=entry: self._writer_done(e, task))
             return self._to_status(entry)
 
     async def stop_trendbar_stream(
@@ -152,11 +148,15 @@ class TrendbarStreamRegistry:
         symbol: str,
         timeframe: Timeframe,
     ) -> None:
+        key = (int(account_id), symbol.upper(), timeframe.value)
         async with self._lock:
-            key = (int(account_id), symbol.upper(), timeframe.value)
             entry = self._streams.pop(key, None)
         if entry is None:
             return
+
+        entry.writer_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await entry.writer_task
         await self._unsubscribe_fn(entry.subscription)
 
     async def get_trendbar_stream_status(
@@ -193,10 +193,33 @@ class TrendbarStreamRegistry:
                     timeframe_value,
                 )
 
+    async def _writer(self, entry: TrendbarStreamEntry) -> None:
+        while True:
+            bar = await entry.queue.get()
+            try:
+                await self._publish_candle(
+                    entry.account_id,
+                    entry.symbol,
+                    entry.timeframe,
+                    bar,
+                )
+                entry.last_bar_at = time.time()
+            except Exception as exc:
+                logger.exception("Failed to publish trendbar to Redis")
+                entry.error = str(exc)
+
+    @staticmethod
+    def _writer_done(entry: TrendbarStreamEntry, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            entry.error = str(exc)
+
     def _to_status(self, entry: TrendbarStreamEntry) -> TrendbarStreamStatus:
         uptime = time.time() - entry.started_at if entry.started_at else None
         return TrendbarStreamStatus(
-            running=True,
+            running=not entry.writer_task.done(),
             started_at=entry.started_at,
             last_bar_at=entry.last_bar_at,
             uptime_seconds=uptime,

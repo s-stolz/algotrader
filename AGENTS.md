@@ -27,8 +27,12 @@ This repo is a multi-service trading platform.
 - Keep modules focused by domain (`api/`, `application/`, `domain/`, `infrastructure/` pattern in `broker-service`).
 
 ## Testing Guidelines
-- Current automated tests are limited (`backtester/test/signals/test_signals.py` via `unittest`).
-- Run: `python -m unittest backtester/test/signals/test_signals.py`.
+- Automated tests currently include:
+  - `backtester/test/signals/test_signals.py` (unittest)
+  - `broker-service/tests/` (unittest; structure mirrors `broker-service/app/`)
+- Run:
+  - `python -m unittest backtester/test/signals/test_signals.py`
+  - `cd broker-service && python -m unittest discover -s tests -p "test_*.py"`
 - For new Python tests, prefer `test_*.py` naming and colocate under each service’s `test/` or `tests/` directory mirroring source structure.
 - Add API contract/integration tests for new endpoints and stream behavior.
 
