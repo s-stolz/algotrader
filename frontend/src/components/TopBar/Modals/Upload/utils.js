@@ -154,7 +154,7 @@ function getTimestampFunction(fieldToIndex) {
 
 function getTimestampFromTimestamp(cols, fieldToIndex) {
   const date = new Date(cols[fieldToIndex.timestamp]);
-  return date.toISOString().replace("Z", "");
+  return date.getTime();
 }
 
 function getTimestampFromDateAndTime(cols, fieldToIndex) {
@@ -164,7 +164,7 @@ function getTimestampFromDateAndTime(cols, fieldToIndex) {
   const combinedDateTime = `${dateStr} ${timeStr}`;
   const date = new Date(combinedDateTime);
 
-  return date.toISOString().replace("Z", "");
+  return date.getTime();
 }
 
 export function readFileChunk(file, start, end) {
@@ -181,7 +181,7 @@ function createCandleFromRow(cols, fieldToIndex, getTimestamp, rowCount) {
     const timestamp = getTimestamp(cols);
 
     const candle = {
-      timestamp: timestamp,
+      timestamp_ms: timestamp,
       open: parseFloat(cols[fieldToIndex.open]),
       high: parseFloat(cols[fieldToIndex.high]),
       low: parseFloat(cols[fieldToIndex.low]),
@@ -202,7 +202,7 @@ function createCandleFromRow(cols, fieldToIndex, getTimestamp, rowCount) {
 function isValidCandle(candle, timestamp) {
   if (
     !timestamp ||
-    timestamp === "Invalid Date" ||
+    Number.isNaN(timestamp) ||
     isNaN(candle.open) ||
     isNaN(candle.high) ||
     isNaN(candle.low) ||

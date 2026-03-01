@@ -43,7 +43,7 @@ export class IndicatorManager {
 
   transformIndicatorData(data, outputKey) {
     return data.map(item => ({
-      time: Math.floor(new Date(item.timestamp).getTime() / 1000),
+      time: Math.floor(item.timestamp_ms / 1000),
       value: item[outputKey],
     })).filter(item => item.value !== undefined && item.value !== null);
   }

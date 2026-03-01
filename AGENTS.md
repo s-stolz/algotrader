@@ -43,3 +43,11 @@ This repo is a multi-service trading platform.
   - Local secrets (gitignored): `config/.env.secrets.local` (copy from `config/.env.secrets.example`)
   - Generated runtime env files (gitignored): `config/.env.shared`, `config/.env.secrets.db`, `config/.env.secrets.runtime`, `config/.env.secrets.broker` via `python scripts/generate_env.py`
 - Validate port and healthcheck changes against `docker-compose.yml` before merging.
+
+## Timestamp & Timezone Convention
+- External/internal API contracts use UTC epoch milliseconds only (`timestamp_ms`, `start_ms`, `end_ms`).
+- Redis stream payloads stay compact and use one-character keys only:
+  - ticks: `b`, `a`, `t`
+  - candles: `o`, `h`, `l`, `c`, `v`, `t`
+- TimescaleDB stores candle time in `candles.timestamp_utc` (`TIMESTAMPTZ`).
+- `markets.timezone` stores IANA timezone IDs (e.g. `Europe/Berlin`) for market/session logic only; transport/storage timestamps remain UTC.

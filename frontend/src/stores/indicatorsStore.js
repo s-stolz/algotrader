@@ -43,8 +43,8 @@ export const useIndicatorsStore = defineStore('indicators', {
         if (!indicator.data.length) continue;
         indicator.hasExpandedHistory = true;
 
-        const earliestTs = indicator.data[0].timestamp.replace(/Z$/, '');
-        const queryParams = { symbol_id: symbolID, timeframe, end_date: earliestTs, limit: batchSize };
+        const earliestTs = indicator.data[0].timestamp_ms;
+        const queryParams = { symbol_id: symbolID, timeframe, end_ms: earliestTs, limit: batchSize };
         const body = { parameters: this.extractParameterValues(indicator.parameters) };
 
         await this.requestIndicatorPrepend(indicator._id, indicator.indicatorId, queryParams, body);

@@ -11,7 +11,6 @@ from app.config import load_config
 from app.db_client import DatabaseClient
 from app.logger import setup_logging
 from app.stream_consumer import StreamConsumer
-from app.utils import epoch_ms_to_iso
 from redis.asyncio import Redis
 
 
@@ -38,7 +37,7 @@ class IngestionService:
     def _format_candle_for_db(candle: Dict[str, Any]) -> Dict[str, Any]:
         """Transform broker candle format to database format."""
         return {
-            "timestamp": epoch_ms_to_iso(candle["t"]),
+            "timestamp_ms": int(candle["t"]),
             "open": candle["o"],
             "high": candle["h"],
             "low": candle["l"],
@@ -47,15 +46,12 @@ class IngestionService:
         }
 
     @staticmethod
-    def _utc_now() -> datetime:
-        return datetime.now(timezone.utc)
+    def _utc_now_ms() -> int:
+        return int(datetime.now(timezone.utc).timestamp() * 1000)
 
     @staticmethod
-    def _parse_db_timestamp(value: str) -> datetime:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+    def _ms_to_iso(value: int) -> str:
+        return datetime.fromtimestamp(value / 1000, tz=timezone.utc).isoformat()
 
     @staticmethod
     def _decode_redis_id(value: Any) -> str:
@@ -123,24 +119,26 @@ class IngestionService:
             f"Loaded {len(self.markets)} markets: {[m['symbol'] for m in self.markets]}"
         )
 
-    def _needs_backfill(self, latest_ts: datetime, timeframe_minutes: int) -> bool:
-        expected_gap = timedelta(minutes=timeframe_minutes * 2)
-        return (self._utc_now() - latest_ts) > expected_gap
+    def _needs_backfill(self, latest_ts_ms: int, timeframe_minutes: int) -> bool:
+        expected_gap_ms = int(timedelta(minutes=timeframe_minutes * 2).total_seconds() * 1000)
+        return (self._utc_now_ms() - latest_ts_ms) > expected_gap_ms
 
-    def _get_frozen_watermark(self, symbol_id: int, symbol: str) -> datetime:
+    def _get_frozen_watermark(self, symbol_id: int, symbol: str) -> int:
         latest_candle = self.db_client.get_latest_candle(symbol_id, self.TIMEFRAME_M1)
         if not latest_candle:
-            fallback = self._utc_now() - timedelta(days=self.MAX_BACKFILL_DAYS)
+            fallback = self._utc_now_ms() - int(
+                timedelta(days=self.MAX_BACKFILL_DAYS).total_seconds() * 1000
+            )
             self.logger.info(
-                f"{symbol} M1: No data in database, using fallback watermark {fallback.isoformat()}"
+                f"{symbol} M1: No data in database, using fallback watermark {self._ms_to_iso(fallback)}"
             )
             return fallback
 
-        latest_ts = self._parse_db_timestamp(latest_candle["timestamp"])
-        self.logger.info(f"{symbol} M1: Frozen startup watermark at {latest_ts.isoformat()}")
+        latest_ts = int(latest_candle["timestamp_ms"])
+        self.logger.info(f"{symbol} M1: Frozen startup watermark at {self._ms_to_iso(latest_ts)}")
         return latest_ts
 
-    def _snapshot_startup_watermarks(self) -> Dict[int, datetime]:
+    def _snapshot_startup_watermarks(self) -> Dict[int, int]:
         return {
             state.symbol_id: self._get_frozen_watermark(state.symbol_id, state.symbol)
             for state in self.runtime_states
@@ -150,23 +148,23 @@ class IngestionService:
         self,
         symbol_id: int,
         symbol: str,
-        from_ts: datetime,
-        to_ts: datetime,
+        from_ts: int,
+        to_ts: int,
         timeframe: Optional[str] = None,
     ) -> None:
         if timeframe is None:
             timeframe = self.TIMEFRAME_CODE_M1
 
         self.logger.info(
-            f"Backfilling {symbol} {timeframe} from {from_ts.isoformat()} to {to_ts.isoformat()}"
+            f"Backfilling {symbol} {timeframe} from {self._ms_to_iso(from_ts)} to {self._ms_to_iso(to_ts)}"
         )
 
         candles: List[Dict[str, Any]] = []
         async for candle in self.broker_client.stream_trendbars(
             symbol,
             timeframe=timeframe,
-            start_time=from_ts.isoformat(),
-            end_time=to_ts.isoformat(),
+            start_time=from_ts,
+            end_time=to_ts,
         ):
             candles.append(candle)
 
@@ -176,7 +174,7 @@ class IngestionService:
         else:
             self.logger.debug(f"No backfill data available for {symbol} {timeframe}")
 
-    async def _run_startup_backfill(self, watermarks: Dict[int, datetime]) -> None:
+    async def _run_startup_backfill(self, watermarks: Dict[int, int]) -> None:
         if not self.runtime_states:
             return
 
@@ -185,8 +183,8 @@ class IngestionService:
         semaphore = asyncio.Semaphore(concurrency)
 
         async def worker(state: SymbolRuntimeState) -> None:
-            from_ts = watermarks[state.symbol_id]
-            if not self._needs_backfill(from_ts, self.TIMEFRAME_M1):
+            from_ts_ms = watermarks[state.symbol_id]
+            if not self._needs_backfill(from_ts_ms, self.TIMEFRAME_M1):
                 self.logger.info(f"{state.symbol} M1: Backfill skipped, data is up to date")
                 return
 
@@ -194,8 +192,8 @@ class IngestionService:
                 await self._backfill_symbol(
                     symbol_id=state.symbol_id,
                     symbol=state.symbol,
-                    from_ts=from_ts,
-                    to_ts=self._utc_now(),
+                    from_ts=from_ts_ms,
+                    to_ts=self._utc_now_ms(),
                 )
 
         await asyncio.gather(*(worker(state) for state in self.runtime_states))
@@ -302,7 +300,7 @@ class IngestionService:
                         symbol_id=state.symbol_id,
                         symbol=state.symbol,
                         from_ts=from_ts,
-                        to_ts=self._utc_now(),
+                        to_ts=self._utc_now_ms(),
                     )
                     self.logger.info(f"Recovery complete for {state.symbol}")
                     return

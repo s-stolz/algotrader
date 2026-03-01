@@ -13,7 +13,7 @@ class Metadata(BaseModel):
 
 
 class Candle(BaseModel):
-    timestamp: str
+    timestamp_ms: int
     open: float
     high: float
     low: float

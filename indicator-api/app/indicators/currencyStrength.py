@@ -72,10 +72,16 @@ METADATA: dict = {
 
 class CURRENCY_STRENGTH:
     @staticmethod
-    def run(data: pd.DataFrame, timeframe: int, start_date: str, end_date: str, limit: int) -> pd.DataFrame:
+    def run(
+        data: pd.DataFrame,
+        timeframe: int,
+        start_ms: int | None = None,
+        end_ms: int | None = None,
+        limit: int | None = None,
+    ) -> pd.DataFrame:
         symbol_ids_mapping = get_symbol_mapping(METADATA['inputs'])
 
-        _data = get_candles_sync(symbol_ids_mapping, timeframe, start_date, end_date, limit)
+        _data = get_candles_sync(symbol_ids_mapping, timeframe, start_ms, end_ms, limit)
         _data = _data['close'].dropna()
 
         def get_val(prev_val, curr_val):

@@ -180,11 +180,11 @@ export default {
         ) {
           this.candlesticksStore.updateCandle(message);
           this.updateCandlestick({
-            time: message.t,
-            open: message.o,
-            high: message.h,
-            low: message.l,
-            close: message.c,
+            time: Math.floor(message.timestamp_ms / 1000),
+            open: message.open,
+            high: message.high,
+            low: message.low,
+            close: message.close,
           });
         }
       };
@@ -221,9 +221,8 @@ export default {
 
       this.tickMessageHandler = (message) => {
         if (message.type === 'tickUpdate' && message.symbol === symbol) {
-          // Handle both 'bid'/'ask' and 'b'/'a' field names
-          const bid = message.bid ?? parseFloat(message.b);
-          const ask = message.ask ?? parseFloat(message.a);
+          const bid = message.bid;
+          const ask = message.ask;
 
           // Validate: skip if undefined, null, 0, or NaN
           this.currentTick = { bid, ask };
@@ -286,6 +285,7 @@ export default {
       if (lastCandle.time === candleTimeSeconds) {
         // Update existing current candle
         updatedCandle = {
+          timestamp_ms: lastCandle.timestamp_ms,
           time: lastCandle.time,
           open: lastCandle.open,
           high: Math.max(lastCandle.high, price),
@@ -298,6 +298,7 @@ export default {
       } else if (candleTimeSeconds > lastCandle.time) {
         // Create a new candle for the current period
         updatedCandle = {
+          timestamp_ms: candleTimeSeconds * 1000,
           time: candleTimeSeconds,
           open: price,
           high: price,

@@ -89,7 +89,7 @@ class StreamConsumer:
             Candle dictionary with keys: timestamp, open, high, low, close, volume
         """
         # Redis data format from broker-service:
-        # o: open, h: high, l: low, c: close, v: volume, t: timestamp (epoch ms)
+        # o/h/l/c/v/t where t is epoch milliseconds.
         timestamp_ms = int(redis_data[b"t"].decode())
         logger.debug(f"Transforming candle {redis_data}")
 

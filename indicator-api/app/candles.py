@@ -12,8 +12,8 @@ log = logger(__name__)
 def get_candles_sync(
     symbol_ids_mapping: Dict[str, int],
     timeframe: int,
-    start_date: str | None,
-    end_date: str | None,
+    start_ms: int | None,
+    end_ms: int | None,
     limit: int | None,
 ) -> pd.DataFrame:
     """Synchronous wrapper around the async get_candles function."""
@@ -21,7 +21,7 @@ def get_candles_sync(
 
     for symbol, symbol_id in symbol_ids_mapping.items():
         df = _fetch_candles_sync(
-            symbol_id, timeframe, start_date, end_date, limit
+            symbol_id, timeframe, start_ms, end_ms, limit
         )
 
         df.columns = pd.MultiIndex.from_product([df.columns, [symbol]])
@@ -34,8 +34,8 @@ def get_candles_sync(
 async def get_candles(
     symbol_id: int | Iterable[int],
     timeframe: int,
-    start_date: str | None,
-    end_date: str | None,
+    start_ms: int | None,
+    end_ms: int | None,
     limit: int | None,
     concurrency: int = 10,
 ) -> pd.DataFrame:
@@ -50,7 +50,7 @@ async def get_candles(
     # Single symbol path
     if isinstance(symbol_id, int):
         return await asyncio.to_thread(
-            _fetch_candles_sync, symbol_id, timeframe, start_date, end_date, limit
+            _fetch_candles_sync, symbol_id, timeframe, start_ms, end_ms, limit
         )
 
     # Multiple symbols path
@@ -59,7 +59,7 @@ async def get_candles(
     async def _bounded_fetch(symbol_id: int) -> tuple[int, pd.DataFrame]:
         async with semaphore:
             df = await asyncio.to_thread(
-                _fetch_candles_sync, symbol_id, timeframe, start_date, end_date, limit
+                _fetch_candles_sync, symbol_id, timeframe, start_ms, end_ms, limit
             )
             return symbol_id, df
 
@@ -81,8 +81,8 @@ async def get_candles(
 def _fetch_candles_sync(
     symbol_id: int,
     timeframe: int,
-    start_date: str | None,
-    end_date: str | None,
+    start_ms: int | None,
+    end_ms: int | None,
     limit: int | None,
 ) -> pd.DataFrame:
     """Synchronous HTTP fetch and DataFrame construction.
@@ -91,15 +91,15 @@ def _fetch_candles_sync(
     db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
     db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
     base_url = f"http://{db_host}:{db_port}/candles/{symbol_id}"
-    params = _build_params(timeframe, start_date, end_date, limit)
+    params = _build_params(timeframe, start_ms, end_ms, limit)
     try:
         response = requests.get(base_url, params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
 
         df = pd.DataFrame(data)
-        if not df.empty and "timestamp" in df.columns:
-            df["timestamp"] = pd.to_datetime(df["timestamp"])  # type: ignore[index]
+        if not df.empty and "timestamp_ms" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp_ms"], unit="ms", utc=True)  # type: ignore[index]
             df.set_index("timestamp", inplace=True)
         return df
     except Exception as e:
@@ -109,14 +109,14 @@ def _fetch_candles_sync(
 
 def _build_params(
     timeframe: int,
-    start_date: str | None,
-    end_date: str | None,
+    start_ms: int | None,
+    end_ms: int | None,
     limit: int | None,
 ) -> dict:
     params = {"timeframe": timeframe}
     optional = {
-        "start_date": start_date,
-        "end_date": end_date,
+        "start_ms": start_ms,
+        "end_ms": end_ms,
         "limit": limit,
     }
     params.update({k: v for k, v in optional.items() if v is not None})

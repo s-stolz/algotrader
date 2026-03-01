@@ -154,7 +154,7 @@ class RedisConsumer:
 
     def _parse_redis_message(self, fields: Dict[str, str]) -> Dict[str, Any]:
         data = {}
-        numeric_fields = {'t', 'o', 'h', 'l', 'c', 'v', 'bid', 'ask', 'b', 'a'}
+        numeric_fields = {'t', 'o', 'h', 'l', 'c', 'v', 'b', 'a'}
 
         # Map short field names to full names
         field_mapping = {
@@ -168,7 +168,21 @@ class RedisConsumer:
 
             if key in numeric_fields:
                 if key == 't':
-                    data[output_key] = int(value) // 1000
+                    data["timestamp_ms"] = int(value)
+                elif key == 'b':
+                    data["bid"] = float(value)
+                elif key == 'a':
+                    data["ask"] = float(value)
+                elif key == 'o':
+                    data["open"] = float(value)
+                elif key == 'h':
+                    data["high"] = float(value)
+                elif key == 'l':
+                    data["low"] = float(value)
+                elif key == 'c':
+                    data["close"] = float(value)
+                elif key == 'v':
+                    data["volume"] = float(value)
                 else:
                     data[output_key] = float(value)
             else:

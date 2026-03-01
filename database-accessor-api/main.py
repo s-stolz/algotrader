@@ -66,12 +66,12 @@ async def delete_market(symbol_id: int, db: AsyncSession = Depends(get_db)):
 async def read_aggregated_candles(
     symbol_id: int,
     timeframe: int = Query(..., description="Timeframe in minutes"),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
+    start_ms: Optional[int] = Query(None, description="Start timestamp in epoch ms (UTC)"),
+    end_ms: Optional[int] = Query(None, description="End timestamp in epoch ms (UTC)"),
     limit: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
-    return await crud.get_candles(db, symbol_id, timeframe, start_date, end_date, limit)
+    return await crud.get_candles(db, symbol_id, timeframe, start_ms, end_ms, limit)
 
 
 @app.post("/candles")

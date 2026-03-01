@@ -79,7 +79,7 @@ def get_candles(
             df = pd.DataFrame(data=candles, columns=[
                               'timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
             df.set_index('timestamp', inplace=True)
 
             df.columns = pd.MultiIndex.from_product([df.columns, [symbol[0]]])

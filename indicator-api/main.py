@@ -77,8 +77,8 @@ async def run_indicator(
     indicator_id: int,
     symbol_id: int = Query(..., description="The ID of the market symbol"),
     timeframe: int = Query(..., description="The timeframe for the candles"),
-    start_date: Optional[str] = Query(None, description="Start date for the data"),
-    end_date: Optional[str] = Query(None, description="End date for the data"),
+    start_ms: Optional[int] = Query(None, description="Start timestamp in epoch ms (UTC)"),
+    end_ms: Optional[int] = Query(None, description="End timestamp in epoch ms (UTC)"),
     limit: Optional[int] = Query(None, description="Maximum number of records to return"),
     body: Optional[IndicatorParameters] = Body(None),
 ) -> dict:
@@ -86,8 +86,8 @@ async def run_indicator(
     query_params = {
         "symbol_id": symbol_id,
         "timeframe": timeframe,
-        "start_date": start_date,
-        "end_date": end_date,
+        "start_ms": start_ms,
+        "end_ms": end_ms,
         "limit": limit,
     }
 
@@ -98,22 +98,22 @@ async def run_indicator(
     warmup = estimate_warmup(metadata, parameters)
 
     fetch_start, fetch_limit, orig_start, orig_limit = adjust_fetch_bounds(
-        start_date=start_date,
+        start_ms=start_ms,
         limit=limit,
         timeframe=timeframe,
         warmup=warmup,
     )
 
     log.info(
-        f"Adjusted fetch bounds: start_date={fetch_start}, limit={fetch_limit} (orig_start={orig_start}, orig_limit={orig_limit}, warmup={warmup})"
+        f"Adjusted fetch bounds: start_ms={fetch_start}, limit={fetch_limit} (orig_start={orig_start}, orig_limit={orig_limit}, warmup={warmup})"
     )
 
     # Fetch with expanded bounds
     candles = await get_candles(
         symbol_id=symbol_id,
         timeframe=timeframe,
-        start_date=fetch_start,
-        end_date=end_date,
+        start_ms=fetch_start,
+        end_ms=end_ms,
         limit=fetch_limit,
     )
 
@@ -128,7 +128,7 @@ async def run_indicator(
 
     indicator_data = trim_indicator_output(
         indicator_raw,
-        original_start_date=orig_start,
+        original_start_ms=orig_start,
         original_limit=orig_limit,
     )
 

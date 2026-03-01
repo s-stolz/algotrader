@@ -7,10 +7,10 @@ export const useCandlesticksStore = defineStore('candlesticks', {
   }),
 
   actions: {
-    async fetch(symbolID, timeframe, startDate = null, endDate = null, limit = null, append = false) {
+    async fetch(symbolID, timeframe, startMs = null, endMs = null, limit = null, append = false) {
       const optionalParams = new URLSearchParams();
-      if (startDate) optionalParams.append('start_date', startDate);
-      if (endDate) optionalParams.append('end_date', endDate);
+      if (startMs) optionalParams.append('start_ms', startMs);
+      if (endMs) optionalParams.append('end_ms', endMs);
       if (limit) optionalParams.append('limit', limit);
 
       try {
@@ -20,9 +20,9 @@ export const useCandlesticksStore = defineStore('candlesticks', {
         let newData = await response.json();
 
         newData = newData.map((candle) => {
-          const utc = new Date(`${candle.timestamp}Z`).getTime() / 1000;
           return {
-            time: utc,
+            timestamp_ms: candle.timestamp_ms,
+            time: Math.floor(candle.timestamp_ms / 1000),
             open: candle.open,
             high: candle.high,
             low: candle.low,
@@ -41,14 +41,15 @@ export const useCandlesticksStore = defineStore('candlesticks', {
     },
 
     updateCandle(candleData) {
-      if (!candleData?.t) return;
+      if (!candleData?.timestamp_ms) return;
 
       const newCandle = {
-        time: candleData.t,
-        open: candleData.o,
-        high: candleData.h,
-        low: candleData.l,
-        close: candleData.c,
+        timestamp_ms: candleData.timestamp_ms,
+        time: Math.floor(candleData.timestamp_ms / 1000),
+        open: candleData.open,
+        high: candleData.high,
+        low: candleData.low,
+        close: candleData.close,
       };
 
       const existingIndex = this.data.findIndex(candle => candle.time === newCandle.time);

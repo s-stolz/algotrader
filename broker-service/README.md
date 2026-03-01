@@ -78,6 +78,14 @@ app/
 - FastAPI dependency injection for clean separation of concerns
 - Proper startup/shutdown lifecycle management
 
+## Market Data Timestamp Contract
+
+- Broker-service API uses epoch milliseconds for time bounds (`fromTs`, `toTs`) and payload timestamps.
+- Redis streams use compact one-character payload keys only:
+  - ticks stream (`ticks:{account_id}:{symbol}`): `b`, `a`, `t`
+  - candles stream (`candles:{account_id}:{symbol}:{timeframe}`): `o`, `h`, `l`, `c`, `v`, `t`
+- `t` is always UTC epoch milliseconds.
+
 ## Runtime overview
 
 1. FastAPI boots via `app.main:create_app` and configures structured logging.
