@@ -252,7 +252,6 @@ class IngestionService:
             await self.broker_client.start_trendbar_stream(
                 state.symbol,
                 timeframe=self.TIMEFRAME_CODE_M1,
-                only_completed_bars=True,
             )
 
             task = asyncio.create_task(
@@ -294,7 +293,6 @@ class IngestionService:
                     await self.broker_client.start_trendbar_stream(
                         state.symbol,
                         timeframe=self.TIMEFRAME_CODE_M1,
-                        only_completed_bars=True,
                     )
                     await self._backfill_symbol(
                         symbol_id=state.symbol_id,

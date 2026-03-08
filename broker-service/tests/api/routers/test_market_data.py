@@ -43,6 +43,15 @@ class MarketDataRouterTests(unittest.IsolatedAsyncioTestCase):
                 service=FakeMarketDataService(),
             )
 
+    async def test_start_trendbar_stream_without_only_completed_bars(self) -> None:
+        response = await market_data.start_trendbar_stream(
+            symbol="EURUSD",
+            timeframe=Timeframe.M1,
+            account_id=AccountId(123),
+            service=FakeMarketDataService(),
+        )
+        self.assertTrue(response["running"])
+
 
 if __name__ == "__main__":
     unittest.main()

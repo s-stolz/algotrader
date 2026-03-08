@@ -11,7 +11,6 @@ from app.domain.models import Trendbar
 from app.domain.value_objects import (
     AccountId,
     Timeframe,
-    TrendbarStreamOptions,
     TrendbarStreamStatus,
 )
 from app.infrastructure.stream_registry import TrendbarSubscription
@@ -38,9 +37,6 @@ class TrendbarStreamEntry:
     symbol: str
     timeframe: Timeframe
     started_at: float
-    only_completed_bars: bool
-    last_bar_timestamp: int | None = None
-    pending_bar: Trendbar | None = None
     last_bar_at: float | None = None
     error: str | None = None
 
@@ -67,11 +63,7 @@ class TrendbarStreamRegistry:
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
-        options: TrendbarStreamOptions | None = None,
     ) -> TrendbarStreamStatus:
-        if options is None:
-            options = TrendbarStreamOptions()
-
         normalized_symbol = symbol.upper()
         key = (int(account_id), normalized_symbol, timeframe.value)
         async with self._lock:
@@ -101,7 +93,6 @@ class TrendbarStreamRegistry:
                 symbol=normalized_symbol,
                 timeframe=timeframe,
                 started_at=time.time(),
-                only_completed_bars=options.only_completed_bars,
             )
             self._streams[key] = entry
 
@@ -118,15 +109,6 @@ class TrendbarStreamRegistry:
             async def on_trendbar(bar: Trendbar) -> None:
                 stream_entry = self._streams.get(key)
                 if stream_entry is None:
-                    return
-
-                if stream_entry.only_completed_bars:
-                    if stream_entry.last_bar_timestamp is not None and bar.t > stream_entry.last_bar_timestamp:
-                        if stream_entry.pending_bar is not None:
-                            await enqueue_bar(stream_entry.pending_bar)
-
-                    stream_entry.last_bar_timestamp = bar.t
-                    stream_entry.pending_bar = bar
                     return
 
                 await enqueue_bar(bar)

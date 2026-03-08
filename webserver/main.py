@@ -108,26 +108,6 @@ class WebSocketServer:
 
             await self.subscription_manager.unsubscribe_candles(client_id, symbol, timeframe)
 
-        elif message_type == 'subscribeTicks':
-            symbol = message.get('symbol')
-
-            if not symbol:
-                raise ValueError('Missing symbol')
-
-            await self.subscription_manager.subscribe_ticks(client_id, symbol)
-            await websocket.send(json.dumps({
-                'type': 'subscribed',
-                'symbol': symbol
-            }))
-
-        elif message_type == 'unsubscribeTicks':
-            symbol = message.get('symbol')
-
-            if not symbol:
-                raise ValueError('Missing symbol')
-
-            await self.subscription_manager.unsubscribe_ticks(client_id, symbol)
-
         else:
             logger.warning(f"Unknown message type: {message_type}")
 

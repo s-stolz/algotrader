@@ -59,20 +59,8 @@ export default {
       indicatorBatchSize: 5000,
       shouldScrollToRealTime: false,
       messageHandler: null,
-      tickMessageHandler: null,
       candlesFetchPromise: null,
       candlesFetchKey: null,
-      currentTick: null,
-      useTickPriceField: 'bid', // 'bid', 'ask', or 'mid' for (bid+ask)/2
-      timeframeMap: {
-        1: 'M1',
-        5: 'M5',
-        15: 'M15',
-        30: 'M30',
-        60: 'H1',
-        240: 'H4',
-        1440: 'D',
-      },
     };
   },
 
@@ -97,7 +85,6 @@ export default {
 
         if (newSymbol !== oldSymbol) {
           this.subscribeToCandles();
-          this.subscribeToTicks();
         }
       },
       immediate: true,
@@ -123,7 +110,6 @@ export default {
 
   beforeUnmount() {
     this.unsubscribeFromCandles();
-    this.unsubscribeFromTicks();
   },
 
   methods: {
@@ -185,16 +171,9 @@ export default {
         if (
           message.type === 'candleUpdate' &&
           message.symbol === symbol &&
-          message.timeframe === this.timeframeMap[timeframe]
+          message.timeframe === 'M1'
         ) {
-          this.candlesticksStore.updateCandle(message);
-          this.updateCandlestick({
-            time: Math.floor(message.timestamp_ms / 1000),
-            open: message.open,
-            high: message.high,
-            low: message.low,
-            close: message.close,
-          });
+          this.updateCurrentCandleWithM1(message);
         }
       };
 
@@ -221,108 +200,44 @@ export default {
       }
     },
 
-    async subscribeToTicks() {
-      this.unsubscribeFromTicks();
-
-      const symbol = this.currentMarketStore.symbol;
-
-      if (!symbol) return;
-
-      this.tickMessageHandler = (message) => {
-        if (message.type === 'tickUpdate' && message.symbol === symbol) {
-          const bid = message.bid;
-          const ask = message.ask;
-
-          // Validate: skip if undefined, null, 0, or NaN
-          this.currentTick = { bid, ask };
-
-          if (!bid || !ask || bid <= 0 || ask <= 0) return;
-
-          // Determine which price to use based on configuration
-          let price;
-          if (this.useTickPriceField === 'bid') {
-            price = bid;
-          } else if (this.useTickPriceField === 'ask') {
-            price = ask;
-          } else {
-            price = (bid + ask) / 2; // mid
-          }
-
-          this.updateCurrentCandleWithTick(price);
-        }
-      };
-
-      wsService.on('message', this.tickMessageHandler);
-
-      try {
-        await wsService.send('subscribeTicks', { symbol });
-      } catch (error) {
-        console.error('Failed to subscribe to ticks:', error);
-      }
-    },
-
-    async unsubscribeFromTicks() {
-      if (this.tickMessageHandler) {
-        wsService.off('message', this.tickMessageHandler);
-        this.tickMessageHandler = null;
-      }
-
-      this.currentTick = null;
-
-      const symbol = this.currentMarketStore.symbol;
-
-      if (symbol) {
-        await wsService.send('unsubscribeTicks', { symbol });
-      }
-    },
-
-    updateCurrentCandleWithTick(price) {
+    updateCurrentCandleWithM1(m1Candle) {
       if (!this.candlesticksStore.data || this.candlesticksStore.data.length === 0) {
         return;
       }
 
-      // Calculate the current candle's timestamp based on timeframe
       const timeframeMinutes = this.currentTimeframeStore.value;
-      const currentTimeSeconds = Math.floor(Date.now() / 1000);
-      const candleTimeSeconds = Math.floor(currentTimeSeconds / (timeframeMinutes * 60)) * (timeframeMinutes * 60);
+      const timeframeMs = timeframeMinutes * 60 * 1000;
+      const bucketTimestampMs = Math.floor(m1Candle.timestamp_ms / timeframeMs) * timeframeMs;
+      const candleTimeSeconds = Math.floor(bucketTimestampMs / 1000);
 
-      // Get the last candlestick
       const lastCandle = this.candlesticksStore.data[this.candlesticksStore.data.length - 1];
 
       let updatedCandle;
 
-      if (lastCandle.time === candleTimeSeconds) {
-        // Update existing current candle
+      if (lastCandle.timestamp_ms === bucketTimestampMs) {
         updatedCandle = {
-          timestamp_ms: lastCandle.timestamp_ms,
-          time: lastCandle.time,
-          open: lastCandle.open,
-          high: Math.max(lastCandle.high, price),
-          low: Math.min(lastCandle.low, price),
-          close: price,
-        };
-
-        // Update the store
-        this.candlesticksStore.data[this.candlesticksStore.data.length - 1] = updatedCandle;
-      } else if (candleTimeSeconds > lastCandle.time) {
-        // Create a new candle for the current period
-        updatedCandle = {
-          timestamp_ms: candleTimeSeconds * 1000,
+          timestamp_ms: bucketTimestampMs,
           time: candleTimeSeconds,
-          open: price,
-          high: price,
-          low: price,
-          close: price,
+          open: lastCandle.open,
+          high: Math.max(lastCandle.high, m1Candle.high),
+          low: Math.min(lastCandle.low, m1Candle.low),
+          close: m1Candle.close,
         };
-
-        // Add new candle to store
+        this.candlesticksStore.data[this.candlesticksStore.data.length - 1] = updatedCandle;
+      } else if (bucketTimestampMs > lastCandle.timestamp_ms) {
+        updatedCandle = {
+          timestamp_ms: bucketTimestampMs,
+          time: candleTimeSeconds,
+          open: m1Candle.open,
+          high: m1Candle.high,
+          low: m1Candle.low,
+          close: m1Candle.close,
+        };
         this.candlesticksStore.data.push(updatedCandle);
       } else {
-        // Tick is for an old candle, ignore
         return;
       }
 
-      // Update the chart
       this.updateCandlestick(updatedCandle);
     },
 

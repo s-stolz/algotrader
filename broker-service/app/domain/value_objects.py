@@ -74,14 +74,6 @@ class TickStreamStatus:
 
 
 @dataclass(slots=True)
-class TrendbarStreamOptions:
-    """Options for trendbar streaming."""
-    only_completed_bars: bool = True
-    """If True (default), only publish bars when they close (new timestamp).
-    If False, publish every live update (on each tick)."""
-
-
-@dataclass(slots=True)
 class TrendbarStreamStatus:
     running: bool
     started_at: float | None

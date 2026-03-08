@@ -10,7 +10,6 @@ from app.domain.value_objects import (
     TickStreamOptions,
     TickStreamStatus,
     Timeframe,
-    TrendbarStreamOptions,
     TrendbarStreamStatus,
 )
 
@@ -132,7 +131,6 @@ class TrendbarStreamRegistryPort(Protocol):
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
-        options: TrendbarStreamOptions | None = None,
     ) -> TrendbarStreamStatus: ...
 
     @abstractmethod

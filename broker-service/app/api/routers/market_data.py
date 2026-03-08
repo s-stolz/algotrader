@@ -21,7 +21,6 @@ from app.domain.value_objects import (
     AccountId,
     TickStreamOptions,
     Timeframe,
-    TrendbarStreamOptions,
 )
 
 router = APIRouter(prefix="/symbols", tags=["market-data"])
@@ -256,23 +255,16 @@ async def stream_trendbars(
 async def start_trendbar_stream(
     symbol: str,
     timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
-    only_completed_bars: bool = Query(
-        default=True,
-        alias="onlyCompletedBars",
-        description="If true (default), only publish bars when they close. If false, publish every live update.",
-    ),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
 ) -> dict[str, Any]:
     tf = timeframe
     normalized_symbol = symbol.upper()
-    options = TrendbarStreamOptions(only_completed_bars=only_completed_bars)
 
     status = await service.start_trendbar_stream(
         account_id,
         normalized_symbol,
         tf,
-        options,
     )
     return serialize_trendbar_stream_status(status)
 

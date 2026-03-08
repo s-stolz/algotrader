@@ -141,14 +141,12 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str = "M1",
-        only_completed_bars: bool = True
     ) -> Dict[str, Any]:
         """Start a live trendbar stream that publishes to Redis.
 
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             timeframe: Timeframe enum (e.g., "M1", "H1", "D1")
-            only_completed_bars: If True, only publish bars when they close
 
         Returns:
             Stream status dictionary
@@ -156,7 +154,6 @@ class BrokerClient:
         url = f"{self.base_url}/symbols/{symbol}/trendbar-stream/start"
         params = {
             "timeframe": timeframe,
-            "onlyCompletedBars": str(only_completed_bars).lower()
         }
 
         try:

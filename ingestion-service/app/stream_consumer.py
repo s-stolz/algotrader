@@ -44,6 +44,7 @@ class StreamConsumer:
         self.block_ms = block_ms
         self._running = False
         self._last_ids: Dict[str, str] = {}  # stream_key -> last_message_id
+        self._pending_open_candles: Dict[str, Dict[str, Any]] = {}
 
     def get_stream_key(self, symbol: str, timeframe: str) -> str:
         """Build Redis stream key for a symbol/timeframe.
@@ -104,6 +105,7 @@ class StreamConsumer:
 
     def _process_stream_messages(
         self,
+        stream_key: str,
         messages: List,
     ) -> tuple[List[Dict[str, Any]], Optional[str]]:
         """Process raw Redis stream messages into candles.
@@ -113,18 +115,41 @@ class StreamConsumer:
         """
         candles = []
         last_id = None
+        pending = self._pending_open_candles.get(stream_key)
 
-        for stream, entries in messages:
+        for _stream, entries in messages:
             for msg_id, data in entries:
                 msg_id_str = self._decode_bytes(msg_id)
+                last_id = msg_id_str
 
                 try:
                     candle = self._parse_redis_candle(data)
-                    candles.append(candle)
-                    last_id = msg_id_str
+
+                    if pending is None:
+                        pending = candle
+                        continue
+
+                    if candle["t"] > pending["t"]:
+                        candles.append(pending)
+                        pending = candle
+                        continue
+
+                    if candle["t"] == pending["t"]:
+                        pending = candle
+                        continue
+
+                    logger.warning(
+                        "Received out-of-order candle for %s (pending=%s, incoming=%s)",
+                        stream_key,
+                        pending["t"],
+                        candle["t"],
+                    )
                 except Exception as e:
                     logger.error(f"Error transforming message {msg_id_str}: {e}")
                     continue
+
+        if pending is not None:
+            self._pending_open_candles[stream_key] = pending
 
         return candles, last_id
 
@@ -159,12 +184,14 @@ class StreamConsumer:
                 if not messages:
                     continue
 
-                candles, new_last_id = self._process_stream_messages(messages)
+                candles, new_last_id = self._process_stream_messages(stream_key, messages)
 
                 if candles:
                     logger.debug(f"Consumed {len(candles)} candles from {stream_key}")
                     logger.debug(f"New Candle for {stream_key}: {candles}")
                     await callback(symbol_id, candles)
+
+                if new_last_id:
                     self._last_ids[stream_key] = new_last_id
                     last_id = new_last_id
 
