@@ -27,7 +27,7 @@ Note: Historical market data currently needs to be manually inserted into the da
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/iamProud/algotrader.git
+   git clone https://github.com/s-stolz/algotrader.git
    cd algotrader
    ```
 2. Create local secrets from the example:
