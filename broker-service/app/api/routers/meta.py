@@ -34,5 +34,7 @@ async def health(container: ServiceContainer = Depends(get_container)) -> dict[s
         "detail": f"active={container.active_trendbar_streams}",
     }
 
+    components["tokenLifecycle"] = container.token_lifecycle_component
+
     overall = "up" if all(c["status"] == "up" for c in components.values()) else "degraded"
     return {"status": overall, "components": components}

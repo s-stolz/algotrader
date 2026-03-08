@@ -52,6 +52,10 @@ class CtraderCredentials:
     secret: str
     host_type: Literal["demo", "live"]
     access_token: str
+    refresh_token: str
+    token_url: str
+    access_token_expires_in_seconds: int
+    token_request_timeout_seconds: float
 
     @classmethod
     def from_env(cls) -> "CtraderCredentials":
@@ -64,6 +68,16 @@ class CtraderCredentials:
             secret=_read_str("CTRADER_SECRET"),
             host_type=host_type,  # type: ignore[arg-type]
             access_token=_read_str("CTRADER_ACCESS_TOKEN"),
+            refresh_token=_read_str("CTRADER_REFRESH_TOKEN"),
+            token_url=_read_str("CTRADER_TOKEN_URL", "https://openapi.ctrader.com/apps/token"),
+            access_token_expires_in_seconds=_read_int(
+                "CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS",
+                2628000,
+            ),
+            token_request_timeout_seconds=_read_float(
+                "CTRADER_TOKEN_REQUEST_TIMEOUT_SECONDS",
+                10.0,
+            ),
         )
 
 
@@ -77,6 +91,10 @@ class Settings:
     candle_stream_maxlen: int | None = None
     broker_max_symbol_streams: int = 20
     broker_max_trendbar_streams: int = 10
+    broker_token_redis_key: str = "broker:auth:ctrader:current"
+    broker_token_refresh_early_seconds: int = 604800
+    broker_token_refresh_retry_delay_seconds: int = 30
+    broker_token_refresh_max_retries: int = 3
     log_level: str = "INFO"
     ctrader_request_timeout_seconds: float = 20.0
 
@@ -91,6 +109,22 @@ class Settings:
             candle_stream_maxlen=_read_optional_int("BROKER_CANDLE_STREAM_MAXLEN"),
             broker_max_symbol_streams=_read_int("BROKER_MAX_SYMBOL_STREAMS", 20),
             broker_max_trendbar_streams=_read_int("BROKER_MAX_TRENDBAR_STREAMS", 10),
+            broker_token_redis_key=_read_str(
+                "BROKER_TOKEN_REDIS_KEY",
+                "broker:auth:ctrader:current",
+            ),
+            broker_token_refresh_early_seconds=_read_int(
+                "BROKER_TOKEN_REFRESH_EARLY_SECONDS",
+                604800,
+            ),
+            broker_token_refresh_retry_delay_seconds=_read_int(
+                "BROKER_TOKEN_REFRESH_RETRY_DELAY_SECONDS",
+                30,
+            ),
+            broker_token_refresh_max_retries=_read_int(
+                "BROKER_TOKEN_REFRESH_MAX_RETRIES",
+                3,
+            ),
             log_level=_read_str("BROKER_LOG_LEVEL", "INFO"),
             ctrader_request_timeout_seconds=_read_float(
                 "BROKER_CTRADER_REQUEST_TIMEOUT_SECONDS", 20.0

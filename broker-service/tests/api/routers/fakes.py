@@ -164,3 +164,4 @@ class FakeContainer:
     active_streams = 1
     active_trendbar_streams = 2
     redis = FakeRedis()
+    token_lifecycle_component = {"status": "up", "detail": "ok"}

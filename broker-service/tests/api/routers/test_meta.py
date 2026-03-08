@@ -13,6 +13,7 @@ class MetaRouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("status", response)
         self.assertIn("components", response)
         self.assertIn("ctrader", response["components"])
+        self.assertIn("tokenLifecycle", response["components"])
 
 
 if __name__ == "__main__":

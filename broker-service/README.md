@@ -90,6 +90,8 @@ app/
 
 1. FastAPI boots via `app.main:create_app` and configures structured logging.
 2. Startup event initializes `ServiceContainer` which wires together:
+   - `TokenLifecycleManager` for expiry-driven cTrader OAuth refresh
+   - `RedisTokenRepository` for token state in Redis hash
    - `CtraderClient` for broker communication
    - `RedisStreamsPublisher` for publishing to Redis
    - `StreamRegistry` for managing live tick streams
@@ -114,7 +116,15 @@ centrally in root `.env` via `python scripts/generate_env.py`.
 | `CTRADER_SECRET` | cTrader API secret | (required) |
 | `CTRADER_HOST_TYPE` | cTrader host type (`demo` or `live`) | (required) |
 | `CTRADER_ACCESS_TOKEN` | cTrader OAuth access token | (required) |
+| `CTRADER_REFRESH_TOKEN` | cTrader OAuth refresh token | (required) |
+| `CTRADER_TOKEN_URL` | OAuth token refresh URL | `https://openapi.ctrader.com/apps/token` |
+| `CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS` | Fallback TTL if refresh response omits `expires_in` | `2628000` |
+| `CTRADER_TOKEN_REQUEST_TIMEOUT_SECONDS` | HTTP timeout for token refresh request | `10.0` |
 | `BROKER_REDIS_URL` | Redis connection string | `redis://localhost:6379/0` |
+| `BROKER_TOKEN_REDIS_KEY` | Redis hash key storing current OAuth token state | `broker:auth:ctrader:current` |
+| `BROKER_TOKEN_REFRESH_EARLY_SECONDS` | Refresh lead time before expiry | `604800` |
+| `BROKER_TOKEN_REFRESH_RETRY_DELAY_SECONDS` | Delay between refresh retries | `30` |
+| `BROKER_TOKEN_REFRESH_MAX_RETRIES` | Max retry attempts per refresh cycle | `3` |
 | `BROKER_TICK_QUEUE_SIZE` | Per-symbol asyncio.Queue size | `1000` |
 | `BROKER_TICK_STREAM_MAXLEN` | Redis stream MAXLEN for ticks (approximate) | `None` (unlimited) |
 | `BROKER_CANDLE_STREAM_MAXLEN` | Redis stream MAXLEN for candles (approximate) | `None` (unlimited) |

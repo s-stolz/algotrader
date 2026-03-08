@@ -105,10 +105,14 @@ class CtraderClient(BrokerPort, MarketDataPort):
     def __init__(
         self,
         credentials: CtraderCredentials,
-        request_timeout: float = 5.0
+        request_timeout: float = 5.0,
+        access_token_provider: Callable[[], str] | None = None,
     ) -> None:
         self._credentials = credentials
         self._request_timeout = max(1.0, float(request_timeout))
+        self._access_token_provider = access_token_provider or (
+            lambda: self._credentials.access_token
+        )
 
         # Twisted client setup
         self._client = self._create_client(credentials)
@@ -187,6 +191,9 @@ class CtraderClient(BrokerPort, MarketDataPort):
     def is_connected(self) -> bool:
         return self._app_authenticated.is_set()
 
+    async def reset_authorized_accounts(self) -> None:
+        self._authorized_accounts.clear()
+
     # ------------------------------------------------------------- BrokerPort
 
     async def list_accounts(self) -> list[Account]:
@@ -194,7 +201,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             ProtoOAGetAccountListByAccessTokenRes,
             await self._send_request(
                 ProtoOAGetAccountListByAccessTokenReq(
-                    accessToken=self._credentials.access_token)
+                    accessToken=self._access_token_provider())
             ),
         )
         accounts: list[Account] = []
@@ -949,7 +956,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
         req = ProtoOAAccountAuthReq(
             ctidTraderAccountId=account_id,
-            accessToken=self._credentials.access_token,
+            accessToken=self._access_token_provider(),
         )
         await self._send_request(req)
         self._authorized_accounts.add(account_id)
