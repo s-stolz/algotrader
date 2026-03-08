@@ -89,7 +89,7 @@ class WebSocketServer:
             symbol = message.get('symbol')
             timeframe = message.get('timeframe')
 
-            if not symbol or timeframe is None:
+            if not symbol or not isinstance(timeframe, str):
                 raise ValueError('Missing symbol or timeframe')
 
             await self.subscription_manager.subscribe_candles(client_id, symbol, timeframe)
@@ -103,30 +103,10 @@ class WebSocketServer:
             symbol = message.get('symbol')
             timeframe = message.get('timeframe')
 
-            if not symbol or timeframe is None:
+            if not symbol or not isinstance(timeframe, str):
                 raise ValueError('Missing symbol or timeframe')
 
             await self.subscription_manager.unsubscribe_candles(client_id, symbol, timeframe)
-
-        elif message_type == 'subscribeTicks':
-            symbol = message.get('symbol')
-
-            if not symbol:
-                raise ValueError('Missing symbol')
-
-            await self.subscription_manager.subscribe_ticks(client_id, symbol)
-            await websocket.send(json.dumps({
-                'type': 'subscribed',
-                'symbol': symbol
-            }))
-
-        elif message_type == 'unsubscribeTicks':
-            symbol = message.get('symbol')
-
-            if not symbol:
-                raise ValueError('Missing symbol')
-
-            await self.subscription_manager.unsubscribe_ticks(client_id, symbol)
 
         else:
             logger.warning(f"Unknown message type: {message_type}")

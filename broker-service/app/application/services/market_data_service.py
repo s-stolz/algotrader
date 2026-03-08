@@ -9,7 +9,6 @@ from app.domain.value_objects import (
     SymbolDescriptor,
     TickStreamOptions,
     Timeframe,
-    TrendbarStreamOptions,
 )
 
 
@@ -85,10 +84,9 @@ class MarketDataService:
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
-        options: TrendbarStreamOptions | None = None,
     ):
         return await self._trendbar_streams.start_trendbar_stream(
-            account_id, symbol, timeframe, options
+            account_id, symbol, timeframe
         )
 
     async def stop_trendbar_stream(

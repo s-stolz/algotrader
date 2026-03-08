@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: db-accessor-client
+Version: 0.1.0
+Summary: Shared HTTP client for database-accessor-api
+Requires-Python: >=3.8
+Requires-Dist: httpx>=0.28.1

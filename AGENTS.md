@@ -27,8 +27,12 @@ This repo is a multi-service trading platform.
 - Keep modules focused by domain (`api/`, `application/`, `domain/`, `infrastructure/` pattern in `broker-service`).
 
 ## Testing Guidelines
-- Current automated tests are limited (`backtester/test/signals/test_signals.py` via `unittest`).
-- Run: `python -m unittest backtester/test/signals/test_signals.py`.
+- Automated tests currently include:
+  - `backtester/test/signals/test_signals.py` (unittest)
+  - `broker-service/tests/` (unittest; structure mirrors `broker-service/app/`)
+- Run:
+  - `python -m unittest backtester/test/signals/test_signals.py`
+  - `cd broker-service && python -m unittest discover -s tests -p "test_*.py"`
 - For new Python tests, prefer `test_*.py` naming and colocate under each service’s `test/` or `tests/` directory mirroring source structure.
 - Add API contract/integration tests for new endpoints and stream behavior.
 
@@ -39,3 +43,11 @@ This repo is a multi-service trading platform.
   - Local secrets (gitignored): `config/.env.secrets.local` (copy from `config/.env.secrets.example`)
   - Generated runtime env files (gitignored): `config/.env.shared`, `config/.env.secrets.db`, `config/.env.secrets.runtime`, `config/.env.secrets.broker` via `python scripts/generate_env.py`
 - Validate port and healthcheck changes against `docker-compose.yml` before merging.
+
+## Timestamp & Timezone Convention
+- External/internal API contracts use UTC epoch milliseconds only (`timestamp_ms`, `start_ms`, `end_ms`).
+- Redis stream payloads stay compact and use one-character keys only:
+  - ticks: `b`, `a`, `t`
+  - candles: `o`, `h`, `l`, `c`, `v`, `t`
+- TimescaleDB stores candle time in `candles.timestamp_utc` (`TIMESTAMPTZ`).
+- `markets.timezone` stores IANA timezone IDs (e.g. `Europe/Berlin`) for market/session logic only; transport/storage timestamps remain UTC.

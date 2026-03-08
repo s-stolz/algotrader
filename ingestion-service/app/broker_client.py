@@ -141,14 +141,12 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str = "M1",
-        only_completed_bars: bool = True
     ) -> Dict[str, Any]:
         """Start a live trendbar stream that publishes to Redis.
 
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             timeframe: Timeframe enum (e.g., "M1", "H1", "D1")
-            only_completed_bars: If True, only publish bars when they close
 
         Returns:
             Stream status dictionary
@@ -156,7 +154,6 @@ class BrokerClient:
         url = f"{self.base_url}/symbols/{symbol}/trendbar-stream/start"
         params = {
             "timeframe": timeframe,
-            "onlyCompletedBars": str(only_completed_bars).lower()
         }
 
         try:
@@ -202,6 +199,20 @@ class BrokerClient:
             raise
         except Exception as e:
             logger.error(f"Error stopping trendbar stream: {e}")
+            raise
+
+    async def get_meta_health(self) -> Dict[str, Any]:
+        """Get broker-service health information."""
+        url = f"{self.base_url}/meta/health"
+        try:
+            response = await self.async_client.get(url)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error fetching broker health: {e.response.status_code} - {e.response.text}")
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching broker health: {e}")
             raise
 
     def close(self) -> None:

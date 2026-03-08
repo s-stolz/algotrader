@@ -16,7 +16,9 @@ app/
       deals.py
       market_data.py
       meta.py
-    schemas.py
+    contracts.py
+    validation.py
+    serialization.py
     dependencies.py
   application/
     interfaces.py
@@ -47,7 +49,7 @@ app/
     config.py
 ```
 
-- **API Layer** – FastAPI routers with dependency injection, DTOs, and request/response schemas.
+- **API Layer** – FastAPI routers with dependency injection, request validation helpers, and explicit serializers.
 - **Application Layer** – Stateless services wired to abstract ports defined in `interfaces.py`.
 - **Domain Layer** – Value objects and models describing accounts, orders, positions, deals, trades, ticks, and candles.
 - **Infrastructure Layer** – Async wrappers for cTrader Open API, symbol caching, Redis Streams publishing, and dual-registry for tick and trendbar streaming.
@@ -66,20 +68,30 @@ app/
 - **Symbol caching** (`CtraderSymbolCache`) – Local cache of symbol metadata to reduce API calls
 - **Symbol lookups** – Fast symbol info retrieval with support for both symbol names and IDs
 
-### Configuration via Pydantic Settings
-- Environment-based configuration with `.env` file support
+### Configuration via dataclass settings
+- Environment-based configuration with `.env` support
 - Separate credential loading for cTrader API
-- Type-safe settings with validation
+- Typed parsing/validation in `app/settings.py`
 
 ### Dependency injection
 - `ServiceContainer` manages service lifecycle and wiring
 - FastAPI dependency injection for clean separation of concerns
 - Proper startup/shutdown lifecycle management
 
+## Market Data Timestamp Contract
+
+- Broker-service API uses epoch milliseconds for time bounds (`fromTs`, `toTs`) and payload timestamps.
+- Redis streams use compact one-character payload keys only:
+  - ticks stream (`ticks:{account_id}:{symbol}`): `b`, `a`, `t`
+  - candles stream (`candles:{account_id}:{symbol}:{timeframe}`): `o`, `h`, `l`, `c`, `v`, `t`
+- `t` is always UTC epoch milliseconds.
+
 ## Runtime overview
 
 1. FastAPI boots via `app.main:create_app` and configures structured logging.
 2. Startup event initializes `ServiceContainer` which wires together:
+   - `TokenLifecycleManager` for expiry-driven cTrader OAuth refresh
+   - `RedisTokenRepository` for token state in Redis hash
    - `CtraderClient` for broker communication
    - `RedisStreamsPublisher` for publishing to Redis
    - `StreamRegistry` for managing live tick streams
@@ -104,7 +116,15 @@ centrally in root `.env` via `python scripts/generate_env.py`.
 | `CTRADER_SECRET` | cTrader API secret | (required) |
 | `CTRADER_HOST_TYPE` | cTrader host type (`demo` or `live`) | (required) |
 | `CTRADER_ACCESS_TOKEN` | cTrader OAuth access token | (required) |
+| `CTRADER_REFRESH_TOKEN` | cTrader OAuth refresh token | (required) |
+| `CTRADER_TOKEN_URL` | OAuth token refresh URL | `https://openapi.ctrader.com/apps/token` |
+| `CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS` | Fallback TTL if refresh response omits `expires_in` | `2628000` |
+| `CTRADER_TOKEN_REQUEST_TIMEOUT_SECONDS` | HTTP timeout for token refresh request | `10.0` |
 | `BROKER_REDIS_URL` | Redis connection string | `redis://localhost:6379/0` |
+| `BROKER_TOKEN_REDIS_KEY` | Redis hash key storing current OAuth token state | `broker:auth:ctrader:current` |
+| `BROKER_TOKEN_REFRESH_EARLY_SECONDS` | Refresh lead time before expiry | `604800` |
+| `BROKER_TOKEN_REFRESH_RETRY_DELAY_SECONDS` | Delay between refresh retries | `30` |
+| `BROKER_TOKEN_REFRESH_MAX_RETRIES` | Max retry attempts per refresh cycle | `3` |
 | `BROKER_TICK_QUEUE_SIZE` | Per-symbol asyncio.Queue size | `1000` |
 | `BROKER_TICK_STREAM_MAXLEN` | Redis stream MAXLEN for ticks (approximate) | `None` (unlimited) |
 | `BROKER_CANDLE_STREAM_MAXLEN` | Redis stream MAXLEN for candles (approximate) | `None` (unlimited) |
@@ -150,26 +170,26 @@ uvicorn app.main:app --host 0.0.0.0 --port 8050
 
 ## Testing
 
-> **Note**: No test suite currently exists. The project structure supports future testing following these guidelines:
+The broker-service has a unittest suite under `tests/` and mirrors the `app/` structure.
 
-When tests are added, install the development dependencies and run the layered pytest suite:
+Run all tests:
 
 ```bash
 cd broker-service
-pip install -e .[dev]
-pytest              # run full suite with coverage
-pytest test/unit    # run only unit layer
-pytest -m integration  # run integration layer (no external services needed)
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
-The test tree should mirror the `app/` structure so that every router, service, and infrastructure component has a dedicated home for its tests. Additional markers can be used for `contract`, `e2e`, and `slow` scenarios when introducing heavier checks.
+Run via helper module:
 
-### Available dev dependencies for testing:
-- `pytest` – Test framework
-- `pytest-asyncio` – Async test support
-- `pytest-cov` – Coverage reporting
-- `pytest-mock` – Mocking utilities
-- `pytest-timeout` – Test timeout handling
-- `httpx` – HTTP client for API testing
-- `fakeredis[asyncio]` – Redis mock for testing
-- `freezegun` – Time mocking utilities
+```bash
+cd broker-service
+python -m tests.run_tests
+```
+
+Run via script entrypoint (after editable install):
+
+```bash
+cd broker-service
+pip install -e .
+broker-service-test
+```

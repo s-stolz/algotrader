@@ -21,13 +21,11 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 ## Prerequisites
 - [Docker](https://docs.docker.com/get-started/get-docker/) installed on your machine.
 
-Note: Historical market data currently needs to be manually inserted into the database. This is a temporary solution until a more automated data ingestion process is implemented.
-
 ## Getting Started
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/iamProud/algotrader.git
+   git clone https://github.com/s-stolz/algotrader.git
    cd algotrader
    ```
 2. Create local secrets from the example:

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 
 export const useTimeframeStore = defineStore('timeframe', {
   state: () => ({
-    currentTimeframe: { name: '1M', value: 1 },
+    currentTimeframe: { name: 'M1', value: 'M1' },
   }),
   actions: {
     setCurrentTimeframe(timeframe) {

@@ -28,6 +28,7 @@ REQUIRED_SECRETS = (
     "CTRADER_CLIENT_ID",
     "CTRADER_SECRET",
     "CTRADER_ACCESS_TOKEN",
+    "CTRADER_REFRESH_TOKEN",
     "CTRADER_HOST_TYPE",
     "ACCOUNT_ID",
 )
@@ -204,6 +205,10 @@ def build_env(
         "WEBSERVER_STREAM_QUEUE_SIZE": stringify(webserver_stream_queue_size),
         "WEBSERVER_MAX_STREAM_LENGTH": stringify(webserver_max_stream_length),
         "BROKER_REDIS_URL": broker_redis_url,
+        "BROKER_TOKEN_REDIS_KEY": "broker:auth:ctrader:current",
+        "BROKER_TOKEN_REFRESH_EARLY_SECONDS": "604800",
+        "BROKER_TOKEN_REFRESH_RETRY_DELAY_SECONDS": "30",
+        "BROKER_TOKEN_REFRESH_MAX_RETRIES": "3",
         "BROKER_TICK_QUEUE_SIZE": stringify(broker_tick_queue_size),
         "BROKER_TICK_STREAM_MAXLEN": stringify(broker_tick_stream_maxlen),
         "BROKER_CANDLE_STREAM_MAXLEN": stringify(broker_candle_stream_maxlen),
@@ -211,6 +216,9 @@ def build_env(
         "BROKER_MAX_TRENDBAR_STREAMS": stringify(broker_max_trendbar_streams),
         "BROKER_LOG_LEVEL": stringify(broker_log_level),
         "BROKER_CTRADER_REQUEST_TIMEOUT_SECONDS": stringify(broker_request_timeout),
+        "CTRADER_TOKEN_URL": "https://openapi.ctrader.com/apps/token",
+        "CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS": "2628000",
+        "CTRADER_TOKEN_REQUEST_TIMEOUT_SECONDS": "10.0",
     }
 
     db_secrets_env: dict[str, str] = {}
@@ -221,6 +229,7 @@ def build_env(
         "CTRADER_CLIENT_ID": secrets.get("CTRADER_CLIENT_ID", ""),
         "CTRADER_SECRET": secrets.get("CTRADER_SECRET", ""),
         "CTRADER_ACCESS_TOKEN": secrets.get("CTRADER_ACCESS_TOKEN", ""),
+        "CTRADER_REFRESH_TOKEN": secrets.get("CTRADER_REFRESH_TOKEN", ""),
         "CTRADER_HOST_TYPE": secrets.get("CTRADER_HOST_TYPE", ""),
     }
 

@@ -1,7 +1,9 @@
 """Main entry point for the ingestion service."""
+
 import asyncio
 import signal
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.broker_client import BrokerClient
@@ -9,8 +11,17 @@ from app.config import load_config
 from app.db_client import DatabaseClient
 from app.logger import setup_logging
 from app.stream_consumer import StreamConsumer
-from app.utils import epoch_ms_to_iso
 from redis.asyncio import Redis
+
+
+@dataclass
+class SymbolRuntimeState:
+    """Runtime state for a single symbol stream."""
+
+    symbol_id: int
+    symbol: str
+    stream_key: str
+    recovery_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 class IngestionService:
@@ -19,28 +30,34 @@ class IngestionService:
     TIMEFRAME_M1 = 1
     TIMEFRAME_CODE_M1 = "M1"
     CHUNK_SIZE = 10000
-    MAX_BACKFILL_DAYS = 365
-    REDIS_NEW_MESSAGES_ONLY = "$"
+    MAX_BACKFILL_DAYS = 365 * 5
     REDIS_STREAM_START = "0-0"
 
     @staticmethod
     def _format_candle_for_db(candle: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform broker candle format to database format.
-
-        Args:
-            candle: Broker candle with keys: o, h, l, c, v, t, digits
-
-        Returns:
-            Database candle with keys: timestamp, open, high, low, close, volume
-        """
+        """Transform broker candle format to database format."""
         return {
-            'timestamp': epoch_ms_to_iso(candle['t']),
-            'open': candle['o'],
-            'high': candle['h'],
-            'low': candle['l'],
-            'close': candle['c'],
-            'volume': candle['v']
+            "timestamp_ms": int(candle["t"]),
+            "open": candle["o"],
+            "high": candle["h"],
+            "low": candle["l"],
+            "close": candle["c"],
+            "volume": candle["v"],
         }
+
+    @staticmethod
+    def _utc_now_ms() -> int:
+        return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+    @staticmethod
+    def _ms_to_iso(value: int) -> str:
+        return datetime.fromtimestamp(value / 1000, tz=timezone.utc).isoformat()
+
+    @staticmethod
+    def _decode_redis_id(value: Any) -> str:
+        if isinstance(value, bytes):
+            return value.decode()
+        return str(value)
 
     def __init__(self):
         """Initialize the ingestion service."""
@@ -50,14 +67,20 @@ class IngestionService:
         self.db_client = DatabaseClient(self.config.db_api_base_url)
         self.broker_client = BrokerClient(
             self.config.broker_service_base_url,
-            self.config.broker_account_id
+            self.config.broker_account_id,
         )
         self.redis: Redis | None = None
         self.consumer: StreamConsumer | None = None
 
         self.markets: List[Dict[str, Any]] = []
+        self.runtime_states: List[SymbolRuntimeState] = []
         self.consumer_tasks: List[asyncio.Task] = []
+        self._health_monitor_task: Optional[asyncio.Task] = None
+        self._recovery_task: Optional[asyncio.Task] = None
+
         self._shutdown = False
+        self._is_shutting_down = False
+        self._broker_connected: Optional[bool] = None
 
     async def startup(self) -> None:
         """Initialize connections and load configuration."""
@@ -65,7 +88,7 @@ class IngestionService:
 
         self.redis = Redis.from_url(
             self.config.redis_url,
-            decode_responses=False  # We handle decoding manually
+            decode_responses=False,
         )
         await self.redis.ping()
         self.logger.info(f"Connected to Redis at {self.config.redis_url}")
@@ -74,77 +97,74 @@ class IngestionService:
             redis=self.redis,
             account_id=self.config.broker_account_id,
             batch_size=self.config.consumer_batch_size,
-            block_ms=self.config.consumer_block_ms
+            block_ms=self.config.consumer_block_ms,
         )
 
         self.markets = self.db_client.get_markets()
         if not self.markets:
-            self.logger.warning("No markets found in database. Waiting for markets to be created...")
-        else:
-            self.logger.info(f"Loaded {len(self.markets)} markets: {[m['symbol'] for m in self.markets]}")
+            self.logger.warning(
+                "No markets found in database. Waiting for markets to be created..."
+            )
+            return
 
-    def _calculate_time_gap(self, latest_candle: Optional[Dict], symbol: str) -> timedelta:
-        """Calculate time gap from latest candle to now.
-
-        Args:
-            latest_candle: Latest candle dict or None
-            symbol: Symbol name for logging
-
-        Returns:
-            Time gap as timedelta
-        """
-        if latest_candle is None:
-            self.logger.info(f"{symbol} M1: No data in database")
-            return timedelta(days=self.MAX_BACKFILL_DAYS)
-
-        latest_ts = datetime.fromisoformat(latest_candle["timestamp"].replace("Z", "+00:00"))
-        time_gap = datetime.now() - latest_ts
-
-        self.logger.debug(
-            f"{symbol} M1: Latest candle at {latest_ts.isoformat()} "
-            f"({time_gap.total_seconds() / 3600:.1f}h ago)"
+        self.runtime_states = [
+            SymbolRuntimeState(
+                symbol_id=market["symbol_id"],
+                symbol=market["symbol"],
+                stream_key=self.consumer.get_stream_key(market["symbol"], self.TIMEFRAME_CODE_M1),
+            )
+            for market in self.markets
+        ]
+        self.logger.info(
+            f"Loaded {len(self.markets)} markets: {[m['symbol'] for m in self.markets]}"
         )
-        return time_gap
 
-    def _needs_backfill(self, time_gap: timedelta, timeframe_minutes: int) -> bool:
-        """Determine if backfill is needed based on time gap.
+    def _needs_backfill(self, latest_ts_ms: int, timeframe_minutes: int) -> bool:
+        expected_gap_ms = int(timedelta(minutes=timeframe_minutes * 2).total_seconds() * 1000)
+        return (self._utc_now_ms() - latest_ts_ms) > expected_gap_ms
 
-        Args:
-            time_gap: Time since latest candle
-            timeframe_minutes: Candle timeframe in minutes
+    def _get_frozen_watermark(self, symbol_id: int, symbol: str) -> int:
+        latest_candle = self.db_client.get_latest_candle(symbol_id, self.TIMEFRAME_CODE_M1)
+        if not latest_candle:
+            fallback = self._utc_now_ms() - int(
+                timedelta(days=self.MAX_BACKFILL_DAYS).total_seconds() * 1000
+            )
+            self.logger.info(
+                f"{symbol} M1: No data in database, using fallback watermark {self._ms_to_iso(fallback)}"
+            )
+            return fallback
 
-        Returns:
-            True if backfill needed
-        """
-        expected_gap = timedelta(minutes=timeframe_minutes * 2)
-        return time_gap > expected_gap
+        latest_ts = int(latest_candle["timestamp_ms"])
+        self.logger.info(f"{symbol} M1: Frozen startup watermark at {self._ms_to_iso(latest_ts)}")
+        return latest_ts
+
+    def _snapshot_startup_watermarks(self) -> Dict[int, int]:
+        return {
+            state.symbol_id: self._get_frozen_watermark(state.symbol_id, state.symbol)
+            for state in self.runtime_states
+        }
 
     async def _backfill_symbol(
         self,
         symbol_id: int,
         symbol: str,
-        latest_ts: datetime,
-        timeframe: str = None
+        from_ts: int,
+        to_ts: int,
+        timeframe: Optional[str] = None,
     ) -> None:
-        """Backfill historical data for a single symbol.
-
-        Args:
-            symbol_id: Database symbol ID
-            symbol: Symbol name
-            latest_ts: Timestamp to backfill from
-            timeframe: Timeframe code (default: M1)
-        """
         if timeframe is None:
             timeframe = self.TIMEFRAME_CODE_M1
 
-        self.logger.info(f"Backfilling {symbol} {timeframe} from streaming API...")
+        self.logger.info(
+            f"Backfilling {symbol} {timeframe} from {self._ms_to_iso(from_ts)} to {self._ms_to_iso(to_ts)}"
+        )
 
-        candles = []
+        candles: List[Dict[str, Any]] = []
         async for candle in self.broker_client.stream_trendbars(
             symbol,
             timeframe=timeframe,
-            start_time=latest_ts.isoformat(),
-            end_time=datetime.now().isoformat()
+            start_time=from_ts,
+            end_time=to_ts,
         ):
             candles.append(candle)
 
@@ -154,132 +174,222 @@ class IngestionService:
         else:
             self.logger.debug(f"No backfill data available for {symbol} {timeframe}")
 
-    async def check_and_backfill(self) -> None:
-        """Check for missing data and backfill from REST API."""
-        self.logger.info("Checking for missing data and starting backfill...")
+    async def _run_startup_backfill(self, watermarks: Dict[int, int]) -> None:
+        if not self.runtime_states:
+            return
 
-        timeframe_minutes = self.TIMEFRAME_M1
+        self.logger.info("Starting startup backfill phase")
+        concurrency = max(1, self.config.startup_backfill_concurrency)
+        semaphore = asyncio.Semaphore(concurrency)
 
-        for market in self.markets:
-            symbol_id = market["symbol_id"]
-            symbol = market["symbol"]
+        async def worker(state: SymbolRuntimeState) -> None:
+            from_ts_ms = watermarks[state.symbol_id]
+            if not self._needs_backfill(from_ts_ms, self.TIMEFRAME_M1):
+                self.logger.info(f"{state.symbol} M1: Backfill skipped, data is up to date")
+                return
 
-            latest_candle = self.db_client.get_latest_candle(symbol_id, timeframe_minutes)
-            time_gap = self._calculate_time_gap(latest_candle, symbol)
-
-            if self._needs_backfill(time_gap, timeframe_minutes):
-                latest_ts = (
-                    datetime.fromisoformat(latest_candle["timestamp"].replace("Z", "+00:00"))
-                    if latest_candle
-                    else datetime(2025, 1, 1)
+            async with semaphore:
+                await self._backfill_symbol(
+                    symbol_id=state.symbol_id,
+                    symbol=state.symbol,
+                    from_ts=from_ts_ms,
+                    to_ts=self._utc_now_ms(),
                 )
-                await self._backfill_symbol(symbol_id, symbol, latest_ts)
 
-        self.logger.info("Backfill check complete")
+        await asyncio.gather(*(worker(state) for state in self.runtime_states))
+        self.logger.info("Startup backfill phase complete")
 
     async def _write_candles_in_chunks(
         self,
         symbol_id: int,
         candles: List[Dict[str, Any]],
-        chunk_size: int = None
+        chunk_size: Optional[int] = None,
     ) -> None:
-        """Write candles to database in chunks.
-
-        Args:
-            symbol_id: Database symbol ID
-            candles: List of formatted candle dictionaries
-            chunk_size: Number of candles per chunk (default: 10000)
-        """
         if chunk_size is None:
             chunk_size = self.CHUNK_SIZE
 
         total_chunks = (len(candles) + chunk_size - 1) // chunk_size
-
         for i in range(0, len(candles), chunk_size):
-            chunk = candles[i:i + chunk_size]
+            chunk = candles[i : i + chunk_size]
             chunk_num = i // chunk_size + 1
 
-            await asyncio.to_thread(
-                self.db_client.write_candles,
-                symbol_id,
-                chunk
-            )
-
+            await asyncio.to_thread(self.db_client.write_candles, symbol_id, chunk)
             self.logger.info(
                 f"Wrote {len(chunk)} candles for symbol_id={symbol_id} "
                 f"(chunk {chunk_num}/{total_chunks})"
             )
 
     async def write_candles_callback(self, symbol_id: int, candles: List[Dict[str, Any]]) -> None:
-        """Callback to write candles to database.
-
-        Args:
-            symbol_id: Database symbol ID
-            candles: List of candle dictionaries in broker format
-        """
+        """Callback to write candles to database."""
         if not candles:
             return
 
         mapped_candles = [self._format_candle_for_db(candle) for candle in candles]
         await self._write_candles_in_chunks(symbol_id, mapped_candles)
 
+    async def _get_stream_tail_id(self, stream_key: str) -> str:
+        """Get current tail ID of a stream; returns 0-0 if stream is empty."""
+        if self.redis is None:
+            raise RuntimeError("Redis client not initialized")
+
+        entries = await self.redis.xrevrange(stream_key, count=1)
+        if not entries:
+            return self.REDIS_STREAM_START
+
+        message_id = entries[0][0]
+        return self._decode_redis_id(message_id)
+
     async def start_consumers(self) -> None:
-        """Start consuming from all configured streams."""
+        """Start consuming streams from a deterministic Redis cursor per symbol."""
+        if self.consumer is None:
+            raise RuntimeError("Consumer is not initialized")
+
         self.logger.info("Starting stream consumers...")
 
-        for market in self.markets:
-            symbol_id = market["symbol_id"]
-            symbol = market["symbol"]
-
-            timeframe_code = self.TIMEFRAME_CODE_M1
-            stream_key = self.consumer.get_stream_key(symbol, timeframe_code)
+        for state in self.runtime_states:
+            tail_id = await self._get_stream_tail_id(state.stream_key)
 
             await self.broker_client.start_trendbar_stream(
-                symbol,
-                timeframe=timeframe_code,
-                only_completed_bars=True,
+                state.symbol,
+                timeframe=self.TIMEFRAME_CODE_M1,
             )
 
             task = asyncio.create_task(
                 self.consumer.consume_stream(
-                    stream_key=stream_key,
-                    symbol_id=symbol_id,
+                    stream_key=state.stream_key,
+                    symbol_id=state.symbol_id,
                     callback=self.write_candles_callback,
-                    start_id=self.REDIS_NEW_MESSAGES_ONLY
+                    start_id=tail_id,
                 )
             )
             self.consumer_tasks.append(task)
-
-            self.logger.info(f"Started consumer for {stream_key}")
+            self.logger.info(f"Started consumer for {state.stream_key} from ID {tail_id}")
 
         self.logger.info(f"Started {len(self.consumer_tasks)} stream consumers")
 
+    async def _is_broker_connected(self) -> bool:
+        """Broker is considered connected only when broker-service is up and cTrader is authenticated."""
+        try:
+            health = await self.broker_client.get_meta_health()
+            ctrader = health.get("components", {}).get("ctrader", {})
+            return ctrader.get("status") == "up"
+        except Exception:
+            return False
+
+    async def _recover_symbol_after_reconnect(self, state: SymbolRuntimeState) -> None:
+        async with state.recovery_lock:
+            backoff = max(1, self.config.recovery_backoff_initial_seconds)
+            max_backoff = max(backoff, self.config.recovery_backoff_max_seconds)
+
+            while not self._shutdown:
+                if not await self._is_broker_connected():
+                    self.logger.warning(
+                        f"Skipping recovery for {state.symbol}: broker/cTrader not connected"
+                    )
+                    return
+
+                try:
+                    from_ts = self._get_frozen_watermark(state.symbol_id, state.symbol)
+                    await self.broker_client.start_trendbar_stream(
+                        state.symbol,
+                        timeframe=self.TIMEFRAME_CODE_M1,
+                    )
+                    await self._backfill_symbol(
+                        symbol_id=state.symbol_id,
+                        symbol=state.symbol,
+                        from_ts=from_ts,
+                        to_ts=self._utc_now_ms(),
+                    )
+                    self.logger.info(f"Recovery complete for {state.symbol}")
+                    return
+                except Exception as exc:
+                    self.logger.error(
+                        f"Recovery failed for {state.symbol}: {exc}. Retrying in {backoff}s",
+                        exc_info=True,
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff = min(max_backoff, backoff * 2)
+
+    async def _run_recovery(self) -> None:
+        if not self.runtime_states:
+            return
+
+        self.logger.info("Broker reconnect detected, running recovery backfill")
+        concurrency = max(1, self.config.startup_backfill_concurrency)
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def worker(state: SymbolRuntimeState) -> None:
+            async with semaphore:
+                await self._recover_symbol_after_reconnect(state)
+
+        await asyncio.gather(
+            *(worker(state) for state in self.runtime_states), return_exceptions=False
+        )
+        self.logger.info("Reconnect recovery finished")
+
+    def _trigger_recovery(self) -> None:
+        if self._recovery_task and not self._recovery_task.done():
+            self.logger.info("Recovery already running, skipping duplicate trigger")
+            return
+        self._recovery_task = asyncio.create_task(self._run_recovery())
+
+    async def _monitor_broker_connectivity(self) -> None:
+        """Monitor broker/cTrader connectivity and trigger recovery on reconnect transitions."""
+        poll_seconds = max(1, self.config.broker_health_poll_seconds)
+        while not self._shutdown:
+            connected = await self._is_broker_connected()
+
+            if self._broker_connected is None:
+                self._broker_connected = connected
+                self.logger.info(f"Initial broker connectivity state: connected={connected}")
+            elif connected and not self._broker_connected:
+                self.logger.warning("Broker connection restored, triggering recovery")
+                self._broker_connected = connected
+                self._trigger_recovery()
+            elif not connected and self._broker_connected:
+                self.logger.warning("Broker/cTrader connection lost")
+                self._broker_connected = connected
+            else:
+                self._broker_connected = connected
+
+            await asyncio.sleep(poll_seconds)
+
     async def shutdown(self) -> None:
         """Gracefully shutdown the service."""
+        if self._is_shutting_down:
+            return
+
+        self._is_shutting_down = True
         self.logger.info("Shutting down ingestion service...")
         self._shutdown = True
 
-        # Stop consumer
         if self.consumer:
             self.consumer.stop()
 
-        # Cancel all consumer tasks
+        if self._health_monitor_task:
+            self._health_monitor_task.cancel()
+
+        if self._recovery_task:
+            self._recovery_task.cancel()
+
         for task in self.consumer_tasks:
             task.cancel()
 
-        if self.consumer_tasks:
-            await asyncio.gather(*self.consumer_tasks, return_exceptions=True)
+        await asyncio.gather(*self.consumer_tasks, return_exceptions=True)
 
-        # Close Redis connection
+        if self._health_monitor_task:
+            await asyncio.gather(self._health_monitor_task, return_exceptions=True)
+
+        if self._recovery_task:
+            await asyncio.gather(self._recovery_task, return_exceptions=True)
+
         if self.redis:
             await self.redis.close()
             self.logger.info("Closed Redis connection")
 
-        # Close broker client
         await self.broker_client.aclose()
         self.logger.info("Closed broker client")
 
-        # Close database client
         self.db_client.close()
         self.logger.info("Closed database client")
 
@@ -290,9 +400,12 @@ class IngestionService:
         try:
             await self.startup()
 
-            await self.check_and_backfill()
+            if self.runtime_states:
+                startup_watermarks = self._snapshot_startup_watermarks()
+                await self.start_consumers()
+                await self._run_startup_backfill(startup_watermarks)
 
-            await self.start_consumers()
+            self._health_monitor_task = asyncio.create_task(self._monitor_broker_connectivity())
 
             while not self._shutdown:
                 await asyncio.sleep(1)
@@ -309,14 +422,12 @@ async def main():
     """Main entry point."""
     service = IngestionService()
 
-    # Setup signal handlers for graceful shutdown
     loop = asyncio.get_event_loop()
 
     def handle_shutdown(sig):
         service.logger.info(f"Received signal {sig}")
         asyncio.create_task(service.shutdown())
 
-    # Register signal handlers
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, lambda s=sig: handle_shutdown(s))
 

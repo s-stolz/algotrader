@@ -73,6 +73,10 @@ logger = logging.getLogger(__name__)
 TickHandler = Callable[[Tick], Awaitable[None]]
 TrendbarHandler = Callable[[Trendbar], Awaitable[None]]
 
+TRENDBAR_FETCH_CONCURRENCY = 2
+TRENDBAR_RATE_LIMIT_RETRIES = 3
+TRENDBAR_RETRY_BASE_DELAY_SECONDS = 0.25
+
 
 def _timeframe_to_minutes(timeframe: Timeframe) -> int:
     """Convert timeframe to minutes for chunk size calculation."""
@@ -101,10 +105,14 @@ class CtraderClient(BrokerPort, MarketDataPort):
     def __init__(
         self,
         credentials: CtraderCredentials,
-        request_timeout: float = 5.0
+        request_timeout: float = 5.0,
+        access_token_provider: Callable[[], str] | None = None,
     ) -> None:
         self._credentials = credentials
         self._request_timeout = max(1.0, float(request_timeout))
+        self._access_token_provider = access_token_provider or (
+            lambda: self._credentials.access_token
+        )
 
         # Twisted client setup
         self._client = self._create_client(credentials)
@@ -136,6 +144,9 @@ class CtraderClient(BrokerPort, MarketDataPort):
         ] = {}
         self._trendbar_lock = asyncio.Lock()
         self._active_trendbar_streams: set[Tuple[int, int, str]] = set()
+
+        # Limit concurrent historical trendbar requests to reduce cTrader rate-limit bursts.
+        self._trendbar_fetch_semaphore = asyncio.Semaphore(TRENDBAR_FETCH_CONCURRENCY)
 
     def _create_client(self, credentials: CtraderCredentials) -> Client:
         """Create and configure the Twisted client."""
@@ -180,6 +191,9 @@ class CtraderClient(BrokerPort, MarketDataPort):
     def is_connected(self) -> bool:
         return self._app_authenticated.is_set()
 
+    async def reset_authorized_accounts(self) -> None:
+        self._authorized_accounts.clear()
+
     # ------------------------------------------------------------- BrokerPort
 
     async def list_accounts(self) -> list[Account]:
@@ -187,7 +201,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             ProtoOAGetAccountListByAccessTokenRes,
             await self._send_request(
                 ProtoOAGetAccountListByAccessTokenReq(
-                    accessToken=self._credentials.access_token)
+                    accessToken=self._access_token_provider())
             ),
         )
         accounts: list[Account] = []
@@ -242,25 +256,25 @@ class CtraderClient(BrokerPort, MarketDataPort):
         payload: dict
     ) -> dict[str, Any]:
         symbol = payload["symbol"].upper()
-        info = await self._get_symbol(int(account_id), symbol)
-        req = ProtoOANewOrderReq(ctidTraderAccountId=int(account_id))
+        account_id_int = int(account_id)
+        info = await self._get_symbol(account_id_int, symbol)
+        req = ProtoOANewOrderReq(ctidTraderAccountId=account_id_int)
         req.symbolId = info.symbol_id
-        req.orderType = ProtoOAOrderType.Value(payload["orderType"].upper())
-        req.tradeSide = ProtoOATradeSide.Value(payload["tradeSide"].upper())
-        req.volume = int(payload["volume"])
+        req.orderType = ProtoOAOrderType.Value(payload["orderType"])
+        req.tradeSide = ProtoOATradeSide.Value(payload["tradeSide"])
+        req.volume = payload["volume"]
         if "limitPrice" in payload:
-            req.limitPrice = float(payload["limitPrice"])
+            req.limitPrice = payload["limitPrice"]
         if "stopPrice" in payload:
-            req.stopPrice = float(payload["stopPrice"])
+            req.stopPrice = payload["stopPrice"]
         if "stopLoss" in payload:
-            req.stopLoss = float(payload["stopLoss"])
+            req.stopLoss = payload["stopLoss"]
         if "takeProfit" in payload:
-            req.takeProfit = float(payload["takeProfit"])
+            req.takeProfit = payload["takeProfit"]
         if "timeInForce" in payload:
-            req.timeInForce = ProtoOATimeInForce.Value(
-                payload["timeInForce"].upper())
+            req.timeInForce = ProtoOATimeInForce.Value(payload["timeInForce"])
         if "expirationTimestamp" in payload:
-            req.expirationTimestamp = int(payload["expirationTimestamp"])
+            req.expirationTimestamp = payload["expirationTimestamp"]
         if payload.get("comment"):
             req.comment = payload["comment"]
         if payload.get("label"):
@@ -450,31 +464,49 @@ class CtraderClient(BrokerPort, MarketDataPort):
         limit: int | None,
     ) -> list[Trendbar]:
         """Fetch a single chunk of trendbars from the cTrader API."""
-        req = ProtoOAGetTrendbarsReq(
-            ctidTraderAccountId=account_id,
-            symbolId=symbol_id,
-            period=ProtoOATrendbarPeriod.Value(timeframe.value),
-            fromTimestamp=from_ts,
-        )
-        if to_ts:
-            req.toTimestamp = to_ts
-        if limit:
-            req.count = limit
+        attempt = 0
+        while True:
+            attempt += 1
+            async with self._trendbar_fetch_semaphore:
+                req = ProtoOAGetTrendbarsReq(
+                    ctidTraderAccountId=account_id,
+                    symbolId=symbol_id,
+                    period=ProtoOATrendbarPeriod.Value(timeframe.value),
+                    fromTimestamp=from_ts,
+                )
+                if to_ts:
+                    req.toTimestamp = to_ts
+                if limit:
+                    req.count = limit
 
-        res = await self._send_request(req)
+                res = await self._send_request(req)
 
-        if isinstance(res, ProtoOAErrorRes):
+            if not isinstance(res, ProtoOAErrorRes):
+                res = cast(ProtoOAGetTrendbarsRes, res)
+                return [map_trendbar(tb, digits=digits) for tb in res.trendbar]
+
             error_res = cast(ProtoOAErrorRes, res)
-            raise RuntimeError(
-                f"cTrader API error (code {error_res.errorCode}): {error_res.description}"
+            if not self._is_rate_limit_error(error_res.description):
+                raise RuntimeError(
+                    f"cTrader API error (code {error_res.errorCode}): {error_res.description}"
+                )
+
+            if attempt > TRENDBAR_RATE_LIMIT_RETRIES:
+                raise RuntimeError(
+                    "cTrader API rate limit exceeded for trendbar requests after retries: "
+                    f"{error_res.description}"
+                )
+
+            delay_seconds = TRENDBAR_RETRY_BASE_DELAY_SECONDS * attempt
+            logger.warning(
+                "Rate limited while fetching trendbars (attempt=%s/%s, delay=%.2fs, symbol_id=%s, timeframe=%s)",
+                attempt,
+                TRENDBAR_RATE_LIMIT_RETRIES,
+                delay_seconds,
+                symbol_id,
+                timeframe.value,
             )
-
-        res = cast(ProtoOAGetTrendbarsRes, res)
-
-        return [
-            map_trendbar(tb, digits=digits)
-            for tb in res.trendbar
-        ]
+            await asyncio.sleep(delay_seconds)
 
     async def stream_trendbars(
         self,
@@ -783,10 +815,14 @@ class CtraderClient(BrokerPort, MarketDataPort):
             return
 
         tick = map_tick(event.bid, event.ask, event.timestamp, info.digits)
-        await asyncio.gather(
-            *(handler(tick) for handler in handlers),
-            return_exceptions=True
-        )
+        if len(handlers) == 1:
+            try:
+                await handlers[0](tick)
+            except Exception:
+                logger.exception("Tick handler failed for account=%s symbol_id=%s", *key)
+            return
+
+        await asyncio.gather(*(handler(tick) for handler in handlers), return_exceptions=True)
 
     async def _emit_trendbars(self, event: ProtoOASpotEvent) -> None:
         """Emit live trendbars from a spot event to registered handlers."""
@@ -818,10 +854,19 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 bid_price=bid_price,
                 digits=info.digits
             )
-            await asyncio.gather(
-                *(handler(trendbar) for handler in handlers),
-                return_exceptions=True,
-            )
+            if len(handlers) == 1:
+                try:
+                    await handlers[0](trendbar)
+                except Exception:
+                    logger.exception(
+                        "Trendbar handler failed for account=%s symbol_id=%s timeframe=%s",
+                        event.ctidTraderAccountId,
+                        event.symbolId,
+                        timeframe.value,
+                    )
+                continue
+
+            await asyncio.gather(*(handler(trendbar) for handler in handlers), return_exceptions=True)
 
     async def _subscribe_spots(self, account_id: int, symbol_id: int) -> None:
         req = ProtoOASubscribeSpotsReq(ctidTraderAccountId=account_id)
@@ -911,7 +956,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
         req = ProtoOAAccountAuthReq(
             ctidTraderAccountId=account_id,
-            accessToken=self._credentials.access_token,
+            accessToken=self._access_token_provider(),
         )
         await self._send_request(req)
         self._authorized_accounts.add(account_id)
@@ -969,3 +1014,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
             self._authorize_account,
             self._send_request,
         )
+
+    @staticmethod
+    def _is_rate_limit_error(description: str | None) -> bool:
+        if not description:
+            return False
+        lowered = description.lower()
+        return "request_frequency_exceeded" in lowered or "rate limit" in lowered

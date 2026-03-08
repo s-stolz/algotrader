@@ -17,54 +17,6 @@ class BrokerClient:
     async def close(self):
         await self.client.aclose()
 
-    async def start_tick_stream(
-        self,
-        symbol: str,
-        queue_size: int = 1000,
-        max_stream_length: int = 10000
-    ) -> dict:
-        url = f"{self.base_url}/symbols/{symbol}/tick-stream/start"
-        params = {
-            'queueSize': str(queue_size),
-            'maxStreamLength': str(max_stream_length)
-        }
-
-        try:
-            response = await self.client.get(
-                f"{url}?{urlencode(params)}",
-                headers={'X-Account-Id': self.account_id}
-            )
-            response.raise_for_status()
-
-            data = response.json()
-            self.active_streams[f"tick:{symbol}"] = {
-                'type': 'tick',
-                'symbol': symbol
-            }
-            return data
-
-        except httpx.HTTPError as e:
-            logger.error(f"Error starting tick stream for {symbol}: {e}")
-            raise
-
-    async def stop_tick_stream(self, symbol: str) -> dict:
-        url = f"{self.base_url}/symbols/{symbol}/tick-stream/stop"
-
-        try:
-            response = await self.client.get(
-                url,
-                headers={'X-Account-Id': self.account_id}
-            )
-            response.raise_for_status()
-
-            data = response.json()
-            self.active_streams.pop(f"tick:{symbol}", None)
-            return data
-
-        except httpx.HTTPError as e:
-            logger.error(f"Error stopping tick stream for {symbol}: {e}")
-            raise
-
     async def start_trendbar_stream(
         self,
         symbol: str,
@@ -73,7 +25,6 @@ class BrokerClient:
         url = f"{self.base_url}/symbols/{symbol}/trendbar-stream/start"
         params = {
             'timeframe': timeframe,
-            'onlyCompletedBars': 'true'
         }
 
         try:

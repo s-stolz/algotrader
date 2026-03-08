@@ -60,6 +60,10 @@ The server uses a JSON-based message format compatible with the frontend's Ticke
 }
 ```
 
+Timestamp rules:
+- Outbound WebSocket events use `timestamp_ms` (UTC epoch milliseconds).
+- Internally, Redis payloads remain compact (`t/o/h/l/c/v` and `t/b/a`) and are expanded before broadcasting to clients.
+
 ### Client → Server Messages
 
 #### Login
@@ -160,12 +164,12 @@ The server uses a JSON-based message format compatible with the frontend's Ticke
   "data": {
     "symbol": "EURUSD",
     "timeframe": "M1",
-    "t": 1706371200000,  // Timestamp (ms)
-    "o": 1.0850,         // Open
-    "h": 1.0855,         // High
-    "l": 1.0848,         // Low
-    "c": 1.0852,         // Close
-    "v": 125000          // Volume
+    "timestamp_ms": 1706371200000,
+    "open": 1.0850,
+    "high": 1.0855,
+    "low": 1.0848,
+    "close": 1.0852,
+    "volume": 125000
   }
 }
 ```
@@ -177,9 +181,9 @@ The server uses a JSON-based message format compatible with the frontend's Ticke
   "type": "TickUpdate",
   "data": {
     "symbol": "EURUSD",
-    "t": 1706371234567,  // Timestamp (ms)
-    "bid": 1.0850,       // Bid price
-    "ask": 1.0852        // Ask price
+    "timestamp_ms": 1706371234567,
+    "bid": 1.0850,
+    "ask": 1.0852
   }
 }
 ```

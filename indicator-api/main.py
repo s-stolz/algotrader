@@ -4,7 +4,6 @@ from typing import Optional
 
 import app.markets as markets
 import uvicorn
-from __init__ import __version__
 from app import get_available_indicators, get_indicator_by_id, get_indicator_metadata
 from app.candles import get_candles
 from app.indicators.base import execute_indicator
@@ -17,12 +16,12 @@ from app.utils import (
     prepare_parameters,
     trim_indicator_output,
 )
+from db_accessor_client import normalize_timeframe_code, timeframe_to_minutes
 from fastapi import Body, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from logger import LOG_LEVEL_UVICORN, logger
 
 log = logger(__name__)
-log.info(f"Starting Indicator API version {__version__}")
 
 
 @asynccontextmanager
@@ -45,7 +44,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Indicator API",
     description="Indicator API for algotrader",
-    version=__version__,
     lifespan=lifespan,
 )
 
@@ -79,18 +77,20 @@ async def get_indicators() -> list[dict]:
 async def run_indicator(
     indicator_id: int,
     symbol_id: int = Query(..., description="The ID of the market symbol"),
-    timeframe: int = Query(..., description="The timeframe for the candles"),
-    start_date: Optional[str] = Query(None, description="Start date for the data"),
-    end_date: Optional[str] = Query(None, description="End date for the data"),
+    timeframe: str = Query(..., description="Timeframe code (e.g. M1, H1)"),
+    start_ms: Optional[int] = Query(None, description="Start timestamp in epoch ms (UTC)"),
+    end_ms: Optional[int] = Query(None, description="End timestamp in epoch ms (UTC)"),
     limit: Optional[int] = Query(None, description="Maximum number of records to return"),
     body: Optional[IndicatorParameters] = Body(None),
 ) -> dict:
+    timeframe_code = normalize_timeframe_code(timeframe)
+    timeframe_minutes = timeframe_to_minutes(timeframe_code)
     metadata = get_indicator_metadata(indicator_id)
     query_params = {
         "symbol_id": symbol_id,
-        "timeframe": timeframe,
-        "start_date": start_date,
-        "end_date": end_date,
+        "timeframe": timeframe_code,
+        "start_ms": start_ms,
+        "end_ms": end_ms,
         "limit": limit,
     }
 
@@ -101,22 +101,22 @@ async def run_indicator(
     warmup = estimate_warmup(metadata, parameters)
 
     fetch_start, fetch_limit, orig_start, orig_limit = adjust_fetch_bounds(
-        start_date=start_date,
+        start_ms=start_ms,
         limit=limit,
-        timeframe=timeframe,
+        timeframe=timeframe_minutes,
         warmup=warmup,
     )
 
     log.info(
-        f"Adjusted fetch bounds: start_date={fetch_start}, limit={fetch_limit} (orig_start={orig_start}, orig_limit={orig_limit}, warmup={warmup})"
+        f"Adjusted fetch bounds: start_ms={fetch_start}, limit={fetch_limit} (orig_start={orig_start}, orig_limit={orig_limit}, warmup={warmup})"
     )
 
     # Fetch with expanded bounds
     candles = await get_candles(
         symbol_id=symbol_id,
-        timeframe=timeframe,
-        start_date=fetch_start,
-        end_date=end_date,
+        timeframe=timeframe_code,
+        start_ms=fetch_start,
+        end_ms=end_ms,
         limit=fetch_limit,
     )
 
@@ -131,7 +131,7 @@ async def run_indicator(
 
     indicator_data = trim_indicator_output(
         indicator_raw,
-        original_start_date=orig_start,
+        original_start_ms=orig_start,
         original_limit=orig_limit,
     )
 

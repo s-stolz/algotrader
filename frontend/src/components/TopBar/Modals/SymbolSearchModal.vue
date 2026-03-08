@@ -22,7 +22,62 @@
       <hr class="separator" />
 
       <n-scrollbar style="height: 300px">
-        <table>
+        <template v-if="showEmptyMarketPromo">
+          <div class="empty-market-state">
+            <n-button
+              text
+              id="add-market-button"
+              @click.stop="onAddMarketClick()"
+            >
+              <n-icon size="24">
+                <AddCircleOutline />
+              </n-icon>
+            </n-button>
+            <hr class="separator row-separator" />
+            <div class="empty-state-card">
+              <n-space vertical align="center" :size="12">
+                <h3 class="empty-state-cta">Don’t have a broker yet?</h3>
+                <n-button
+                  tag="a"
+                  :href="affiliateLink"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="button-close"
+                >
+                  Get Started with IC Trading*
+                </n-button>
+                <n-qr-code
+                  class="affiliate-qr"
+                  :value="affiliateLink"
+                  :size="108"
+                  color="#171a1f"
+                  background-color="#dadee2"
+                  error-correction-level="M"
+                />
+              </n-space>
+            </div>
+            <n-text depth="3" class="affiliate-footnote-bottom">*affiliate link</n-text>
+          </div>
+        </template>
+
+        <template v-else-if="showNoSearchMatches">
+          <n-button
+            text
+            id="add-market-button"
+            @click.stop="onAddMarketClick()"
+          >
+            <n-icon size="24">
+              <AddCircleOutline />
+            </n-icon>
+          </n-button>
+          <div class="empty-state-card">
+            <n-space vertical align="center" :size="8">
+              <n-text>No symbols match your search.</n-text>
+            </n-space>
+          </div>
+        </template>
+
+        <table v-else>
           <tbody>
             <template v-for="market of filteredMarketList" :key="market.symbol_id">
               <symbol-row
@@ -54,7 +109,7 @@
 import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useMarketsStore } from "@/stores/marketsStore";
 
-import { NScrollbar, NInput, NIcon, NButton } from "naive-ui";
+import { NScrollbar, NInput, NIcon, NButton, NSpace, NText, NQrCode } from "naive-ui";
 import {
   SearchOutline,
   AddCircleOutline,
@@ -70,6 +125,9 @@ export default {
     NInput,
     NIcon,
     NButton,
+    NSpace,
+    NText,
+    NQrCode,
     SearchOutline,
     AddCircleOutline,
     BaseModal,
@@ -81,6 +139,7 @@ export default {
   data() {
     return {
       symbolInput: "",
+      affiliateLink: "https://www.ictrading.com?camp=86158",
       currentMarketStore: useCurrentMarketStore(),
       marketsStore: useMarketsStore(),
     };
@@ -97,6 +156,14 @@ export default {
           if (a.symbol > b.symbol) return 1;
           return 0;
         });
+    },
+
+    showEmptyMarketPromo() {
+      return this.marketsStore.all.length === 0;
+    },
+
+    showNoSearchMatches() {
+      return this.filteredMarketList.length === 0 && this.marketsStore.all.length > 0;
     },
   },
 
@@ -173,5 +240,39 @@ tr:hover,
   margin: auto;
   width: 100%;
   height: 40px;
+}
+
+.empty-state-cta {
+  margin: 0;
+  padding: 0;
+}
+
+.empty-state-card {
+  margin: 8px 15px 12px;
+  display: flex;
+  justify-content: center;
+  text-align: center;
+  flex: 1;
+  align-items: center;
+}
+
+.empty-market-state {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.affiliate-qr {
+  width: 108px;
+  height: 108px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.affiliate-footnote-bottom {
+  font-size: 9px;
+  margin-bottom: 10px;
+  align-self: center;
 }
 </style>

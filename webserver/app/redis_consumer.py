@@ -64,9 +64,6 @@ class RedisConsumer:
     def get_candle_stream_key(self, symbol: str, timeframe: str) -> str:
         return f"candles:{self.account_id}:{symbol}:{timeframe}"
 
-    def get_tick_stream_key(self, symbol: str) -> str:
-        return f"ticks:{self.account_id}:{symbol}"
-
     async def start_candle_stream(self, symbol: str, timeframe: str):
         stream_key = self.get_candle_stream_key(symbol, timeframe)
 
@@ -79,22 +76,6 @@ class RedisConsumer:
             'type': 'candle',
             'symbol': symbol,
             'timeframe': timeframe
-        }
-
-        self.active_streams[stream_key] = stream_info
-        stream_info['task'] = asyncio.create_task(self._consume_stream(stream_key, stream_info))
-
-    async def start_tick_stream(self, symbol: str):
-        stream_key = self.get_tick_stream_key(symbol)
-
-        if stream_key in self.active_streams:
-            return
-
-        stream_info = {
-            'last_id': '$',
-            'running': True,
-            'type': 'tick',
-            'symbol': symbol
         }
 
         self.active_streams[stream_key] = stream_info
@@ -137,11 +118,6 @@ class RedisConsumer:
                                     stream_info['timeframe'],
                                     data
                                 )
-                            elif stream_info['type'] == 'tick':
-                                self.subscription_manager.broadcast_tick(
-                                    stream_info['symbol'],
-                                    data
-                                )
 
                 except asyncio.CancelledError:
                     break
@@ -154,24 +130,25 @@ class RedisConsumer:
 
     def _parse_redis_message(self, fields: Dict[str, str]) -> Dict[str, Any]:
         data = {}
-        numeric_fields = {'t', 'o', 'h', 'l', 'c', 'v', 'bid', 'ask', 'b', 'a'}
-
-        # Map short field names to full names
-        field_mapping = {
-            'b': 'bid',
-            'a': 'ask'
-        }
+        numeric_fields = {'t', 'o', 'h', 'l', 'c', 'v'}
 
         for key, value in fields.items():
-            # Use mapped key name if available
-            output_key = field_mapping.get(key, key)
-
             if key in numeric_fields:
                 if key == 't':
-                    data[output_key] = int(value) // 1000
+                    data["timestamp_ms"] = int(value)
+                elif key == 'o':
+                    data["open"] = float(value)
+                elif key == 'h':
+                    data["high"] = float(value)
+                elif key == 'l':
+                    data["low"] = float(value)
+                elif key == 'c':
+                    data["close"] = float(value)
+                elif key == 'v':
+                    data["volume"] = float(value)
                 else:
-                    data[output_key] = float(value)
+                    data[key] = float(value)
             else:
-                data[output_key] = value
+                data[key] = value
 
         return data

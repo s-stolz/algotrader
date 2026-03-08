@@ -1,7 +1,6 @@
 import json
 import logging
-import os
-from typing import TYPE_CHECKING, Dict, Set, Union
+from typing import TYPE_CHECKING, Dict, Set
 
 from websockets.asyncio.server import ServerConnection
 
@@ -10,26 +9,6 @@ if TYPE_CHECKING:
     from app.redis_consumer import RedisConsumer
 
 logger = logging.getLogger(__name__)
-
-
-def timeframe_to_code(timeframe: Union[int, str]) -> str:
-    if isinstance(timeframe, str):
-        return timeframe
-
-    timeframe_map = {
-        1: "M1", 5: "M5", 15: "M15", 30: "M30",
-        60: "H1", 240: "H4", 1440: "D1"
-    }
-
-    if timeframe in timeframe_map:
-        return timeframe_map[timeframe]
-
-    if timeframe < 60:
-        return f"M{timeframe}"
-    elif timeframe < 1440:
-        return f"H{timeframe // 60}"
-    else:
-        return f"D{timeframe // 1440}"
 
 
 class SubscriptionManager:
@@ -71,8 +50,10 @@ class SubscriptionManager:
 
         self.clients.pop(client_id, None)
 
-    async def subscribe_candles(self, client_id: int, symbol: str, timeframe: Union[int, str]):
-        timeframe_code = timeframe_to_code(timeframe)
+    async def subscribe_candles(
+        self, client_id: int, symbol: str, timeframe: str
+    ):
+        timeframe_code = timeframe.upper()
         sub_key = f"candle:{symbol}:{timeframe_code}"
 
         client_subs = self.client_subscriptions.get(client_id)
@@ -99,49 +80,10 @@ class SubscriptionManager:
                 self.subscription_counts[sub_key] = count
                 raise
 
-    async def subscribe_ticks(self, client_id: int, symbol: str):
-        sub_key = f"tick:{symbol}"
-
-        client_subs = self.client_subscriptions.get(client_id)
-        if client_subs is None:
-            raise ValueError(f"Client {client_id} not found")
-
-        if sub_key in client_subs:
-            return
-
-        client_subs.add(sub_key)
-
-        count = self.subscription_counts.get(sub_key, 0)
-        self.subscription_counts[sub_key] = count + 1
-
-        if count == 0:
-            try:
-                queue_size = int(os.getenv('WEBSERVER_STREAM_QUEUE_SIZE', '1000'))
-                max_stream_length = int(os.getenv('WEBSERVER_MAX_STREAM_LENGTH', '10000'))
-
-                await self.broker_client.start_tick_stream(
-                    symbol, queue_size, max_stream_length
-                )
-                await self.redis_consumer.start_tick_stream(symbol)
-
-            except Exception:
-                client_subs.discard(sub_key)
-                self.subscription_counts[sub_key] = count
-                raise
-
-    async def unsubscribe_candles(self, client_id: int, symbol: str, timeframe: Union[int, str]):
-        timeframe_code = timeframe_to_code(timeframe)
-        sub_key = f"candle:{symbol}:{timeframe_code}"
-
-        client_subs = self.client_subscriptions.get(client_id)
-        if client_subs is None or sub_key not in client_subs:
-            return
-
-        client_subs.discard(sub_key)
-        await self._decrement_subscription(sub_key)
-
-    async def unsubscribe_ticks(self, client_id: int, symbol: str):
-        sub_key = f"tick:{symbol}"
+    async def unsubscribe_candles(
+        self, client_id: int, symbol: str, timeframe: str
+    ):
+        sub_key = f"candle:{symbol}:{timeframe.upper()}"
 
         client_subs = self.client_subscriptions.get(client_id)
         if client_subs is None or sub_key not in client_subs:
@@ -160,21 +102,10 @@ class SubscriptionManager:
             parts = sub_key.split(':')
             stream_type = parts[0]
             symbol = parts[1]
-            timeframe = parts[2] if len(parts) > 2 else None
-
+            timeframe = parts[2]
             try:
-                if stream_type == 'candle' and timeframe:
-                    # M1 streams are shared with ingestion service - keep them running
-                    if timeframe != 'M1':
-                        await self.broker_client.stop_trendbar_stream(symbol, timeframe)
-
+                if stream_type == 'candle':
                     stream_key = self.redis_consumer.get_candle_stream_key(symbol, timeframe)
-                    self.redis_consumer.stop_stream(stream_key)
-
-                elif stream_type == 'tick':
-                    await self.broker_client.stop_tick_stream(symbol)
-
-                    stream_key = self.redis_consumer.get_tick_stream_key(symbol)
                     self.redis_consumer.stop_stream(stream_key)
 
             except Exception as e:
@@ -183,23 +114,12 @@ class SubscriptionManager:
             self.subscription_counts[sub_key] = new_count
 
     def broadcast_candle(self, symbol: str, timeframe: str, data: dict):
-        sub_key = f"candle:{symbol}:{timeframe}"
+        sub_key = f"candle:{symbol}:{timeframe.upper()}"
 
         message = json.dumps({
             'type': 'candleUpdate',
             'symbol': symbol,
             'timeframe': timeframe,
-            **data
-        })
-
-        self._broadcast(sub_key, message)
-
-    def broadcast_tick(self, symbol: str, data: dict):
-        sub_key = f"tick:{symbol}"
-
-        message = json.dumps({
-            'type': 'tickUpdate',
-            'symbol': symbol,
             **data
         })
 

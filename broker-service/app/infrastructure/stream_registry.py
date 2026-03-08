@@ -100,7 +100,7 @@ class StreamRegistry(StreamRegistryPort):
                 push_tick
             )
             writer_task = asyncio.create_task(
-                self._writer(queue, options, subscription)
+                self._writer(queue, subscription)
             )
 
             entry = StreamEntry(
@@ -159,19 +159,15 @@ class StreamRegistry(StreamRegistryPort):
     async def _writer(
         self,
         queue: asyncio.Queue[Tick],
-        options: TickStreamOptions,
         subscription: TickSubscription,
     ) -> None:
         while True:
             tick = await queue.get()
-            try:
-                await self._publish_tick(
-                    tick,
-                    AccountId(subscription.account_id),
-                    subscription.symbol,
-                )
-            finally:
-                queue.task_done()
+            await self._publish_tick(
+                tick,
+                AccountId(subscription.account_id),
+                subscription.symbol,
+            )
 
     def _writer_done(
         self,

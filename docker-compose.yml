@@ -33,8 +33,8 @@ services:
   indicator-api:
     container_name: indicator-api
     build:
-      context: ./indicator-api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: indicator-api/Dockerfile
     ports:
       - "${INDICATOR_API_PUBLISHED_PORT:-8010}:${INDICATOR_API_PORT:-8010}"
     volumes:
@@ -106,8 +106,8 @@ services:
   ingestion-service:
     container_name: ingestion-service
     build:
-      context: ./ingestion-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ingestion-service/Dockerfile
     volumes:
       - ./ingestion-service:/app
     depends_on:

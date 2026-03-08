@@ -63,10 +63,16 @@ install_service() {
   if ! "${python_in_venv}" -m pip install --upgrade pip setuptools wheel; then
     echo "Warning: failed to upgrade pip/setuptools/wheel for ${service}; continuing." >&2
   fi
-  "${python_in_venv}" -m pip install -c "${SHARED_CONSTRAINTS}" -r "${requirements_file}"
+  (
+    cd "${service_dir}"
+    "${python_in_venv}" -m pip install -c "${SHARED_CONSTRAINTS}" -r "requirements.txt"
+  )
 
   if [[ -f "${override_file}" ]]; then
-    "${python_in_venv}" -m pip install -r "${override_file}"
+    (
+      cd "${service_dir}"
+      "${python_in_venv}" -m pip install -r "constraints.override.txt"
+    )
   fi
 }
 

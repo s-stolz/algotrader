@@ -1,98 +1,92 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from __future__ import annotations
+
+import logging
+import time
+from decimal import Decimal
+from typing import Any, AsyncIterator
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import get_account_id, get_market_data_service
-from app.api.schemas import (
-    SymbolLightResponse,
-    SymbolResponse,
-    TickStreamRequest,
-    TickStreamStatusResponse,
-    TrendbarResponse,
-    TrendbarStreamStatusResponse,
+from app.api.serialization import (
+    serialize_symbol,
+    serialize_symbol_light,
+    serialize_tick_stream_status,
+    serialize_trendbar_stream_status,
 )
+from app.api.validation import parse_tick_stream_body, read_json_body
 from app.application.services import MarketDataService
-from app.domain.models import Symbol
 from app.domain.value_objects import (
     AccountId,
     TickStreamOptions,
     Timeframe,
 )
 
-router = APIRouter(
-    prefix="/symbols",
-    tags=["market-data"]
-)
+router = APIRouter(prefix="/symbols", tags=["market-data"])
+logger = logging.getLogger(__name__)
 
 
-def _options_from_request(
-        payload: TickStreamRequest | None
+def _options_from_inputs(
+    queue_size: int | None,
+    max_stream_length: int | None,
+    body_values: tuple[int | None, int | None] | None,
 ) -> TickStreamOptions:
-    if payload is None:
-        return TickStreamOptions()
-    return payload.as_options()
+    if body_values is not None:
+        body_queue, body_max = body_values
+        if body_queue is not None:
+            queue_size = body_queue
+        if body_max is not None:
+            max_stream_length = body_max
 
-
-def _serialize_status(status) -> TickStreamStatusResponse:
-    return TickStreamStatusResponse(
-        running=status.running,
-        startedAt=status.started_at,
-        lastTickAt=status.last_tick_at,
-        uptimeSeconds=status.uptime_seconds,
-        error=status.error,
+    return TickStreamOptions(
+        queue_size=queue_size,
+        max_stream_length=max_stream_length,
     )
 
 
-def _serialize_trendbar_status(status) -> TrendbarStreamStatusResponse:
-    return TrendbarStreamStatusResponse(
-        running=status.running,
-        startedAt=status.started_at,
-        lastBarAt=status.last_bar_at,
-        uptimeSeconds=status.uptime_seconds,
-        error=status.error,
-    )
-
-
-@router.get("/", response_model=list[SymbolLightResponse])
+@router.get("/")
 async def list_symbols(
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
-) -> list[SymbolLightResponse]:
+) -> list[dict[str, Any]]:
     symbols = await service.list_symbols(account_id)
-    return [
-        SymbolLightResponse(
-            symbolId=int(symbol.symbol_id),
-            symbolName=symbol.symbol_name,
-            enabled=symbol.enabled,
-        )
-        for symbol in symbols
-    ]
+    return [serialize_symbol_light(symbol) for symbol in symbols]
 
 
-@router.get("/{symbol}", response_model=SymbolResponse)
+@router.get("/{symbol}")
 async def get_symbol(
     symbol: str,
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
-) -> Symbol:
-    symbol_info = await service.get_symbol(account_id, symbol.upper())
+) -> dict[str, Any]:
+    normalized_symbol = symbol.upper()
+    symbol_info = await service.get_symbol(account_id, normalized_symbol)
     if symbol_info is None:
         raise HTTPException(status_code=404, detail="Symbol not found")
-    return symbol_info
+    return serialize_symbol(symbol_info)
 
 
 @router.get("/{symbol}/tick-stream/start")
 async def start_tick_stream(
     symbol: str,
-    payload: TickStreamRequest | None = None,
+    request: Request,
+    queueSize: int | None = Query(default=None, ge=1),
+    maxStreamLength: int | None = Query(default=None, ge=100),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
-):
+) -> dict[str, Any]:
+    normalized_symbol = symbol.upper()
+    body_values: tuple[int | None, int | None] | None = None
+    if request.headers.get("content-length") not in {None, "0"}:
+        body_values = parse_tick_stream_body(await read_json_body(request))
+
     status = await service.start_tick_stream(
         account_id,
-        symbol.upper(),
-        _options_from_request(payload),
+        normalized_symbol,
+        _options_from_inputs(queueSize, maxStreamLength, body_values),
     )
-    return _serialize_status(status)
+    return serialize_tick_stream_status(status)
 
 
 @router.get("/{symbol}/tick-stream/stop")
@@ -100,9 +94,10 @@ async def stop_tick_stream(
     symbol: str,
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
-):
-    await service.stop_tick_stream(account_id, symbol.upper())
-    return {"status": "stopped", "symbol": symbol.upper()}
+) -> dict[str, str]:
+    normalized_symbol = symbol.upper()
+    await service.stop_tick_stream(account_id, normalized_symbol)
+    return {"status": "stopped", "symbol": normalized_symbol}
 
 
 @router.get("/{symbol}/tick-stream/status")
@@ -110,111 +105,101 @@ async def tick_stream_status(
     symbol: str,
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
-):
-    status = await service.tick_stream_status(
-        account_id,
-        symbol.upper()
-    )
-    return _serialize_status(status)
+) -> dict[str, Any]:
+    normalized_symbol = symbol.upper()
+    status = await service.tick_stream_status(account_id, normalized_symbol)
+    return serialize_tick_stream_status(status)
 
 
-@router.get("/{symbol}/trendbars", response_model=list[TrendbarResponse])
+@router.get("/{symbol}/trendbars")
 async def get_trendbars(
-        symbol: str,
-        timeframe: Timeframe = Query(
-            ...,
-            description="Timeframe enum, e.g. M1, H1"
-        ),
-        from_ts: int | None = Query(
-            default=None,
-            alias="fromTs",
-            description="From timestamp (epoch millis). Required if limit not specified."
-        ),
-        to_ts: int | None = Query(
-            default=None,
-            alias="toTs",
-            description="To timestamp (epoch millis). Defaults to now if not specified."
-        ),
-        limit: int | None = Query(
-            default=None,
-            ge=1,
-            description="Max number of bars to return. If specified, fetches most recent bars up to limit."
-        ),
-        account_id: AccountId = Depends(get_account_id),
-        service: MarketDataService = Depends(get_market_data_service),
-):
-    try:
-        tf = Timeframe(timeframe)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    symbol: str,
+    timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
+    from_ts: int | None = Query(
+        default=None,
+        alias="fromTs",
+        description="From timestamp (epoch millis). Required if limit not specified.",
+    ),
+    to_ts: int | None = Query(
+        default=None,
+        alias="toTs",
+        description="To timestamp (epoch millis). Defaults to now if not specified.",
+    ),
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        description="Max number of bars to return. If specified, fetches most recent bars up to limit.",
+    ),
+    account_id: AccountId = Depends(get_account_id),
+    service: MarketDataService = Depends(get_market_data_service),
+) -> list[dict[str, Any]]:
+    tf = timeframe
+    normalized_symbol = symbol.upper()
 
-    # Validate parameters
     if from_ts is None and limit is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Either 'fromTs' or 'limit' must be specified"
-        )
+        raise HTTPException(status_code=400, detail="Either 'fromTs' or 'limit' must be specified")
 
-    # Set defaults
-    import time
     now_ms = int(time.time() * 1000)
 
     if to_ts is None:
         to_ts = now_ms
 
     if from_ts is None and limit:
-        # Calculate from_ts based on limit and timeframe to get most recent bars
         timeframe_minutes = {
-            "M1": 1, "M2": 2, "M3": 3, "M4": 4, "M5": 5,
-            "M10": 10, "M15": 15, "M30": 30,
-            "H1": 60, "H4": 240, "H12": 720,
-            "D1": 1440, "W1": 10080, "MN1": 43200
+            "M1": 1,
+            "M2": 2,
+            "M3": 3,
+            "M4": 4,
+            "M5": 5,
+            "M10": 10,
+            "M15": 15,
+            "M30": 30,
+            "H1": 60,
+            "H4": 240,
+            "H12": 720,
+            "D1": 1440,
+            "W1": 10080,
+            "MN1": 43200,
         }.get(tf.value, 1)
-        # Add extra buffer for weekends/gaps
         from_ts = to_ts - (limit * timeframe_minutes * 60 * 1000 * 3)
 
-    return await service.get_trendbars(
+    bars = await service.get_trendbars(
         account_id,
-        symbol.upper(),
+        normalized_symbol,
         tf,
         from_ts,
         to_ts,
         limit,
     )
 
+    response: list[dict[str, Any]] = []
+    for bar in bars:
+        response.append(
+            {
+                "o": float(bar.o) if isinstance(bar.o, Decimal) else bar.o,
+                "h": float(bar.h) if isinstance(bar.h, Decimal) else bar.h,
+                "l": float(bar.l) if isinstance(bar.l, Decimal) else bar.l,
+                "c": float(bar.c) if isinstance(bar.c, Decimal) else bar.c,
+                "v": bar.v,
+                "t": bar.t,
+            }
+        )
+    return response
+
 
 @router.get("/{symbol}/trendbars/stream")
 async def stream_trendbars(
-        symbol: str,
-        timeframe: Timeframe = Query(
-            ...,
-            description="Timeframe enum, e.g. M1, H1"
-        ),
-        from_ts: int = Query(
-            default=0,
-            alias="fromTs",
-            description="From timestamp (epoch millis)"
-        ),
-        to_ts: int | None = Query(
-            default=2147483646000,
-            alias="toTs",
-            description="To timestamp (epoch millis)"
-        ),
-        limit: int | None = Query(default=None, ge=1),
-        account_id: AccountId = Depends(get_account_id),
-        service: MarketDataService = Depends(get_market_data_service),
-):
-    """Stream trendbars in NDJSON format for memory-efficient processing.
-
-    This endpoint streams trendbars in chunks, making it ideal for large
-    historical data requests. Each line is a JSON object representing one trendbar.
-    """
-    try:
-        tf = Timeframe(timeframe)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # Capture parameters in local scope before async generator
+    symbol: str,
+    timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
+    from_ts: int = Query(default=0, alias="fromTs", description="From timestamp (epoch millis)"),
+    to_ts: int | None = Query(
+        default=2147483646000, alias="toTs", description="To timestamp (epoch millis)"
+    ),
+    limit: int | None = Query(default=None, ge=1),
+    account_id: AccountId = Depends(get_account_id),
+    service: MarketDataService = Depends(get_market_data_service),
+) -> StreamingResponse:
+    tf = timeframe
     _from_ts = from_ts
     _to_ts = to_ts
     _limit = limit
@@ -222,27 +207,39 @@ async def stream_trendbars(
     _symbol = symbol.upper()
     _tf = tf
 
-    async def generate_ndjson():
+    async def generate_ndjson() -> AsyncIterator[str]:
         import json
-        async for trendbar in service.stream_trendbars(
-            _account_id,
-            _symbol,
-            _tf,
-            _from_ts,
-            _to_ts,
-            _limit,
-        ):
-            # Convert Trendbar to dict
-            bar_dict = {
-                "o": float(trendbar.o),
-                "h": float(trendbar.h),
-                "l": float(trendbar.l),
-                "c": float(trendbar.c),
-                "v": trendbar.v,
-                "t": trendbar.t,
-                "digits": trendbar.digits,
-            }
-            yield json.dumps(bar_dict) + "\n"
+
+        try:
+            async for trendbar in service.stream_trendbars(
+                _account_id,
+                _symbol,
+                _tf,
+                _from_ts,
+                _to_ts,
+                _limit,
+            ):
+                bar_dict = {
+                    "o": float(trendbar.o),
+                    "h": float(trendbar.h),
+                    "l": float(trendbar.l),
+                    "c": float(trendbar.c),
+                    "v": trendbar.v,
+                    "t": trendbar.t,
+                    "digits": trendbar.digits,
+                }
+                yield json.dumps(bar_dict) + "\n"
+        except RuntimeError:
+            logger.exception(
+                "Trendbar stream interrupted due to upstream request failure "
+                "(symbol=%s, timeframe=%s, from_ts=%s, to_ts=%s, limit=%s)",
+                _symbol,
+                _tf.value,
+                _from_ts,
+                _to_ts,
+                _limit,
+            )
+            return
 
     return StreamingResponse(
         generate_ndjson(),
@@ -250,87 +247,49 @@ async def stream_trendbars(
         headers={
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-cache",
-        }
+        },
     )
 
 
 @router.get("/{symbol}/trendbar-stream/start")
 async def start_trendbar_stream(
     symbol: str,
-    timeframe: Timeframe = Query(
-        ...,
-        description="Timeframe enum, e.g. M1, H1"
-    ),
-    only_completed_bars: bool = Query(
-        default=True,
-        alias="onlyCompletedBars",
-        description="If true (default), only publish bars when they close. If false, publish every live update.",
-    ),
+    timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
-):
-    try:
-        tf = Timeframe(timeframe)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    from app.domain.value_objects import TrendbarStreamOptions
-    options = TrendbarStreamOptions(only_completed_bars=only_completed_bars)
+) -> dict[str, Any]:
+    tf = timeframe
+    normalized_symbol = symbol.upper()
 
     status = await service.start_trendbar_stream(
         account_id,
-        symbol.upper(),
+        normalized_symbol,
         tf,
-        options,
     )
-    return _serialize_trendbar_status(status)
+    return serialize_trendbar_stream_status(status)
 
 
 @router.get("/{symbol}/trendbar-stream/stop")
 async def stop_trendbar_stream(
     symbol: str,
-    timeframe: Timeframe = Query(
-        ...,
-        description="Timeframe enum, e.g. M1, H1"
-    ),
+    timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
-):
-    try:
-        tf = Timeframe(timeframe)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    await service.stop_trendbar_stream(
-        account_id,
-        symbol.upper(),
-        tf
-    )
-    return {
-        "status": "stopped",
-        "symbol": symbol.upper(),
-        "timeframe": tf.value
-    }
+) -> dict[str, str]:
+    tf = timeframe
+    normalized_symbol = symbol.upper()
+    await service.stop_trendbar_stream(account_id, normalized_symbol, tf)
+    return {"status": "stopped", "symbol": normalized_symbol, "timeframe": tf.value}
 
 
 @router.get("/{symbol}/trendbar-stream/status")
 async def trendbar_stream_status(
     symbol: str,
-    timeframe: Timeframe = Query(
-        ...,
-        description="Timeframe enum, e.g. M1, H1"
-    ),
+    timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
-):
-    try:
-        tf = Timeframe(timeframe)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    status = await service.trendbar_stream_status(
-        account_id,
-        symbol.upper(),
-        tf
-    )
-    return _serialize_trendbar_status(status)
+) -> dict[str, Any]:
+    tf = timeframe
+    normalized_symbol = symbol.upper()
+    status = await service.trendbar_stream_status(account_id, normalized_symbol, tf)
+    return serialize_trendbar_stream_status(status)

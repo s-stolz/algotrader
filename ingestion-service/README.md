@@ -10,6 +10,13 @@ A Python service that consumes market data from Redis streams and persists it to
 - **Batch Processing**: Efficiently batches candles before writing to database
 - **Graceful Shutdown**: Handles SIGTERM/SIGINT signals
 
+## Timestamp Contract
+
+- Consumes Redis candle events in compact format with one-character keys: `o`, `h`, `l`, `c`, `v`, `t`.
+- `t` is UTC epoch milliseconds.
+- Persists candles via database-accessor-api using `timestamp_ms` (UTC epoch milliseconds).
+- No local timezone conversion is performed during ingestion.
+
 ## Configuration
 
 Configuration is centralized at the repository root.

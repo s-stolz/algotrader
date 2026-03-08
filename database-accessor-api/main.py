@@ -1,19 +1,16 @@
 from typing import Optional
 
-from __init__ import __version__
 from app import crud
 from app.database import get_db
 from app.schemas import CandleBatchIn, MarketIn
+from app.timeframes import TimeframeCode, timeframe_to_minutes
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
-print(f"Starting Database Accessor API version {__version__}")
-
 app = FastAPI(
     title="Database Accessor API",
     description="Database accessor API for algotrader",
-    version=__version__
 )
 
 app.add_middleware(
@@ -69,13 +66,20 @@ async def delete_market(symbol_id: int, db: AsyncSession = Depends(get_db)):
 @app.get("/candles/{symbol_id}")
 async def read_aggregated_candles(
     symbol_id: int,
-    timeframe: int = Query(..., description="Timeframe in minutes"),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
+    timeframe: TimeframeCode = Query(..., description="Timeframe code (e.g. M1, H1)"),
+    start_ms: Optional[int] = Query(None, description="Start timestamp in epoch ms (UTC)"),
+    end_ms: Optional[int] = Query(None, description="End timestamp in epoch ms (UTC)"),
     limit: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
-    return await crud.get_candles(db, symbol_id, timeframe, start_date, end_date, limit)
+    return await crud.get_candles(
+        db,
+        symbol_id,
+        timeframe_to_minutes(timeframe),
+        start_ms,
+        end_ms,
+        limit,
+    )
 
 
 @app.post("/candles")

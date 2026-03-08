@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import requests
@@ -43,6 +44,15 @@ class Database:
             return response
 
     @staticmethod
+    def _to_epoch_ms(value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return None
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1000)
+
+    @staticmethod
     def get_market(symbol_id: int) -> tuple[str, str] | None:
         """Get market by symbol_id."""
         try:
@@ -72,7 +82,7 @@ class Database:
 
     @staticmethod
     def get_candles(symbol_id: int,
-                    timeframe: int,
+                    timeframe: str,
                     start_date: Optional[str] = None,
                     end_date: Optional[str] = None,
                     limit: Optional[int] = None,
@@ -80,12 +90,12 @@ class Database:
         """Get aggregated candles from the database."""
         try:
             params: dict[str, object] = {
-                'timeframe': timeframe
+                'timeframe': timeframe.upper()
             }
             if start_date:
-                params['start_date'] = start_date
+                params['start_ms'] = Database._to_epoch_ms(start_date)
             if end_date:
-                params['end_date'] = end_date
+                params['end_ms'] = Database._to_epoch_ms(end_date)
             if limit:
                 params['limit'] = limit
 
@@ -99,7 +109,7 @@ class Database:
             result = []
             for candle in candles:
                 result.append((
-                    candle['timestamp'],
+                    candle['timestamp_ms'],
                     candle['open'],
                     candle['high'],
                     candle['low'],

@@ -1,9 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.models import candles, markets
 from sqlalchemy import delete, insert, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+
+def _epoch_ms_to_utc_datetime(value: int) -> datetime:
+    return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
 
 
 async def get_market_by_id(session, symbol_id: int):
@@ -123,14 +127,19 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
     values = [
         {
             "symbol_id": symbol_id,
-            **candle
+            "timestamp_utc": _epoch_ms_to_utc_datetime(candle["timestamp_ms"]),
+            "open": candle["open"],
+            "high": candle["high"],
+            "low": candle["low"],
+            "close": candle["close"],
+            "volume": candle["volume"],
         }
         for candle in candles_data
     ]
 
     stmt = pg_insert(candles).values(values)
     stmt = stmt.on_conflict_do_nothing(
-        index_elements=["symbol_id", "timestamp"])
+        index_elements=["symbol_id", "timestamp_utc"])
     result = await session.execute(stmt)
     await session.commit()
 
@@ -140,7 +149,7 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
 
 async def get_candles(
     session, symbol_id: int, timeframe: int,
-    _start_date: Optional[str] = None, _end_date: Optional[str] = None,
+    start_ms: Optional[int] = None, end_ms: Optional[int] = None,
     limit: Optional[int] = None
 ):
     """
@@ -149,8 +158,8 @@ async def get_candles(
     :param session: SQLAlchemy session
     :param symbol_id: Market symbol_id
     :param timeframe: Timeframe in minutes
-    :param start_date: Start date in ISO format (optional)
-    :param end_date: End date in ISO format (optional)
+    :param start_ms: Start timestamp in epoch ms (optional)
+    :param end_ms: End timestamp in epoch ms (optional)
     :param limit: Maximum number of candles to return (optional)
 
     :return: List of candles as dictionaries
@@ -158,59 +167,54 @@ async def get_candles(
     """
 
     sql = text("""
-        WITH RoundedCandles AS (
+        WITH BucketedCandles AS (
             SELECT
-                date_trunc('day', timestamp) + INTERVAL '1 minute' * (
-                    ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) -
-                    ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % :timeframe)
-                ) AS rounded_timestamp,
+                time_bucket(make_interval(mins => :timeframe), timestamp_utc) AS bucket_ts,
                 open,
                 high,
                 low,
                 close,
                 volume,
                 ROW_NUMBER() OVER (
-                    PARTITION BY symbol_id, date_trunc('day', timestamp) + INTERVAL '1 minute' * (
-                        ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) -
-                        ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % :timeframe)
-                    )
-                    ORDER BY timestamp ASC
+                    PARTITION BY symbol_id, time_bucket(make_interval(mins => :timeframe), timestamp_utc)
+                    ORDER BY timestamp_utc ASC
                 ) AS rn_asc,
                 ROW_NUMBER() OVER (
-                    PARTITION BY symbol_id, date_trunc('day', timestamp) + INTERVAL '1 minute' * (
-                        ((EXTRACT(HOUR FROM timestamp)::integer * 60) + EXTRACT(MINUTE FROM timestamp)::integer) -
-                        ((EXTRACT(HOUR FROM timestamp)::integer * 60 + EXTRACT(MINUTE FROM timestamp)::integer) % :timeframe)
-                    )
-                    ORDER BY timestamp DESC
+                    PARTITION BY symbol_id, time_bucket(make_interval(mins => :timeframe), timestamp_utc)
+                    ORDER BY timestamp_utc DESC
                 ) AS rn_desc
             FROM candles
             WHERE symbol_id = :symbol_id
-            AND (timestamp >= :start_date OR :start_date IS NULL)
-            AND (timestamp < :end_date OR :end_date IS NULL)
+            AND (
+                timestamp_utc >= to_timestamp(:start_ms / 1000.0)
+                OR :start_ms IS NULL
+            )
+            AND (
+                timestamp_utc < to_timestamp(:end_ms / 1000.0)
+                OR :end_ms IS NULL
+            )
         )
         SELECT
-            rounded_timestamp AS timestamp,
+            CAST(EXTRACT(EPOCH FROM bucket_ts) * 1000 AS BIGINT) AS timestamp_ms,
             MAX(open) FILTER (WHERE rn_asc = 1) AS open,
             MAX(high) AS high,
             MIN(low) AS low,
             MAX(close) FILTER (WHERE rn_desc = 1) AS close,
             SUM(volume) AS volume
-        FROM RoundedCandles
-        GROUP BY timestamp
-        ORDER BY timestamp {order_direction}
+        FROM BucketedCandles
+        GROUP BY bucket_ts
+        ORDER BY bucket_ts {order_direction}
         {limit_clause}
     """.format(
         order_direction="DESC" if limit else "ASC",
         limit_clause="LIMIT :limit" if limit else ""
     ))
 
-    start_date = datetime.fromisoformat(_start_date) if _start_date else None
-    end_date = datetime.fromisoformat(_end_date) if _end_date else None
     params = {
         "symbol_id": symbol_id,
         "timeframe": timeframe,
-        "start_date": start_date,
-        "end_date": end_date,
+        "start_ms": start_ms,
+        "end_ms": end_ms,
     }
 
     if limit is not None:

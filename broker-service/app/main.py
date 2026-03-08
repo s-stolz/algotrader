@@ -18,7 +18,7 @@ from app.settings import Settings
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    settings = settings or Settings()
+    settings = settings or Settings.from_env()
     configure_logging(settings.log_level)
 
     container = ServiceContainer(settings)
