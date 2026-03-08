@@ -15,7 +15,7 @@ log = logger(__name__)
 
 def get_candles_sync(
     symbol_ids_mapping: Dict[str, int],
-    timeframe: int,
+    timeframe: str,
     start_ms: int | None,
     end_ms: int | None,
     limit: int | None,
@@ -36,7 +36,7 @@ def get_candles_sync(
 
 async def get_candles(
     symbol_id: int | Iterable[int],
-    timeframe: int,
+    timeframe: str,
     start_ms: int | None,
     end_ms: int | None,
     limit: int | None,
@@ -106,7 +106,7 @@ async def get_candles(
 
 def _fetch_candles_sync(
     symbol_id: int,
-    timeframe: int,
+    timeframe: str,
     start_ms: int | None,
     end_ms: int | None,
     limit: int | None,

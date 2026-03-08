@@ -70,7 +70,7 @@ def estimate_warmup(metadata: dict, params: dict) -> int:
 
 
 def prepare_parameters(
-        indicator_info: dict, custom_parameters: dict, symbol_id: int, timeframe: int,
+        indicator_info: dict, custom_parameters: dict, symbol_id: int, timeframe: str,
         start_ms: int | None, end_ms: int | None, limit: int | None) -> dict:
     """Prepare parameters for the indicator."""
     parameters = {}

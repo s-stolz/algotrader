@@ -82,7 +82,7 @@ class Database:
 
     @staticmethod
     def get_candles(symbol_id: int,
-                    timeframe: int,
+                    timeframe: str,
                     start_date: Optional[str] = None,
                     end_date: Optional[str] = None,
                     limit: Optional[int] = None,
@@ -90,7 +90,7 @@ class Database:
         """Get aggregated candles from the database."""
         try:
             params: dict[str, object] = {
-                'timeframe': timeframe
+                'timeframe': timeframe.upper()
             }
             if start_date:
                 params['start_ms'] = Database._to_epoch_ms(start_date)

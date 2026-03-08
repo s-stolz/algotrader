@@ -33,7 +33,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         client = DatabaseAccessorClient("http://test")
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
-            latest = client.get_latest_candle(symbol_id=1, timeframe=1)
+            latest = client.get_latest_candle(symbol_id=1, timeframe="M1")
         finally:
             client.close()
         self.assertIsNone(latest)
@@ -55,14 +55,14 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_async_get_candles_returns_payload(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.url.path, "/candles/7")
-            self.assertEqual(request.url.params.get("timeframe"), "1")
+            self.assertEqual(request.url.params.get("timeframe"), "M1")
             self.assertEqual(request.url.params.get("limit"), "10")
             return httpx.Response(200, json=[{"timestamp_ms": 1000, "open": 1.0}])
 
         client = AsyncDatabaseAccessorClient("http://test")
         client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
-            candles = await client.get_candles(symbol_id=7, timeframe=1, limit=10)
+            candles = await client.get_candles(symbol_id=7, timeframe="M1", limit=10)
         finally:
             await client.aclose()
         self.assertEqual(candles[0]["timestamp_ms"], 1000)

@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from .errors import DatabaseAccessorClientError
+from .timeframes import normalize_timeframe_code
 
 
 def _build_params(**kwargs: Any) -> dict[str, Any]:
@@ -64,20 +65,20 @@ class DatabaseAccessorClient(_BaseClient):
     def get_candles(
         self,
         symbol_id: int,
-        timeframe: int,
+        timeframe: str,
         start_ms: int | None = None,
         end_ms: int | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         params = _build_params(
-            timeframe=timeframe,
+            timeframe=normalize_timeframe_code(timeframe),
             start_ms=start_ms,
             end_ms=end_ms,
             limit=limit,
         )
         return self._request("GET", f"/candles/{symbol_id}", params=params)
 
-    def get_latest_candle(self, symbol_id: int, timeframe: int) -> dict[str, Any] | None:
+    def get_latest_candle(self, symbol_id: int, timeframe: str) -> dict[str, Any] | None:
         candles = self.get_candles(symbol_id=symbol_id, timeframe=timeframe, limit=1)
         return candles[0] if candles else None
 
@@ -132,20 +133,22 @@ class AsyncDatabaseAccessorClient(_BaseClient):
     async def get_candles(
         self,
         symbol_id: int,
-        timeframe: int,
+        timeframe: str,
         start_ms: int | None = None,
         end_ms: int | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         params = _build_params(
-            timeframe=timeframe,
+            timeframe=normalize_timeframe_code(timeframe),
             start_ms=start_ms,
             end_ms=end_ms,
             limit=limit,
         )
         return await self._request("GET", f"/candles/{symbol_id}", params=params)
 
-    async def get_latest_candle(self, symbol_id: int, timeframe: int) -> dict[str, Any] | None:
+    async def get_latest_candle(
+        self, symbol_id: int, timeframe: str
+    ) -> dict[str, Any] | None:
         candles = await self.get_candles(symbol_id=symbol_id, timeframe=timeframe, limit=1)
         return candles[0] if candles else None
 

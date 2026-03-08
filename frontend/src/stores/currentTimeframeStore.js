@@ -1,13 +1,15 @@
 import { getStoredState, setStoredState, STORAGE_KEYS } from '@/utils/localStorage';
+import { normalizeTimeframeCode } from '@/utils/timeframes';
 import { defineStore } from 'pinia';
 
 export const useCurrentTimeframeStore = defineStore('currentTimeframe', {
   state: () => {
     const stored = getStoredState(STORAGE_KEYS.CURRENT_TIMEFRAME);
+    const value = normalizeTimeframeCode(stored?.value ?? 'M1');
 
     return {
-      label: stored?.label ?? '1M',
-      value: stored?.value ?? 1,
+      label: value,
+      value,
     };
   },
 

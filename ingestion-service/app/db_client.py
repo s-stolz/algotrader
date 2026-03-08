@@ -25,7 +25,7 @@ class DatabaseClient:
             logger.error("Error fetching markets: %s", exc)
             raise
 
-    def get_latest_candle(self, symbol_id: int, timeframe: int) -> dict[str, Any] | None:
+    def get_latest_candle(self, symbol_id: int, timeframe: str) -> dict[str, Any] | None:
         try:
             return self._client.get_latest_candle(symbol_id=symbol_id, timeframe=timeframe)
         except DatabaseAccessorClientError as exc:

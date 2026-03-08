@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import TYPE_CHECKING, Dict, Set, Union
+from typing import TYPE_CHECKING, Dict, Set
 
 from websockets.asyncio.server import ServerConnection
 
@@ -51,9 +51,10 @@ class SubscriptionManager:
         self.clients.pop(client_id, None)
 
     async def subscribe_candles(
-        self, client_id: int, symbol: str, timeframe: Union[int, str]
+        self, client_id: int, symbol: str, timeframe: str
     ):
-        sub_key = f"candle:{symbol}"
+        timeframe_code = timeframe.upper()
+        sub_key = f"candle:{symbol}:{timeframe_code}"
 
         client_subs = self.client_subscriptions.get(client_id)
         if client_subs is None:
@@ -70,9 +71,9 @@ class SubscriptionManager:
         if count == 0:
             try:
                 await self.broker_client.start_trendbar_stream(
-                    symbol, "M1"
+                    symbol, timeframe_code
                 )
-                await self.redis_consumer.start_candle_stream(symbol, "M1")
+                await self.redis_consumer.start_candle_stream(symbol, timeframe_code)
 
             except Exception:
                 client_subs.discard(sub_key)
@@ -80,9 +81,9 @@ class SubscriptionManager:
                 raise
 
     async def unsubscribe_candles(
-        self, client_id: int, symbol: str, timeframe: Union[int, str]
+        self, client_id: int, symbol: str, timeframe: str
     ):
-        sub_key = f"candle:{symbol}"
+        sub_key = f"candle:{symbol}:{timeframe.upper()}"
 
         client_subs = self.client_subscriptions.get(client_id)
         if client_subs is None or sub_key not in client_subs:
@@ -101,10 +102,10 @@ class SubscriptionManager:
             parts = sub_key.split(':')
             stream_type = parts[0]
             symbol = parts[1]
+            timeframe = parts[2]
             try:
                 if stream_type == 'candle':
-                    # M1 streams are shared with ingestion service - keep them running
-                    stream_key = self.redis_consumer.get_candle_stream_key(symbol, "M1")
+                    stream_key = self.redis_consumer.get_candle_stream_key(symbol, timeframe)
                     self.redis_consumer.stop_stream(stream_key)
 
             except Exception as e:
@@ -113,7 +114,7 @@ class SubscriptionManager:
             self.subscription_counts[sub_key] = new_count
 
     def broadcast_candle(self, symbol: str, timeframe: str, data: dict):
-        sub_key = f"candle:{symbol}"
+        sub_key = f"candle:{symbol}:{timeframe.upper()}"
 
         message = json.dumps({
             'type': 'candleUpdate',

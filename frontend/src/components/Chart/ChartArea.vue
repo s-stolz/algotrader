@@ -25,6 +25,7 @@ import { useIndicatorsStore } from "@/stores/indicatorsStore";
 import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
 import { wsService } from "@/utils/websocketService";
+import { timeframeToMinutes } from "@/utils/timeframes";
 
 import { ChartMixin } from "@/utils/chart";
 import Indicator from "@/components/Chart/Indicator/Indicator.vue";
@@ -168,12 +169,17 @@ export default {
       if (!symbol || timeframe === null) return;
 
       this.messageHandler = (message) => {
-        if (
-          message.type === 'candleUpdate' &&
-          message.symbol === symbol &&
-          message.timeframe === 'M1'
-        ) {
-          this.updateCurrentCandleWithM1(message);
+        if (message.type !== 'candleUpdate' || message.symbol !== symbol) {
+          return;
+        }
+
+        if (message.timeframe === timeframe) {
+          this.updateCurrentCandle(message);
+          return;
+        }
+
+        if (message.timeframe === 'M1') {
+          this.updateCurrentCandleFromM1(message);
         }
       };
 
@@ -200,12 +206,24 @@ export default {
       }
     },
 
-    updateCurrentCandleWithM1(m1Candle) {
+    updateCurrentCandle(candle) {
+      this.candlesticksStore.updateCandle(candle);
+      this.updateCandlestick({
+        timestamp_ms: candle.timestamp_ms,
+        time: Math.floor(candle.timestamp_ms / 1000),
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      });
+    },
+
+    updateCurrentCandleFromM1(m1Candle) {
       if (!this.candlesticksStore.data || this.candlesticksStore.data.length === 0) {
         return;
       }
 
-      const timeframeMinutes = this.currentTimeframeStore.value;
+      const timeframeMinutes = timeframeToMinutes(this.currentTimeframeStore.value);
       const timeframeMs = timeframeMinutes * 60 * 1000;
       const bucketTimestampMs = Math.floor(m1Candle.timestamp_ms / timeframeMs) * timeframeMs;
       const candleTimeSeconds = Math.floor(bucketTimestampMs / 1000);

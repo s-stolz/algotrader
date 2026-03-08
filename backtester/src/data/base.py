@@ -47,7 +47,7 @@ def get_symbol_id(symbols: list[str]) -> list[int]:
 def get_candles(
         feed: str,
         symbol_ids: list[int],
-        timeframe: int,
+        timeframe: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None
 ) -> pd.DataFrame:
@@ -57,7 +57,7 @@ def get_candles(
     Parameters:
         feed (str): The data source, e.g., "db".
         symbol_ids (list[int]): List of symbol IDs to retrieve data for.
-        timeframe (int): The timeframe for the candlestick data.
+        timeframe (str): Timeframe code (e.g., "M1").
         start_date (optional): The start date for the data retrieval.
         end_date (optional): The end date for the data retrieval.
 
