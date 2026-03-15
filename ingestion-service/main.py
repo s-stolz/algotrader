@@ -20,6 +20,7 @@ class SymbolRuntimeState:
 
     symbol_id: int
     symbol: str
+    exchange: str
     stream_key: str
     recovery_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -74,6 +75,7 @@ class IngestionService:
 
         self.markets: List[Dict[str, Any]] = []
         self.runtime_states: List[SymbolRuntimeState] = []
+        self._state_by_id: Dict[int, SymbolRuntimeState] = {}
         self.consumer_tasks: List[asyncio.Task] = []
         self._health_monitor_task: Optional[asyncio.Task] = None
         self._recovery_task: Optional[asyncio.Task] = None
@@ -111,10 +113,12 @@ class IngestionService:
             SymbolRuntimeState(
                 symbol_id=market["symbol_id"],
                 symbol=market["symbol"],
+                exchange=market.get("exchange", ""),
                 stream_key=self.consumer.get_stream_key(market["symbol"], self.TIMEFRAME_CODE_M1),
             )
             for market in self.markets
         ]
+        self._state_by_id = {state.symbol_id: state for state in self.runtime_states}
         self.logger.info(
             f"Loaded {len(self.markets)} markets: {[m['symbol'] for m in self.markets]}"
         )
@@ -123,8 +127,10 @@ class IngestionService:
         expected_gap_ms = int(timedelta(minutes=timeframe_minutes * 2).total_seconds() * 1000)
         return (self._utc_now_ms() - latest_ts_ms) > expected_gap_ms
 
-    def _get_frozen_watermark(self, symbol_id: int, symbol: str) -> int:
-        latest_candle = self.db_client.get_latest_candle(symbol_id, self.TIMEFRAME_CODE_M1)
+    def _get_frozen_watermark(self, symbol: str, exchange: str) -> int:
+        latest_candle = self.db_client.get_latest_candle(
+            symbol, self.TIMEFRAME_CODE_M1, exchange=exchange or None
+        )
         if not latest_candle:
             fallback = self._utc_now_ms() - int(
                 timedelta(days=self.MAX_BACKFILL_DAYS).total_seconds() * 1000
@@ -140,7 +146,7 @@ class IngestionService:
 
     def _snapshot_startup_watermarks(self) -> Dict[int, int]:
         return {
-            state.symbol_id: self._get_frozen_watermark(state.symbol_id, state.symbol)
+            state.symbol_id: self._get_frozen_watermark(state.symbol, state.exchange)
             for state in self.runtime_states
         }
 
@@ -201,7 +207,8 @@ class IngestionService:
 
     async def _write_candles_in_chunks(
         self,
-        symbol_id: int,
+        symbol: str,
+        exchange: str | None,
         candles: List[Dict[str, Any]],
         chunk_size: Optional[int] = None,
     ) -> None:
@@ -213,9 +220,14 @@ class IngestionService:
             chunk = candles[i : i + chunk_size]
             chunk_num = i // chunk_size + 1
 
-            await asyncio.to_thread(self.db_client.write_candles, symbol_id, chunk)
+            await asyncio.to_thread(
+                self.db_client.write_candles,
+                symbol,
+                chunk,
+                exchange or None,
+            )
             self.logger.info(
-                f"Wrote {len(chunk)} candles for symbol_id={symbol_id} "
+                f"Wrote {len(chunk)} candles for {symbol} "
                 f"(chunk {chunk_num}/{total_chunks})"
             )
 
@@ -225,7 +237,11 @@ class IngestionService:
             return
 
         mapped_candles = [self._format_candle_for_db(candle) for candle in candles]
-        await self._write_candles_in_chunks(symbol_id, mapped_candles)
+        state = self._state_by_id.get(symbol_id)
+        if state is None:
+            self.logger.warning("Skipping candles for unknown symbol_id=%s", symbol_id)
+            return
+        await self._write_candles_in_chunks(state.symbol, state.exchange, mapped_candles)
 
     async def _get_stream_tail_id(self, stream_key: str) -> str:
         """Get current tail ID of a stream; returns 0-0 if stream is empty."""
@@ -289,7 +305,7 @@ class IngestionService:
                     return
 
                 try:
-                    from_ts = self._get_frozen_watermark(state.symbol_id, state.symbol)
+                    from_ts = self._get_frozen_watermark(state.symbol, state.exchange)
                     await self.broker_client.start_trendbar_stream(
                         state.symbol,
                         timeframe=self.TIMEFRAME_CODE_M1,

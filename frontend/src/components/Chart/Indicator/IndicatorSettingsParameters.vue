@@ -75,8 +75,12 @@ export default {
   },
 
   computed: {
-    symbolID() {
-      return this.currentMarketStore.symbol_id;
+    symbol() {
+      return this.currentMarketStore.symbol;
+    },
+
+    exchange() {
+      return this.currentMarketStore.exchange;
     },
 
     timeframe() {
@@ -119,10 +123,13 @@ export default {
       this.updateIndicatorStoreParameters(this.indicator._id, customParameters);
 
       const queryParams = {
-        symbol_id: this.symbolID,
+        symbol: this.symbol,
         timeframe: this.timeframe,
         limit: 5000,
       };
+      if (this.exchange) {
+        queryParams.exchange = this.exchange;
+      }
       const body = {
         parameters: customParameters,
       };

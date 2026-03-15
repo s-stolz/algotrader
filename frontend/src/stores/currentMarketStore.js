@@ -28,8 +28,14 @@ export const useCurrentMarketStore = defineStore('currentMarket', {
     },
 
     isValid(availableMarkets) {
-      if (!this.symbol_id) return false;
-      return availableMarkets.some(m => m.symbol_id === this.symbol_id);
+      if (!this.symbol) return false;
+      return availableMarkets.some(m => {
+        if (m.symbol !== this.symbol) return false;
+        if (this.exchange) {
+          return m.exchange === this.exchange;
+        }
+        return true;
+      });
     },
   },
 });

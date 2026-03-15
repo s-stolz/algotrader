@@ -216,7 +216,7 @@ function isValidCandle(candle, timestamp) {
   return true;
 }
 
-export async function uploadCandlesInBatches(symbolId, candles, onProgress) {
+export async function uploadCandlesInBatches(symbol, candles, exchange, onProgress) {
   const BATCH_SIZE = 20000;
   const batches = [];
 
@@ -227,9 +227,12 @@ export async function uploadCandlesInBatches(symbolId, candles, onProgress) {
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
     const payload = {
-      symbol_id: symbolId,
+      symbol: symbol,
       candles: batch,
     };
+    if (exchange) {
+      payload.exchange = exchange;
+    }
 
     const response = await fetch("/api/data-accessor/candles", {
       method: "POST",

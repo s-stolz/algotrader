@@ -69,6 +69,12 @@ export default {
     currentMarketMinMove() {
       return this.currentMarketStore.min_move;
     },
+
+    currentMarketKey() {
+      const symbol = this.currentMarketStore.symbol || "";
+      const exchange = this.currentMarketStore.exchange || "";
+      return `${symbol}|${exchange}`;
+    },
   },
 
   watch: {
@@ -78,13 +84,13 @@ export default {
       }
     },
 
-    "currentMarketStore.symbol_id": {
-      handler(newSymbol, oldSymbol) {
+    currentMarketKey: {
+      handler(newKey, oldKey) {
         this.indicatorsStore.resetHistoryFlags();
         this.shouldScrollToRealTime = true;
         this.fetchCandlesticks();
 
-        if (newSymbol !== oldSymbol) {
+        if (newKey !== oldKey) {
           this.subscribeToCandles();
         }
       },
@@ -120,11 +126,12 @@ export default {
     },
 
     async fetchCandlesticks() {
-      if (this.currentMarketStore.symbol_id === null) return;
+      if (!this.currentMarketStore.symbol) return;
 
-      const symbolID = this.currentMarketStore.symbol_id;
+      const symbol = this.currentMarketStore.symbol;
+      const exchange = this.currentMarketStore.exchange;
       const timeframe = this.currentTimeframeStore.value;
-      const fetchKey = `${symbolID}:${timeframe}:${this.candlesFetchLimit}`;
+      const fetchKey = `${symbol}:${exchange || ""}:${timeframe}:${this.candlesFetchLimit}`;
 
       if (this.candlesFetchPromise && this.candlesFetchKey === fetchKey) {
         await this.candlesFetchPromise;
@@ -133,9 +140,12 @@ export default {
 
       this.candlesFetchKey = fetchKey;
       this.candlesFetchPromise = (async () => {
-        await this.candlesticksStore.fetch(symbolID, timeframe, null, null, this.candlesFetchLimit);
+        await this.candlesticksStore.fetch(symbol, timeframe, {
+          limit: this.candlesFetchLimit,
+          exchange: exchange,
+        });
         this.renderCandlesticks(this.candlesticksStore.data, { scrollToRealtime: this.shouldScrollToRealTime });
-        this.indicatorsStore.requestAllIndicators(symbolID, timeframe);
+        this.indicatorsStore.requestAllIndicators(symbol, timeframe, exchange);
       })();
 
       try {
@@ -313,7 +323,8 @@ export default {
     },
 
     async loadMoreBars() {
-      const symbolID = this.currentMarketStore.symbol_id;
+      const symbol = this.currentMarketStore.symbol;
+      const exchange = this.currentMarketStore.exchange;
       const timeframe = this.currentTimeframeStore.value;
       if (!this.candlesticksStore.data.length) {
         this.isFetchingCandles = false;
@@ -321,24 +332,28 @@ export default {
       }
       const firstBarTimestampMs = this.candlesticksStore.data[0].timestamp_ms;
 
-      await this.candlesticksStore.fetch(
-        symbolID,
-        timeframe,
-        null,
-        firstBarTimestampMs,
-        this.candlesFetchLimit,
-        true,
-      );
+      await this.candlesticksStore.fetch(symbol, timeframe, {
+        endMs: firstBarTimestampMs,
+        limit: this.candlesFetchLimit,
+        append: true,
+        exchange: exchange,
+      });
       this.renderCandlesticks(this.candlesticksStore.data);
       this.isFetchingCandles = false;
     },
 
     async loadMoreIndicatorHistory() {
-      const symbolID = this.currentMarketStore.symbol_id;
+      const symbol = this.currentMarketStore.symbol;
+      const exchange = this.currentMarketStore.exchange;
       const timeframe = this.currentTimeframeStore.value;
 
       try {
-        await this.indicatorsStore.fetchOlderForAll(symbolID, timeframe, this.indicatorBatchSize);
+        await this.indicatorsStore.fetchOlderForAll(
+          symbol,
+          timeframe,
+          exchange,
+          this.indicatorBatchSize,
+        );
       } finally {
         this.isFetchingIndicators = false;
       }

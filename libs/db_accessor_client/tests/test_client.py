@@ -3,6 +3,7 @@
 import unittest
 
 import httpx
+import pandas as pd
 from db_accessor_client import (
     AsyncDatabaseAccessorClient,
     DatabaseAccessorClient,
@@ -33,7 +34,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         client = DatabaseAccessorClient("http://test")
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
-            latest = client.get_latest_candle(symbol_id=1, timeframe="M1")
+            latest = client.get_latest_candle(symbol="EURUSD", timeframe="M1")
         finally:
             client.close()
         self.assertIsNone(latest)
@@ -46,15 +47,37 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
             with self.assertRaises(DatabaseAccessorClientError):
-                client.insert_candles(symbol_id=1, candles=[])
+                client.insert_candles(symbol="EURUSD", candles=[])
         finally:
             client.close()
+
+    def test_get_candles_multi_returns_dataframes(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.params.get("timeframe"), "M1")
+            symbol = request.url.path.split("/")[-1]
+            if symbol == "EURUSD":
+                return httpx.Response(200, json=[{"timestamp_ms": 1000, "open": 1.0}])
+            if symbol == "GBPUSD":
+                return httpx.Response(200, json=[{"timestamp_ms": 2000, "open": 2.0}])
+            return httpx.Response(404, text="not found")
+
+        client = DatabaseAccessorClient("http://test")
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            frames = client.get_candles_multi(symbols=["EURUSD", "GBPUSD"], timeframe="M1", limit=1)
+        finally:
+            client.close()
+
+        self.assertIsInstance(frames["EURUSD"], pd.DataFrame)
+        self.assertEqual(frames["EURUSD"].iloc[0]["open"], 1.0)
+        self.assertEqual(frames["GBPUSD"].iloc[0]["open"], 2.0)
+        self.assertNotIn("timestamp_ms", frames["EURUSD"].columns)
 
 
 class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_async_get_candles_returns_payload(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
-            self.assertEqual(request.url.path, "/candles/7")
+            self.assertEqual(request.url.path, "/candles/EURUSD")
             self.assertEqual(request.url.params.get("timeframe"), "M1")
             self.assertEqual(request.url.params.get("limit"), "10")
             return httpx.Response(200, json=[{"timestamp_ms": 1000, "open": 1.0}])
@@ -62,7 +85,33 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
         client = AsyncDatabaseAccessorClient("http://test")
         client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
-            candles = await client.get_candles(symbol_id=7, timeframe="M1", limit=10)
+            candles = await client.get_candles(
+                symbol="EURUSD", timeframe="M1", limit=10, include_timestamp_ms=True
+            )
         finally:
             await client.aclose()
-        self.assertEqual(candles[0]["timestamp_ms"], 1000)
+        self.assertIsInstance(candles, pd.DataFrame)
+        self.assertEqual(candles.iloc[0]["timestamp_ms"], 1000)
+
+    async def test_async_get_candles_multi_returns_dataframes(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.params.get("timeframe"), "M1")
+            symbol = request.url.path.split("/")[-1]
+            if symbol == "USDJPY":
+                return httpx.Response(200, json=[{"timestamp_ms": 3000, "open": 3.0}])
+            if symbol == "AUDUSD":
+                return httpx.Response(200, json=[{"timestamp_ms": 4000, "open": 4.0}])
+            return httpx.Response(404, text="not found")
+
+        client = AsyncDatabaseAccessorClient("http://test")
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            frames = await client.get_candles_multi(
+                symbols=["USDJPY", "AUDUSD"], timeframe="M1", limit=1
+            )
+        finally:
+            await client.aclose()
+
+        self.assertIsInstance(frames["USDJPY"], pd.DataFrame)
+        self.assertEqual(frames["USDJPY"].iloc[0]["open"], 3.0)
+        self.assertEqual(frames["AUDUSD"].iloc[0]["open"], 4.0)

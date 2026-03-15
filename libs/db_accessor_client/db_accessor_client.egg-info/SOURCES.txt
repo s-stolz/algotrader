@@ -2,6 +2,7 @@ pyproject.toml
 db_accessor_client/__init__.py
 db_accessor_client/client.py
 db_accessor_client/errors.py
+db_accessor_client/timeframes.py
 db_accessor_client.egg-info/PKG-INFO
 db_accessor_client.egg-info/SOURCES.txt
 db_accessor_client.egg-info/dependency_links.txt

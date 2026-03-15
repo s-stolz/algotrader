@@ -43,7 +43,7 @@ class IndicatorHandler(BaseHandler):
         try:
             # Extract message data
             indicator_name = message['data']['name']
-            symbol_id = message['data']['symbol_id']
+            symbol = message['data']['symbol']
             timeframe = message['data']['timeframe']
             custom_parameters = message['data'].get('parameters', {})
 
@@ -55,8 +55,8 @@ class IndicatorHandler(BaseHandler):
             self.logger.info(f"Parameters: {parameters}")
 
             # Get data for the indicator
-            symbol_ids = self._get_symbol_ids(indicator_info, symbol_id)
-            data = Data.get_candles('db', symbol_ids, timeframe)
+            symbols = self._get_symbols(indicator_info, symbol)
+            data = Data.get_candles('db', symbols, timeframe)
             data = Data.get(data)
 
             # Run the indicator
@@ -96,10 +96,9 @@ class IndicatorHandler(BaseHandler):
 
         return parameters
 
-    def _get_symbol_ids(self, indicator_info: dict, symbol_id: str) -> list:
-        """Get symbol IDs based on indicator requirements."""
+    def _get_symbols(self, indicator_info: dict, symbol: str) -> list:
+        """Get symbols based on indicator requirements."""
         input_data = indicator_info.get('inputs', None)
-        if input_data is None:
-            return [symbol_id]
-        else:
-            return Data.get_symbol_id(input_data)
+        if not input_data:
+            return [symbol]
+        return list(input_data)

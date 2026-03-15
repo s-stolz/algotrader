@@ -20,15 +20,18 @@ export const useIndicatorsStore = defineStore('indicators', {
       }
     },
 
-    requestAllIndicators(symbolID, timeframe) {
+    requestAllIndicators(symbol, timeframe, exchange = null) {
       for (const indicator of this.all) {
         if (indicator.hasExpandedHistory) continue;
 
         const queryParams = {
-          symbol_id: symbolID,
+          symbol: symbol,
           timeframe: timeframe,
           limit: indicator.currentLimit || 5000,
         };
+        if (exchange) {
+          queryParams.exchange = exchange;
+        }
 
         const body = {
           parameters: this.extractParameterValues(indicator.parameters),
@@ -38,13 +41,16 @@ export const useIndicatorsStore = defineStore('indicators', {
       }
     },
 
-    async fetchOlderForAll(symbolID, timeframe, batchSize = 5000) {
+    async fetchOlderForAll(symbol, timeframe, exchange = null, batchSize = 5000) {
       for (const indicator of this.all) {
         if (!indicator.data.length) continue;
         indicator.hasExpandedHistory = true;
 
         const earliestTs = indicator.data[0].timestamp_ms;
-        const queryParams = { symbol_id: symbolID, timeframe, end_ms: earliestTs, limit: batchSize };
+        const queryParams = { symbol: symbol, timeframe, end_ms: earliestTs, limit: batchSize };
+        if (exchange) {
+          queryParams.exchange = exchange;
+        }
         const body = { parameters: this.extractParameterValues(indicator.parameters) };
 
         await this.requestIndicatorPrepend(indicator._id, indicator.indicatorId, queryParams, body);

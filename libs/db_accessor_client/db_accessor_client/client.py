@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+from typing import Any, Iterable
 
 import httpx
+import pandas as pd
 
 from .errors import DatabaseAccessorClientError
 from .timeframes import normalize_timeframe_code
@@ -12,6 +14,20 @@ from .timeframes import normalize_timeframe_code
 
 def _build_params(**kwargs: Any) -> dict[str, Any]:
     return {k: v for k, v in kwargs.items() if v is not None}
+
+
+def _candles_to_dataframe(
+    data: list[dict[str, Any]],
+    *,
+    include_timestamp_ms: bool = False,
+) -> pd.DataFrame:
+    df = pd.DataFrame(data)
+    if not df.empty and "timestamp_ms" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp_ms"], unit="ms", utc=True)
+        df.set_index("timestamp", inplace=True)
+        if not include_timestamp_ms:
+            df = df.drop(columns=["timestamp_ms"])
+    return df
 
 
 class _BaseClient:
@@ -59,31 +75,80 @@ class DatabaseAccessorClient(_BaseClient):
         params = _build_params(symbol=symbol, exchange=exchange)
         return self._request("GET", "/markets", params=params)
 
-    def get_market(self, symbol_id: int) -> dict[str, Any]:
-        return self._request("GET", f"/markets/{symbol_id}")
+    def get_market(
+        self,
+        symbol: str,
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        params = _build_params(exchange=exchange)
+        return self._request("GET", f"/markets/{symbol}", params=params)
 
     def get_candles(
         self,
-        symbol_id: int,
+        symbol: str,
         timeframe: str,
+        exchange: str | None = None,
         start_ms: int | None = None,
         end_ms: int | None = None,
         limit: int | None = None,
-    ) -> list[dict[str, Any]]:
+        include_timestamp_ms: bool = False,
+    ) -> pd.DataFrame:
         params = _build_params(
+            exchange=exchange,
             timeframe=normalize_timeframe_code(timeframe),
             start_ms=start_ms,
             end_ms=end_ms,
             limit=limit,
         )
-        return self._request("GET", f"/candles/{symbol_id}", params=params)
+        data = self._request("GET", f"/candles/{symbol}", params=params)
+        return _candles_to_dataframe(data, include_timestamp_ms=include_timestamp_ms)
 
-    def get_latest_candle(self, symbol_id: int, timeframe: str) -> dict[str, Any] | None:
-        candles = self.get_candles(symbol_id=symbol_id, timeframe=timeframe, limit=1)
-        return candles[0] if candles else None
+    def get_candles_multi(
+        self,
+        symbols: Iterable[str],
+        timeframe: str,
+        exchange: str | None = None,
+        start_ms: int | None = None,
+        end_ms: int | None = None,
+        limit: int | None = None,
+        include_timestamp_ms: bool = False,
+    ) -> dict[str, pd.DataFrame]:
+        return {
+            symbol: self.get_candles(
+                symbol=symbol,
+                timeframe=timeframe,
+                exchange=exchange,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                limit=limit,
+                include_timestamp_ms=include_timestamp_ms,
+            )
+            for symbol in symbols
+        }
 
-    def insert_candles(self, symbol_id: int, candles: list[dict[str, Any]]) -> dict[str, Any]:
-        payload = {"symbol_id": symbol_id, "candles": candles}
+    def get_latest_candle(
+        self, symbol: str, timeframe: str, exchange: str | None = None
+    ) -> dict[str, Any] | None:
+        candles = self.get_candles(
+            symbol=symbol,
+            timeframe=timeframe,
+            exchange=exchange,
+            limit=1,
+            include_timestamp_ms=True,
+        )
+        if candles.empty:
+            return None
+        return candles.iloc[0].to_dict()
+
+    def insert_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {"symbol": symbol, "candles": candles}
+        if exchange is not None:
+            payload["exchange"] = exchange
         return self._request("POST", "/candles", json=payload)
 
     def close(self) -> None:
@@ -127,33 +192,86 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         params = _build_params(symbol=symbol, exchange=exchange)
         return await self._request("GET", "/markets", params=params)
 
-    async def get_market(self, symbol_id: int) -> dict[str, Any]:
-        return await self._request("GET", f"/markets/{symbol_id}")
+    async def get_market(
+        self,
+        symbol: str,
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        params = _build_params(exchange=exchange)
+        return await self._request("GET", f"/markets/{symbol}", params=params)
 
     async def get_candles(
         self,
-        symbol_id: int,
+        symbol: str,
         timeframe: str,
+        exchange: str | None = None,
         start_ms: int | None = None,
         end_ms: int | None = None,
         limit: int | None = None,
-    ) -> list[dict[str, Any]]:
+        include_timestamp_ms: bool = False,
+    ) -> pd.DataFrame:
         params = _build_params(
+            exchange=exchange,
             timeframe=normalize_timeframe_code(timeframe),
             start_ms=start_ms,
             end_ms=end_ms,
             limit=limit,
         )
-        return await self._request("GET", f"/candles/{symbol_id}", params=params)
+        data = await self._request("GET", f"/candles/{symbol}", params=params)
+        return _candles_to_dataframe(data, include_timestamp_ms=include_timestamp_ms)
+
+    async def get_candles_multi(
+        self,
+        symbols: Iterable[str],
+        timeframe: str,
+        exchange: str | None = None,
+        start_ms: int | None = None,
+        end_ms: int | None = None,
+        limit: int | None = None,
+        include_timestamp_ms: bool = False,
+    ) -> dict[str, pd.DataFrame]:
+        symbol_list = list(symbols)
+        if not symbol_list:
+            return {}
+        results = await asyncio.gather(
+            *(
+                self.get_candles(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    exchange=exchange,
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    limit=limit,
+                    include_timestamp_ms=include_timestamp_ms,
+                )
+                for symbol in symbol_list
+            )
+        )
+        return dict(zip(symbol_list, results))
 
     async def get_latest_candle(
-        self, symbol_id: int, timeframe: str
+        self, symbol: str, timeframe: str, exchange: str | None = None
     ) -> dict[str, Any] | None:
-        candles = await self.get_candles(symbol_id=symbol_id, timeframe=timeframe, limit=1)
-        return candles[0] if candles else None
+        candles = await self.get_candles(
+            symbol=symbol,
+            timeframe=timeframe,
+            exchange=exchange,
+            limit=1,
+            include_timestamp_ms=True,
+        )
+        if candles.empty:
+            return None
+        return candles.iloc[0].to_dict()
 
-    async def insert_candles(self, symbol_id: int, candles: list[dict[str, Any]]) -> dict[str, Any]:
-        payload = {"symbol_id": symbol_id, "candles": candles}
+    async def insert_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {"symbol": symbol, "candles": candles}
+        if exchange is not None:
+            payload["exchange"] = exchange
         return await self._request("POST", "/candles", json=payload)
 
     async def aclose(self) -> None:

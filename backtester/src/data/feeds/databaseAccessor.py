@@ -53,39 +53,13 @@ class Database:
         return int(dt.timestamp() * 1000)
 
     @staticmethod
-    def get_market(symbol_id: int) -> tuple[str, str] | None:
-        """Get market by symbol_id."""
-        try:
-            response = Database._make_request('GET', f'/markets/{symbol_id}')
-            market = response.json()
-            return (market['symbol'], market['exchange'])
-        except Exception as e:
-            log.error(f"Error getting symbol: {e}")
-            return None
-
-    @staticmethod
-    def get_symbol_id(symbol: str, exchange: Optional[str] = None) -> int | None:
-        """Get symbol_id by symbol and exchange."""
-        try:
-            params = {'symbol': symbol, 'exchange': exchange}
-            response = Database._make_request(
-                'GET',
-                '/markets',
-                params=params
-            )
-            markets = response.json()
-
-            return markets[0]['symbol_id'] if markets else None
-        except Exception as e:
-            log.error(f"Error getting symbol_id: {e}")
-            return None
-
-    @staticmethod
-    def get_candles(symbol_id: int,
+    def get_candles(
+                    symbol: str,
                     timeframe: str,
                     start_date: Optional[str] = None,
                     end_date: Optional[str] = None,
                     limit: Optional[int] = None,
+                    exchange: Optional[str] = None,
                     ) -> list:
         """Get aggregated candles from the database."""
         try:
@@ -98,10 +72,12 @@ class Database:
                 params['end_ms'] = Database._to_epoch_ms(end_date)
             if limit:
                 params['limit'] = limit
+            if exchange:
+                params['exchange'] = exchange
 
             response = Database._make_request(
                 'GET',
-                f'/candles/{symbol_id}',
+                f'/candles/{symbol}',
                 params=params,
             )
             candles = response.json()

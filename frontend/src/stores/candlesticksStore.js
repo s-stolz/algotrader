@@ -7,15 +7,22 @@ export const useCandlesticksStore = defineStore('candlesticks', {
   }),
 
   actions: {
-    async fetch(symbolID, timeframe, startMs = null, endMs = null, limit = null, append = false) {
+    async fetch(symbol, timeframe, {
+      startMs = null,
+      endMs = null,
+      limit = null,
+      append = false,
+      exchange = null,
+    } = {}) {
       const optionalParams = new URLSearchParams();
       if (startMs) optionalParams.append('start_ms', startMs);
       if (endMs) optionalParams.append('end_ms', endMs);
       if (limit) optionalParams.append('limit', limit);
+      if (exchange) optionalParams.append('exchange', exchange);
 
       try {
         const response = await fetch(
-          `/api/data-accessor/candles/${symbolID}?timeframe=${timeframe}&${optionalParams.toString()}`,
+          `/api/data-accessor/candles/${symbol}?timeframe=${timeframe}&${optionalParams.toString()}`,
         );
         let newData = await response.json();
 

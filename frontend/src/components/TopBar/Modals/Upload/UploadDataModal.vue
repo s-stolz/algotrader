@@ -163,8 +163,9 @@ export default {
         console.log(`Parsed ${candleData.length} candles, uploading...`);
 
         await uploadCandlesInBatches(
-          this.market.symbol_id,
+          this.market.symbol,
           candleData,
+          this.market.exchange,
           (progress, uploadedCount) => {
             console.log(`Upload progress: ${progress.toFixed(1)}% (${uploadedCount} candles)`);
           },

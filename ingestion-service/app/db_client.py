@@ -25,28 +25,43 @@ class DatabaseClient:
             logger.error("Error fetching markets: %s", exc)
             raise
 
-    def get_latest_candle(self, symbol_id: int, timeframe: str) -> dict[str, Any] | None:
+    def get_latest_candle(
+        self, symbol: str, timeframe: str, exchange: str | None = None
+    ) -> dict[str, Any] | None:
         try:
-            return self._client.get_latest_candle(symbol_id=symbol_id, timeframe=timeframe)
+            return self._client.get_latest_candle(
+                symbol=symbol,
+                timeframe=timeframe,
+                exchange=exchange,
+            )
         except DatabaseAccessorClientError as exc:
-            logger.error("Error fetching latest candle for symbol %s: %s", symbol_id, exc)
+            logger.error("Error fetching latest candle for symbol %s: %s", symbol, exc)
             return None
 
-    def write_candles(self, symbol_id: int, candles: list[dict[str, Any]]) -> bool:
+    def write_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        exchange: str | None = None,
+    ) -> bool:
         if not candles:
             return True
 
         try:
-            result = self._client.insert_candles(symbol_id=symbol_id, candles=candles)
+            result = self._client.insert_candles(
+                symbol=symbol,
+                exchange=exchange,
+                candles=candles,
+            )
             logger.info(
-                "Wrote %d candles for symbol_id=%s - API response: %s added",
+                "Wrote %d candles for %s - API response: %s added",
                 len(candles),
-                symbol_id,
+                symbol,
                 result.get("added_candles", 0),
             )
             return True
         except DatabaseAccessorClientError as exc:
-            logger.error("HTTP error writing candles for symbol %s: %s", symbol_id, exc)
+            logger.error("HTTP error writing candles for symbol %s: %s", symbol, exc)
             return False
 
     def close(self) -> None:
