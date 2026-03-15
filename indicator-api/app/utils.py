@@ -2,6 +2,7 @@ from numbers import Real
 from typing import Any
 
 import pandas as pd
+from indicator_engine.core.tensor import Tensor
 
 
 def _is_int(v: Any) -> bool:
@@ -70,8 +71,13 @@ def estimate_warmup(metadata: dict, params: dict) -> int:
 
 
 def prepare_parameters(
-        indicator_info: dict, custom_parameters: dict, symbol_id: int, timeframe: str,
-        start_ms: int | None, end_ms: int | None, limit: int | None) -> dict:
+    indicator_info: dict,
+    custom_parameters: dict,
+    timeframe: str,
+    start_ms: int | None,
+    end_ms: int | None,
+    limit: int | None,
+) -> dict:
     """Prepare parameters for the indicator."""
     parameters = {}
 
@@ -80,7 +86,6 @@ def prepare_parameters(
         parameters[param_name] = custom_parameters.get(
             param_name, param_default)
 
-    parameters['symbol_id'] = symbol_id
     parameters['timeframe'] = parameters['timeframe'] if 'timeframe' in parameters else timeframe
     parameters['limit'] = limit
     parameters['start_ms'] = start_ms
@@ -152,6 +157,7 @@ def trim_indicator_output(
     *,
     original_start_ms: int | None,
     original_limit: int | None,
+    dropna_how: str = "any",
 ) -> pd.DataFrame:
     """Trim indicator DataFrame to honor original user constraints after warmup.
 
@@ -162,7 +168,7 @@ def trim_indicator_output(
     if df is None or df.empty:
         return df
 
-    out = df.dropna(how='any')
+    out = df.dropna(how=dropna_how)
 
     if original_start_ms is not None:
         out = out[out.index >= pd.to_datetime(original_start_ms, unit='ms', utc=True)]
@@ -171,3 +177,19 @@ def trim_indicator_output(
         out = out.tail(original_limit)
 
     return out
+
+
+def tensor_to_dataframe_single(tensor: Tensor) -> pd.DataFrame:
+    """Convert a (time, asset, output, param) Tensor into a DataFrame for single asset/param."""
+    if tensor.dims != ("time", "asset", "output", "param"):
+        raise ValueError("Expected tensor dims (time, asset, output, param)")
+    data = tensor.data
+    if data.shape[1] != 1 or data.shape[3] != 1:
+        raise ValueError("Only single-asset, single-param tensors are supported")
+    time = tensor.coords.get("time")
+    output = tensor.coords.get("output")
+    if time is None or output is None:
+        raise ValueError("Tensor must include time and output coords")
+    df = pd.DataFrame(data[:, 0, :, 0], index=time, columns=output)
+    df.index.name = "timestamp"
+    return df

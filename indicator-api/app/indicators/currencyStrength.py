@@ -1,6 +1,5 @@
 import pandas as pd
 from app.candles import get_candles_sync
-from app.markets import get_symbol_mapping
 
 METADATA: dict = {
     "name": "Currency Strength",
@@ -54,9 +53,7 @@ class CURRENCY_STRENGTH:
         end_ms: int | None = None,
         limit: int | None = None,
     ) -> pd.DataFrame:
-        symbol_ids_mapping = get_symbol_mapping(METADATA["inputs"])
-
-        _data = get_candles_sync(symbol_ids_mapping, timeframe, start_ms, end_ms, limit)
+        _data = get_candles_sync(METADATA["inputs"], timeframe, start_ms, end_ms, limit)
         _data = _data["close"].dropna()
 
         def get_val(prev_val, curr_val):

@@ -10,6 +10,7 @@ RUN pip install --upgrade pip
 
 COPY indicator-api /workspace/indicator-api
 COPY libs/db_accessor_client /workspace/libs/db_accessor_client
+COPY libs/indicator_engine /workspace/libs/indicator_engine
 
 RUN pip install --no-cache-dir -r requirements.txt
 
