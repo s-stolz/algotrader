@@ -2,6 +2,10 @@
 
 AlgoTrader is an experimental trading project that uses the [Lightweight Charts](https://tradingview.github.io/lightweight-charts/) library to visualize historical market data.
 
+## Architecture
+The project is structured into multiple services, each responsible for a specific aspect of the trading system:
+![Architecture](algotrader-architecture.jpg)
+
 ## Development Disclaimer
 
 This project is in active development and may undergo significant changes. **Backward compatibility is not guaranteed**—things might break! Please use this repository **for reference only** and not as a stable library.
@@ -80,9 +84,9 @@ make logs
 make ps
 ```
 
-## Local Python Environments (Per Service)
+## Local Python Environments
 
-Use one virtual environment per Python service instead of one shared root environment.
+Use a root virtual environment for shared library/test tooling and per-service virtual environments for service runtime dependencies.
 
 ### Shared constraints + service requirements
 
@@ -100,6 +104,16 @@ Equivalent direct command:
 
 ```sh
 ./scripts/setup_venvs.sh all
+```
+
+This now creates:
+- root environment: `.venv` using `requirements.root.txt`
+- service environments: `<service>/.venv` using each service `requirements.txt`
+
+### Bootstrap only root venv
+
+```sh
+make venv-root
 ```
 
 ### Setup one service
