@@ -1,0 +1,7 @@
+{
+  "typeCheckingMode": "basic",
+  "extraPaths": [
+    "../libs/indicator_engine",
+    "../libs/db_accessor_client"
+  ]
+}

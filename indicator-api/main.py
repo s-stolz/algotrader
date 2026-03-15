@@ -140,8 +140,8 @@ async def run_indicator(
 
     log.debug(f"Fetched candles:\n{candles}")
 
-    from indicator_engine.adapters.pandas import bars_from_dataframe
-    from indicator_engine.core.params import ParamGrid
+    from indicator_engine.adapters import bars_from_dataframe
+    from indicator_engine.core import ParamGrid
 
     bar_tensor = bars_from_dataframe(candles)
     param_grid = ParamGrid(indicator_params)
