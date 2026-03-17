@@ -103,6 +103,10 @@ row = np.array([
     [201.0, 203.0, 198.0, 202.0, 7.0],
 ])
 engine.on_bar("M1", 1710000000000, row)
+
+# Ergonomic extraction for singleton updates (single asset/output/param)
+updated = engine.on_bar("M1", 1710000060000, row)
+sma_latest = updated["sma"].latest_value()
 ```
 
 Notes:
