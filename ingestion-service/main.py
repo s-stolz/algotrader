@@ -144,11 +144,24 @@ class IngestionService:
         self.logger.info(f"{symbol} M1: Frozen startup watermark at {self._ms_to_iso(latest_ts)}")
         return latest_ts
 
-    def _snapshot_startup_watermarks(self) -> Dict[int, int]:
-        return {
-            state.symbol_id: self._get_frozen_watermark(state.symbol, state.exchange)
-            for state in self.runtime_states
-        }
+    async def _snapshot_startup_watermarks(self) -> Dict[int, int]:
+        if not self.runtime_states:
+            return {}
+
+        concurrency = max(1, self.config.startup_watermark_concurrency)
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def worker(state: SymbolRuntimeState) -> tuple[int, int]:
+            async with semaphore:
+                watermark = await asyncio.to_thread(
+                    self._get_frozen_watermark,
+                    state.symbol,
+                    state.exchange,
+                )
+                return state.symbol_id, watermark
+
+        pairs = await asyncio.gather(*(worker(state) for state in self.runtime_states))
+        return {symbol_id: watermark for symbol_id, watermark in pairs}
 
     async def _backfill_symbol(
         self,
@@ -255,33 +268,78 @@ class IngestionService:
         message_id = entries[0][0]
         return self._decode_redis_id(message_id)
 
-    async def start_consumers(self) -> None:
-        """Start consuming streams from a deterministic Redis cursor per symbol."""
+    async def _startup_backfill_for_state(
+        self,
+        state: SymbolRuntimeState,
+        watermarks: Dict[int, int],
+        semaphore: asyncio.Semaphore,
+    ) -> None:
+        from_ts_ms = watermarks[state.symbol_id]
+        if not self._needs_backfill(from_ts_ms, self.TIMEFRAME_M1):
+            self.logger.info(f"{state.symbol} M1: Backfill skipped, data is up to date")
+            return
+
+        async with semaphore:
+            await self._backfill_symbol(
+                symbol_id=state.symbol_id,
+                symbol=state.symbol,
+                from_ts=from_ts_ms,
+                to_ts=self._utc_now_ms(),
+            )
+
+    async def start_consumers(self, startup_watermarks: Optional[Dict[int, int]] = None) -> None:
+        """Start stream consumers and optionally run startup backfill per symbol immediately."""
         if self.consumer is None:
             raise RuntimeError("Consumer is not initialized")
 
         self.logger.info("Starting stream consumers...")
+        if startup_watermarks is not None:
+            self.logger.info("Starting startup backfill phase")
 
-        for state in self.runtime_states:
-            tail_id = await self._get_stream_tail_id(state.stream_key)
+        concurrency = max(1, self.config.startup_stream_start_concurrency)
+        semaphore = asyncio.Semaphore(concurrency)
+        backfill_tasks: list[asyncio.Task] = []
+        backfill_semaphore = asyncio.Semaphore(max(1, self.config.startup_backfill_concurrency))
 
-            await self.broker_client.start_trendbar_stream(
-                state.symbol,
-                timeframe=self.TIMEFRAME_CODE_M1,
-            )
+        async def worker(state: SymbolRuntimeState) -> asyncio.Task:
+            async with semaphore:
+                tail_id = await self._get_stream_tail_id(state.stream_key)
 
-            task = asyncio.create_task(
-                self.consumer.consume_stream(
-                    stream_key=state.stream_key,
-                    symbol_id=state.symbol_id,
-                    callback=self.write_candles_callback,
-                    start_id=tail_id,
+                await self.broker_client.start_trendbar_stream(
+                    state.symbol,
+                    timeframe=self.TIMEFRAME_CODE_M1,
                 )
-            )
-            self.consumer_tasks.append(task)
-            self.logger.info(f"Started consumer for {state.stream_key} from ID {tail_id}")
 
-        self.logger.info(f"Started {len(self.consumer_tasks)} stream consumers")
+                task = asyncio.create_task(
+                    self.consumer.consume_stream(
+                        stream_key=state.stream_key,
+                        symbol_id=state.symbol_id,
+                        callback=self.write_candles_callback,
+                        start_id=tail_id,
+                    )
+                )
+                self.logger.info(f"Started consumer for {state.stream_key} from ID {tail_id}")
+
+                if startup_watermarks is not None:
+                    backfill_tasks.append(
+                        asyncio.create_task(
+                            self._startup_backfill_for_state(
+                                state=state,
+                                watermarks=startup_watermarks,
+                                semaphore=backfill_semaphore,
+                            )
+                        )
+                    )
+                return task
+
+        tasks = await asyncio.gather(*(worker(state) for state in self.runtime_states))
+        self.consumer_tasks.extend(tasks)
+
+        self.logger.info(f"Started {len(tasks)} stream consumers")
+
+        if backfill_tasks:
+            await asyncio.gather(*backfill_tasks)
+            self.logger.info("Startup backfill phase complete")
 
     async def _is_broker_connected(self) -> bool:
         """Broker is considered connected only when broker-service is up and cTrader is authenticated."""
@@ -417,9 +475,8 @@ class IngestionService:
             await self.startup()
 
             if self.runtime_states:
-                startup_watermarks = self._snapshot_startup_watermarks()
-                await self.start_consumers()
-                await self._run_startup_backfill(startup_watermarks)
+                startup_watermarks = await self._snapshot_startup_watermarks()
+                await self.start_consumers(startup_watermarks=startup_watermarks)
 
             self._health_monitor_task = asyncio.create_task(self._monitor_broker_connectivity())
 

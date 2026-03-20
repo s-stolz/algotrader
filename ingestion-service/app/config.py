@@ -1,4 +1,5 @@
 """Configuration management for the ingestion service."""
+
 import os
 from dataclasses import dataclass
 
@@ -16,6 +17,8 @@ class Config:
     log_level: str
     consumer_batch_size: int
     consumer_block_ms: int
+    startup_watermark_concurrency: int
+    startup_stream_start_concurrency: int
     startup_backfill_concurrency: int
     broker_health_poll_seconds: int
     recovery_backoff_initial_seconds: int
@@ -44,6 +47,8 @@ def load_config() -> Config:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         consumer_batch_size=int(os.getenv("CONSUMER_BATCH_SIZE", "100")),
         consumer_block_ms=int(os.getenv("CONSUMER_BLOCK_MS", "5000")),
+        startup_watermark_concurrency=int(os.getenv("STARTUP_WATERMARK_CONCURRENCY", "16")),
+        startup_stream_start_concurrency=int(os.getenv("STARTUP_STREAM_START_CONCURRENCY", "8")),
         startup_backfill_concurrency=int(os.getenv("STARTUP_BACKFILL_CONCURRENCY", "4")),
         broker_health_poll_seconds=int(os.getenv("BROKER_HEALTH_POLL_SECONDS", "10")),
         recovery_backoff_initial_seconds=int(os.getenv("RECOVERY_BACKOFF_INITIAL_SECONDS", "5")),
