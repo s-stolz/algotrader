@@ -20,7 +20,16 @@ class BBANDS(IndicatorBase):
             "length": {"type": "int", "default": 20, "min": 1},
             "lower_std": {"type": "float", "default": 2.0, "min": 0.0},
             "upper_std": {"type": "float", "default": 2.0, "min": 0.0},
-            "source": {"type": "string", "default": "close"},
+            "ma_mode": {
+                "type": "string",
+                "default": "SMA",
+                "options": ["SMA", "EMA"],
+            },
+            "source": {
+                "type": "string",
+                "default": "close",
+                "options": ["close", "open", "high", "low"],
+            },
         },
         outputs=["lower", "mid", "upper"],
         required_fields=["close"],

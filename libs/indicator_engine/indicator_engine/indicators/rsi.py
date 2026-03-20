@@ -17,7 +17,11 @@ class RSI(IndicatorBase):
         name="Relative Strength Index",
         parameters={
             "length": {"type": "int", "default": 14, "min": 1},
-            "source": {"type": "string", "default": "close"},
+            "source": {
+                "type": "string",
+                "default": "close",
+                "options": ["close", "open", "high", "low"],
+            },
         },
         outputs=["rsi"],
         required_fields=["close"],

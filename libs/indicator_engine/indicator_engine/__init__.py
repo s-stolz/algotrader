@@ -5,8 +5,6 @@ from .core.registry import IndicatorRegistry
 from .core.results import IndicatorResult, ResultBuffer
 from .core.spec import IndicatorSpec
 from .core.tensor import Tensor
-from .engines.batch import BatchEngine
-from .engines.update import UpdateEngine
 from .defaults import (
     get_batch_engine,
     get_registry,
@@ -15,6 +13,8 @@ from .defaults import (
     run,
     run_batch,
 )
+from .engines.batch import BatchEngine
+from .engines.update import UpdateEngine
 
 __all__ = [
     "BarBuffer",

@@ -20,7 +20,11 @@ class MACD(IndicatorBase):
             "fast": {"type": "int", "default": 12, "min": 1},
             "slow": {"type": "int", "default": 26, "min": 1},
             "signal": {"type": "int", "default": 9, "min": 1},
-            "source": {"type": "string", "default": "close"},
+            "source": {
+                "type": "string",
+                "default": "close",
+                "options": ["close", "open", "high", "low"],
+            },
         },
         outputs=["macd", "signal", "hist"],
         required_fields=["close"],

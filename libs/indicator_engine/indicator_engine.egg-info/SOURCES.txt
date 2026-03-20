@@ -30,3 +30,4 @@ indicator_engine/indicators/macd.py
 indicator_engine/indicators/rsi.py
 indicator_engine/indicators/sma.py
 indicator_engine/indicators/utils.py
+tests/test_defaults.py

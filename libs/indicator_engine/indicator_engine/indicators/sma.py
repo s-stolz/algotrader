@@ -18,7 +18,11 @@ class SMA(IndicatorBase):
         name="Simple Moving Average",
         parameters={
             "window": {"type": "int", "default": 20, "min": 1},
-            "source": {"type": "string", "default": "close"},
+            "source": {
+                "type": "string",
+                "default": "close",
+                "options": ["close", "open", "high", "low"],
+            },
         },
         outputs=["sma"],
         required_fields=["close"],
