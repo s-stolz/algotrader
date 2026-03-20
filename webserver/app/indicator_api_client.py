@@ -33,14 +33,14 @@ class IndicatorApiClient:
             "parameters": parameters or {},
         }
 
-        url = f"{self.base_url}/live/indicator-streams/start"
+        url = f"{self.base_url}/indicator-streams/start"
         try:
             response = await self.client.post(url, json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
             logger.error(
-                "Error starting live indicator stream for %s %s indicator=%s: %s",
+                "Error starting indicator stream for %s %s indicator=%s: %s",
                 symbol,
                 timeframe,
                 indicator_id,
@@ -66,14 +66,14 @@ class IndicatorApiClient:
             "parameters": parameters or {},
         }
 
-        url = f"{self.base_url}/live/indicator-streams/stop"
+        url = f"{self.base_url}/indicator-streams/stop"
         try:
             response = await self.client.post(url, json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
             logger.error(
-                "Error stopping live indicator stream for %s %s indicator=%s: %s",
+                "Error stopping indicator stream for %s %s indicator=%s: %s",
                 symbol,
                 timeframe,
                 indicator_id,
