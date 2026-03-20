@@ -7,3 +7,6 @@ node_modules
 __pycache__
 *.DS_Store
 .claude
+
+# Development artifacts
+indicator_engine_example.ipynb
