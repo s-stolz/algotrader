@@ -1,0 +1,16 @@
+.git
+.gitignore
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.vscode
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.log
+**/.DS_Store
+config/.env*
+frontend/node_modules
+frontend/dist

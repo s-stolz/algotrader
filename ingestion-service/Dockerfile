@@ -6,7 +6,7 @@ WORKDIR /workspace/ingestion-service
 RUN pip install --upgrade pip
 
 # Install dependencies
-COPY ingestion-service /workspace/ingestion-service
+COPY ingestion-service/requirements.txt /workspace/ingestion-service/requirements.txt
 COPY libs/db_accessor_client /workspace/libs/db_accessor_client
 RUN pip install --no-cache-dir -r requirements.txt
 

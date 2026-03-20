@@ -264,9 +264,14 @@ def format_env(env: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-def write_output(path: Path, content: str) -> None:
+def write_output(path: Path, content: str) -> bool:
+    if path.exists():
+        existing = path.read_text(encoding="utf-8")
+        if existing == content:
+            return False
     path.write_text(content, encoding="utf-8")
     path.chmod(0o600)
+    return True
 
 
 def main() -> int:
@@ -300,14 +305,17 @@ def main() -> int:
         )
         return 1
 
-    write_output(OUTPUT_SHARED_PATH, format_env(shared_env))
-    write_output(OUTPUT_DB_SECRETS_PATH, format_env(db_secrets_env))
-    write_output(OUTPUT_RUNTIME_SECRETS_PATH, format_env(runtime_secrets_env))
-    write_output(OUTPUT_BROKER_SECRETS_PATH, format_env(broker_secrets_env))
-    print(f"Wrote {OUTPUT_SHARED_PATH}")
-    print(f"Wrote {OUTPUT_DB_SECRETS_PATH}")
-    print(f"Wrote {OUTPUT_RUNTIME_SECRETS_PATH}")
-    print(f"Wrote {OUTPUT_BROKER_SECRETS_PATH}")
+    outputs = (
+        (OUTPUT_SHARED_PATH, format_env(shared_env)),
+        (OUTPUT_DB_SECRETS_PATH, format_env(db_secrets_env)),
+        (OUTPUT_RUNTIME_SECRETS_PATH, format_env(runtime_secrets_env)),
+        (OUTPUT_BROKER_SECRETS_PATH, format_env(broker_secrets_env)),
+    )
+    for path, content in outputs:
+        if write_output(path, content):
+            print(f"Wrote {path}")
+        else:
+            print(f"Unchanged {path}")
     return 0
 
 

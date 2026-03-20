@@ -14,7 +14,7 @@ ifneq ($(strip $(TEST_BACKEND_FROM_GOAL)),)
 TEST_BACKEND := $(TEST_BACKEND_FROM_GOAL)
 endif
 
-.PHONY: ensure-pyyaml config validate-config up up-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check test backtester ingestion-service broker-service indicator_engine
+.PHONY: ensure-pyyaml config validate-config up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check test backtester ingestion-service broker-service indicator_engine
 
 ifeq ($(DETACH),1)
 UP_FLAGS += -d
@@ -33,9 +33,15 @@ validate-config: ensure-pyyaml
 	$(PYTHON) scripts/generate_env.py --validate
 
 up: config
-	$(COMPOSE) up --build $(UP_FLAGS)
+	$(COMPOSE) up $(UP_FLAGS)
 
 up-detached: config
+	$(COMPOSE) up -d
+
+up-build: config
+	$(COMPOSE) up --build $(UP_FLAGS)
+
+up-build-detached: config
 	$(COMPOSE) up --build -d
 
 build: config
@@ -46,7 +52,7 @@ down:
 
 restart: config
 	$(COMPOSE) down
-	$(COMPOSE) up --build $(UP_FLAGS)
+	$(COMPOSE) up $(UP_FLAGS)
 
 logs:
 	$(COMPOSE) logs -f
