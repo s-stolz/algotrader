@@ -8,3 +8,4 @@ watchdog>=3.0.0
 pandas>=2.3.2
 numpy>=2.2.6
 httpx>=0.28.1
+redis>=7.1.0

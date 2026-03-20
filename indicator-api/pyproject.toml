@@ -16,6 +16,7 @@ dependencies = [
     "asyncpg",
     "python-dotenv",
     "pydantic",
+    "redis",
 ]
 
 [project.urls]
