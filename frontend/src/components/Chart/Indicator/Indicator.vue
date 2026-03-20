@@ -57,7 +57,7 @@ export default {
       immediate: true,
     },
 
-    "indicator.data": {
+    "indicator.dataVersion": {
       handler() {
         if (!this.indicator || !this.indicator._id) return;
 

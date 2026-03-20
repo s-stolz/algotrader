@@ -27,7 +27,12 @@ export class IndicatorManager {
       const transformedData = this.transformIndicatorData(data, outputKey);
 
       if (transformedData.length > 0) {
-        let seriesOptions = { ...outputInfo.plotOptions || {} };
+        let seriesOptions = {
+          crosshairMarkerVisible: false,
+          lastValueVisible: false,
+          priceLineVisible: false,
+          ...outputInfo.plotOptions || {},
+        };
         const seriesKey = `${id}_${outputKey}`;
 
         this.chartManager.addSeries(
@@ -82,6 +87,32 @@ export class IndicatorManager {
       const transformed = this.transformIndicatorData(data, outputKey);
       seriesInfo.series.setData(transformed);
       seriesInfo.data = transformed;
+    }
+  }
+
+  updateIndicatorSeriesPoint(id, point) {
+    const indicator = this.indicatorsStore.getById(id);
+    if (!indicator || !point) {
+      return;
+    }
+
+    const time = Math.floor(Number(point.timestamp_ms) / 1000);
+    if (!Number.isFinite(time)) {
+      return;
+    }
+
+    for (const outputKey in indicator.info.outputs) {
+      if (outputKey === 'timestamp') {
+        continue;
+      }
+
+      const value = point[outputKey];
+      if (value === undefined || value === null) {
+        continue;
+      }
+
+      const seriesKey = `${id}_${outputKey}`;
+      this.chartManager.updateSeriesPoint(seriesKey, { time, value });
     }
   }
 

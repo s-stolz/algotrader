@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { markRaw } from 'vue';
 
 export const useCandlesticksStore = defineStore('candlesticks', {
   state: () => ({
@@ -38,9 +39,9 @@ export const useCandlesticksStore = defineStore('candlesticks', {
         });
 
         if (append) {
-          this.data = [...newData, ...this.data];
+          this.data = markRaw([...newData, ...this.data]);
         } else {
-          this.data = newData;
+          this.data = markRaw(newData);
         }
       } catch (err) {
         console.error('Failed to fetch candlestick data:', err);
@@ -59,17 +60,32 @@ export const useCandlesticksStore = defineStore('candlesticks', {
         close: candleData.close,
       };
 
-      const existingIndex = this.data.findIndex(candle => candle.time === newCandle.time);
+      const last = this.data[this.data.length - 1];
+      if (!last) {
+        this.data.push(newCandle);
+        return;
+      }
 
-      if (existingIndex >= 0) {
-        this.data[existingIndex] = newCandle;
-      } else {
+      if (last.time === newCandle.time) {
+        const isNoOp = (
+          last.open === newCandle.open &&
+          last.high === newCandle.high &&
+          last.low === newCandle.low &&
+          last.close === newCandle.close
+        );
+        if (!isNoOp) {
+          this.data[this.data.length - 1] = newCandle;
+        }
+        return;
+      }
+
+      if (last.time < newCandle.time) {
         this.data.push(newCandle);
       }
     },
 
     clear() {
-      this.data = [];
+      this.data = markRaw([]);
     },
   },
 });

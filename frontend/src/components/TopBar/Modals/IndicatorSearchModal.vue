@@ -111,7 +111,7 @@ export default {
       const queryParams = {
         symbol: this.symbol,
         timeframe: this.timeframe,
-        limit: 5000,
+        limit: 500,
       };
       if (this.exchange) {
         queryParams.exchange = this.exchange;

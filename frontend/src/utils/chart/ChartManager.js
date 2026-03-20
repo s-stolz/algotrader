@@ -4,6 +4,7 @@ import {
   BaselineSeries,
   CandlestickSeries,
   createChart,
+  CrosshairMode,
   HistogramSeries,
   LineSeries,
 } from 'lightweight-charts';
@@ -27,6 +28,9 @@ export class ChartManager {
       grid: {
         vertLines: { color: 'transparent' },
         horzLines: { color: 'transparent' },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
       },
       autoSize: true,
       ...options,
@@ -98,23 +102,52 @@ export class ChartManager {
     const seriesInfo = this.series.get(key);
     if (!seriesInfo) {
       console.warn(`Series '${key}' not found`);
-      return false;
+      return;
     }
 
     try {
-      seriesInfo.series.update(candle);
+      const last = seriesInfo.data[seriesInfo.data.length - 1];
 
-      const existingIndex = seriesInfo.data.findIndex(c => c.time === candle.time);
-      if (existingIndex >= 0) {
-        seriesInfo.data[existingIndex] = candle;
-      } else {
-        seriesInfo.data.push(candle);
+      if (last.time === candle.time) {
+        seriesInfo.series.update(candle);
+        seriesInfo.data[seriesInfo.data.length - 1] = candle;
+        return;
       }
 
-      return true;
+      if (last.time < candle.time) {
+        seriesInfo.series.update(candle);
+        seriesInfo.data.push(candle);
+        return;
+      }
     } catch (error) {
       console.error(`Failed to update candle for series '${key}':`, error);
-      return false;
+    }
+  }
+
+  updateSeriesPoint(key, point) {
+    const seriesInfo = this.series.get(key);
+    if (!seriesInfo) {
+      return;
+    }
+
+    try {
+      const last = seriesInfo.data[seriesInfo.data.length - 1];
+      if (last.time === point.time) {
+        if (last.value === point.value) {
+          return;
+        }
+        seriesInfo.series.update(point);
+        seriesInfo.data[seriesInfo.data.length - 1] = point;
+        return;
+      }
+
+      if (last.time < point.time) {
+        seriesInfo.series.update(point);
+        seriesInfo.data.push(point);
+        return;
+      }
+    } catch (error) {
+      console.error(`Failed to update point for series '${key}':`, error);
     }
   }
 
