@@ -27,9 +27,25 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             client.close()
         self.assertEqual(markets[0]["symbol_id"], 1)
 
-    def test_get_latest_candle_returns_none_for_empty_list(self) -> None:
-        def handler(_: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=[])
+    def test_get_latest_candle_m1_uses_latest_endpoint(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/candles/EURUSD/latest")
+            return httpx.Response(200, json={"timestamp_ms": 1000, "open": 1.0})
+
+        client = DatabaseAccessorClient("http://test")
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            latest = client.get_latest_candle(symbol="EURUSD", timeframe="M1")
+        finally:
+            client.close()
+        if latest is None:
+            self.fail("Expected latest candle, got None")
+        self.assertEqual(latest["timestamp_ms"], 1000)
+
+    def test_get_latest_candle_m1_returns_none_on_404(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/candles/EURUSD/latest")
+            return httpx.Response(404, json={"detail": "No candles found"})
 
         client = DatabaseAccessorClient("http://test")
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -38,6 +54,22 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         finally:
             client.close()
         self.assertIsNone(latest)
+
+    def test_get_latest_m1_candle_uses_latest_endpoint(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/candles/EURUSD/latest")
+            return httpx.Response(200, json={"timestamp_ms": 999, "open": 1.1})
+
+        client = DatabaseAccessorClient("http://test")
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            latest = client.get_latest_m1_candle(symbol="EURUSD")
+        finally:
+            client.close()
+
+        if latest is None:
+            self.fail("Expected latest candle, got None")
+        self.assertEqual(latest["timestamp_ms"], 999)
 
     def test_insert_candles_raises_client_error_on_http_failure(self) -> None:
         def handler(_: httpx.Request) -> httpx.Response:
@@ -92,6 +124,38 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
             await client.aclose()
         self.assertIsInstance(candles, pd.DataFrame)
         self.assertEqual(candles.iloc[0]["timestamp_ms"], 1000)
+
+    async def test_async_get_latest_candle_m1_uses_latest_endpoint(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/candles/EURUSD/latest")
+            return httpx.Response(200, json={"timestamp_ms": 1234, "open": 1.2})
+
+        client = AsyncDatabaseAccessorClient("http://test")
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            latest = await client.get_latest_candle(symbol="EURUSD", timeframe="M1")
+        finally:
+            await client.aclose()
+
+        if latest is None:
+            self.fail("Expected latest candle, got None")
+        self.assertEqual(latest["timestamp_ms"], 1234)
+
+    async def test_async_get_latest_m1_candle_uses_latest_endpoint(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/candles/EURUSD/latest")
+            return httpx.Response(200, json={"timestamp_ms": 5678, "open": 1.3})
+
+        client = AsyncDatabaseAccessorClient("http://test")
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            latest = await client.get_latest_m1_candle(symbol="EURUSD")
+        finally:
+            await client.aclose()
+
+        if latest is None:
+            self.fail("Expected latest candle, got None")
+        self.assertEqual(latest["timestamp_ms"], 5678)
 
     async def test_async_get_candles_multi_returns_dataframes(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

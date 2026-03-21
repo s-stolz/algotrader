@@ -129,9 +129,13 @@ class DatabaseAccessorClient(_BaseClient):
     def get_latest_candle(
         self, symbol: str, timeframe: str, exchange: str | None = None
     ) -> dict[str, Any] | None:
+        timeframe_code = normalize_timeframe_code(timeframe)
+        if timeframe_code == "M1":
+            return self.get_latest_m1_candle(symbol=symbol, exchange=exchange)
+
         candles = self.get_candles(
             symbol=symbol,
-            timeframe=timeframe,
+            timeframe=timeframe_code,
             exchange=exchange,
             limit=1,
             include_timestamp_ms=True,
@@ -139,6 +143,17 @@ class DatabaseAccessorClient(_BaseClient):
         if candles.empty:
             return None
         return candles.iloc[0].to_dict()
+
+    def get_latest_m1_candle(
+        self, symbol: str, exchange: str | None = None
+    ) -> dict[str, Any] | None:
+        params = _build_params(exchange=exchange)
+        try:
+            return self._request("GET", f"/candles/{symbol}/latest", params=params)
+        except DatabaseAccessorClientError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
 
     def insert_candles(
         self,
@@ -252,9 +267,13 @@ class AsyncDatabaseAccessorClient(_BaseClient):
     async def get_latest_candle(
         self, symbol: str, timeframe: str, exchange: str | None = None
     ) -> dict[str, Any] | None:
+        timeframe_code = normalize_timeframe_code(timeframe)
+        if timeframe_code == "M1":
+            return await self.get_latest_m1_candle(symbol=symbol, exchange=exchange)
+
         candles = await self.get_candles(
             symbol=symbol,
-            timeframe=timeframe,
+            timeframe=timeframe_code,
             exchange=exchange,
             limit=1,
             include_timestamp_ms=True,
@@ -262,6 +281,17 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         if candles.empty:
             return None
         return candles.iloc[0].to_dict()
+
+    async def get_latest_m1_candle(
+        self, symbol: str, exchange: str | None = None
+    ) -> dict[str, Any] | None:
+        params = _build_params(exchange=exchange)
+        try:
+            return await self._request("GET", f"/candles/{symbol}/latest", params=params)
+        except DatabaseAccessorClientError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
 
     async def insert_candles(
         self,
