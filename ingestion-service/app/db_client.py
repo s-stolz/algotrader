@@ -38,6 +38,18 @@ class DatabaseClient:
             logger.error("Error fetching latest candle for symbol %s: %s", symbol, exc)
             return None
 
+    def get_latest_m1_candle(
+        self, symbol: str, exchange: str | None = None
+    ) -> dict[str, Any] | None:
+        try:
+            return self._client.get_latest_m1_candle(
+                symbol=symbol,
+                exchange=exchange,
+            )
+        except DatabaseAccessorClientError as exc:
+            logger.error("Error fetching latest M1 candle for symbol %s: %s", symbol, exc)
+            return None
+
     def write_candles(
         self,
         symbol: str,

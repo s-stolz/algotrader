@@ -128,8 +128,8 @@ class IngestionService:
         return (self._utc_now_ms() - latest_ts_ms) > expected_gap_ms
 
     def _get_frozen_watermark(self, symbol: str, exchange: str) -> int:
-        latest_candle = self.db_client.get_latest_candle(
-            symbol, self.TIMEFRAME_CODE_M1, exchange=exchange or None
+        latest_candle = self.db_client.get_latest_m1_candle(
+            symbol, exchange=exchange or None
         )
         if not latest_candle:
             fallback = self._utc_now_ms() - int(
