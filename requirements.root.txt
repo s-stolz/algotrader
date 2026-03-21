@@ -1,5 +1,6 @@
 -e ./libs/db_accessor_client
 -e ./libs/indicator_engine
+-e ./libs/algotrader_logger
 black>=24.4.2
 ruff>=0.14.11
 pytest>=8.3.0

@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 RUN pip install --upgrade pip
 
 COPY indicator-api/requirements.txt /workspace/indicator-api/requirements.txt
+COPY libs/algotrader_logger /workspace/libs/algotrader_logger
 COPY libs/db_accessor_client /workspace/libs/db_accessor_client
 COPY libs/indicator_engine /workspace/libs/indicator_engine
 

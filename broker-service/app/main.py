@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from algotrader_logger import RequestLoggingMiddleware
 from fastapi import FastAPI
 
 from app.api.routers import (
@@ -19,7 +20,7 @@ from app.settings import Settings
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_format)
 
     container = ServiceContainer(settings)
 
@@ -31,6 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.state.container = container
+    app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(meta.router)
     app.include_router(accounts.router)

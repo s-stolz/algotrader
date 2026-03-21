@@ -1,3 +1,4 @@
+-e ../libs/algotrader_logger
 websockets>=16.0
 redis>=7.1.0
 httpx>=0.28.1

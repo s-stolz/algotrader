@@ -8,9 +8,9 @@ from db_accessor_client import (
     DatabaseAccessorClient,
     DatabaseAccessorClientError,
 )
-from logger import logger
+from algotrader_logger import get_logger
 
-log = logger(__name__)
+log = get_logger(__name__)
 
 
 def get_candles_sync(

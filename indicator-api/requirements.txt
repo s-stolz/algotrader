@@ -1,3 +1,4 @@
+-e ../libs/algotrader_logger
 -e ../libs/db_accessor_client
 -e ../libs/indicator_engine
 fastapi>=0.116.1

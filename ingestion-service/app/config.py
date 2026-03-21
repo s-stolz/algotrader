@@ -15,6 +15,7 @@ class Config:
     broker_service_port: int
     broker_account_id: str
     log_level: str
+    log_format: str
     consumer_batch_size: int
     consumer_block_ms: int
     startup_watermark_concurrency: int
@@ -37,6 +38,8 @@ class Config:
 
 def load_config() -> Config:
     """Load configuration from environment variables."""
+    log_level = os.getenv("INGESTION_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO"))
+    log_format = os.getenv("INGESTION_LOG_FORMAT", os.getenv("LOG_FORMAT", "pretty"))
     return Config(
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
         db_api_host=os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api"),
@@ -44,7 +47,8 @@ def load_config() -> Config:
         broker_service_host=os.getenv("BROKER_SERVICE_HOST", "broker-service"),
         broker_service_port=int(os.getenv("BROKER_SERVICE_PORT", "8050")),
         broker_account_id=os.getenv("ACCOUNT_ID", "12345"),
-        log_level=os.getenv("LOG_LEVEL", "INFO"),
+        log_level=log_level,
+        log_format=log_format,
         consumer_batch_size=int(os.getenv("CONSUMER_BATCH_SIZE", "100")),
         consumer_block_ms=int(os.getenv("CONSUMER_BLOCK_MS", "5000")),
         startup_watermark_concurrency=int(os.getenv("STARTUP_WATERMARK_CONCURRENCY", "2")),

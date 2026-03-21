@@ -63,7 +63,7 @@ class IngestionService:
     def __init__(self):
         """Initialize the ingestion service."""
         self.config = load_config()
-        self.logger = setup_logging(self.config.log_level)
+        self.logger = setup_logging(self.config.log_level, self.config.log_format)
 
         self.db_client = DatabaseClient(self.config.db_api_base_url)
         self.broker_client = BrokerClient(

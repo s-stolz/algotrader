@@ -108,20 +108,28 @@ def build_env(
     db_api_host = required(topology, "services.database_accessor_api.host")
     db_api_port = required(topology, "services.database_accessor_api.port")
     db_api_published_port = required(topology, "services.database_accessor_api.published_port")
+    db_api_log_level = required(topology, "services.database_accessor_api.log_level")
+    db_api_log_format = required(topology, "services.database_accessor_api.log_format")
 
     indicator_host = required(topology, "services.indicator_api.host")
     indicator_port = required(topology, "services.indicator_api.port")
     indicator_published_port = required(topology, "services.indicator_api.published_port")
+    indicator_log_level = required(topology, "services.indicator_api.log_level")
+    indicator_log_format = required(topology, "services.indicator_api.log_format")
 
     broker_host = required(topology, "services.broker_service.host")
     broker_port = required(topology, "services.broker_service.port")
     broker_published_port = required(topology, "services.broker_service.published_port")
+    broker_log_level = required(topology, "services.broker_service.log_level")
+    broker_log_format = required(topology, "services.broker_service.log_format")
 
     webserver_host = required(topology, "services.webserver.host")
     webserver_ws_port = required(topology, "services.webserver.ws_port")
     webserver_ws_published_port = required(topology, "services.webserver.ws_published_port")
     webserver_health_port = required(topology, "services.webserver.health_port")
     webserver_health_published_port = required(topology, "services.webserver.health_published_port")
+    webserver_log_level = required(topology, "services.webserver.log_level")
+    webserver_log_format = required(topology, "services.webserver.log_format")
 
     frontend_host = required(topology, "services.frontend.host")
     frontend_port = required(topology, "services.frontend.port")
@@ -145,6 +153,7 @@ def build_env(
     webserver_max_stream_length = required(topology, "webserver.max_stream_length")
 
     ingestion_log_level = required(topology, "ingestion.log_level")
+    ingestion_log_format = required(topology, "ingestion.log_format")
     ingestion_batch_size = required(topology, "ingestion.consumer_batch_size")
     ingestion_block_ms = required(topology, "ingestion.consumer_block_ms")
 
@@ -154,7 +163,6 @@ def build_env(
     broker_candle_stream_maxlen = required(topology, "broker.candle_stream_maxlen")
     broker_max_symbol_streams = required(topology, "broker.max_symbol_streams")
     broker_max_trendbar_streams = required(topology, "broker.max_trendbar_streams")
-    broker_log_level = required(topology, "broker.log_level")
     broker_request_timeout = required(topology, "broker.ctrader_request_timeout_seconds")
 
     redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
@@ -167,19 +175,27 @@ def build_env(
         "DATABASE_ACCESSOR_PORT": stringify(db_api_port),
         "DATABASE_ACCESSOR_PUBLISHED_PORT": stringify(db_api_published_port),
         "DATABASE_ACCESSOR_BASE_URL": f"http://{db_api_host}:{db_api_port}",
+        "DATABASE_ACCESSOR_LOG_LEVEL": stringify(db_api_log_level),
+        "DATABASE_ACCESSOR_LOG_FORMAT": stringify(db_api_log_format),
         "INDICATOR_API_HOST": stringify(indicator_host),
         "INDICATOR_API_PORT": stringify(indicator_port),
         "INDICATOR_API_PUBLISHED_PORT": stringify(indicator_published_port),
         "INDICATOR_API_BASE_URL": f"http://{indicator_host}:{indicator_port}",
+        "INDICATOR_API_LOG_LEVEL": stringify(indicator_log_level),
+        "INDICATOR_API_LOG_FORMAT": stringify(indicator_log_format),
         "BROKER_SERVICE_HOST": stringify(broker_host),
         "BROKER_SERVICE_PORT": stringify(broker_port),
         "BROKER_SERVICE_PUBLISHED_PORT": stringify(broker_published_port),
         "BROKER_SERVICE_BASE_URL": f"http://{broker_host}:{broker_port}",
+        "BROKER_LOG_LEVEL": stringify(broker_log_level),
+        "BROKER_LOG_FORMAT": stringify(broker_log_format),
         "WEBSERVER_HOST": stringify(webserver_host),
         "WEBSERVER_WS_PORT": stringify(webserver_ws_port),
         "WEBSERVER_WS_PUBLISHED_PORT": stringify(webserver_ws_published_port),
         "WEBSERVER_HEALTH_PORT": stringify(webserver_health_port),
         "WEBSERVER_HEALTH_PUBLISHED_PORT": stringify(webserver_health_published_port),
+        "WEBSERVER_LOG_LEVEL": stringify(webserver_log_level),
+        "WEBSERVER_LOG_FORMAT": stringify(webserver_log_format),
         "FRONTEND_HOST": stringify(frontend_host),
         "FRONTEND_PORT": stringify(frontend_port),
         "FRONTEND_PUBLISHED_PORT": stringify(frontend_published_port),
@@ -197,7 +213,10 @@ def build_env(
         "VITE_PROXY_DATA_ACCESSOR_TARGET": f"http://{db_api_host}:{db_api_port}",
         "VITE_PROXY_INDICATOR_TARGET": f"http://{indicator_host}:{indicator_port}",
         "VITE_WS_URL": f"ws://{public_host}:{webserver_ws_published_port}",
+        "INGESTION_LOG_LEVEL": stringify(ingestion_log_level),
+        "INGESTION_LOG_FORMAT": stringify(ingestion_log_format),
         "LOG_LEVEL": stringify(ingestion_log_level),
+        "LOG_FORMAT": stringify(ingestion_log_format),
         "CONSUMER_BATCH_SIZE": stringify(ingestion_batch_size),
         "CONSUMER_BLOCK_MS": stringify(ingestion_block_ms),
         "WEBSERVER_REDIS_BLOCK_MS": stringify(webserver_redis_block_ms),
@@ -214,7 +233,6 @@ def build_env(
         "BROKER_CANDLE_STREAM_MAXLEN": stringify(broker_candle_stream_maxlen),
         "BROKER_MAX_SYMBOL_STREAMS": stringify(broker_max_symbol_streams),
         "BROKER_MAX_TRENDBAR_STREAMS": stringify(broker_max_trendbar_streams),
-        "BROKER_LOG_LEVEL": stringify(broker_log_level),
         "BROKER_CTRADER_REQUEST_TIMEOUT_SECONDS": stringify(broker_request_timeout),
         "CTRADER_TOKEN_URL": "https://openapi.ctrader.com/apps/token",
         "CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS": "2628000",

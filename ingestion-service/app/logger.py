@@ -1,16 +1,15 @@
-"""Logging configuration."""
+"""Shared logging configuration for ingestion-service."""
+
 import logging
-import sys
+
+from algotrader_logger import configure_logging
 
 
-def setup_logging(log_level: str = "INFO") -> logging.Logger:
+def setup_logging(log_level: str = "INFO", log_format: str = "pretty") -> logging.Logger:
     """Configure logging for the ingestion service."""
-    level = getattr(logging, log_level.upper(), logging.INFO)
-
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        stream=sys.stdout,
+    configure_logging(
+        service_name="ingestion-service",
+        level=log_level,
+        format=log_format,
     )
-
     return logging.getLogger("ingestion-service")

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 import redis.asyncio as aioredis
+from algotrader_logger import get_logger
 from app import ENGINE_REGISTRY, get_engine_id
 from app.candles import get_candles
 from app.schemas_live import (
@@ -23,12 +24,11 @@ from app.schemas_live import (
 from app.services.candle_cache import CandleCache
 from db_accessor_client import normalize_timeframe_code
 from indicator_engine import HistoryPolicy, ParamGrid, get_update_engine
-from logger import logger
 
 if TYPE_CHECKING:
     from redis.typing import EncodableT, FieldT
 
-log = logger(__name__)
+log = get_logger(__name__)
 
 
 CANDLE_FIELDS = ["open", "high", "low", "close", "volume"]

@@ -2,12 +2,27 @@ import os
 from contextlib import asynccontextmanager
 
 import uvicorn
+from algotrader_logger import RequestLoggingMiddleware, configure_logging
 from app.routes import indicators_router, live_indicator_streams_router, system_router
 from app.services.candle_cache import CandleCache
 from app.services.live_indicator_manager import LiveIndicatorManager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from logger import LOG_LEVEL_UVICORN
+
+
+def _load_log_level() -> str:
+    return os.getenv("INDICATOR_API_LOG_LEVEL", "INFO")
+
+
+def _load_log_format() -> str:
+    return os.getenv("INDICATOR_API_LOG_FORMAT", "pretty")
+
+
+configure_logging(
+    service_name="indicator-api",
+    level=_load_log_level(),
+    format=_load_log_format(),
+)
 
 
 @asynccontextmanager
@@ -36,6 +51,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(system_router)
 app.include_router(indicators_router)
@@ -52,5 +68,6 @@ if __name__ == "__main__":
         port=port,
         reload=True,
         reload_dirs=["/app"],
-        log_level=LOG_LEVEL_UVICORN,
+        log_level=_load_log_level().lower(),
+        log_config=None,
     )

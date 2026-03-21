@@ -1,5 +1,7 @@
+import os
 from typing import Optional
 
+from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
 from app import crud, market_cache
 from app.database import get_db
 from app.schemas import CandleBatchIn, MarketIn
@@ -8,6 +10,13 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
+
+configure_logging(
+    service_name="database-accessor-api",
+    level=os.getenv("DATABASE_ACCESSOR_LOG_LEVEL", "INFO"),
+    format=os.getenv("DATABASE_ACCESSOR_LOG_FORMAT", "pretty"),
+)
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="Database Accessor API",
@@ -21,6 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.get("/")
@@ -30,6 +40,7 @@ async def root():
 
 @app.get("/health")
 async def health():
+    logger.debug("Health check requested")
     return {"status": "healthy"}
 
 
@@ -160,7 +171,7 @@ async def insert_candle_batch(data: CandleBatchIn, db: AsyncSession = Depends(ge
     total_added = 0
 
     for i in range(0, len(candles), batch_size):
-        batch = candles[i:i + batch_size]
+        batch = candles[i : i + batch_size]
         added_candles = await crud.insert_candles(db, symbol_id, batch)
 
         total_added += added_candles
