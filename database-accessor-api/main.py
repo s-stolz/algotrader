@@ -6,6 +6,7 @@ from app.schemas import CandleBatchIn, MarketIn
 from app.timeframes import TimeframeCode, timeframe_to_minutes
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 app = FastAPI(
@@ -19,6 +20,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.get("/")
@@ -121,6 +123,26 @@ async def read_aggregated_candles_by_symbol(
         end_ms,
         limit,
     )
+
+
+@app.get("/candles/{symbol}/latest")
+async def read_latest_candle_by_symbol(
+    symbol: str,
+    exchange: Optional[str] = Query(None, description="Market exchange"),
+    db: AsyncSession = Depends(get_db),
+):
+    await market_cache.ensure_market_cache(db)
+    symbol_id = market_cache.resolve_symbol_id(symbol, exchange)
+    if symbol_id is None:
+        await market_cache.refresh_market_cache(db)
+        symbol_id = market_cache.resolve_symbol_id(symbol, exchange)
+    if symbol_id is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    candle = await crud.get_latest_m1_candle(db, symbol_id)
+    if candle is None:
+        raise HTTPException(status_code=404, detail="No candles found")
+    return candle
 
 
 @app.post("/candles")
