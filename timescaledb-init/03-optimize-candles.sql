@@ -29,6 +29,12 @@ SET (
 
 SELECT add_compression_policy('candles', INTERVAL '7 days', if_not_exists => TRUE);
 
+-- Optimize latest-M1 history reads:
+-- query shape is symbol filter + timestamp DESC + limit, while selecting OHLCV.
+CREATE INDEX IF NOT EXISTS idx_candles_symbol_ts_desc_cover
+ON candles (symbol_id, timestamp_utc DESC)
+INCLUDE (open, high, low, close, volume);
+
 CREATE MATERIALIZED VIEW IF NOT EXISTS candles_agg_m5
 WITH (timescaledb.continuous) AS
 SELECT
@@ -122,7 +128,7 @@ ALTER MATERIALIZED VIEW candles_agg_d1 SET (timescaledb.materialized_only = fals
 
 SELECT add_continuous_aggregate_policy(
     'candles_agg_m5',
-    start_offset => INTERVAL '7 days',
+    start_offset => INTERVAL '90 days',
     end_offset => INTERVAL '1 minute',
     schedule_interval => INTERVAL '1 minute',
     if_not_exists => TRUE
@@ -130,7 +136,7 @@ SELECT add_continuous_aggregate_policy(
 
 SELECT add_continuous_aggregate_policy(
     'candles_agg_m15',
-    start_offset => INTERVAL '14 days',
+    start_offset => INTERVAL '90 days',
     end_offset => INTERVAL '1 minute',
     schedule_interval => INTERVAL '1 minute',
     if_not_exists => TRUE
@@ -138,7 +144,7 @@ SELECT add_continuous_aggregate_policy(
 
 SELECT add_continuous_aggregate_policy(
     'candles_agg_m30',
-    start_offset => INTERVAL '14 days',
+    start_offset => INTERVAL '180 days',
     end_offset => INTERVAL '1 minute',
     schedule_interval => INTERVAL '1 minute',
     if_not_exists => TRUE
@@ -146,7 +152,7 @@ SELECT add_continuous_aggregate_policy(
 
 SELECT add_continuous_aggregate_policy(
     'candles_agg_h1',
-    start_offset => INTERVAL '30 days',
+    start_offset => INTERVAL '180 days',
     end_offset => INTERVAL '1 minute',
     schedule_interval => INTERVAL '1 minute',
     if_not_exists => TRUE
@@ -154,7 +160,7 @@ SELECT add_continuous_aggregate_policy(
 
 SELECT add_continuous_aggregate_policy(
     'candles_agg_h4',
-    start_offset => INTERVAL '90 days',
+    start_offset => INTERVAL '365 days',
     end_offset => INTERVAL '5 minutes',
     schedule_interval => INTERVAL '1 minute',
     if_not_exists => TRUE

@@ -182,11 +182,20 @@ async def get_candles(
     cagg_view = CAGG_VIEW_BY_MINUTES.get(timeframe)
     if cagg_view:
         try:
-            return await _get_cagg_candles(session, cagg_view, symbol_id, start_ms, end_ms, limit)
-        except SQLAlchemyError:
-            return await _get_bucketed_candles(
-                session, symbol_id, timeframe, start_ms, end_ms, limit
+            candles_data = await _get_cagg_candles(
+                session, cagg_view, symbol_id, start_ms, end_ms, limit
             )
+            if candles_data:
+                return candles_data
+        except SQLAlchemyError:
+            pass
+
+        # Continuous aggregate policies only materialize a rolling time window.
+        # If older buckets are not materialized, fallback to direct bucketing
+        # to avoid returning false empty pages during lazy-loading.
+        return await _get_bucketed_candles(
+            session, symbol_id, timeframe, start_ms, end_ms, limit
+        )
 
     return await _get_bucketed_candles(session, symbol_id, timeframe, start_ms, end_ms, limit)
 
