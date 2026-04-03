@@ -13,8 +13,8 @@ logger = logging.getLogger("ingestion-service.db_client")
 class DatabaseClient:
     """Client for interacting with the database-accessor-api."""
 
-    def __init__(self, base_url: str, timeout: int = 30):
-        self._client = DatabaseAccessorClient(base_url=base_url, timeout=timeout)
+    def __init__(self, timeout: int = 30):
+        self._client = DatabaseAccessorClient(timeout=timeout)
 
     def get_markets(self) -> list[dict[str, Any]]:
         try:

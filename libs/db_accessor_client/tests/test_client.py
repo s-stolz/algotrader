@@ -1,6 +1,8 @@
 """Unit tests for the shared db accessor clients."""
 
+import os
 import unittest
+from unittest.mock import patch
 
 import httpx
 import pandas as pd
@@ -12,6 +14,20 @@ from db_accessor_client import (
 
 
 class DatabaseAccessorClientTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._env_patcher = patch.dict(
+            os.environ,
+            {
+                "DATABASE_ACCESSOR_HOST": "test",
+                "DATABASE_ACCESSOR_PORT": "80",
+            },
+            clear=False,
+        )
+        self._env_patcher.start()
+
+    def tearDown(self) -> None:
+        self._env_patcher.stop()
+
     def test_get_markets_passes_query_params(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.url.path, "/markets")
@@ -19,7 +35,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             self.assertIsNone(request.url.params.get("exchange"))
             return httpx.Response(200, json=[{"symbol_id": 1, "symbol": "EURUSD"}])
 
-        client = DatabaseAccessorClient("http://test")
+        client = DatabaseAccessorClient()
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
             markets = client.get_markets(symbol="EURUSD")
@@ -32,7 +48,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             self.assertEqual(request.url.path, "/candles/EURUSD/latest")
             return httpx.Response(200, json={"timestamp_ms": 1000, "open": 1.0})
 
-        client = DatabaseAccessorClient("http://test")
+        client = DatabaseAccessorClient()
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
             latest = client.get_latest_candle(symbol="EURUSD", timeframe="M1")
@@ -47,7 +63,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             self.assertEqual(request.url.path, "/candles/EURUSD/latest")
             return httpx.Response(404, json={"detail": "No candles found"})
 
-        client = DatabaseAccessorClient("http://test")
+        client = DatabaseAccessorClient()
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
             latest = client.get_latest_candle(symbol="EURUSD", timeframe="M1")
@@ -60,7 +76,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             self.assertEqual(request.url.path, "/candles/EURUSD/latest")
             return httpx.Response(200, json={"timestamp_ms": 999, "open": 1.1})
 
-        client = DatabaseAccessorClient("http://test")
+        client = DatabaseAccessorClient()
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
             latest = client.get_latest_m1_candle(symbol="EURUSD")
@@ -75,7 +91,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         def handler(_: httpx.Request) -> httpx.Response:
             return httpx.Response(500, text="boom")
 
-        client = DatabaseAccessorClient("http://test")
+        client = DatabaseAccessorClient()
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
             with self.assertRaises(DatabaseAccessorClientError):
@@ -93,7 +109,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
                 return httpx.Response(200, json=[{"timestamp_ms": 2000, "open": 2.0}])
             return httpx.Response(404, text="not found")
 
-        client = DatabaseAccessorClient("http://test")
+        client = DatabaseAccessorClient()
         client.client = httpx.Client(transport=httpx.MockTransport(handler))
         try:
             frames = client.get_candles_multi(symbols=["EURUSD", "GBPUSD"], timeframe="M1", limit=1)
@@ -107,6 +123,20 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
 
 class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self._env_patcher = patch.dict(
+            os.environ,
+            {
+                "DATABASE_ACCESSOR_HOST": "test",
+                "DATABASE_ACCESSOR_PORT": "80",
+            },
+            clear=False,
+        )
+        self._env_patcher.start()
+
+    def tearDown(self) -> None:
+        self._env_patcher.stop()
+
     async def test_async_get_candles_returns_payload(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.url.path, "/candles/EURUSD")
@@ -114,7 +144,7 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(request.url.params.get("limit"), "10")
             return httpx.Response(200, json=[{"timestamp_ms": 1000, "open": 1.0}])
 
-        client = AsyncDatabaseAccessorClient("http://test")
+        client = AsyncDatabaseAccessorClient()
         client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
             candles = await client.get_candles(
@@ -130,7 +160,7 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(request.url.path, "/candles/EURUSD/latest")
             return httpx.Response(200, json={"timestamp_ms": 1234, "open": 1.2})
 
-        client = AsyncDatabaseAccessorClient("http://test")
+        client = AsyncDatabaseAccessorClient()
         client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
             latest = await client.get_latest_candle(symbol="EURUSD", timeframe="M1")
@@ -146,7 +176,7 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(request.url.path, "/candles/EURUSD/latest")
             return httpx.Response(200, json={"timestamp_ms": 5678, "open": 1.3})
 
-        client = AsyncDatabaseAccessorClient("http://test")
+        client = AsyncDatabaseAccessorClient()
         client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
             latest = await client.get_latest_m1_candle(symbol="EURUSD")
@@ -167,7 +197,7 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
                 return httpx.Response(200, json=[{"timestamp_ms": 4000, "open": 4.0}])
             return httpx.Response(404, text="not found")
 
-        client = AsyncDatabaseAccessorClient("http://test")
+        client = AsyncDatabaseAccessorClient()
         client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
             frames = await client.get_candles_multi(

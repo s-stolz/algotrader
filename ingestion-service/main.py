@@ -65,7 +65,7 @@ class IngestionService:
         self.config = load_config()
         self.logger = setup_logging(self.config.log_level, self.config.log_format)
 
-        self.db_client = DatabaseClient(self.config.db_api_base_url)
+        self.db_client = DatabaseClient()
         self.broker_client = BrokerClient(
             self.config.broker_service_base_url,
             self.config.broker_account_id,

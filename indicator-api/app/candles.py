@@ -1,14 +1,13 @@
 import asyncio
-import os
 from typing import Iterable
 
 import pandas as pd
+from algotrader_logger import get_logger
 from db_accessor_client import (
     AsyncDatabaseAccessorClient,
     DatabaseAccessorClient,
     DatabaseAccessorClientError,
 )
-from algotrader_logger import get_logger
 
 log = get_logger(__name__)
 
@@ -52,14 +51,10 @@ async def get_candles(
     Concurrency controls the number of parallel requests when fetching multiple symbols.
     """
 
-    db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
-    db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
-    base_url = f"http://{db_host}:{db_port}"
-
     # Single symbol path
     if isinstance(symbol, str):
         try:
-            async with AsyncDatabaseAccessorClient(base_url=base_url, timeout=30) as client:
+            async with AsyncDatabaseAccessorClient(timeout=30) as client:
                 data = await client.get_candles(
                     symbol=symbol,
                     timeframe=timeframe,
@@ -95,7 +90,7 @@ async def get_candles(
                 return symbol, pd.DataFrame()
 
     all_dataframes = []
-    async with AsyncDatabaseAccessorClient(base_url=base_url, timeout=30) as client:
+    async with AsyncDatabaseAccessorClient(timeout=30) as client:
         tasks = [asyncio.create_task(_bounded_fetch(client, s)) for s in symbol]
         for coro in asyncio.as_completed(tasks):
             fetched_symbol, df = await coro
@@ -119,11 +114,8 @@ def _fetch_candles_sync(
     """Synchronous HTTP fetch and DataFrame construction.
     Separated to allow running in a thread from async callers.
     """
-    db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
-    db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
-    base_url = f"http://{db_host}:{db_port}"
     try:
-        with DatabaseAccessorClient(base_url=base_url, timeout=30) as client:
+        with DatabaseAccessorClient(timeout=30) as client:
             data = client.get_candles(
                 symbol=symbol,
                 timeframe=timeframe,

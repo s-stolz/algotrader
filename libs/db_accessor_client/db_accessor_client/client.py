@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any, Iterable
 
 import httpx
@@ -31,8 +32,10 @@ def _candles_to_dataframe(
 
 
 class _BaseClient:
-    def __init__(self, base_url: str) -> None:
-        self.base_url = base_url.rstrip("/")
+    def __init__(self) -> None:
+        host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
+        port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
+        self.base_url = f"http://{host}:{port}".rstrip("/")
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
@@ -41,11 +44,11 @@ class _BaseClient:
 class DatabaseAccessorClient(_BaseClient):
     """Synchronous client for database-accessor-api."""
 
-    def __init__(self, base_url: str, timeout: int = 30) -> None:
-        super().__init__(base_url)
+    def __init__(self, timeout: int = 30) -> None:
+        super().__init__()
         self.client = httpx.Client(timeout=timeout)
 
-    def __enter__(self) -> "DatabaseAccessorClient":
+    def __enter__(self) -> DatabaseAccessorClient:
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -173,8 +176,8 @@ class DatabaseAccessorClient(_BaseClient):
 class AsyncDatabaseAccessorClient(_BaseClient):
     """Asynchronous client for database-accessor-api."""
 
-    def __init__(self, base_url: str, timeout: int = 30) -> None:
-        super().__init__(base_url)
+    def __init__(self, timeout: int = 30) -> None:
+        super().__init__()
         self.client = httpx.AsyncClient(timeout=timeout)
 
     async def __aenter__(self) -> "AsyncDatabaseAccessorClient":

@@ -9,8 +9,6 @@ class Config:
     """Service configuration loaded from environment variables."""
 
     redis_url: str
-    db_api_host: str
-    db_api_port: int
     broker_service_host: str
     broker_service_port: int
     broker_account_id: str
@@ -26,11 +24,6 @@ class Config:
     recovery_backoff_max_seconds: int
 
     @property
-    def db_api_base_url(self) -> str:
-        """Full base URL for the database accessor API."""
-        return f"http://{self.db_api_host}:{self.db_api_port}"
-
-    @property
     def broker_service_base_url(self) -> str:
         """Full base URL for the broker service API."""
         return f"http://{self.broker_service_host}:{self.broker_service_port}"
@@ -42,8 +35,6 @@ def load_config() -> Config:
     log_format = os.getenv("INGESTION_LOG_FORMAT", os.getenv("LOG_FORMAT", "pretty"))
     return Config(
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-        db_api_host=os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api"),
-        db_api_port=int(os.getenv("DATABASE_ACCESSOR_PORT", "8000")),
         broker_service_host=os.getenv("BROKER_SERVICE_HOST", "broker-service"),
         broker_service_port=int(os.getenv("BROKER_SERVICE_PORT", "8050")),
         broker_account_id=os.getenv("ACCOUNT_ID", "12345"),
