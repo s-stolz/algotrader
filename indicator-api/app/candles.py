@@ -54,7 +54,7 @@ async def get_candles(
     # Single symbol path
     if isinstance(symbol, str):
         try:
-            async with AsyncDatabaseAccessorClient(timeout=30) as client:
+            async with AsyncDatabaseAccessorClient() as client:
                 data = await client.get_candles(
                     symbol=symbol,
                     timeframe=timeframe,
@@ -90,7 +90,7 @@ async def get_candles(
                 return symbol, pd.DataFrame()
 
     all_dataframes = []
-    async with AsyncDatabaseAccessorClient(timeout=30) as client:
+    async with AsyncDatabaseAccessorClient() as client:
         tasks = [asyncio.create_task(_bounded_fetch(client, s)) for s in symbol]
         for coro in asyncio.as_completed(tasks):
             fetched_symbol, df = await coro
@@ -115,7 +115,7 @@ def _fetch_candles_sync(
     Separated to allow running in a thread from async callers.
     """
     try:
-        with DatabaseAccessorClient(timeout=30) as client:
+        with DatabaseAccessorClient() as client:
             data = client.get_candles(
                 symbol=symbol,
                 timeframe=timeframe,
