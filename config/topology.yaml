@@ -8,20 +8,28 @@ services:
     host: database-accessor-api
     port: 8000
     published_port: 8000
+    log_level: INFO
+    log_format: pretty
   indicator_api:
     host: indicator-api
     port: 8010
     published_port: 8010
+    log_level: INFO
+    log_format: pretty
   broker_service:
     host: broker-service
     port: 8050
     published_port: 8050
+    log_level: INFO
+    log_format: pretty
   webserver:
     host: webserver
     ws_port: 8765
     ws_published_port: 8765
     health_port: 8080
     health_published_port: 8080
+    log_level: INFO
+    log_format: pretty
   frontend:
     host: frontend
     port: 5173
@@ -48,9 +56,10 @@ webserver:
   max_stream_length: 10000
 
 ingestion:
-  log_level: INFO
   consumer_batch_size: 100
   consumer_block_ms: 5000
+  log_level: INFO
+  log_format: pretty
 
 broker:
   redis_stream_db: 0
@@ -59,5 +68,4 @@ broker:
   candle_stream_maxlen:
   max_symbol_streams: 20
   max_trendbar_streams: 10
-  log_level: INFO
   ctrader_request_timeout_seconds: 20.0

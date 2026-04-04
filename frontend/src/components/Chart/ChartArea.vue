@@ -2,10 +2,11 @@
   <div id="chart-wrapper">
     <div ref="chartContainer" id="lightweight-chart" class="chart-container" />
 
-    <span class="legend" v-if="candlestickOhlc">
-      <span v-for="(legend, key) in candlestickOhlc" :key="key" class="legend-value">
-        {{ legend.label }}: {{ legend.value }}
-      </span>
+    <span class="legend">
+      <span class="legend-value">O: <span ref="legendOpen">-</span></span>
+      <span class="legend-value">H: <span ref="legendHigh">-</span></span>
+      <span class="legend-value">L: <span ref="legendLow">-</span></span>
+      <span class="legend-value">C: <span ref="legendClose">-</span></span>
     </span>
 
     <div>
@@ -30,6 +31,9 @@ import { timeframeToMinutes } from "@/utils/timeframes";
 import { ChartMixin } from "@/utils/chart";
 import Indicator from "@/components/Chart/Indicator/Indicator.vue";
 
+const HISTORY_LOAD_COOLDOWN_MS = 400;
+const WHEEL_SETTLE_MS = 250;
+
 export default {
   name: "ChartArea",
 
@@ -52,14 +56,24 @@ export default {
           precision: null,
         },
       },
-      crossHairTimeout: null,
-      candlestickOhlc: undefined,
+      crosshairRafId: null,
+      latestCrosshairParam: null,
+      visibleRangeRafId: null,
+      latestVisibleRange: null,
+      indicatorFlushRafId: null,
+      pendingIndicatorMessages: new Map(),
+      ohlcSeriesRef: null,
       isFetchingCandles: false,
-      candlesFetchLimit: 5000,
+      lastCandlesHistoryLoadTs: 0,
+      lastWheelTs: 0,
+      wheelSettleTimer: null,
+      candlesFetchLimit: 500,
       isFetchingIndicators: false,
-      indicatorBatchSize: 5000,
+      lastIndicatorsHistoryLoadTs: 0,
+      indicatorBatchSize: 500,
       shouldScrollToRealTime: false,
       messageHandler: null,
+      indicatorMessageHandler: null,
       candlesFetchPromise: null,
       candlesFetchKey: null,
     };
@@ -68,6 +82,12 @@ export default {
   computed: {
     currentMarketMinMove() {
       return this.currentMarketStore.min_move;
+    },
+
+    currentMarketKey() {
+      const symbol = this.currentMarketStore.symbol || "";
+      const exchange = this.currentMarketStore.exchange || "";
+      return `${symbol}|${exchange}`;
     },
   },
 
@@ -78,13 +98,14 @@ export default {
       }
     },
 
-    "currentMarketStore.symbol_id": {
-      handler(newSymbol, oldSymbol) {
+    currentMarketKey: {
+      handler(newKey, oldKey) {
+        this.indicatorsStore.unsubscribeAllLive();
         this.indicatorsStore.resetHistoryFlags();
         this.shouldScrollToRealTime = true;
         this.fetchCandlesticks();
 
-        if (newSymbol !== oldSymbol) {
+        if (newKey !== oldKey) {
           this.subscribeToCandles();
         }
       },
@@ -93,6 +114,7 @@ export default {
 
     "currentTimeframeStore.value": {
       handler(newTimeframe, oldTimeframe) {
+        this.indicatorsStore.unsubscribeAllLive();
         this.indicatorsStore.resetHistoryFlags();
         this.shouldScrollToRealTime = true;
         this.fetchCandlesticks();
@@ -111,20 +133,87 @@ export default {
 
   beforeUnmount() {
     this.unsubscribeFromCandles();
+    this.indicatorsStore.unsubscribeAllLive();
+    if (this.crosshairRafId !== null) {
+      cancelAnimationFrame(this.crosshairRafId);
+      this.crosshairRafId = null;
+    }
+    if (this.visibleRangeRafId !== null) {
+      cancelAnimationFrame(this.visibleRangeRafId);
+      this.visibleRangeRafId = null;
+    }
+    if (this.indicatorFlushRafId !== null) {
+      cancelAnimationFrame(this.indicatorFlushRafId);
+      this.indicatorFlushRafId = null;
+    }
+    this.pendingIndicatorMessages.clear();
+    if (this.indicatorMessageHandler) {
+      wsService.off('indicatorUpdate', this.indicatorMessageHandler);
+      this.indicatorMessageHandler = null;
+    }
+    if (this.wheelSettleTimer !== null) {
+      clearTimeout(this.wheelSettleTimer);
+      this.wheelSettleTimer = null;
+    }
+    if (this.$refs.chartContainer) {
+      this.$refs.chartContainer.removeEventListener('wheel', this.onWheelPassive);
+    }
   },
 
   methods: {
     async initializeChartComponent() {
       this.subscribeCrosshairMove(this.onCrosshairMove);
       this.subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChange);
+      if (this.$refs.chartContainer) {
+        this.$refs.chartContainer.addEventListener('wheel', this.onWheelPassive, { passive: true });
+      }
+      this.indicatorMessageHandler = (message) => {
+        if (!message?.clientIndicatorId) return;
+        this.pendingIndicatorMessages.set(message.clientIndicatorId, message);
+        this.scheduleIndicatorFlush();
+      };
+      wsService.on('indicatorUpdate', this.indicatorMessageHandler);
+    },
+
+    onWheelPassive() {
+      this.lastWheelTs = performance.now();
+      if (this.wheelSettleTimer !== null) {
+        clearTimeout(this.wheelSettleTimer);
+      }
+      this.wheelSettleTimer = setTimeout(() => {
+        this.wheelSettleTimer = null;
+        if (this.latestVisibleRange) {
+          this.onVisibleLogicalRangeChange(this.latestVisibleRange);
+        }
+      }, WHEEL_SETTLE_MS + 20);
+    },
+
+    scheduleIndicatorFlush() {
+      if (this.indicatorFlushRafId !== null) return;
+      this.indicatorFlushRafId = requestAnimationFrame(() => {
+        this.indicatorFlushRafId = null;
+        this.flushIndicatorUpdates();
+      });
+    },
+
+    flushIndicatorUpdates() {
+      if (this.pendingIndicatorMessages.size === 0) return;
+
+      for (const [indicatorId, message] of this.pendingIndicatorMessages.entries()) {
+        const point = this.indicatorsStore.handleLiveUpdate(message);
+        if (!point) continue;
+        this.indicatorManager.updateIndicatorSeriesPoint(indicatorId, point);
+      }
+      this.pendingIndicatorMessages.clear();
     },
 
     async fetchCandlesticks() {
-      if (this.currentMarketStore.symbol_id === null) return;
+      if (!this.currentMarketStore.symbol) return;
 
-      const symbolID = this.currentMarketStore.symbol_id;
+      const symbol = this.currentMarketStore.symbol;
+      const exchange = this.currentMarketStore.exchange;
       const timeframe = this.currentTimeframeStore.value;
-      const fetchKey = `${symbolID}:${timeframe}:${this.candlesFetchLimit}`;
+      const fetchKey = `${symbol}:${exchange || ""}:${timeframe}:${this.candlesFetchLimit}`;
 
       if (this.candlesFetchPromise && this.candlesFetchKey === fetchKey) {
         await this.candlesFetchPromise;
@@ -133,9 +222,12 @@ export default {
 
       this.candlesFetchKey = fetchKey;
       this.candlesFetchPromise = (async () => {
-        await this.candlesticksStore.fetch(symbolID, timeframe, null, null, this.candlesFetchLimit);
+        await this.candlesticksStore.fetch(symbol, timeframe, {
+          limit: this.candlesFetchLimit,
+          exchange: exchange,
+        });
         this.renderCandlesticks(this.candlesticksStore.data, { scrollToRealtime: this.shouldScrollToRealTime });
-        this.indicatorsStore.requestAllIndicators(symbolID, timeframe);
+        this.indicatorsStore.requestAllIndicators(symbol, timeframe, exchange);
       })();
 
       try {
@@ -150,7 +242,7 @@ export default {
     renderCandlesticks(data, { scrollToRealtime = false } = {}) {
       this.seriesOptions.priceFormat.minMove = this.currentMarketMinMove;
       this.seriesOptions.priceFormat.precision = Math.log10(1 / this.currentMarketMinMove);
-      this.addCandlestickData(data, this.seriesOptions);
+      this.ohlcSeriesRef = this.addCandlestickData(data, this.seriesOptions);
 
       if (scrollToRealtime) {
         this.scrollToRealTime();
@@ -169,7 +261,7 @@ export default {
       if (!symbol || timeframe === null) return;
 
       this.messageHandler = (message) => {
-        if (message.type !== 'candleUpdate' || message.symbol !== symbol) {
+        if (message.symbol !== symbol) {
           return;
         }
 
@@ -183,7 +275,7 @@ export default {
         }
       };
 
-      wsService.on('message', this.messageHandler);
+      wsService.on('candleUpdate', this.messageHandler);
 
       try {
         await wsService.send('subscribeCandles', { symbol, timeframe });
@@ -194,7 +286,7 @@ export default {
 
     async unsubscribeFromCandles() {
       if (this.messageHandler) {
-        wsService.off('message', this.messageHandler);
+        wsService.off('candleUpdate', this.messageHandler);
         this.messageHandler = null;
       }
 
@@ -261,59 +353,81 @@ export default {
 
     onCrosshairMove(param) {
       try {
-        if (this.crossHairTimeout != null) {
-          clearTimeout(this.crossHairTimeout);
-        }
-
         const validCrosshairPoint = this.isValidCrosshairPoint(param);
         if (!validCrosshairPoint) {
           return;
         }
 
-        this.crossHairTimeout = setTimeout(() => {
-          const bar = Array.from(param.seriesData.values())[0];
+        this.latestCrosshairParam = param;
+        if (this.crosshairRafId !== null) return;
 
-          if (!bar) {
-            return;
-          }
-          this.candlestickOhlc = {
-            open: { label: "O", value: bar.open },
-            high: { label: "H", value: bar.high },
-            low: { label: "L", value: bar.low },
-            close: { label: "C", value: bar.close },
-          };
+        this.crosshairRafId = requestAnimationFrame(() => {
+          this.crosshairRafId = null;
+          const current = this.latestCrosshairParam;
+          if (!current) return;
 
-          this.crossHairTimeout = null;
-        }, 10);
+          const bar = this.ohlcSeriesRef ? current.seriesData.get(this.ohlcSeriesRef) : null;
+          if (!bar) return;
+
+          this.updateLegend(bar);
+        });
       } catch (error) {
         console.log("Error in crosshair move handler:", error);
       }
     },
 
+    updateLegend(bar) {
+      if (this.$refs.legendOpen) this.$refs.legendOpen.textContent = String(bar.open ?? "-");
+      if (this.$refs.legendHigh) this.$refs.legendHigh.textContent = String(bar.high ?? "-");
+      if (this.$refs.legendLow) this.$refs.legendLow.textContent = String(bar.low ?? "-");
+      if (this.$refs.legendClose) this.$refs.legendClose.textContent = String(bar.close ?? "-");
+    },
+
     onVisibleLogicalRangeChange(newVisibleLogicalRange) {
       if (this.shouldScrollToRealTime) return;
+      this.latestVisibleRange = newVisibleLogicalRange;
+      if (this.visibleRangeRafId !== null) return;
 
-      const series = this.getSeries();
+      this.visibleRangeRafId = requestAnimationFrame(() => {
+        this.visibleRangeRafId = null;
+        const range = this.latestVisibleRange;
+        if (!range) return;
 
-      for (const [, value] of series.entries()) {
-        const barsInfo = value.series.barsInLogicalRange(newVisibleLogicalRange);
+        const ohlc = this.getSeries().get('ohlc');
+        if (!ohlc) return;
 
-        if (barsInfo === null) continue;
+        const barsInfo = ohlc.series.barsInLogicalRange(range);
+        if (barsInfo === null) return;
+        const now = performance.now();
+        if ((now - this.lastWheelTs) < WHEEL_SETTLE_MS) {
+          return;
+        }
 
-        if (barsInfo.barsBefore < 100 && !this.isFetchingCandles) {
+        if (
+          barsInfo.barsBefore < 100 &&
+          !this.isFetchingCandles &&
+          (now - this.lastCandlesHistoryLoadTs) >= HISTORY_LOAD_COOLDOWN_MS
+        ) {
+          this.lastCandlesHistoryLoadTs = now;
           this.isFetchingCandles = true;
           this.loadMoreBars();
         }
 
-        if (barsInfo.barsBefore < 100 && !this.isFetchingIndicators) {
+        if (
+          barsInfo.barsBefore < 100 &&
+          !this.isFetchingIndicators &&
+          (now - this.lastIndicatorsHistoryLoadTs) >= HISTORY_LOAD_COOLDOWN_MS
+        ) {
+          this.lastIndicatorsHistoryLoadTs = now;
           this.isFetchingIndicators = true;
           this.loadMoreIndicatorHistory();
         }
-      }
+      });
     },
 
     async loadMoreBars() {
-      const symbolID = this.currentMarketStore.symbol_id;
+      const symbol = this.currentMarketStore.symbol;
+      const exchange = this.currentMarketStore.exchange;
       const timeframe = this.currentTimeframeStore.value;
       if (!this.candlesticksStore.data.length) {
         this.isFetchingCandles = false;
@@ -321,24 +435,28 @@ export default {
       }
       const firstBarTimestampMs = this.candlesticksStore.data[0].timestamp_ms;
 
-      await this.candlesticksStore.fetch(
-        symbolID,
-        timeframe,
-        null,
-        firstBarTimestampMs,
-        this.candlesFetchLimit,
-        true,
-      );
+      await this.candlesticksStore.fetch(symbol, timeframe, {
+        endMs: firstBarTimestampMs,
+        limit: this.candlesFetchLimit,
+        append: true,
+        exchange: exchange,
+      });
       this.renderCandlesticks(this.candlesticksStore.data);
       this.isFetchingCandles = false;
     },
 
     async loadMoreIndicatorHistory() {
-      const symbolID = this.currentMarketStore.symbol_id;
+      const symbol = this.currentMarketStore.symbol;
+      const exchange = this.currentMarketStore.exchange;
       const timeframe = this.currentTimeframeStore.value;
 
       try {
-        await this.indicatorsStore.fetchOlderForAll(symbolID, timeframe, this.indicatorBatchSize);
+        await this.indicatorsStore.fetchOlderForAll(
+          symbol,
+          timeframe,
+          exchange,
+          this.indicatorBatchSize,
+        );
       } finally {
         this.isFetchingIndicators = false;
       }

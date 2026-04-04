@@ -14,22 +14,29 @@ SERVICES=(
   "webserver"
   "backtester"
 )
+ROOT_TARGET="root"
+ROOT_REQUIREMENTS="${REPO_ROOT}/requirements.root.txt"
 
 usage() {
   cat <<'EOF'
 Usage:
   ./scripts/setup_venvs.sh [--recreate] all
-  ./scripts/setup_venvs.sh [--recreate] <service> [<service> ...]
+  ./scripts/setup_venvs.sh [--recreate] <target> [<target> ...]
 
 Examples:
   ./scripts/setup_venvs.sh all
+  ./scripts/setup_venvs.sh root
   ./scripts/setup_venvs.sh broker-service webserver
   ./scripts/setup_venvs.sh --recreate all
 EOF
 }
 
-contains_service() {
+contains_target() {
   local candidate="$1"
+  local target
+  if [[ "${candidate}" == "${ROOT_TARGET}" ]]; then
+    return 0
+  fi
   local service
   for service in "${SERVICES[@]}"; do
     if [[ "${service}" == "${candidate}" ]]; then
@@ -37,6 +44,33 @@ contains_service() {
     fi
   done
   return 1
+}
+
+install_root() {
+  local venv_dir="${REPO_ROOT}/.venv"
+  local python_in_venv="${venv_dir}/bin/python"
+
+  if [[ ! -f "${ROOT_REQUIREMENTS}" ]]; then
+    echo "Missing root requirements file: ${ROOT_REQUIREMENTS}" >&2
+    return 1
+  fi
+
+  if [[ "${RECREATE}" == "1" && -d "${venv_dir}" ]]; then
+    rm -rf "${venv_dir}"
+  fi
+
+  if [[ ! -d "${venv_dir}" ]]; then
+    "${PYTHON_BIN}" -m venv "${venv_dir}"
+  fi
+
+  if ! "${python_in_venv}" -m pip install --upgrade pip setuptools wheel; then
+    echo "Warning: failed to upgrade pip/setuptools/wheel for ${ROOT_TARGET}; continuing." >&2
+  fi
+
+  (
+    cd "${REPO_ROOT}"
+    "${python_in_venv}" -m pip install -c "${SHARED_CONSTRAINTS}" -r "requirements.root.txt"
+  )
 }
 
 install_service() {
@@ -94,21 +128,25 @@ fi
 
 targets=()
 if [[ "$1" == "all" ]]; then
-  targets=("${SERVICES[@]}")
+  targets=("${ROOT_TARGET}" "${SERVICES[@]}")
 else
   for target in "$@"; do
-    if ! contains_service "${target}"; then
-      echo "Unknown service: ${target}" >&2
-      echo "Valid services: ${SERVICES[*]}" >&2
+    if ! contains_target "${target}"; then
+      echo "Unknown target: ${target}" >&2
+      echo "Valid targets: ${ROOT_TARGET} ${SERVICES[*]}" >&2
       exit 1
     fi
     targets+=("${target}")
   done
 fi
 
-for service in "${targets[@]}"; do
-  echo "==> Setting up ${service}"
-  install_service "${service}"
+for target in "${targets[@]}"; do
+  echo "==> Setting up ${target}"
+  if [[ "${target}" == "${ROOT_TARGET}" ]]; then
+    install_root
+  else
+    install_service "${target}"
+  fi
 done
 
 echo "All requested environments are ready."

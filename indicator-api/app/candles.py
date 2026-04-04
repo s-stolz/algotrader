@@ -1,30 +1,30 @@
 import asyncio
-import os
-from typing import Dict, Iterable
+from typing import Iterable
 
 import pandas as pd
+from algotrader_logger import get_logger
 from db_accessor_client import (
     AsyncDatabaseAccessorClient,
     DatabaseAccessorClient,
     DatabaseAccessorClientError,
 )
-from logger import logger
 
-log = logger(__name__)
+log = get_logger(__name__)
 
 
 def get_candles_sync(
-    symbol_ids_mapping: Dict[str, int],
+    symbols: Iterable[str],
     timeframe: str,
     start_ms: int | None,
     end_ms: int | None,
     limit: int | None,
+    exchange: str | None = None,
 ) -> pd.DataFrame:
     """Synchronous wrapper around the async get_candles function."""
     all_dataframes = []
 
-    for symbol, symbol_id in symbol_ids_mapping.items():
-        df = _fetch_candles_sync(symbol_id, timeframe, start_ms, end_ms, limit)
+    for symbol in symbols:
+        df = _fetch_candles_sync(symbol, timeframe, start_ms, end_ms, limit, exchange)
 
         df.columns = pd.MultiIndex.from_product([df.columns, [symbol]])
         all_dataframes.append(df)
@@ -35,69 +35,68 @@ def get_candles_sync(
 
 
 async def get_candles(
-    symbol_id: int | Iterable[int],
+    symbol: str | Iterable[str],
     timeframe: str,
     start_ms: int | None,
     end_ms: int | None,
     limit: int | None,
+    exchange: str | None = None,
     concurrency: int = 10,
 ) -> pd.DataFrame:
     """Fetch candles for one or many symbols.
 
-    - If 'symbol_id' is an int: returns a single DataFrame.
-    - If 'symbol_id' is an iterable of ints: returns a MultiIndex DataFrame
+    - If 'symbol' is a string: returns a single DataFrame.
+    - If 'symbol' is an iterable of strings: returns a MultiIndex DataFrame
 
     Concurrency controls the number of parallel requests when fetching multiple symbols.
     """
 
-    db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
-    db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
-    base_url = f"http://{db_host}:{db_port}"
-
     # Single symbol path
-    if isinstance(symbol_id, int):
+    if isinstance(symbol, str):
         try:
-            async with AsyncDatabaseAccessorClient(base_url=base_url, timeout=30) as client:
+            async with AsyncDatabaseAccessorClient() as client:
                 data = await client.get_candles(
-                    symbol_id=symbol_id,
+                    symbol=symbol,
                     timeframe=timeframe,
+                    exchange=exchange,
                     start_ms=start_ms,
                     end_ms=end_ms,
                     limit=limit,
                 )
-            return _candles_to_dataframe(data)
+            return data
         except DatabaseAccessorClientError as e:
-            log.error(f"Error in get_candles for symbol {symbol_id}: {e}")
+            log.error(f"Error in get_candles for symbol {symbol}: {e}")
             return pd.DataFrame()
 
     # Multiple symbols path
     semaphore = asyncio.Semaphore(concurrency)
 
     async def _bounded_fetch(
-        client: AsyncDatabaseAccessorClient, symbol_id: int
-    ) -> tuple[int, pd.DataFrame]:
+        client: AsyncDatabaseAccessorClient, symbol: str
+    ) -> tuple[str, pd.DataFrame]:
         async with semaphore:
             try:
                 data = await client.get_candles(
-                    symbol_id=symbol_id,
+                    symbol=symbol,
                     timeframe=timeframe,
+                    exchange=exchange,
                     start_ms=start_ms,
                     end_ms=end_ms,
                     limit=limit,
                 )
-                return symbol_id, _candles_to_dataframe(data)
+                return symbol, data
             except DatabaseAccessorClientError as e:
-                log.error(f"Error in get_candles for symbol {symbol_id}: {e}")
-                return symbol_id, pd.DataFrame()
+                log.error(f"Error in get_candles for symbol {symbol}: {e}")
+                return symbol, pd.DataFrame()
 
     all_dataframes = []
-    async with AsyncDatabaseAccessorClient(base_url=base_url, timeout=30) as client:
-        tasks = [asyncio.create_task(_bounded_fetch(client, s)) for s in symbol_id]
+    async with AsyncDatabaseAccessorClient() as client:
+        tasks = [asyncio.create_task(_bounded_fetch(client, s)) for s in symbol]
         for coro in asyncio.as_completed(tasks):
-            fetched_symbol_id, df = await coro
-            df.columns = pd.MultiIndex.from_product([df.columns, [fetched_symbol_id]])
+            fetched_symbol, df = await coro
+            df.columns = pd.MultiIndex.from_product([df.columns, [fetched_symbol]])
             all_dataframes.append(df)
-            log.debug(f"Fetched candles for symbol {fetched_symbol_id}:\n{df}")
+            log.debug(f"Fetched candles for symbol {fetched_symbol}:\n{df}")
 
     if not all_dataframes:
         return pd.DataFrame()
@@ -105,36 +104,27 @@ async def get_candles(
 
 
 def _fetch_candles_sync(
-    symbol_id: int,
+    symbol: str,
     timeframe: str,
     start_ms: int | None,
     end_ms: int | None,
     limit: int | None,
+    exchange: str | None = None,
 ) -> pd.DataFrame:
     """Synchronous HTTP fetch and DataFrame construction.
     Separated to allow running in a thread from async callers.
     """
-    db_host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
-    db_port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
-    base_url = f"http://{db_host}:{db_port}"
     try:
-        with DatabaseAccessorClient(base_url=base_url, timeout=30) as client:
+        with DatabaseAccessorClient() as client:
             data = client.get_candles(
-                symbol_id=symbol_id,
+                symbol=symbol,
                 timeframe=timeframe,
+                exchange=exchange,
                 start_ms=start_ms,
                 end_ms=end_ms,
                 limit=limit,
             )
-        return _candles_to_dataframe(data)
+        return data
     except DatabaseAccessorClientError as e:
-        log.error(f"Error in _fetch_candles_sync for symbol {symbol_id}: {e}")
+        log.error(f"Error in _fetch_candles_sync for symbol {symbol}: {e}")
         return pd.DataFrame()
-
-
-def _candles_to_dataframe(data: list[dict]) -> pd.DataFrame:
-    df = pd.DataFrame(data)
-    if not df.empty and "timestamp_ms" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp_ms"], unit="ms", utc=True)  # type: ignore[index]
-        df.set_index("timestamp", inplace=True)
-    return df

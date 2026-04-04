@@ -1,44 +1,42 @@
 import os
 from contextlib import asynccontextmanager
-from typing import Optional
 
-import app.markets as markets
 import uvicorn
-from app import get_available_indicators, get_indicator_by_id, get_indicator_metadata
-from app.candles import get_candles
-from app.indicators.base import execute_indicator
-from app.markets import load_symbols
-from app.schemas import IndicatorParameters
-from app.utils import (
-    adjust_fetch_bounds,
-    estimate_warmup,
-    format_indicator_response,
-    prepare_parameters,
-    trim_indicator_output,
-)
-from db_accessor_client import normalize_timeframe_code, timeframe_to_minutes
-from fastapi import Body, FastAPI, Query
+from algotrader_logger import RequestLoggingMiddleware, configure_logging
+from app.routes import indicators_router, live_indicator_streams_router, system_router
+from app.services.candle_cache import CandleCache
+from app.services.live_indicator_manager import LiveIndicatorManager
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from logger import LOG_LEVEL_UVICORN, logger
 
-log = logger(__name__)
+
+def _load_log_level() -> str:
+    return os.getenv("INDICATOR_API_LOG_LEVEL", "INFO")
+
+
+def _load_log_format() -> str:
+    return os.getenv("INDICATOR_API_LOG_FORMAT", "pretty")
+
+
+configure_logging(
+    service_name="indicator-api",
+    level=_load_log_level(),
+    format=_load_log_format(),
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan context for startup/shutdown tasks.
-
-    Preloads the global SYMBOL_MAPPING before serving requests so symbol ID
-    lookups are fast and avoid per-request network calls. Failures are logged
-    but don't abort startup.
-    """
+    cache_ttl = int(os.getenv("INDICATOR_HISTORY_CACHE_TTL_SECONDS", "180"))
+    cache_entries = int(os.getenv("INDICATOR_HISTORY_CACHE_MAX_ENTRIES", "128"))
+    app.state.candle_cache = CandleCache(ttl_seconds=cache_ttl, max_entries=cache_entries)
+    app.state.live_indicator_manager = LiveIndicatorManager(app.state.candle_cache)
     try:
-        await load_symbols()
-        log.info("Loaded %d symbols into cache", len(markets.SYMBOL_MAPPING))
-    except Exception as exc:
-        log.warning("Failed to preload symbols: %s", exc)
-
-    yield
+        yield
+    finally:
+        manager = getattr(app.state, "live_indicator_manager", None)
+        if manager is not None:
+            await manager.shutdown()
 
 
 app = FastAPI(
@@ -47,96 +45,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
-
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the Indicator API"}
-
-
-@app.get("/indicators")
-async def get_indicators() -> list[dict]:
-    indicators = get_available_indicators()
-    log.debug(f"Available indicators: {indicators}")
-    return indicators
-
-
-@app.post("/indicators/{indicator_id}")
-async def run_indicator(
-    indicator_id: int,
-    symbol_id: int = Query(..., description="The ID of the market symbol"),
-    timeframe: str = Query(..., description="Timeframe code (e.g. M1, H1)"),
-    start_ms: Optional[int] = Query(None, description="Start timestamp in epoch ms (UTC)"),
-    end_ms: Optional[int] = Query(None, description="End timestamp in epoch ms (UTC)"),
-    limit: Optional[int] = Query(None, description="Maximum number of records to return"),
-    body: Optional[IndicatorParameters] = Body(None),
-) -> dict:
-    timeframe_code = normalize_timeframe_code(timeframe)
-    timeframe_minutes = timeframe_to_minutes(timeframe_code)
-    metadata = get_indicator_metadata(indicator_id)
-    query_params = {
-        "symbol_id": symbol_id,
-        "timeframe": timeframe_code,
-        "start_ms": start_ms,
-        "end_ms": end_ms,
-        "limit": limit,
-    }
-
-    custom_parameters = getattr(body, "parameters", {})
-    parameters = prepare_parameters(metadata, custom_parameters, **query_params)
-
-    # Determine warmup period to fetch extra history so user limit/start_date are honored.
-    warmup = estimate_warmup(metadata, parameters)
-
-    fetch_start, fetch_limit, orig_start, orig_limit = adjust_fetch_bounds(
-        start_ms=start_ms,
-        limit=limit,
-        timeframe=timeframe_minutes,
-        warmup=warmup,
-    )
-
-    log.info(
-        f"Adjusted fetch bounds: start_ms={fetch_start}, limit={fetch_limit} (orig_start={orig_start}, orig_limit={orig_limit}, warmup={warmup})"
-    )
-
-    # Fetch with expanded bounds
-    candles = await get_candles(
-        symbol_id=symbol_id,
-        timeframe=timeframe_code,
-        start_ms=fetch_start,
-        end_ms=end_ms,
-        limit=fetch_limit,
-    )
-
-    log.debug(f"Fetched candles:\n{candles}")
-
-    indicator_cls = get_indicator_by_id(indicator_id)
-    indicator_raw = execute_indicator(
-        indicator_cls,
-        candles,
-        **parameters,
-    )
-
-    indicator_data = trim_indicator_output(
-        indicator_raw,
-        original_start_ms=orig_start,
-        original_limit=orig_limit,
-    )
-
-    response = format_indicator_response(indicator_data, metadata)
-    return response
+app.include_router(system_router)
+app.include_router(indicators_router)
+app.include_router(live_indicator_streams_router)
 
 
 if __name__ == "__main__":
@@ -149,5 +68,6 @@ if __name__ == "__main__":
         port=port,
         reload=True,
         reload_dirs=["/app"],
-        log_level=LOG_LEVEL_UVICORN,
+        log_level=_load_log_level().lower(),
+        log_config=None,
     )

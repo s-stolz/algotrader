@@ -75,8 +75,12 @@ export default {
   },
 
   computed: {
-    symbolID() {
-      return this.currentMarketStore.symbol_id;
+    symbol() {
+      return this.currentMarketStore.symbol;
+    },
+
+    exchange() {
+      return this.currentMarketStore.exchange;
     },
 
     timeframe() {
@@ -94,10 +98,14 @@ export default {
     },
 
     isStringWithOptions(parameter) {
-      return parameter.type === "string" && parameter.options !== null;
+      return (
+        parameter.type === "string" &&
+        Array.isArray(parameter.options) &&
+        parameter.options.length > 0
+      );
     },
     isStringWithoutOptions(parameter) {
-      return parameter.type === "string" && parameter.options === null;
+      return parameter.type === "string" && !Array.isArray(parameter.options);
     },
     isNumber(parameter) {
       return parameter.type === "int" || parameter.type === "float";
@@ -119,10 +127,13 @@ export default {
       this.updateIndicatorStoreParameters(this.indicator._id, customParameters);
 
       const queryParams = {
-        symbol_id: this.symbolID,
+        symbol: this.symbol,
         timeframe: this.timeframe,
-        limit: 5000,
+        limit: 500,
       };
+      if (this.exchange) {
+        queryParams.exchange = this.exchange;
+      }
       const body = {
         parameters: customParameters,
       };

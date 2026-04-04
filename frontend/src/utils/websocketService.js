@@ -28,7 +28,9 @@ class WebSocketService {
 
         this.ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
-            emitter.emit("message", message);
+            if (message && message.type) {
+                emitter.emit(message.type, message);
+            }
         };
 
         this.ws.onerror = (error) => {

@@ -2,8 +2,8 @@ services:
   database-accessor-api:
     container_name: database-accessor-api
     build:
-      context: ./database-accessor-api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: database-accessor-api/Dockerfile
     ports:
       - "${DATABASE_ACCESSOR_PUBLISHED_PORT:-8000}:${DATABASE_ACCESSOR_PORT:-8000}"
     volumes:
@@ -64,6 +64,14 @@ services:
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./timescaledb-init:/docker-entrypoint-initdb.d
+    command:
+      [
+        "postgres",
+        "-c",
+        "max_locks_per_transaction=128",
+        "-c",
+        "log_min_messages=warning"
+      ]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
@@ -74,8 +82,8 @@ services:
   broker-service:
     container_name: broker-service
     build:
-      context: ./broker-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: broker-service/Dockerfile
     ports:
       - "${BROKER_SERVICE_PUBLISHED_PORT:-8050}:${BROKER_SERVICE_PORT:-8050}"
     volumes:
@@ -127,8 +135,8 @@ services:
   webserver:
     container_name: webserver
     build:
-      context: ./webserver
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: webserver/Dockerfile
     ports:
       - ${WEBSERVER_WS_PUBLISHED_PORT:-8765}:${WEBSERVER_WS_PORT:-8765}
       - ${WEBSERVER_HEALTH_PUBLISHED_PORT:-8080}:${WEBSERVER_HEALTH_PORT:-8080}
@@ -173,7 +181,7 @@ services:
       - "${REDIS_PUBLISHED_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --loglevel warning
     restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

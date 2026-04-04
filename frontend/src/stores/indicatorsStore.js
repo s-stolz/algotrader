@@ -1,9 +1,14 @@
+import { wsService } from "@/utils/websocketService";
 import { defineStore } from "pinia";
+import { markRaw } from "vue";
+
+const INITIAL_INDICATOR_LIMIT = 500;
 
 export const useIndicatorsStore = defineStore('indicators', {
   state: () => ({
     indicators: new Map(),
     paneCount: 1,
+    liveSubscriptions: new Map(),
   }),
 
   getters: {
@@ -16,19 +21,22 @@ export const useIndicatorsStore = defineStore('indicators', {
     resetHistoryFlags() {
       for (const indicator of this.all) {
         indicator.hasExpandedHistory = false;
-        indicator.currentLimit = 5000;
+        indicator.currentLimit = INITIAL_INDICATOR_LIMIT;
       }
     },
 
-    requestAllIndicators(symbolID, timeframe) {
+    requestAllIndicators(symbol, timeframe, exchange = null) {
       for (const indicator of this.all) {
         if (indicator.hasExpandedHistory) continue;
 
         const queryParams = {
-          symbol_id: symbolID,
+          symbol: symbol,
           timeframe: timeframe,
-          limit: indicator.currentLimit || 5000,
+          limit: indicator.currentLimit || INITIAL_INDICATOR_LIMIT,
         };
+        if (exchange) {
+          queryParams.exchange = exchange;
+        }
 
         const body = {
           parameters: this.extractParameterValues(indicator.parameters),
@@ -38,13 +46,16 @@ export const useIndicatorsStore = defineStore('indicators', {
       }
     },
 
-    async fetchOlderForAll(symbolID, timeframe, batchSize = 5000) {
+    async fetchOlderForAll(symbol, timeframe, exchange = null, batchSize = 5000) {
       for (const indicator of this.all) {
         if (!indicator.data.length) continue;
         indicator.hasExpandedHistory = true;
 
         const earliestTs = indicator.data[0].timestamp_ms;
-        const queryParams = { symbol_id: symbolID, timeframe, end_ms: earliestTs, limit: batchSize };
+        const queryParams = { symbol: symbol, timeframe, end_ms: earliestTs, limit: batchSize };
+        if (exchange) {
+          queryParams.exchange = exchange;
+        }
         const body = { parameters: this.extractParameterValues(indicator.parameters) };
 
         await this.requestIndicatorPrepend(indicator._id, indicator.indicatorId, queryParams, body);
@@ -53,6 +64,10 @@ export const useIndicatorsStore = defineStore('indicators', {
 
     async requestIndicator(_id, indicatorId, query, body = {}) {
       const params = new URLSearchParams(query).toString();
+
+      if (_id && this.liveSubscriptions.has(_id)) {
+        await this.unsubscribeIndicatorLive(_id);
+      }
 
       try {
         const response = await fetch(`/api/indicator-api/indicators/${indicatorId}?${params}`, {
@@ -65,13 +80,29 @@ export const useIndicatorsStore = defineStore('indicators', {
 
         const { data } = await response.json();
 
-        this.handleMessageIndicatorInfo({
+        const localId = this.handleMessageIndicatorInfo({
           _id,
           indicatorId,
           ...data,
         });
+
+        const activeId = localId || _id;
+        const indicator = this.indicators.get(activeId);
+
+        if (indicator && query.symbol && query.timeframe) {
+          await this.subscribeIndicatorLive(activeId, {
+            symbol: query.symbol,
+            timeframe: query.timeframe,
+            exchange: query.exchange || null,
+            indicatorId: indicator.indicatorId,
+            parameters: this.extractParameterValues(indicator.parameters),
+          });
+        }
+
+        return activeId;
       } catch (error) {
         console.error("Error fetching indicator:", error);
+        return null;
       }
     },
 
@@ -100,20 +131,6 @@ export const useIndicatorsStore = defineStore('indicators', {
       }
     },
 
-    // mergePrepend(existing, incoming) {
-    //   if (!Array.isArray(incoming) || incoming.length === 0) return existing;
-
-    //   const existingSet = new Set(existing.map(d => d.timestamp));
-    //   const uniqueOlder = incoming.filter(d => !existingSet.has(d.timestamp));
-
-    //   if (!uniqueOlder.length) return existing;
-
-    //   const merged = [...incoming, ...existing];
-    //   merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    //   return merged;
-    // },
-
-    // Data processing
     handleMessageIndicatorInfo(indicatorResponse) {
       const {
         _id,
@@ -162,10 +179,12 @@ export const useIndicatorsStore = defineStore('indicators', {
         info: { ...info },
         paneIndex: info.overlay ? 0 : this.paneCount++,
         paneHtmlElement: null,
-        data: [...data],
+        data: markRaw([...data]),
+        lastLivePoint: null,
+        dataVersion: 0,
         parameters: finalParameters,
         styles: this.createStyles(info.outputs || {}),
-        currentLimit: data.length || 5000,
+        currentLimit: data.length || INITIAL_INDICATOR_LIMIT,
         hasExpandedHistory: false,
       };
       this.indicators.set(_id, indicator);
@@ -178,8 +197,102 @@ export const useIndicatorsStore = defineStore('indicators', {
 
       if (!indicator) return;
 
-      indicator.data = Array.isArray(newData) ? [...newData] : [];
+      indicator.data = markRaw(Array.isArray(newData) ? [...newData] : []);
       indicator.currentLimit = indicator.data.length;
+      indicator.lastLivePoint = indicator.data.length ? indicator.data[indicator.data.length - 1] : null;
+      indicator.dataVersion = (indicator.dataVersion || 0) + 1;
+    },
+
+    handleLiveUpdate(message) {
+      if (!message || message.type !== 'indicatorUpdate') return null;
+
+      const _id = message.clientIndicatorId;
+      const indicator = this.indicators.get(_id);
+      if (!indicator) return null;
+
+      const timestampMs = Number(message.timestamp_ms);
+      if (!Number.isFinite(timestampMs)) return null;
+
+      const values = message.values && typeof message.values === 'object' ? message.values : {};
+      const point = { timestamp_ms: timestampMs, ...values };
+
+      const lastLivePoint = indicator.lastLivePoint;
+      if (!lastLivePoint) {
+        indicator.lastLivePoint = point;
+        return point;
+      }
+
+      if (Number(lastLivePoint.timestamp_ms) === timestampMs) {
+        const merged = { ...lastLivePoint, ...point };
+        indicator.lastLivePoint = merged;
+        return merged;
+      }
+
+      if (Number(lastLivePoint.timestamp_ms) < timestampMs) {
+        indicator.lastLivePoint = point;
+        return point;
+      }
+
+      return null;
+    },
+
+    async subscribeIndicatorLive(_id, { symbol, timeframe, exchange = null, indicatorId, parameters = {} }) {
+      if (!_id || !symbol || !timeframe || indicatorId === null || indicatorId === undefined) return;
+
+      const payload = {
+        symbol,
+        timeframe,
+        exchange,
+        indicatorId,
+        parameters,
+        clientIndicatorId: _id,
+      };
+
+      this.liveSubscriptions.set(_id, payload);
+      try {
+        await wsService.send('subscribeIndicator', payload);
+      } catch (error) {
+        console.error('Failed to subscribe indicator stream:', error);
+      }
+    },
+
+    async unsubscribeIndicatorLive(_id) {
+      const payload = this.liveSubscriptions.get(_id);
+      if (!payload) return;
+
+      try {
+        await wsService.send('unsubscribeIndicator', payload);
+      } catch (error) {
+        console.error('Failed to unsubscribe indicator stream:', error);
+      } finally {
+        this.liveSubscriptions.delete(_id);
+      }
+    },
+
+    async unsubscribeAllLive() {
+      const subscriptions = Array.from(this.liveSubscriptions.entries());
+      for (const [id, payload] of subscriptions) {
+        try {
+          await wsService.send('unsubscribeIndicator', payload);
+        } catch (error) {
+          console.error('Failed to unsubscribe indicator stream:', error);
+        } finally {
+          this.liveSubscriptions.delete(id);
+        }
+      }
+    },
+
+    async resubscribeAllLive(symbol, timeframe, exchange = null) {
+      await this.unsubscribeAllLive();
+      for (const indicator of this.all) {
+        await this.subscribeIndicatorLive(indicator._id, {
+          symbol,
+          timeframe,
+          exchange,
+          indicatorId: indicator.indicatorId,
+          parameters: this.extractParameterValues(indicator.parameters),
+        });
+      }
     },
 
     updateIndicatorParameters(_id, newParameters) {
@@ -200,6 +313,9 @@ export const useIndicatorsStore = defineStore('indicators', {
     removeIndicator(_id) {
       const indicator = this.indicators.get(_id);
       if (!indicator) return;
+
+      this.unsubscribeIndicatorLive(_id);
+
       const paneIndex = indicator.paneIndex;
       if (paneIndex > 0) {
         this.updateIndicatorsPaneIndex(paneIndex);
@@ -225,6 +341,7 @@ export const useIndicatorsStore = defineStore('indicators', {
     },
 
     clear() {
+      void this.unsubscribeAllLive();
       this.indicators.clear();
       this.paneCount = 1;
     },

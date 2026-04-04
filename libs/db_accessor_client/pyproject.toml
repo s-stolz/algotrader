@@ -9,6 +9,7 @@ description = "Shared HTTP client for database-accessor-api"
 requires-python = ">=3.8"
 dependencies = [
     "httpx>=0.28.1",
+    "pandas>=2.3.0",
 ]
 
 [tool.setuptools.packages.find]

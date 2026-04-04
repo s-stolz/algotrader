@@ -1,3 +1,4 @@
+-e ../libs/algotrader_logger
 -e ../libs/db_accessor_client
 redis>=7.1.0
 httpx>=0.28.1

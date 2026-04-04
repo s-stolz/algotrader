@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: algotrader-logger
+Version: 0.1.0
+Summary: Shared logging package for algotrader Python services
+Requires-Python: >=3.8

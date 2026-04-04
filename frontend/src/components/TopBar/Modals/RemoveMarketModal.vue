@@ -95,9 +95,15 @@ export default {
 
     async tryRemoveMarketCandles() {
       try {
-        const response = await fetch(`/api/data-accessor/candles/${this.market.symbol_id}`, {
-          method: "DELETE",
-        });
+        const params = new URLSearchParams();
+        if (this.market.exchange) {
+          params.append("exchange", this.market.exchange);
+        }
+        const query = params.toString();
+        const response = await fetch(
+          `/api/data-accessor/candles/${this.market.symbol}${query ? `?${query}` : ""}`,
+          { method: "DELETE" },
+        );
 
         return response;
       } catch (error) {
@@ -120,9 +126,15 @@ export default {
 
     async tryRemoveMarket() {
       try {
-        const response = await fetch(`/api/data-accessor/markets/${this.market.symbol_id}`, {
-          method: "DELETE",
-        });
+        const params = new URLSearchParams();
+        if (this.market.exchange) {
+          params.append("exchange", this.market.exchange);
+        }
+        const query = params.toString();
+        const response = await fetch(
+          `/api/data-accessor/markets/${this.market.symbol}${query ? `?${query}` : ""}`,
+          { method: "DELETE" },
+        );
 
         return response;
       } catch (error) {

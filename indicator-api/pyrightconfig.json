@@ -1,0 +1,8 @@
+{
+  "typeCheckingMode": "basic",
+  "extraPaths": [
+    "../libs/algotrader_logger",
+    "../libs/indicator_engine",
+    "../libs/db_accessor_client"
+  ]
+}

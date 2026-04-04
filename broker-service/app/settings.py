@@ -96,6 +96,7 @@ class Settings:
     broker_token_refresh_retry_delay_seconds: int = 30
     broker_token_refresh_max_retries: int = 3
     log_level: str = "INFO"
+    log_format: str = "pretty"
     ctrader_request_timeout_seconds: float = 20.0
 
     @classmethod
@@ -126,6 +127,7 @@ class Settings:
                 3,
             ),
             log_level=_read_str("BROKER_LOG_LEVEL", "INFO"),
+            log_format=_read_str("BROKER_LOG_FORMAT", "pretty"),
             ctrader_request_timeout_seconds=_read_float(
                 "BROKER_CTRADER_REQUEST_TIMEOUT_SECONDS", 20.0
             ),

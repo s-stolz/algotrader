@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "indicator-engine"
+version = "0.0.0"
+description = "NumPy-first indicator engine"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=2.2.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/s-stolz/algotrader"
+Repository = "https://github.com/s-stolz/algotrader"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["indicator_engine*"]

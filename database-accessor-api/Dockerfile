@@ -2,12 +2,14 @@ FROM python:3.11-alpine
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache curl
 
-WORKDIR /app
+WORKDIR /workspace/database-accessor-api
 
-COPY requirements.txt .
+COPY database-accessor-api/requirements.txt /workspace/database-accessor-api/requirements.txt
+COPY libs/algotrader_logger /workspace/libs/algotrader_logger
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+WORKDIR /app
+COPY database-accessor-api /app
 
 EXPOSE 8000
 

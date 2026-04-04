@@ -28,25 +28,9 @@ def get(df: pd.DataFrame, symbol: Optional[str] = None) -> pd.DataFrame:
         return df
 
 
-def get_symbol_id(symbols: list[str]) -> list[int]:
-    """
-    Retrieve the unique identifier for each symbol in the provided list.
-    Args:
-        symbols (list[str]): A list of symbol strings for which to retrieve IDs.
-    Returns:
-        list[int]: A list of unique identifiers corresponding to the provided symbols.
-    """
-    symbol_ids = []
-    for symbol in symbols:
-        symbol_id = Database.get_symbol_id(symbol)
-        if symbol_id:
-            symbol_ids.append(symbol_id)
-    return symbol_ids
-
-
 def get_candles(
         feed: str,
-        symbol_ids: list[int],
+        symbols: list[str],
         timeframe: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None
@@ -56,7 +40,7 @@ def get_candles(
 
     Parameters:
         feed (str): The data source, e.g., "db".
-        symbol_ids (list[int]): List of symbol IDs to retrieve data for.
+        symbols (list[str]): List of symbols to retrieve data for.
         timeframe (str): Timeframe code (e.g., "M1").
         start_date (optional): The start date for the data retrieval.
         end_date (optional): The end date for the data retrieval.
@@ -68,21 +52,16 @@ def get_candles(
     all_dataframes = []
 
     if feed == "db":
-        for symbol_id in symbol_ids:
-            symbol = Database.get_market(symbol_id)
-
-            if symbol is None:
-                raise ValueError(f"symbol_id {symbol_id} does not exist!")
-
+        for symbol in symbols:
             candles = Database.get_candles(
-                symbol_id, timeframe, start_date, end_date)
+                symbol, timeframe, start_date, end_date)
             df = pd.DataFrame(data=candles, columns=[
                               'timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
             df.set_index('timestamp', inplace=True)
 
-            df.columns = pd.MultiIndex.from_product([df.columns, [symbol[0]]])
+            df.columns = pd.MultiIndex.from_product([df.columns, [symbol]])
 
             all_dataframes.append(df)
 
