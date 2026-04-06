@@ -11,12 +11,13 @@ This repo is a multi-service trading platform.
 - `docker-compose.yml`: local orchestration entrypoint.
 
 ## Build, Test, and Development Commands
-- `make up`: generate config env files and run full stack (`docker compose up --build`).
+- `make up`: generate config env files and run full stack (`docker compose up`).
+- `make up-build`: generate config env files and run full stack with image rebuilds (`docker compose up --build`).
 - `make config`: regenerate config env files from `config/topology.yaml` and `config/.env.secrets.local`.
-- `docker compose up --build`: build and run the full stack (run `make config` first).
-- `npm --workspace frontend run dev`: start frontend dev server.
-- `npm --workspace frontend run build`: production frontend build.
-- `npm --workspace frontend run lint`: lint JS/Vue code.
+- `docker compose --env-file config/.env.shared up --build`: build and run the full stack directly (run `make config` first).
+- `cd frontend && npm run dev`: start frontend dev server.
+- `cd frontend && npm run build`: production frontend build.
+- `cd frontend && npm run lint`: lint JS/Vue code.
 - `./lint-python.sh`: run Ruff and Black checks across Python services.
 - `cd backtester && python main.py`: run backtester locally.
 - `cd broker-service && uvicorn app.main:app --host 0.0.0.0 --port 8050`: run broker API locally.
@@ -29,10 +30,15 @@ This repo is a multi-service trading platform.
 ## Testing Guidelines
 - Automated tests currently include:
   - `backtester/test/signals/test_signals.py` (unittest)
+  - `ingestion-service/tests/` (unittest)
   - `broker-service/tests/` (unittest; structure mirrors `broker-service/app/`)
+  - `libs/indicator_engine/tests/` (unittest)
 - Run:
-  - `python -m unittest backtester/test/signals/test_signals.py`
+  - `make test backtester`
+  - `make test ingestion-service`
   - `cd broker-service && python -m unittest discover -s tests -p "test_*.py"`
+  - `make test indicator_engine`
+  - `make test` (run all configured backend test suites)
 - For new Python tests, prefer `test_*.py` naming and colocate under each service’s `test/` or `tests/` directory mirroring source structure.
 - Add API contract/integration tests for new endpoints and stream behavior.
 

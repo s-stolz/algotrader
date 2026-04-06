@@ -36,7 +36,7 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
    ```sh
    cp config/.env.secrets.example config/.env.secrets.local
    ```
-3. Generate the root `.env` from the tracked topology + local secrets:
+3. Generate runtime env files from the tracked topology + local secrets:
    ```sh
    python scripts/generate_env.py
    ```
@@ -45,7 +45,7 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 
 ## Running with Docker Compose
 
-Default workflow (auto-regenerates `.env` before Compose):
+Default workflow (auto-regenerates config env files before Compose):
    ```sh
    make up
    ```
@@ -53,7 +53,7 @@ Default workflow (auto-regenerates `.env` before Compose):
 Direct Docker Compose usage:
    ```sh
    python scripts/generate_env.py --force
-   docker compose up --build
+   docker compose --env-file config/.env.shared up --build
    ```
 This will build and start all necessary services as defined in the `docker-compose.yml` file.
 
