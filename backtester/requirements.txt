@@ -1,7 +1,3 @@
-python-decouple>=3.8
 pandas>=2.1.0
 numpy>=1.24.0
-websockets>=12.0
 watchdog>=3.0.0
-requests>=2.31.0
-pandas_ta>=0.4.67b0

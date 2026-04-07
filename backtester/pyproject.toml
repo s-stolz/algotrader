@@ -11,13 +11,9 @@ license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-  "python-decouple==3.8",
   "pandas==2.1.4",
   "numpy==1.26.3",
-  "websocket==0.2.1",
-  "websocket-client==1.7.0",
   "watchdog",
-  "pandas_ta",
 ]
 
 [project.urls]

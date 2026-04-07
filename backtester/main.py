@@ -1,22 +1,11 @@
 import logging
-import threading
 
-from websocket_client import WebSocketClient
-
-logging.basicConfig(level=logging.INFO, format="%(threadName)s: %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
-def main():
+def main() -> None:
     """Main entry point for the backtester."""
-    client = WebSocketClient()
-
-    client_thread = threading.Thread(
-        target=client.run_in_thread,
-        name="WebSocketThread",
-    )
-    client_thread.start()
-    client_thread.join()
-    logging.info("Exiting main thread")
+    logging.info("Backtester started.")
 
 
 if __name__ == "__main__":

@@ -83,7 +83,7 @@ test:
 	@status=0; \
 	if [ "$(TEST_BACKEND)" = "all" ] || [ "$(TEST_BACKEND)" = "backtester" ]; then \
 		echo "Running backtester tests..."; \
-		(cd backtester && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; [ -x .venv/bin/python ] && py_bin=".venv/bin/python"; PYTHONPATH=src $$py_bin -m unittest discover -s test/signals -p "test_*.py") || status=1; \
+		(cd backtester && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; [ -x .venv/bin/python ] && py_bin=".venv/bin/python"; PYTHONPATH=src $$py_bin -m unittest discover -s test -p "test_*.py") || status=1; \
 	fi; \
 	if [ "$(TEST_BACKEND)" = "all" ] || [ "$(TEST_BACKEND)" = "ingestion-service" ]; then \
 		echo "Running ingestion-service tests..."; \
