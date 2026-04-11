@@ -1,1 +1,5 @@
-"""Reporting and serialization helpers for backtest results."""
+"""Reporting helpers."""
+
+from .metrics import compute_metrics
+
+__all__ = ["compute_metrics"]

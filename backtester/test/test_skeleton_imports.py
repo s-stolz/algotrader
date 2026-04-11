@@ -3,20 +3,31 @@ import unittest
 
 MODULES = [
     "app",
+    "app.backtest_runner",
     "app.config",
     "domain",
     "domain.enums",
     "domain.events",
     "domain.types",
     "execution",
+    "execution.fills",
+    "execution.portfolio",
+    "execution.risk",
+    "execution.sizing",
+    "execution.trades",
     "engines",
+    "engines.vectorized",
     "data",
     "strategies",
     "strategies.base",
+    "strategies.conditions",
+    "strategies.examples",
+    "strategies.examples.sma_crossover",
     "adapters",
     "adapters.api",
     "adapters.api.routes",
     "reporting",
+    "reporting.metrics",
 ]
 
 

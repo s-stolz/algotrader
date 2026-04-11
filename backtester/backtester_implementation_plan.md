@@ -95,7 +95,7 @@ Create the simplified package skeleton and minimal domain contracts to support t
 
 ---
 
-## M1: Minimal Vectorized Bar Backtest (Fixture Data)
+## M1: :checkmark: Minimal Vectorized Bar Backtest (Fixture Data)
 
 ### Goal
 
