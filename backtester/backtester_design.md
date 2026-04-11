@@ -58,7 +58,7 @@ Key boundary:
 
 ```text
 backtester/
-  src/backtester/
+  src/
     app/
       backtest_runner.py
       experiment_runner.py
@@ -109,7 +109,7 @@ backtester/
 
     cli.py
 
-  tests/
+  test/
     app/
     domain/
     execution/
@@ -119,6 +119,11 @@ backtester/
     adapters/
     reporting/
 ```
+
+Import convention for this layout:
+
+- run with `PYTHONPATH=src`
+- import top-level modules directly (`from domain.types import ...`, `from strategies.base import ...`)
 
 ## Responsibility Map
 
@@ -331,14 +336,14 @@ Single-orchestration rule:
 
 Tests mirror source structure:
 
-- `tests/app/`
-- `tests/domain/`
-- `tests/execution/`
-- `tests/engines/`
-- `tests/data/`
-- `tests/strategies/`
-- `tests/adapters/`
-- `tests/reporting/`
+- `test/app/`
+- `test/domain/`
+- `test/execution/`
+- `test/engines/`
+- `test/data/`
+- `test/strategies/`
+- `test/adapters/`
+- `test/reporting/`
 
 Required test priorities:
 

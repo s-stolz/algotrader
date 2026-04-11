@@ -20,13 +20,13 @@ Target architecture is defined in `backtester_design.md`.
 
 Current automated tests in the repository relevant to this work:
 
-- `backtester`: legacy tests only (`test/signals/test_signals.py`, `test/portfolio/test_portfolio.py`).
+- `backtester`: legacy tests plus M0 skeleton coverage (`test/signals/test_signals.py`, `test/portfolio/test_portfolio.py`, `test/test_skeleton_imports.py`, `test/test_domain_types.py`, `test/test_strategy_base.py`).
 - `libs/db_accessor_client`: unit tests for current market/candle client endpoints.
 - `database-accessor-api`: currently no automated tests.
 
 Current high-priority gaps:
 
-- no tests yet for new architecture modules in `app/domain/execution/engines/data/strategies/adapters/reporting`
+- M0 coverage exists for package imports and minimal contracts; execution/data/engine/adapters/reporting behavior coverage still missing
 - no vectorized vs event-driven parity tests
 - no persistence flow smoke test
 - no FastAPI adapter route tests for backtest start/query
@@ -46,7 +46,7 @@ Each milestone defines:
 
 ---
 
-## M0: Skeleton + Minimal Types
+## M0: :checkmark: Skeleton + Minimal Types
 
 ### Goal
 
@@ -56,7 +56,8 @@ Create the simplified package skeleton and minimal domain contracts to support t
 
 - package layout under `backtester/src/` using the simplified domains:
   - `app`, `domain`, `execution`, `engines`, `data`, `strategies`, `adapters`, `reporting`
-- mirrored test layout under `tests/`
+- mirrored test layout under `test/`
+- flattened top-level module imports (`PYTHONPATH=src`, e.g. `from domain.types import ...`)
 - minimal `domain/types.py`, `domain/enums.py`, `domain/events.py`
 - minimal `app/config.py`
 - minimal `strategies/base.py`
@@ -327,7 +328,7 @@ Lock parity between vectorized and event-driven engines for supported **shared**
 
 ### Test Coverage
 
-- parity test suite in `tests/engines/`
+- parity test suite in `test/engines/`
 
 ### Acceptance Criteria
 
