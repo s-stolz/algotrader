@@ -157,7 +157,7 @@ Deliver the first end-to-end runnable **true vectorized** backtest using fixture
 
 ---
 
-## M2: Real Data + Indicator Integration (Vectorized)
+## M2: :checkmark: Real Data + Indicator Integration (Vectorized)
 
 ### Goal
 

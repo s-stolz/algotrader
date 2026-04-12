@@ -33,10 +33,10 @@ def run_vectorized_backtest(
     """Run a vectorized bar backtest for one symbol."""
 
     if request.data_granularity != DataGranularity.BAR:
-        raise ValueError("M1 vectorized engine supports bar data only")
+        raise ValueError("Vectorized engine supports bar data only")
 
     if len(request.symbols) != 1:
-        raise ValueError("M1 vectorized engine supports exactly one symbol per run")
+        raise ValueError("Vectorized engine supports exactly one symbol per run")
 
     symbol = request.symbols[0]
     normalized = _normalize_bars(bars=bars, symbol=symbol)
@@ -93,7 +93,7 @@ def _normalize_bars(*, bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
         missing = ", ".join(sorted(missing_columns))
         raise ValueError(f"bars is missing required columns: {missing}")
 
-    filtered = bars.loc[bars["symbol"] == symbol, sorted(REQUIRED_BAR_COLUMNS)].copy()
+    filtered = bars.loc[bars["symbol"] == symbol].copy()
     if filtered.empty:
         raise ValueError(f"No bars found for symbol {symbol}")
 

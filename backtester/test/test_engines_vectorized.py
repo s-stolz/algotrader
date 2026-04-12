@@ -31,7 +31,7 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
             symbols=["AAPL"],
             timeframe="1m",
             start_ms=1_700_000_000_000,
-            end_ms=1_700_000_480_000,
+            end_ms=1_700_000_540_000,
             strategy=StrategyConfig(strategy_id="sma_crossover"),
             execution=ExecutionConfig(),
             initial_capital=10_000.0,

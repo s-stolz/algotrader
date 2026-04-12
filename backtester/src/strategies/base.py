@@ -1,7 +1,7 @@
 """Strategy contracts shared by engine implementations."""
 
 from dataclasses import dataclass, field
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
 
 from domain.types import ExecutionArrayBundle, FeatureMatrix, SignalMatrix
 
@@ -18,6 +18,7 @@ class StrategyDefinition:
     position_builder: PositionBuilder
     sizing_model: Optional[ExecutionTransformer] = None
     risk_rules: Sequence[ExecutionTransformer] = field(default_factory=tuple)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def build_execution_targets(self, features: FeatureMatrix) -> ExecutionArrayBundle:
         """Evaluates vectorized strategy flow into execution target arrays."""

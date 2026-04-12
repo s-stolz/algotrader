@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 from domain.types import ExecutionArrayBundle, FeatureMatrix, SignalMatrix
 from execution.risk import long_only_rule
@@ -13,11 +12,6 @@ from execution.sizing import fixed_quantity_sizer
 
 from strategies.base import StrategyDefinition
 from strategies.conditions import crossover, crossunder
-
-
-def _rolling_mean(values: npt.ArrayLike, window: int) -> npt.NDArray[np.float64]:
-    rolling = pd.Series(values, dtype=np.float64).rolling(window=window, min_periods=window).mean()
-    return np.asarray(rolling, dtype=np.float64)
 
 
 def build_sma_crossover_strategy(
@@ -39,17 +33,20 @@ def build_sma_crossover_strategy(
         signals_by_symbol: Dict[str, list[int]] = {}
 
         for symbol, feature_map in features.features_by_symbol.items():
-            if "close" not in feature_map:
-                raise ValueError(f"Feature 'close' is required for symbol {symbol}")
+            missing = [name for name in ("sma_fast", "sma_slow") if name not in feature_map]
+            if missing:
+                missing_text = ", ".join(missing)
+                raise ValueError(
+                    f"SMA crossover strategy requires features [{missing_text}] for symbol {symbol}"
+                )
 
-            close = np.asarray(feature_map["close"], dtype=np.float64)
-            sma_fast = _rolling_mean(close, fast_window)
-            sma_slow = _rolling_mean(close, slow_window)
+            sma_fast = np.asarray(feature_map["sma_fast"], dtype=np.float64)
+            sma_slow = np.asarray(feature_map["sma_slow"], dtype=np.float64)
 
             entries = crossover(sma_fast, sma_slow)
             exits = crossunder(sma_fast, sma_slow)
 
-            signal = np.zeros(close.shape[0], dtype=np.int64)
+            signal = np.zeros(sma_fast.shape[0], dtype=np.int64)
             signal[entries] = 1
             signal[exits] = -1
             signals_by_symbol[symbol] = signal.tolist()
@@ -76,11 +73,30 @@ def build_sma_crossover_strategy(
             target_quantity_by_symbol=target_by_symbol,
         )
 
+    indicator_specs: tuple[dict[str, Any], ...] = (
+        {
+            "indicator_id": "sma",
+            "output_key": "sma",
+            "output_column": "sma_fast",
+            "params": {"window": fast_window, "source": "close"},
+        },
+        {
+            "indicator_id": "sma",
+            "output_key": "sma",
+            "output_column": "sma_slow",
+            "params": {"window": slow_window, "source": "close"},
+        },
+    )
+
     return StrategyDefinition(
         strategy_id="sma_crossover",
-        feature_specs=("close",),
+        feature_specs=("sma_fast", "sma_slow"),
         decision_model=decision_model,
         position_builder=position_builder,
         sizing_model=fixed_quantity_sizer(quantity),
         risk_rules=(long_only_rule,),
+        metadata={
+            "warmup_bars": slow_window,
+            "indicator_specs": indicator_specs,
+        },
     )
