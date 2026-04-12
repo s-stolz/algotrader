@@ -161,7 +161,8 @@ Deliver the first end-to-end runnable **true vectorized** backtest using fixture
 
 ### Goal
 
-Replace fixture-only inputs with real historical data and shared indicator engine integration.
+Replace fixture-only inputs with real historical data and shared indicator engine integration, and
+ship a minimal CLI path for running a single strategy backtest easily.
 
 ### In Scope
 
@@ -172,32 +173,45 @@ Replace fixture-only inputs with real historical data and shared indicator engin
 - `adapters/db_accessor.py` (historical fetch path)
 - vectorized engine wiring to real fetch + indicator outputs into `FeatureMatrix`
 - deterministic warmup/feature-completeness trimming
+- `cli.py` basic command surface:
+  - one-run backtest command (single symbol, bar mode)
+  - strategy choice limited to shipped example strategy/strategies in this milestone (minimum:
+    `sma_crossover`)
+  - command delegates into app-layer orchestration (`app/backtest_runner.py`)
+  - stdout summary output (metrics + fill/trade counts)
 
 ### Out of Scope
 
 - event-driven engine
 - persistence
 - FastAPI
+- advanced CLI UX (parameter sweeps, rich output formats, presets)
 
 ### Deliverables
 
 - vectorized run on real symbol/time range
 - warmup + trimming path in production flow
+- basic CLI command that runs a backtest end-to-end without editing Python files
 
 ### Executable Path
 
 - run SMA crossover on fetched data from db accessor adapter
+- run same scenario through CLI command and receive summary output
 
 ### Test Coverage
 
 - adapter contract tests for historical fetch mapping
 - integration tests: fetch -> normalize -> indicators -> vectorized run
 - trimming behavior tests
+- CLI integration/smoke test:
+  - argument parsing + request mapping
+  - CLI command executes one run through app-layer runner
 
 ### Acceptance Criteria
 
 - real-data vectorized run succeeds end-to-end
 - warmup trimming deterministic and repeatable
+- basic CLI run succeeds with deterministic output for same input
 
 ### Deferred Follow-ups
 
@@ -453,7 +467,7 @@ Improve day-to-day usability for strategy research.
 - `app/experiment_runner.py` enhancements
 - deterministic parameter sweep support
 - output serialization/reporting improvements
-- CLI polish
+- CLI polish on top of M2 baseline command (ergonomics, richer output formats, sweep-friendly UX)
 - docs for adding custom strategies
 - add one additional example strategy
 
