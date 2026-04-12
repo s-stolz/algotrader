@@ -231,16 +231,30 @@ Make vectorized bar mode stable enough to be parity baseline.
   - decision at close `t`, earliest fill `t+1`
   - next-bar-open timestamp rule
   - gap policy (`expire` / `skip` / `error`)
+- baseline fee model in `execution/fills.py` or `execution/costs.py` (simple deterministic v1 baseline;
+  prefer `commission_bps` or fixed-per-trade)
+- baseline slippage model in `execution/fills.py` or `execution/costs.py` (simple deterministic v1
+  baseline; prefer `slippage_bps` or fixed spread-like adjustment)
+- deterministic application of costs to:
+  - fills
+  - realized PnL
+  - equity curve
+  - trade records
 - baseline sizing/risk behavior in `execution/sizing.py` and `execution/risk.py`
 - average-cost accounting and flip handling stability
 - diagnostics payload in `BacktestResult` (kept simple; no extra module split yet)
 - explicit vectorized runtime guard coverage (no row-interpreter regressions)
+- tests for zero-cost vs non-zero-cost runs
 
 ### Out of Scope
 
 - event-driven engine
 - persistence/API
 - tick support
+- liquidity-aware slippage
+- symbol-specific complex fee tables
+- volatility-based slippage
+- partial-fill-dependent costs
 
 ### Deliverables
 
@@ -253,13 +267,19 @@ Make vectorized bar mode stable enough to be parity baseline.
 ### Test Coverage
 
 - unit tests for gap policy, sizing, risk, accounting
+- unit tests for fee application
+- unit tests for slippage application
 - integration tests for warmup/gap/timestamp semantics
+- integration tests for zero-cost vs post-cost result differences
 - regression guard tests for vectorized array runtime (no per-bar interpreter usage)
 
 ### Acceptance Criteria
 
 - deterministic outputs across repeated runs
 - baseline semantics locked by tests
+- fee/slippage semantics are fixed and covered by tests
+- repeated runs with same inputs produce identical post-cost results
+- event-driven parity target for M4/M5 includes matching cost behavior
 
 ### Deferred Follow-ups
 
@@ -280,6 +300,7 @@ Implement first runnable event-driven bar engine using shared domain/execution m
 - event-driven path:
   - `ExecutionTarget -> OrderRequest -> Fill`
 - reuse shared `execution/*`, `strategies/*`, `domain/types.py`
+- reuse M3 baseline fee/slippage semantics as-is (no new cost logic in M4)
 
 ### Out of Scope
 
@@ -298,7 +319,7 @@ Implement first runnable event-driven bar engine using shared domain/execution m
 ### Test Coverage
 
 - integration tests: event loop + order/fill path
-- basic parity checks against vectorized baseline scenarios
+- basic parity checks against vectorized baseline scenarios, including cost behavior
 
 ### Acceptance Criteria
 
@@ -324,6 +345,8 @@ Lock parity between vectorized and event-driven engines for supported **shared**
 - warmup/trimming parity
 - fill timestamp parity
 - gap-policy parity
+- post-cost parity for fills, realized PnL, equity curve, and trade records
+- reuse M3 baseline fee/slippage models only (no new cost logic in M5)
 - comparison tolerances policy (only where exact equality is not required)
 
 ### Out of Scope
@@ -346,7 +369,7 @@ Lock parity between vectorized and event-driven engines for supported **shared**
 
 ### Acceptance Criteria
 
-- agreed parity suite passes
+- agreed parity suite passes, including matching baseline cost behavior
 - parity regressions block new feature work
 
 ### Deferred Follow-ups
@@ -503,14 +526,17 @@ Improve day-to-day usability for strategy research.
 
 ### Goal
 
-Increase execution realism on bar data without breaking baseline parity mode.
+Increase event-driven execution realism on bar data beyond the M3 baseline cost model without breaking baseline parity mode.
 
 ### In Scope
 
 - optional partial fills
 - richer order request fields
 - optional short support
-- additional cost/risk variants when explicitly required
+- advanced fee/slippage models beyond M3 baseline
+- optional spread/liquidity-aware execution costs
+- symbol-specific fees where explicitly required
+- partial-fill-aware costing where explicitly required
 
 ### Out of Scope
 
