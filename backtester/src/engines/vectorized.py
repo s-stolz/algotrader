@@ -13,8 +13,8 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
-from domain.types import BacktestRequest, BacktestResult, FeatureMatrix
-from execution.fills import generate_fills_from_targets
+from domain.types import BacktestRequest, BacktestResult, ExecutionArrayBundle, FeatureMatrix
+from execution.fills import FillGenerationResult, generate_fills_from_targets
 from execution.portfolio import build_equity_curve
 from execution.trades import build_trades_from_fills
 from reporting.metrics import compute_metrics
@@ -38,50 +38,19 @@ def run_vectorized_backtest(
     strategy: StrategyDefinition,
 ) -> BacktestResult:
     """Run a vectorized bar backtest for one symbol."""
-
-    if request.data_granularity != DataGranularity.BAR:
-        raise ValueError("Vectorized engine supports bar data only")
-
-    if len(request.symbols) != 1:
-        raise ValueError("Vectorized engine supports exactly one symbol per run")
-    if request.execution.signal_timing != SignalTiming.CLOSE:
-        raise ValueError("Vectorized M3 baseline supports signal_timing=close only")
-    if request.execution.allow_short:
-        raise ValueError("Vectorized M3 baseline does not support allow_short=True")
-    if request.execution.fill_timing != FillTiming.NEXT_OPEN:
-        raise ValueError("Vectorized M3 baseline supports fill_timing=next_open only")
-    if request.execution.price_source != PriceSource.OPEN:
-        raise ValueError("Vectorized M3 baseline supports price_source=open only")
-    if request.execution.allow_partial_fills:
-        raise ValueError("Vectorized M3 baseline does not support allow_partial_fills=True")
-    if request.execution.trade_accounting_policy != TradeAccountingPolicy.AVERAGE_COST:
-        raise ValueError(
-            "Vectorized M3 baseline supports trade_accounting_policy=average_cost only"
-        )
+    _validate_vectorized_request(request)
 
     symbol = request.symbols[0]
     normalized = _normalize_bars(bars=bars, symbol=symbol)
 
     feature_matrix = _build_feature_matrix(normalized)
     execution_targets = strategy.build_execution_targets(feature_matrix)
-
-    target = execution_targets.target_quantity_by_symbol.get(symbol)
-    if target is None:
-        raise ValueError(f"Strategy did not produce execution targets for symbol {symbol}")
-
-    target_values = np.asarray(target, dtype=np.float64)
     timestamp_ms = normalized["timestamp_ms"].to_numpy(dtype="int64")
-    if target_values.size != timestamp_ms.size:
-        raise ValueError(
-            f"Strategy target quantity length must match executable bar count for symbol {symbol}"
-        )
-    if not np.isfinite(target_values).all():
-        raise ValueError(f"Strategy produced non-finite target quantities for symbol {symbol}")
-    if np.any(target_values < 0.0):
-        raise ValueError(
-            "Vectorized M3 baseline is long-only and requires non-negative target quantities "
-            f"for symbol {symbol}"
-        )
+    target_values = _extract_target_values(
+        execution_targets=execution_targets,
+        symbol=symbol,
+        expected_size=timestamp_ms.size,
+    )
 
     open_prices = normalized["open"].to_numpy(dtype="float64")
     close_prices = normalized["close"].to_numpy(dtype="float64")
@@ -109,7 +78,97 @@ def run_vectorized_backtest(
     trades = build_trades_from_fills(fill_result.fills)
     metrics = compute_metrics(equity_curve=equity_curve, trades=trades)
 
-    diagnostics = {
+    return BacktestResult(
+        request=request,
+        fills=fill_result.fills,
+        trades=trades,
+        equity_curve=equity_curve,
+        metrics=metrics,
+        diagnostics=_build_diagnostics(
+            request=request,
+            strategy=strategy,
+            normalized=normalized,
+            symbol=symbol,
+            fill_result=fill_result,
+        ),
+    )
+
+
+def _validate_vectorized_request(request: BacktestRequest) -> None:
+    execution = request.execution
+    constraints = (
+        (
+            request.data_granularity == DataGranularity.BAR,
+            "Vectorized engine supports bar data only",
+        ),
+        (
+            len(request.symbols) == 1,
+            "Vectorized engine supports exactly one symbol per run",
+        ),
+        (
+            execution.signal_timing == SignalTiming.CLOSE,
+            "Vectorized M3 baseline supports signal_timing=close only",
+        ),
+        (
+            not execution.allow_short,
+            "Vectorized M3 baseline does not support allow_short=True",
+        ),
+        (
+            execution.fill_timing == FillTiming.NEXT_OPEN,
+            "Vectorized M3 baseline supports fill_timing=next_open only",
+        ),
+        (
+            execution.price_source == PriceSource.OPEN,
+            "Vectorized M3 baseline supports price_source=open only",
+        ),
+        (
+            not execution.allow_partial_fills,
+            "Vectorized M3 baseline does not support allow_partial_fills=True",
+        ),
+        (
+            execution.trade_accounting_policy == TradeAccountingPolicy.AVERAGE_COST,
+            "Vectorized M3 baseline supports trade_accounting_policy=average_cost only",
+        ),
+    )
+    for is_valid, message in constraints:
+        if not is_valid:
+            raise ValueError(message)
+
+
+def _extract_target_values(
+    *,
+    execution_targets: ExecutionArrayBundle,
+    symbol: str,
+    expected_size: int,
+) -> np.ndarray:
+    target = execution_targets.target_quantity_by_symbol.get(symbol)
+    if target is None:
+        raise ValueError(f"Strategy did not produce execution targets for symbol {symbol}")
+
+    target_values = np.asarray(target, dtype=np.float64)
+    if target_values.size != expected_size:
+        raise ValueError(
+            f"Strategy target quantity length must match executable bar count for symbol {symbol}"
+        )
+    if not np.isfinite(target_values).all():
+        raise ValueError(f"Strategy produced non-finite target quantities for symbol {symbol}")
+    if np.any(target_values < 0.0):
+        raise ValueError(
+            "Vectorized M3 baseline is long-only and requires non-negative target quantities "
+            f"for symbol {symbol}"
+        )
+    return target_values
+
+
+def _build_diagnostics(
+    *,
+    request: BacktestRequest,
+    strategy: StrategyDefinition,
+    normalized: pd.DataFrame,
+    symbol: str,
+    fill_result: FillGenerationResult,
+) -> dict[str, float | int | str]:
+    return {
         "engine": "vectorized",
         "bars": int(len(normalized)),
         "symbol": symbol,
@@ -126,15 +185,6 @@ def run_vectorized_backtest(
         "executed_deferred_count": int(fill_result.executed_deferred_count),
         "tail_expired_delta_count": int(fill_result.tail_expired_delta_count),
     }
-
-    return BacktestResult(
-        request=request,
-        fills=fill_result.fills,
-        trades=trades,
-        equity_curve=equity_curve,
-        metrics=metrics,
-        diagnostics=diagnostics,
-    )
 
 
 def _normalize_bars(*, bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
