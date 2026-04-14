@@ -1,7 +1,6 @@
 import unittest
 
 import numpy as np
-
 from indicator_engine.core.bars import BarTensor
 from indicator_engine.core.history import HistoryPolicy
 from indicator_engine.core.registry import IndicatorRegistry

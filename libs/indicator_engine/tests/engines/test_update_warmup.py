@@ -1,7 +1,6 @@
 import unittest
 
 import numpy as np
-
 from indicator_engine.core.history import HistoryPolicy
 from indicator_engine.core.params import ParamGrid
 from indicator_engine.defaults import get_registry
