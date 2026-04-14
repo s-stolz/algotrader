@@ -22,6 +22,8 @@ def run_backtest(
 ) -> BacktestResult:
     """Execute one backtest request using caller-provided bar data."""
 
+    _validate_strategy_request_consistency(request=request, strategy=strategy)
+
     if request.data_granularity == DataGranularity.BAR:
         prepared_bars = prepare_bars_for_vectorized_execution(
             request=request,
@@ -43,6 +45,8 @@ def run_backtest_with_market_data(
     data_adapter: HistoricalBarDataAdapter | None = None,
 ) -> BacktestResult:
     """Fetch market data through adapter integration and run one vectorized backtest."""
+
+    _validate_strategy_request_consistency(request=request, strategy=strategy)
 
     if request.data_granularity == DataGranularity.BAR:
         prepared_bars = load_market_data(
@@ -78,3 +82,15 @@ def prepare_bars_for_vectorized_execution(
         start_ms=int(request.start_ms),
         end_ms=int(request.end_ms),
     )
+
+
+def _validate_strategy_request_consistency(
+    *,
+    request: BacktestRequest,
+    strategy: StrategyDefinition,
+) -> None:
+    if request.strategy.strategy_id != strategy.strategy_id:
+        raise ValueError(
+            "request.strategy.strategy_id must match the provided strategy definition: "
+            f"{request.strategy.strategy_id!r} != {strategy.strategy_id!r}"
+        )

@@ -31,6 +31,8 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(request.data_granularity, DataGranularity.BAR)
         self.assertFalse(request.persist_result)
         self.assertIsNone(request.run_metadata)
+        self.assertEqual(request.execution.commission_bps, 0.0)
+        self.assertEqual(request.execution.slippage_bps, 0.0)
 
     def test_vectorized_contract_types_construct(self) -> None:
         feature_matrix = FeatureMatrix(
@@ -95,6 +97,7 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(result.fills[0].side, OrderSide.BUY)
         self.assertEqual(result.backtest_run_id, "run-1")
         self.assertEqual(result.metrics["return_pct"], 0.01)
+        self.assertEqual(result.trades[0].fees, 0.0)
 
     def test_event_types_construct(self) -> None:
         bar_event = BarEvent(
@@ -117,6 +120,26 @@ class TestDomainTypes(unittest.TestCase):
 
         self.assertEqual(bar_event.event_type, MarketEventType.BAR)
         self.assertEqual(tick_event.event_type, MarketEventType.TICK)
+
+    def test_execution_config_rejects_negative_cost_inputs(self) -> None:
+        with self.assertRaises(ValueError):
+            ExecutionConfig(commission_bps=-1.0)
+
+        with self.assertRaises(ValueError):
+            ExecutionConfig(slippage_bps=-0.5)
+
+    def test_execution_config_rejects_non_finite_cost_inputs(self) -> None:
+        with self.assertRaises(ValueError):
+            ExecutionConfig(commission_bps=float("nan"))
+
+        with self.assertRaises(ValueError):
+            ExecutionConfig(slippage_bps=float("nan"))
+
+        with self.assertRaises(ValueError):
+            ExecutionConfig(commission_bps=float("inf"))
+
+        with self.assertRaises(ValueError):
+            ExecutionConfig(slippage_bps=float("-inf"))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 """Shared domain dataclasses and value contracts for backtester flows."""
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -30,6 +31,18 @@ class ExecutionConfig:
     allow_short: bool = False
     trade_accounting_policy: TradeAccountingPolicy = TradeAccountingPolicy.AVERAGE_COST
     gap_policy: GapPolicy = GapPolicy.SKIP
+    commission_bps: float = 0.0
+    slippage_bps: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.commission_bps):
+            raise ValueError("commission_bps must be finite")
+        if self.commission_bps < 0.0:
+            raise ValueError("commission_bps must be >= 0")
+        if not math.isfinite(self.slippage_bps):
+            raise ValueError("slippage_bps must be finite")
+        if self.slippage_bps < 0.0:
+            raise ValueError("slippage_bps must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -120,6 +133,7 @@ class Trade:
     exit_timestamp_ms: Optional[int] = None
     exit_price: Optional[float] = None
     realized_pnl: float = 0.0
+    fees: float = 0.0
 
 
 @dataclass(frozen=True)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 from domain.types import PortfolioSnapshot
 from numpy.typing import ArrayLike
 
@@ -12,31 +11,41 @@ def build_equity_curve(
     *,
     symbol: str,
     timestamp_ms: ArrayLike,
-    open_prices: ArrayLike,
+    close_prices: ArrayLike,
     executed_delta: ArrayLike,
+    executed_notional: ArrayLike,
+    executed_fees: ArrayLike,
     initial_capital: float,
 ) -> list[PortfolioSnapshot]:
-    """Build account snapshots from executed fill deltas.
+    """Build account snapshots from execution and close-based mark-to-market.
 
-    `executed_delta[i]` is the quantity change executed at timestamp `i`.
+    Fills update cash from next-open execution notional + fees.
+    Unrealized PnL and equity are marked on each bar close.
     """
 
     ts = np.asarray(timestamp_ms, dtype=np.int64)
-    opens = np.asarray(open_prices, dtype=np.float64)
+    closes = np.asarray(close_prices, dtype=np.float64)
     delta = np.asarray(executed_delta, dtype=np.float64)
+    notional = np.asarray(executed_notional, dtype=np.float64)
+    fees = np.asarray(executed_fees, dtype=np.float64)
 
-    if ts.size != opens.size or ts.size != delta.size:
-        raise ValueError("timestamp, open price, and delta arrays must have equal length")
+    if (
+        ts.size != closes.size
+        or ts.size != delta.size
+        or ts.size != notional.size
+        or ts.size != fees.size
+    ):
+        raise ValueError(
+            "timestamp, close price, delta, execution notional, "
+            "and fee arrays must have equal length"
+        )
 
     if ts.size == 0:
         return []
 
-    cash = float(initial_capital) + np.cumsum(-delta * np.nan_to_num(opens, nan=0.0))
+    cash = float(initial_capital) + np.cumsum(-notional - fees)
     position = np.cumsum(delta)
-
-    # Use forward-filled prices for mark-to-market valuation on missing open values.
-    valuation_price = pd.Series(opens).ffill().fillna(0.0).to_numpy(dtype=np.float64)
-    equity = cash + position * valuation_price
+    equity = cash + position * closes
 
     snapshots: list[PortfolioSnapshot] = []
     for idx in range(ts.size):

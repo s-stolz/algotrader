@@ -124,7 +124,9 @@ def _import_database_accessor_client() -> type[Any]:
 def _map_to_canonical_bar_frame(*, candles: pd.DataFrame, symbol: str) -> pd.DataFrame:
     if candles.empty:
         return pd.DataFrame(
-            columns=("timestamp_ms", "symbol", "open", "high", "low", "close", "volume")
+            columns=pd.Index(
+                ["timestamp_ms", "symbol", "open", "high", "low", "close", "volume"]
+            )
         )
 
     mapped = candles.copy()

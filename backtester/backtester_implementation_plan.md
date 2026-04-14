@@ -219,7 +219,7 @@ ship a minimal CLI path for running a single strategy backtest easily.
 
 ---
 
-## M3: Vectorized Baseline Hardening
+## M3: :checkmark: Vectorized Baseline Hardening
 
 ### Goal
 

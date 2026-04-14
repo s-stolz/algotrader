@@ -81,7 +81,30 @@ class TestRealDataBacktestRunner(unittest.TestCase):
         self.assertGreater(len(result_one.fills), 0)
         self.assertGreater(len(result_one.equity_curve), 0)
 
+    def test_real_data_path_rejects_mismatched_request_strategy_id(self) -> None:
+        request = self._build_request()
+        request = BacktestRequest(
+            symbols=request.symbols,
+            timeframe=request.timeframe,
+            start_ms=request.start_ms,
+            end_ms=request.end_ms,
+            strategy=StrategyConfig(
+                strategy_id="different_strategy",
+                parameters=dict(request.strategy.parameters),
+            ),
+            execution=request.execution,
+            initial_capital=request.initial_capital,
+        )
+        strategy = build_sma_crossover_strategy(fast_window=2, slow_window=3, quantity=1.0)
+        adapter = _FakeHistoricalAdapter(self._build_raw_bars())
+
+        with self.assertRaises(ValueError):
+            run_backtest_with_market_data(
+                request=request,
+                strategy=strategy,
+                data_adapter=adapter,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
-

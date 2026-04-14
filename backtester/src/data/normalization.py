@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Final
 
+import numpy as np
 import pandas as pd
 
 REQUIRED_BAR_COLUMNS: Final[tuple[str, ...]] = (
@@ -39,13 +40,14 @@ def normalize_bar_data(
         missing_text = ", ".join(missing)
         raise ValueError(f"bars is missing required columns: {missing_text}")
 
-    normalized = normalized.loc[:, REQUIRED_BAR_COLUMNS].copy()
+    normalized = normalized.loc[:, list(REQUIRED_BAR_COLUMNS)].copy()
 
     numeric_columns = ("timestamp_ms", "open", "high", "low", "close", "volume")
     for column in numeric_columns:
         normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
+        normalized[column] = normalized[column].replace([np.inf, -np.inf], np.nan)
 
-    normalized.dropna(subset=numeric_columns, inplace=True)
+    normalized.dropna(subset=list(numeric_columns), inplace=True)
     if normalized.empty:
         raise ValueError(f"No valid numeric bars found for symbol {symbol}")
 
@@ -53,8 +55,7 @@ def normalize_bar_data(
     for column in ("open", "high", "low", "close", "volume"):
         normalized[column] = normalized[column].astype("float64")
 
-    normalized.sort_values("timestamp_ms", kind="mergesort", inplace=True)
+    normalized.sort_values(by="timestamp_ms", kind="mergesort", inplace=True)
     normalized.drop_duplicates(subset=["timestamp_ms", "symbol"], keep="last", inplace=True)
     normalized.reset_index(drop=True, inplace=True)
     return normalized
-

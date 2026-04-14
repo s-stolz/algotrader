@@ -1,7 +1,9 @@
 import unittest
 
+import numpy as np
 import pandas as pd
 from data.market_data import load_market_data
+from data.normalization import normalize_bar_data
 from domain.types import BacktestRequest, ExecutionConfig, StrategyConfig
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
 
@@ -65,6 +67,24 @@ class TestMarketDataPipeline(unittest.TestCase):
         self.assertIn("sma_slow", prepared.columns)
         has_missing = prepared[["sma_fast", "sma_slow"]].isna().to_numpy().any()
         self.assertFalse(has_missing)
+
+    def test_normalize_bar_data_drops_non_finite_numeric_rows(self) -> None:
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [1_000, 2_000, 3_000],
+                "symbol": ["AAPL"] * 3,
+                "open": [10.0, np.inf, 12.0],
+                "high": [10.5, 11.5, 12.5],
+                "low": [9.5, 10.5, 11.5],
+                "close": [10.0, 11.0, 12.0],
+                "volume": [1_000.0, 1_000.0, 1_000.0],
+            }
+        )
+
+        normalized = normalize_bar_data(bars=bars, symbol="AAPL")
+
+        self.assertEqual(normalized["timestamp_ms"].tolist(), [1_000, 3_000])
+        self.assertTrue(np.isfinite(normalized["open"].to_numpy()).all())
 
 
 if __name__ == "__main__":
