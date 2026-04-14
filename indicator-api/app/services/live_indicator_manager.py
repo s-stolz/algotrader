@@ -12,6 +12,9 @@ import numpy as np
 import pandas as pd
 import redis.asyncio as aioredis
 from algotrader_logger import get_logger
+from db_accessor_client import normalize_timeframe_code
+from indicator_engine import HistoryPolicy, ParamGrid, get_update_engine
+
 from app import ENGINE_REGISTRY, get_engine_id
 from app.candles import get_candles
 from app.schemas_live import (
@@ -22,8 +25,6 @@ from app.schemas_live import (
     LiveIndicatorWarmupInfo,
 )
 from app.services.candle_cache import CandleCache
-from db_accessor_client import normalize_timeframe_code
-from indicator_engine import HistoryPolicy, ParamGrid, get_update_engine
 
 if TYPE_CHECKING:
     from redis.typing import EncodableT, FieldT

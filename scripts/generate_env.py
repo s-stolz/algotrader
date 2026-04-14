@@ -296,7 +296,10 @@ def main() -> int:
     args = parse_args()
     topology = read_yaml(TOPOLOGY_PATH)
     secrets = read_env(SECRETS_PATH)
-    shared_env, db_secrets_env, runtime_secrets_env, broker_secrets_env = build_env(topology, secrets)
+    shared_env, db_secrets_env, runtime_secrets_env, broker_secrets_env = build_env(
+        topology,
+        secrets,
+    )
     missing = validate(db_secrets_env, runtime_secrets_env, broker_secrets_env)
 
     if missing:

@@ -133,7 +133,12 @@ class FakeMarketDataService:
         limit: int | None,
     ):
         yield Trendbar(
-            o=Decimal("1.1"), h=Decimal("1.2"), l=Decimal("1.0"), c=Decimal("1.15"), v=10, t=12345
+            o=Decimal("1.1"),
+            h=Decimal("1.2"),
+            l=Decimal("1.0"),
+            c=Decimal("1.15"),
+            v=10,
+            t=12345,
         )
 
     async def start_trendbar_stream(

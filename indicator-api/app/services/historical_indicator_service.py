@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Optional
 
 import pandas as pd
+from db_accessor_client import normalize_timeframe_code, timeframe_to_minutes
+from indicator_engine.adapters import bars_from_dataframe
+from indicator_engine.core import ParamGrid
+
 from app import (
     BATCH_ENGINE,
     ENGINE_REGISTRY,
@@ -18,9 +22,6 @@ from app.utils import (
     tensor_to_dataframe_single,
     trim_indicator_output,
 )
-from db_accessor_client import normalize_timeframe_code, timeframe_to_minutes
-from indicator_engine.adapters import bars_from_dataframe
-from indicator_engine.core import ParamGrid
 
 
 async def _fetch_multi_asset_candles(

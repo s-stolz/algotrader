@@ -57,9 +57,9 @@ async def get_open_orders(
 
 @router.get("/history")
 async def get_order_history(
-    fromTs: int | None = Query(default=None),
-    toTs: int | None = Query(default=None),
+    from_ts: int | None = Query(default=None, alias="fromTs"),
+    to_ts: int | None = Query(default=None, alias="toTs"),
     account_id: AccountId = Depends(get_account_id),
     service: OrderService = Depends(get_order_service),
 ) -> list[dict[str, Any]]:
-    return to_jsonable(await service.get_order_history(account_id, fromTs, toTs))
+    return to_jsonable(await service.get_order_history(account_id, from_ts, to_ts))

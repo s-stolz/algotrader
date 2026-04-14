@@ -61,12 +61,17 @@ def map_position(position: ProtoOAPosition, symbol_lookup: SymbolLookup) -> Posi
         symbol_id=position.tradeData.symbolId,
         volume=position.tradeData.volume,
         trade_side=ProtoOATradeSide.Name(position.tradeData.tradeSide),
-        open_timestamp=position.tradeData.openTimestamp
-        if position.tradeData.HasField("openTimestamp") else None,
-        label=position.tradeData.label
-        if position.tradeData.HasField("label") else None,
-        guaranteed_stop_loss=position.tradeData.guaranteedStopLoss
-        if position.tradeData.HasField("guaranteedStopLoss") else None,
+        open_timestamp=(
+            position.tradeData.openTimestamp
+            if position.tradeData.HasField("openTimestamp")
+            else None
+        ),
+        label=position.tradeData.label if position.tradeData.HasField("label") else None,
+        guaranteed_stop_loss=(
+            position.tradeData.guaranteedStopLoss
+            if position.tradeData.HasField("guaranteedStopLoss")
+            else None
+        ),
         comment=position.tradeData.comment if position.tradeData.HasField("comment") else None,
         measurement_units=getattr(position.tradeData, "measurementUnits", None),
         close_timestamp=getattr(position.tradeData, "closeTimestamp", None),
@@ -78,25 +83,27 @@ def map_position(position: ProtoOAPosition, symbol_lookup: SymbolLookup) -> Posi
         trade_data=trade_data,
         position_status=ProtoOAPositionStatus.Name(position.positionStatus),
         swap=position.swap,
-
         # Optional fields
         price=_decimal_or_none(position.price),
         stop_loss=_decimal_or_none(position.stopLoss),
         take_profit=_decimal_or_none(position.takeProfit),
-        utc_last_update_timestamp=position.utcLastUpdateTimestamp if position.HasField(
-            "utcLastUpdateTimestamp") else None,
+        utc_last_update_timestamp=(
+            position.utcLastUpdateTimestamp if position.HasField("utcLastUpdateTimestamp") else None
+        ),
         commission=position.commission if position.HasField("commission") else None,
         margin_rate=_decimal_or_none(position.marginRate),
-        mirroring_commission=position.mirroringCommission if position.HasField(
-            "mirroringCommission") else None,
-        guaranteed_stop_loss=position.guaranteedStopLoss if position.HasField(
-            "guaranteedStopLoss") else None,
+        mirroring_commission=(
+            position.mirroringCommission if position.HasField("mirroringCommission") else None
+        ),
+        guaranteed_stop_loss=(
+            position.guaranteedStopLoss if position.HasField("guaranteedStopLoss") else None
+        ),
         used_margin=position.usedMargin if position.HasField("usedMargin") else None,
         stop_loss_trigger_method=trigger_method,
         money_digits=position.moneyDigits if position.HasField("moneyDigits") else None,
-        trailing_stop_loss=position.trailingStopLoss if position.HasField(
-            "trailingStopLoss") else None,
-
+        trailing_stop_loss=(
+            position.trailingStopLoss if position.HasField("trailingStopLoss") else None
+        ),
         # Convenience fields
         symbol=info.symbol_name if info else None,
     )
@@ -113,36 +120,42 @@ def map_order(order: ProtoOAOrder, symbol_lookup: SymbolLookup) -> Order:
     trigger_method = None
     if order.HasField("stopTriggerMethod"):
         from ctrader_open_api.messages.OpenApiModelMessages_pb2 import ProtoOAOrderTriggerMethod
+
         trigger_method = ProtoOAOrderTriggerMethod.Name(order.stopTriggerMethod)
 
     # Map tradeData nested object
-    trade_data = TradeData(symbol_id=order.tradeData.symbolId, volume=order.tradeData.volume,
-                           trade_side=ProtoOATradeSide.Name(order.tradeData.tradeSide),
-                           open_timestamp=order.tradeData.openTimestamp
-                           if order.tradeData.HasField("openTimestamp") else None,
-                           label=order.tradeData.label
-                           if order.tradeData.HasField("label") else None,
-                           guaranteed_stop_loss=order.tradeData.guaranteedStopLoss
-                           if order.tradeData.HasField("guaranteedStopLoss") else None,
-                           comment=order.tradeData.comment
-                           if order.tradeData.HasField("comment") else None,
-                           measurement_units=getattr(order.tradeData, "measurementUnits", None),
-                           close_timestamp=getattr(order.tradeData, "closeTimestamp", None),)
+    trade_data = TradeData(
+        symbol_id=order.tradeData.symbolId,
+        volume=order.tradeData.volume,
+        trade_side=ProtoOATradeSide.Name(order.tradeData.tradeSide),
+        open_timestamp=(
+            order.tradeData.openTimestamp if order.tradeData.HasField("openTimestamp") else None
+        ),
+        label=order.tradeData.label if order.tradeData.HasField("label") else None,
+        guaranteed_stop_loss=(
+            order.tradeData.guaranteedStopLoss
+            if order.tradeData.HasField("guaranteedStopLoss")
+            else None
+        ),
+        comment=order.tradeData.comment if order.tradeData.HasField("comment") else None,
+        measurement_units=getattr(order.tradeData, "measurementUnits", None),
+        close_timestamp=getattr(order.tradeData, "closeTimestamp", None),
+    )
 
     return Order(
         order_id=order.orderId,
         trade_data=trade_data,
         order_type=ProtoOAOrderType.Name(order.orderType),
         order_status=ProtoOAOrderStatus.Name(order.orderStatus),
-
         # Optional fields from ProtoOAOrder
-        expiration_timestamp=order.expirationTimestamp if order.HasField(
-            "expirationTimestamp") else None,
+        expiration_timestamp=(
+            order.expirationTimestamp if order.HasField("expirationTimestamp") else None
+        ),
         execution_price=_decimal_or_none(order.executionPrice),
         executed_volume=order.executedVolume if order.HasField("executedVolume") else None,
-        utc_last_update_timestamp=order.utcLastUpdateTimestamp if order.HasField(
-            "utcLastUpdateTimestamp") else None,
-
+        utc_last_update_timestamp=(
+            order.utcLastUpdateTimestamp if order.HasField("utcLastUpdateTimestamp") else None
+        ),
         base_slippage_price=_decimal_or_none(order.baseSlippagePrice),
         slippage_in_points=order.slippageInPoints if order.HasField("slippageInPoints") else None,
         closing_order=order.closingOrder if order.HasField("closingOrder") else None,
@@ -150,18 +163,18 @@ def map_order(order: ProtoOAOrder, symbol_lookup: SymbolLookup) -> Order:
         stop_price=_decimal_or_none(order.stopPrice),
         stop_loss=_decimal_or_none(order.stopLoss),
         take_profit=_decimal_or_none(order.takeProfit),
-
         client_order_id=order.clientOrderId if order.HasField("clientOrderId") else None,
-        time_in_force=ProtoOATimeInForce.Name(
-            order.timeInForce) if order.HasField("timeInForce") else None,
+        time_in_force=(
+            ProtoOATimeInForce.Name(order.timeInForce) if order.HasField("timeInForce") else None
+        ),
         position_id=order.positionId if order.HasField("positionId") else None,
         relative_stop_loss=order.relativeStopLoss if order.HasField("relativeStopLoss") else None,
-        relative_take_profit=order.relativeTakeProfit if order.HasField(
-            "relativeTakeProfit") else None,
+        relative_take_profit=(
+            order.relativeTakeProfit if order.HasField("relativeTakeProfit") else None
+        ),
         is_stop_out=order.isStopOut if order.HasField("isStopOut") else None,
         trailing_stop_loss=order.trailingStopLoss if order.HasField("trailingStopLoss") else None,
         stop_trigger_method=trigger_method,
-
         # Convenience fields
         symbol=info.symbol_name if info else None,
     )
@@ -180,15 +193,22 @@ def map_deal(deal: ProtoOADeal, symbol_lookup: SymbolLookup) -> Deal:
         detail = deal.closePositionDetail
         close_detail = ClosePositionDetail(
             entry_price=Decimal(str(detail.entryPrice)),
-            gross_profit=detail.grossProfit, swap=detail.swap, commission=detail.commission,
+            gross_profit=detail.grossProfit,
+            swap=detail.swap,
+            commission=detail.commission,
             balance=detail.balance,
-            quote_to_deposit_conversion_rate=Decimal(str(detail.quoteToDepositConversionRate))
-            if detail.HasField("quoteToDepositConversionRate") else None,
+            quote_to_deposit_conversion_rate=(
+                Decimal(str(detail.quoteToDepositConversionRate))
+                if detail.HasField("quoteToDepositConversionRate")
+                else None
+            ),
             closed_volume=detail.closedVolume if detail.HasField("closedVolume") else None,
             balance_version=detail.balanceVersion if detail.HasField("balanceVersion") else None,
             money_digits=detail.moneyDigits if detail.HasField("moneyDigits") else None,
-            pnl_conversion_fee=detail.pnlConversionFee
-            if detail.HasField("pnlConversionFee") else None,)
+            pnl_conversion_fee=(
+                detail.pnlConversionFee if detail.HasField("pnlConversionFee") else None
+            ),
+        )
 
     return Deal(
         deal_id=deal.dealId,
@@ -201,9 +221,9 @@ def map_deal(deal: ProtoOADeal, symbol_lookup: SymbolLookup) -> Deal:
         execution_timestamp=deal.executionTimestamp,
         trade_side=ProtoOATradeSide.Name(deal.tradeSide),
         deal_status=ProtoOADealStatus.Name(deal.dealStatus),
-        utc_last_update_timestamp=deal.utcLastUpdateTimestamp
-        if deal.HasField("utcLastUpdateTimestamp")
-        else None,
+        utc_last_update_timestamp=(
+            deal.utcLastUpdateTimestamp if deal.HasField("utcLastUpdateTimestamp") else None
+        ),
         execution_price=_decimal_or_none(deal.executionPrice),
         margin_rate=_decimal_or_none(deal.marginRate),
         commission=deal.commission if deal.HasField("commission") else None,
@@ -236,8 +256,9 @@ def map_trendbar(
 
     # For live trendbars from ProtoOASpotEvent, use the current bid price
     # as the close since it represents the latest market price.
-    close_price = Decimal(
-        bid_price) / scale if bid_price is not None else calc_price(bar.deltaClose)
+    close_price = (
+        Decimal(bid_price) / scale if bid_price is not None else calc_price(bar.deltaClose)
+    )
 
     return Trendbar(
         o=calc_price(bar.deltaOpen),

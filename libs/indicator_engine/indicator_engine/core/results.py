@@ -14,11 +14,13 @@ from .tensor import Tensor
 @dataclass(frozen=True)
 class IndicatorResult:
     """Wrapper around a result Tensor."""
+
     tensor: Tensor
 
 
 class ResultBuffer:
     """Rolling or unbounded buffer for indicator result tensors."""
+
     def __init__(
         self,
         assets: Iterable,
@@ -81,9 +83,7 @@ class ResultBuffer:
         if not self.allow_out_of_order:
             latest = self.latest_timestamp()
             if latest is not None and ts < latest:
-                raise ValueError(
-                    f"Out-of-order timestamp {ts} < latest {latest} not allowed"
-                )
+                raise ValueError(f"Out-of-order timestamp {ts} < latest {latest} not allowed")
 
         if self.history.mode == "unbounded" and self._size >= self._capacity:
             self._grow_capacity(self._capacity * 2)
@@ -104,7 +104,12 @@ class ResultBuffer:
             self._update_row(pos, row, asset_mask)
         return True
 
-    def update(self, timestamp_ms: int, row: np.ndarray, asset_mask: Optional[np.ndarray] = None) -> None:
+    def update(
+        self,
+        timestamp_ms: int,
+        row: np.ndarray,
+        asset_mask: Optional[np.ndarray] = None,
+    ) -> None:
         ts = int(timestamp_ms)
         if ts not in self._ts_to_pos:
             raise KeyError(f"Timestamp not found in ResultBuffer: {ts}")

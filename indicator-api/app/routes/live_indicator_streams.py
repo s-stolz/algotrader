@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from fastapi import APIRouter, HTTPException, Request
+
 from app.schemas_live import (
     LiveIndicatorStartResponse,
     LiveIndicatorStatusResponse,
     LiveIndicatorStopResponse,
     LiveIndicatorStreamRequest,
 )
-from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter(prefix="/indicator-streams", tags=["indicator-streams"])
 

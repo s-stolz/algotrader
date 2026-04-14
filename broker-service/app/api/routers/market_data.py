@@ -71,8 +71,8 @@ async def get_symbol(
 async def start_tick_stream(
     symbol: str,
     request: Request,
-    queueSize: int | None = Query(default=None, ge=1),
-    maxStreamLength: int | None = Query(default=None, ge=100),
+    queue_size: int | None = Query(default=None, ge=1, alias="queueSize"),
+    max_stream_length: int | None = Query(default=None, ge=100, alias="maxStreamLength"),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),
 ) -> dict[str, Any]:
@@ -84,7 +84,7 @@ async def start_tick_stream(
     status = await service.start_tick_stream(
         account_id,
         normalized_symbol,
-        _options_from_inputs(queueSize, maxStreamLength, body_values),
+        _options_from_inputs(queue_size, max_stream_length, body_values),
     )
     return serialize_tick_stream_status(status)
 
@@ -128,7 +128,9 @@ async def get_trendbars(
     limit: int | None = Query(
         default=None,
         ge=1,
-        description="Max number of bars to return. If specified, fetches most recent bars up to limit.",
+        description=(
+            "Max number of bars to return. If specified, fetches most recent bars up to limit."
+        ),
     ),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataService = Depends(get_market_data_service),

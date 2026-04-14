@@ -9,7 +9,10 @@ from indicator_engine.engines.update import UpdateEngine
 
 class UpdateEngineWarmupTests(unittest.TestCase):
     def test_sma_emits_nan_until_warmup_is_reached(self) -> None:
-        engine = UpdateEngine(registry=get_registry(), history=HistoryPolicy(mode="rolling", max_rows=50))
+        engine = UpdateEngine(
+            registry=get_registry(),
+            history=HistoryPolicy(mode="rolling", max_rows=50),
+        )
         engine.register_indicator(
             indicator_id="sma",
             timeframe="M1",
@@ -27,7 +30,10 @@ class UpdateEngineWarmupTests(unittest.TestCase):
         self.assertAlmostEqual(v3, 2.0)
 
     def test_rsi_emits_nan_until_warmup_then_value(self) -> None:
-        engine = UpdateEngine(registry=get_registry(), history=HistoryPolicy(mode="rolling", max_rows=50))
+        engine = UpdateEngine(
+            registry=get_registry(),
+            history=HistoryPolicy(mode="rolling", max_rows=50),
+        )
         engine.register_indicator(
             indicator_id="rsi",
             timeframe="M1",
@@ -45,7 +51,10 @@ class UpdateEngineWarmupTests(unittest.TestCase):
         self.assertAlmostEqual(v3, 100.0)
 
     def test_macd_warmup_gate_delays_output_until_slow_plus_signal(self) -> None:
-        engine = UpdateEngine(registry=get_registry(), history=HistoryPolicy(mode="rolling", max_rows=50))
+        engine = UpdateEngine(
+            registry=get_registry(),
+            history=HistoryPolicy(mode="rolling", max_rows=50),
+        )
         engine.register_indicator(
             indicator_id="macd",
             timeframe="M1",
@@ -55,8 +64,10 @@ class UpdateEngineWarmupTests(unittest.TestCase):
         )
 
         vals = []
-        for i, ts in enumerate([1000, 2000, 3000, 4000, 5000], start=1):
-            value = engine.on_bar("M1", ts, np.array([[10.0]], dtype=np.float64))["macd"].data[0, 0, 0, 0]
+        for _i, ts in enumerate([1000, 2000, 3000, 4000, 5000], start=1):
+            value = engine.on_bar("M1", ts, np.array([[10.0]], dtype=np.float64))["macd"].data[
+                0, 0, 0, 0
+            ]
             vals.append(value)
 
         self.assertTrue(np.isnan(vals[0]))

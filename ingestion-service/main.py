@@ -128,15 +128,14 @@ class IngestionService:
         return (self._utc_now_ms() - latest_ts_ms) > expected_gap_ms
 
     def _get_frozen_watermark(self, symbol: str, exchange: str) -> int:
-        latest_candle = self.db_client.get_latest_m1_candle(
-            symbol, exchange=exchange or None
-        )
+        latest_candle = self.db_client.get_latest_m1_candle(symbol, exchange=exchange or None)
         if not latest_candle:
             fallback = self._utc_now_ms() - int(
                 timedelta(days=self.MAX_BACKFILL_DAYS).total_seconds() * 1000
             )
             self.logger.info(
-                f"{symbol} M1: No data in database, using fallback watermark {self._ms_to_iso(fallback)}"
+                f"{symbol} M1: No data in database, "
+                f"using fallback watermark {self._ms_to_iso(fallback)}"
             )
             return fallback
 
@@ -175,7 +174,8 @@ class IngestionService:
             timeframe = self.TIMEFRAME_CODE_M1
 
         self.logger.info(
-            f"Backfilling {symbol} {timeframe} from {self._ms_to_iso(from_ts)} to {self._ms_to_iso(to_ts)}"
+            f"Backfilling {symbol} {timeframe} "
+            f"from {self._ms_to_iso(from_ts)} to {self._ms_to_iso(to_ts)}"
         )
 
         candles: List[Dict[str, Any]] = []
@@ -240,8 +240,7 @@ class IngestionService:
                 exchange or None,
             )
             self.logger.info(
-                f"Wrote {len(chunk)} candles for {symbol} "
-                f"(chunk {chunk_num}/{total_chunks})"
+                f"Wrote {len(chunk)} candles for {symbol} " f"(chunk {chunk_num}/{total_chunks})"
             )
 
     async def write_candles_callback(self, symbol_id: int, candles: List[Dict[str, Any]]) -> None:
@@ -342,7 +341,7 @@ class IngestionService:
             self.logger.info("Startup backfill phase complete")
 
     async def _is_broker_connected(self) -> bool:
-        """Broker is considered connected only when broker-service is up and cTrader is authenticated."""
+        """Broker is connected only when broker-service is up and cTrader is authenticated."""
         try:
             health = await self.broker_client.get_meta_health()
             ctrader = health.get("components", {}).get("ctrader", {})

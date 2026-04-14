@@ -130,18 +130,12 @@ class CtraderClient(BrokerPort, MarketDataPort):
         self._symbol_cache = SymbolCache()
 
         # Tick streaming state
-        self._tick_handlers: Dict[
-            Tuple[int, int],
-            Dict[str, TickHandler]
-        ] = {}
+        self._tick_handlers: Dict[Tuple[int, int], Dict[str, TickHandler]] = {}
         self._tick_lock = asyncio.Lock()
         self._active_tick_streams: set[Tuple[int, int]] = set()
 
         # Trendbar streaming state (key: account_id, symbol_id, timeframe)
-        self._trendbar_handlers: Dict[
-            Tuple[int, int, str],
-            Dict[str, TrendbarHandler]
-        ] = {}
+        self._trendbar_handlers: Dict[Tuple[int, int, str], Dict[str, TrendbarHandler]] = {}
         self._trendbar_lock = asyncio.Lock()
         self._active_trendbar_streams: set[Tuple[int, int, str]] = set()
 
@@ -167,8 +161,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         if self._reactor_thread:
             return
         self._loop = asyncio.get_running_loop()
-        self._reactor_thread = threading.Thread(
-            target=self._start_reactor, daemon=True)
+        self._reactor_thread = threading.Thread(target=self._start_reactor, daemon=True)
         self._reactor_thread.start()
         await self._app_authenticated.wait()
 
@@ -176,9 +169,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         self._shutting_down = True
         for account_id in list(self._authorized_accounts):
             try:
-                await self._send_request(
-                    ProtoOAAccountLogoutReq(ctidTraderAccountId=account_id)
-                )
+                await self._send_request(ProtoOAAccountLogoutReq(ctidTraderAccountId=account_id))
             except Exception:
                 logger.exception("Failed to logout account %s", account_id)
         if reactor.running:  # type: ignore[attr-defined]
@@ -200,8 +191,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         res = cast(
             ProtoOAGetAccountListByAccessTokenRes,
             await self._send_request(
-                ProtoOAGetAccountListByAccessTokenReq(
-                    accessToken=self._access_token_provider())
+                ProtoOAGetAccountListByAccessTokenReq(accessToken=self._access_token_provider())
             ),
         )
         accounts: list[Account] = []
@@ -217,10 +207,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
     async def get_open_orders(self, account_id: AccountId) -> list[Order]:
         data = await self._reconcile(account_id)
-        return [
-            map_order(order, self._symbol_cache.get_by_id)
-            for order in data.order
-        ]
+        return [map_order(order, self._symbol_cache.get_by_id) for order in data.order]
 
     async def get_order_history(
         self,
@@ -245,16 +232,9 @@ class CtraderClient(BrokerPort, MarketDataPort):
             )
 
         res = cast(ProtoOAOrderListRes, res)
-        return [
-            map_order(order, self._symbol_cache.get_by_id)
-            for order in res.order
-        ]
+        return [map_order(order, self._symbol_cache.get_by_id) for order in res.order]
 
-    async def place_order(
-        self,
-        account_id: AccountId,
-        payload: dict
-    ) -> dict[str, Any]:
+    async def place_order(self, account_id: AccountId, payload: dict) -> dict[str, Any]:
         symbol = payload["symbol"].upper()
         account_id_int = int(account_id)
         info = await self._get_symbol(account_id_int, symbol)
@@ -289,11 +269,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             "volume": req.volume,
         }
 
-    async def cancel_order(
-        self,
-        account_id: AccountId,
-        order_id: OrderId
-    ) -> None:
+    async def cancel_order(self, account_id: AccountId, order_id: OrderId) -> None:
         req = ProtoOACancelOrderReq(
             ctidTraderAccountId=int(account_id),
             orderId=int(order_id),
@@ -302,10 +278,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
     async def get_open_positions(self, account_id: AccountId) -> list[Position]:
         data = await self._reconcile(account_id)
-        return [
-            map_position(pos, self._symbol_cache.get_by_id)
-            for pos in data.position
-        ]
+        return [map_position(pos, self._symbol_cache.get_by_id) for pos in data.position]
 
     async def get_deal_history(
         self,
@@ -330,10 +303,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             )
 
         res = cast(ProtoOADealListRes, res)
-        return [
-            map_deal(deal, self._symbol_cache.get_by_id)
-            for deal in res.deal
-        ]
+        return [map_deal(deal, self._symbol_cache.get_by_id) for deal in res.deal]
 
     async def close_position(
         self,
@@ -341,8 +311,9 @@ class CtraderClient(BrokerPort, MarketDataPort):
         position_id: PositionId,
         close_volume: int | None = None,
     ) -> dict[str, Any]:
-        req = ProtoOAClosePositionReq(ctidTraderAccountId=int(
-            account_id), positionId=int(position_id))
+        req = ProtoOAClosePositionReq(
+            ctidTraderAccountId=int(account_id), positionId=int(position_id)
+        )
         if close_volume:
             req.volume = int(close_volume)
         await self._send_request(req)
@@ -373,13 +344,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         # If limit is specified and <= 10000, make single request
         if limit and limit <= 10000:
             return await self._fetch_trendbar_chunk(
-                int(account_id),
-                info.symbol_id,
-                info.digits,
-                timeframe,
-                from_ts,
-                to_ts,
-                limit
+                int(account_id), info.symbol_id, info.digits, timeframe, from_ts, to_ts, limit
             )
 
         # Otherwise, chunk the request
@@ -418,7 +383,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 timeframe,
                 current_from,
                 chunk_to,
-                chunk_limit
+                chunk_limit,
             )
 
             if not chunk_bars:
@@ -441,9 +406,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
             # Safety check: if we didn't move forward in time, break to avoid infinite loop
             if current_from <= chunk_bars[0].t:
-                logger.warning(
-                    f"Timestamp not advancing, breaking loop at {current_from}"
-                )
+                logger.warning(f"Timestamp not advancing, breaking loop at {current_from}")
                 break
 
         logger.info(
@@ -499,7 +462,8 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
             delay_seconds = TRENDBAR_RETRY_BASE_DELAY_SECONDS * attempt
             logger.warning(
-                "Rate limited while fetching trendbars (attempt=%s/%s, delay=%.2fs, symbol_id=%s, timeframe=%s)",
+                "Rate limited while fetching trendbars "
+                "(attempt=%s/%s, delay=%.2fs, symbol_id=%s, timeframe=%s)",
                 attempt,
                 TRENDBAR_RATE_LIMIT_RETRIES,
                 delay_seconds,
@@ -558,7 +522,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 timeframe,
                 current_from,
                 chunk_to,
-                chunk_limit
+                chunk_limit,
             )
 
             if not chunk_bars:
@@ -593,9 +557,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
             # Safety check: if we didn't move forward in time, break to avoid infinite loop
             if current_from <= chunk_bars[0].t:
-                logger.warning(
-                    f"Timestamp not advancing, breaking loop at {current_from}"
-                )
+                logger.warning(f"Timestamp not advancing, breaking loop at {current_from}")
                 break
 
         logger.info(
@@ -646,10 +608,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             token=token,
         )
 
-    async def unregister_tick_handler(
-        self,
-        subscription: TickSubscription
-    ) -> None:
+    async def unregister_tick_handler(self, subscription: TickSubscription) -> None:
         """Unregister a tick handler."""
         key = (subscription.account_id, subscription.symbol_id)
         async with self._tick_lock:
@@ -665,15 +624,17 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 if key in self._active_tick_streams:
                     has_trendbar_subscriptions = False
                     async with self._trendbar_lock:
-                        for (acc_id, sym_id, _) in self._trendbar_handlers.keys():
-                            if acc_id == subscription.account_id and sym_id == subscription.symbol_id:
+                        for acc_id, sym_id, _ in self._trendbar_handlers.keys():
+                            if (
+                                acc_id == subscription.account_id
+                                and sym_id == subscription.symbol_id
+                            ):
                                 has_trendbar_subscriptions = True
                                 break
 
                     if not has_trendbar_subscriptions:
                         await self._unsubscribe_spots(
-                            subscription.account_id,
-                            subscription.symbol_id
+                            subscription.account_id, subscription.symbol_id
                         )
 
                     self._active_tick_streams.remove(key)
@@ -700,17 +661,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 spot_key = (account_id, full_info.symbol_id)
                 async with self._tick_lock:
                     if spot_key not in self._active_tick_streams:
-                        await self._subscribe_spots(
-                            account_id,
-                            full_info.symbol_id
-                        )
+                        await self._subscribe_spots(account_id, full_info.symbol_id)
                         self._active_tick_streams.add(spot_key)
 
-                await self._subscribe_live_trendbar(
-                    account_id,
-                    full_info.symbol_id,
-                    timeframe
-                )
+                await self._subscribe_live_trendbar(account_id, full_info.symbol_id, timeframe)
                 self._active_trendbar_streams.add(key)
 
         return TrendbarSubscription(
@@ -721,12 +675,8 @@ class CtraderClient(BrokerPort, MarketDataPort):
             token=token,
         )
 
-    async def unregister_trendbar_handler(
-        self,
-        subscription: "TrendbarSubscription"
-    ) -> None:
-        key = (subscription.account_id, subscription.symbol_id,
-               subscription.timeframe.value)
+    async def unregister_trendbar_handler(self, subscription: "TrendbarSubscription") -> None:
+        key = (subscription.account_id, subscription.symbol_id, subscription.timeframe.value)
 
         async with self._trendbar_lock:
             handlers = self._trendbar_handlers.get(key)
@@ -765,9 +715,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             clientSecret=self._credentials.secret,
         )
         deferred = client.send(req)
-        deferred.addErrback(
-            lambda failure: logger.error("App auth error: %s", failure)
-        )
+        deferred.addErrback(lambda failure: logger.error("App auth error: %s", failure))
 
     def _on_disconnected(self, client: Client, reason: str) -> None:
         if self._shutting_down:
@@ -793,12 +741,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
         if payload_type == ProtoOASpotEvent().payloadType:
             event = cast(ProtoOASpotEvent, Protobuf.extract(message))
-            asyncio.run_coroutine_threadsafe(
-                self._emit_tick(event), self._loop)
+            asyncio.run_coroutine_threadsafe(self._emit_tick(event), self._loop)
 
             if event.trendbar:
-                asyncio.run_coroutine_threadsafe(
-                    self._emit_trendbars(event), self._loop)
+                asyncio.run_coroutine_threadsafe(self._emit_trendbars(event), self._loop)
             return
 
     async def _emit_tick(self, event: ProtoOASpotEvent) -> None:
@@ -828,8 +774,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         """Emit live trendbars from a spot event to registered handlers."""
         info = self._symbol_cache.get_full_by_id(event.symbolId)
         if not info:
-            logger.warning(
-                "No symbol info for trendbar symbol_id=%s", event.symbolId)
+            logger.warning("No symbol info for trendbar symbol_id=%s", event.symbolId)
             return
 
         # Get the bid price from the spot event as close price for live bars.
@@ -849,11 +794,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             if not handlers:
                 continue
 
-            trendbar = map_trendbar(
-                proto_bar,
-                bid_price=bid_price,
-                digits=info.digits
-            )
+            trendbar = map_trendbar(proto_bar, bid_price=bid_price, digits=info.digits)
             if len(handlers) == 1:
                 try:
                     await handlers[0](trendbar)
@@ -866,7 +807,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
                     )
                 continue
 
-            await asyncio.gather(*(handler(trendbar) for handler in handlers), return_exceptions=True)
+            await asyncio.gather(
+                *(handler(trendbar) for handler in handlers),
+                return_exceptions=True,
+            )
 
     async def _subscribe_spots(self, account_id: int, symbol_id: int) -> None:
         req = ProtoOASubscribeSpotsReq(ctidTraderAccountId=account_id)
@@ -907,24 +851,14 @@ class CtraderClient(BrokerPort, MarketDataPort):
         )
         await self._send_request(req)
 
-    async def _send_request(
-        self,
-        message: Message,
-        timeout: float | None = None
-    ) -> Message:
+    async def _send_request(self, message: Message, timeout: float | None = None) -> Message:
         await self._app_authenticated.wait()
-        effective_timeout = (
-            timeout if timeout and timeout > 0
-            else self._request_timeout
-        )
+        effective_timeout = timeout if timeout and timeout > 0 else self._request_timeout
         timeout_seconds = int(effective_timeout)
         if timeout_seconds <= 0:
             timeout_seconds = 1
 
-        deferred = self._client.send(
-            message,
-            responseTimeoutInSeconds=timeout_seconds
-        )
+        deferred = self._client.send(message, responseTimeoutInSeconds=timeout_seconds)
         response = await self._await_deferred(deferred)
 
         return cast(Message, Protobuf.extract(response))
@@ -942,8 +876,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         def _err(failure):
             loop.call_soon_threadsafe(
                 future.set_exception,
-                failure.value if failure else RuntimeError(
-                    "cTrader request failed"),
+                failure.value if failure else RuntimeError("cTrader request failed"),
             )
 
         deferred.addCallbacks(_ok, _err)

@@ -8,7 +8,10 @@ from indicator_engine.indicators.macd import MACD
 class MACDTests(unittest.TestCase):
     def test_macd_constant_series_is_nan_during_warmup_then_zero(self) -> None:
         bar = BarTensor(
-            data=np.array([[[10.0]], [[10.0]], [[10.0]], [[10.0]], [[10.0]], [[10.0]]], dtype=np.float64),
+            data=np.array(
+                [[[10.0]], [[10.0]], [[10.0]], [[10.0]], [[10.0]], [[10.0]]],
+                dtype=np.float64,
+            ),
             time=np.array([1000, 2000, 3000, 4000, 5000, 6000], dtype=np.int64),
             assets=np.array(["EURUSD"], dtype=object),
             fields=np.array(["close"], dtype=object),

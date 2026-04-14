@@ -1,4 +1,5 @@
 """HTTP client for broker-service interactions."""
+
 import json
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -34,7 +35,7 @@ class BrokerClient:
         timeframe: str = "M1",
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Fetch historical trendbars (candles) from the broker-service.
 
@@ -71,7 +72,11 @@ class BrokerClient:
             logger.info(f"Fetched {len(trendbars)} trendbars for {symbol} {timeframe}")
             return trendbars
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching trendbars: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                "HTTP error fetching trendbars: %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
             raise
         except Exception as e:
             logger.error(f"Error fetching trendbars: {e}")
@@ -83,7 +88,7 @@ class BrokerClient:
         timeframe: str = "M1",
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream historical trendbars from the broker-service.
 
@@ -164,17 +169,17 @@ class BrokerClient:
             logger.info(f"Started trendbar stream: {status}")
             return status
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error starting trendbar stream: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                "HTTP error starting trendbar stream: %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
             raise
         except Exception as e:
             logger.error(f"Error starting trendbar stream: {e}")
             raise
 
-    async def stop_trendbar_stream(
-        self,
-        symbol: str,
-        timeframe: str = "M1"
-    ) -> Dict[str, Any]:
+    async def stop_trendbar_stream(self, symbol: str, timeframe: str = "M1") -> Dict[str, Any]:
         """Stop a live trendbar stream.
 
         Args:
@@ -195,7 +200,11 @@ class BrokerClient:
             logger.info(f"Stopped trendbar stream: {status}")
             return status
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error stopping trendbar stream: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                "HTTP error stopping trendbar stream: %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
             raise
         except Exception as e:
             logger.error(f"Error stopping trendbar stream: {e}")
@@ -209,7 +218,11 @@ class BrokerClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching broker health: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                "HTTP error fetching broker health: %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
             raise
         except Exception as e:
             logger.error(f"Error fetching broker health: {e}")

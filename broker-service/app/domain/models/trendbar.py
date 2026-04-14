@@ -8,7 +8,7 @@ from decimal import Decimal
 class Trendbar:
     o: Decimal
     h: Decimal
-    l: Decimal
+    l: Decimal  # noqa: E741
     c: Decimal
     v: int
     t: int

@@ -23,10 +23,10 @@ _STANDARD_RECORD_FIELDS = frozenset(logging.makeLogRecord({}).__dict__.keys())
 _REDACT_RE = re.compile(r"(token|secret|password|authorization)", re.IGNORECASE)
 _COLOR_RESET = "\033[0m"
 _LEVEL_COLORS = {
-    "DEBUG": "\033[36m",     # cyan
-    "INFO": "\033[32m",      # green
-    "WARNING": "\033[33m",   # yellow
-    "ERROR": "\033[31m",     # red
+    "DEBUG": "\033[36m",  # cyan
+    "INFO": "\033[32m",  # green
+    "WARNING": "\033[33m",  # yellow
+    "ERROR": "\033[31m",  # red
     "CRITICAL": "\033[35m",  # magenta
 }
 
@@ -108,7 +108,12 @@ class JsonFormatter(logging.Formatter):
 class RequestLoggingMiddleware:
     """Low-overhead ASGI middleware for request summary logging."""
 
-    def __init__(self, app: Any, logger_name: str = "http.request", include_healthcheck: bool = False) -> None:
+    def __init__(
+        self,
+        app: Any,
+        logger_name: str = "http.request",
+        include_healthcheck: bool = False,
+    ) -> None:
         self.app = app
         self.logger = get_logger(logger_name)
         self.include_healthcheck = include_healthcheck
@@ -306,7 +311,7 @@ def _is_healthcheck_access_log(record: logging.LogRecord) -> bool:
             return False
 
     message = record.getMessage()
-    return " /health " in message or " /health\"" in message
+    return " /health " in message or ' /health"' in message
 
 
 def _extract_extra_fields(record: logging.LogRecord) -> Dict[str, Any]:
@@ -349,5 +354,10 @@ def _sanitize_field(key: str, value: Any) -> Any:
 def _format_key_values(values: Dict[str, Any]) -> str:
     parts = []
     for key in sorted(values.keys()):
-        parts.append("{}={}".format(key, json.dumps(values[key], separators=(",", ":"), default=str)))
+        parts.append(
+            "{}={}".format(
+                key,
+                json.dumps(values[key], separators=(",", ":"), default=str),
+            )
+        )
     return " ".join(parts)
