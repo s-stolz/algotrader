@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -254,8 +255,12 @@ class LiveIndicatorManager:
                 f"redis://{self.redis_host}:{self.redis_port}",
                 decode_responses=True,
             )
-            self._redis.ping()
-        return self._redis
+        redis = self._redis
+        assert redis is not None
+        ping_result = redis.ping()
+        if inspect.isawaitable(ping_result):
+            await ping_result
+        return redis
 
     def _validate_live_indicator(self, spec: LiveStreamSpec) -> None:
         if spec.engine_id == "currency_strength":

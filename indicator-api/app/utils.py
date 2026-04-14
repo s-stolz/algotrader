@@ -1,6 +1,6 @@
-from numbers import Real
-from typing import Any
+from typing import Any, Literal
 
+import numpy as np
 import pandas as pd
 from indicator_engine.core.tensor import Tensor
 
@@ -16,7 +16,7 @@ def _to_epoch_ms(value: Any) -> int | None:
     if isinstance(value, pd.Timestamp):
         return int(value.value // 1_000_000)
 
-    if isinstance(value, Real) and not isinstance(value, bool):
+    if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
         raw = int(value)
         magnitude = abs(raw)
         if magnitude >= 1_000_000_000_000_000:
@@ -157,7 +157,7 @@ def trim_indicator_output(
     *,
     original_start_ms: int | None,
     original_limit: int | None,
-    dropna_how: str = "any",
+    dropna_how: Literal["any", "all"] = "any",
 ) -> pd.DataFrame:
     """Trim indicator DataFrame to honor original user constraints after warmup.
 
@@ -168,7 +168,10 @@ def trim_indicator_output(
     if df is None or df.empty:
         return df
 
-    out = df.dropna(how=dropna_how)
+    if dropna_how == "any":
+        out = df.loc[df.notna().all(axis=1)]
+    else:
+        out = df.loc[df.notna().any(axis=1)]
 
     if original_start_ms is not None:
         out = out[out.index >= pd.to_datetime(original_start_ms, unit='ms', utc=True)]
