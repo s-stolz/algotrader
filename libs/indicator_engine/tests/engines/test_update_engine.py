@@ -33,6 +33,15 @@ class LastCloseIndicator:
             },
         )
 
+    def batch_vectorized(self, *args, **kwargs) -> Tensor:
+        raise NotImplementedError
+
+    def init_state(self, *args, **kwargs) -> None:
+        raise NotImplementedError
+
+    def update(self, *args, **kwargs):
+        raise NotImplementedError
+
 
 class RequiredAssetsIndicator(LastCloseIndicator):
     spec = IndicatorSpec(
