@@ -1,4 +1,5 @@
 import io
+import os
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
@@ -85,7 +86,7 @@ class TestCli(unittest.TestCase):
         stdout = io.StringIO()
         stderr = io.StringIO()
         with patch(
-            "cli.run_backtest_with_market_data",
+            "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
             side_effect=_fake_run_backtest_with_market_data,
         ):
             with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -112,6 +113,124 @@ class TestCli(unittest.TestCase):
         self.assertIn("fills=1 trades=1", output)
         self.assertIn("total_return_pct=0.050000", output)
         self.assertIn("final_equity=10005.000000", output)
+
+    def test_run_command_uses_local_db_accessor_defaults_when_env_missing(self) -> None:
+        observed_env: list[tuple[str | None, str | None]] = []
+
+        def _fake_run_backtest_with_market_data(
+            *,
+            request,
+            strategy,
+            exchange=None,
+            data_adapter=None,
+        ):
+            _ = (request, strategy, exchange, data_adapter)
+            observed_env.append(
+                (
+                    os.environ.get("DATABASE_ACCESSOR_HOST"),
+                    os.environ.get("DATABASE_ACCESSOR_PORT"),
+                )
+            )
+            return BacktestResult(
+                request=request,
+                fills=[],
+                trades=[],
+                equity_curve=[],
+                metrics={},
+                diagnostics={},
+            )
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch(
+                "cli._read_local_env_file",
+                return_value={
+                    "PUBLIC_HOST": "127.0.0.1",
+                    "DATABASE_ACCESSOR_PUBLISHED_PORT": "18000",
+                },
+            ):
+                with patch(
+                    "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+                    side_effect=_fake_run_backtest_with_market_data,
+                ):
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main(
+                            [
+                                "run",
+                                "--symbol",
+                                "AAPL",
+                                "--timeframe",
+                                "M1",
+                                "--start-ms",
+                                "1700000000000",
+                                "--end-ms",
+                                "1700000600000",
+                            ]
+                        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_env, [("127.0.0.1", "18000")])
+
+    def test_run_command_prefers_cli_db_accessor_overrides(self) -> None:
+        observed_env: list[tuple[str | None, str | None]] = []
+
+        def _fake_run_backtest_with_market_data(
+            *,
+            request,
+            strategy,
+            exchange=None,
+            data_adapter=None,
+        ):
+            _ = (request, strategy, exchange, data_adapter)
+            observed_env.append(
+                (
+                    os.environ.get("DATABASE_ACCESSOR_HOST"),
+                    os.environ.get("DATABASE_ACCESSOR_PORT"),
+                )
+            )
+            return BacktestResult(
+                request=request,
+                fills=[],
+                trades=[],
+                equity_curve=[],
+                metrics={},
+                diagnostics={},
+            )
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch(
+                "cli._read_local_env_file",
+                return_value={
+                    "PUBLIC_HOST": "127.0.0.1",
+                    "DATABASE_ACCESSOR_PUBLISHED_PORT": "18000",
+                },
+            ):
+                with patch(
+                    "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+                    side_effect=_fake_run_backtest_with_market_data,
+                ):
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main(
+                            [
+                                "run",
+                                "--symbol",
+                                "AAPL",
+                                "--timeframe",
+                                "M1",
+                                "--start-ms",
+                                "1700000000000",
+                                "--end-ms",
+                                "1700000600000",
+                                "--db-accessor-host",
+                                "localhost",
+                                "--db-accessor-port",
+                                "9001",
+                            ]
+                        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_env, [("localhost", "9001")])
 
     def test_run_command_executes_real_pipeline_deterministically(self) -> None:
         start_ms = 1_700_000_000_000
@@ -191,7 +310,10 @@ class TestCli(unittest.TestCase):
     def test_run_command_returns_non_zero_on_runner_error(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
-        with patch("cli.run_backtest_with_market_data", side_effect=RuntimeError("boom")):
+        with patch(
+            "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+            side_effect=RuntimeError("boom"),
+        ):
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 exit_code = cli.main(
                     [
