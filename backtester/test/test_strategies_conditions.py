@@ -45,6 +45,13 @@ class TestConditionHelpers(unittest.TestCase):
 
         self.assertEqual(mask.tolist(), [True, True, False, False])
 
+    def test_above_and_below_ignore_non_finite_values(self) -> None:
+        left = np.array([np.inf, -np.inf, np.nan, 3.0, 1.0])
+        right = np.array([2.0, 2.0, 2.0, 2.0, 2.0])
+
+        self.assertEqual(above(left, right).tolist(), [False, False, False, True, False])
+        self.assertEqual(below(left, right).tolist(), [False, False, False, False, True])
+
     def test_condition_rule_evaluates_crossover_vectorized_and_sequentially(self) -> None:
         rule = ConditionRule.crossover("sma_fast", "sma_slow")
         feature_map = {
@@ -97,6 +104,35 @@ class TestConditionHelpers(unittest.TestCase):
         self.assertTrue(above_rule.evaluate_sequential(previous=None, current=current))
         self.assertFalse(below_rule.evaluate_sequential(previous=None, current=current))
 
+    def test_condition_rule_non_finite_above_below_match_sequential_behavior(self) -> None:
+        above_rule = ConditionRule.above("fast", "slow")
+        below_rule = ConditionRule.below("fast", "slow")
+        feature_map = {
+            "fast": [np.inf, -np.inf, np.nan, 3.0, 1.0],
+            "slow": [2.0, 2.0, 2.0, 2.0, 2.0],
+        }
+
+        self.assertEqual(
+            above_rule.evaluate_vectorized(feature_map).tolist(),
+            [False, False, False, True, False],
+        )
+        self.assertEqual(
+            below_rule.evaluate_vectorized(feature_map).tolist(),
+            [False, False, False, False, True],
+        )
+        self.assertFalse(
+            above_rule.evaluate_sequential(
+                previous=None,
+                current={"fast": np.inf, "slow": 2.0},
+            )
+        )
+        self.assertFalse(
+            below_rule.evaluate_sequential(
+                previous=None,
+                current={"fast": -np.inf, "slow": 2.0},
+            )
+        )
+
     def test_condition_rule_rejects_missing_features(self) -> None:
         rule = ConditionRule.above("fast", "slow")
 
@@ -105,6 +141,13 @@ class TestConditionHelpers(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "missing required feature"):
             rule.evaluate_sequential(previous=None, current={"fast": 2.0})
+
+    def test_condition_rule_rejects_non_string_feature_names(self) -> None:
+        with self.assertRaisesRegex(ValueError, "left_feature"):
+            ConditionRule.above(None, "slow")
+
+        with self.assertRaisesRegex(ValueError, "right_feature"):
+            ConditionRule.below("fast", 123)
 
 
 if __name__ == "__main__":

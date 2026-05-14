@@ -24,15 +24,25 @@ class IndicatorFeatureRequirement:
     parameters: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        feature_name = str(self.feature_name).strip()
+        if not isinstance(self.feature_name, str):
+            raise ValueError(
+                "indicator feature requirement feature_name must be a non-empty string"
+            )
+        feature_name = self.feature_name.strip()
         if not feature_name:
             raise ValueError("indicator feature requirement feature_name must be non-empty")
 
-        indicator_id = str(self.indicator_id).strip()
+        if not isinstance(self.indicator_id, str):
+            raise ValueError(
+                "indicator feature requirement indicator_id must be a non-empty string"
+            )
+        indicator_id = self.indicator_id.strip()
         if not indicator_id:
             raise ValueError("indicator feature requirement indicator_id must be non-empty")
 
-        output_key = None if self.output_key is None else str(self.output_key).strip()
+        if self.output_key is not None and not isinstance(self.output_key, str):
+            raise ValueError("indicator feature requirement output_key must be a string or None")
+        output_key = None if self.output_key is None else self.output_key.strip()
         if output_key == "":
             raise ValueError("indicator feature requirement output_key must be non-empty")
 

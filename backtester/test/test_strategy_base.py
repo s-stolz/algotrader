@@ -48,6 +48,30 @@ class TestStrategyDefinition(unittest.TestCase):
                 parameters=(("window", 2),),
             )
 
+        with self.assertRaisesRegex(ValueError, "feature_name"):
+            IndicatorFeatureRequirement(
+                feature_name=None,
+                indicator_id="sma",
+                output_key="sma",
+                parameters={"window": 2},
+            )
+
+        with self.assertRaisesRegex(ValueError, "indicator_id"):
+            IndicatorFeatureRequirement(
+                feature_name="sma_fast",
+                indicator_id=None,
+                output_key="sma",
+                parameters={"window": 2},
+            )
+
+        with self.assertRaisesRegex(ValueError, "output_key"):
+            IndicatorFeatureRequirement(
+                feature_name="sma_fast",
+                indicator_id="sma",
+                output_key=123,
+                parameters={"window": 2},
+            )
+
     def test_build_execution_targets_applies_decision_sizing_and_risk(self) -> None:
         def decision_model(features: FeatureMatrix) -> SignalMatrix:
             return SignalMatrix(

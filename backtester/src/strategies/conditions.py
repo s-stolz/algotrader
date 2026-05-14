@@ -25,8 +25,13 @@ class ConditionRule:
     right_feature: str
 
     def __post_init__(self) -> None:
-        left_feature = str(self.left_feature).strip()
-        right_feature = str(self.right_feature).strip()
+        if not isinstance(self.left_feature, str):
+            raise ValueError("condition left_feature must be a non-empty string")
+        if not isinstance(self.right_feature, str):
+            raise ValueError("condition right_feature must be a non-empty string")
+
+        left_feature = self.left_feature.strip()
+        right_feature = self.right_feature.strip()
         if not left_feature:
             raise ValueError("condition left_feature must be non-empty")
         if not right_feature:
@@ -183,11 +188,13 @@ def above(left: ArrayLike, right: ArrayLike) -> NDArray[np.bool_]:
     """Return element-wise `left > right` comparison."""
 
     left_arr, right_arr = _as_comparable_arrays(left, right)
-    return left_arr > right_arr
+    valid = np.isfinite(left_arr) & np.isfinite(right_arr)
+    return (left_arr > right_arr) & valid
 
 
 def below(left: ArrayLike, right: ArrayLike) -> NDArray[np.bool_]:
     """Return element-wise `left < right` comparison."""
 
     left_arr, right_arr = _as_comparable_arrays(left, right)
-    return left_arr < right_arr
+    valid = np.isfinite(left_arr) & np.isfinite(right_arr)
+    return (left_arr < right_arr) & valid
