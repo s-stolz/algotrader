@@ -63,6 +63,7 @@ class EventDrivenFeatureStream:
         row = _bar_to_update_row(bar)
         features = _base_feature_values(bar)
 
+        snapshot_ready = True
         for registered in self._registered_features:
             requirement = registered.requirement
             updated = registered.engine.on_bar(
@@ -72,7 +73,8 @@ class EventDrivenFeatureStream:
             )
             tensor = updated.get(requirement.indicator_id)
             if tensor is None:
-                return None
+                snapshot_ready = False
+                continue
 
             value = _extract_feature_value(
                 tensor=tensor,
@@ -80,8 +82,12 @@ class EventDrivenFeatureStream:
                 symbol=self._symbol,
             )
             if not math.isfinite(value):
-                return None
+                snapshot_ready = False
+                continue
             features[requirement.feature_name] = value
+
+        if not snapshot_ready:
+            return None
 
         return FeatureSnapshot(
             timestamp_ms=int(bar.timestamp_ms),
