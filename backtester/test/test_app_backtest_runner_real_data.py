@@ -2,6 +2,7 @@ import unittest
 
 import pandas as pd
 from app.backtest_runner import run_backtest_with_market_data
+from domain.enums import BacktestEngine
 from domain.types import BacktestRequest, ExecutionConfig, StrategyConfig
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
 
@@ -91,6 +92,31 @@ class TestRealDataBacktestRunner(unittest.TestCase):
         )
 
         self.assertEqual(result.diagnostics["engine"], "vectorized")
+        self.assertEqual(result.diagnostics["strategy_id"], "sma_crossover")
+        self.assertGreater(len(result.fills), 0)
+
+    def test_event_driven_real_data_path_uses_streaming_engine(self) -> None:
+        base_request = self._build_request()
+        request = BacktestRequest(
+            symbols=base_request.symbols,
+            timeframe=base_request.timeframe,
+            start_ms=base_request.start_ms,
+            end_ms=base_request.end_ms,
+            strategy=base_request.strategy,
+            execution=base_request.execution,
+            initial_capital=base_request.initial_capital,
+            engine=BacktestEngine.EVENT_DRIVEN,
+        )
+        adapter = _FakeHistoricalAdapter(self._build_raw_bars())
+
+        result = run_backtest_with_market_data(
+            request=request,
+            data_adapter=adapter,
+        )
+
+        expected_fetch_start = request.start_ms - (2 * 60_000)
+        self.assertEqual(adapter.calls[0]["start_ms"], expected_fetch_start)
+        self.assertEqual(result.diagnostics["engine"], "event_driven")
         self.assertEqual(result.diagnostics["strategy_id"], "sma_crossover")
         self.assertGreater(len(result.fills), 0)
 

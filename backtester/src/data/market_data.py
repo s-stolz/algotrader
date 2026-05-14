@@ -28,6 +28,30 @@ def load_market_data(
 ) -> pd.DataFrame:
     """Fetch and prepare bars for vectorized execution."""
 
+    normalized = load_raw_market_data(
+        request=request,
+        strategy=strategy,
+        exchange=exchange,
+        data_adapter=data_adapter,
+    )
+    featured = build_feature_frame(bars=normalized, strategy=strategy)
+    return trim_bars_for_execution(
+        bars=featured,
+        required_features=strategy.feature_specs,
+        start_ms=int(request.start_ms),
+        end_ms=int(request.end_ms),
+    )
+
+
+def load_raw_market_data(
+    *,
+    request: BacktestRequest,
+    strategy: StrategyDefinition,
+    exchange: str | None = None,
+    data_adapter: HistoricalBarDataAdapter | None = None,
+) -> pd.DataFrame:
+    """Fetch and normalize raw bars, including any strategy warmup window."""
+
     if len(request.symbols) != 1:
         raise ValueError("M2 market-data path supports exactly one symbol per run")
 
@@ -48,11 +72,4 @@ def load_market_data(
         exchange=exchange,
     )
 
-    normalized = normalize_bar_data(bars=raw_bars, symbol=symbol)
-    featured = build_feature_frame(bars=normalized, strategy=strategy)
-    return trim_bars_for_execution(
-        bars=featured,
-        required_features=strategy.feature_specs,
-        start_ms=int(request.start_ms),
-        end_ms=int(request.end_ms),
-    )
+    return normalize_bar_data(bars=raw_bars, symbol=symbol)

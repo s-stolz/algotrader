@@ -5,11 +5,12 @@ from __future__ import annotations
 import pandas as pd
 from adapters.db_accessor import HistoricalBarDataAdapter
 from data.indicators import build_feature_frame
-from data.market_data import load_market_data
+from data.market_data import load_market_data, load_raw_market_data
 from data.normalization import normalize_bar_data
 from data.warmup import trim_bars_for_execution
 from domain.enums import BacktestEngine, DataGranularity
 from domain.types import BacktestRequest, BacktestResult
+from engines.event_driven import run_event_driven_backtest
 from engines.vectorized import run_vectorized_backtest
 from strategies.base import StrategyDefinition
 from strategies.registry import resolve_strategy
@@ -44,7 +45,17 @@ def run_backtest(
         )
 
     if request.engine == BacktestEngine.EVENT_DRIVEN:
-        raise NotImplementedError("event_driven engine is not implemented yet")
+        if request.data_granularity == DataGranularity.BAR:
+            return run_event_driven_backtest(
+                request=request,
+                bars=bars,
+                strategy=resolved_strategy,
+            )
+
+        raise ValueError(
+            f"Unsupported data_granularity '{request.data_granularity.value}' "
+            "for event-driven execution"
+        )
 
     raise ValueError(f"Unsupported backtest engine '{_engine_value(request.engine)}'")
 
@@ -80,7 +91,23 @@ def run_backtest_with_market_data(
         )
 
     if request.engine == BacktestEngine.EVENT_DRIVEN:
-        raise NotImplementedError("event_driven engine is not implemented yet")
+        if request.data_granularity == DataGranularity.BAR:
+            raw_bars = load_raw_market_data(
+                request=request,
+                strategy=resolved_strategy,
+                exchange=exchange,
+                data_adapter=data_adapter,
+            )
+            return run_event_driven_backtest(
+                request=request,
+                bars=raw_bars,
+                strategy=resolved_strategy,
+            )
+
+        raise ValueError(
+            f"Unsupported data_granularity '{request.data_granularity.value}' "
+            "for event-driven execution"
+        )
 
     raise ValueError(f"Unsupported backtest engine '{_engine_value(request.engine)}'")
 

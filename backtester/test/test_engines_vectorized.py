@@ -121,7 +121,7 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unknown strategy_id 'not_registered'"):
             run_backtest(request=request, bars=bars)
 
-    def test_event_driven_request_does_not_fall_through_to_vectorized_engine(self) -> None:
+    def test_event_driven_request_dispatches_to_event_driven_engine(self) -> None:
         bars = self._build_bars()
         request = BacktestRequest(
             symbols=["AAPL"],
@@ -137,8 +137,10 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
             engine=BacktestEngine.EVENT_DRIVEN,
         )
 
-        with self.assertRaisesRegex(NotImplementedError, "event_driven"):
-            run_backtest(request=request, bars=bars)
+        result = run_backtest(request=request, bars=bars)
+
+        self.assertEqual(result.diagnostics["engine"], "event_driven")
+        self.assertEqual(len(result.fills), 2)
 
     def test_vectorized_engine_does_not_use_row_iterators(self) -> None:
         bars = self._build_bars()
