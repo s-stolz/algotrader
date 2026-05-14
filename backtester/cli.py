@@ -16,8 +16,8 @@ if _SRC_PATH_TEXT not in sys.path:
 
 _BACKTEST_RUNNER_MODULE = importlib.import_module("app.backtest_runner")
 _APP_CONFIG_MODULE = importlib.import_module("app.config")
+_DOMAIN_ENUMS_MODULE = importlib.import_module("domain.enums")
 _DOMAIN_TYPES_MODULE = importlib.import_module("domain.types")
-_SMA_CROSSOVER_MODULE = importlib.import_module("strategies.examples.sma_crossover")
 
 __all__ = ["build_parser", "main"]
 
@@ -28,7 +28,7 @@ _DEFAULT_LOCAL_DB_ACCESSOR_PORT = "8000"
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="backtester",
-        description="Run vectorized bar backtests.",
+        description="Run bar backtests.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -48,6 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="End timestamp (UTC epoch ms)",
     )
     run_parser.add_argument("--strategy", default="sma_crossover", choices=("sma_crossover",))
+    run_parser.add_argument(
+        "--engine",
+        default=_DOMAIN_ENUMS_MODULE.BacktestEngine.VECTORIZED.value,
+        choices=tuple(engine.value for engine in _DOMAIN_ENUMS_MODULE.BacktestEngine),
+        help="Backtest engine backend.",
+    )
     run_parser.add_argument("--fast-window", default=5, type=int)
     run_parser.add_argument("--slow-window", default=20, type=int)
     run_parser.add_argument("--quantity", default=1.0, type=float)
@@ -86,11 +92,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     try:
-        strategy = _build_strategy(args)
         request = _build_request(args)
         result = _BACKTEST_RUNNER_MODULE.run_backtest_with_market_data(
             request=request,
-            strategy=strategy,
             exchange=args.exchange,
         )
     except Exception as exc:
@@ -99,17 +103,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     _print_summary(result)
     return 0
-
-
-def _build_strategy(args: argparse.Namespace) -> Any:
-    if args.strategy != "sma_crossover":
-        raise ValueError(f"Unsupported strategy: {args.strategy}")
-
-    return _SMA_CROSSOVER_MODULE.build_sma_crossover_strategy(
-        fast_window=int(args.fast_window),
-        slow_window=int(args.slow_window),
-        quantity=float(args.quantity),
-    )
 
 
 def _build_request(args: argparse.Namespace) -> Any:
@@ -130,6 +123,7 @@ def _build_request(args: argparse.Namespace) -> Any:
         ),
         execution=_APP_CONFIG_MODULE.build_default_execution_config(),
         initial_capital=float(args.initial_capital),
+        engine=_DOMAIN_ENUMS_MODULE.BacktestEngine(str(args.engine)),
     )
 
 
@@ -145,6 +139,7 @@ def _print_summary(result: Any) -> None:
 
     print("Backtest completed")
     print(f"strategy={result.request.strategy.strategy_id}")
+    print(f"engine={result.request.engine.value}")
     print(f"symbol={result.request.symbols[0]} timeframe={result.request.timeframe}")
     print(f"bars={int(result.diagnostics.get('bars', len(result.equity_curve)))}")
     print(f"fills={len(result.fills)} trades={trade_count}")

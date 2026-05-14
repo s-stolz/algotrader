@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import cli
 import pandas as pd
-from domain.enums import OrderSide
+from domain.enums import BacktestEngine, OrderSide
 from domain.types import BacktestResult, Fill, PortfolioSnapshot, Trade
 
 
@@ -17,7 +17,7 @@ class TestCli(unittest.TestCase):
         def _fake_run_backtest_with_market_data(
             *,
             request,
-            strategy,
+            strategy=None,
             exchange=None,
             data_adapter=None,
         ):
@@ -71,6 +71,8 @@ class TestCli(unittest.TestCase):
             "1700000900000",
             "--strategy",
             "sma_crossover",
+            "--engine",
+            "event_driven",
             "--fast-window",
             "7",
             "--slow-window",
@@ -102,17 +104,66 @@ class TestCli(unittest.TestCase):
         self.assertEqual(request.start_ms, 1_700_000_000_000)
         self.assertEqual(request.end_ms, 1_700_000_900_000)
         self.assertEqual(request.initial_capital, 50_000.0)
+        self.assertEqual(request.engine, BacktestEngine.EVENT_DRIVEN)
         self.assertEqual(request.strategy.parameters["fast_window"], 7)
         self.assertEqual(request.strategy.parameters["slow_window"], 20)
         self.assertEqual(request.strategy.parameters["quantity"], 2.5)
-        self.assertEqual(strategy.strategy_id, "sma_crossover")
+        self.assertIsNone(strategy)
         self.assertEqual(exchange, "NASDAQ")
 
         output = stdout.getvalue()
         self.assertIn("Backtest completed", output)
+        self.assertIn("engine=event_driven", output)
         self.assertIn("fills=1 trades=1", output)
         self.assertIn("total_return_pct=0.050000", output)
         self.assertIn("final_equity=10005.000000", output)
+
+    def test_run_command_accepts_explicit_vectorized_and_defaults_to_vectorized(self) -> None:
+        captured_requests = []
+
+        def _fake_run_backtest_with_market_data(
+            *,
+            request,
+            strategy=None,
+            exchange=None,
+            data_adapter=None,
+        ):
+            _ = (strategy, exchange, data_adapter)
+            captured_requests.append(request)
+            return BacktestResult(
+                request=request,
+                fills=[],
+                trades=[],
+                equity_curve=[],
+                metrics={},
+                diagnostics={},
+            )
+
+        base_argv = [
+            "run",
+            "--symbol",
+            "AAPL",
+            "--timeframe",
+            "M1",
+            "--start-ms",
+            "1700000000000",
+            "--end-ms",
+            "1700000600000",
+        ]
+
+        with patch(
+            "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+            side_effect=_fake_run_backtest_with_market_data,
+        ):
+            for extra_args in ([], ["--engine", "vectorized"]):
+                with self.subTest(extra_args=extra_args):
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main([*base_argv, *extra_args])
+
+                    self.assertEqual(exit_code, 0)
+                    self.assertEqual(captured_requests[-1].engine, BacktestEngine.VECTORIZED)
+                    self.assertIn("engine=vectorized", stdout.getvalue())
 
     def test_run_command_uses_local_db_accessor_defaults_when_env_missing(self) -> None:
         observed_env: list[tuple[str | None, str | None]] = []
@@ -120,7 +171,7 @@ class TestCli(unittest.TestCase):
         def _fake_run_backtest_with_market_data(
             *,
             request,
-            strategy,
+            strategy=None,
             exchange=None,
             data_adapter=None,
         ):
@@ -177,7 +228,7 @@ class TestCli(unittest.TestCase):
         def _fake_run_backtest_with_market_data(
             *,
             request,
-            strategy,
+            strategy=None,
             exchange=None,
             data_adapter=None,
         ):
