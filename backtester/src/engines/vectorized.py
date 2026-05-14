@@ -7,6 +7,7 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 from domain.enums import (
+    BacktestEngine,
     DataGranularity,
     FillTiming,
     PriceSource,
@@ -97,6 +98,10 @@ def run_vectorized_backtest(
 def _validate_vectorized_request(request: BacktestRequest) -> None:
     execution = request.execution
     constraints = (
+        (
+            request.engine == BacktestEngine.VECTORIZED,
+            "Vectorized engine requires engine=vectorized",
+        ),
         (
             request.data_granularity == DataGranularity.BAR,
             "Vectorized engine supports bar data only",

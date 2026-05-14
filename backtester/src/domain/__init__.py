@@ -1,6 +1,7 @@
 """Domain package exports."""
 
 from .enums import (
+    BacktestEngine,
     DataGranularity,
     FillTiming,
     GapPolicy,
@@ -31,6 +32,7 @@ from .types import (
 
 __all__ = [
     "BacktestRequest",
+    "BacktestEngine",
     "BacktestResult",
     "BarEvent",
     "BarView",

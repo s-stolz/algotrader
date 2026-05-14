@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pandas as pd
 from app.backtest_runner import run_backtest
-from domain.enums import PriceSource
+from domain.enums import BacktestEngine, PriceSource
 from domain.types import (
     BacktestRequest,
     ExecutionArrayBundle,
@@ -83,6 +83,62 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         self.assertAlmostEqual(result.trades[0].realized_pnl, 3.0)
         self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
         self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
+
+    def test_request_only_vectorized_run_resolves_strategy_from_registry(self) -> None:
+        bars = self._build_bars()
+        request = BacktestRequest(
+            symbols=["AAPL"],
+            timeframe="1m",
+            start_ms=1_700_000_000_000,
+            end_ms=1_700_000_540_000,
+            strategy=StrategyConfig(
+                strategy_id="sma_crossover",
+                parameters={"fast_window": 2, "slow_window": 3, "quantity": 1.0},
+            ),
+            execution=ExecutionConfig(),
+            initial_capital=10_000.0,
+        )
+
+        result = run_backtest(request=request, bars=bars)
+
+        self.assertEqual(result.diagnostics["engine"], "vectorized")
+        self.assertEqual(result.diagnostics["strategy_id"], "sma_crossover")
+        self.assertEqual(len(result.fills), 2)
+        self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
+
+    def test_unknown_request_strategy_id_fails_clearly(self) -> None:
+        bars = self._build_bars()
+        request = BacktestRequest(
+            symbols=["AAPL"],
+            timeframe="1m",
+            start_ms=1_700_000_000_000,
+            end_ms=1_700_000_540_000,
+            strategy=StrategyConfig(strategy_id="not_registered"),
+            execution=ExecutionConfig(),
+            initial_capital=10_000.0,
+        )
+
+        with self.assertRaisesRegex(ValueError, "Unknown strategy_id 'not_registered'"):
+            run_backtest(request=request, bars=bars)
+
+    def test_event_driven_request_does_not_fall_through_to_vectorized_engine(self) -> None:
+        bars = self._build_bars()
+        request = BacktestRequest(
+            symbols=["AAPL"],
+            timeframe="1m",
+            start_ms=1_700_000_000_000,
+            end_ms=1_700_000_540_000,
+            strategy=StrategyConfig(
+                strategy_id="sma_crossover",
+                parameters={"fast_window": 2, "slow_window": 3, "quantity": 1.0},
+            ),
+            execution=ExecutionConfig(),
+            initial_capital=10_000.0,
+            engine=BacktestEngine.EVENT_DRIVEN,
+        )
+
+        with self.assertRaisesRegex(NotImplementedError, "event_driven"):
+            run_backtest(request=request, bars=bars)
 
     def test_vectorized_engine_does_not_use_row_iterators(self) -> None:
         bars = self._build_bars()

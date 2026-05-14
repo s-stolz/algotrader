@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from domain.enums import (
+    BacktestEngine,
     DataGranularity,
     FillTiming,
     GapPolicy,
@@ -57,6 +58,7 @@ class BacktestRequest:
     data_granularity: DataGranularity = DataGranularity.BAR
     persist_result: bool = False
     run_metadata: Optional[Dict[str, Any]] = None
+    engine: BacktestEngine = BacktestEngine.VECTORIZED
 
 
 @dataclass(frozen=True)

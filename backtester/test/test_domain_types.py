@@ -1,6 +1,6 @@
 import unittest
 
-from domain.enums import DataGranularity, MarketEventType, OrderSide
+from domain.enums import BacktestEngine, DataGranularity, MarketEventType, OrderSide
 from domain.events import BarEvent, TickEvent
 from domain.types import (
     BacktestRequest,
@@ -29,10 +29,15 @@ class TestDomainTypes(unittest.TestCase):
         )
 
         self.assertEqual(request.data_granularity, DataGranularity.BAR)
+        self.assertEqual(request.engine, BacktestEngine.VECTORIZED)
         self.assertFalse(request.persist_result)
         self.assertIsNone(request.run_metadata)
         self.assertEqual(request.execution.commission_bps, 0.0)
         self.assertEqual(request.execution.slippage_bps, 0.0)
+
+    def test_backtest_engine_values_are_explicit(self) -> None:
+        self.assertEqual(BacktestEngine.VECTORIZED.value, "vectorized")
+        self.assertEqual(BacktestEngine.EVENT_DRIVEN.value, "event_driven")
 
     def test_vectorized_contract_types_construct(self) -> None:
         feature_matrix = FeatureMatrix(

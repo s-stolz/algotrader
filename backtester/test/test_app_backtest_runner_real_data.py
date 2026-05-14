@@ -81,6 +81,19 @@ class TestRealDataBacktestRunner(unittest.TestCase):
         self.assertGreater(len(result_one.fills), 0)
         self.assertGreater(len(result_one.equity_curve), 0)
 
+    def test_real_data_path_resolves_strategy_from_request_when_override_absent(self) -> None:
+        request = self._build_request()
+        adapter = _FakeHistoricalAdapter(self._build_raw_bars())
+
+        result = run_backtest_with_market_data(
+            request=request,
+            data_adapter=adapter,
+        )
+
+        self.assertEqual(result.diagnostics["engine"], "vectorized")
+        self.assertEqual(result.diagnostics["strategy_id"], "sma_crossover")
+        self.assertGreater(len(result.fills), 0)
+
     def test_real_data_path_rejects_mismatched_request_strategy_id(self) -> None:
         request = self._build_request()
         request = BacktestRequest(

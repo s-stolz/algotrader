@@ -3,6 +3,11 @@
 from enum import Enum
 
 
+class BacktestEngine(str, Enum):
+    VECTORIZED = "vectorized"
+    EVENT_DRIVEN = "event_driven"
+
+
 class DataGranularity(str, Enum):
     BAR = "bar"
     TICK = "tick"
