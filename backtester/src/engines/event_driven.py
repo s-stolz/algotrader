@@ -91,6 +91,9 @@ def run_event_driven_backtest(
             symbol=symbol,
             bar_count=len(event_targets.timestamp_ms),
             fill_result=fill_result,
+            processed_bar_count=event_targets.processed_bar_count,
+            feature_snapshot_count=event_targets.feature_snapshot_count,
+            nonzero_signal_count=event_targets.nonzero_signal_count,
         ),
     )
 
@@ -101,6 +104,9 @@ class _EventDrivenTargets:
     open_prices: list[float]
     close_prices: list[float]
     target_quantity: np.ndarray
+    processed_bar_count: int
+    feature_snapshot_count: int
+    nonzero_signal_count: int
 
 
 def _build_event_driven_targets(
@@ -122,12 +128,16 @@ def _build_event_driven_targets(
     closes: list[float] = []
     signals: list[int] = []
     previous_features: dict[str, float] | None = None
+    processed_bar_count = 0
+    feature_snapshot_count = 0
 
     for row in bars.itertuples(index=False):
+        processed_bar_count += 1
         bar = _bar_from_row(row)
         snapshot = stream.update(bar)
         if snapshot is None:
             continue
+        feature_snapshot_count += 1
         if snapshot.timestamp_ms < int(request.start_ms):
             continue
         if snapshot.timestamp_ms >= int(request.end_ms):
@@ -168,6 +178,9 @@ def _build_event_driven_targets(
             symbol=symbol,
             expected_size=len(timestamps),
         ),
+        processed_bar_count=processed_bar_count,
+        feature_snapshot_count=feature_snapshot_count,
+        nonzero_signal_count=sum(1 for signal in signals if signal != 0),
     )
 
 
@@ -269,12 +282,19 @@ def _build_diagnostics(
     symbol: str,
     bar_count: int,
     fill_result: FillGenerationResult,
+    processed_bar_count: int,
+    feature_snapshot_count: int,
+    nonzero_signal_count: int,
 ) -> dict[str, float | int | str]:
     return {
         "engine": "event_driven",
         "bars": int(bar_count),
         "symbol": symbol,
         "strategy_id": strategy.strategy_id,
+        "processed_bar_count": int(processed_bar_count),
+        "feature_snapshot_count": int(feature_snapshot_count),
+        "executable_bar_count": int(bar_count),
+        "nonzero_signal_count": int(nonzero_signal_count),
         "fill_timing": request.execution.fill_timing.value,
         "gap_policy": request.execution.gap_policy.value,
         "commission_bps": float(request.execution.commission_bps),
