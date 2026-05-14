@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Final, Iterable, Sequence
+from typing import Any, Final, Sequence
 
 import numpy as np
 import pandas as pd
@@ -29,25 +29,26 @@ TIMEFRAME_TO_MINUTES: Final[dict[str, int]] = {
 
 
 def compute_required_warmup_bars(strategy: StrategyDefinition) -> int:
-    """Compute required warmup bars from strategy indicator metadata."""
+    """Compute required warmup bars from typed strategy indicator requirements."""
 
     configured = _coerce_warmup_bars(strategy.metadata.get("warmup_bars", 1))
-    indicator_specs = strategy.metadata.get("indicator_specs", ())
-    if not indicator_specs:
+    indicator_requirements = strategy.indicator_requirements
+    if not indicator_requirements:
         return configured
 
-    specs = _coerce_indicator_specs(indicator_specs)
     get_registry = _import_indicator_registry_loader()
     registry = get_registry()
 
     warmups = [configured]
-    for spec in specs:
-        indicator_id = str(spec["indicator_id"])
-        params = dict(spec.get("params", {}))
+    for requirement in indicator_requirements:
+        indicator_id = requirement.indicator_id
+        params = dict(requirement.parameters)
         try:
             indicator = registry.get(indicator_id)
         except KeyError as exc:
-            raise ValueError(f"Unknown indicator '{indicator_id}' in strategy metadata") from exc
+            raise ValueError(
+                f"Unknown indicator '{indicator_id}' in strategy requirements"
+            ) from exc
         warmups.append(int(indicator.spec.warmup(params)))
 
     return max(1, max(warmups))
@@ -104,19 +105,6 @@ def _coerce_warmup_bars(value: Any) -> int:
     except (TypeError, ValueError):
         return 1
     return max(1, coerced)
-
-
-def _coerce_indicator_specs(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, Iterable):
-        raise ValueError("strategy metadata 'indicator_specs' must be an iterable")
-    specs: list[dict[str, Any]] = []
-    for entry in value:
-        if not isinstance(entry, dict):
-            raise ValueError("strategy metadata 'indicator_specs' entries must be dictionaries")
-        if "indicator_id" not in entry:
-            raise ValueError("strategy indicator spec is missing 'indicator_id'")
-        specs.append(entry)
-    return specs
 
 
 def _import_indicator_registry_loader():

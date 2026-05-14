@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
-from strategies.base import StrategyDefinition
+from strategies.base import IndicatorFeatureRequirement, StrategyDefinition
 
 
 def build_feature_frame(
@@ -18,19 +18,18 @@ def build_feature_frame(
 ) -> pd.DataFrame:
     """Attach strategy-required indicator features to normalized bars."""
 
-    indicator_specs = _extract_indicator_specs(strategy)
-    if not indicator_specs:
+    indicator_requirements = _extract_indicator_requirements(strategy)
+    if not indicator_requirements:
         return bars.copy()
 
     run_indicator = _import_indicator_runner()
     feature_input = _build_indicator_input_frame(bars)
     featured = bars.copy()
 
-    for spec in indicator_specs:
-        indicator_id = str(spec["indicator_id"])
-        params = dict(spec.get("params", {}))
-        output_column = str(spec.get("output_column", indicator_id))
-        output_key = spec.get("output_key")
+    for requirement in indicator_requirements:
+        indicator_id = requirement.indicator_id
+        params = dict(requirement.parameters)
+        output_column = requirement.feature_name
 
         result_df = run_indicator(indicator_id, feature_input, params)
         if result_df.empty:
@@ -38,7 +37,7 @@ def build_feature_frame(
 
         resolved_key = _resolve_output_key(
             result_df.columns,
-            output_key=output_key,
+            output_key=requirement.output_key,
             indicator_id=indicator_id,
         )
         feature_values = np.asarray(
@@ -50,19 +49,10 @@ def build_feature_frame(
     return featured
 
 
-def _extract_indicator_specs(strategy: StrategyDefinition) -> list[dict[str, Any]]:
-    raw = strategy.metadata.get("indicator_specs", ())
-    if not isinstance(raw, Iterable):
-        raise ValueError("strategy metadata 'indicator_specs' must be an iterable")
-
-    specs: list[dict[str, Any]] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            raise ValueError("strategy metadata 'indicator_specs' entries must be dictionaries")
-        if "indicator_id" not in entry:
-            raise ValueError("strategy indicator spec is missing 'indicator_id'")
-        specs.append(entry)
-    return specs
+def _extract_indicator_requirements(
+    strategy: StrategyDefinition,
+) -> list[IndicatorFeatureRequirement]:
+    return list(strategy.indicator_requirements)
 
 
 IndicatorRunner = Callable[[str, pd.DataFrame, dict[str, Any] | None], pd.DataFrame]

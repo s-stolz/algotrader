@@ -1,6 +1,7 @@
 import unittest
 
 from domain.types import StrategyConfig
+from strategies.base import IndicatorFeatureRequirement
 from strategies.registry import resolve_strategy
 
 
@@ -17,13 +18,23 @@ class TestStrategyRegistry(unittest.TestCase):
         self.assertEqual(strategy.feature_specs, ("sma_fast", "sma_slow"))
         self.assertEqual(strategy.metadata["warmup_bars"], 3)
         self.assertEqual(
-            strategy.metadata["indicator_specs"][0]["params"],
-            {"window": 2, "source": "close"},
+            strategy.indicator_requirements,
+            (
+                IndicatorFeatureRequirement(
+                    feature_name="sma_fast",
+                    indicator_id="sma",
+                    output_key="sma",
+                    parameters={"window": 2, "source": "close"},
+                ),
+                IndicatorFeatureRequirement(
+                    feature_name="sma_slow",
+                    indicator_id="sma",
+                    output_key="sma",
+                    parameters={"window": 3, "source": "close"},
+                ),
+            ),
         )
-        self.assertEqual(
-            strategy.metadata["indicator_specs"][1]["params"],
-            {"window": 3, "source": "close"},
-        )
+        self.assertTrue(strategy.is_v1_parity_compatible)
 
     def test_unknown_strategy_id_fails_clearly(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unknown strategy_id 'not_registered'"):
