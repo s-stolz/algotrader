@@ -1,7 +1,23 @@
 # Backtester Implementation Plan
 
-This document defines incremental delivery.
+This document is historical migration context for incremental delivery.
 Target architecture is defined in `backtester_design.md`.
+
+## Ralph Planning Status
+
+Ralph PRDs/issues are the active source of truth for new implementation campaigns.
+This file preserves the original milestone breakdown so completed baseline work and
+remaining roadmap candidates stay understandable, but new work should be planned in
+Ralph artifacts rather than by extending this document directly.
+
+- M0-M3 are completed baseline work and should not be redone.
+- The Ralph PRD `backtester-bar-engine-parity` covered single-symbol, bar-mode
+  vectorized/event-driven parity: request-level engine selection, mandatory strategy
+  resolution, declarative SMA crossover support, event-driven bar execution, shared
+  fill/accounting semantics, CLI engine selection, and parity/no-lookahead coverage.
+- Future PRD candidates include persistence, FastAPI start/query surfaces, research
+  ergonomics and sweeps, richer order realism, tick support, multi-symbol runs, and
+  multi-timeframe parallelism.
 
 ## Delivery Rules
 
@@ -12,19 +28,19 @@ Target architecture is defined in `backtester_design.md`.
 5. Keep one source of truth for shared types in `domain/types.py`.
 6. Do not implement tick support before bar-mode parity is stable.
 7. CLI and FastAPI must call the same app-layer orchestration.
-8. Keep this implementation plan updated during delivery; mark completed milestones with `:checkmark:`.
+8. Keep Ralph PRDs/issues updated during delivery; keep this plan as historical context.
 9. `engines/vectorized.py` must be true array-based runtime (no per-bar `StrategyInput`/`StrategyState` interpreter loop).
 10. `StrategyInput` and `StrategyState` are event-driven runtime concepts; vectorized mode evaluates arrays/masks/targets directly and only maps outputs into shared result contracts where required.
 
 ## Current Coverage Baseline
 
-Current automated tests in the repository relevant to this work:
+Historical automated-test baseline before the Ralph parity campaign:
 
 - `backtester`: legacy tests plus M0 skeleton coverage (`test/signals/test_signals.py`, `test/portfolio/test_portfolio.py`, `test/test_skeleton_imports.py`, `test/test_domain_types.py`, `test/test_strategy_base.py`).
 - `libs/db_accessor_client`: unit tests for current market/candle client endpoints.
 - `database-accessor-api`: currently no automated tests.
 
-Current high-priority gaps:
+Historical high-priority gaps from the original plan:
 
 - M0 coverage exists for package imports and minimal contracts; execution/data/engine/adapters/reporting behavior coverage still missing
 - no vectorized vs event-driven parity tests
@@ -289,6 +305,9 @@ Make vectorized bar mode stable enough to be parity baseline.
 
 ## M4: Minimal Event-Driven Bar Backtest
 
+Ralph status: implemented as part of `backtester-bar-engine-parity` for single-symbol
+bar-mode parity. Future event-driven expansion should be covered by later Ralph PRDs.
+
 ### Goal
 
 Implement first runnable event-driven bar engine using shared domain/execution modules.
@@ -333,6 +352,10 @@ Implement first runnable event-driven bar engine using shared domain/execution m
 ---
 
 ## M5: Bar-Mode Parity Stabilization
+
+Ralph status: implemented as part of `backtester-bar-engine-parity` for supported
+single-symbol declarative bar strategies. Any broader parity matrix belongs in later
+Ralph PRDs.
 
 ### Goal
 
@@ -379,6 +402,8 @@ Lock parity between vectorized and event-driven engines for supported **shared**
 ---
 
 ## M6: Persistence Foundation (DB + Accessor Stack)
+
+Ralph status: future PRD candidate.
 
 ### Goal
 
@@ -431,6 +456,8 @@ Add optional persistence for backtest runs/results/trades/hyperparameters using 
 
 ## M7: FastAPI Adapter for Backtest Start/Query
 
+Ralph status: future PRD candidate.
+
 ### Goal
 
 Expose start/query operations through FastAPI next to CLI without duplicating orchestration logic.
@@ -481,6 +508,8 @@ Expose start/query operations through FastAPI next to CLI without duplicating or
 
 ## M8: Research Ergonomics
 
+Ralph status: future PRD candidate for sweeps and research workflow improvements.
+
 ### Goal
 
 Improve day-to-day usability for strategy research.
@@ -523,6 +552,8 @@ Improve day-to-day usability for strategy research.
 ---
 
 ## M9: Richer Event-Driven Bar Execution
+
+Ralph status: future PRD candidate for richer order realism.
 
 ### Goal
 
@@ -569,6 +600,8 @@ Increase event-driven execution realism on bar data beyond the M3 baseline cost 
 
 ## M10A: Vectorized Tick Replay (v2)
 
+Ralph status: future PRD candidate for tick support.
+
 ### Goal
 
 Add deterministic vectorized tick replay.
@@ -597,6 +630,8 @@ Add deterministic vectorized tick replay.
 ---
 
 ## M10B: Event-Driven Tick Simulation (v2)
+
+Ralph status: future PRD candidate for tick support.
 
 ### Goal
 

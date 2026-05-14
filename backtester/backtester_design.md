@@ -3,6 +3,18 @@
 This document defines the target architecture/spec (end state).
 Implementation order is defined in `backtester_implementation_plan.md`.
 
+## Ralph Planning Status
+
+Ralph PRDs/issues are the active planning artifacts for new campaigns. This design
+document remains the architecture reference, while delivery scope and sequencing now
+come from Ralph artifacts.
+
+The Ralph PRD `backtester-bar-engine-parity` covered the current supported parity
+slice: single-symbol, bar-mode runs with request-level selection between the
+`vectorized` and `event_driven` engines. Persistence, FastAPI start/query workflows,
+research sweeps, richer order realism, tick support, multi-symbol runs, and
+multi-timeframe parallelism remain future PRD candidates.
+
 ## Architecture Rules
 
 Use this rule set consistently:
@@ -32,8 +44,9 @@ Build a backtester with:
 
 1. Vectorized engine for fast research.
 2. Event-driven engine for sequential execution realism.
-3. Optional persistence of backtest run metadata, hyperparameters, results, and trades in the existing DB.
-4. FastAPI access for start/query workflows, next to CLI.
+3. Request-level engine selection so CLI and future API calls are explicit and reproducible.
+4. Optional persistence of backtest run metadata, hyperparameters, results, and trades in the existing DB.
+5. FastAPI access for start/query workflows, next to CLI.
 
 Reuse constraints:
 
@@ -165,6 +178,7 @@ Minimum required types for v1:
 
 - `BacktestRequest`
   - symbols/timeframe/start/end
+  - `engine` (`vectorized` or `event_driven` for the current bar-mode parity slice)
   - strategy config
   - execution config
   - initial capital
@@ -237,6 +251,17 @@ Vectorized strategy contract:
   3. build target quantity array (`PositionBuilder`)
 - No per-bar `StrategyState` mutation/evaluation in vectorized runtime.
 
+Current parity strategy contract:
+
+- Strategy selection is mandatory in `BacktestRequest.strategy`.
+- Shipped strategies resolve through a small registry/factory from request strategy id
+  and parameters.
+- Explicit strategy overrides remain internal/test hooks and must agree with the
+  request strategy id.
+- Declarative bar strategies define typed feature requirements, reusable conditions,
+  target/sizing rules, and long-only constraints once so both engines can interpret
+  the same strategy definition.
+
 ## Shared Execution Semantics
 
 Execution flow:
@@ -265,6 +290,10 @@ Hard rules:
 6. Vectorized mode is not a per-bar interpreter and must not depend on per-bar `StrategyInput`/`StrategyState`.
 
 ## Engine Behavior
+
+The app runner dispatches by `BacktestRequest.engine`. The current supported engines
+are `vectorized` and `event_driven`; both are limited to single-symbol bar-mode runs
+in the parity slice.
 
 ### Vectorized (`engines/vectorized.py`)
 
