@@ -4,7 +4,60 @@ AlgoTrader is an experimental trading project that uses the [Lightweight Charts]
 
 ## Architecture
 The project is structured into multiple services, each responsible for a specific aspect of the trading system:
-![Architecture](algotrader-architecture.jpg)
+
+```text
+   O        +------------+     Websocket     +------------+         +----------------------+
+  /|\ ----> |  Frontend  | <---------------> | Webserver  |         | External             |
+  / \       +------------+                   +------------+         | +------------------+ |
+ User             |                                ^                | | Spotware         | |
+                  |                                |                | | (cTrader)        | |
+                  |                                |                | +------------------+ |
+                  |                                |                +----------------------+
+                  |                                |                          |
+                  |                                |                          | Open API
+                  |                                |                          | Data Stream
+                  |                                |                          v
+                  |                                |                   +----------------+
+                  |                                |                   | Broker Service |
+                  |                                |                   +----------------+
+                  |                                |                           |
+                  |                                |                           | 
+                  |                                |                           |
+                  |                                | subscribe:                |publish prices
+                  |                                | indicators/prices         |
+                  |                                | backtest                  |
+                  |                                |                           v
+                  |          +------------------------------------------------------+
+                  |          |                    Redis Streams                     |
+                  |          +------------------------------------------------------+
+                  |                ^                  ^                        |
+                  |                | publish:         | publish:               | subscribe:
+                  |                | indicators       | event:backtest         | prices
+                  |                |                  |                        v
+                  |        +---------------+    +----------------+   +-------------------+
+   GET indicators +------> | Indicator API | -> | Backtester     |   | Ingestion Service |
+                  |        +---------------+    | Service        |   +-------------------+
+                  |              |              +----------------+             |
+                  |              |                                             |
+                  |              | GET candles/markets                         |
+                  |              |                                             |
+                  |              v                                             |
+   GET/PUT/DELETE |      +-----------------------+                             |
+  candles/markets +----> | Database Accessor API |<------ store raw data ------+
+                         +-----------------------+
+                                     |
+                                     | read/write database
+                                     v
+                               +--------------+
+                               | Timescale DB |
+                               +--------------+
+
+  +----------------------+
+  | Shared Libraries     |
+  | - indicator_engine   |
+  | - db_accessor_client |
+  +----------------------+
+```
 
 ## Development Disclaimer
 
