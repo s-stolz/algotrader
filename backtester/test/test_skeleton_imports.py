@@ -18,6 +18,7 @@ MODULES = [
     "engines",
     "engines.vectorized",
     "data",
+    "data.feature_stream",
     "data.indicators",
     "data.market_data",
     "data.normalization",
