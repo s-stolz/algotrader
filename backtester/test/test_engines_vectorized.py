@@ -225,7 +225,15 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
 
     def test_negative_strategy_targets_are_rejected_in_long_only_baseline(self) -> None:
         bars = self._build_bars()
-        request = self._build_request()
+        request = BacktestRequest(
+            symbols=["AAPL"],
+            timeframe="1m",
+            start_ms=1_700_000_000_000,
+            end_ms=1_700_000_540_000,
+            strategy=StrategyConfig(strategy_id="negative_target_fixture"),
+            execution=ExecutionConfig(),
+            initial_capital=10_000.0,
+        )
 
         def decision_model(features: FeatureMatrix) -> SignalMatrix:
             count = len(features.timestamp_ms)
@@ -251,7 +259,7 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
             position_builder=position_builder,
         )
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "long-only"):
             run_backtest(request=request, bars=bars, strategy=strategy)
 
 
