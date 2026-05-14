@@ -7,7 +7,7 @@ import importlib
 import os
 import sys
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 _SRC_PATH = Path(__file__).resolve().parent / "src"
 _SRC_PATH_TEXT = str(_SRC_PATH)
@@ -23,6 +23,9 @@ __all__ = ["build_parser", "main"]
 
 _DEFAULT_LOCAL_DB_ACCESSOR_HOST = "localhost"
 _DEFAULT_LOCAL_DB_ACCESSOR_PORT = "8000"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_TOPOLOGY_PATH = _REPO_ROOT / "config" / "topology.yaml"
+_SHARED_ENV_PATH = _REPO_ROOT / "config" / ".env.shared"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,8 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--db-accessor-host",
         default=None,
         help=(
-            "Override database accessor host. Defaults to DATABASE_ACCESSOR_HOST or "
-            "the local published host from config/.env.shared."
+            "Override database accessor host. Defaults to public.host from "
+            "config/topology.yaml."
         ),
     )
     run_parser.add_argument(
@@ -72,8 +75,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         type=int,
         help=(
-            "Override database accessor port. Defaults to DATABASE_ACCESSOR_PORT or "
-            "the local published port from config/.env.shared."
+            "Override database accessor port. Defaults to "
+            "services.database_accessor_api.published_port from config/topology.yaml."
         ),
     )
     return parser
@@ -98,7 +101,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             exchange=args.exchange,
         )
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {_format_cli_error(exc)}", file=sys.stderr)
         return 1
 
     _print_summary(result)
@@ -148,21 +151,29 @@ def _print_summary(result: Any) -> None:
     print(f"final_equity={final_equity:.6f}")
 
 
+def _format_cli_error(exc: Exception) -> str:
+    message = str(exc)
+    response_text = getattr(exc, "response_text", None)
+    if response_text:
+        return f"{message}: {response_text}"
+    return message
+
+
 def _configure_database_accessor_environment(*, host: str | None, port: int | None) -> None:
     local_defaults = _resolve_local_database_accessor_defaults()
 
-    resolved_host = host or os.getenv("DATABASE_ACCESSOR_HOST") or local_defaults["host"]
-    resolved_port = (
-        str(port)
-        if port is not None
-        else os.getenv("DATABASE_ACCESSOR_PORT") or local_defaults["port"]
-    )
+    resolved_host = host or local_defaults["host"]
+    resolved_port = str(port) if port is not None else local_defaults["port"]
 
     os.environ["DATABASE_ACCESSOR_HOST"] = resolved_host
     os.environ["DATABASE_ACCESSOR_PORT"] = resolved_port
 
 
 def _resolve_local_database_accessor_defaults() -> dict[str, str]:
+    topology_defaults = _resolve_topology_database_accessor_defaults()
+    if topology_defaults is not None:
+        return topology_defaults
+
     env_values = _read_local_env_file()
     host = env_values.get("PUBLIC_HOST") or _DEFAULT_LOCAL_DB_ACCESSOR_HOST
     port = (
@@ -176,13 +187,62 @@ def _resolve_local_database_accessor_defaults() -> dict[str, str]:
     }
 
 
+def _resolve_topology_database_accessor_defaults() -> dict[str, str] | None:
+    topology = _read_local_topology_file()
+    if not topology:
+        return None
+
+    host = (
+        _lookup_topology_value(topology, ("public", "host"))
+        or _DEFAULT_LOCAL_DB_ACCESSOR_HOST
+    )
+    port = (
+        _lookup_topology_value(
+            topology,
+            ("services", "database_accessor_api", "published_port"),
+        )
+        or _lookup_topology_value(topology, ("services", "database_accessor_api", "port"))
+        or _DEFAULT_LOCAL_DB_ACCESSOR_PORT
+    )
+    return {
+        "host": host,
+        "port": port,
+    }
+
+
+def _read_local_topology_file() -> Mapping[str, Any]:
+    if not _TOPOLOGY_PATH.exists():
+        return {}
+
+    try:
+        import yaml
+    except ModuleNotFoundError:
+        return {}
+
+    data = yaml.safe_load(_TOPOLOGY_PATH.read_text(encoding="utf-8"))
+    if not isinstance(data, Mapping):
+        return {}
+    return data
+
+
+def _lookup_topology_value(topology: Mapping[str, Any], path: Sequence[str]) -> str | None:
+    current: Any = topology
+    for key in path:
+        if not isinstance(current, Mapping) or key not in current:
+            return None
+        current = current[key]
+
+    if current is None:
+        return None
+    return str(current)
+
+
 def _read_local_env_file() -> dict[str, str]:
-    env_path = Path(__file__).resolve().parents[1] / "config" / ".env.shared"
-    if not env_path.exists():
+    if not _SHARED_ENV_PATH.exists():
         return {}
 
     values: dict[str, str] = {}
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+    for raw_line in _SHARED_ENV_PATH.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

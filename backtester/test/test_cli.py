@@ -165,7 +165,77 @@ class TestCli(unittest.TestCase):
                     self.assertEqual(captured_requests[-1].engine, BacktestEngine.VECTORIZED)
                     self.assertIn("engine=vectorized", stdout.getvalue())
 
-    def test_run_command_uses_local_db_accessor_defaults_when_env_missing(self) -> None:
+    def test_run_command_uses_topology_db_accessor_defaults(self) -> None:
+        observed_env: list[tuple[str | None, str | None]] = []
+
+        def _fake_run_backtest_with_market_data(
+            *,
+            request,
+            strategy=None,
+            exchange=None,
+            data_adapter=None,
+        ):
+            _ = (request, strategy, exchange, data_adapter)
+            observed_env.append(
+                (
+                    os.environ.get("DATABASE_ACCESSOR_HOST"),
+                    os.environ.get("DATABASE_ACCESSOR_PORT"),
+                )
+            )
+            return BacktestResult(
+                request=request,
+                fills=[],
+                trades=[],
+                equity_curve=[],
+                metrics={},
+                diagnostics={},
+            )
+
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_ACCESSOR_HOST": "database-accessor-api",
+                "DATABASE_ACCESSOR_PORT": "8000",
+            },
+            clear=True,
+        ):
+            with patch(
+                "cli._read_local_topology_file",
+                return_value={
+                    "public": {"host": "127.0.0.1"},
+                    "services": {
+                        "database_accessor_api": {
+                            "host": "database-accessor-api",
+                            "port": 8000,
+                            "published_port": 18000,
+                        },
+                    },
+                },
+            ):
+                with patch(
+                    "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+                    side_effect=_fake_run_backtest_with_market_data,
+                ):
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main(
+                            [
+                                "run",
+                                "--symbol",
+                                "AAPL",
+                                "--timeframe",
+                                "M1",
+                                "--start-ms",
+                                "1700000000000",
+                                "--end-ms",
+                                "1700000600000",
+                            ]
+                        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_env, [("127.0.0.1", "18000")])
+
+    def test_run_command_falls_back_to_generated_env_when_topology_missing(self) -> None:
         observed_env: list[tuple[str | None, str | None]] = []
 
         def _fake_run_backtest_with_market_data(
@@ -192,32 +262,33 @@ class TestCli(unittest.TestCase):
             )
 
         with patch.dict(os.environ, {}, clear=True):
-            with patch(
-                "cli._read_local_env_file",
-                return_value={
-                    "PUBLIC_HOST": "127.0.0.1",
-                    "DATABASE_ACCESSOR_PUBLISHED_PORT": "18000",
-                },
-            ):
+            with patch("cli._read_local_topology_file", return_value={}):
                 with patch(
-                    "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
-                    side_effect=_fake_run_backtest_with_market_data,
+                    "cli._read_local_env_file",
+                    return_value={
+                        "PUBLIC_HOST": "127.0.0.1",
+                        "DATABASE_ACCESSOR_PUBLISHED_PORT": "18000",
+                    },
                 ):
-                    stdout = io.StringIO()
-                    with redirect_stdout(stdout):
-                        exit_code = cli.main(
-                            [
-                                "run",
-                                "--symbol",
-                                "AAPL",
-                                "--timeframe",
-                                "M1",
-                                "--start-ms",
-                                "1700000000000",
-                                "--end-ms",
-                                "1700000600000",
-                            ]
-                        )
+                    with patch(
+                        "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+                        side_effect=_fake_run_backtest_with_market_data,
+                    ):
+                        stdout = io.StringIO()
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main(
+                                [
+                                    "run",
+                                    "--symbol",
+                                    "AAPL",
+                                    "--timeframe",
+                                    "M1",
+                                    "--start-ms",
+                                    "1700000000000",
+                                    "--end-ms",
+                                    "1700000600000",
+                                ]
+                            )
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(observed_env, [("127.0.0.1", "18000")])
@@ -250,10 +321,14 @@ class TestCli(unittest.TestCase):
 
         with patch.dict(os.environ, {}, clear=True):
             with patch(
-                "cli._read_local_env_file",
+                "cli._read_local_topology_file",
                 return_value={
-                    "PUBLIC_HOST": "127.0.0.1",
-                    "DATABASE_ACCESSOR_PUBLISHED_PORT": "18000",
+                    "public": {"host": "127.0.0.1"},
+                    "services": {
+                        "database_accessor_api": {
+                            "published_port": 18000,
+                        },
+                    },
                 },
             ):
                 with patch(
@@ -382,6 +457,38 @@ class TestCli(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertIn("Error: boom", stderr.getvalue())
+
+    def test_run_command_prints_http_response_body_on_runner_error(self) -> None:
+        class _HttpError(Exception):
+            status_code = 404
+            response_text = '{"detail":"Market not found"}'
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch(
+            "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+            side_effect=_HttpError("database-accessor-api HTTP error: 404"),
+        ):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = cli.main(
+                    [
+                        "run",
+                        "--symbol",
+                        "AAPL",
+                        "--timeframe",
+                        "M1",
+                        "--start-ms",
+                        "1700000000000",
+                        "--end-ms",
+                        "1700000600000",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn(
+            'Error: database-accessor-api HTTP error: 404: {"detail":"Market not found"}',
+            stderr.getvalue(),
+        )
 
 
 if __name__ == "__main__":
