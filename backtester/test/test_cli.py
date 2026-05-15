@@ -105,6 +105,7 @@ class TestCli(unittest.TestCase):
         self.assertEqual(request.end_ms, 1_700_000_900_000)
         self.assertEqual(request.initial_capital, 50_000.0)
         self.assertEqual(request.engine, BacktestEngine.EVENT_DRIVEN)
+        self.assertFalse(request.persist_result)
         self.assertEqual(request.strategy.parameters["fast_window"], 7)
         self.assertEqual(request.strategy.parameters["slow_window"], 20)
         self.assertEqual(request.strategy.parameters["quantity"], 2.5)
@@ -117,6 +118,68 @@ class TestCli(unittest.TestCase):
         self.assertIn("fills=1 trades=1", output)
         self.assertIn("total_return_pct=0.050000", output)
         self.assertIn("final_equity=10005.000000", output)
+
+    def test_run_command_can_request_persistence_and_prints_saved_metadata(self) -> None:
+        captured_requests = []
+
+        def _fake_run_backtest_with_market_data(
+            *,
+            request,
+            strategy=None,
+            exchange=None,
+            data_adapter=None,
+        ):
+            _ = (strategy, exchange, data_adapter)
+            captured_requests.append(request)
+            return BacktestResult(
+                request=request,
+                fills=[],
+                trades=[],
+                equity_curve=[
+                    PortfolioSnapshot(
+                        timestamp_ms=request.end_ms,
+                        cash=10_100.0,
+                        equity=10_100.0,
+                        positions={},
+                    )
+                ],
+                metrics={
+                    "total_return_pct": 1.0,
+                    "max_drawdown_pct": 0.0,
+                    "trade_count": 0.0,
+                },
+                diagnostics={"bars": 10},
+                backtest_run_id="run-123",
+                persisted_at=1_700_000_000_123,
+            )
+
+        stdout = io.StringIO()
+        with patch(
+            "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+            side_effect=_fake_run_backtest_with_market_data,
+        ):
+            with redirect_stdout(stdout):
+                exit_code = cli.main(
+                    [
+                        "run",
+                        "--symbol",
+                        "AAPL",
+                        "--timeframe",
+                        "M1",
+                        "--start-ms",
+                        "1700000000000",
+                        "--end-ms",
+                        "1700000600000",
+                        "--persist-result",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(captured_requests), 1)
+        self.assertTrue(captured_requests[0].persist_result)
+        output = stdout.getvalue()
+        self.assertIn("backtest_run_id=run-123", output)
+        self.assertIn("persisted_at_ms=1700000000123", output)
 
     def test_run_command_accepts_explicit_vectorized_and_defaults_to_vectorized(self) -> None:
         captured_requests = []
