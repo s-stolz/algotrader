@@ -66,8 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--db-accessor-host",
         default=None,
         help=(
-            "Override database accessor host. Defaults to public.host from "
-            "config/topology.yaml."
+            "Override database accessor host. Defaults to public.host from " "config/topology.yaml."
         ),
     )
     run_parser.add_argument(
@@ -192,10 +191,7 @@ def _resolve_topology_database_accessor_defaults() -> dict[str, str] | None:
     if not topology:
         return None
 
-    host = (
-        _lookup_topology_value(topology, ("public", "host"))
-        or _DEFAULT_LOCAL_DB_ACCESSOR_HOST
-    )
+    host = _lookup_topology_value(topology, ("public", "host")) or _DEFAULT_LOCAL_DB_ACCESSOR_HOST
     port = (
         _lookup_topology_value(
             topology,

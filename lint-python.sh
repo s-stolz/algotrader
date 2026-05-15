@@ -17,7 +17,9 @@ else
   RUFF_CMD=("$PYTHON_BIN" -m ruff)
 fi
 
-if command -v black >/dev/null 2>&1; then
+if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
+  BLACK_CMD=("$PYTHON_BIN" -m black)
+elif command -v black >/dev/null 2>&1; then
   BLACK_CMD=(black)
 else
   BLACK_CMD=("$PYTHON_BIN" -m black)

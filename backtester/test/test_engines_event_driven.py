@@ -4,8 +4,8 @@ import pandas as pd
 from app.backtest_runner import run_backtest
 from domain.enums import BacktestEngine, DataGranularity, GapPolicy, PriceSource
 from domain.types import (
-    BacktestResult,
     BacktestRequest,
+    BacktestResult,
     ExecutionConfig,
     StrategyConfig,
 )

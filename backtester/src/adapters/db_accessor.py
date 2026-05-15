@@ -31,8 +31,7 @@ class CandleSourceClient(Protocol):
         end_ms: int | None = None,
         limit: int | None = None,
         include_timestamp_ms: bool = False,
-    ) -> pd.DataFrame:
-        ...
+    ) -> pd.DataFrame: ...
 
 
 class HistoricalBarDataAdapter(Protocol):
@@ -47,8 +46,7 @@ class HistoricalBarDataAdapter(Protocol):
         end_ms: int | None,
         exchange: str | None = None,
         limit: int | None = None,
-    ) -> pd.DataFrame:
-        ...
+    ) -> pd.DataFrame: ...
 
 
 class DatabaseAccessorHistoricalDataAdapter:
@@ -124,9 +122,7 @@ def _import_database_accessor_client() -> type[Any]:
 def _map_to_canonical_bar_frame(*, candles: pd.DataFrame, symbol: str) -> pd.DataFrame:
     if candles.empty:
         return pd.DataFrame(
-            columns=pd.Index(
-                ["timestamp_ms", "symbol", "open", "high", "low", "close", "volume"]
-            )
+            columns=pd.Index(["timestamp_ms", "symbol", "open", "high", "low", "close", "volume"])
         )
 
     mapped = candles.copy()
