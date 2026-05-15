@@ -34,6 +34,20 @@ def _backtest_summary_payload() -> dict:
     }
 
 
+def _closed_trade_payload() -> dict:
+    return {
+        "trade_id": "trade-1",
+        "symbol": "EURUSD",
+        "quantity": 1000.0,
+        "entry_timestamp_ms": 1714525200000,
+        "entry_price": 1.0715,
+        "exit_timestamp_ms": 1714532400000,
+        "exit_price": 1.074,
+        "realized_pnl": 2.5,
+        "fees": 0.15,
+    }
+
+
 class DatabaseAccessorClientTests(unittest.TestCase):
     def setUp(self) -> None:
         self._env_patcher = patch.dict(
@@ -90,6 +104,49 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         self.assertEqual(summary["run_id"], "run-123")
         self.assertEqual(summary["start_ms"], 1714521600000)
         self.assertEqual(summary["end_ms"], 1714608000000)
+
+    def test_store_backtest_run_summary_posts_closed_trades_payload(self) -> None:
+        trade = _closed_trade_payload()
+        payload = {**_backtest_summary_payload(), "trades": [trade]}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            posted = json.loads(request.content.decode())
+            self.assertEqual(request.method, "POST")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(posted["trades"], [trade])
+            self.assertEqual(
+                set(posted["trades"][0]),
+                {
+                    "trade_id",
+                    "symbol",
+                    "quantity",
+                    "entry_timestamp_ms",
+                    "entry_price",
+                    "exit_timestamp_ms",
+                    "exit_price",
+                    "realized_pnl",
+                    "fees",
+                },
+            )
+            self.assertEqual(posted["trades"][0]["entry_timestamp_ms"], 1714525200000)
+            self.assertEqual(posted["trades"][0]["exit_timestamp_ms"], 1714532400000)
+            return httpx.Response(
+                201,
+                json={
+                    **_backtest_summary_payload(),
+                    "run_id": "run-123",
+                    "persisted_at": "2026-05-15T12:34:56Z",
+                },
+            )
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            summary = client.store_backtest_run_summary(payload)
+        finally:
+            client.close()
+
+        self.assertEqual(summary["run_id"], "run-123")
 
     def test_list_backtest_run_summaries_passes_filters(self) -> None:
         payload = _backtest_summary_payload()
@@ -157,6 +214,57 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
         self.assertEqual(summary["run_id"], "run-123")
         self.assertEqual(summary["end_ms"], 1714608000000)
+
+    def test_list_backtest_closed_trades_uses_run_id_and_maps_response(self) -> None:
+        trade = {**_closed_trade_payload(), "run_id": "run-123"}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-123/trades")
+            return httpx.Response(200, json=[trade])
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            trades = client.list_backtest_closed_trades("run-123")
+        finally:
+            client.close()
+
+        self.assertEqual(trades, [trade])
+        self.assertEqual(trades[0]["entry_timestamp_ms"], 1714525200000)
+        self.assertEqual(trades[0]["exit_timestamp_ms"], 1714532400000)
+
+    def test_list_backtest_closed_trades_returns_empty_list(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-empty/trades")
+            return httpx.Response(200, json=[])
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            trades = client.list_backtest_closed_trades("run-empty")
+        finally:
+            client.close()
+
+        self.assertEqual(trades, [])
+
+    def test_list_backtest_closed_trades_raises_client_error_on_http_failure(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-missing/trades")
+            return httpx.Response(404, text="missing")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                client.list_backtest_closed_trades("run-missing")
+        finally:
+            client.close()
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(ctx.exception.response_text, "missing")
 
     def test_backtest_run_summary_methods_raise_client_error_on_http_failure(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -294,6 +402,49 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(summary["run_id"], "run-async-123")
         self.assertEqual(summary["start_ms"], 1714521600000)
 
+    async def test_async_store_backtest_run_summary_posts_closed_trades_payload(self) -> None:
+        trade = _closed_trade_payload()
+        payload = {**_backtest_summary_payload(), "trades": [trade]}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            posted = json.loads(request.content.decode())
+            self.assertEqual(request.method, "POST")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(posted["trades"], [trade])
+            self.assertEqual(
+                set(posted["trades"][0]),
+                {
+                    "trade_id",
+                    "symbol",
+                    "quantity",
+                    "entry_timestamp_ms",
+                    "entry_price",
+                    "exit_timestamp_ms",
+                    "exit_price",
+                    "realized_pnl",
+                    "fees",
+                },
+            )
+            self.assertEqual(posted["trades"][0]["entry_timestamp_ms"], 1714525200000)
+            self.assertEqual(posted["trades"][0]["exit_timestamp_ms"], 1714532400000)
+            return httpx.Response(
+                201,
+                json={
+                    **_backtest_summary_payload(),
+                    "run_id": "run-async-123",
+                    "persisted_at": "2026-05-15T12:34:56Z",
+                },
+            )
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            summary = await client.store_backtest_run_summary(payload)
+        finally:
+            await client.aclose()
+
+        self.assertEqual(summary["run_id"], "run-async-123")
+
     async def test_async_list_backtest_run_summaries_passes_filters(self) -> None:
         payload = _backtest_summary_payload()
 
@@ -359,6 +510,61 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(summary["run_id"], "run-async-123")
         self.assertEqual(summary["start_ms"], 1714521600000)
+
+    async def test_async_list_backtest_closed_trades_uses_run_id_and_maps_response(
+        self,
+    ) -> None:
+        trade = {**_closed_trade_payload(), "run_id": "run-async-123"}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-async-123/trades")
+            return httpx.Response(200, json=[trade])
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            trades = await client.list_backtest_closed_trades("run-async-123")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(trades, [trade])
+        self.assertEqual(trades[0]["entry_timestamp_ms"], 1714525200000)
+        self.assertEqual(trades[0]["exit_timestamp_ms"], 1714532400000)
+
+    async def test_async_list_backtest_closed_trades_returns_empty_list(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-empty/trades")
+            return httpx.Response(200, json=[])
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            trades = await client.list_backtest_closed_trades("run-empty")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(trades, [])
+
+    async def test_async_list_backtest_closed_trades_raises_client_error_on_http_failure(
+        self,
+    ) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-missing/trades")
+            return httpx.Response(500, text="boom")
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                await client.list_backtest_closed_trades("run-missing")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(ctx.exception.status_code, 500)
+        self.assertEqual(ctx.exception.response_text, "boom")
 
     async def test_async_backtest_run_summary_methods_raise_client_error(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

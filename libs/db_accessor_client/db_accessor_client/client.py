@@ -190,6 +190,12 @@ class DatabaseAccessorClient(_BaseClient):
     def get_backtest_run_summary(self, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/backtests/{run_id}")
 
+    def list_backtest_closed_trades(self, run_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtests/{run_id}/trades")
+
+    def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
+        return self.list_backtest_closed_trades(run_id)
+
     def close(self) -> None:
         self.client.close()
 
@@ -348,6 +354,12 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def get_backtest_run_summary(self, run_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/backtests/{run_id}")
+
+    async def list_backtest_closed_trades(self, run_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtests/{run_id}/trades")
+
+    async def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
+        return await self.list_backtest_closed_trades(run_id)
 
     async def aclose(self) -> None:
         await self.client.aclose()
