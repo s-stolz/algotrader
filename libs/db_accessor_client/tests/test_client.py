@@ -1,5 +1,6 @@
 """Unit tests for the shared db accessor clients."""
 
+import json
 import os
 import unittest
 from unittest.mock import patch
@@ -11,6 +12,26 @@ from db_accessor_client import (
     DatabaseAccessorClient,
     DatabaseAccessorClientError,
 )
+
+
+def _backtest_summary_payload() -> dict:
+    return {
+        "execution_duration_ms": 125,
+        "symbol": "EURUSD",
+        "timeframe": "M1",
+        "engine": "vectorized",
+        "strategy_id": "ema-cross",
+        "start_ms": 1714521600000,
+        "end_ms": 1714608000000,
+        "initial_capital": 10000.0,
+        "final_equity": 10450.25,
+        "final_cash": 9450.25,
+        "final_position_symbol": "EURUSD",
+        "final_position_quantity": 1000.0,
+        "total_return_pct": 4.5025,
+        "max_drawdown_pct": 1.25,
+        "trade_count": 3,
+    }
 
 
 class DatabaseAccessorClientTests(unittest.TestCase):
@@ -42,6 +63,116 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         finally:
             client.close()
         self.assertEqual(markets[0]["symbol_id"], 1)
+
+    def test_store_backtest_run_summary_posts_payload(self) -> None:
+        payload = _backtest_summary_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "POST")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(json.loads(request.content.decode()), payload)
+            return httpx.Response(
+                201,
+                json={
+                    **payload,
+                    "run_id": "run-123",
+                    "persisted_at": "2026-05-15T12:34:56Z",
+                },
+            )
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            summary = client.store_backtest_run_summary(payload)
+        finally:
+            client.close()
+
+        self.assertEqual(summary["run_id"], "run-123")
+        self.assertEqual(summary["start_ms"], 1714521600000)
+        self.assertEqual(summary["end_ms"], 1714608000000)
+
+    def test_list_backtest_run_summaries_passes_filters(self) -> None:
+        payload = _backtest_summary_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(
+                dict(request.url.params),
+                {
+                    "symbol": "EURUSD",
+                    "timeframe": "M1",
+                    "strategy_id": "ema-cross",
+                    "engine": "vectorized",
+                },
+            )
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        **payload,
+                        "run_id": "run-123",
+                        "persisted_at": "2026-05-15T12:34:56Z",
+                    }
+                ],
+            )
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            summaries = client.list_backtest_run_summaries(
+                symbol="EURUSD",
+                timeframe="M1",
+                strategy_id="ema-cross",
+                engine="vectorized",
+            )
+        finally:
+            client.close()
+
+        self.assertEqual(summaries[0]["run_id"], "run-123")
+        self.assertEqual(summaries[0]["start_ms"], 1714521600000)
+        self.assertNotIn("trades", summaries[0])
+
+    def test_get_backtest_run_summary_uses_run_id(self) -> None:
+        payload = _backtest_summary_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-123")
+            return httpx.Response(
+                200,
+                json={
+                    **payload,
+                    "run_id": "run-123",
+                    "persisted_at": "2026-05-15T12:34:56Z",
+                },
+            )
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            summary = client.get_backtest_run_summary("run-123")
+        finally:
+            client.close()
+
+        self.assertEqual(summary["run_id"], "run-123")
+        self.assertEqual(summary["end_ms"], 1714608000000)
+
+    def test_backtest_run_summary_methods_raise_client_error_on_http_failure(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/backtests/run-missing")
+            return httpx.Response(404, text="missing")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                client.get_backtest_run_summary("run-missing")
+        finally:
+            client.close()
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(ctx.exception.response_text, "missing")
 
     def test_get_latest_candle_m1_uses_latest_endpoint(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -136,6 +267,114 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self) -> None:
         self._env_patcher.stop()
+
+    async def test_async_store_backtest_run_summary_posts_payload(self) -> None:
+        payload = _backtest_summary_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "POST")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(json.loads(request.content.decode()), payload)
+            return httpx.Response(
+                201,
+                json={
+                    **payload,
+                    "run_id": "run-async-123",
+                    "persisted_at": "2026-05-15T12:34:56Z",
+                },
+            )
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            summary = await client.store_backtest_run_summary(payload)
+        finally:
+            await client.aclose()
+
+        self.assertEqual(summary["run_id"], "run-async-123")
+        self.assertEqual(summary["start_ms"], 1714521600000)
+
+    async def test_async_list_backtest_run_summaries_passes_filters(self) -> None:
+        payload = _backtest_summary_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(
+                dict(request.url.params),
+                {
+                    "symbol": "EURUSD",
+                    "timeframe": "M1",
+                    "strategy_id": "ema-cross",
+                    "engine": "vectorized",
+                },
+            )
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        **payload,
+                        "run_id": "run-async-123",
+                        "persisted_at": "2026-05-15T12:34:56Z",
+                    }
+                ],
+            )
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            summaries = await client.list_backtest_run_summaries(
+                symbol="EURUSD",
+                timeframe="M1",
+                strategy_id="ema-cross",
+                engine="vectorized",
+            )
+        finally:
+            await client.aclose()
+
+        self.assertEqual(summaries[0]["run_id"], "run-async-123")
+        self.assertEqual(summaries[0]["end_ms"], 1714608000000)
+
+    async def test_async_get_backtest_run_summary_uses_run_id(self) -> None:
+        payload = _backtest_summary_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-async-123")
+            return httpx.Response(
+                200,
+                json={
+                    **payload,
+                    "run_id": "run-async-123",
+                    "persisted_at": "2026-05-15T12:34:56Z",
+                },
+            )
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            summary = await client.get_backtest_run_summary("run-async-123")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(summary["run_id"], "run-async-123")
+        self.assertEqual(summary["start_ms"], 1714521600000)
+
+    async def test_async_backtest_run_summary_methods_raise_client_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/backtests/run-missing")
+            return httpx.Response(500, text="boom")
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                await client.get_backtest_run_summary("run-missing")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(ctx.exception.status_code, 500)
+        self.assertEqual(ctx.exception.response_text, "boom")
 
     async def test_async_get_candles_returns_payload(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
