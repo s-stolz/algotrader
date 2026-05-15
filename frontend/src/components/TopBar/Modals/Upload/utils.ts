@@ -269,7 +269,8 @@ export async function uploadCandlesInBatches(
 
     if (onProgress) {
       const progress = ((i + 1) / batches.length) * 100;
-      onProgress(progress, (i + 1) * BATCH_SIZE);
+      const uploadedCount = Math.min((i + 1) * BATCH_SIZE, candles.length);
+      onProgress(progress, uploadedCount);
     }
   }
 }

@@ -167,7 +167,7 @@ describe('upload CSV utilities', () => {
       exchange: 'FX',
       candles: [expect.objectContaining({ timestamp_ms: 20_001 })],
     });
-    expect(progress).toHaveBeenLastCalledWith(100, 40_000);
+    expect(progress).toHaveBeenLastCalledWith(100, 20_001);
   });
 
   it('derives field-to-index mappings from preview column mappings', () => {
