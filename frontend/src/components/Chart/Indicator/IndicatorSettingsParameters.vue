@@ -40,130 +40,154 @@
   </n-scrollbar>
 </template>
 
-<script>
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref } from "vue";
+import { NScrollbar, NInput, NInputNumber, NSelect } from "naive-ui";
+
 import { useIndicatorsStore } from "@/stores/indicatorsStore";
 import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
+import type {
+  IndicatorParameterEntry,
+  IndicatorParameterValues,
+  IndicatorStoreQuery,
+  StoreIndicator,
+} from "@/stores/indicatorsStore";
+import type { IndicatorRequestBody } from "@/types/contracts";
 
-import { NScrollbar, NInput, NInputNumber, NSelect } from "naive-ui";
+interface StringParameterWithOptions extends IndicatorParameterEntry {
+  type: "string";
+  value?: string;
+  options: string[];
+}
 
-export default {
+interface StringParameterWithoutOptions extends IndicatorParameterEntry {
+  type: "string";
+  value?: string;
+}
+
+interface NumericParameter extends IndicatorParameterEntry {
+  type: "int" | "float";
+  value?: number | null;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+defineOptions({
   name: "IndicatorSettingsParameters",
+});
 
-  components: {
-    NScrollbar,
-    NInput,
-    NInputNumber,
-    NSelect,
-  },
+const props = defineProps<{
+  indicator: StoreIndicator;
+}>();
 
-  props: {
-    indicator: {
-      type: Object,
-      required: true,
-    },
-  },
+const indicatorsStore = useIndicatorsStore();
+const currentMarketStore = useCurrentMarketStore();
+const currentTimeframeStore = useCurrentTimeframeStore();
+const updateDelay = 200;
+const updateTimeout = ref<ReturnType<typeof setTimeout> | null>(null);
 
-  data() {
-    return {
-      indicatorsStore: useIndicatorsStore(),
-      currentMarketStore: useCurrentMarketStore(),
-      currentTimeframeStore: useCurrentTimeframeStore(),
-      updateDelay: 200,
-      updateTimeout: null,
-    };
-  },
+const symbol = computed(() => currentMarketStore.symbol);
+const exchange = computed(() => currentMarketStore.exchange);
+const timeframe = computed(() => currentTimeframeStore.value);
+const indicatorParameters = computed(() => props.indicator.parameters);
 
-  computed: {
-    symbol() {
-      return this.currentMarketStore.symbol;
-    },
+function replaceUnderscoreWithSpace(str: string): string {
+  return str.replace(/_/g, " ");
+}
 
-    exchange() {
-      return this.currentMarketStore.exchange;
-    },
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
 
-    timeframe() {
-      return this.currentTimeframeStore.value;
-    },
+function isStringWithOptions(
+  parameter: IndicatorParameterEntry,
+): parameter is StringParameterWithOptions {
+  return (
+    parameter.type === "string" &&
+    isStringArray(parameter.options) &&
+    parameter.options.length > 0
+  );
+}
 
-    indicatorParameters() {
-      return this.indicator?.parameters;
-    },
-  },
+function isStringWithoutOptions(
+  parameter: IndicatorParameterEntry,
+): parameter is StringParameterWithoutOptions {
+  return parameter.type === "string" && !isStringArray(parameter.options);
+}
 
-  methods: {
-    replaceUnderscoreWithSpace(str) {
-      return str.replace(/_/g, " ");
-    },
+function isNumber(parameter: IndicatorParameterEntry): parameter is NumericParameter {
+  return parameter.type === "int" || parameter.type === "float";
+}
 
-    isStringWithOptions(parameter) {
-      return (
-        parameter.type === "string" &&
-        Array.isArray(parameter.options) &&
-        parameter.options.length > 0
-      );
-    },
-    isStringWithoutOptions(parameter) {
-      return parameter.type === "string" && !Array.isArray(parameter.options);
-    },
-    isNumber(parameter) {
-      return parameter.type === "int" || parameter.type === "float";
-    },
+function onParameterUpdate(): void {
+  if (updateTimeout.value) {
+    clearTimeout(updateTimeout.value);
+  }
 
-    onParameterUpdate() {
-      if (this.updateTimeout) {
-        clearTimeout(this.updateTimeout);
-      }
+  updateTimeout.value = setTimeout(() => {
+    updateTimeout.value = null;
+    handleParameterUpdate();
+  }, updateDelay);
+}
 
-      this.updateTimeout = setTimeout(() => {
-        this.updateTimeout = null;
-        this.handleParameterUpdate();
-      }, this.updateDelay);
-    },
+function handleParameterUpdate(): void {
+  const customParameters = buildCustomParameters();
+  updateIndicatorStoreParameters(props.indicator._id, customParameters);
 
-    handleParameterUpdate() {
-      const customParameters = this.buildCustomParameters();
-      this.updateIndicatorStoreParameters(this.indicator._id, customParameters);
+  const queryParams: IndicatorStoreQuery = {
+    symbol: symbol.value,
+    timeframe: timeframe.value,
+    limit: 500,
+  };
+  if (exchange.value) {
+    queryParams.exchange = exchange.value;
+  }
+  const body: IndicatorRequestBody = {
+    parameters: customParameters,
+  };
 
-      const queryParams = {
-        symbol: this.symbol,
-        timeframe: this.timeframe,
-        limit: 500,
-      };
-      if (this.exchange) {
-        queryParams.exchange = this.exchange;
-      }
-      const body = {
-        parameters: customParameters,
-      };
+  requestIndicatorWithNewParameters(
+    props.indicator._id,
+    props.indicator.indicatorId,
+    queryParams,
+    body,
+  );
+}
 
-      this.requestIndicatorWithNewParameters(
-        this.indicator._id,
-        this.indicator.indicatorId,
-        queryParams,
-        body,
-      );
-    },
+function updateIndicatorStoreParameters(
+  _id: string,
+  newParameters: IndicatorParameterValues,
+): void {
+  indicatorsStore.updateIndicatorParameters(_id, newParameters);
+}
 
-    updateIndicatorStoreParameters(_id, newParameters) {
-      this.indicatorsStore.updateIndicatorParameters(_id, newParameters);
-    },
+function requestIndicatorWithNewParameters(
+  _id: string,
+  indicatorId: number,
+  queryParams: IndicatorStoreQuery,
+  body: IndicatorRequestBody,
+): void {
+  void indicatorsStore.requestIndicator(_id, indicatorId, queryParams, body);
+}
 
-    requestIndicatorWithNewParameters(_id, indicatorId, queryParams, body) {
-      this.indicatorsStore.requestIndicator(_id, indicatorId, queryParams, body);
-    },
+function buildCustomParameters(): IndicatorParameterValues {
+  const customParameters: IndicatorParameterValues = {};
 
-    buildCustomParameters() {
-      const customParameters = {};
+  for (const [key, param] of Object.entries(indicatorParameters.value)) {
+    if (param.value !== undefined) {
+      customParameters[key] = param.value;
+    }
+  }
+  return customParameters;
+}
 
-      for (const [key, param] of Object.entries(this.indicatorParameters)) {
-        customParameters[key] = param.value;
-      }
-      return customParameters;
-    },
-  },
-};
+onBeforeUnmount(() => {
+  if (updateTimeout.value) {
+    clearTimeout(updateTimeout.value);
+  }
+});
 </script>
 
 <style scoped>

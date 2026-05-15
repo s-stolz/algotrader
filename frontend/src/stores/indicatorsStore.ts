@@ -15,13 +15,13 @@ import { type WebSocketSendPayload, wsService } from '@/utils/websocketService';
 
 const INITIAL_INDICATOR_LIMIT = 500;
 
-type IndicatorParameterEntry = Record<string, JsonValue | undefined>;
-type IndicatorParameterMap = Record<string, IndicatorParameterEntry>;
-type IndicatorParameterUpdate = Record<string, JsonValue | IndicatorParameterEntry>;
-type IndicatorParameterValues = JsonObject;
-type IndicatorStyles = Record<string, JsonObject>;
+export type IndicatorParameterEntry = Record<string, JsonValue | undefined>;
+export type IndicatorParameterMap = Record<string, IndicatorParameterEntry>;
+export type IndicatorParameterUpdate = Record<string, JsonValue | IndicatorParameterEntry>;
+export type IndicatorParameterValues = JsonObject;
+export type IndicatorStyles = Record<string, JsonObject>;
 
-interface IndicatorStoreQuery {
+export interface IndicatorStoreQuery {
   symbol?: string | null;
   timeframe?: string | null;
   exchange?: string | null;
@@ -43,7 +43,7 @@ interface IndicatorLiveSubscription {
 
 type IndicatorLiveSubscriptionInput = Omit<IndicatorLiveSubscription, 'clientIndicatorId'>;
 
-interface StoreIndicator {
+export interface StoreIndicator {
   _id: string;
   indicatorId: number;
   info: IndicatorInfo;

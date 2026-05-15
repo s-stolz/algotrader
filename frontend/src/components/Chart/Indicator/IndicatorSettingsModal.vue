@@ -11,7 +11,10 @@
             <indicator-settings-parameters :indicator="indicator" />
           </n-tab-pane>
           <n-tab-pane name="style" tab="Style">
-            <indicator-settings-styles :indicatorInfo="indicatorInfo" @update-styles="onUpdateStyles" />
+            <indicator-settings-styles
+              :indicatorInfo="indicatorInfo"
+              @update-styles="onUpdateStyles"
+            />
           </n-tab-pane>
         </n-tabs>
       </div>
@@ -19,47 +22,32 @@
   </base-modal>
 </template>
 
-<script>
+<script setup lang="ts">
+import { computed } from "vue";
+import { NTabs, NTabPane } from "naive-ui";
+
 import BaseModal from "@/components/Common/BaseModal.vue";
 import IndicatorSettingsParameters from "@/components/Chart/Indicator/IndicatorSettingsParameters.vue";
 import IndicatorSettingsStyles from "@/components/Chart/Indicator/IndicatorSettingsStyles.vue";
 
-import { NTabs, NTabPane } from "naive-ui";
+import type { IndicatorInstance, IndicatorStyleUpdatePayload } from "./types";
 
-export default {
+defineOptions({
   name: "IndicatorSettingsModal",
+});
 
-  components: {
-    BaseModal,
-    IndicatorSettingsParameters,
-    IndicatorSettingsStyles,
-    NTabs,
-    NTabPane,
-  },
+const props = defineProps<{
+  indicator: IndicatorInstance;
+  modalId: string;
+}>();
 
-  props: {
-    indicator: {
-      type: Object,
-      required: true,
-    },
-    modalId: {
-      type: String,
-      required: true,
-    },
-  },
+const emit = defineEmits<{
+  "update-styles": [payload: IndicatorStyleUpdatePayload];
+}>();
 
-  emits: ["update-styles"],
+const indicatorInfo = computed(() => props.indicator.info);
 
-  computed: {
-    indicatorInfo() {
-      return this.indicator?.info;
-    },
-  },
-
-  methods: {
-    onUpdateStyles({ outputKey, styles }) {
-      this.$emit("update-styles", { outputKey, styles });
-    },
-  },
-};
+function onUpdateStyles(payload: IndicatorStyleUpdatePayload): void {
+  emit("update-styles", payload);
+}
 </script>

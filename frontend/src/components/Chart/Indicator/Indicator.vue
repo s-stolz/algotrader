@@ -17,106 +17,97 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { watch } from "vue";
+
 import IndicatorPanel from "./IndicatorPanel.vue";
 import IndicatorSettingsModal from "./IndicatorSettingsModal.vue";
 
-export default {
+import type {
+  IndicatorInstance,
+  IndicatorManagerDependency,
+  IndicatorStyleUpdatePayload,
+} from "./types";
+
+defineOptions({
   name: "Indicator",
+});
 
-  components: {
-    IndicatorPanel,
-    IndicatorSettingsModal,
+const props = defineProps<{
+  indicatorManager: IndicatorManagerDependency;
+  indicator: IndicatorInstance;
+}>();
+
+const emit = defineEmits<{
+  "remove-indicator": [indicatorId: string];
+}>();
+
+watch(
+  () => props.indicator,
+  (newValue) => {
+    void props.indicatorManager.addIndicatorSeries(newValue._id);
   },
+  { immediate: true },
+);
 
-  props: {
-    indicatorManager: {
-      type: Object,
-      required: true,
-    },
-
-    indicator: {
-      type: Object,
-      required: true,
-    },
+watch(
+  () => props.indicator.dataVersion,
+  () => {
+    props.indicatorManager.refreshIndicatorSeries(props.indicator._id);
   },
+);
 
-  emits: ["remove-indicator"],
+watch(
+  () => props.indicator.paneIndex,
+  (paneIndex) => {
+    if (paneIndex === null || paneIndex === undefined) {
+      return;
+    }
 
-  data() {
-    return {};
+    void props.indicatorManager.updateMissingPaneHtmlElements();
   },
+  { immediate: true },
+);
 
-  watch: {
-    indicator: {
-      handler(newVal, _oldVal) {
-        if (!newVal) return;
+watch(
+  () => props.indicator.paneHtmlElement,
+  (paneHtmlElement) => {
+    if (!paneHtmlElement) {
+      return;
+    }
 
-        this.indicatorManager.addIndicatorSeries(newVal._id);
-      },
-      immediate: true,
-    },
+    paneHtmlElement.style.position = "relative";
 
-    "indicator.dataVersion": {
-      handler() {
-        if (!this.indicator || !this.indicator._id) return;
-
-        this.indicatorManager.refreshIndicatorSeries(this.indicator._id);
-      },
-    },
-
-    "indicator.paneIndex": {
-      handler(paneIndex) {
-        if (paneIndex === null || paneIndex === undefined) {
-          return;
-        }
-
-        this.indicatorManager.updateMissingPaneHtmlElements();
-      },
-      immediate: true,
-    },
-
-    "indicator.paneHtmlElement": {
-      handler(paneHtmlElement) {
-        if (!paneHtmlElement) {
-          return;
-        }
-
-        paneHtmlElement.style.position = "relative";
-
-        if (!paneHtmlElement.querySelector(".indicators-wrapper")) {
-          const wrapper = this.createNewIndicatorsWrapper();
-          paneHtmlElement.appendChild(wrapper);
-        }
-      },
-      immediate: true,
-    },
+    if (!paneHtmlElement.querySelector(".indicators-wrapper")) {
+      const wrapper = createNewIndicatorsWrapper();
+      paneHtmlElement.appendChild(wrapper);
+    }
   },
+  { immediate: true },
+);
 
-  methods: {
-    onRemoveIndicator(indicatorId) {
-      this.indicatorManager.removeIndicatorSeriesAndData(indicatorId);
-      this.indicatorManager.updateMissingPaneHtmlElements();
-    },
+function onRemoveIndicator(indicatorId: string): void {
+  props.indicatorManager.removeIndicatorSeriesAndData(indicatorId);
+  void props.indicatorManager.updateMissingPaneHtmlElements();
+  emit("remove-indicator", indicatorId);
+}
 
-    onUpdateStyles({ outputKey, styles }) {
-      this.indicatorManager.updateIndicatorStyles(this.indicator._id, outputKey, styles);
-    },
+function onUpdateStyles({ outputKey, styles }: IndicatorStyleUpdatePayload): void {
+  props.indicatorManager.updateIndicatorStyles(props.indicator._id, outputKey, styles);
+}
 
-    createNewIndicatorsWrapper() {
-      const wrapper = document.createElement("div");
-      wrapper.className = "indicators-wrapper";
-      wrapper.style.cssText = `
-        position: absolute;
-        top: 10px;
-        left: 0px;
-        z-index: 1000;
-        max-width: 350px;
-      `;
-      return wrapper;
-    },
-  },
-};
+function createNewIndicatorsWrapper(): HTMLDivElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "indicators-wrapper";
+  wrapper.style.cssText = `
+    position: absolute;
+    top: 10px;
+    left: 0px;
+    z-index: 1000;
+    max-width: 350px;
+  `;
+  return wrapper;
+}
 </script>
 
 <style scoped>

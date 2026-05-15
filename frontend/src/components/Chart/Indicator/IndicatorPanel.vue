@@ -18,45 +18,35 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { NButton, NIcon } from "naive-ui";
+
+import { SettingsOutline, TrashOutline } from "@/icons";
 import { useModalStore } from "@/stores/modalStore";
 
-import { NButton, NIcon } from "naive-ui";
-import { SettingsOutline, TrashOutline } from "@/icons";
+import type { IndicatorInstance } from "./types";
 
-export default {
+defineOptions({
   name: "IndicatorPanel",
+});
 
-  components: {
-    NButton,
-    NIcon,
-    SettingsOutline,
-    TrashOutline,
-  },
+const props = defineProps<{
+  indicator: IndicatorInstance;
+}>();
 
-  props: {
-    indicator: {
-      type: Object,
-      required: true,
-    },
-  },
+const emit = defineEmits<{
+  "remove-indicator": [indicatorId: string];
+}>();
 
-  data() {
-    return {
-      modalStore: useModalStore(),
-    };
-  },
+const modalStore = useModalStore();
 
-  methods: {
-    onOpenSettings() {
-      this.modalStore.openModal(`indicatorSettings_${this.indicator._id}`);
-    },
+function onOpenSettings(): void {
+  modalStore.openModal(`indicatorSettings_${props.indicator._id}`);
+}
 
-    onRemoveIndicator() {
-      this.$emit("remove-indicator", this.indicator._id);
-    },
-  },
-};
+function onRemoveIndicator(): void {
+  emit("remove-indicator", props.indicator._id);
+}
 </script>
 
 <style scoped>
