@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
-from app.models import backtest_run_summaries, candles, markets
+from app.models import backtest_closed_trades, backtest_run_summaries, candles, markets
 from sqlalchemy import delete, insert, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -381,14 +381,19 @@ async def delete_candles(session, symbol_id: int):
 
 
 async def insert_backtest_run_summary(session, summary_data: dict):
+    trades = summary_data.get("trades", [])
+    summary_values = {key: value for key, value in summary_data.items() if key != "trades"}
     values = {
-        **summary_data,
+        **summary_values,
         "run_id": str(uuid4()),
         "persisted_at": datetime.now(timezone.utc),
     }
     stmt = insert(backtest_run_summaries).values(**values).returning(backtest_run_summaries)
     result = await session.execute(stmt)
     row = result.fetchone()
+    if trades:
+        trade_values = [{"run_id": values["run_id"], **trade} for trade in trades]
+        await session.execute(insert(backtest_closed_trades).values(trade_values))
     await session.commit()
     return dict(row._mapping)
 
@@ -418,6 +423,20 @@ async def list_backtest_run_summaries(
         stmt = stmt.where(backtest_run_summaries.c.engine == engine)
     stmt = stmt.order_by(backtest_run_summaries.c.persisted_at.desc())
 
+    result = await session.execute(stmt)
+    rows = result.fetchall()
+    return [dict(row._mapping) for row in rows]
+
+
+async def list_backtest_closed_trades(session, run_id: str):
+    stmt = (
+        select(backtest_closed_trades)
+        .where(backtest_closed_trades.c.run_id == run_id)
+        .order_by(
+            backtest_closed_trades.c.entry_timestamp_ms.asc(),
+            backtest_closed_trades.c.trade_id.asc(),
+        )
+    )
     result = await session.execute(stmt)
     rows = result.fetchall()
     return [dict(row._mapping) for row in rows]

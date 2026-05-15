@@ -58,3 +58,22 @@ CREATE INDEX IF NOT EXISTS idx_backtest_run_summaries_persisted_at
 
 CREATE INDEX IF NOT EXISTS idx_backtest_run_summaries_filters
     ON backtest_run_summaries (symbol, timeframe, strategy_id, engine);
+
+-- Create backtest closed trades table
+CREATE TABLE IF NOT EXISTS backtest_closed_trades (
+    run_id VARCHAR(36) NOT NULL,
+    trade_id VARCHAR(64) NOT NULL,
+    symbol VARCHAR(32) NOT NULL,
+    quantity DOUBLE PRECISION NOT NULL,
+    entry_timestamp_ms BIGINT NOT NULL,
+    entry_price DOUBLE PRECISION NOT NULL,
+    exit_timestamp_ms BIGINT NOT NULL,
+    exit_price DOUBLE PRECISION NOT NULL,
+    realized_pnl DOUBLE PRECISION NOT NULL,
+    fees DOUBLE PRECISION NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES backtest_run_summaries (run_id) ON DELETE CASCADE,
+    PRIMARY KEY (run_id, trade_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_backtest_closed_trades_run_id
+    ON backtest_closed_trades (run_id);

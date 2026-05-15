@@ -58,3 +58,24 @@ backtest_run_summaries = Table(
     Column("max_drawdown_pct", Float, nullable=False),
     Column("trade_count", Integer, nullable=False),
 )
+
+backtest_closed_trades = Table(
+    "backtest_closed_trades",
+    metadata,
+    Column(
+        "run_id",
+        String(36),
+        ForeignKey("backtest_run_summaries.run_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("trade_id", String(64), nullable=False),
+    Column("symbol", String(32), nullable=False),
+    Column("quantity", Float, nullable=False),
+    Column("entry_timestamp_ms", BigInteger, nullable=False),
+    Column("entry_price", Float, nullable=False),
+    Column("exit_timestamp_ms", BigInteger, nullable=False),
+    Column("exit_price", Float, nullable=False),
+    Column("realized_pnl", Float, nullable=False),
+    Column("fees", Float, nullable=False),
+    PrimaryKeyConstraint("run_id", "trade_id"),
+)

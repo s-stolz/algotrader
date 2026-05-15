@@ -55,6 +55,22 @@ def _summary_payload(**overrides):
     return payload
 
 
+def _closed_trade_payload(**overrides):
+    payload = {
+        "trade_id": "trade-1",
+        "symbol": "EURUSD",
+        "quantity": 1000.0,
+        "entry_timestamp_ms": 1714525200000,
+        "entry_price": 1.0715,
+        "exit_timestamp_ms": 1714532400000,
+        "exit_price": 1.0740,
+        "realized_pnl": 2.5,
+        "fees": 0.15,
+    }
+    payload.update(overrides)
+    return payload
+
+
 class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.session = InMemoryAsyncSession()
@@ -154,3 +170,72 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([row["run_id"] for row in strategy_matches], [newer["run_id"]])
         self.assertEqual([row["run_id"] for row in engine_matches], [newer["run_id"]])
         self.assertNotIn("trades", all_summaries[0])
+
+    async def test_post_backtest_stores_closed_trades_for_separate_fetch(self):
+        saved = await main.create_backtest_summary(
+            BacktestRunSummaryIn(
+                **_summary_payload(
+                    trades=[
+                        _closed_trade_payload(),
+                        _closed_trade_payload(
+                            trade_id="trade-2",
+                            quantity=500.0,
+                            entry_timestamp_ms=1714536000000,
+                            entry_price=1.0750,
+                            exit_timestamp_ms=1714543200000,
+                            exit_price=1.0730,
+                            realized_pnl=-1.0,
+                            fees=0.1,
+                        ),
+                    ],
+                )
+            ),
+            db=self.session,
+        )
+
+        trades = await main.get_backtest_trades(saved["run_id"], db=self.session)
+        summaries = await main.list_backtest_summaries(
+            symbol=None,
+            timeframe=None,
+            strategy_id=None,
+            engine=None,
+            db=self.session,
+        )
+
+        self.assertEqual(
+            trades,
+            [
+                {
+                    **_closed_trade_payload(),
+                    "run_id": saved["run_id"],
+                },
+                {
+                    **_closed_trade_payload(
+                        trade_id="trade-2",
+                        quantity=500.0,
+                        entry_timestamp_ms=1714536000000,
+                        entry_price=1.0750,
+                        exit_timestamp_ms=1714543200000,
+                        exit_price=1.0730,
+                        realized_pnl=-1.0,
+                        fees=0.1,
+                    ),
+                    "run_id": saved["run_id"],
+                },
+            ],
+        )
+        self.assertNotIn("trades", saved)
+        self.assertNotIn("trades", summaries[0])
+
+    async def test_post_backtest_with_no_closed_trades_returns_empty_trade_list(self):
+        saved = await main.create_backtest_summary(
+            BacktestRunSummaryIn(**_summary_payload(trade_count=0)),
+            db=self.session,
+        )
+
+        trades = await main.get_backtest_trades(saved["run_id"], db=self.session)
+        fetched = await main.get_backtest_summary(saved["run_id"], db=self.session)
+
+        self.assertEqual(trades, [])
+        self.assertEqual(fetched["trade_count"], 0)
+        self.assertNotIn("trades", fetched)

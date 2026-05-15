@@ -4,7 +4,13 @@ from typing import Optional
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
 from app import crud, market_cache
 from app.database import get_db
-from app.schemas import BacktestRunSummaryIn, BacktestRunSummaryOut, CandleBatchIn, MarketIn
+from app.schemas import (
+    BacktestClosedTradeOut,
+    BacktestRunSummaryIn,
+    BacktestRunSummaryOut,
+    CandleBatchIn,
+    MarketIn,
+)
 from app.timeframes import TimeframeCode, timeframe_to_minutes
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -104,6 +110,14 @@ async def get_backtest_summary(run_id: str, db: AsyncSession = Depends(get_db)):
     if summary is None:
         raise HTTPException(status_code=404, detail="Backtest run not found")
     return summary
+
+
+@app.get("/backtests/{run_id}/trades", response_model=list[BacktestClosedTradeOut])
+async def get_backtest_trades(run_id: str, db: AsyncSession = Depends(get_db)):
+    summary = await crud.get_backtest_run_summary(db, run_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return await crud.list_backtest_closed_trades(db, run_id)
 
 
 @app.delete("/markets/{symbol}")
