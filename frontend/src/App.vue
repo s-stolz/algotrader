@@ -6,10 +6,12 @@
   </n-config-provider>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent } from 'vue';
 import { NConfigProvider, darkTheme } from 'naive-ui';
+import { wsService } from './utils/websocketService';
 
-export default {
+export default defineComponent({
   name: 'App',
 
   components: {
@@ -23,11 +25,9 @@ export default {
   },
 
   beforeUnmount() {
-    if (this.$wss) {
-      this.$wss.close();
-    }
+    wsService.close();
   },
-};
+});
 </script>
 
 <style>
