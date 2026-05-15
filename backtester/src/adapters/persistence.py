@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import math
+import sys
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping, Protocol
 
 from domain.enums import BacktestEngine
@@ -26,7 +28,7 @@ class BacktestPersistenceMetadata:
 class BacktestRunSummaryPersistenceAdapter:
     """Maps completed backtest results to database-accessor run summaries."""
 
-    def __init__(self, client: BacktestRunSummaryClient) -> None:
+    def __init__(self, client: BacktestRunSummaryClient | None = None) -> None:
         self._client = client
 
     def save_run_summary(
@@ -39,13 +41,21 @@ class BacktestRunSummaryPersistenceAdapter:
             result=result,
             execution_duration_ms=execution_duration_ms,
         )
-        response = self._client.store_backtest_run_summary(summary)
+        response = self._store_run_summary(summary)
         metadata = _metadata_from_response(response)
         return replace(
             result,
             backtest_run_id=metadata.run_id,
             persisted_at=metadata.persisted_at,
         )
+
+    def _store_run_summary(self, summary: dict[str, Any]) -> Mapping[str, Any]:
+        if self._client is not None:
+            return self._client.store_backtest_run_summary(summary)
+
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            return client.store_backtest_run_summary(summary)
 
 
 def build_run_summary_payload(
@@ -209,6 +219,26 @@ def _persisted_at_to_epoch_ms(value: Any) -> int:
     if persisted_at.tzinfo is None:
         persisted_at = persisted_at.replace(tzinfo=timezone.utc)
     return int(persisted_at.timestamp() * 1000)
+
+
+def _import_database_accessor_client() -> type[Any]:
+    try:
+        from db_accessor_client import DatabaseAccessorClient
+    except ModuleNotFoundError:
+        _append_monorepo_lib_path("db_accessor_client")
+        try:
+            from db_accessor_client import DatabaseAccessorClient
+        except ModuleNotFoundError as exc:
+            raise RuntimeError("db_accessor_client is required for backtest persistence") from exc
+    return DatabaseAccessorClient
+
+
+def _append_monorepo_lib_path(lib_name: str) -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    lib_path = repo_root / "libs" / lib_name
+    as_text = str(lib_path)
+    if lib_path.exists() and as_text not in sys.path:
+        sys.path.append(as_text)
 
 
 def _engine_value(engine: object) -> str:
