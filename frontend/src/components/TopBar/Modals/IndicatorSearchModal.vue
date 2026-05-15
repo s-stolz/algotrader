@@ -1,5 +1,5 @@
 <template>
-  <base-modal :modalId="'indicatorSearch'" :title="'Indicator'">
+  <BaseModal :modalId="'indicatorSearch'" :title="'Indicator'">
     <div>
       <span id="search-bar-wrapper">
         <n-input
@@ -35,92 +35,69 @@
         </table>
       </n-scrollbar>
     </div>
-  </base-modal>
+  </BaseModal>
 </template>
 
-<script>
-import BaseModal from "@/components/Common/BaseModal.vue";
-import { useCurrentMarketStore } from "@/stores/currentMarketStore";
-import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
-import { useIndicatorsStore } from "@/stores/indicatorsStore";
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+import { NIcon, NInput, NScrollbar } from 'naive-ui';
 
-import { NScrollbar, NInput, NIcon } from "naive-ui";
-import { SearchOutline } from "@/icons";
+import { fetchAvailableIndicators } from '@/api/indicatorClient';
+import BaseModal from '@/components/Common/BaseModal.vue';
+import { SearchOutline } from '@/icons';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
+import { useIndicatorsStore } from '@/stores/indicatorsStore';
+import type { AvailableIndicator } from '@/types/contracts';
 
-export default {
-  name: "IndicatorSearchModal",
+defineOptions({
+  name: 'IndicatorSearchModal',
+});
 
-  components: {
-    BaseModal,
-    NScrollbar,
-    NInput,
-    NIcon,
-    SearchOutline,
-  },
+const indicatorInput = ref('');
+const indicators = ref<AvailableIndicator[]>([]);
+const currentMarketStore = useCurrentMarketStore();
+const currentTimeframeStore = useCurrentTimeframeStore();
+const indicatorsStore = useIndicatorsStore();
 
-  data() {
-    return {
-      indicatorInput: "",
-      indicators: [],
-      currentMarketStore: useCurrentMarketStore(),
-      currentTimeframeStore: useCurrentTimeframeStore(),
-      indicatorsStore: useIndicatorsStore(),
-    };
-  },
+const filteredIndicators = computed(() => indicators.value
+  .filter((indicator) => indicator.name.toUpperCase().includes(indicatorInput.value.toUpperCase()))
+  .sort((a, b) => a.name.localeCompare(b.name)));
 
-  computed: {
-    filteredIndicators() {
-      return this.indicators
-        .filter((indicator) =>
-          indicator.name.toUpperCase().includes(this.indicatorInput.toUpperCase()),
-        )
-        .sort((a, b) => a.name.localeCompare(b.name));
-    },
+const symbol = computed(() => currentMarketStore.symbol);
+const exchange = computed(() => currentMarketStore.exchange);
+const timeframe = computed(() => currentTimeframeStore.value);
 
-    symbol() {
-      return this.currentMarketStore.symbol;
-    },
+async function getIndicators(): Promise<void> {
+  try {
+    indicators.value = await fetchAvailableIndicators();
+  } catch (error) {
+    console.error('Error fetching indicators:', error);
+  }
+}
 
-    exchange() {
-      return this.currentMarketStore.exchange;
-    },
+function onApplyIndicator(indicator: AvailableIndicator): void {
+  const queryParams: {
+    exchange?: string;
+    limit: number;
+    symbol: string | null;
+    timeframe: string;
+  } = {
+    symbol: symbol.value,
+    timeframe: timeframe.value,
+    limit: 500,
+  };
 
-    timeframe() {
-      return this.currentTimeframeStore.value;
-    },
-  },
+  if (exchange.value) {
+    queryParams.exchange = exchange.value;
+  }
 
-  mounted() {
-    this.getIndicators();
-  },
+  void indicatorsStore.requestIndicator(null, indicator.id, queryParams, {});
+}
 
-  methods: {
-    getIndicators() {
-      fetch("/api/indicator-api/indicators")
-        .then((response) => response.json())
-        .then((data) => {
-          this.indicators = data;
-          console.log(data);
-        })
-        .catch((error) => {
-          console.error("Error fetching indicators:", error);
-        });
-    },
-
-    onApplyIndicator(indicator) {
-      const queryParams = {
-        symbol: this.symbol,
-        timeframe: this.timeframe,
-        limit: 500,
-      };
-      if (this.exchange) {
-        queryParams.exchange = this.exchange;
-      }
-
-      this.indicatorsStore.requestIndicator(null, indicator.id, queryParams, {});
-    },
-  },
-};
+onMounted(() => {
+  void getIndicators();
+});
 </script>
 
 <style scoped>

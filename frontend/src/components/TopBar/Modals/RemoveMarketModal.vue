@@ -1,5 +1,5 @@
 <template>
-  <base-modal ref="baseModal" :modalId="'removeMarket'" :title="'Remove Market'">
+  <BaseModal ref="baseModal" :modalId="'removeMarket'" :title="'Remove Market'">
     <div>
       <div class="confirmation-content">
         <n-icon size="48" color="#ff6b6b">
@@ -39,110 +39,87 @@
         </n-button>
       </div>
     </template>
-  </base-modal>
+  </BaseModal>
 </template>
 
-<script>
-import { useMarketsStore } from "@/stores/marketsStore";
+<script setup lang="ts">
+import { ref } from 'vue';
+import { NButton, NIcon } from 'naive-ui';
 
-import { NIcon, NButton } from "naive-ui";
-import { WarningOutline } from "@/icons";
-import BaseModal from "@/components/Common/BaseModal.vue";
+import { deleteCandles } from '@/api/candleClient';
+import { deleteMarket } from '@/api/marketClient';
+import BaseModal from '@/components/Common/BaseModal.vue';
+import { WarningOutline } from '@/icons';
+import { useMarketsStore } from '@/stores/marketsStore';
+import type { Market } from '@/types/contracts';
 
-export default {
-  name: "RemoveMarketModal",
+defineOptions({
+  name: 'RemoveMarketModal',
+});
 
-  components: {
-    NIcon,
-    NButton,
-    WarningOutline,
-    BaseModal,
-  },
+interface BaseModalExpose {
+  close: () => void;
+}
 
-  props: {
-    market: {
-      type: Object,
-      required: true,
-    },
-  },
+const props = defineProps<{
+  market: Market;
+}>();
 
-  emits: ["market-removed"],
+const emit = defineEmits<{
+  (event: 'market-removed', market: Market): void;
+}>();
 
-  data() {
-    return {
-      marketsStore: useMarketsStore(),
-      isRemoving: false,
-    };
-  },
+const marketsStore = useMarketsStore();
+const baseModal = ref<BaseModalExpose | null>(null);
+const isRemoving = ref(false);
 
-  methods: {
-    closeModal() {
-      this.$refs.baseModal.close();
-      this.isRemoving = false;
-    },
+function closeModal(): void {
+  baseModal.value?.close();
+  isRemoving.value = false;
+}
 
-    async confirmRemoveCandles() {
-      this.isRemoving = true;
+async function tryRemoveMarketCandles(): Promise<boolean> {
+  try {
+    await deleteCandles(props.market.symbol, { exchange: props.market.exchange });
+    return true;
+  } catch (error) {
+    console.error('Error removing market candles:', error);
+    return false;
+  }
+}
 
-      const response = await this.tryRemoveMarketCandles();
-      this.isRemoving = false;
+async function confirmRemoveCandles(): Promise<void> {
+  isRemoving.value = true;
 
-      if (response && response.ok) {
-        this.$emit("market-removed", this.market);
-        this.closeModal();
-      }
-    },
+  const removed = await tryRemoveMarketCandles();
+  isRemoving.value = false;
 
-    async tryRemoveMarketCandles() {
-      try {
-        const params = new URLSearchParams();
-        if (this.market.exchange) {
-          params.append("exchange", this.market.exchange);
-        }
-        const query = params.toString();
-        const response = await fetch(
-          `/api/data-accessor/candles/${this.market.symbol}${query ? `?${query}` : ""}`,
-          { method: "DELETE" },
-        );
+  if (removed) {
+    emit('market-removed', props.market);
+    closeModal();
+  }
+}
 
-        return response;
-      } catch (error) {
-        console.error("Error removing market candles:", error);
-      }
-    },
+async function tryRemoveMarket(): Promise<boolean> {
+  try {
+    await deleteMarket(props.market.symbol, { exchange: props.market.exchange });
+    return true;
+  } catch (error) {
+    console.error('Error removing market:', error);
+    return false;
+  }
+}
 
-    async confirmRemove() {
-      if (!this.market) return;
+async function confirmRemove(): Promise<void> {
+  isRemoving.value = true;
 
-      this.isRemoving = true;
-
-      const response = await this.tryRemoveMarket();
-      this.isRemoving = false;
-      if (response && response.ok) {
-        this.marketsStore.fetch();
-        this.closeModal();
-      }
-    },
-
-    async tryRemoveMarket() {
-      try {
-        const params = new URLSearchParams();
-        if (this.market.exchange) {
-          params.append("exchange", this.market.exchange);
-        }
-        const query = params.toString();
-        const response = await fetch(
-          `/api/data-accessor/markets/${this.market.symbol}${query ? `?${query}` : ""}`,
-          { method: "DELETE" },
-        );
-
-        return response;
-      } catch (error) {
-        console.error("Error removing market:", error);
-      }
-    },
-  },
-};
+  const removed = await tryRemoveMarket();
+  isRemoving.value = false;
+  if (removed) {
+    await marketsStore.fetch();
+    closeModal();
+  }
+}
 </script>
 
 <style scoped>

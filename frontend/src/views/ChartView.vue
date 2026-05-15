@@ -1,59 +1,45 @@
 <template>
   <div>
-    <the-top-bar />
-    <chart-area
+    <TheTopBar />
+    <ChartArea
       id="chart-area"
       ref="chartArea"
     />
   </div>
 </template>
 
-<script>
-import { useMarketsStore } from "@/stores/marketsStore";
-import { useCurrentMarketStore } from "@/stores/currentMarketStore";
+<script setup lang="ts">
+import ChartArea from '@/components/Chart/ChartArea.vue';
+import TheTopBar from '@/components/TopBar/TheTopBar.vue';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { useMarketsStore } from '@/stores/marketsStore';
 
-import TheTopBar from "@/components/TopBar/TheTopBar.vue";
-import ChartArea from "@/components/Chart/ChartArea.vue";
+defineOptions({
+  name: 'ChartView',
+});
 
-export default {
-  name: "ChartView",
+const marketsStore = useMarketsStore();
+const currentMarketStore = useCurrentMarketStore();
 
-  components: {
-    TheTopBar,
-    ChartArea,
-  },
+async function fetchMarketsAndInitCurrent(): Promise<void> {
+  await marketsStore.fetch();
 
-  data() {
-    return {
-      marketsStore: useMarketsStore(),
-      currentMarketStore: useCurrentMarketStore(),
-    };
-  },
+  if (marketsStore.all.length === 0) {
+    return;
+  }
 
-  async created() {
-    await this.initializeChartView();
-  },
+  if (currentMarketStore.isValid(marketsStore.all)) {
+    return;
+  }
 
-  methods: {
-    async initializeChartView() {
-      await this.fetchMarketsAndInitCurrent();
-    },
+  currentMarketStore.setMarket(marketsStore.all[0]);
+}
 
-    async fetchMarketsAndInitCurrent() {
-      await this.marketsStore.fetch();
+async function initializeChartView(): Promise<void> {
+  await fetchMarketsAndInitCurrent();
+}
 
-      if (this.marketsStore.all.length === 0) {
-        return;
-      }
-
-      if (this.currentMarketStore.isValid(this.marketsStore.all)) {
-        return;
-      }
-
-      this.currentMarketStore.setMarket(this.marketsStore.all[0]);
-    },
-  },
-};
+void initializeChartView();
 </script>
 
 <style scoped>

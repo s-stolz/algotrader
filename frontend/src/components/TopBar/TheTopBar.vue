@@ -4,44 +4,30 @@
       {{ currentSymbol }}
     </n-button>
 
-    <timeframe-dropdown />
+    <TimeframeDropdown />
 
     <n-button round @click="modalStore.openModal('indicatorSearch')">Indicator</n-button>
 
-    <top-bar-modals />
+    <TopBarModals />
   </div>
 </template>
 
-<script>
-import { useCurrentMarketStore } from "@/stores/currentMarketStore";
-import { useModalStore } from "@/stores/modalStore";
+<script setup lang="ts">
+import { computed } from 'vue';
+import { NButton } from 'naive-ui';
 
-import { NButton } from "naive-ui";
-import TimeframeDropdown from "@/components/TopBar/TimeframeDropdown.vue";
-import TopBarModals from "@/components/TopBar/Modals/TopBarModals.vue";
+import TimeframeDropdown from '@/components/TopBar/TimeframeDropdown.vue';
+import TopBarModals from '@/components/TopBar/Modals/TopBarModals.vue';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { useModalStore } from '@/stores/modalStore';
 
-export default {
-  name: "TheTopBar",
+defineOptions({
+  name: 'TheTopBar',
+});
 
-  components: {
-    NButton,
-    TimeframeDropdown,
-    TopBarModals,
-  },
-
-  data() {
-    return {
-      currentMarketStore: useCurrentMarketStore(),
-      modalStore: useModalStore(),
-    };
-  },
-
-  computed: {
-    currentSymbol() {
-      return this.currentMarketStore.symbol;
-    },
-  },
-};
+const currentMarketStore = useCurrentMarketStore();
+const modalStore = useModalStore();
+const currentSymbol = computed(() => currentMarketStore.symbol);
 </script>
 
 <style scoped>

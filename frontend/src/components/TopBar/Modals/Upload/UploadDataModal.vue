@@ -1,5 +1,5 @@
 <template>
-  <base-modal
+  <BaseModal
     ref="baseModal"
     :modalId="'uploadData'"
     :title="`Upload Data for ${market.symbol}`"
@@ -7,7 +7,7 @@
     <div class="upload-content">
       <n-tabs default-value="upload" type="line" :tabs-padding="20">
         <n-tab-pane name="upload" tab="Upload & Options">
-          <upload-data-section
+          <UploadDataSection
             :file-list="fileList"
             @file-change="handleFileChange"
             @file-remove="handleFileRemove"
@@ -20,7 +20,7 @@
           tab="Preview & Mapping"
           :disabled="fileList.length === 0"
         >
-          <upload-data-preview
+          <UploadDataPreview
             :header-line="headerLine"
             v-model:column-mapping="columnMapping"
             class="upload-data-preview"
@@ -43,145 +43,138 @@
         </n-button>
       </div>
     </template>
-  </base-modal>
+  </BaseModal>
 </template>
 
-<script>
-import { NButton, NTabs, NTabPane } from "naive-ui";
-import BaseModal from "@/components/Common/BaseModal.vue";
-import UploadDataPreview from "./UploadDataPreview.vue";
-import UploadDataSection from "./UploadDataSection.vue";
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { NButton, NTabPane, NTabs, type UploadFileInfo, type UploadOnChange } from 'naive-ui';
+
+import BaseModal from '@/components/Common/BaseModal.vue';
+import type { Candle, Market, UploadColumnMapping } from '@/types/contracts';
+
+import UploadDataPreview from './UploadDataPreview.vue';
+import UploadDataSection from './UploadDataSection.vue';
 import {
+  getColumnMapping,
   getHeaderLine,
   getSeparator,
-  getColumnMapping,
   parseCsvToCandles,
   uploadCandlesInBatches,
-} from "./utils";
+} from './utils';
 
-export default {
-  name: "UploadDataModal",
+defineOptions({
+  name: 'UploadDataModal',
+});
 
-  components: {
-    NButton,
-    NTabs,
-    NTabPane,
-    BaseModal,
-    UploadDataPreview,
-    UploadDataSection,
-  },
+interface BaseModalExpose {
+  close: () => void;
+}
 
-  props: {
-    market: {
-      type: Object,
-      required: true,
-    },
-  },
+const props = defineProps<{
+  market: Market;
+}>();
 
-  emits: ["upload-successful"],
+const emit = defineEmits<{
+  (event: 'upload-successful', market: Market): void;
+}>();
 
-  data() {
-    return {
-      isUploading: false,
-      fileList: [],
-      headerLine: [],
-      separator: undefined,
-      columnMapping: {},
-      separatorOptions: [",", "\t", ";", "|"],
-    };
-  },
+const baseModal = ref<BaseModalExpose | null>(null);
+const isUploading = ref(false);
+const fileList = ref<UploadFileInfo[]>([]);
+const headerLine = ref<string[]>([]);
+const separator = ref<string | null>(null);
+const columnMapping = ref<UploadColumnMapping>({});
+const separatorOptions = [',', '\t', ';', '|'];
 
-  computed: {
-    canUpload() {
-      return this.fileList.length > 0 && !this.isUploading;
-    },
-  },
+const canUpload = computed(() => fileList.value.length > 0 && !isUploading.value);
 
-  methods: {
-    closeModal() {
-      this.$refs.baseModal.close();
-      this.resetForm();
-    },
+function resetForm(): void {
+  isUploading.value = false;
+  fileList.value = [];
+  headerLine.value = [];
+  separator.value = null;
+  columnMapping.value = {};
+}
 
-    resetForm() {
-      this.isUploading = false;
-      this.fileList = [];
-      this.headerLine = [];
-      this.separator = null;
-      this.columnMapping = {};
-    },
+function closeModal(): void {
+  baseModal.value?.close();
+  resetForm();
+}
 
-    handleFileRemove() {
-      this.fileList = [];
-      this.headerLine = [];
-      this.columnMapping = {};
-    },
+function handleFileRemove(): void {
+  fileList.value = [];
+  headerLine.value = [];
+  columnMapping.value = {};
+}
 
-    async handleFileChange(data) {
-      this.fileList = data.fileList;
-      if (this.fileList.length == 0) {
-        this.resetForm();
-        return;
-      }
+async function handleFileChange(data: Parameters<UploadOnChange>[0]): Promise<void> {
+  fileList.value = data.fileList;
+  if (fileList.value.length === 0) {
+    resetForm();
+    return;
+  }
 
-      const file = this.fileList[0].file;
-      const fileSize = file.size;
+  const file = fileList.value[0]?.file;
+  if (!file) {
+    resetForm();
+    return;
+  }
 
-      const sampleSize = Math.min(10 * 1024, fileSize);
-      const sampleBlob = file.slice(0, sampleSize);
-      const csvSample = await sampleBlob.text();
+  const sampleSize = Math.min(10 * 1024, file.size);
+  const sampleBlob = file.slice(0, sampleSize);
+  const csvSample = await sampleBlob.text();
 
-      this.separator = getSeparator(csvSample, this.separatorOptions);
-      this.headerLine = getHeaderLine(csvSample, this.separator);
-      this.columnMapping = getColumnMapping(this.headerLine);
-    },
+  separator.value = getSeparator(csvSample, separatorOptions);
+  headerLine.value = getHeaderLine(csvSample, separator.value);
+  columnMapping.value = getColumnMapping(headerLine.value);
+}
 
-    async uploadData() {
-      if (!this.canUpload || !this.market) return;
+async function uploadData(): Promise<void> {
+  if (!canUpload.value) return;
 
-      this.isUploading = true;
+  const file = fileList.value[0]?.file;
+  if (!file || !separator.value) return;
 
-      try {
-        const file = this.fileList[0].file;
-        const fileSize = file.size;
+  isUploading.value = true;
 
-        console.log(`Processing file (${(fileSize / 1024 / 1024).toFixed(1)}MB)...`);
+  try {
+    console.log(`Processing file (${(file.size / 1024 / 1024).toFixed(1)}MB)...`);
 
-        const candleData = await parseCsvToCandles(
-          file,
-          this.separator,
-          this.columnMapping,
-          (progress, rowCount) => {
-            console.log(`Processing: ${progress.toFixed(1)}% (${rowCount} rows)`);
-          },
-        );
+    const candleData: Candle[] = await parseCsvToCandles(
+      file,
+      separator.value,
+      columnMapping.value,
+      (progress, rowCount) => {
+        console.log(`Processing: ${progress.toFixed(1)}% (${rowCount} rows)`);
+      },
+    );
 
-        if (!candleData || candleData.length === 0) {
-          throw new Error("No valid candle data found in CSV file");
-        }
+    if (candleData.length === 0) {
+      throw new Error('No valid candle data found in CSV file');
+    }
 
-        console.log(`Parsed ${candleData.length} candles, uploading...`);
+    console.log(`Parsed ${candleData.length} candles, uploading...`);
 
-        await uploadCandlesInBatches(
-          this.market.symbol,
-          candleData,
-          this.market.exchange,
-          (progress, uploadedCount) => {
-            console.log(`Upload progress: ${progress.toFixed(1)}% (${uploadedCount} candles)`);
-          },
-        );
+    await uploadCandlesInBatches(
+      props.market.symbol,
+      candleData,
+      props.market.exchange,
+      (progress, uploadedCount) => {
+        console.log(`Upload progress: ${progress.toFixed(1)}% (${uploadedCount} candles)`);
+      },
+    );
 
-        this.$emit("upload-successful", this.market);
-        this.closeModal();
-      } catch (error) {
-        console.error("Error uploading data:", error);
-        alert(`Error uploading data: ${error.message}`);
-      } finally {
-        this.isUploading = false;
-      }
-    },
-  },
-};
+    emit('upload-successful', props.market);
+    closeModal();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Error uploading data:', error);
+    alert(`Error uploading data: ${message}`);
+  } finally {
+    isUploading.value = false;
+  }
+}
 </script>
 
 <style scoped>

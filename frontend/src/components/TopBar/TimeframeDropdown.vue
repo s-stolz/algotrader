@@ -15,33 +15,29 @@
   </n-popselect>
 </template>
 
-<script>
-import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
-import { TIMEFRAME_OPTIONS } from "@/utils/timeframes";
+<script setup lang="ts">
+import { NButton, NPopselect, type SelectOption } from 'naive-ui';
 
-import { NPopselect, NButton } from "naive-ui";
+import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
+import { normalizeTimeframeCode, TIMEFRAME_OPTIONS } from '@/utils/timeframes';
 
-export default {
-  name: "TimeframeDropdown",
+defineOptions({
+  name: 'TimeframeDropdown',
+});
 
-  components: {
-    NPopselect,
-    NButton,
-  },
+const currentTimeframeStore = useCurrentTimeframeStore();
+const timeframes: SelectOption[] = TIMEFRAME_OPTIONS.map((timeframe) => ({
+  label: timeframe.label,
+  value: timeframe.value,
+}));
 
-  data() {
-    return {
-      currentTimeframeStore: useCurrentTimeframeStore(),
-      timeframes: TIMEFRAME_OPTIONS,
-    };
-  },
-
-  methods: {
-    onTimeframeChange(value, option) {
-      this.currentTimeframeStore.setCurrentTimeframe(option);
-    },
-  },
-};
+function onTimeframeChange(_value: string | number, option: SelectOption | null): void {
+  const timeframe = normalizeTimeframeCode(option?.value);
+  currentTimeframeStore.setCurrentTimeframe({
+    label: timeframe,
+    value: timeframe,
+  });
+}
 </script>
 
 <style scoped>

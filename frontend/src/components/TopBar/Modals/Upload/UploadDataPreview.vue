@@ -23,55 +23,41 @@
   </div>
 </template>
 
-<script>
-import { NSelect, NTable, NScrollbar } from "naive-ui";
+<script setup lang="ts">
+import { NScrollbar, NSelect, NTable, type SelectOption } from 'naive-ui';
 
-export default {
-  name: "UploadDataPreview",
+import type { UploadColumnField, UploadColumnMapping } from '@/types/contracts';
 
-  components: {
-    NSelect,
-    NTable,
-    NScrollbar,
-  },
+defineOptions({
+  name: 'UploadDataPreview',
+});
 
-  props: {
-    headerLine: {
-      type: Array,
-      required: true,
-    },
-    columnMapping: {
-      type: Object,
-      required: true,
-    },
-  },
+const props = defineProps<{
+  columnMapping: UploadColumnMapping;
+  headerLine: string[];
+}>();
 
-  emits: ["update:column-mapping"],
+const emit = defineEmits<{
+  (event: 'update:column-mapping', mapping: UploadColumnMapping): void;
+}>();
 
-  data() {
-    return {
-      columnOptions: [
-        { label: "Timestamp", value: "timestamp" },
-        { label: "Date", value: "date" },
-        { label: "Time", value: "time" },
-        { label: "Open", value: "open" },
-        { label: "High", value: "high" },
-        { label: "Low", value: "low" },
-        { label: "Close", value: "close" },
-        { label: "Volume", value: "volume" },
-        { label: "Ignore", value: null },
-      ],
-    };
-  },
+const columnOptions: SelectOption[] = [
+  { label: 'Timestamp', value: 'timestamp' },
+  { label: 'Date', value: 'date' },
+  { label: 'Time', value: 'time' },
+  { label: 'Open', value: 'open' },
+  { label: 'High', value: 'high' },
+  { label: 'Low', value: 'low' },
+  { label: 'Close', value: 'close' },
+  { label: 'Volume', value: 'volume' },
+  { label: 'Ignore', value: '' },
+];
 
-  methods: {
-    updateColumnMapping(index, value) {
-      const newMapping = { ...this.columnMapping };
-      newMapping[index] = value;
-      this.$emit("update:column-mapping", newMapping);
-    },
-  },
-};
+function updateColumnMapping(index: number, value: UploadColumnField | '' | null): void {
+  const newMapping: UploadColumnMapping = { ...props.columnMapping };
+  newMapping[index] = value;
+  emit('update:column-mapping', newMapping);
+}
 </script>
 
 <style scoped>
