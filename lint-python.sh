@@ -11,13 +11,15 @@ else
   PYTHON_BIN="python3"
 fi
 
-if command -v ruff >/dev/null 2>&1; then
+if "$PYTHON_BIN" -m ruff --version >/dev/null 2>&1; then
+  RUFF_CMD=("$PYTHON_BIN" -m ruff)
+elif command -v ruff >/dev/null 2>&1; then
   RUFF_CMD=(ruff)
 else
   RUFF_CMD=("$PYTHON_BIN" -m ruff)
 fi
 
-if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
+if "$PYTHON_BIN" -m black --version >/dev/null 2>&1; then
   BLACK_CMD=("$PYTHON_BIN" -m black)
 elif command -v black >/dev/null 2>&1; then
   BLACK_CMD=(black)
