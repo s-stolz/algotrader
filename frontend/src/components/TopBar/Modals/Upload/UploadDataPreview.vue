@@ -9,7 +9,7 @@
           <tr>
             <td v-for="(column, index) in headerLine" :key="index">
               <n-select
-                v-model:value="columnMapping[index]"
+                :value="columnMapping[index]"
                 :options="columnOptions"
                 placeholder="Select field"
                 clearable
