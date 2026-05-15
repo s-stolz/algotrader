@@ -330,72 +330,23 @@ class LiveIndicatorManager:
         spec = session.spec
 
         while session.running:
-            try:
-                results = await redis.xread(
-                    {spec.candle_stream_key: last_id},
-                    count=self.redis_batch_size,
-                    block=self.redis_block_ms,
-                )
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                log.error(f"Live stream read error for {spec.stream_id}: {exc}")
-                await asyncio.sleep(1)
-                continue
-
+            results = await self._read_session_results(
+                redis=redis,
+                stream_key=spec.candle_stream_key,
+                last_id=last_id,
+                stream_id=spec.stream_id,
+            )
             if not results:
                 continue
 
             for _, messages in results:
                 for message_id, fields in messages:
+                    last_id = message_id
                     try:
-                        last_id = message_id
-                        candle = _parse_candle_fields(fields)
-                        if candle is None:
-                            continue
-
-                        row = np.array(
-                            [
-                                [
-                                    candle["open"],
-                                    candle["high"],
-                                    candle["low"],
-                                    candle["close"],
-                                    candle["volume"],
-                                ]
-                            ],
-                            dtype=np.float64,
-                        )
-
-                        updated = session.update_engine.on_bar(
-                            timeframe=spec.timeframe,
-                            timestamp_ms=candle["timestamp_ms"],
-                            new_row=row,
-                        )
-                        tensor = updated.get(spec.engine_id)
-                        if tensor is None:
-                            continue
-
-                        output_values: dict[str, float | None] = {}
-                        output_names = tensor.coords.get("output")
-                        if output_names is None:
-                            continue
-                        for o_idx, output_name in enumerate(output_names):
-                            raw_val = tensor.data[0, 0, o_idx, 0]
-                            output_values[str(output_name)] = _safe_float(raw_val)
-
-                        payload: dict[FieldT, EncodableT] = {
-                            "t": str(candle["timestamp_ms"]),
-                            "s": spec.stream_id,
-                            "i": str(spec.indicator_id),
-                            "d": json.dumps(output_values, separators=(",", ":")),
-                        }
-
-                        await redis.xadd(
-                            spec.indicator_stream_key,
-                            payload,
-                            maxlen=self.stream_maxlen,
-                            approximate=True,
+                        await self._process_session_message(
+                            session=session,
+                            redis=redis,
+                            fields=fields,
                         )
                     except Exception as exc:
                         log.error(
@@ -404,6 +355,64 @@ class LiveIndicatorManager:
                             spec.stream_id,
                             exc,
                         )
+
+    async def _read_session_results(
+        self,
+        *,
+        redis: aioredis.Redis,
+        stream_key: str,
+        last_id: str,
+        stream_id: str,
+    ) -> Any:
+        try:
+            return await redis.xread(
+                {stream_key: last_id},
+                count=self.redis_batch_size,
+                block=self.redis_block_ms,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.error(f"Live stream read error for {stream_id}: {exc}")
+            await asyncio.sleep(1)
+            return None
+
+    async def _process_session_message(
+        self,
+        *,
+        session: LiveSession,
+        redis: aioredis.Redis,
+        fields: dict[str, Any],
+    ) -> None:
+        candle = _parse_candle_fields(fields)
+        if candle is None:
+            return
+
+        updated = session.update_engine.on_bar(
+            timeframe=session.spec.timeframe,
+            timestamp_ms=candle["timestamp_ms"],
+            new_row=_candle_row(candle),
+        )
+        tensor = updated.get(session.spec.engine_id)
+        if tensor is None:
+            return
+
+        output_values = _tensor_output_values(tensor)
+        if output_values is None:
+            return
+
+        payload: dict[FieldT, EncodableT] = {
+            "t": str(candle["timestamp_ms"]),
+            "s": session.spec.stream_id,
+            "i": str(session.spec.indicator_id),
+            "d": json.dumps(output_values, separators=(",", ":")),
+        }
+        await redis.xadd(
+            session.spec.indicator_stream_key,
+            payload,
+            maxlen=self.stream_maxlen,
+            approximate=True,
+        )
 
     def _on_session_done(self, stream_id: str, task: asyncio.Task) -> None:
         if task.cancelled():
@@ -429,6 +438,31 @@ def _parse_candle_fields(fields: dict[str, Any]) -> dict[str, float | int] | Non
         }
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def _candle_row(candle: dict[str, float | int]) -> np.ndarray:
+    return np.array(
+        [
+            [
+                candle["open"],
+                candle["high"],
+                candle["low"],
+                candle["close"],
+                candle["volume"],
+            ]
+        ],
+        dtype=np.float64,
+    )
+
+
+def _tensor_output_values(tensor: Any) -> dict[str, float | None] | None:
+    output_names = tensor.coords.get("output")
+    if output_names is None:
+        return None
+    return {
+        str(output_name): _safe_float(tensor.data[0, 0, o_idx, 0])
+        for o_idx, output_name in enumerate(output_names)
+    }
 
 
 def _safe_float(value: Any) -> float | None:

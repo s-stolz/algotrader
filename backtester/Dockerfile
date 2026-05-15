@@ -1,14 +1,20 @@
 FROM python:3.12-slim
 
-WORKDIR /app
+WORKDIR /workspace/backtester
 
 # Upgrade pip to latest version
 RUN pip install --upgrade pip
 
-COPY requirements.txt .
+# Install dependencies
+COPY backtester/requirements.txt /workspace/backtester/requirements.txt
+COPY libs/db_accessor_client /workspace/libs/db_accessor_client
+COPY libs/indicator_engine /workspace/libs/indicator_engine
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install -r requirements.txt
+WORKDIR /app
 
-COPY . .
+# Copy application code
+COPY backtester /app
 
-CMD ["watchmedo", "auto-restart", "--directory=/app", "--pattern=*.py", "--recursive", "--", "python", "main.py"]
+# Run the service
+CMD ["python", "main.py"]

@@ -1,3 +1,6 @@
+-e ../libs/db_accessor_client
+-e ../libs/indicator_engine
 pandas>=2.1.0
 numpy>=1.24.0
+PyYAML>=6.0
 watchdog>=3.0.0

@@ -22,8 +22,11 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
+select = ["C90", "E", "F", "I", "N", "W"]
 ignore = []
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401"]
