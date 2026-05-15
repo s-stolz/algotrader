@@ -207,6 +207,7 @@ export default defineComponent({
   },
 
   beforeUnmount(): void {
+    this.candleSubscriptionRequestId += 1;
     void this.unsubscribeFromCandles();
     void this.indicatorsStore.unsubscribeAllLive();
     if (this.crosshairRafId !== null) {

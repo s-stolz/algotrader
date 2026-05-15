@@ -233,6 +233,25 @@ describe('ChartArea', () => {
     expect(chartAreaMocks.wsOff).toHaveBeenCalledWith('indicatorUpdate', expect.any(Function));
   });
 
+  it('does not register candle handlers after unmount while unsubscribe is pending', async () => {
+    const sendResolvers: Array<() => void> = [];
+    chartAreaMocks.wsSend.mockImplementation(() => new Promise<void>((resolve) => {
+      sendResolvers.push(resolve);
+    }));
+    setupStores();
+
+    const wrapper = mountChartArea();
+    wrapper.unmount();
+
+    for (const resolve of sendResolvers) {
+      resolve();
+    }
+    await flushPromises();
+
+    expect(chartAreaMocks.wsOn).not.toHaveBeenCalledWith('candleUpdate', expect.any(Function));
+    expect(chartAreaMocks.candleHandlers.size).toBe(0);
+  });
+
   it('updates the OHLC legend from the chart crosshair callback', async () => {
     setupStores();
     const wrapper = mountChartArea();
