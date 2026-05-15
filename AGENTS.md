@@ -15,16 +15,19 @@ This repo is a multi-service trading platform.
 - `make up-build`: generate config env files and run full stack with image rebuilds (`docker compose up --build`).
 - `make config`: regenerate config env files from `config/topology.yaml` and `config/.env.secrets.local`.
 - `docker compose --env-file config/.env.shared up --build`: build and run the full stack directly (run `make config` first).
+- `make test frontend`: run the full frontend quality gate (lint, typecheck, unit/component tests, and build).
 - `cd frontend && npm run dev`: start frontend dev server.
 - `cd frontend && npm run build`: production frontend build.
-- `cd frontend && npm run lint`: lint JS/Vue code.
+- `cd frontend && npm run lint`: lint TypeScript/Vue code.
+- `cd frontend && npm run typecheck`: run Vue/TypeScript checks.
+- `cd frontend && npm run test:unit`: run frontend unit/component tests.
 - `./lint-python.sh`: run Ruff and Black checks across Python services.
 - `cd backtester && python main.py`: run backtester locally.
 - `cd broker-service && uvicorn app.main:app --host 0.0.0.0 --port 8050`: run broker API locally.
 
 ## Coding Style & Naming Conventions
 - Python: 4-space indentation, `snake_case` functions/variables, `PascalCase` classes, max line length 100 (see `pyproject.toml` and `webserver/pyproject.toml`).
-- Vue/JS: follow `frontend/eslint.config.mjs`; semicolons required, trailing commas on multiline structures, kebab-case custom event names.
+- Vue/TypeScript: follow `frontend/eslint.config.mjs`; semicolons required, trailing commas on multiline structures, kebab-case custom event names.
 - Keep modules focused by domain (`api/`, `application/`, `domain/`, `infrastructure/` pattern in `broker-service`).
 
 ## Testing Guidelines
@@ -38,7 +41,9 @@ This repo is a multi-service trading platform.
   - `make test ingestion-service`
   - `cd broker-service && python -m unittest discover -s tests -p "test_*.py"`
   - `make test indicator_engine`
+  - `make test frontend`
   - `make test` (run all configured backend test suites)
+- Frontend tests use Vitest and Vue Test Utils; `make test frontend` is the repo-root acceptance command for frontend changes.
 - For new Python tests, prefer `test_*.py` naming and colocate under each service’s `test/` or `tests/` directory mirroring source structure.
 - Add API contract/integration tests for new endpoints and stream behavior.
 

@@ -92,7 +92,7 @@ export default [
     ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
   },
   {
-    files: ['**/*.{js,ts}'],
+    files: ['**/*.{mjs,ts}'],
     languageOptions: {
       parser: tseslint.parser,
       ecmaVersion: 'latest',

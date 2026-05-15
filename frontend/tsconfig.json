@@ -5,8 +5,7 @@
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
-    "allowJs": true,
-    "checkJs": false,
+    "allowJs": false,
     "strict": true,
     "noImplicitAny": true,
     "moduleResolution": "Bundler",
@@ -28,8 +27,6 @@
     "src/**/*.d.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
-    "src/**/*.js",
-    "src/**/*.jsx",
     "src/**/*.vue",
     "vite.config.ts"
   ],

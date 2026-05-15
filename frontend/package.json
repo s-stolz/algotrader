@@ -7,7 +7,7 @@
         "dev": "vite",
         "build": "vite build",
         "preview": "vite preview",
-        "lint": "eslint . --ext .js,.ts,.vue",
+        "lint": "eslint . --ext .mjs,.ts,.vue",
         "typecheck": "vue-tsc --noEmit",
         "test:unit": "vitest run"
     },
