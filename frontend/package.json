@@ -9,6 +9,7 @@
         "preview": "vite preview",
         "lint": "eslint . --ext .mjs,.ts,.vue",
         "typecheck": "vue-tsc --noEmit",
+        "test:layout": "node scripts/check-test-layout.mjs",
         "test:unit": "vitest run"
     },
     "dependencies": {

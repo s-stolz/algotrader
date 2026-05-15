@@ -101,6 +101,7 @@ test:
 		echo "Running frontend quality gate..."; \
 		npm --prefix frontend run lint || status=1; \
 		npm --prefix frontend run typecheck || status=1; \
+		npm --prefix frontend run test:layout || status=1; \
 		npm --prefix frontend run test:unit || status=1; \
 		npm --prefix frontend run build || status=1; \
 	fi; \
