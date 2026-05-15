@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 
 from pydantic import BaseModel, field_validator
@@ -38,3 +39,26 @@ class CandleBatchIn(BaseModel):
     symbol: str
     exchange: str | None = None
     candles: List[CandleIn]
+
+
+class BacktestRunSummaryIn(BaseModel):
+    execution_duration_ms: int
+    symbol: str
+    timeframe: str
+    engine: str
+    strategy_id: str
+    start_ms: int
+    end_ms: int
+    initial_capital: float
+    final_equity: float
+    final_cash: float
+    final_position_symbol: str | None = None
+    final_position_quantity: float
+    total_return_pct: float
+    max_drawdown_pct: float
+    trade_count: int
+
+
+class BacktestRunSummaryOut(BacktestRunSummaryIn):
+    run_id: str
+    persisted_at: datetime

@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
-from app.models import candles, markets
+from app.models import backtest_run_summaries, candles, markets
 from sqlalchemy import delete, insert, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -148,8 +149,7 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
     ]
 
     stmt = pg_insert(candles).values(values)
-    stmt = stmt.on_conflict_do_nothing(
-        index_elements=["symbol_id", "timestamp_utc"])
+    stmt = stmt.on_conflict_do_nothing(index_elements=["symbol_id", "timestamp_utc"])
     result = await session.execute(stmt)
     await session.commit()
 
@@ -158,9 +158,12 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
 
 
 async def get_candles(
-    session, symbol_id: int, timeframe: int,
-    start_ms: Optional[int] = None, end_ms: Optional[int] = None,
-    limit: Optional[int] = None
+    session,
+    symbol_id: int,
+    timeframe: int,
+    start_ms: Optional[int] = None,
+    end_ms: Optional[int] = None,
+    limit: Optional[int] = None,
 ):
     """
     Get candles from the database
@@ -193,9 +196,7 @@ async def get_candles(
         # Continuous aggregate policies only materialize a rolling time window.
         # If older buckets are not materialized, fallback to direct bucketing
         # to avoid returning false empty pages during lazy-loading.
-        return await _get_bucketed_candles(
-            session, symbol_id, timeframe, start_ms, end_ms, limit
-        )
+        return await _get_bucketed_candles(session, symbol_id, timeframe, start_ms, end_ms, limit)
 
     return await _get_bucketed_candles(session, symbol_id, timeframe, start_ms, end_ms, limit)
 
@@ -377,3 +378,46 @@ async def delete_candles(session, symbol_id: int):
     result = await session.execute(stmt)
     await session.commit()
     return result.rowcount
+
+
+async def insert_backtest_run_summary(session, summary_data: dict):
+    values = {
+        **summary_data,
+        "run_id": str(uuid4()),
+        "persisted_at": datetime.now(timezone.utc),
+    }
+    stmt = insert(backtest_run_summaries).values(**values).returning(backtest_run_summaries)
+    result = await session.execute(stmt)
+    row = result.fetchone()
+    await session.commit()
+    return dict(row._mapping)
+
+
+async def get_backtest_run_summary(session, run_id: str):
+    stmt = select(backtest_run_summaries).where(backtest_run_summaries.c.run_id == run_id)
+    result = await session.execute(stmt)
+    row = result.fetchone()
+    return dict(row._mapping) if row else None
+
+
+async def list_backtest_run_summaries(
+    session,
+    symbol: Optional[str] = None,
+    timeframe: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    engine: Optional[str] = None,
+):
+    stmt = select(backtest_run_summaries)
+    if symbol:
+        stmt = stmt.where(backtest_run_summaries.c.symbol == symbol)
+    if timeframe:
+        stmt = stmt.where(backtest_run_summaries.c.timeframe == timeframe)
+    if strategy_id:
+        stmt = stmt.where(backtest_run_summaries.c.strategy_id == strategy_id)
+    if engine:
+        stmt = stmt.where(backtest_run_summaries.c.engine == engine)
+    stmt = stmt.order_by(backtest_run_summaries.c.persisted_at.desc())
+
+    result = await session.execute(stmt)
+    rows = result.fetchall()
+    return [dict(row._mapping) for row in rows]

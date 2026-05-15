@@ -4,7 +4,7 @@ from typing import Optional
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
 from app import crud, market_cache
 from app.database import get_db
-from app.schemas import CandleBatchIn, MarketIn
+from app.schemas import BacktestRunSummaryIn, BacktestRunSummaryOut, CandleBatchIn, MarketIn
 from app.timeframes import TimeframeCode, timeframe_to_minutes
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,6 +71,39 @@ async def create_market(market: MarketIn, db: AsyncSession = Depends(get_db)):
     symbol_id = await crud.insert_market(db, market.model_dump())
     await market_cache.refresh_market_cache(db)
     return {"symbol_id": symbol_id, "status": "created"}
+
+
+@app.post("/backtests", response_model=BacktestRunSummaryOut, status_code=201)
+async def create_backtest_summary(
+    summary: BacktestRunSummaryIn,
+    db: AsyncSession = Depends(get_db),
+):
+    return await crud.insert_backtest_run_summary(db, summary.model_dump())
+
+
+@app.get("/backtests", response_model=list[BacktestRunSummaryOut])
+async def list_backtest_summaries(
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    timeframe: Optional[str] = Query(None, description="Filter by timeframe"),
+    strategy_id: Optional[str] = Query(None, description="Filter by strategy id"),
+    engine: Optional[str] = Query(None, description="Filter by engine"),
+    db: AsyncSession = Depends(get_db),
+):
+    return await crud.list_backtest_run_summaries(
+        db,
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy_id=strategy_id,
+        engine=engine,
+    )
+
+
+@app.get("/backtests/{run_id}", response_model=BacktestRunSummaryOut)
+async def get_backtest_summary(run_id: str, db: AsyncSession = Depends(get_db)):
+    summary = await crud.get_backtest_run_summary(db, run_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return summary
 
 
 @app.delete("/markets/{symbol}")
