@@ -3,7 +3,7 @@ from dataclasses import replace
 from unittest.mock import patch
 
 import pandas as pd
-from app.backtest_runner import run_backtest, save_backtest_result
+from app.backtest_runner import run_backtest, run_backtest_with_market_data, save_backtest_result
 from domain.types import BacktestRequest, BacktestResult, ExecutionConfig, StrategyConfig
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
 
@@ -55,6 +55,18 @@ class _FailingPersistenceAdapter:
         _ = (result, execution_duration_ms)
         self.calls += 1
         raise RuntimeError("database accessor unavailable")
+
+
+class _TimingAwareHistoricalAdapter:
+    def __init__(self, bars: pd.DataFrame) -> None:
+        self._bars = bars
+
+    def fetch_bars(self, **kwargs) -> pd.DataFrame:
+        _ = kwargs
+        from app import backtest_runner
+
+        backtest_runner.perf_counter()
+        return self._bars.copy()
 
 
 class _FakeDatabaseAccessorClient:
@@ -153,6 +165,23 @@ class TestBacktestPersistenceIntegration(unittest.TestCase):
         self.assertEqual(result.backtest_run_id, "run-auto-1")
         self.assertEqual(adapter.calls[0]["execution_duration_ms"], 500)
 
+    def test_market_data_loading_time_is_excluded_from_persisted_duration(self) -> None:
+        persistence_adapter = _RecordingPersistenceAdapter()
+        data_adapter = _TimingAwareHistoricalAdapter(_build_raw_bars_with_warmup())
+        request = replace(_build_request(persist_result=True), timeframe="M1")
+        strategy = build_sma_crossover_strategy(fast_window=2, slow_window=3, quantity=1.0)
+
+        with patch("app.backtest_runner.perf_counter", side_effect=[10.0, 100.0, 100.5]):
+            result = run_backtest_with_market_data(
+                request=request,
+                strategy=strategy,
+                data_adapter=data_adapter,
+                persistence_adapter=persistence_adapter,
+            )
+
+        self.assertEqual(result.backtest_run_id, "run-auto-1")
+        self.assertEqual(persistence_adapter.calls[0]["execution_duration_ms"], 500)
+
     def test_persistence_error_surfaces_for_opt_in_request(self) -> None:
         adapter = _FailingPersistenceAdapter()
         request = _build_request(persist_result=True)
@@ -227,6 +256,26 @@ def _build_bars() -> pd.DataFrame:
             "low": [price - 0.5 for price in opens],
             "close": closes,
             "volume": [1_000.0] * len(closes),
+        }
+    )
+
+
+def _build_raw_bars_with_warmup() -> pd.DataFrame:
+    start_ms = 1_700_000_000_000
+    minute = 60_000
+    timestamps = [start_ms - (2 * minute) + (minute * i) for i in range(11)]
+    opens = [12.0, 11.0, 10.0, 9.0, 8.0, 9.0, 10.0, 10.0, 11.0, 12.0, 13.0]
+    closes = [12.0, 11.0, 10.0, 9.0, 8.0, 9.0, 10.0, 11.0, 10.0, 9.0, 8.0]
+
+    return pd.DataFrame(
+        {
+            "timestamp_ms": timestamps,
+            "symbol": ["AAPL"] * len(timestamps),
+            "open": opens,
+            "high": [price + 0.5 for price in opens],
+            "low": [price - 0.5 for price in opens],
+            "close": closes,
+            "volume": [1_000.0] * len(timestamps),
         }
     )
 

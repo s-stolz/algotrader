@@ -40,13 +40,11 @@ def run_backtest(
 ) -> BacktestResult:
     """Execute one backtest request using caller-provided bar data."""
 
-    started_at = perf_counter()
-    result = _run_backtest_without_persistence(
+    result, execution_duration_ms = _run_backtest_without_persistence(
         request=request,
         bars=bars,
         strategy=strategy,
     )
-    execution_duration_ms = _elapsed_ms_since(started_at)
     return _persist_result_if_requested(
         result=result,
         persistence_adapter=persistence_adapter,
@@ -59,7 +57,7 @@ def _run_backtest_without_persistence(
     request: BacktestRequest,
     bars: pd.DataFrame,
     strategy: StrategyDefinition | None = None,
-) -> BacktestResult:
+) -> tuple[BacktestResult, int]:
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
 
     if request.engine == BacktestEngine.VECTORIZED:
@@ -69,11 +67,13 @@ def _run_backtest_without_persistence(
                 bars=bars,
                 strategy=resolved_strategy,
             )
-            return run_vectorized_backtest(
+            started_at = perf_counter()
+            result = run_vectorized_backtest(
                 request=request,
                 bars=prepared_bars,
                 strategy=resolved_strategy,
             )
+            return result, _elapsed_ms_since(started_at)
 
         raise ValueError(
             f"Unsupported data_granularity '{request.data_granularity.value}' "
@@ -82,11 +82,13 @@ def _run_backtest_without_persistence(
 
     if request.engine == BacktestEngine.EVENT_DRIVEN:
         if request.data_granularity == DataGranularity.BAR:
-            return run_event_driven_backtest(
+            started_at = perf_counter()
+            result = run_event_driven_backtest(
                 request=request,
                 bars=bars,
                 strategy=resolved_strategy,
             )
+            return result, _elapsed_ms_since(started_at)
 
         raise ValueError(
             f"Unsupported data_granularity '{request.data_granularity.value}' "
@@ -106,14 +108,12 @@ def run_backtest_with_market_data(
 ) -> BacktestResult:
     """Fetch market data through adapter integration and run one vectorized backtest."""
 
-    started_at = perf_counter()
-    result = _run_backtest_with_market_data_without_persistence(
+    result, execution_duration_ms = _run_backtest_with_market_data_without_persistence(
         request=request,
         strategy=strategy,
         exchange=exchange,
         data_adapter=data_adapter,
     )
-    execution_duration_ms = _elapsed_ms_since(started_at)
     return _persist_result_if_requested(
         result=result,
         persistence_adapter=persistence_adapter,
@@ -127,7 +127,7 @@ def _run_backtest_with_market_data_without_persistence(
     strategy: StrategyDefinition | None = None,
     exchange: str | None = None,
     data_adapter: HistoricalBarDataAdapter | None = None,
-) -> BacktestResult:
+) -> tuple[BacktestResult, int]:
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
 
     if request.engine == BacktestEngine.VECTORIZED:
@@ -138,11 +138,13 @@ def _run_backtest_with_market_data_without_persistence(
                 exchange=exchange,
                 data_adapter=data_adapter,
             )
-            return run_vectorized_backtest(
+            started_at = perf_counter()
+            result = run_vectorized_backtest(
                 request=request,
                 bars=prepared_bars,
                 strategy=resolved_strategy,
             )
+            return result, _elapsed_ms_since(started_at)
 
         raise ValueError(
             f"Unsupported data_granularity '{request.data_granularity.value}' "
@@ -157,11 +159,13 @@ def _run_backtest_with_market_data_without_persistence(
                 exchange=exchange,
                 data_adapter=data_adapter,
             )
-            return run_event_driven_backtest(
+            started_at = perf_counter()
+            result = run_event_driven_backtest(
                 request=request,
                 bars=raw_bars,
                 strategy=resolved_strategy,
             )
+            return result, _elapsed_ms_since(started_at)
 
         raise ValueError(
             f"Unsupported data_granularity '{request.data_granularity.value}' "
