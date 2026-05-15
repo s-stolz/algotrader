@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Protocol
 
 from domain.enums import BacktestEngine
-from domain.types import BacktestResult, PortfolioSnapshot
+from domain.types import BacktestResult, PortfolioSnapshot, Trade
 
 
 class BacktestRunSummaryClient(Protocol):
@@ -63,7 +63,7 @@ def build_run_summary_payload(
         final_snapshot=final_snapshot,
     )
 
-    return {
+    payload = {
         "execution_duration_ms": _execution_duration_ms(
             result=result,
             execution_duration_ms=execution_duration_ms,
@@ -82,6 +82,35 @@ def build_run_summary_payload(
         "total_return_pct": _metric_float(result, "total_return_pct"),
         "max_drawdown_pct": _metric_float(result, "max_drawdown_pct"),
         "trade_count": _metric_int(result, "trade_count"),
+    }
+    trades = build_closed_trade_payloads(result)
+    if trades:
+        payload["trades"] = trades
+    return payload
+
+
+def build_closed_trade_payloads(result: BacktestResult) -> list[dict[str, Any]]:
+    """Build database-accessor payload rows for closed trades in a result."""
+
+    return [_closed_trade_payload(trade) for trade in result.trades]
+
+
+def _closed_trade_payload(trade: Trade) -> dict[str, Any]:
+    if trade.exit_timestamp_ms is None:
+        raise ValueError("Cannot persist an open trade without exit_timestamp_ms")
+    if trade.exit_price is None:
+        raise ValueError("Cannot persist an open trade without exit_price")
+
+    return {
+        "trade_id": str(trade.trade_id),
+        "symbol": str(trade.symbol),
+        "quantity": float(trade.quantity),
+        "entry_timestamp_ms": int(trade.entry_timestamp_ms),
+        "entry_price": float(trade.entry_price),
+        "exit_timestamp_ms": int(trade.exit_timestamp_ms),
+        "exit_price": float(trade.exit_price),
+        "realized_pnl": float(trade.realized_pnl),
+        "fees": float(trade.fees),
     }
 
 
