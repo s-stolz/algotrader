@@ -1,7 +1,8 @@
 import { fileURLToPath, URL } from 'node:url';
 
 import vue from '@vitejs/plugin-vue';
-import { defineConfig, loadEnv } from 'vite';
+import { loadEnv } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -24,22 +25,27 @@ export default defineConfig(({ mode }) => {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
     },
-    publicPath: "",
     server: {
       host: '0.0.0.0',
       port: Number(env.FRONTEND_PORT || 5173),
       proxy: {
-        "/api/data-accessor": {
+        '/api/data-accessor': {
           target: dataAccessorTarget,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/data-accessor/, ''),
         },
-        "/api/indicator-api": {
+        '/api/indicator-api': {
           target: indicatorTarget,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/indicator-api/, ''),
         },
       },
+    },
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: ['./src/test/setup.ts'],
+      include: ['src/**/*.{test,spec}.{js,ts}'],
     },
   };
 });

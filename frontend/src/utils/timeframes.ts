@@ -1,4 +1,11 @@
-export const TIMEFRAME_OPTIONS = [
+import {
+  TIMEFRAME_CODES,
+  type TimeframeCode,
+  type TimeframeOption,
+  isTimeframeCode,
+} from '@/types/contracts';
+
+export const TIMEFRAME_OPTIONS: TimeframeOption[] = [
   { label: 'M1', value: 'M1' },
   { label: 'M5', value: 'M5' },
   { label: 'M15', value: 'M15' },
@@ -8,7 +15,7 @@ export const TIMEFRAME_OPTIONS = [
   { label: 'D1', value: 'D1' },
 ];
 
-export const TIMEFRAME_TO_MINUTES = {
+export const TIMEFRAME_TO_MINUTES: Record<TimeframeCode, number> = {
   M1: 1,
   M2: 2,
   M3: 3,
@@ -25,18 +32,18 @@ export const TIMEFRAME_TO_MINUTES = {
   MN1: 43200,
 };
 
-export const MINUTES_TO_TIMEFRAME = Object.fromEntries(
-  Object.entries(TIMEFRAME_TO_MINUTES).map(([code, minutes]) => [minutes, code]),
-);
+export const MINUTES_TO_TIMEFRAME: Readonly<Record<number, TimeframeCode>> = Object.fromEntries(
+  TIMEFRAME_CODES.map((code) => [TIMEFRAME_TO_MINUTES[code], code]),
+) as Record<number, TimeframeCode>;
 
-export function normalizeTimeframeCode(timeframe) {
+export function normalizeTimeframeCode(timeframe: unknown): TimeframeCode {
   if (typeof timeframe === 'number') {
     return MINUTES_TO_TIMEFRAME[timeframe] ?? 'M1';
   }
 
   if (typeof timeframe === 'string') {
     const upper = timeframe.toUpperCase();
-    if (upper in TIMEFRAME_TO_MINUTES) {
+    if (isTimeframeCode(upper)) {
       return upper;
     }
   }
@@ -44,7 +51,7 @@ export function normalizeTimeframeCode(timeframe) {
   return 'M1';
 }
 
-export function timeframeToMinutes(timeframe) {
+export function timeframeToMinutes(timeframe: unknown): number {
   const code = normalizeTimeframeCode(timeframe);
   return TIMEFRAME_TO_MINUTES[code];
 }

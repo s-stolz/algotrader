@@ -57,7 +57,7 @@ import {
   getColumnMapping,
   parseCsvToCandles,
   uploadCandlesInBatches,
-} from "./utils.js";
+} from "./utils";
 
 export default {
   name: "UploadDataModal",

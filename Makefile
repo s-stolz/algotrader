@@ -14,7 +14,7 @@ ifneq ($(strip $(TEST_BACKEND_FROM_GOAL)),)
 TEST_BACKEND := $(TEST_BACKEND_FROM_GOAL)
 endif
 
-.PHONY: ensure-pyyaml config validate-config up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check test backtester ingestion-service broker-service indicator_engine
+.PHONY: ensure-pyyaml config validate-config up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check test backtester ingestion-service broker-service indicator_engine frontend
 
 ifeq ($(DETACH),1)
 UP_FLAGS += -d
@@ -97,11 +97,18 @@ test:
 		echo "Running indicator_engine tests..."; \
 		(cd libs/indicator_engine && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; [ -x .venv/bin/python ] && py_bin=".venv/bin/python"; $$py_bin -m unittest discover -s tests -p "test_*.py") || status=1; \
 	fi; \
-	if [ "$(TEST_BACKEND)" != "all" ] && [ "$(TEST_BACKEND)" != "backtester" ] && [ "$(TEST_BACKEND)" != "ingestion-service" ] && [ "$(TEST_BACKEND)" != "broker-service" ] && [ "$(TEST_BACKEND)" != "indicator_engine" ]; then \
-		echo "Invalid backend '$(TEST_BACKEND)'. Use: make test [backtester|ingestion-service|broker-service|indicator_engine]"; \
+	if [ "$(TEST_BACKEND)" = "frontend" ]; then \
+		echo "Running frontend quality gate..."; \
+		npm --prefix frontend run lint || status=1; \
+		npm --prefix frontend run typecheck || status=1; \
+		npm --prefix frontend run test:unit || status=1; \
+		npm --prefix frontend run build || status=1; \
+	fi; \
+	if [ "$(TEST_BACKEND)" != "all" ] && [ "$(TEST_BACKEND)" != "backtester" ] && [ "$(TEST_BACKEND)" != "ingestion-service" ] && [ "$(TEST_BACKEND)" != "broker-service" ] && [ "$(TEST_BACKEND)" != "indicator_engine" ] && [ "$(TEST_BACKEND)" != "frontend" ]; then \
+		echo "Invalid test target '$(TEST_BACKEND)'. Use: make test [backtester|ingestion-service|broker-service|indicator_engine|frontend]"; \
 		exit 1; \
 	fi; \
 	exit $$status
 
-backtester ingestion-service broker-service indicator_engine:
+backtester ingestion-service broker-service indicator_engine frontend:
 	@:
