@@ -18,6 +18,10 @@ import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { ChartLogicalRange } from '@/utils/chart';
 
 import ChartArea from '@/components/Chart/ChartArea.vue';
+import type {
+  ChartSessionKey,
+  ChartSessionSubscriptionsAdapter,
+} from '@/components/Chart/chartSession';
 
 interface MockCrosshairParam {
   time: number;
@@ -70,8 +74,25 @@ const chartAreaMocks = vi.hoisted(() => {
   };
 
   return {
-    candleHandlers: new Set<MockMessageHandler>(),
+    chartSessionAdapters: [] as unknown[],
+    chartSessions: [] as Array<{
+      requestOlderHistory: ReturnType<typeof vi.fn>;
+      setSession: ReturnType<typeof vi.fn>;
+      stop: ReturnType<typeof vi.fn>;
+    }>,
     crosshairHandler: null as MockCrosshairHandler | null,
+    createChartSession: vi.fn((adapter: unknown) => {
+      const session = {
+        requestOlderHistory: vi.fn(),
+        setSession: vi.fn(() => Promise.resolve()),
+        stop: vi.fn(() => Promise.resolve()),
+      };
+
+      chartAreaMocks.chartSessionAdapters.push(adapter);
+      chartAreaMocks.chartSessions.push(session);
+
+      return session;
+    }),
     indicatorHandlers: new Set<MockMessageHandler>(),
     infrastructure,
     ohlcSeries,
@@ -99,6 +120,10 @@ vi.mock('@/utils/websocketService', () => ({
   },
 }));
 
+vi.mock('@/components/Chart/chartSession', () => ({
+  createChartSession: chartAreaMocks.createChartSession,
+}));
+
 const indicatorInfo: IndicatorInfo = {
   id: 1,
   indicator_id: 'sma',
@@ -122,21 +147,9 @@ const candle = (timestampMs: number, close = 1.5): ChartCandle => ({
   volume: 10,
 });
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((promiseResolve) => {
-    resolve = promiseResolve;
-  });
+const eurUsdM5Key: ChartSessionKey = { symbol: 'EURUSD', exchange: 'FX', timeframe: 'M5' };
 
-  return {
-    promise,
-    resolve,
-  };
-}
-
-interface ChartAreaPublic {
-  shouldScrollToRealTime: boolean;
-}
+type MockChartSession = (typeof chartAreaMocks.chartSessions)[number];
 
 function setupStores(timeframe: TimeframeCode = 'M5') {
   const currentMarketStore = useCurrentMarketStore();
@@ -155,9 +168,10 @@ function setupStores(timeframe: TimeframeCode = 'M5') {
   currentTimeframeStore.setCurrentTimeframe({ label: timeframe, value: timeframe });
   candlesticksStore.data = [candle(300_000)];
   vi.mocked(fetchCandles).mockResolvedValue([candle(300_000)]);
-  vi.spyOn(candlesticksStore, 'fetch').mockResolvedValue();
   vi.spyOn(indicatorsStore, 'requestAllIndicators').mockImplementation(() => undefined);
   vi.spyOn(indicatorsStore, 'fetchOlderForAll').mockResolvedValue();
+  vi.spyOn(indicatorsStore, 'unsubscribeAllLive').mockResolvedValue();
+  vi.spyOn(indicatorsStore, 'resetHistoryFlags').mockImplementation(() => undefined);
 
   return {
     candlesticksStore,
@@ -177,11 +191,45 @@ function mountChartArea() {
   });
 }
 
+function latestChartSession(): MockChartSession {
+  const session = chartAreaMocks.chartSessions[chartAreaMocks.chartSessions.length - 1];
+  if (!session) {
+    throw new Error('Expected ChartArea to create a chart session');
+  }
+
+  return session;
+}
+
+function latestChartSessionAdapter(): ChartSessionSubscriptionsAdapter {
+  const adapter = chartAreaMocks.chartSessionAdapters[
+    chartAreaMocks.chartSessionAdapters.length - 1
+  ];
+  if (!adapter) {
+    throw new Error('Expected ChartArea to create a chart session adapter');
+  }
+
+  return adapter as ChartSessionSubscriptionsAdapter;
+}
+
+function latestLiveCandleReceiver(): (message: CandleUpdateMessage) => void {
+  const calls = latestChartSession().setSession.mock.calls;
+  const lastCall = calls[calls.length - 1] as
+    | [unknown, (message: CandleUpdateMessage) => void]
+    | undefined;
+
+  if (!lastCall) {
+    throw new Error('Expected ChartArea to sync a chart session');
+  }
+
+  return lastCall[1];
+}
+
 describe('ChartArea', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     localStorage.clear();
-    chartAreaMocks.candleHandlers.clear();
+    chartAreaMocks.chartSessionAdapters.length = 0;
+    chartAreaMocks.chartSessions.length = 0;
     chartAreaMocks.indicatorHandlers.clear();
     chartAreaMocks.crosshairHandler = null;
     chartAreaMocks.visibleRangeHandler = null;
@@ -201,23 +249,18 @@ describe('ChartArea', () => {
     chartAreaMocks.infrastructure.subscribeVisibleLogicalRangeChange.mockClear();
     chartAreaMocks.infrastructure.scrollToRealTime.mockClear();
     chartAreaMocks.infrastructure.cleanup.mockClear();
+    chartAreaMocks.createChartSession.mockClear();
     vi.mocked(fetchCandles).mockReset();
     chartAreaMocks.wsSend.mockReset();
     chartAreaMocks.wsSend.mockResolvedValue(undefined);
     chartAreaMocks.wsOn.mockReset();
     chartAreaMocks.wsOn.mockImplementation((event: string, handler: MockMessageHandler) => {
-      if (event === 'candleUpdate') {
-        chartAreaMocks.candleHandlers.add(handler);
-      }
       if (event === 'indicatorUpdate') {
         chartAreaMocks.indicatorHandlers.add(handler);
       }
     });
     chartAreaMocks.wsOff.mockReset();
     chartAreaMocks.wsOff.mockImplementation((event: string, handler: MockMessageHandler) => {
-      if (event === 'candleUpdate') {
-        chartAreaMocks.candleHandlers.delete(handler);
-      }
       if (event === 'indicatorUpdate') {
         chartAreaMocks.indicatorHandlers.delete(handler);
       }
@@ -241,41 +284,25 @@ describe('ChartArea', () => {
 
     await flushPromises();
 
+    expect(chartAreaMocks.createChartSession).toHaveBeenCalledWith(expect.any(Object));
     expect(chartAreaMocks.infrastructure.init).toHaveBeenCalledWith(expect.any(HTMLElement));
     expect(chartAreaMocks.infrastructure.subscribeCrosshairMove).toHaveBeenCalled();
     expect(chartAreaMocks.infrastructure.subscribeVisibleLogicalRangeChange).toHaveBeenCalled();
     expect(chartAreaMocks.wsOn).toHaveBeenCalledWith('indicatorUpdate', expect.any(Function));
 
+    const session = latestChartSession();
     wrapper.unmount();
 
+    expect(session.stop).toHaveBeenCalled();
     expect(chartAreaMocks.infrastructure.cleanup).toHaveBeenCalled();
     expect(chartAreaMocks.wsOff).toHaveBeenCalledWith('indicatorUpdate', expect.any(Function));
-  });
-
-  it('removes candle handlers after unmount while a subscription send is pending', async () => {
-    const sendResolvers: Array<() => void> = [];
-    chartAreaMocks.wsSend.mockImplementation(() => new Promise<void>((resolve) => {
-      sendResolvers.push(resolve);
-    }));
-    setupStores();
-
-    const wrapper = mountChartArea();
-    wrapper.unmount();
-
-    for (const resolve of sendResolvers) {
-      resolve();
-    }
-    await flushPromises();
-
-    expect(chartAreaMocks.wsOn).toHaveBeenCalledWith('candleUpdate', expect.any(Function));
-    expect(chartAreaMocks.wsOff).toHaveBeenCalledWith('candleUpdate', expect.any(Function));
-    expect(chartAreaMocks.candleHandlers.size).toBe(0);
   });
 
   it('updates the OHLC legend from the chart crosshair callback', async () => {
     setupStores();
     const wrapper = mountChartArea();
     await flushPromises();
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
 
     chartAreaMocks.crosshairHandler?.({
       time: 300,
@@ -296,34 +323,43 @@ describe('ChartArea', () => {
     expect(wrapper.find('.legend').text()).toContain('C: 1.2');
   });
 
-  it('ignores M1 candle updates when the active timeframe is larger', async () => {
-    const { candlesticksStore } = setupStores('M5');
+  it('syncs market and timeframe changes into the chart session', async () => {
+    const { currentMarketStore, currentTimeframeStore } = setupStores('M5');
     mountChartArea();
     await flushPromises();
-    chartAreaMocks.infrastructure.updateCandlestick.mockClear();
 
-    const message: CandleUpdateMessage = {
-      type: 'candleUpdate',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-      timestamp_ms: 360_000,
-      open: 2,
-      high: 3,
-      low: 0.4,
-      close: 2.5,
-      volume: 5,
-    };
+    const session = latestChartSession();
 
-    expect(chartAreaMocks.candleHandlers.size).toBe(1);
-    for (const handler of chartAreaMocks.candleHandlers) {
-      handler(message);
-    }
+    expect(session.setSession).toHaveBeenLastCalledWith(
+      eurUsdM5Key,
+      expect.any(Function),
+    );
 
-    expect(candlesticksStore.data).toEqual([candle(300_000)]);
-    expect(chartAreaMocks.infrastructure.updateCandlestick).not.toHaveBeenCalled();
+    currentTimeframeStore.setCurrentTimeframe({ label: 'H1', value: 'H1' });
+    await flushPromises();
+
+    expect(session.setSession).toHaveBeenLastCalledWith(
+      { ...eurUsdM5Key, timeframe: 'H1' },
+      expect.any(Function),
+    );
+
+    currentMarketStore.setMarket({
+      symbol_id: 2,
+      symbol: 'GBPUSD',
+      exchange: 'CFD',
+      market_type: 'forex',
+      min_move: 0.0001,
+      timezone: 'UTC',
+    });
+    await flushPromises();
+
+    expect(session.setSession).toHaveBeenLastCalledWith(
+      { symbol: 'GBPUSD', exchange: 'CFD', timeframe: 'H1' },
+      expect.any(Function),
+    );
   });
 
-  it('applies same-timeframe candle updates through the active live subscription', async () => {
+  it('applies live candle receiver updates through the store and chart infrastructure', async () => {
     const { candlesticksStore } = setupStores('M5');
     mountChartArea();
     await flushPromises();
@@ -341,114 +377,96 @@ describe('ChartArea', () => {
       volume: 5,
     };
 
-    expect(chartAreaMocks.candleHandlers.size).toBe(1);
-    for (const handler of chartAreaMocks.candleHandlers) {
-      handler(message);
-    }
+    latestLiveCandleReceiver()(message);
 
     expect(candlesticksStore.data).toEqual([
       candle(300_000),
-      {
-        timestamp_ms: 600_000,
-        time: 600,
-        open: 2,
-        high: 3,
-        low: 1.8,
-        close: 2.5,
-        volume: 5,
-      },
+      expect.objectContaining({ timestamp_ms: 600_000, time: 600, close: 2.5 }),
     ]);
-    expect(chartAreaMocks.infrastructure.updateCandlestick).toHaveBeenCalledWith({
-      timestamp_ms: 600_000,
-      time: 600,
-      open: 2,
-      high: 3,
-      low: 1.8,
-      close: 2.5,
-      volume: 5,
-    });
-  });
-
-  it('does not let stale session fetches replace store-backed candle data', async () => {
-    const { candlesticksStore, currentMarketStore } = setupStores('M5');
-    const firstFetch = deferred<ChartCandle[]>();
-    const currentCandles = [candle(600_000, 2.5)];
-    const staleCandles = [candle(300_000, 9.9)];
-
-    vi.mocked(fetchCandles).mockImplementation((symbol) => {
-      if (symbol === 'EURUSD') {
-        return firstFetch.promise;
-      }
-      return Promise.resolve(currentCandles);
-    });
-
-    mountChartArea();
-    await vi.waitFor(() => {
-      expect(fetchCandles).toHaveBeenCalledWith('EURUSD', 'M5', {
-        limit: 500,
-        exchange: 'FX',
-      });
-    });
-
-    currentMarketStore.setMarket({
-      symbol_id: 2,
-      symbol: 'GBPUSD',
-      exchange: 'FX',
-      market_type: 'forex',
-      min_move: 0.0001,
-      timezone: 'UTC',
-    });
-    await vi.waitFor(() => {
-      expect(fetchCandles).toHaveBeenCalledWith('GBPUSD', 'M5', {
-        limit: 500,
-        exchange: 'FX',
-      });
-    });
-    await flushPromises();
-
-    expect(candlesticksStore.data).toEqual(currentCandles);
-    chartAreaMocks.infrastructure.addCandlestickData.mockClear();
-
-    firstFetch.resolve(staleCandles);
-    await flushPromises();
-
-    expect(candlesticksStore.data).toEqual(currentCandles);
-    expect(chartAreaMocks.infrastructure.addCandlestickData).not.toHaveBeenCalledWith(
-      staleCandles,
-      expect.anything(),
+    expect(chartAreaMocks.infrastructure.updateCandlestick).toHaveBeenCalledWith(
+      expect.objectContaining({ timestamp_ms: 600_000, time: 600, close: 2.5 }),
     );
   });
 
-  it('loads older candle and indicator history near the left visible range', async () => {
+  it('constructs a chart session adapter over stores, websocket, and chart infrastructure', async () => {
     const { candlesticksStore, indicatorsStore } = setupStores('M5');
+    mountChartArea();
+    await flushPromises();
+    const adapter = latestChartSessionAdapter();
+    const handler = vi.fn();
+
+    await adapter.subscribeCandles(eurUsdM5Key);
+    await adapter.unsubscribeCandles(eurUsdM5Key);
+    adapter.onCandleUpdate(handler);
+    adapter.offCandleUpdate(handler);
+    await adapter.fetchCandles(eurUsdM5Key);
+    await adapter.renderCandles(eurUsdM5Key, [candle(600_000, 2.5)]);
+    await adapter.requestIndicators(eurUsdM5Key);
+    await adapter.unsubscribeIndicators();
+    await adapter.fetchOlderCandles(eurUsdM5Key, 300_000);
+    await adapter.requestOlderIndicators(eurUsdM5Key);
+    adapter.resetIndicatorHistory?.();
+
+    expect(chartAreaMocks.wsSend).toHaveBeenCalledWith('subscribeCandles', {
+      symbol: 'EURUSD',
+      timeframe: 'M5',
+    });
+    expect(chartAreaMocks.wsSend).toHaveBeenCalledWith('unsubscribeCandles', {
+      symbol: 'EURUSD',
+      timeframe: 'M5',
+    });
+    expect(chartAreaMocks.wsOn).toHaveBeenCalledWith('candleUpdate', handler);
+    expect(chartAreaMocks.wsOff).toHaveBeenCalledWith('candleUpdate', handler);
+    expect(fetchCandles).toHaveBeenCalledWith('EURUSD', 'M5', {
+      limit: 500,
+      exchange: 'FX',
+    });
+    expect(fetchCandles).toHaveBeenCalledWith('EURUSD', 'M5', {
+      endMs: 300_000,
+      limit: 500,
+      exchange: 'FX',
+    });
+    expect(candlesticksStore.data).toEqual([candle(600_000, 2.5)]);
+    expect(chartAreaMocks.infrastructure.addCandlestickData).toHaveBeenCalledWith(
+      [candle(600_000, 2.5)],
+      expect.objectContaining({
+        priceFormat: expect.objectContaining({ minMove: 0.0001, precision: 4 }),
+      }),
+    );
+    expect(indicatorsStore.requestAllIndicators).toHaveBeenCalledWith('EURUSD', 'M5', 'FX');
+    expect(indicatorsStore.unsubscribeAllLive).toHaveBeenCalled();
+    expect(indicatorsStore.fetchOlderForAll).toHaveBeenCalledWith('EURUSD', 'M5', 'FX', 500);
+    expect(indicatorsStore.resetHistoryFlags).toHaveBeenCalled();
+    expect(adapter.getOldestCandleTimestampMs()).toBe(600_000);
+  });
+
+  it('bridges visible range events into the chart session after wheel settling', async () => {
+    setupStores('M5');
     const wrapper = mountChartArea();
     await flushPromises();
-    const vm = wrapper.vm as ComponentPublicInstance & ChartAreaPublic;
+    const vm = wrapper.vm as ComponentPublicInstance & {
+      onWheelPassive: () => void;
+      shouldScrollToRealTime: boolean;
+    };
     vm.shouldScrollToRealTime = false;
-    vi.mocked(candlesticksStore.fetch).mockClear();
-    vi.mocked(fetchCandles).mockClear();
-    vi.mocked(indicatorsStore.fetchOlderForAll).mockClear();
     chartAreaMocks.ohlcSeriesInfo.series.barsInLogicalRange.mockReturnValue({
       barsBefore: 99,
       barsAfter: 0,
     });
 
     chartAreaMocks.visibleRangeHandler?.({ from: 0, to: 10 } as ChartLogicalRange);
-    await vi.waitFor(() => {
-      expect(fetchCandles).toHaveBeenCalledWith('EURUSD', 'M5', {
-        endMs: 300_000,
-        limit: 500,
-        exchange: 'FX',
-      });
+
+    expect(latestChartSession().requestOlderHistory).toHaveBeenCalledWith({
+      barsBefore: 99,
+      nowMs: 1_000,
+      scrollToRealtime: false,
     });
 
-    expect(candlesticksStore.fetch).not.toHaveBeenCalled();
-    expect(indicatorsStore.fetchOlderForAll).toHaveBeenCalledWith(
-      'EURUSD',
-      'M5',
-      'FX',
-      500,
-    );
+    latestChartSession().requestOlderHistory.mockClear();
+    vm.onWheelPassive();
+    chartAreaMocks.visibleRangeHandler?.({ from: 0, to: 10 } as ChartLogicalRange);
+
+    expect(latestChartSession().requestOlderHistory).not.toHaveBeenCalled();
   });
 
   it('batches indicator live messages and flushes the latest point to the manager', async () => {

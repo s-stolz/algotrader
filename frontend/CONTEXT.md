@@ -14,8 +14,11 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 ## Key Modules
 
 - `src/views/ChartView.vue`: page-level chart workspace.
-- `src/components/Chart/ChartArea.vue`: chart lifecycle, market/timeframe watching,
-  candle history paging, live candle updates, and indicator refresh.
+- `src/components/Chart/ChartArea.vue`: visual chart wiring, chart infrastructure
+  lifecycle, legend updates, and session adapter construction.
+- `src/components/Chart/chartSession.ts`: active market/timeframe session workflow,
+  live candle subscription ownership, historical candle fetch guards, live-tail
+  buffering, indicator refresh sequencing, and older history paging decisions.
 - `src/stores/`: Pinia stores for markets, current market, timeframe, candles,
   indicators, and modals.
 - `src/api/`: HTTP clients for database accessor and indicator API.
@@ -26,9 +29,9 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 
 ## Change Triggers
 
-- `ChartArea.vue` currently owns a lot of session behavior. When changing chart
-  workflows, check for duplicate rules in `candlesticksStore.ts`, `ChartManager.ts`,
-  and `indicatorsStore.ts`.
+- `ChartArea.vue` delegates session workflow to `chartSession.ts`. When changing
+  chart workflows, check for duplicate rules in `chartSession.ts`,
+  `candlesticksStore.ts`, `ChartManager.ts`, and `indicatorsStore.ts`.
 - `contracts.ts` is the runtime validation surface for frontend API data.
 - If the WebSocket protocol changes, update `webserver/CONTEXT.md` and
   `frontend/test/utils/websocketService.spec.ts`.
