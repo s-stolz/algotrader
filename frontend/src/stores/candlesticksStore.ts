@@ -41,7 +41,7 @@ export const useCandlesticksStore = defineStore('candlesticks', () => {
       if (append) {
         data.value = markRaw([...newData, ...data.value]);
       } else {
-        data.value = markRaw(newData);
+        replace(newData);
       }
     } catch (err) {
       console.error('Failed to fetch candlestick data:', err);
@@ -90,11 +90,16 @@ export const useCandlesticksStore = defineStore('candlesticks', () => {
     data.value = markRaw([]);
   }
 
+  function replace(candles: readonly ChartCandle[]): void {
+    data.value = markRaw([...candles]);
+  }
+
   return {
     type,
     data,
     fetch,
     updateCandle,
     clear,
+    replace,
   };
 });

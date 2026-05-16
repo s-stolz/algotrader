@@ -10,6 +10,7 @@ import type {
   IndicatorUpdateMessage,
   TimeframeCode,
 } from '@/types/contracts';
+import { fetchCandles } from '@/api/candleClient';
 import { useCandlesticksStore } from '@/stores/candlesticksStore';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
@@ -86,6 +87,10 @@ vi.mock('@/utils/chart', () => ({
   createChartInfrastructure: vi.fn(() => chartAreaMocks.infrastructure),
 }));
 
+vi.mock('@/api/candleClient', () => ({
+  fetchCandles: vi.fn(),
+}));
+
 vi.mock('@/utils/websocketService', () => ({
   wsService: {
     send: chartAreaMocks.wsSend,
@@ -117,6 +122,18 @@ const candle = (timestampMs: number, close = 1.5): ChartCandle => ({
   volume: 10,
 });
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return {
+    promise,
+    resolve,
+  };
+}
+
 interface ChartAreaPublic {
   shouldScrollToRealTime: boolean;
 }
@@ -137,6 +154,7 @@ function setupStores(timeframe: TimeframeCode = 'M5') {
   });
   currentTimeframeStore.setCurrentTimeframe({ label: timeframe, value: timeframe });
   candlesticksStore.data = [candle(300_000)];
+  vi.mocked(fetchCandles).mockResolvedValue([candle(300_000)]);
   vi.spyOn(candlesticksStore, 'fetch').mockResolvedValue();
   vi.spyOn(indicatorsStore, 'requestAllIndicators').mockImplementation(() => undefined);
   vi.spyOn(indicatorsStore, 'fetchOlderForAll').mockResolvedValue();
@@ -183,6 +201,7 @@ describe('ChartArea', () => {
     chartAreaMocks.infrastructure.subscribeVisibleLogicalRangeChange.mockClear();
     chartAreaMocks.infrastructure.scrollToRealTime.mockClear();
     chartAreaMocks.infrastructure.cleanup.mockClear();
+    vi.mocked(fetchCandles).mockReset();
     chartAreaMocks.wsSend.mockReset();
     chartAreaMocks.wsSend.mockResolvedValue(undefined);
     chartAreaMocks.wsOn.mockReset();
@@ -348,6 +367,56 @@ describe('ChartArea', () => {
       close: 2.5,
       volume: 5,
     });
+  });
+
+  it('does not let stale session fetches replace store-backed candle data', async () => {
+    const { candlesticksStore, currentMarketStore } = setupStores('M5');
+    const firstFetch = deferred<ChartCandle[]>();
+    const currentCandles = [candle(600_000, 2.5)];
+    const staleCandles = [candle(300_000, 9.9)];
+
+    vi.mocked(fetchCandles).mockImplementation((symbol) => {
+      if (symbol === 'EURUSD') {
+        return firstFetch.promise;
+      }
+      return Promise.resolve(currentCandles);
+    });
+
+    mountChartArea();
+    await vi.waitFor(() => {
+      expect(fetchCandles).toHaveBeenCalledWith('EURUSD', 'M5', {
+        limit: 500,
+        exchange: 'FX',
+      });
+    });
+
+    currentMarketStore.setMarket({
+      symbol_id: 2,
+      symbol: 'GBPUSD',
+      exchange: 'FX',
+      market_type: 'forex',
+      min_move: 0.0001,
+      timezone: 'UTC',
+    });
+    await vi.waitFor(() => {
+      expect(fetchCandles).toHaveBeenCalledWith('GBPUSD', 'M5', {
+        limit: 500,
+        exchange: 'FX',
+      });
+    });
+    await flushPromises();
+
+    expect(candlesticksStore.data).toEqual(currentCandles);
+    chartAreaMocks.infrastructure.addCandlestickData.mockClear();
+
+    firstFetch.resolve(staleCandles);
+    await flushPromises();
+
+    expect(candlesticksStore.data).toEqual(currentCandles);
+    expect(chartAreaMocks.infrastructure.addCandlestickData).not.toHaveBeenCalledWith(
+      staleCandles,
+      expect.anything(),
+    );
   });
 
   it('loads older candle and indicator history near the left visible range', async () => {

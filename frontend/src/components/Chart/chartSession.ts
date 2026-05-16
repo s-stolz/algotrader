@@ -30,6 +30,7 @@ export interface ChartSessionSubscriptionsAdapter {
   requestIndicators(key: ChartSessionKey): Promise<void> | void;
   unsubscribeIndicators(): Promise<void> | void;
   resetIndicatorHistory?(): void;
+  reportCandleFetchError?: (key: ChartSessionKey, error: unknown) => void;
   reportSubscriptionError?: (
     operation: ChartSessionSubscriptionOperation,
     key: ChartSessionKey,
@@ -207,7 +208,16 @@ export class ChartSession {
     indicatorCleanup: Promise<void>,
   ): Promise<void> {
     const sessionKey = cloneSessionKey(key);
-    const candles = await this.adapter.fetchCandles(sessionKey);
+    let candles: readonly ChartCandle[];
+
+    try {
+      candles = await this.adapter.fetchCandles(sessionKey);
+    } catch (error) {
+      if (this.isCurrentSession(sessionKey, revision)) {
+        this.adapter.reportCandleFetchError?.(cloneSessionKey(sessionKey), error);
+      }
+      return;
+    }
 
     if (!this.isCurrentSession(sessionKey, revision)) {
       return;

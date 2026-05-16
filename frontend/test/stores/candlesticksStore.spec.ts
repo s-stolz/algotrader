@@ -75,4 +75,14 @@ describe('candlesticks store', () => {
 
     expect(store.data).toEqual([]);
   });
+
+  it('replaces chart candle data without fetching', () => {
+    const store = useCandlesticksStore();
+    const candles = [candle(1_000), candle(2_000)];
+
+    store.replace(candles);
+
+    expect(fetchCandles).not.toHaveBeenCalled();
+    expect(store.data).toEqual(candles);
+  });
 });

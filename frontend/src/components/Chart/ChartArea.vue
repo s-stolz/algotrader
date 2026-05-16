@@ -33,6 +33,7 @@ import { useCandlesticksStore } from "@/stores/candlesticksStore";
 import { useIndicatorsStore } from "@/stores/indicatorsStore";
 import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
+import { fetchCandles as fetchHistoricalCandles } from "@/api/candleClient";
 import type {
   CandleUpdateMessage,
   ChartCandle,
@@ -251,15 +252,13 @@ export default defineComponent({
         offCandleUpdate: (handler) => {
           wsService.off("candleUpdate", handler);
         },
-        fetchCandles: async (key) => {
-          await this.candlesticksStore.fetch(key.symbol, key.timeframe, {
-            limit: this.candlesFetchLimit,
-            exchange: key.exchange,
-          });
-          return this.candlesticksStore.data;
-        },
+        fetchCandles: (key) => fetchHistoricalCandles(key.symbol, key.timeframe, {
+          limit: this.candlesFetchLimit,
+          exchange: key.exchange,
+        }),
         renderCandles: (_key, candles) => {
-          this.renderCandlesticks(candles, {
+          this.candlesticksStore.replace(candles);
+          this.renderCandlesticks(this.candlesticksStore.data, {
             scrollToRealtime: this.shouldScrollToRealTime,
           });
         },
@@ -269,6 +268,9 @@ export default defineComponent({
         unsubscribeIndicators: () => this.indicatorsStore.unsubscribeAllLive(),
         resetIndicatorHistory: () => {
           this.indicatorsStore.resetHistoryFlags();
+        },
+        reportCandleFetchError: (_key, error) => {
+          console.error('Failed to fetch candlestick data:', error);
         },
         reportSubscriptionError: (operation, _key, error) => {
           console.error(`Failed to ${operation} candle subscription:`, error);
