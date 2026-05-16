@@ -23,6 +23,20 @@ function chartCandle(timestampMs: number, close = 1.5): ChartCandle {
   };
 }
 
+function candleUpdate(timestampMs: number, close = 1.5): CandleUpdateMessage {
+  return {
+    type: 'candleUpdate',
+    symbol: 'EURUSD',
+    timeframe: 'M5',
+    timestamp_ms: timestampMs,
+    open: 1,
+    high: 2,
+    low: 0.5,
+    close,
+    volume: 10,
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((promiseResolve) => {
@@ -41,6 +55,7 @@ type FakeChartSessionAdapter = ChartSessionSubscriptionsAdapter & {
   requestIndicators(key: ChartSessionKey): Promise<void> | void;
   unsubscribeIndicators(): Promise<void> | void;
   resetIndicatorHistory(): void;
+  reportLiveTailBufferOverflow(key: ChartSessionKey, candle: CandleUpdateMessage): void;
 };
 
 function createFakeAdapter() {
@@ -80,6 +95,9 @@ function createFakeAdapter() {
     }),
     resetIndicatorHistory: vi.fn(() => {
       events.push('reset-indicator-history');
+    }),
+    reportLiveTailBufferOverflow: vi.fn((key, candle) => {
+      events.push(`overflow:${keyLabel(key)}:${candle.timestamp_ms}`);
     }),
   };
 
@@ -405,5 +423,209 @@ describe('chart session candle fetch sequencing', () => {
     }, vi.fn());
 
     expect(adapter.unsubscribeIndicators).toHaveBeenCalledOnce();
+  });
+
+  it('buffers current live candles during historical fetch and replays them after render', async () => {
+    const { adapter, events, handlers } = createFakeAdapter();
+    const fetch = deferred<ChartCandle[]>();
+    vi.mocked(adapter.fetchCandles).mockReturnValue(fetch.promise);
+    const session = createChartSession(adapter);
+    const receiveLiveCandle = vi.fn((message: CandleUpdateMessage) => {
+      events.push(`live:${message.timestamp_ms}`);
+    });
+
+    const pendingSession = session.setSession({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, receiveLiveCandle);
+    await vi.waitFor(() => {
+      expect(adapter.fetchCandles).toHaveBeenCalledOnce();
+    });
+
+    for (const handler of handlers) {
+      handler(candleUpdate(600_000, 2.5));
+    }
+
+    expect(receiveLiveCandle).not.toHaveBeenCalled();
+
+    fetch.resolve([chartCandle(300_000)]);
+    await pendingSession;
+
+    expect(receiveLiveCandle).toHaveBeenCalledOnce();
+    expect(receiveLiveCandle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        timestamp_ms: 600_000,
+      }),
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+    );
+    expect(events.indexOf('render:EURUSD:FX:M5')).toBeLessThan(
+      events.indexOf('live:600000'),
+    );
+  });
+
+  it('coalesces repeated timestamps and replays distinct live tail candles in arrival order', async () => {
+    const { adapter, handlers } = createFakeAdapter();
+    const fetch = deferred<ChartCandle[]>();
+    vi.mocked(adapter.fetchCandles).mockReturnValue(fetch.promise);
+    const session = createChartSession(adapter);
+    const received: CandleUpdateMessage[] = [];
+
+    const pendingSession = session.setSession({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, (message) => {
+      received.push(message);
+    });
+    await vi.waitFor(() => {
+      expect(adapter.fetchCandles).toHaveBeenCalledOnce();
+    });
+
+    for (const handler of handlers) {
+      handler(candleUpdate(600_000, 2.5));
+      handler(candleUpdate(600_000, 2.6));
+      handler(candleUpdate(900_000, 3.5));
+      handler(candleUpdate(800_000, 9.9));
+    }
+
+    fetch.resolve([chartCandle(300_000)]);
+    await pendingSession;
+
+    expect(received.map((message) => [message.timestamp_ms, message.close])).toEqual([
+      [600_000, 2.6],
+      [900_000, 3.5],
+    ]);
+  });
+
+  it('reports live tail overflow and refetches the current session without user notification', async () => {
+    const { adapter, handlers } = createFakeAdapter();
+    const firstFetch = deferred<ChartCandle[]>();
+    const refetch = deferred<ChartCandle[]>();
+    const notifyUser = vi.fn();
+    let fetchCount = 0;
+    vi.mocked(adapter.fetchCandles).mockImplementation(() => {
+      fetchCount += 1;
+      return fetchCount === 1 ? firstFetch.promise : refetch.promise;
+    });
+    const session = createChartSession({
+      ...adapter,
+      notifyUser,
+    });
+
+    const pendingSession = session.setSession({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+    await vi.waitFor(() => {
+      expect(adapter.fetchCandles).toHaveBeenCalledOnce();
+    });
+
+    for (const handler of handlers) {
+      handler(candleUpdate(600_000));
+      handler(candleUpdate(900_000));
+      handler(candleUpdate(1_200_000));
+      handler(candleUpdate(1_500_000));
+    }
+
+    await vi.waitFor(() => {
+      expect(adapter.fetchCandles).toHaveBeenCalledTimes(2);
+    });
+    expect(adapter.reportLiveTailBufferOverflow).toHaveBeenCalledWith(
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+      expect.objectContaining({
+        timestamp_ms: 1_500_000,
+      }),
+    );
+    expect(notifyUser).not.toHaveBeenCalled();
+
+    firstFetch.resolve([chartCandle(300_000)]);
+    await pendingSession;
+    const refetchedCandles = [chartCandle(1_500_000)];
+    refetch.resolve(refetchedCandles);
+    await vi.waitFor(() => {
+      expect(adapter.renderCandles).toHaveBeenCalledWith(
+        {
+          symbol: 'EURUSD',
+          exchange: 'FX',
+          timeframe: 'M5',
+        },
+        refetchedCandles,
+      );
+    });
+  });
+
+  it('ignores an overflow refetch result after the session key changes', async () => {
+    const { adapter, handlers } = createFakeAdapter();
+    const firstFetch = deferred<ChartCandle[]>();
+    const staleRefetch = deferred<ChartCandle[]>();
+    const currentCandles = [chartCandle(2_100_000)];
+    let eurUsdFetchCount = 0;
+    vi.mocked(adapter.fetchCandles).mockImplementation((key) => {
+      if (key.symbol === 'EURUSD') {
+        eurUsdFetchCount += 1;
+        return eurUsdFetchCount === 1 ? firstFetch.promise : staleRefetch.promise;
+      }
+
+      return Promise.resolve(currentCandles);
+    });
+    const session = createChartSession(adapter);
+
+    const firstSession = session.setSession({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+    await vi.waitFor(() => {
+      expect(adapter.fetchCandles).toHaveBeenCalledOnce();
+    });
+
+    for (const handler of handlers) {
+      handler(candleUpdate(600_000));
+      handler(candleUpdate(900_000));
+      handler(candleUpdate(1_200_000));
+      handler(candleUpdate(1_500_000));
+    }
+    await vi.waitFor(() => {
+      expect(adapter.fetchCandles).toHaveBeenCalledTimes(2);
+    });
+
+    await session.setSession({
+      symbol: 'GBPUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+
+    firstFetch.resolve([chartCandle(300_000)]);
+    await firstSession;
+    staleRefetch.resolve([chartCandle(1_500_000)]);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(adapter.renderCandles).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+      }),
+      expect.anything(),
+    );
+    expect(adapter.renderCandles).toHaveBeenCalledWith(
+      {
+        symbol: 'GBPUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+      currentCandles,
+    );
   });
 });

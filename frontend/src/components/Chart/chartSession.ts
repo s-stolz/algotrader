@@ -20,6 +20,8 @@ export type ChartSessionLiveCandleReceiver = (
 
 export type ChartSessionSubscriptionOperation = 'subscribe' | 'unsubscribe';
 
+const LIVE_TAIL_BUFFER_CAP = 3;
+
 export interface ChartSessionSubscriptionsAdapter {
   subscribeCandles(key: ChartSessionKey): Promise<void> | void;
   unsubscribeCandles(key: ChartSessionKey): Promise<void> | void;
@@ -31,11 +33,19 @@ export interface ChartSessionSubscriptionsAdapter {
   unsubscribeIndicators(): Promise<void> | void;
   resetIndicatorHistory?(): void;
   reportCandleFetchError?: (key: ChartSessionKey, error: unknown) => void;
+  reportLiveTailBufferOverflow?: (key: ChartSessionKey, candle: CandleUpdateMessage) => void;
   reportSubscriptionError?: (
     operation: ChartSessionSubscriptionOperation,
     key: ChartSessionKey,
     error: unknown,
   ) => void;
+}
+
+interface InFlightCandleFetch {
+  key: ChartSessionKey;
+  revision: number;
+  indicatorCleanup: Promise<void>;
+  liveTail: CandleUpdateMessage[];
 }
 
 function normalizeSessionKey(input: ChartSessionKeyInput | null | undefined): ChartSessionKey | null {
@@ -77,6 +87,7 @@ export class ChartSession {
   private activeKey: ChartSessionKey | null = null;
   private listener: ChartSessionCandleHandler | null = null;
   private liveCandleReceiver: ChartSessionLiveCandleReceiver | null = null;
+  private inFlightCandleFetch: InFlightCandleFetch | null = null;
   private revision = 0;
 
   constructor(private readonly adapter: ChartSessionSubscriptionsAdapter) {}
@@ -104,6 +115,7 @@ export class ChartSession {
     this.activeKey = null;
     this.listener = null;
     this.liveCandleReceiver = null;
+    this.inFlightCandleFetch = null;
 
     if (previousListener) {
       this.adapter.offCandleUpdate(previousListener);
@@ -157,6 +169,7 @@ export class ChartSession {
     this.activeKey = null;
     this.listener = null;
     this.liveCandleReceiver = null;
+    this.inFlightCandleFetch = null;
 
     if (previousListener) {
       this.adapter.offCandleUpdate(previousListener);
@@ -173,7 +186,62 @@ export class ChartSession {
     if (!this.activeKey || !this.liveCandleReceiver) return;
     if (!candleMatchesSession(message, this.activeKey)) return;
 
+    if (this.bufferLiveCandleIfFetchInFlight(message, this.activeKey)) {
+      return;
+    }
+
     this.liveCandleReceiver(message, cloneSessionKey(this.activeKey));
+  }
+
+  private bufferLiveCandleIfFetchInFlight(
+    message: CandleUpdateMessage,
+    key: ChartSessionKey,
+  ): boolean {
+    const inFlight = this.inFlightCandleFetch;
+    if (!inFlight || !this.isCurrentFetch(inFlight)) {
+      return false;
+    }
+    if (!sessionKeysEqual(inFlight.key, key)) {
+      return false;
+    }
+
+    const last = inFlight.liveTail[inFlight.liveTail.length - 1];
+    const liveCandle = { ...message };
+    if (!last) {
+      inFlight.liveTail.push(liveCandle);
+      return true;
+    }
+
+    if (liveCandle.timestamp_ms < last.timestamp_ms) {
+      return true;
+    }
+
+    if (liveCandle.timestamp_ms === last.timestamp_ms) {
+      inFlight.liveTail[inFlight.liveTail.length - 1] = liveCandle;
+      return true;
+    }
+
+    if (inFlight.liveTail.length < LIVE_TAIL_BUFFER_CAP) {
+      inFlight.liveTail.push(liveCandle);
+    } else {
+      this.handleLiveTailBufferOverflow(inFlight, liveCandle);
+    }
+    return true;
+  }
+
+  private handleLiveTailBufferOverflow(
+    inFlight: InFlightCandleFetch,
+    candle: CandleUpdateMessage,
+  ): void {
+    if (!this.isCurrentFetch(inFlight)) return;
+
+    const sessionKey = cloneSessionKey(inFlight.key);
+    this.adapter.reportLiveTailBufferOverflow?.(sessionKey, { ...candle });
+    void this.fetchCandlesForSession(
+      sessionKey,
+      inFlight.revision,
+      inFlight.indicatorCleanup,
+    );
   }
 
   private async subscribe(key: ChartSessionKey): Promise<void> {
@@ -208,25 +276,49 @@ export class ChartSession {
     indicatorCleanup: Promise<void>,
   ): Promise<void> {
     const sessionKey = cloneSessionKey(key);
+    const inFlight: InFlightCandleFetch = {
+      key: sessionKey,
+      revision,
+      indicatorCleanup,
+      liveTail: [],
+    };
+    this.inFlightCandleFetch = inFlight;
     let candles: readonly ChartCandle[];
 
     try {
       candles = await this.adapter.fetchCandles(sessionKey);
     } catch (error) {
-      if (this.isCurrentSession(sessionKey, revision)) {
+      const shouldReport = this.isCurrentFetch(inFlight);
+      if (this.inFlightCandleFetch === inFlight) {
+        this.inFlightCandleFetch = null;
+      }
+      if (shouldReport) {
         this.adapter.reportCandleFetchError?.(cloneSessionKey(sessionKey), error);
       }
       return;
     }
 
-    if (!this.isCurrentSession(sessionKey, revision)) {
+    if (!this.isCurrentFetch(inFlight)) {
+      if (this.inFlightCandleFetch === inFlight) {
+        this.inFlightCandleFetch = null;
+      }
       return;
     }
 
     await this.adapter.renderCandles(cloneSessionKey(sessionKey), candles);
 
-    if (!this.isCurrentSession(sessionKey, revision)) {
+    if (!this.isCurrentFetch(inFlight)) {
+      if (this.inFlightCandleFetch === inFlight) {
+        this.inFlightCandleFetch = null;
+      }
       return;
+    }
+
+    if (this.inFlightCandleFetch === inFlight) {
+      this.inFlightCandleFetch = null;
+    }
+    for (const liveCandle of inFlight.liveTail) {
+      this.liveCandleReceiver?.(liveCandle, cloneSessionKey(sessionKey));
     }
 
     await indicatorCleanup;
@@ -240,6 +332,13 @@ export class ChartSession {
 
   private isCurrentSession(key: ChartSessionKey, revision: number): boolean {
     return revision === this.revision && sessionKeysEqual(this.activeKey, key);
+  }
+
+  private isCurrentFetch(inFlight: InFlightCandleFetch): boolean {
+    return (
+      this.inFlightCandleFetch === inFlight &&
+      this.isCurrentSession(inFlight.key, inFlight.revision)
+    );
   }
 }
 

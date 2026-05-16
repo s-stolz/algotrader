@@ -272,6 +272,12 @@ export default defineComponent({
         reportCandleFetchError: (_key, error) => {
           console.error('Failed to fetch candlestick data:', error);
         },
+        reportLiveTailBufferOverflow: (key, candle) => {
+          console.error('Live candle tail buffer overflow; refetching chart session.', {
+            candle,
+            key,
+          });
+        },
         reportSubscriptionError: (operation, _key, error) => {
           console.error(`Failed to ${operation} candle subscription:`, error);
         },
