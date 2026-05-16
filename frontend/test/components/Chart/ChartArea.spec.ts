@@ -426,6 +426,7 @@ describe('ChartArea', () => {
     const vm = wrapper.vm as ComponentPublicInstance & ChartAreaPublic;
     vm.shouldScrollToRealTime = false;
     vi.mocked(candlesticksStore.fetch).mockClear();
+    vi.mocked(fetchCandles).mockClear();
     vi.mocked(indicatorsStore.fetchOlderForAll).mockClear();
     chartAreaMocks.ohlcSeriesInfo.series.barsInLogicalRange.mockReturnValue({
       barsBefore: 99,
@@ -433,14 +434,15 @@ describe('ChartArea', () => {
     });
 
     chartAreaMocks.visibleRangeHandler?.({ from: 0, to: 10 } as ChartLogicalRange);
-    await flushPromises();
-
-    expect(candlesticksStore.fetch).toHaveBeenCalledWith('EURUSD', 'M5', {
-      endMs: 300_000,
-      limit: 500,
-      append: true,
-      exchange: 'FX',
+    await vi.waitFor(() => {
+      expect(fetchCandles).toHaveBeenCalledWith('EURUSD', 'M5', {
+        endMs: 300_000,
+        limit: 500,
+        exchange: 'FX',
+      });
     });
+
+    expect(candlesticksStore.fetch).not.toHaveBeenCalled();
     expect(indicatorsStore.fetchOlderForAll).toHaveBeenCalledWith(
       'EURUSD',
       'M5',

@@ -56,7 +56,6 @@ import {
 } from "@/utils/chart";
 import Indicator from "@/components/Chart/Indicator/Indicator.vue";
 
-const HISTORY_LOAD_COOLDOWN_MS = 400;
 const WHEEL_SETTLE_MS = 250;
 
 type CandlesticksStore = ReturnType<typeof useCandlesticksStore>;
@@ -89,13 +88,9 @@ interface ChartAreaData {
   indicatorFlushRafId: number | null;
   pendingIndicatorMessages: Map<string, IndicatorUpdateMessage>;
   ohlcSeriesRef: ManagedSeriesApi | null;
-  isFetchingCandles: boolean;
-  lastCandlesHistoryLoadTs: number;
   lastWheelTs: number;
   wheelSettleTimer: ReturnType<typeof setTimeout> | null;
   candlesFetchLimit: number;
-  isFetchingIndicators: boolean;
-  lastIndicatorsHistoryLoadTs: number;
   indicatorBatchSize: number;
   shouldScrollToRealTime: boolean;
   indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
@@ -136,13 +131,9 @@ export default defineComponent({
       indicatorFlushRafId: null,
       pendingIndicatorMessages: new Map(),
       ohlcSeriesRef: null,
-      isFetchingCandles: false,
-      lastCandlesHistoryLoadTs: 0,
       lastWheelTs: 0,
       wheelSettleTimer: null,
       candlesFetchLimit: 500,
-      isFetchingIndicators: false,
-      lastIndicatorsHistoryLoadTs: 0,
       indicatorBatchSize: 500,
       shouldScrollToRealTime: false,
       indicatorMessageHandler: null,
@@ -266,11 +257,39 @@ export default defineComponent({
           this.indicatorsStore.requestAllIndicators(key.symbol, key.timeframe, key.exchange);
         },
         unsubscribeIndicators: () => this.indicatorsStore.unsubscribeAllLive(),
+        getOldestCandleTimestampMs: () => {
+          return this.candlesticksStore.data[0]?.timestamp_ms ?? null;
+        },
+        fetchOlderCandles: (key, endMs) => fetchHistoricalCandles(key.symbol, key.timeframe, {
+          endMs,
+          limit: this.candlesFetchLimit,
+          exchange: key.exchange,
+        }),
+        prependOlderCandles: (_key, candles) => {
+          this.candlesticksStore.prepend(candles);
+        },
+        renderOlderCandles: () => {
+          this.renderCandlesticks(this.candlesticksStore.data);
+        },
+        requestOlderIndicators: (key) => {
+          return this.indicatorsStore.fetchOlderForAll(
+            key.symbol,
+            key.timeframe,
+            key.exchange,
+            this.indicatorBatchSize,
+          );
+        },
         resetIndicatorHistory: () => {
           this.indicatorsStore.resetHistoryFlags();
         },
         reportCandleFetchError: (_key, error) => {
           console.error('Failed to fetch candlestick data:', error);
+        },
+        reportOlderCandleFetchError: (_key, error) => {
+          console.error('Failed to fetch older candlestick data:', error);
+        },
+        reportOlderIndicatorFetchError: (_key, error) => {
+          console.error('Failed to fetch older indicator data:', error);
         },
         reportLiveTailBufferOverflow: (key, candle) => {
           console.error('Live candle tail buffer overflow; refetching chart session.', {
@@ -459,7 +478,6 @@ export default defineComponent({
     },
 
     onVisibleLogicalRangeChange(newVisibleLogicalRange: ChartLogicalRange | null): void {
-      if (this.shouldScrollToRealTime) return;
       this.latestVisibleRange = newVisibleLogicalRange;
       if (this.visibleRangeRafId !== null) return;
 
@@ -478,63 +496,12 @@ export default defineComponent({
           return;
         }
 
-        if (
-          barsInfo.barsBefore < 100 &&
-          !this.isFetchingCandles &&
-          (now - this.lastCandlesHistoryLoadTs) >= HISTORY_LOAD_COOLDOWN_MS
-        ) {
-          this.lastCandlesHistoryLoadTs = now;
-          this.isFetchingCandles = true;
-          void this.loadMoreBars();
-        }
-
-        if (
-          barsInfo.barsBefore < 100 &&
-          !this.isFetchingIndicators &&
-          (now - this.lastIndicatorsHistoryLoadTs) >= HISTORY_LOAD_COOLDOWN_MS
-        ) {
-          this.lastIndicatorsHistoryLoadTs = now;
-          this.isFetchingIndicators = true;
-          void this.loadMoreIndicatorHistory();
-        }
+        this.chartSession?.requestOlderHistory({
+          barsBefore: barsInfo.barsBefore,
+          nowMs: now,
+          scrollToRealtime: this.shouldScrollToRealTime,
+        });
       });
-    },
-
-    async loadMoreBars(): Promise<void> {
-      const symbol = this.currentMarketStore.symbol;
-      const exchange = this.currentMarketStore.exchange;
-      const timeframe = this.currentTimeframeStore.value;
-      if (!this.candlesticksStore.data.length) {
-        this.isFetchingCandles = false;
-        return;
-      }
-      const firstBarTimestampMs = this.candlesticksStore.data[0].timestamp_ms;
-
-      await this.candlesticksStore.fetch(symbol, timeframe, {
-        endMs: firstBarTimestampMs,
-        limit: this.candlesFetchLimit,
-        append: true,
-        exchange: exchange,
-      });
-      this.renderCandlesticks(this.candlesticksStore.data);
-      this.isFetchingCandles = false;
-    },
-
-    async loadMoreIndicatorHistory(): Promise<void> {
-      const symbol = this.currentMarketStore.symbol;
-      const exchange = this.currentMarketStore.exchange;
-      const timeframe = this.currentTimeframeStore.value;
-
-      try {
-        await this.indicatorsStore.fetchOlderForAll(
-          symbol,
-          timeframe,
-          exchange,
-          this.indicatorBatchSize,
-        );
-      } finally {
-        this.isFetchingIndicators = false;
-      }
     },
 
     isValidCrosshairPoint(

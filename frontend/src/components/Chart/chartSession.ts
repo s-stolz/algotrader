@@ -21,6 +21,14 @@ export type ChartSessionLiveCandleReceiver = (
 export type ChartSessionSubscriptionOperation = 'subscribe' | 'unsubscribe';
 
 const LIVE_TAIL_BUFFER_CAP = 3;
+const OLDER_HISTORY_BARS_BEFORE_THRESHOLD = 100;
+const HISTORY_LOAD_COOLDOWN_MS = 400;
+
+export interface ChartSessionOlderHistorySignal {
+  barsBefore: number;
+  nowMs: number;
+  scrollToRealtime?: boolean;
+}
 
 export interface ChartSessionSubscriptionsAdapter {
   subscribeCandles(key: ChartSessionKey): Promise<void> | void;
@@ -31,8 +39,18 @@ export interface ChartSessionSubscriptionsAdapter {
   renderCandles(key: ChartSessionKey, candles: readonly ChartCandle[]): Promise<void> | void;
   requestIndicators(key: ChartSessionKey): Promise<void> | void;
   unsubscribeIndicators(): Promise<void> | void;
+  getOldestCandleTimestampMs(): number | null;
+  fetchOlderCandles(
+    key: ChartSessionKey,
+    endMs: number,
+  ): Promise<readonly ChartCandle[]> | readonly ChartCandle[];
+  prependOlderCandles(key: ChartSessionKey, candles: readonly ChartCandle[]): Promise<void> | void;
+  renderOlderCandles(key: ChartSessionKey): Promise<void> | void;
+  requestOlderIndicators(key: ChartSessionKey): Promise<void> | void;
   resetIndicatorHistory?(): void;
   reportCandleFetchError?: (key: ChartSessionKey, error: unknown) => void;
+  reportOlderCandleFetchError?: (key: ChartSessionKey, error: unknown) => void;
+  reportOlderIndicatorFetchError?: (key: ChartSessionKey, error: unknown) => void;
   reportLiveTailBufferOverflow?: (key: ChartSessionKey, candle: CandleUpdateMessage) => void;
   reportSubscriptionError?: (
     operation: ChartSessionSubscriptionOperation,
@@ -46,6 +64,11 @@ interface InFlightCandleFetch {
   revision: number;
   indicatorCleanup: Promise<void>;
   liveTail: CandleUpdateMessage[];
+}
+
+interface InFlightOlderHistoryLoad {
+  key: ChartSessionKey;
+  revision: number;
 }
 
 function normalizeSessionKey(input: ChartSessionKeyInput | null | undefined): ChartSessionKey | null {
@@ -88,6 +111,10 @@ export class ChartSession {
   private listener: ChartSessionCandleHandler | null = null;
   private liveCandleReceiver: ChartSessionLiveCandleReceiver | null = null;
   private inFlightCandleFetch: InFlightCandleFetch | null = null;
+  private inFlightOlderCandles: InFlightOlderHistoryLoad | null = null;
+  private inFlightOlderIndicators: InFlightOlderHistoryLoad | null = null;
+  private lastOlderCandlesHistoryLoadTs = 0;
+  private lastOlderIndicatorsHistoryLoadTs = 0;
   private revision = 0;
 
   constructor(private readonly adapter: ChartSessionSubscriptionsAdapter) {}
@@ -116,6 +143,7 @@ export class ChartSession {
     this.listener = null;
     this.liveCandleReceiver = null;
     this.inFlightCandleFetch = null;
+    this.resetOlderHistoryPagingState();
 
     if (previousListener) {
       this.adapter.offCandleUpdate(previousListener);
@@ -170,6 +198,7 @@ export class ChartSession {
     this.listener = null;
     this.liveCandleReceiver = null;
     this.inFlightCandleFetch = null;
+    this.resetOlderHistoryPagingState();
 
     if (previousListener) {
       this.adapter.offCandleUpdate(previousListener);
@@ -180,6 +209,18 @@ export class ChartSession {
     }
 
     await this.unsubscribeIndicators();
+  }
+
+  requestOlderHistory(signal: ChartSessionOlderHistorySignal): void {
+    if (!this.activeKey) return;
+    if (signal.scrollToRealtime) return;
+    if (signal.barsBefore >= OLDER_HISTORY_BARS_BEFORE_THRESHOLD) return;
+
+    const key = cloneSessionKey(this.activeKey);
+    const revision = this.revision;
+
+    this.requestOlderCandlesIfAllowed(key, revision, signal.nowMs);
+    this.requestOlderIndicatorsIfAllowed(key, revision, signal.nowMs);
   }
 
   private handleCandleUpdate(message: CandleUpdateMessage): void {
@@ -264,10 +305,91 @@ export class ChartSession {
     await this.adapter.unsubscribeIndicators();
   }
 
+  private resetOlderHistoryPagingState(): void {
+    this.inFlightOlderCandles = null;
+    this.inFlightOlderIndicators = null;
+    this.lastOlderCandlesHistoryLoadTs = 0;
+    this.lastOlderIndicatorsHistoryLoadTs = 0;
+  }
+
   private startIndicatorCleanup(): Promise<void> {
     const cleanup = this.unsubscribeIndicators();
     cleanup.catch(() => undefined);
     return cleanup;
+  }
+
+  private requestOlderCandlesIfAllowed(
+    key: ChartSessionKey,
+    revision: number,
+    nowMs: number,
+  ): void {
+    if (this.inFlightOlderCandles) return;
+    if ((nowMs - this.lastOlderCandlesHistoryLoadTs) < HISTORY_LOAD_COOLDOWN_MS) return;
+
+    const oldestCandleTimestampMs = this.adapter.getOldestCandleTimestampMs();
+    if (oldestCandleTimestampMs === null) return;
+
+    const load: InFlightOlderHistoryLoad = {
+      key: cloneSessionKey(key),
+      revision,
+    };
+    this.inFlightOlderCandles = load;
+    this.lastOlderCandlesHistoryLoadTs = nowMs;
+    void this.loadOlderCandles(load, oldestCandleTimestampMs);
+  }
+
+  private requestOlderIndicatorsIfAllowed(
+    key: ChartSessionKey,
+    revision: number,
+    nowMs: number,
+  ): void {
+    if (this.inFlightOlderIndicators) return;
+    if ((nowMs - this.lastOlderIndicatorsHistoryLoadTs) < HISTORY_LOAD_COOLDOWN_MS) return;
+
+    const load: InFlightOlderHistoryLoad = {
+      key: cloneSessionKey(key),
+      revision,
+    };
+    this.inFlightOlderIndicators = load;
+    this.lastOlderIndicatorsHistoryLoadTs = nowMs;
+    void this.loadOlderIndicators(load);
+  }
+
+  private async loadOlderCandles(
+    load: InFlightOlderHistoryLoad,
+    endMs: number,
+  ): Promise<void> {
+    try {
+      const candles = await this.adapter.fetchOlderCandles(cloneSessionKey(load.key), endMs);
+      if (!this.isCurrentOlderCandlesLoad(load)) return;
+
+      await this.adapter.prependOlderCandles(cloneSessionKey(load.key), candles);
+      if (!this.isCurrentOlderCandlesLoad(load)) return;
+
+      await this.adapter.renderOlderCandles(cloneSessionKey(load.key));
+    } catch (error) {
+      if (this.isCurrentOlderCandlesLoad(load)) {
+        this.adapter.reportOlderCandleFetchError?.(cloneSessionKey(load.key), error);
+      }
+    } finally {
+      if (this.inFlightOlderCandles === load) {
+        this.inFlightOlderCandles = null;
+      }
+    }
+  }
+
+  private async loadOlderIndicators(load: InFlightOlderHistoryLoad): Promise<void> {
+    try {
+      await this.adapter.requestOlderIndicators(cloneSessionKey(load.key));
+    } catch (error) {
+      if (this.isCurrentOlderIndicatorsLoad(load)) {
+        this.adapter.reportOlderIndicatorFetchError?.(cloneSessionKey(load.key), error);
+      }
+    } finally {
+      if (this.inFlightOlderIndicators === load) {
+        this.inFlightOlderIndicators = null;
+      }
+    }
   }
 
   private async fetchCandlesForSession(
@@ -338,6 +460,20 @@ export class ChartSession {
     return (
       this.inFlightCandleFetch === inFlight &&
       this.isCurrentSession(inFlight.key, inFlight.revision)
+    );
+  }
+
+  private isCurrentOlderCandlesLoad(load: InFlightOlderHistoryLoad): boolean {
+    return (
+      this.inFlightOlderCandles === load &&
+      this.isCurrentSession(load.key, load.revision)
+    );
+  }
+
+  private isCurrentOlderIndicatorsLoad(load: InFlightOlderHistoryLoad): boolean {
+    return (
+      this.inFlightOlderIndicators === load &&
+      this.isCurrentSession(load.key, load.revision)
     );
   }
 }

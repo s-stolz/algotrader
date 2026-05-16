@@ -94,6 +94,10 @@ export const useCandlesticksStore = defineStore('candlesticks', () => {
     data.value = markRaw([...candles]);
   }
 
+  function prepend(candles: readonly ChartCandle[]): void {
+    data.value = markRaw([...candles, ...data.value]);
+  }
+
   return {
     type,
     data,
@@ -101,5 +105,6 @@ export const useCandlesticksStore = defineStore('candlesticks', () => {
     updateCandle,
     clear,
     replace,
+    prepend,
   };
 });
