@@ -120,8 +120,9 @@ class StreamRegistryPort(Protocol):
     async def stop_tick_stream(self, account_id: AccountId, symbol: str) -> None: ...
 
     @abstractmethod
-    async def get_tick_stream_status(self, account_id: AccountId,
-                                     symbol: str) -> TickStreamStatus: ...
+    async def get_tick_stream_status(
+        self, account_id: AccountId, symbol: str
+    ) -> TickStreamStatus: ...
 
 
 class TrendbarStreamRegistryPort(Protocol):

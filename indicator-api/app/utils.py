@@ -26,7 +26,7 @@ def _to_epoch_ms(value: Any) -> int | None:
         # Epoch-seconds are intentionally not supported in indicator-api responses.
         return None
 
-    ts = pd.to_datetime(value, utc=True, errors='coerce')
+    ts = pd.to_datetime(value, utc=True, errors="coerce")
     if pd.isna(ts):
         return None
     return int(ts.value // 1_000_000)
@@ -44,15 +44,15 @@ def estimate_warmup(metadata: dict, params: dict) -> int:
     Fallbacks:
       - If no hints and no explicit warmup: return 1.
     """
-    explicit_val = metadata.get('warmup')
+    explicit_val = metadata.get("warmup")
     if _is_int(explicit_val):
         return int(explicit_val)  # type: ignore[arg-type]
 
-    warmup_params = metadata.get('warmup_params', [])
+    warmup_params = metadata.get("warmup_params", [])
     if not isinstance(warmup_params, list):  # guard
         warmup_params = []
-    mode = metadata.get('warmup_mode', 'max')
-    buffer = metadata.get('warmup_buffer', 0)
+    mode = metadata.get("warmup_mode", "max")
+    buffer = metadata.get("warmup_buffer", 0)
     numeric_values: list[int] = []
     for name in warmup_params:
         val = params.get(name)
@@ -62,7 +62,7 @@ def estimate_warmup(metadata: dict, params: dict) -> int:
     if not numeric_values:
         return 1
 
-    if mode == 'sum':
+    if mode == "sum":
         base = sum(numeric_values)
     else:  # default max
         base = max(numeric_values)
@@ -81,15 +81,14 @@ def prepare_parameters(
     """Prepare parameters for the indicator."""
     parameters = {}
 
-    for param_name, param_details in indicator_info['parameters'].items():
-        param_default = param_details.get('default')
-        parameters[param_name] = custom_parameters.get(
-            param_name, param_default)
+    for param_name, param_details in indicator_info["parameters"].items():
+        param_default = param_details.get("default")
+        parameters[param_name] = custom_parameters.get(param_name, param_default)
 
-    parameters['timeframe'] = parameters['timeframe'] if 'timeframe' in parameters else timeframe
-    parameters['limit'] = limit
-    parameters['start_ms'] = start_ms
-    parameters['end_ms'] = end_ms
+    parameters["timeframe"] = parameters["timeframe"] if "timeframe" in parameters else timeframe
+    parameters["limit"] = limit
+    parameters["start_ms"] = start_ms
+    parameters["end_ms"] = end_ms
 
     return parameters
 
@@ -100,22 +99,22 @@ def format_indicator_response(
 ) -> dict:
     if indicator_data is None or indicator_data.empty:
         return {
-            'data': {
-                'indicator_info': metadata,
-                'indicator_data': [],
+            "data": {
+                "indicator_info": metadata,
+                "indicator_data": [],
             }
         }
 
     indicator_reset = indicator_data.reset_index()
-    indicator_reset['timestamp_ms'] = indicator_reset['timestamp'].map(_to_epoch_ms)
-    indicator_reset = indicator_reset.drop(columns=['timestamp'])
-    indicator_reset = indicator_reset.dropna(subset=['timestamp_ms'])
-    indicator_reset['timestamp_ms'] = indicator_reset['timestamp_ms'].astype('int64')
+    indicator_reset["timestamp_ms"] = indicator_reset["timestamp"].map(_to_epoch_ms)
+    indicator_reset = indicator_reset.drop(columns=["timestamp"])
+    indicator_reset = indicator_reset.dropna(subset=["timestamp_ms"])
+    indicator_reset["timestamp_ms"] = indicator_reset["timestamp_ms"].astype("int64")
 
     response_data = {
-        'data': {
-            'indicator_info': metadata,
-            'indicator_data': indicator_reset.to_dict(orient='records')
+        "data": {
+            "indicator_info": metadata,
+            "indicator_data": indicator_reset.to_dict(orient="records"),
         }
     }
     return response_data
@@ -174,7 +173,7 @@ def trim_indicator_output(
         out = df.loc[df.notna().any(axis=1)]
 
     if original_start_ms is not None:
-        out = out[out.index >= pd.to_datetime(original_start_ms, unit='ms', utc=True)]
+        out = out[out.index >= pd.to_datetime(original_start_ms, unit="ms", utc=True)]
 
     if original_limit is not None:
         out = out.tail(original_limit)

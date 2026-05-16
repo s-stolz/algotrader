@@ -309,6 +309,10 @@ Make vectorized bar mode stable enough to be parity baseline.
 
 Ralph status: implemented as part of `backtester-bar-engine-parity` for single-symbol
 bar-mode parity. Future event-driven expansion should be covered by later Ralph PRDs.
+The initial M4/M5 parity slice proved the public contract first; it streamed
+event-driven strategy decisions but still reused array-style fill generation and
+portfolio accounting to match the vectorized baseline quickly. The later Ralph PRD
+`backtester-sequential-event-engine` replaced that shortcut for event-driven mode.
 
 ### Goal
 
@@ -319,7 +323,7 @@ Implement first runnable event-driven bar engine using shared domain/execution m
 - `engines/event_driven.py`
 - deterministic sequential event queue using `domain/events.py` BAR events
 - event-driven path:
-  - `ExecutionTarget -> OrderRequest -> Fill`
+  - v1 declarative strategy signal -> desired target -> pending target delta -> next-open fill
 - reuse shared `execution/*`, `strategies/*`, `domain/types.py`
 - reuse M3 baseline fee/slippage semantics as-is (no new cost logic in M4)
 
@@ -357,7 +361,10 @@ Implement first runnable event-driven bar engine using shared domain/execution m
 
 Ralph status: implemented as part of `backtester-bar-engine-parity` for supported
 single-symbol declarative bar strategies. Any broader parity matrix belongs in later
-Ralph PRDs.
+Ralph PRDs. The historical M5 implementation locked public parity while the
+event-driven engine still leaned on vectorized-style fill/accounting helpers; that
+implementation shortcut is no longer part of event-driven mode after
+`backtester-sequential-event-engine`.
 
 ### Goal
 
@@ -400,6 +407,81 @@ Lock parity between vectorized and event-driven engines for supported **shared**
 ### Deferred Follow-ups
 
 - persistence + API surfaces
+
+---
+
+## M5A: Sequential Event-Driven Bar Runtime
+
+Ralph status: implemented as part of `backtester-sequential-event-engine` for the
+single-symbol v1 declarative bar parity slice.
+
+### Goal
+
+Replace the M4/M5 event-driven array execution shortcut with an explicit
+bootstrap phase and a true sequential tradable bar loop while preserving baseline
+public parity with vectorized mode for supported shared semantics.
+
+### In Scope
+
+- `engines/event_driven.py`
+- pre-start bootstrap through `EventDrivenFeatureStream`
+- strict indicator warmup precondition before `start_ms`
+- no-indicator strategies starting immediately at `start_ms`
+- tradable loop over `[start_ms, end_ms)` only
+- pending target-delta execution at the next valid in-window open
+- sequential cash, actual position, desired target, fills, and end-of-bar snapshots
+- gap policies `skip`, `expire`, and `error`
+- final-bar pending-delta expiration when no in-window next open exists
+- diagnostics produced by the sequential runtime
+- public parity for fills, trades, equity curve, metrics, fees, and slippage under
+  supported v1 baseline semantics
+
+### Out of Scope
+
+- callback strategy migration
+- tick simulation
+- multi-symbol or multi-timeframe synchronized event loops
+- partial fills
+- short support
+- limit orders, stop orders, latency, spread/liquidity, queue position, or other
+  richer order realism
+- broad OHLCV data-health auditing
+- changing vectorized engine architecture
+
+### Runtime Notes
+
+- Bootstrap bars are historical context only. They prepare indicator state and may
+  update the previous complete feature snapshot, but they do not create signals,
+  target changes, pending orders, fills, trades, or equity snapshots.
+- Indicator strategies fail with an insufficient-warmup error if pre-start history
+  cannot produce a complete feature snapshot before the first tradable bar.
+- The tradable loop contains no warmup skip behavior. Invalid feature output after
+  a successful bootstrap is a runtime error.
+- Event-driven mode no longer calls the target-array fill generator or the
+  vectorized cumulative-sum portfolio accounting helper. Vectorized mode continues
+  to use those array helpers.
+
+### Test Coverage
+
+- event-driven bootstrap contract and insufficient-warmup tests
+- first-tradable-bar crossover/crossunder tests using the last bootstrap snapshot
+- next-open/no-lookahead and final-bar-expiration tests
+- gap `skip`, `expire`, `error`, and deferred-delta netting tests
+- parity tests against vectorized public results under supported shared semantics
+- static guard coverage preventing event-driven reuse of array fill/accounting helpers
+
+### Acceptance Criteria
+
+- event-driven public baseline results match vectorized results for supported shared semantics
+- bootstrap is explicit and produces no public execution artifacts
+- indicator warmup failures are clear
+- event-driven implementation is sequential rather than array-execution-backed
+
+### Deferred Follow-ups
+
+- richer event-driven bar execution
+- future public callback/stateful strategy contract
+- tick support
 
 ---
 

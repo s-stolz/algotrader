@@ -1,4 +1,5 @@
 """Redis stream consumer for market data."""
+
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Union
@@ -23,13 +24,7 @@ TIMEFRAME_TO_MINUTES = {
 class StreamConsumer:
     """Consumes candle data from Redis streams using XREAD."""
 
-    def __init__(
-        self,
-        redis: Redis,
-        account_id: str,
-        batch_size: int = 100,
-        block_ms: int = 5000
-    ):
+    def __init__(self, redis: Redis, account_id: str, batch_size: int = 100, block_ms: int = 5000):
         """Initialize the stream consumer.
 
         Args:
@@ -154,11 +149,7 @@ class StreamConsumer:
         return candles, last_id
 
     async def consume_stream(
-        self,
-        stream_key: str,
-        symbol_id: int,
-        callback: callable,
-        start_id: str = "0-0"
+        self, stream_key: str, symbol_id: int, callback: callable, start_id: str = "0-0"
     ):
         """Consume messages from a single Redis stream.
 
@@ -176,9 +167,7 @@ class StreamConsumer:
         while self._running:
             try:
                 messages = await self.redis.xread(
-                    {stream_key: last_id},
-                    count=self.batch_size,
-                    block=self.block_ms
+                    {stream_key: last_id}, count=self.batch_size, block=self.block_ms
                 )
 
                 if not messages:
@@ -203,12 +192,7 @@ class StreamConsumer:
                 await asyncio.sleep(5)
 
     async def backfill_from_stream(
-        self,
-        stream_key: str,
-        symbol_id: int,
-        start_id: str,
-        end_id: str,
-        callback: callable
+        self, stream_key: str, symbol_id: int, start_id: str, end_id: str, callback: callable
     ) -> int:
         """Backfill historical data from a stream between two message IDs.
 
@@ -234,7 +218,7 @@ class StreamConsumer:
                     stream_key,
                     min=f"({current_id}",  # Exclusive start
                     max=end_id,
-                    count=self.batch_size
+                    count=self.batch_size,
                 )
 
                 if not messages:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Callable
 
 from domain.types import StrategyConfig
+
 from strategies.base import StrategyDefinition
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
 
@@ -25,6 +26,4 @@ def resolve_strategy(config: StrategyConfig) -> StrategyDefinition:
     try:
         return builder(**dict(config.parameters))
     except TypeError as exc:
-        raise ValueError(
-            f"Invalid parameters for strategy {config.strategy_id!r}: {exc}"
-        ) from exc
+        raise ValueError(f"Invalid parameters for strategy {config.strategy_id!r}: {exc}") from exc

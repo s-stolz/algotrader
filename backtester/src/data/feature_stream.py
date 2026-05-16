@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
-
 from domain.types import BarView
 from strategies.base import IndicatorFeatureRequirement, StrategyDefinition
 

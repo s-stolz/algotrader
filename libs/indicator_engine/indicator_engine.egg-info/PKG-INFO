@@ -7,6 +7,7 @@ Project-URL: Repository, https://github.com/s-stolz/algotrader
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 Requires-Dist: numpy>=2.2.6
+Requires-Dist: pandas>=2.3.2
 
 # Indicator Engine
 

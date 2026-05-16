@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import List
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -38,3 +39,46 @@ class CandleBatchIn(BaseModel):
     symbol: str
     exchange: str | None = None
     candles: List[CandleIn]
+
+
+class BacktestClosedTradeIn(BaseModel):
+    trade_id: str
+    symbol: str
+    quantity: float
+    entry_timestamp_ms: int
+    entry_price: float
+    exit_timestamp_ms: int
+    exit_price: float
+    realized_pnl: float
+    fees: float
+
+
+class BacktestClosedTradeOut(BacktestClosedTradeIn):
+    run_id: str
+
+
+class BacktestRunSummaryBase(BaseModel):
+    execution_duration_ms: int
+    symbol: str
+    timeframe: str
+    engine: str
+    strategy_id: str
+    start_ms: int
+    end_ms: int
+    initial_capital: float
+    final_equity: float
+    final_cash: float
+    final_position_symbol: str | None = None
+    final_position_quantity: float
+    total_return_pct: float
+    max_drawdown_pct: float
+    trade_count: int
+
+
+class BacktestRunSummaryIn(BacktestRunSummaryBase):
+    trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
+
+
+class BacktestRunSummaryOut(BacktestRunSummaryBase):
+    run_id: str
+    persisted_at: datetime

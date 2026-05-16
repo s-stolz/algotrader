@@ -9,11 +9,14 @@ Ralph PRDs/issues are the active planning artifacts for new campaigns. This desi
 document remains the architecture reference, while delivery scope and sequencing now
 come from Ralph artifacts.
 
-The Ralph PRD `backtester-bar-engine-parity` covered the current supported parity
+The Ralph PRD `backtester-bar-engine-parity` covered the first supported parity
 slice: single-symbol, bar-mode runs with request-level selection between the
-`vectorized` and `event_driven` engines. Persistence, FastAPI start/query workflows,
-research sweeps, richer order realism, tick support, multi-symbol runs, and
-multi-timeframe parallelism remain future PRD candidates.
+`vectorized` and `event_driven` engines. The Ralph PRD
+`backtester-sequential-event-engine` then replaced the event-driven parity shortcut
+with a bootstrap phase plus a true sequential tradable bar loop while preserving
+the supported public baseline semantics. Persistence, FastAPI start/query
+workflows, research sweeps, richer order realism, tick support, multi-symbol runs,
+and multi-timeframe parallelism remain future PRD candidates.
 
 ## Architecture Rules
 
@@ -62,10 +65,14 @@ Canonical pipeline:
 
 Key boundary:
 
-- `TradingIntent` is semantic strategy output.
+- `TradingIntent` is semantic strategy output in the future full event-driven
+  contract.
 - `ExecutionTarget` is post-sizing/post-risk, engine-ready output.
-- Event-driven mode uses per-bar runtime objects (`StrategyInput`, `StrategyState`, `TradingIntent`).
-- Vectorized mode evaluates full arrays and builds target arrays directly; it does not run per-bar runtime evaluation.
+- Current event-driven bar mode keeps the v1 declarative strategy surface and
+  interprets it one completed bar at a time with internal sequential runtime
+  state.
+- Vectorized mode evaluates full arrays and builds target arrays directly; it
+  does not run per-bar runtime evaluation.
 
 ## Target Package Structure
 
@@ -228,12 +235,12 @@ In `strategies/base.py`:
   - `sizing_model`
   - optional `risk_rules`
 
-Event-driven lifecycle contract:
+Future event-driven lifecycle contract:
 
 - `decision_model` returns `(TradingIntent, next_state)`.
 - No hidden mutable strategy state outside `StrategyState`.
 
-Deterministic state sequence per timestamp `t`:
+Target deterministic state sequence per timestamp `t`:
 
 1. Build `StrategyInput`.
 2. Load prior `StrategyState`.
@@ -261,6 +268,10 @@ Current parity strategy contract:
 - Declarative bar strategies define typed feature requirements, reusable conditions,
   target/sizing rules, and long-only constraints once so both engines can interpret
   the same strategy definition.
+- Event-driven mode currently requires v1 parity-compatible declarative bar
+  strategies and rejects callback-only strategies. The public `StrategyInput`,
+  `StrategyState`, `TradingIntent`, `ExecutionTarget`, and `OrderRequest`
+  migration remains future work.
 
 ## Shared Execution Semantics
 
@@ -271,6 +282,10 @@ Execution flow:
 Vectorized execution flow:
 
 `FeatureMatrix -> condition masks -> signal masks -> target_qty array -> vectorized fills -> portfolio arrays -> trades`
+
+Current event-driven baseline flow:
+
+`bootstrap feature stream -> tradable BAR loop -> pending target deltas -> next-open fills -> sequential cash/position snapshots -> trades`
 
 Scope split:
 
@@ -285,7 +300,10 @@ Hard rules:
 1. `ExecutionConfig` is a domain type (not app-level).
 2. Intent resolution outputs `ExecutionTarget` only.
 3. Vectorized mode does not create `OrderRequest`; it creates synthetic fills directly from `ExecutionTarget` + fill policy.
-4. Event-driven mode converts `ExecutionTarget -> OrderRequest -> Fill`.
+4. Current event-driven bar mode maintains desired target quantity, pending
+   order deltas, actual filled position, cash, fills, and snapshots in sequential
+   runtime state. Future richer event-driven modes may expose
+   `ExecutionTarget -> OrderRequest -> Fill` as a public contract.
 5. Risk rules are applied during intent resolution (pre-trade), not re-applied post-fill.
 6. Vectorized mode is not a per-bar interpreter and must not depend on per-bar `StrategyInput`/`StrategyState`.
 
@@ -307,17 +325,55 @@ in the parity slice.
 
 ### Event-driven (`engines/event_driven.py`)
 
-- Process deterministic sequential market-data events.
-- v1 first-class event: `BAR`.
-- On each event: indicator update, strategy input build, decision, intent resolution, order translation, fills, ledger/trades.
+- Normalize bars outside the loop, then split them into bootstrap bars
+  (`timestamp_ms < start_ms`) and tradable bars (`start_ms <= timestamp_ms < end_ms`).
+- Bootstrap feeds pre-start bars through the event-driven feature stream to
+  prepare indicator state and capture the last complete pre-start feature
+  snapshot. Bootstrap never creates strategy signals, desired target changes,
+  pending orders, fills, trades, or equity snapshots.
+- Indicator strategies require sufficient pre-start warmup history to produce a
+  complete feature snapshot before `start_ms`; otherwise event-driven execution
+  fails with an insufficient-warmup error. Strategies with no indicator
+  requirements may start at the first in-window bar with an empty bootstrap.
+- The tradable loop processes only feature-complete in-window `BAR` events.
+  Each bar executes pending deltas from prior decisions at the current open,
+  updates indicators from the completed bar, evaluates the declarative strategy
+  against current features and the prior feature snapshot, queues target deltas
+  for future execution, marks actual filled position at the bar close, and emits
+  one end-of-bar `PortfolioSnapshot`.
+- If feature output becomes invalid after a successful bootstrap, the engine
+  fails fast instead of skipping the bar or reusing stale features.
+- Decisions are close-time decisions and fills are earliest next-bar-open fills.
+  The final in-window decision expires when no in-window next open exists.
+- Gap policy is applied when a pending delta reaches an invalid open:
+  `skip` defers, `expire` drops, and `error` raises. Deferred pending buy/sell
+  deltas net before execution, so a later reversal can cancel stale exposure.
+- Event-driven mode is sequential internally and does not use the vectorized
+  target-array fill generator or the vectorized cumulative portfolio helper.
+- Public fills, trades, equity curve, metrics, commission, slippage, and
+  diagnostics are expected to match vectorized results for supported shared v1
+  bar semantics when each engine receives data satisfying its contract.
 - v2 adds `TICK` events.
+
+Current bar-mode non-goals:
+
+- callback strategy migration
+- tick simulation
+- partial fills
+- short support
+- richer order realism such as limit/stop orders, latency, spread/liquidity, or queue position
+- broad OHLCV data-health auditing
 
 ## Data Semantics
 
 - All timestamps: UTC epoch milliseconds.
 - Warmup + trimming rule:
-  - After features are computed, rows missing required features are deterministically trimmed before decisions.
-  - Same trimming behavior in both engines.
+  - Vectorized mode computes feature arrays and deterministically trims rows
+    missing required features before decisions.
+  - Event-driven mode uses explicit bootstrap. Indicator warmup must be complete
+    before the tradable loop starts; the loop does not silently spend requested
+    in-window bars as warmup.
+  - No-indicator event-driven strategies may start immediately at `start_ms`.
 - Gap/open rule:
   - For `fill_timing=next_bar_open`, a valid next-bar `open` is required.
   - Missing/invalid `open` triggers configured `gap_policy` (`expire`/`skip`/`error`).
@@ -379,7 +435,7 @@ Required test priorities:
 1. Core execution correctness (highest priority):
    - no-lookahead enforcement
    - fill timestamp semantics
-   - warmup/trimming behavior
+   - vectorized warmup/trimming behavior and event-driven bootstrap readiness
    - gap-policy behavior
    - strategy-state lifecycle determinism
    - portfolio/trade accounting invariants

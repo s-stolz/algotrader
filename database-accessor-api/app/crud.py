@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
-from app.models import candles, markets
+from app.models import backtest_closed_trades, backtest_run_summaries, candles, markets
 from sqlalchemy import delete, insert, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -499,3 +500,65 @@ async def delete_candles(session, symbol_id: int):
     result = await session.execute(stmt)
     await session.commit()
     return result.rowcount
+
+
+async def insert_backtest_run_summary(session, summary_data: dict):
+    trades = summary_data.get("trades", [])
+    summary_values = {key: value for key, value in summary_data.items() if key != "trades"}
+    values = {
+        **summary_values,
+        "run_id": str(uuid4()),
+        "persisted_at": datetime.now(timezone.utc),
+    }
+    stmt = insert(backtest_run_summaries).values(**values).returning(backtest_run_summaries)
+    result = await session.execute(stmt)
+    row = result.fetchone()
+    if trades:
+        trade_values = [{"run_id": values["run_id"], **trade} for trade in trades]
+        await session.execute(insert(backtest_closed_trades).values(trade_values))
+    await session.commit()
+    return dict(row._mapping)
+
+
+async def get_backtest_run_summary(session, run_id: str):
+    stmt = select(backtest_run_summaries).where(backtest_run_summaries.c.run_id == run_id)
+    result = await session.execute(stmt)
+    row = result.fetchone()
+    return dict(row._mapping) if row else None
+
+
+async def list_backtest_run_summaries(
+    session,
+    symbol: Optional[str] = None,
+    timeframe: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    engine: Optional[str] = None,
+):
+    stmt = select(backtest_run_summaries)
+    if symbol:
+        stmt = stmt.where(backtest_run_summaries.c.symbol == symbol)
+    if timeframe:
+        stmt = stmt.where(backtest_run_summaries.c.timeframe == timeframe)
+    if strategy_id:
+        stmt = stmt.where(backtest_run_summaries.c.strategy_id == strategy_id)
+    if engine:
+        stmt = stmt.where(backtest_run_summaries.c.engine == engine)
+    stmt = stmt.order_by(backtest_run_summaries.c.persisted_at.desc())
+
+    result = await session.execute(stmt)
+    rows = result.fetchall()
+    return [dict(row._mapping) for row in rows]
+
+
+async def list_backtest_closed_trades(session, run_id: str):
+    stmt = (
+        select(backtest_closed_trades)
+        .where(backtest_closed_trades.c.run_id == run_id)
+        .order_by(
+            backtest_closed_trades.c.entry_timestamp_ms.asc(),
+            backtest_closed_trades.c.trade_id.asc(),
+        )
+    )
+    result = await session.execute(stmt)
+    rows = result.fetchall()
+    return [dict(row._mapping) for row in rows]

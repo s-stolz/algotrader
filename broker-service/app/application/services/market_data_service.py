@@ -85,9 +85,7 @@ class MarketDataService:
         symbol: str,
         timeframe: Timeframe,
     ):
-        return await self._trendbar_streams.start_trendbar_stream(
-            account_id, symbol, timeframe
-        )
+        return await self._trendbar_streams.start_trendbar_stream(account_id, symbol, timeframe)
 
     async def stop_trendbar_stream(
         self,
