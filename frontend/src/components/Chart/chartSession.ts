@@ -120,7 +120,7 @@ export class ChartSession {
 
     await this.subscribe(nextKey);
 
-    if (revision !== this.revision) {
+    if (revision !== this.revision && !sessionKeysEqual(this.activeKey, nextKey)) {
       await this.unsubscribe(nextKey);
     }
   }

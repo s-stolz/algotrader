@@ -110,6 +110,70 @@ describe('chart session subscription ownership', () => {
     ]);
   });
 
+  it('does not let a stale pending subscribe unsubscribe a key that became active again', async () => {
+    const { adapter, subscribes, unsubscribes, handlers } = createFakeAdapter();
+    let resolveFirstSubscribe: (() => void) | undefined;
+    let subscribeCount = 0;
+    vi.mocked(adapter.subscribeCandles).mockImplementation((key) => {
+      subscribes.push({ ...key });
+      subscribeCount += 1;
+
+      if (subscribeCount === 1) {
+        return new Promise<void>((resolve) => {
+          resolveFirstSubscribe = resolve;
+        });
+      }
+
+      return undefined;
+    });
+    const session = createChartSession(adapter);
+    const receiveLiveCandle = vi.fn();
+    const marketA = {
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    };
+    const marketB = {
+      symbol: 'GBPUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    };
+
+    const firstSession = session.setSession(marketA, receiveLiveCandle);
+    await session.setSession(marketB, receiveLiveCandle);
+    await session.setSession(marketA, receiveLiveCandle);
+
+    resolveFirstSubscribe?.();
+    await firstSession;
+
+    expect(unsubscribes).toEqual([
+      marketA,
+      marketB,
+    ]);
+
+    for (const handler of handlers) {
+      handler({
+        type: 'candleUpdate',
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+        timestamp_ms: 300_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10,
+      });
+    }
+
+    expect(receiveLiveCandle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+      }),
+      marketA,
+    );
+  });
+
   it('applies live candles only when they match the active same-timeframe session', async () => {
     const { adapter, handlers } = createFakeAdapter();
     const session = createChartSession(adapter);
