@@ -15,6 +15,8 @@ CAGG_VIEW_BY_MINUTES: dict[int, str] = {
     1440: "candles_agg_d1",
 }
 
+M1_LIMIT_CHUNK_WINDOW_SIZE = 2
+
 
 def _epoch_ms_to_utc_datetime(value: int) -> datetime:
     return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
@@ -148,8 +150,7 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
     ]
 
     stmt = pg_insert(candles).values(values)
-    stmt = stmt.on_conflict_do_nothing(
-        index_elements=["symbol_id", "timestamp_utc"])
+    stmt = stmt.on_conflict_do_nothing(index_elements=["symbol_id", "timestamp_utc"])
     result = await session.execute(stmt)
     await session.commit()
 
@@ -158,9 +159,12 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
 
 
 async def get_candles(
-    session, symbol_id: int, timeframe: int,
-    start_ms: Optional[int] = None, end_ms: Optional[int] = None,
-    limit: Optional[int] = None
+    session,
+    symbol_id: int,
+    timeframe: int,
+    start_ms: Optional[int] = None,
+    end_ms: Optional[int] = None,
+    limit: Optional[int] = None,
 ):
     """
     Get candles from the database
@@ -193,9 +197,7 @@ async def get_candles(
         # Continuous aggregate policies only materialize a rolling time window.
         # If older buckets are not materialized, fallback to direct bucketing
         # to avoid returning false empty pages during lazy-loading.
-        return await _get_bucketed_candles(
-            session, symbol_id, timeframe, start_ms, end_ms, limit
-        )
+        return await _get_bucketed_candles(session, symbol_id, timeframe, start_ms, end_ms, limit)
 
     return await _get_bucketed_candles(session, symbol_id, timeframe, start_ms, end_ms, limit)
 
@@ -228,6 +230,131 @@ async def _execute_candle_query(session, sql: str, params: dict, limit: Optional
     return [dict(row._mapping) for row in rows]
 
 
+async def _get_candle_chunk_windows(
+    session,
+    *,
+    start_ms: Optional[int],
+    end_ms: Optional[int],
+    window_size: int = M1_LIMIT_CHUNK_WINDOW_SIZE,
+) -> list[tuple[datetime, datetime]]:
+    where_clauses = [
+        "hypertable_schema = 'public'",
+        "hypertable_name = 'candles'",
+    ]
+    params: dict[str, int] = {}
+
+    if start_ms is not None:
+        where_clauses.append("range_end::timestamptz > to_timestamp(:start_ms / 1000.0)")
+        params["start_ms"] = start_ms
+
+    if end_ms is not None:
+        where_clauses.append("range_start::timestamptz < to_timestamp(:end_ms / 1000.0)")
+        params["end_ms"] = end_ms
+
+    sql = f"""
+        SELECT
+            range_start::timestamptz AS range_start,
+            range_end::timestamptz AS range_end
+        FROM timescaledb_information.chunks
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY range_end::timestamptz DESC
+    """
+    result = await session.execute(text(sql), params)
+    chunks = [dict(row._mapping) for row in result.fetchall()]
+
+    windows = []
+    for index in range(0, len(chunks), window_size):
+        chunk_batch = chunks[index : index + window_size]
+        windows.append(
+            (
+                chunk_batch[-1]["range_start"],
+                chunk_batch[0]["range_end"],
+            )
+        )
+    return windows
+
+
+async def _get_m1_limited_candles_by_chunk_window(
+    session,
+    *,
+    symbol_id: int,
+    window_start: datetime,
+    window_end: datetime,
+    start_ms: Optional[int],
+    end_ms: Optional[int],
+    limit: int,
+) -> list[dict]:
+    where_clauses = [
+        "symbol_id = :symbol_id",
+        "timestamp_utc >= :window_start",
+        "timestamp_utc < :window_end",
+    ]
+    time_filters, params = _build_time_filters(
+        column="timestamp_utc",
+        start_ms=start_ms,
+        end_ms=end_ms,
+    )
+    where_clauses.extend(time_filters)
+    params.update(
+        {
+            "symbol_id": symbol_id,
+            "window_start": window_start,
+            "window_end": window_end,
+            "limit": limit,
+        }
+    )
+
+    sql = f"""
+        SELECT
+            CAST(EXTRACT(EPOCH FROM timestamp_utc) * 1000 AS BIGINT) AS timestamp_ms,
+            open,
+            high,
+            low,
+            close,
+            volume
+        FROM candles
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY timestamp_utc DESC
+        LIMIT :limit
+    """
+    result = await session.execute(text(sql), params)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+async def _get_m1_limited_candles(
+    session,
+    symbol_id: int,
+    start_ms: Optional[int],
+    end_ms: Optional[int],
+    limit: int,
+):
+    rows_desc: list[dict] = []
+    chunk_windows = await _get_candle_chunk_windows(
+        session,
+        start_ms=start_ms,
+        end_ms=end_ms,
+    )
+
+    for window_start, window_end in chunk_windows:
+        remaining = limit - len(rows_desc)
+        if remaining <= 0:
+            break
+
+        rows_desc.extend(
+            await _get_m1_limited_candles_by_chunk_window(
+                session,
+                symbol_id=symbol_id,
+                window_start=window_start,
+                window_end=window_end,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                limit=remaining,
+            )
+        )
+
+    return list(reversed(rows_desc[:limit]))
+
+
 async def _get_m1_candles(
     session,
     symbol_id: int,
@@ -235,6 +362,9 @@ async def _get_m1_candles(
     end_ms: Optional[int],
     limit: Optional[int],
 ):
+    if limit is not None:
+        return await _get_m1_limited_candles(session, symbol_id, start_ms, end_ms, limit)
+
     where_clauses = ["symbol_id = :symbol_id"]
     time_filters, params = _build_time_filters(
         column="timestamp_utc",
@@ -345,22 +475,14 @@ async def _get_bucketed_candles(
 
 
 async def get_latest_m1_candle(session, symbol_id: int):
-    sql = text("""
-        SELECT
-            CAST(EXTRACT(EPOCH FROM timestamp_utc) * 1000 AS BIGINT) AS timestamp_ms,
-            open,
-            high,
-            low,
-            close,
-            volume
-        FROM candles
-        WHERE symbol_id = :symbol_id
-        ORDER BY timestamp_utc DESC
-        LIMIT 1
-    """)
-    result = await session.execute(sql, {"symbol_id": symbol_id})
-    row = result.fetchone()
-    return dict(row._mapping) if row else None
+    candles_data = await _get_m1_limited_candles(
+        session,
+        symbol_id,
+        start_ms=None,
+        end_ms=None,
+        limit=1,
+    )
+    return candles_data[0] if candles_data else None
 
 
 async def delete_candles(session, symbol_id: int):
