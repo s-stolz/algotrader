@@ -1,8 +1,11 @@
 import ast
 import inspect
+import sys
 import unittest
+from pathlib import Path
 
 import engines.event_driven as event_driven_engine
+import numpy as np
 import pandas as pd
 from app.backtest_runner import run_backtest
 from domain.enums import BacktestEngine, DataGranularity, GapPolicy, PriceSource
@@ -12,7 +15,7 @@ from domain.types import (
     ExecutionConfig,
     StrategyConfig,
 )
-from strategies.base import BarStrategyModel, StrategyDefinition
+from strategies.base import BarStrategyModel, IndicatorFeatureRequirement, StrategyDefinition
 from strategies.conditions import ConditionRule
 
 
@@ -214,6 +217,40 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(result.fills[0].timestamp_ms, start_ms + (4 * minute))
         self.assertEqual(result.fills[0].price, 15.0)
         self.assertEqual(result.diagnostics["nonzero_signal_count"], 1)
+
+    def test_runtime_invalid_indicator_feature_fails_after_successful_bootstrap(self) -> None:
+        _register_runtime_invalid_indicator()
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + (minute * i) for i in range(3)],
+                "symbol": ["AAPL"] * 3,
+                "open": [10.0, 20.0, 21.0],
+                "high": [10.5, 20.5, 21.5],
+                "low": [9.5, 19.5, 20.5],
+                "close": [10.0, 20.0, 21.0],
+                "volume": [1_000.0] * 3,
+            }
+        )
+        strategy = _build_runtime_invalid_feature_strategy()
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Event-driven.*runtime invalid feature.*timestamp_ms "
+            f"{start_ms + minute}.*symbol AAPL.*runtime_bad",
+        ) as raised:
+            run_backtest(
+                request=self._build_request(
+                    strategy=StrategyConfig(strategy_id=strategy.strategy_id),
+                    start_ms=start_ms + minute,
+                    end_ms=start_ms + (3 * minute),
+                ),
+                bars=bars,
+                strategy=strategy,
+            )
+
+        self.assertNotIn("insufficient warmup", str(raised.exception))
 
     def test_event_driven_diagnostics_include_sequential_processing_counters(self) -> None:
         result = run_backtest(request=self._build_request(), bars=self._build_bars())
@@ -453,6 +490,73 @@ def _build_entry_then_exit_feature_strategy() -> StrategyDefinition:
         feature_specs=("close", "high", "low"),
         decision_model=bar_model.build_signals,
         position_builder=bar_model.build_positions,
+        bar_model=bar_model,
+    )
+
+
+class _RuntimeInvalidAfterBootstrapIndicator:
+    def __init__(self) -> None:
+        from indicator_engine.core.spec import IndicatorSpec
+
+        self.spec = IndicatorSpec(
+            id="runtime_invalid_after_bootstrap_fixture",
+            name="Runtime Invalid After Bootstrap Fixture",
+            outputs=["value"],
+            required_fields=["close"],
+            warmup_fn=lambda params: 1,
+        )
+
+    def batch(self, data, params):
+        from indicator_engine.core.tensor import Tensor
+
+        field_idx = int(np.where(data.fields == "close")[0][0])
+        closes = data.data[:, :, field_idx]
+        values = np.where(closes >= 20.0, np.nan, 1.0)
+        return Tensor(
+            data=values[:, :, np.newaxis],
+            dims=("time", "asset", "output"),
+            coords={
+                "time": data.time,
+                "asset": data.assets,
+                "output": np.array(["value"], dtype=object),
+            },
+        )
+
+
+def _register_runtime_invalid_indicator() -> None:
+    try:
+        from indicator_engine.defaults import get_registry
+    except ModuleNotFoundError:
+        repo_root = Path(__file__).resolve().parents[2]
+        indicator_engine_path = repo_root / "libs" / "indicator_engine"
+        if str(indicator_engine_path) not in sys.path:
+            sys.path.append(str(indicator_engine_path))
+        from indicator_engine.defaults import get_registry
+
+    registry = get_registry()
+    if "runtime_invalid_after_bootstrap_fixture" in registry.list_specs():
+        return
+    registry.register(_RuntimeInvalidAfterBootstrapIndicator())
+
+
+def _build_runtime_invalid_feature_strategy() -> StrategyDefinition:
+    bar_model = BarStrategyModel(
+        entry_conditions=(ConditionRule.above("runtime_bad", "close"),),
+        exit_conditions=(),
+        target_quantity=1.0,
+    )
+    return StrategyDefinition(
+        strategy_id="runtime_invalid_feature_fixture",
+        feature_specs=("runtime_bad", "close"),
+        decision_model=bar_model.build_signals,
+        position_builder=bar_model.build_positions,
+        indicator_requirements=(
+            IndicatorFeatureRequirement(
+                feature_name="runtime_bad",
+                indicator_id="runtime_invalid_after_bootstrap_fixture",
+                output_key="value",
+            ),
+        ),
         bar_model=bar_model,
     )
 

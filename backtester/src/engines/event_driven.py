@@ -195,10 +195,10 @@ def _run_event_driven_loop(
 
         snapshot = stream.update(bar)
         if snapshot is None:
-            required_features = _format_required_indicator_features(strategy)
-            raise ValueError(
-                "Event-driven bar runtime produced an incomplete feature snapshot at "
-                f"timestamp_ms {bar.timestamp_ms}; required feature(s): {required_features}"
+            _raise_runtime_invalid_feature_snapshot(
+                strategy=strategy,
+                symbol=symbol,
+                timestamp_ms=int(bar.timestamp_ms),
             )
         feature_snapshot_count += 1
         signal = bar_model.evaluate_sequential_signal(
@@ -439,6 +439,21 @@ def _format_required_indicator_features(strategy: StrategyDefinition) -> str:
     if not feature_names:
         return "none"
     return ", ".join(feature_names)
+
+
+def _raise_runtime_invalid_feature_snapshot(
+    *,
+    strategy: StrategyDefinition,
+    symbol: str,
+    timestamp_ms: int,
+) -> None:
+    required_features = _format_required_indicator_features(strategy)
+    raise ValueError(
+        "Event-driven bar runtime invalid feature snapshot at "
+        f"timestamp_ms {timestamp_ms} for symbol {symbol} "
+        f"in strategy '{strategy.strategy_id}'; affected required feature(s): "
+        f"{required_features}"
+    )
 
 
 def _validate_event_driven_request(
