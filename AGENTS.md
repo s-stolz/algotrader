@@ -1,64 +1,53 @@
-# Repository Guidelines
+# Agent Bootstrap
 
-## Project Structure & Module Organization
-This repo is a multi-service trading platform.
-- `frontend/`: Vue 3 + Vite UI (`src/components`, `src/views`, `src/stores`, `src/utils`).
-- `database-accessor-api/`, `indicator-api/`, `broker-service/`: FastAPI microservices.
-- `webserver/`: Python WebSocket bridge to Redis/broker APIs.
-- `ingestion-service/`: ingestion worker for market data.
-- `backtester/`: standalone Python backtesting module (`src/`, `test/`).
-- `timescaledb-init/`: DB bootstrap SQL.
-- `docker-compose.yml`: local orchestration entrypoint.
+This file is intentionally short because many coding agents auto-load it. Do not
+turn it into full project documentation. Open deeper context only when relevant.
 
-## Build, Test, and Development Commands
-- `make up`: generate config env files and run full stack (`docker compose up`).
-- `make up-build`: generate config env files and run full stack with image rebuilds (`docker compose up --build`).
-- `make config`: regenerate config env files from `config/topology.yaml` and `config/.env.secrets.local`.
-- `docker compose --env-file config/.env.shared up --build`: build and run the full stack directly (run `make config` first).
-- `make test frontend`: run the full frontend quality gate (lint, typecheck, unit/component tests, and build).
-- `cd frontend && npm run dev`: start frontend dev server.
-- `cd frontend && npm run build`: production frontend build.
-- `cd frontend && npm run lint`: lint TypeScript/Vue code.
-- `cd frontend && npm run typecheck`: run Vue/TypeScript checks.
-- `cd frontend && npm run test:unit`: run frontend unit/component tests.
-- `./lint-python.sh`: run Ruff and Black checks across Python services.
-- `cd backtester && python main.py`: run backtester locally.
-- `cd broker-service && uvicorn app.main:app --host 0.0.0.0 --port 8050`: run broker API locally.
+## First Reads
 
-## Coding Style & Naming Conventions
-- Python: 4-space indentation, `snake_case` functions/variables, `PascalCase` classes, max line length 100 (see `pyproject.toml` and `webserver/pyproject.toml`).
-- Vue/TypeScript: follow `frontend/eslint.config.mjs`; semicolons required, trailing commas on multiline structures, kebab-case custom event names.
-- Keep modules focused by domain (`api/`, `application/`, `domain/`, `infrastructure/` pattern in `broker-service`).
+1. Read `CONTEXT.md` for project vocabulary, data contracts, and system flow.
+2. Read `docs/CONTEXT-MAP.md` to choose the smallest task-specific context set.
+3. For implementation work, open the nearest `<area>/CONTEXT.md` before editing.
+4. For cross-service contract changes, open `docs/agent/CONTRACT-CHANGES.md`.
 
-## Testing Guidelines
-- Automated tests currently include:
-  - `backtester/test/signals/test_signals.py` (unittest)
-  - `ingestion-service/tests/` (unittest)
-  - `broker-service/tests/` (unittest; structure mirrors `broker-service/app/`)
-  - `libs/indicator_engine/tests/` (unittest)
-- Run:
-  - `make test backtester`
-  - `make test ingestion-service`
-  - `cd broker-service && python -m unittest discover -s tests -p "test_*.py"`
-  - `make test indicator_engine`
-  - `make test frontend`
-  - `make test` (run all configured backend test suites)
-- Frontend tests use Vitest and Vue Test Utils; `make test frontend` is the repo-root acceptance command for frontend changes.
-- For new Python tests, prefer `test_*.py` naming and colocate under each service’s `test/` or `tests/` directory mirroring source structure.
-- Add API contract/integration tests for new endpoints and stream behavior.
+## Repository Shape
 
-## Security & Configuration Tips
+- `frontend/`: Vue 3 and Vite chart UI.
+- `webserver/`: Python WebSocket bridge from Redis streams to frontend clients.
+- `broker-service/`: FastAPI cTrader adapter, broker commands, and live stream publisher.
+- `ingestion-service/`: Redis candle stream consumer and Timescale persistence worker.
+- `database-accessor-api/`: FastAPI market and candle storage interface over TimescaleDB.
+- `indicator-api/`: historical and live indicator calculation interface.
+- `backtester/`: standalone Python backtesting module.
+- `libs/`: shared Python libraries.
+- `config/`: tracked topology and generated runtime env model.
+- `timescaledb-init/`: database schema, hypertable, and continuous aggregate SQL.
+
+## Hard Rules
+
 - Never commit real secrets.
-- Use centralized config:
-  - Tracked shared topology: `config/topology.yaml`
-  - Local secrets (gitignored): `config/.env.secrets.local` (copy from `config/.env.secrets.example`)
-  - Generated runtime env files (gitignored): `config/.env.shared`, `config/.env.secrets.db`, `config/.env.secrets.runtime`, `config/.env.secrets.broker` via `python scripts/generate_env.py`
-- Validate port and healthcheck changes against `docker-compose.yml` before merging.
+- Preserve the timestamp, Redis stream, and Timescale contracts in `CONTEXT.md`.
+- Ignore generated/vendor paths unless debugging generated output: `.venv/`, `node_modules/`, `dist/`, `__pycache__/`, `.ruff_cache/`.
 
-## Timestamp & Timezone Convention
-- External/internal API contracts use UTC epoch milliseconds only (`timestamp_ms`, `start_ms`, `end_ms`).
-- Redis stream payloads stay compact and use one-character keys only:
-  - ticks: `b`, `a`, `t`
-  - candles: `o`, `h`, `l`, `c`, `v`, `t`
-- TimescaleDB stores candle time in `candles.timestamp_utc` (`TIMESTAMPTZ`).
-- `markets.timezone` stores IANA timezone IDs (e.g. `Europe/Berlin`) for market/session logic only; transport/storage timestamps remain UTC.
+## Common Commands
+
+- Full stack: `make up`
+- Rebuild stack: `make up-build`
+- Regenerate config: `make config`
+- Backend tests: `make test`
+- Frontend gate: `make test frontend`
+- Python lint/format check: `./lint-python.sh`
+
+More commands and per-area test commands live in `docs/agent/COMMANDS.md`.
+The end-to-end agent workflow lives in `docs/agent/WORKFLOW.md`.
+
+## Development Conventions
+
+- Prefer existing module patterns over new architecture.
+- For Python services, tests use `unittest` and service-local `tests/` or `test/`.
+- For frontend changes, use Vitest and Vue Test Utils.
+- When a cross-service contract changes, update the producer and consumer context files.
+- Durable architecture decisions live in `docs/adr/`; check them before revisiting
+  established seams.
+
+Open `docs/agent/CODING-CONVENTIONS.md` only when editing code or tests.

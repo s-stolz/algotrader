@@ -1,0 +1,51 @@
+# Backtester Context
+
+Standalone Python backtesting module for historical candle simulation.
+
+## Owned Interfaces
+
+- `BacktestRequest` run configuration for engine, symbols, Timeframe, date range,
+  strategy, execution config, initial capital, and data granularity.
+- Shared backtest result contracts for engines, execution, portfolio, metrics, and
+  reporting.
+- Strategy registry and reproducible strategy definitions.
+- Candle input normalization from root `CONTEXT.md` fields plus `symbol`.
+
+## Key Modules
+
+- `backtester_design.md`: target architecture and active design vocabulary.
+- `src/app/backtest_runner.py`: orchestration for one backtest run.
+- `src/domain/`: runtime dataclasses, enums, and event types.
+- `src/data/`: market data loading, normalization, indicators, feature streams,
+  and warmup trimming.
+- `src/engines/vectorized.py`: array-based bar simulation.
+- `src/engines/event_driven.py`: sequential bar-mode simulation.
+- `src/execution/`: fills, portfolio, sizing, risk, and trade accounting.
+- `src/strategies/`: strategy contracts, conditions, registry, and examples.
+- `src/adapters/db_accessor.py`: database accessor adapter.
+- `src/reporting/metrics.py`: metrics from equity curve and trades.
+
+## Contracts
+
+- Run with `PYTHONPATH=src` when invoking tests or local modules directly.
+- `BacktestRequest` selects engine, symbols, timeframe, start/end, strategy,
+  execution config, initial capital, and data granularity.
+- Current parity slice is single-symbol bar-mode for vectorized and event-driven
+  engines.
+- Candle input normalizes root `CONTEXT.md` candle fields plus `symbol`.
+
+## Change Triggers
+
+- Use `domain/types.py` and `domain/enums.py` as canonical homes for shared
+  backtester concepts.
+- Do not duplicate Timeframe maps if shared `db_accessor_client` can be used.
+- Strategy definitions should remain explicit and reproducible through the
+  strategy registry.
+- Treat `backtester_implementation_plan.md` as historical roadmap context, not
+  the active task queue.
+
+## Verification
+
+- Backtester tests: `make test backtester`.
+- Run shared client or indicator engine tests when data loading or indicator
+  integration changes.

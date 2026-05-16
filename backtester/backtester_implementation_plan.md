@@ -9,6 +9,8 @@ Ralph PRDs/issues are the active source of truth for new implementation campaign
 This file preserves the original milestone breakdown so completed baseline work and
 remaining roadmap candidates stay understandable, but new work should be planned in
 Ralph artifacts rather than by extending this document directly.
+Agents should read this only when historical sequencing or deferred scope is
+needed for a backtester task.
 
 - M0-M3 are completed baseline work and should not be redone.
 - The Ralph PRD `backtester-bar-engine-parity` covered single-symbol, bar-mode

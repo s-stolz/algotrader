@@ -2,6 +2,14 @@
 
 AlgoTrader is an experimental trading project that uses the [Lightweight Charts](https://tradingview.github.io/lightweight-charts/) library to visualize historical market data.
 
+## Documentation Ownership
+
+- Human-facing overview and setup live in this README and area README files.
+- Agent-facing vocabulary, system flow, and cross-service contracts live in
+  `CONTEXT.md`.
+- Task-specific context routing lives in `docs/CONTEXT-MAP.md`.
+- Durable architecture decisions live in `docs/adr/`.
+
 ## Architecture
 The project is structured into multiple services, each responsible for a specific aspect of the trading system:
 
@@ -21,7 +29,7 @@ The project is structured into multiple services, each responsible for a specifi
                   |                                |                   | Broker Service |
                   |                                |                   +----------------+
                   |                                |                           |
-                  |                                |                           | 
+                  |                                |                           |
                   |                                |                           |
                   |                                | subscribe:                |publish prices
                   |                                | indicators/prices         |

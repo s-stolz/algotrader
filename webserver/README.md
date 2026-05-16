@@ -4,7 +4,9 @@ WebSocket server for streaming real-time market data from Redis to frontend clie
 
 ## Overview
 
-This WebSocket server acts as a bridge between the broker-service/Redis streams and frontend clients. It manages subscriptions, controls stream lifecycle via the broker-service API, and multiplexes data to connected clients.
+This WebSocket server acts as a bridge between Redis streams, broker-service,
+indicator-api, and frontend clients. It manages subscriptions, controls source
+stream lifecycle, and multiplexes live updates to connected clients.
 
 ## Architecture
 
@@ -14,17 +16,18 @@ Frontend (WebSocket Client)
 WebSocket Server (port 8765)
     ↓
 ├─→ Broker Service API (start/stop streams)
-└─→ Redis Streams (consume real-time data)
+├─→ Indicator API (start/stop live indicator streams)
+└─→ Redis Streams (consume live candles and indicators)
          ↑
-    Broker Service (publishes data)
+    Broker Service / Indicator API (publish data)
 ```
 
 ## Features
 
-- **WebSocket-only** - No HTTP/Express overhead
-- **Subscription Management** - Clients subscribe/unsubscribe to specific symbols and timeframes
-- **Reference Counting** - Streams start when first client subscribes, stop when last client unsubscribes
-- **Redis Stream Consumption** - Consumes from `candles:{account}:{symbol}:{timeframe}` and `ticks:{account}:{symbol}` streams
+- **WebSocket bridge** - WebSocket server plus lightweight health endpoint
+- **Subscription Management** - Clients subscribe/unsubscribe to candle and indicator streams
+- **Reference Counting** - Source streams start when first client subscribes and stop when last client unsubscribes
+- **Redis Stream Consumption** - Consumes live candle and indicator streams
 - **Graceful Shutdown** - Properly closes all connections and streams on SIGTERM/SIGINT
 
 ## Configuration
@@ -47,199 +50,60 @@ Key settings:
 
 ## Message Protocol
 
-The server uses a JSON-based message format compatible with the frontend's Ticket protocol:
+The current protocol uses flat JSON messages. The concise agent-facing summary
+lives in `webserver/CONTEXT.md`.
 
-```javascript
-{
-  "receiver": "Market",  // Message category
-  "type": "SubscribeCandles",  // Message type
-  "data": {  // Optional payload
-    "symbol": "EURUSD",
-    "timeframe": "M1"
-  }
-}
-```
+Client-to-server examples:
 
-Timestamp rules:
-- Outbound WebSocket events use `timestamp_ms` (UTC epoch milliseconds).
-- Internally, Redis payloads remain compact (`t/o/h/l/c/v` and `t/b/a`) and are expanded before broadcasting to clients.
-
-### Client → Server Messages
-
-#### Login
 ```json
-{
-  "receiver": "Broker",
-  "type": "Login"
-}
-```
-
-#### Subscribe to Candles
-```json
-{
-  "receiver": "Market",
-  "type": "SubscribeCandles",
-  "data": {
-    "symbol": "EURUSD",
-    "timeframe": "M1"
-  }
-}
-```
-
-#### Unsubscribe from Candles
-```json
-{
-  "receiver": "Market",
-  "type": "UnsubscribeCandles",
-  "data": {
-    "symbol": "EURUSD",
-    "timeframe": "M1"
-  }
-}
-```
-
-#### Subscribe to Ticks
-```json
-{
-  "receiver": "Market",
-  "type": "SubscribeTicks",
-  "data": {
-    "symbol": "EURUSD"
-  }
-}
-```
-
-#### Unsubscribe from Ticks
-```json
-{
-  "receiver": "Market",
-  "type": "UnsubscribeTicks",
-  "data": {
-    "symbol": "EURUSD"
-  }
-}
-```
-
-### Server → Client Messages
-
-#### Connection Established
-```json
-{
-  "receiver": "System",
-  "type": "Connected",
-  "data": {
-    "clientId": 1
-  }
-}
-```
-
-#### Login Success
-```json
-{
-  "receiver": "System",
-  "type": "LoginSuccess",
-  "data": {
-    "clientId": 1
-  }
-}
-```
-
-#### Subscription Confirmed
-```json
-{
-  "receiver": "Market",
-  "type": "SubscribedCandles",
-  "data": {
-    "symbol": "EURUSD",
-    "timeframe": "M1"
-  }
-}
-```
-
-#### Candle Update
-```json
-{
-  "receiver": "Market",
-  "type": "CandleUpdate",
-  "data": {
+[
+  {"type": "subscribeCandles", "symbol": "EURUSD", "timeframe": "M1"},
+  {"type": "unsubscribeCandles", "symbol": "EURUSD", "timeframe": "M1"},
+  {
+    "type": "subscribeIndicator",
     "symbol": "EURUSD",
     "timeframe": "M1",
-    "timestamp_ms": 1706371200000,
-    "open": 1.0850,
-    "high": 1.0855,
-    "low": 1.0848,
-    "close": 1.0852,
-    "volume": 125000
-  }
-}
-```
-
-#### Tick Update
-```json
-{
-  "receiver": "Market",
-  "type": "TickUpdate",
-  "data": {
+    "indicatorId": 1,
+    "clientIndicatorId": "rsi-1"
+  },
+  {
+    "type": "unsubscribeIndicator",
     "symbol": "EURUSD",
-    "timestamp_ms": 1706371234567,
-    "bid": 1.0850,
-    "ask": 1.0852
+    "timeframe": "M1",
+    "indicatorId": 1,
+    "clientIndicatorId": "rsi-1"
   }
-}
+]
 ```
 
-#### Error
-```json
-{
-  "receiver": "System",
-  "type": "Error",
-  "data": {
-    "error": "Error message"
-  }
-}
-```
+Server to client updates use flat message types such as `candleUpdate`,
+`indicatorUpdate`, `indicatorSubscribed`, `indicatorUnsubscribed`, and `error`.
+Timestamp and Redis payload rules are defined in the repository root
+`CONTEXT.md`.
 
 ## Components
 
-### server.js
-Entry point that loads configuration and starts the WebSocket server.
-
-### app/utils/websocketserver.js
-WebSocket server initialization and message routing. Handles client connections and dispatches messages to appropriate handlers.
-
-### app/subscriptionManager.js
-Manages client subscriptions with reference counting. Coordinates stream lifecycle (start/stop) based on active subscriptions.
-
-### app/redisConsumer.js
-Consumes from Redis streams using `XREAD BLOCK` and broadcasts parsed data to subscribed clients.
-
-### app/brokerClient.js
-HTTP client for broker-service API. Starts/stops tick and trendbar streams via REST endpoints.
+- `main.py`: process entrypoint, WebSocket server, health server, and message routing.
+- `app/subscription_manager.py`: client subscriptions, source lifecycle, and fanout.
+- `app/redis_consumer.py`: Redis stream consumption and payload expansion.
+- `app/broker_client.py`: broker-service stream start/stop adapter.
+- `app/indicator_api_client.py`: indicator-api live stream adapter.
 
 ## Running Locally
 
-```bash
-# Install dependencies
-npm install
+From the repository root:
 
-# Set up environment
-cd ..
+```bash
 cp config/.env.secrets.example config/.env.secrets.local
 python scripts/generate_env.py
 cd webserver
-
-# Run
-npm start
-
-# Development mode (with nodemon)
-npx nodemon server.js
+python main.py
 ```
 
 ## Running with Docker
 
 ```bash
-# From project root
-docker-compose up webserver
+make up
 ```
 
 ## Timeframes
