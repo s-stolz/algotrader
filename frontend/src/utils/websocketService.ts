@@ -1,11 +1,12 @@
 import mitt, { type Emitter, type EventType, type Handler } from 'mitt';
 
 import {
-  isCandleUpdateMessage,
-  isIndicatorUpdateMessage,
+  isWebSocketInboundMessage,
   type CandleUpdateMessage,
   type IndicatorUpdateMessage,
   type JsonValue,
+  type WebSocketErrorMessage,
+  type WebSocketInboundMessage,
 } from '@/types/contracts';
 
 export interface WebSocketServiceEventMap {
@@ -14,18 +15,18 @@ export interface WebSocketServiceEventMap {
   disconnected: CloseEvent | Event;
   candleUpdate: CandleUpdateMessage;
   indicatorUpdate: IndicatorUpdateMessage;
+  serverError: WebSocketErrorMessage;
 }
 
 type MittEvents = WebSocketServiceEventMap & Record<EventType, unknown>;
 type WebSocketServiceEventName = keyof WebSocketServiceEventMap;
-type InboundWebSocketMessage = CandleUpdateMessage | IndicatorUpdateMessage;
 
 export type WebSocketSendPayload = Record<string, JsonValue | undefined>;
 export type WebSocketEventHandler<EventName extends WebSocketServiceEventName> = Handler<
   WebSocketServiceEventMap[EventName]
 >;
 
-function parseInboundMessage(data: MessageEvent['data']): InboundWebSocketMessage | null {
+function parseInboundMessage(data: MessageEvent['data']): WebSocketInboundMessage | null {
   if (typeof data !== 'string') {
     console.warn('Ignoring non-text WebSocket message:', data);
     return null;
@@ -39,11 +40,7 @@ function parseInboundMessage(data: MessageEvent['data']): InboundWebSocketMessag
     return null;
   }
 
-  if (isCandleUpdateMessage(parsed)) {
-    return parsed;
-  }
-
-  if (isIndicatorUpdateMessage(parsed)) {
+  if (isWebSocketInboundMessage(parsed)) {
     return parsed;
   }
 
@@ -83,12 +80,20 @@ export class WebSocketService {
         return;
       }
 
-      if (message.type === 'candleUpdate') {
-        this.emit('candleUpdate', message);
-        return;
+      switch (message.type) {
+        case 'candleUpdate':
+          this.emit('candleUpdate', message);
+          return;
+        case 'indicatorUpdate':
+          this.emit('indicatorUpdate', message);
+          return;
+        case 'error':
+          console.error('WebSocket server error:', message.error);
+          this.emit('serverError', message);
+          return;
+        default:
+          return;
       }
-
-      this.emit('indicatorUpdate', message);
     };
 
     this.ws.onerror = (error) => {

@@ -3,11 +3,17 @@ import { describe, expect, it } from 'vitest';
 import {
   isCandle,
   isCandleUpdateMessage,
+  isCandleSubscribedMessage,
   isIndicatorResponse,
+  isIndicatorSubscribedMessage,
+  isIndicatorUnsubscribedMessage,
   isIndicatorUpdateMessage,
   isMarket,
   isStoredCurrentMarket,
   isStoredCurrentTimeframe,
+  isWebSocketControlMessage,
+  isWebSocketErrorMessage,
+  isWebSocketInboundMessage,
 } from '@/types/contracts';
 
 describe('shared frontend contract validators', () => {
@@ -85,6 +91,53 @@ describe('shared frontend contract validators', () => {
       clientIndicatorId: 'client-1',
       values: null,
     })).toBe(false);
+  });
+
+  it('validates WebSocket control messages', () => {
+    const candleSubscribed = {
+      type: 'subscribed',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    };
+    const indicatorSubscribed = {
+      type: 'indicatorSubscribed',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+      indicatorId: 1,
+      clientIndicatorId: 'client-1',
+      streamId: null,
+    };
+    const indicatorUnsubscribed = {
+      type: 'indicatorUnsubscribed',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+      indicatorId: 1,
+      clientIndicatorId: 'client-1',
+    };
+    const serverError = { type: 'error', error: 'Missing symbol or timeframe' };
+
+    expect(isCandleSubscribedMessage(candleSubscribed)).toBe(true);
+    expect(isIndicatorSubscribedMessage(indicatorSubscribed)).toBe(true);
+    expect(isIndicatorUnsubscribedMessage(indicatorUnsubscribed)).toBe(true);
+    expect(isWebSocketErrorMessage(serverError)).toBe(true);
+
+    expect(isWebSocketControlMessage(indicatorSubscribed)).toBe(true);
+    expect(isWebSocketInboundMessage(candleSubscribed)).toBe(true);
+
+    expect(isCandleSubscribedMessage({ type: 'subscribed', timeframe: 'M1' })).toBe(false);
+    expect(isIndicatorSubscribedMessage({
+      type: 'indicatorSubscribed',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+      clientIndicatorId: 'client-1',
+    })).toBe(false);
+    expect(isIndicatorUnsubscribedMessage({
+      type: 'indicatorUnsubscribed',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+      indicatorId: 1,
+    })).toBe(false);
+    expect(isWebSocketErrorMessage({ type: 'error', error: '' })).toBe(false);
   });
 
   it('validates indicator response contracts', () => {

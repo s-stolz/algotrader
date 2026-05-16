@@ -6,7 +6,8 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 
 - Chart UI state for selected Market, Timeframe, Candle history, live Candle
   updates, and Indicators.
-- WebSocket client commands and live updates shared with `webserver`.
+- WebSocket client commands, control acknowledgements, errors, and live updates
+  shared with `webserver`.
 - Chart series points that convert transport `timestamp_ms` into chart `time`
   epoch seconds.
 - Runtime validation for frontend-facing HTTP and WebSocket payloads.

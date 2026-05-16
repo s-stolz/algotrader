@@ -35,6 +35,14 @@ Webserver to frontend live updates are flat JSON objects:
 - `candleUpdate` with expanded candle fields.
 - `indicatorUpdate` with `clientIndicatorId`, `streamId`, `timestamp_ms`, and `values`.
 
+Webserver to frontend control messages are flat JSON objects:
+
+- `subscribed` after candle subscription succeeds.
+- `indicatorSubscribed` with `clientIndicatorId` and `streamId` after indicator
+  subscription succeeds.
+- `indicatorUnsubscribed` after indicator unsubscription succeeds.
+- `error` with an `error` string when message handling fails.
+
 - Uses the Redis stream names and compact candle fields defined in root
   `CONTEXT.md`.
 - Expands Redis candle payloads before broadcasting to frontend clients.

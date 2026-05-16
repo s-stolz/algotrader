@@ -150,6 +150,72 @@ describe('WebSocket service', () => {
     expect(warn).toHaveBeenCalled();
   });
 
+  it('accepts server acknowledgements without warning or update dispatch', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+
+    const candleHandler = vi.fn();
+    const indicatorHandler = vi.fn();
+
+    wsService.on('candleUpdate', candleHandler);
+    wsService.on('indicatorUpdate', indicatorHandler);
+    wsService.connect('ws://example.test');
+
+    const [socket] = mockSockets;
+    socket.open();
+
+    socket.receive(JSON.stringify({
+      type: 'subscribed',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    }));
+    socket.receive(JSON.stringify({
+      type: 'indicatorSubscribed',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+      indicatorId: 1,
+      clientIndicatorId: 'client-1',
+      streamId: null,
+    }));
+    socket.receive(JSON.stringify({
+      type: 'indicatorUnsubscribed',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+      indicatorId: 1,
+      clientIndicatorId: 'client-1',
+    }));
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(candleHandler).not.toHaveBeenCalled();
+    expect(indicatorHandler).not.toHaveBeenCalled();
+  });
+
+  it('emits server error messages without classifying them as invalid', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { wsService } = await loadService();
+
+    const serverErrorHandler = vi.fn();
+
+    wsService.on('serverError', serverErrorHandler);
+    wsService.connect('ws://example.test');
+
+    const [socket] = mockSockets;
+    socket.open();
+
+    socket.receive(JSON.stringify({
+      type: 'error',
+      error: 'Missing symbol or timeframe',
+    }));
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith('WebSocket server error:', 'Missing symbol or timeframe');
+    expect(serverErrorHandler).toHaveBeenCalledWith({
+      type: 'error',
+      error: 'Missing symbol or timeframe',
+    });
+  });
+
   it('forwards errors, removes listeners, and emits disconnect on close', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { wsService } = await loadService();
