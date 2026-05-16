@@ -166,8 +166,9 @@ services:
     ports:
       - ${FRONTEND_PUBLISHED_PORT:-5173}:${FRONTEND_PORT:-5173}
     volumes:
-      - frontend_data:/app/dist
       - ./frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules
+      - frontend_data:/app/frontend/dist
     depends_on:
       webserver:
         condition: service_healthy
@@ -193,4 +194,5 @@ services:
 volumes:
   timescaledb_data:
   frontend_data:
+  frontend_node_modules:
   redis_data:
