@@ -1,5 +1,8 @@
+import ast
+import inspect
 import unittest
 
+import engines.event_driven as event_driven_engine
 import pandas as pd
 from app.backtest_runner import run_backtest
 from domain.enums import BacktestEngine, DataGranularity, GapPolicy, PriceSource
@@ -80,6 +83,25 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertAlmostEqual(result.trades[0].realized_pnl, 3.0)
         self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
         self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
+
+    def test_event_driven_engine_does_not_call_array_fill_generation(self) -> None:
+        tree = ast.parse(inspect.getsource(event_driven_engine))
+        forbidden_calls: list[int] = []
+        forbidden_imports: list[int] = []
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "execution.fills":
+                if any(alias.name == "generate_fills_from_targets" for alias in node.names):
+                    forbidden_imports.append(node.lineno)
+            if isinstance(node, ast.Call):
+                call = node.func
+                if isinstance(call, ast.Name) and call.id == "generate_fills_from_targets":
+                    forbidden_calls.append(node.lineno)
+                if isinstance(call, ast.Attribute) and call.attr == "generate_fills_from_targets":
+                    forbidden_calls.append(node.lineno)
+
+        self.assertEqual(forbidden_imports, [])
+        self.assertEqual(forbidden_calls, [])
 
     def test_indicator_strategy_requires_complete_pre_start_bootstrap(self) -> None:
         with self.assertRaisesRegex(
@@ -221,6 +243,42 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(event_driven.diagnostics["executed_deferred_count"], 1)
         self.assertGreater(event_driven.diagnostics["total_fees"], 0.0)
         self.assertGreater(event_driven.diagnostics["total_slippage_cost"], 0.0)
+
+    def test_gap_skip_can_net_deferred_pending_delta_to_zero_before_execution(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + (minute * i) for i in range(3)],
+                "symbol": ["AAPL"] * 3,
+                "open": [10.0, 0.0, 13.0],
+                "high": [10.0, 100.0, 100.0],
+                "low": [0.0, 9.0, 0.0],
+                "close": [11.0, 8.0, 12.0],
+                "volume": [1_000.0] * 3,
+            }
+        )
+        strategy = _build_entry_then_exit_feature_strategy()
+
+        result = run_backtest(
+            request=self._build_request(
+                execution=ExecutionConfig(gap_policy=GapPolicy.SKIP),
+                strategy=StrategyConfig(strategy_id=strategy.strategy_id),
+                start_ms=start_ms,
+                end_ms=start_ms + (3 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self.assertEqual(result.fills, [])
+        self.assertEqual(result.trades, [])
+        self.assertEqual(result.equity_curve[-1].positions, {})
+        self.assertEqual(result.equity_curve[-1].equity, 10_000.0)
+        self.assertEqual(result.diagnostics["invalid_open_count"], 1)
+        self.assertEqual(result.diagnostics["deferred_delta_count"], 1)
+        self.assertEqual(result.diagnostics["executed_deferred_count"], 0)
+        self.assertEqual(result.diagnostics["tail_expired_delta_count"], 0)
 
     def test_gap_expire_matches_vectorized_without_inventing_executions(self) -> None:
         bars = self._build_gap_bars()
@@ -371,6 +429,21 @@ def _build_enter_and_hold_strategy() -> StrategyDefinition:
     return StrategyDefinition(
         strategy_id="enter_hold_fixture",
         feature_specs=("close", "open"),
+        decision_model=bar_model.build_signals,
+        position_builder=bar_model.build_positions,
+        bar_model=bar_model,
+    )
+
+
+def _build_entry_then_exit_feature_strategy() -> StrategyDefinition:
+    bar_model = BarStrategyModel(
+        entry_conditions=(ConditionRule.above("close", "high"),),
+        exit_conditions=(ConditionRule.below("close", "low"),),
+        target_quantity=1.0,
+    )
+    return StrategyDefinition(
+        strategy_id="entry_then_exit_fixture",
+        feature_specs=("close", "high", "low"),
         decision_model=bar_model.build_signals,
         position_builder=bar_model.build_positions,
         bar_model=bar_model,

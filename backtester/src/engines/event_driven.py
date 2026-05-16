@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -13,6 +13,8 @@ from domain.enums import (
     BacktestEngine,
     DataGranularity,
     FillTiming,
+    GapPolicy,
+    OrderSide,
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
@@ -22,9 +24,9 @@ from domain.types import (
     BacktestResult,
     BarView,
     ExecutionArrayBundle,
-    SignalMatrix,
+    Fill,
 )
-from execution.fills import FillGenerationResult, generate_fills_from_targets
+from execution.fills import FillGenerationResult
 from execution.portfolio import build_equity_curve
 from execution.trades import build_trades_from_fills
 from reporting.metrics import compute_metrics
@@ -49,39 +51,29 @@ def run_event_driven_backtest(
     normalized.sort_values("timestamp_ms", kind="mergesort", inplace=True)
     normalized.reset_index(drop=True, inplace=True)
 
-    event_targets = _build_event_driven_targets(
+    run_result = _run_event_driven_loop(
         request=request,
         bars=normalized,
         strategy=strategy,
         symbol=symbol,
     )
 
-    fill_result = generate_fills_from_targets(
-        symbol=symbol,
-        timestamp_ms=event_targets.timestamp_ms,
-        open_prices=event_targets.open_prices,
-        target_quantity=event_targets.target_quantity,
-        gap_policy=request.execution.gap_policy,
-        slippage_bps=float(request.execution.slippage_bps),
-        commission_bps=float(request.execution.commission_bps),
-    )
-
     equity_curve = build_equity_curve(
         symbol=symbol,
-        timestamp_ms=event_targets.timestamp_ms,
-        close_prices=event_targets.close_prices,
-        executed_delta=fill_result.executed_delta,
-        executed_notional=fill_result.executed_notional,
-        executed_fees=fill_result.executed_fees,
+        timestamp_ms=run_result.timestamp_ms,
+        close_prices=run_result.close_prices,
+        executed_delta=run_result.fill_result.executed_delta,
+        executed_notional=run_result.fill_result.executed_notional,
+        executed_fees=run_result.fill_result.executed_fees,
         initial_capital=request.initial_capital,
     )
 
-    trades = build_trades_from_fills(fill_result.fills)
+    trades = build_trades_from_fills(run_result.fill_result.fills)
     metrics = compute_metrics(equity_curve=equity_curve, trades=trades)
 
     return BacktestResult(
         request=request,
-        fills=fill_result.fills,
+        fills=run_result.fill_result.fills,
         trades=trades,
         equity_curve=equity_curve,
         metrics=metrics,
@@ -89,33 +81,61 @@ def run_event_driven_backtest(
             request=request,
             strategy=strategy,
             symbol=symbol,
-            bar_count=len(event_targets.timestamp_ms),
-            fill_result=fill_result,
-            processed_bar_count=event_targets.processed_bar_count,
-            feature_snapshot_count=event_targets.feature_snapshot_count,
-            nonzero_signal_count=event_targets.nonzero_signal_count,
+            bar_count=len(run_result.timestamp_ms),
+            fill_result=run_result.fill_result,
+            processed_bar_count=run_result.processed_bar_count,
+            feature_snapshot_count=run_result.feature_snapshot_count,
+            nonzero_signal_count=run_result.nonzero_signal_count,
         ),
     )
 
 
 @dataclass(frozen=True)
-class _EventDrivenTargets:
+class _SequentialRunResult:
     timestamp_ms: list[int]
-    open_prices: list[float]
     close_prices: list[float]
-    target_quantity: np.ndarray
+    fill_result: FillGenerationResult
     processed_bar_count: int
     feature_snapshot_count: int
     nonzero_signal_count: int
 
 
-def _build_event_driven_targets(
+@dataclass
+class _PendingDelta:
+    quantity: float
+    deferred: bool = False
+
+
+@dataclass
+class _SequentialRuntimeState:
+    raw_desired_target: float = 0.0
+    desired_target: float = 0.0
+    actual_position: float = 0.0
+    pending: list[_PendingDelta] = field(default_factory=list)
+    executed_delta: list[float] = field(default_factory=list)
+    executed_notional: list[float] = field(default_factory=list)
+    executed_fees: list[float] = field(default_factory=list)
+    fills: list[Fill] = field(default_factory=list)
+    total_slippage_cost: float = 0.0
+    invalid_open_count: int = 0
+    deferred_delta_count: int = 0
+    expired_delta_count: int = 0
+    executed_deferred_count: int = 0
+
+    def start_bar(self) -> int:
+        self.executed_delta.append(0.0)
+        self.executed_notional.append(0.0)
+        self.executed_fees.append(0.0)
+        return len(self.executed_delta) - 1
+
+
+def _run_event_driven_loop(
     *,
     request: BacktestRequest,
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
     symbol: str,
-) -> _EventDrivenTargets:
+) -> _SequentialRunResult:
     bar_model = strategy.require_v1_parity_model()
     stream = EventDrivenFeatureStream(
         strategy=strategy,
@@ -129,12 +149,12 @@ def _build_event_driven_targets(
     tradable_bars = bars.loc[(bars["timestamp_ms"] >= start_ms) & (bars["timestamp_ms"] < end_ms)]
 
     timestamps: list[int] = []
-    opens: list[float] = []
     closes: list[float] = []
-    signals: list[int] = []
     previous_features: dict[str, float] | None = None
     processed_bar_count = len(bars)
     feature_snapshot_count = 0
+    nonzero_signal_count = 0
+    state = _SequentialRuntimeState()
 
     for row in bootstrap_bars.itertuples(index=False):
         bar = _bar_from_row(row)
@@ -154,6 +174,21 @@ def _build_event_driven_targets(
 
     for row in tradable_bars.itertuples(index=False):
         bar = _bar_from_row(row)
+        bar_index = state.start_bar()
+        timestamps.append(int(bar.timestamp_ms))
+        closes.append(float(bar.close))
+
+        _execute_pending_at_open(
+            state=state,
+            symbol=symbol,
+            bar_index=bar_index,
+            timestamp_ms=int(bar.timestamp_ms),
+            raw_open=float(bar.open),
+            gap_policy=request.execution.gap_policy,
+            slippage_bps=float(request.execution.slippage_bps),
+            commission_bps=float(request.execution.commission_bps),
+        )
+
         snapshot = stream.update(bar)
         if snapshot is None:
             required_features = _format_required_indicator_features(strategy)
@@ -167,40 +202,225 @@ def _build_event_driven_targets(
             current=snapshot.features,
         )
         previous_features = dict(snapshot.features)
+        if signal != 0:
+            nonzero_signal_count += 1
 
-        timestamps.append(int(snapshot.timestamp_ms))
-        opens.append(float(bar.open))
-        closes.append(float(bar.close))
-        signals.append(int(signal))
+        _queue_target_delta_from_signal(
+            state=state,
+            strategy=strategy,
+            bar_model=bar_model,
+            symbol=symbol,
+            timestamp_ms=int(snapshot.timestamp_ms),
+            signal=int(signal),
+        )
 
     if not timestamps:
         raise ValueError(
             "No executable bars remain after warmup/feature trimming for the requested window"
         )
 
-    signal_matrix = SignalMatrix(
+    return _SequentialRunResult(
         timestamp_ms=timestamps,
-        signals_by_symbol={symbol: signals},
+        close_prices=closes,
+        fill_result=_build_fill_generation_result(state),
+        processed_bar_count=processed_bar_count,
+        feature_snapshot_count=feature_snapshot_count,
+        nonzero_signal_count=nonzero_signal_count,
     )
-    execution_targets = bar_model.build_positions(signal_matrix)
-    execution_targets = _apply_execution_transforms(
+
+
+def _execute_pending_at_open(
+    *,
+    state: _SequentialRuntimeState,
+    symbol: str,
+    bar_index: int,
+    timestamp_ms: int,
+    raw_open: float,
+    gap_policy: GapPolicy,
+    slippage_bps: float,
+    commission_bps: float,
+) -> None:
+    pending_total = _pending_total(state.pending)
+    if pending_total == 0.0:
+        state.pending.clear()
+        return
+
+    if _is_valid_open(raw_open):
+        _record_pending_fill(
+            state=state,
+            symbol=symbol,
+            bar_index=bar_index,
+            timestamp_ms=timestamp_ms,
+            pending_total=pending_total,
+            raw_open=raw_open,
+            slippage_bps=slippage_bps,
+            commission_bps=commission_bps,
+        )
+        return
+
+    _handle_invalid_open(
+        state=state,
+        gap_policy=gap_policy,
+        bar_index=bar_index,
+        timestamp_ms=timestamp_ms,
+    )
+
+
+def _record_pending_fill(
+    *,
+    state: _SequentialRuntimeState,
+    symbol: str,
+    bar_index: int,
+    timestamp_ms: int,
+    pending_total: float,
+    raw_open: float,
+    slippage_bps: float,
+    commission_bps: float,
+) -> None:
+    side = OrderSide.BUY if pending_total > 0.0 else OrderSide.SELL
+    quantity = abs(pending_total)
+    execution_price = _apply_slippage(
+        raw_open=raw_open,
+        side=side,
+        slippage_bps=slippage_bps,
+    )
+    fee = quantity * execution_price * (commission_bps / 10_000.0)
+
+    state.fills.append(
+        Fill(
+            timestamp_ms=timestamp_ms,
+            symbol=symbol,
+            quantity=quantity,
+            price=execution_price,
+            side=side,
+            fees=float(fee),
+        )
+    )
+    state.executed_delta[bar_index] = pending_total
+    state.executed_notional[bar_index] = pending_total * execution_price
+    state.executed_fees[bar_index] = float(fee)
+    state.actual_position += pending_total
+    state.total_slippage_cost += quantity * abs(execution_price - raw_open)
+    state.executed_deferred_count += sum(
+        1 for item in state.pending if item.deferred and item.quantity != 0.0
+    )
+    state.pending.clear()
+
+
+def _handle_invalid_open(
+    *,
+    state: _SequentialRuntimeState,
+    gap_policy: GapPolicy,
+    bar_index: int,
+    timestamp_ms: int,
+) -> None:
+    state.invalid_open_count += 1
+    if gap_policy == GapPolicy.ERROR:
+        raise ValueError(
+            "Missing valid next-bar open for pending fill(s) "
+            f"at index {bar_index} and timestamp {timestamp_ms}"
+        )
+    if gap_policy == GapPolicy.EXPIRE:
+        state.expired_delta_count += _non_zero_pending_count(state.pending)
+        state.pending.clear()
+        return
+    for item in state.pending:
+        if item.quantity != 0.0 and not item.deferred:
+            item.deferred = True
+            state.deferred_delta_count += 1
+
+
+def _queue_target_delta_from_signal(
+    *,
+    state: _SequentialRuntimeState,
+    strategy: StrategyDefinition,
+    bar_model: Any,
+    symbol: str,
+    timestamp_ms: int,
+    signal: int,
+) -> None:
+    if signal > 0:
+        next_raw_target = float(bar_model.target_quantity)
+    elif signal < 0:
+        next_raw_target = 0.0
+    else:
+        next_raw_target = state.raw_desired_target
+
+    next_desired_target = _apply_single_target_transforms(
+        strategy=strategy,
+        symbol=symbol,
+        timestamp_ms=timestamp_ms,
+        target_quantity=next_raw_target,
+    )
+    target_delta = next_desired_target - state.desired_target
+
+    state.raw_desired_target = next_raw_target
+    state.desired_target = next_desired_target
+    if target_delta != 0.0:
+        state.pending.append(_PendingDelta(quantity=float(target_delta)))
+    if _pending_total(state.pending) == 0.0:
+        state.pending.clear()
+
+
+def _apply_single_target_transforms(
+    *,
+    strategy: StrategyDefinition,
+    symbol: str,
+    timestamp_ms: int,
+    target_quantity: float,
+) -> float:
+    execution_targets = ExecutionArrayBundle(
+        timestamp_ms=[timestamp_ms],
+        target_quantity_by_symbol={symbol: [target_quantity]},
+    )
+    transformed = _apply_execution_transforms(
         strategy=strategy,
         execution_targets=execution_targets,
     )
-
-    return _EventDrivenTargets(
-        timestamp_ms=timestamps,
-        open_prices=opens,
-        close_prices=closes,
-        target_quantity=_extract_target_values(
-            execution_targets=execution_targets,
-            symbol=symbol,
-            expected_size=len(timestamps),
-        ),
-        processed_bar_count=processed_bar_count,
-        feature_snapshot_count=feature_snapshot_count,
-        nonzero_signal_count=sum(1 for signal in signals if signal != 0),
+    values = _extract_target_values(
+        execution_targets=transformed,
+        symbol=symbol,
+        expected_size=1,
     )
+    return float(values[0])
+
+
+def _build_fill_generation_result(state: _SequentialRuntimeState) -> FillGenerationResult:
+    return FillGenerationResult(
+        fills=state.fills,
+        executed_delta=np.asarray(state.executed_delta, dtype=np.float64),
+        executed_notional=np.asarray(state.executed_notional, dtype=np.float64),
+        executed_fees=np.asarray(state.executed_fees, dtype=np.float64),
+        total_slippage_cost=float(state.total_slippage_cost),
+        invalid_open_count=state.invalid_open_count,
+        deferred_delta_count=state.deferred_delta_count,
+        expired_delta_count=state.expired_delta_count,
+        executed_deferred_count=state.executed_deferred_count,
+        tail_expired_delta_count=_tail_expired_delta_count(state.pending),
+    )
+
+
+def _is_valid_open(value: float) -> bool:
+    return bool(np.isfinite(value) and value > 0.0)
+
+
+def _apply_slippage(*, raw_open: float, side: OrderSide, slippage_bps: float) -> float:
+    factor = slippage_bps / 10_000.0
+    if side == OrderSide.BUY:
+        return float(raw_open * (1.0 + factor))
+    return float(raw_open * (1.0 - factor))
+
+
+def _pending_total(pending: list[_PendingDelta]) -> float:
+    return float(sum(item.quantity for item in pending))
+
+
+def _tail_expired_delta_count(pending: list[_PendingDelta]) -> int:
+    return _non_zero_pending_count(pending) if _pending_total(pending) != 0.0 else 0
+
+
+def _non_zero_pending_count(pending: list[_PendingDelta]) -> int:
+    return sum(1 for item in pending if item.quantity != 0.0)
 
 
 def _format_required_indicator_features(strategy: StrategyDefinition) -> str:
