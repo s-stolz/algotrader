@@ -512,10 +512,13 @@ describe('chart session candle fetch sequencing', () => {
       fetchCount += 1;
       return fetchCount === 1 ? firstFetch.promise : refetch.promise;
     });
-    const session = createChartSession({
+    const adapterWithNotificationSentinel: ChartSessionSubscriptionsAdapter & {
+      notifyUser: () => void;
+    } = {
       ...adapter,
       notifyUser,
-    });
+    };
+    const session = createChartSession(adapterWithNotificationSentinel);
 
     const pendingSession = session.setSession({
       symbol: 'EURUSD',
