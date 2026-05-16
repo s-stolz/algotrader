@@ -123,26 +123,45 @@ def _build_event_driven_targets(
         timeframe=request.timeframe,
     )
 
+    start_ms = int(request.start_ms)
+    end_ms = int(request.end_ms)
+    bootstrap_bars = bars.loc[bars["timestamp_ms"] < start_ms]
+    tradable_bars = bars.loc[(bars["timestamp_ms"] >= start_ms) & (bars["timestamp_ms"] < end_ms)]
+
     timestamps: list[int] = []
     opens: list[float] = []
     closes: list[float] = []
     signals: list[int] = []
     previous_features: dict[str, float] | None = None
-    processed_bar_count = 0
+    processed_bar_count = len(bars)
     feature_snapshot_count = 0
 
-    for row in bars.itertuples(index=False):
-        processed_bar_count += 1
+    for row in bootstrap_bars.itertuples(index=False):
         bar = _bar_from_row(row)
         snapshot = stream.update(bar)
         if snapshot is None:
             continue
         feature_snapshot_count += 1
-        if snapshot.timestamp_ms < int(request.start_ms):
-            continue
-        if snapshot.timestamp_ms >= int(request.end_ms):
-            continue
+        previous_features = dict(snapshot.features)
 
+    if strategy.indicator_requirements and previous_features is None:
+        required_features = _format_required_indicator_features(strategy)
+        raise ValueError(
+            "Event-driven bar bootstrap has insufficient warmup before start_ms "
+            f"{start_ms} for strategy '{strategy.strategy_id}'; required feature(s): "
+            f"{required_features}"
+        )
+
+    for row in tradable_bars.itertuples(index=False):
+        bar = _bar_from_row(row)
+        snapshot = stream.update(bar)
+        if snapshot is None:
+            required_features = _format_required_indicator_features(strategy)
+            raise ValueError(
+                "Event-driven bar runtime produced an incomplete feature snapshot at "
+                f"timestamp_ms {bar.timestamp_ms}; required feature(s): {required_features}"
+            )
+        feature_snapshot_count += 1
         signal = bar_model.evaluate_sequential_signal(
             previous=previous_features,
             current=snapshot.features,
@@ -182,6 +201,13 @@ def _build_event_driven_targets(
         feature_snapshot_count=feature_snapshot_count,
         nonzero_signal_count=sum(1 for signal in signals if signal != 0),
     )
+
+
+def _format_required_indicator_features(strategy: StrategyDefinition) -> str:
+    feature_names = [requirement.feature_name for requirement in strategy.indicator_requirements]
+    if not feature_names:
+        return "none"
+    return ", ".join(feature_names)
 
 
 def _validate_event_driven_request(

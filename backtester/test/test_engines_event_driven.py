@@ -38,12 +38,16 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         engine: BacktestEngine = BacktestEngine.EVENT_DRIVEN,
         execution: ExecutionConfig | None = None,
         strategy: StrategyConfig | None = None,
+        start_ms: int | None = None,
+        end_ms: int | None = None,
     ) -> BacktestRequest:
+        base_start_ms = 1_700_000_000_000
+        minute = 60_000
         return BacktestRequest(
             symbols=["AAPL"],
             timeframe="1m",
-            start_ms=1_700_000_000_000,
-            end_ms=1_700_000_540_000,
+            start_ms=start_ms if start_ms is not None else base_start_ms + (3 * minute),
+            end_ms=end_ms if end_ms is not None else base_start_ms + (9 * minute),
             strategy=(
                 strategy
                 or StrategyConfig(
@@ -77,12 +81,117 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
         self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
 
+    def test_indicator_strategy_requires_complete_pre_start_bootstrap(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "Event-driven.*insufficient warmup.*sma_fast.*sma_slow",
+        ):
+            run_backtest(
+                request=self._build_request(start_ms=1_700_000_000_000),
+                bars=self._build_bars(),
+            )
+
+    def test_no_indicator_strategy_starts_at_first_in_window_bar_without_bootstrap(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + (minute * i) for i in range(3)],
+                "symbol": ["AAPL"] * 3,
+                "open": [10.0, 12.0, 13.0],
+                "high": [11.5, 12.5, 13.5],
+                "low": [9.5, 11.5, 12.5],
+                "close": [11.0, 12.0, 13.0],
+                "volume": [1_000.0] * 3,
+            }
+        )
+        strategy = _build_enter_and_hold_strategy()
+
+        result = run_backtest(
+            request=self._build_request(
+                strategy=StrategyConfig(strategy_id=strategy.strategy_id),
+                start_ms=start_ms,
+                end_ms=start_ms + (3 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self.assertEqual(result.fills[0].timestamp_ms, start_ms + minute)
+        self.assertEqual(result.fills[0].price, 12.0)
+        self.assertEqual(
+            [snapshot.timestamp_ms for snapshot in result.equity_curve],
+            [start_ms, start_ms + minute, start_ms + (2 * minute)],
+        )
+
+    def test_bootstrap_bars_do_not_emit_public_execution_results(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + (minute * i) for i in range(7)],
+                "symbol": ["AAPL"] * 7,
+                "open": [10.0, 9.0, 8.0, 12.0, 13.0, 14.0, 15.0],
+                "high": [10.5, 9.5, 8.5, 12.5, 13.5, 14.5, 15.5],
+                "low": [9.5, 8.5, 7.5, 11.5, 12.5, 13.5, 14.5],
+                "close": [10.0, 9.0, 8.0, 12.0, 13.0, 14.0, 15.0],
+                "volume": [1_000.0] * 7,
+            }
+        )
+
+        result = run_backtest(
+            request=self._build_request(
+                start_ms=start_ms + (4 * minute),
+                end_ms=start_ms + (7 * minute),
+            ),
+            bars=bars,
+        )
+
+        self.assertEqual(result.fills, [])
+        self.assertEqual(result.trades, [])
+        self.assertEqual(
+            [snapshot.timestamp_ms for snapshot in result.equity_curve],
+            [
+                start_ms + (4 * minute),
+                start_ms + (5 * minute),
+                start_ms + (6 * minute),
+            ],
+        )
+
+    def test_first_tradable_crossover_uses_last_bootstrap_snapshot(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + (minute * i) for i in range(5)],
+                "symbol": ["AAPL"] * 5,
+                "open": [10.0, 9.0, 8.0, 12.0, 15.0],
+                "high": [10.5, 9.5, 8.5, 12.5, 15.5],
+                "low": [9.5, 8.5, 7.5, 11.5, 14.5],
+                "close": [10.0, 9.0, 8.0, 12.0, 13.0],
+                "volume": [1_000.0] * 5,
+            }
+        )
+
+        result = run_backtest(
+            request=self._build_request(
+                start_ms=start_ms + (3 * minute),
+                end_ms=start_ms + (5 * minute),
+            ),
+            bars=bars,
+        )
+
+        self.assertEqual(len(result.fills), 1)
+        self.assertEqual(result.fills[0].timestamp_ms, start_ms + (4 * minute))
+        self.assertEqual(result.fills[0].price, 15.0)
+        self.assertEqual(result.diagnostics["nonzero_signal_count"], 1)
+
     def test_event_driven_diagnostics_include_sequential_processing_counters(self) -> None:
         result = run_backtest(request=self._build_request(), bars=self._build_bars())
 
         self.assertEqual(result.diagnostics["processed_bar_count"], 9)
         self.assertEqual(result.diagnostics["feature_snapshot_count"], 7)
-        self.assertEqual(result.diagnostics["executable_bar_count"], 7)
+        self.assertEqual(result.diagnostics["executable_bar_count"], 6)
         self.assertEqual(result.diagnostics["nonzero_signal_count"], 2)
 
     def test_gap_skip_costs_trades_equity_and_metrics_match_vectorized(self) -> None:
@@ -182,7 +291,7 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         request = BacktestRequest(
             symbols=["AAPL"],
             timeframe="1m",
-            start_ms=start_ms,
+            start_ms=start_ms + (3 * minute),
             end_ms=start_ms + (5 * minute),
             strategy=StrategyConfig(
                 strategy_id="sma_crossover",

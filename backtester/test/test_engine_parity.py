@@ -36,10 +36,11 @@ class TestBacktestEngineParity(unittest.TestCase):
         data_granularity: DataGranularity = DataGranularity.BAR,
     ) -> BacktestRequest:
         start_ms = 1_700_000_000_000
+        minute = 60_000
         return BacktestRequest(
             symbols=symbols or ["AAPL"],
             timeframe="1m",
-            start_ms=start_ms,
+            start_ms=start_ms + (3 * minute),
             end_ms=start_ms + (9 * 60_000),
             strategy=StrategyConfig(
                 strategy_id="sma_crossover",

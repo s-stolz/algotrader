@@ -7,6 +7,7 @@ from adapters.db_accessor import (
     DatabaseAccessorHistoricalDataAdapter,
     HistoricalBarDataAdapter,
 )
+from domain.enums import BacktestEngine
 from domain.types import BacktestRequest
 from strategies.base import StrategyDefinition
 
@@ -57,6 +58,8 @@ def load_raw_market_data(
 
     symbol = str(request.symbols[0])
     warmup_bars = compute_required_warmup_bars(strategy)
+    if request.engine == BacktestEngine.EVENT_DRIVEN and strategy.indicator_requirements:
+        warmup_bars += 1
     fetch_start_ms = compute_fetch_start_ms(
         start_ms=int(request.start_ms),
         timeframe=request.timeframe,

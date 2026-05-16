@@ -126,7 +126,7 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         request = BacktestRequest(
             symbols=["AAPL"],
             timeframe="1m",
-            start_ms=1_700_000_000_000,
+            start_ms=1_700_000_180_000,
             end_ms=1_700_000_540_000,
             strategy=StrategyConfig(
                 strategy_id="sma_crossover",
