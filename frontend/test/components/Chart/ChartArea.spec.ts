@@ -233,7 +233,7 @@ describe('ChartArea', () => {
     expect(chartAreaMocks.wsOff).toHaveBeenCalledWith('indicatorUpdate', expect.any(Function));
   });
 
-  it('does not register candle handlers after unmount while unsubscribe is pending', async () => {
+  it('removes candle handlers after unmount while a subscription send is pending', async () => {
     const sendResolvers: Array<() => void> = [];
     chartAreaMocks.wsSend.mockImplementation(() => new Promise<void>((resolve) => {
       sendResolvers.push(resolve);
@@ -248,7 +248,8 @@ describe('ChartArea', () => {
     }
     await flushPromises();
 
-    expect(chartAreaMocks.wsOn).not.toHaveBeenCalledWith('candleUpdate', expect.any(Function));
+    expect(chartAreaMocks.wsOn).toHaveBeenCalledWith('candleUpdate', expect.any(Function));
+    expect(chartAreaMocks.wsOff).toHaveBeenCalledWith('candleUpdate', expect.any(Function));
     expect(chartAreaMocks.candleHandlers.size).toBe(0);
   });
 

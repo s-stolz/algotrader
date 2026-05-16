@@ -39,6 +39,11 @@ import type {
   IndicatorUpdateMessage,
 } from "@/types/contracts";
 import { wsService, type WebSocketEventHandler } from "@/utils/websocketService";
+import {
+  createChartSession,
+  type ChartSession,
+  type ChartSessionKeyInput,
+} from "@/components/Chart/chartSession";
 
 import {
   createChartInfrastructure,
@@ -91,11 +96,10 @@ interface ChartAreaData {
   lastIndicatorsHistoryLoadTs: number;
   indicatorBatchSize: number;
   shouldScrollToRealTime: boolean;
-  messageHandler: WebSocketEventHandler<"candleUpdate"> | null;
   indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
-  candleSubscriptionRequestId: number;
   candlesFetchPromise: Promise<void> | null;
   candlesFetchKey: string | null;
+  chartSession: ChartSession;
 }
 
 function isOhlcLegendPoint(value: unknown): value is OhlcLegendPoint {
@@ -141,11 +145,28 @@ export default defineComponent({
       lastIndicatorsHistoryLoadTs: 0,
       indicatorBatchSize: 500,
       shouldScrollToRealTime: false,
-      messageHandler: null,
       indicatorMessageHandler: null,
-      candleSubscriptionRequestId: 0,
       candlesFetchPromise: null,
       candlesFetchKey: null,
+      chartSession: markRaw(createChartSession({
+        subscribeCandles: (key) => wsService.send("subscribeCandles", {
+          symbol: key.symbol,
+          timeframe: key.timeframe,
+        }),
+        unsubscribeCandles: (key) => wsService.send("unsubscribeCandles", {
+          symbol: key.symbol,
+          timeframe: key.timeframe,
+        }),
+        onCandleUpdate: (handler) => {
+          wsService.on("candleUpdate", handler);
+        },
+        offCandleUpdate: (handler) => {
+          wsService.off("candleUpdate", handler);
+        },
+        reportSubscriptionError: (operation, _key, error) => {
+          console.error(`Failed to ${operation} candle subscription:`, error);
+        },
+      })),
     };
   },
 
@@ -180,7 +201,7 @@ export default defineComponent({
         void this.fetchCandlesticks();
 
         if (newKey !== oldKey) {
-          void this.subscribeToCandles();
+          this.syncChartSession();
         }
       },
       immediate: true,
@@ -194,7 +215,7 @@ export default defineComponent({
         void this.fetchCandlesticks();
 
         if (newTimeframe !== oldTimeframe) {
-          void this.subscribeToCandles();
+          this.syncChartSession();
         }
       },
       immediate: true,
@@ -206,8 +227,7 @@ export default defineComponent({
   },
 
   beforeUnmount(): void {
-    this.candleSubscriptionRequestId += 1;
-    void this.unsubscribeFromCandles();
+    void this.chartSession.stop();
     void this.indicatorsStore.unsubscribeAllLive();
     if (this.crosshairRafId !== null) {
       cancelAnimationFrame(this.crosshairRafId);
@@ -322,6 +342,20 @@ export default defineComponent({
       this.pendingIndicatorMessages.clear();
     },
 
+    currentChartSessionKey(): ChartSessionKeyInput {
+      return {
+        symbol: this.currentMarketStore.symbol,
+        exchange: this.currentMarketStore.exchange,
+        timeframe: this.currentTimeframeStore.value,
+      };
+    },
+
+    syncChartSession(): void {
+      void this.chartSession.setSession(this.currentChartSessionKey(), (message) => {
+        this.updateCurrentCandle(message);
+      });
+    },
+
     async fetchCandlesticks(): Promise<void> {
       if (!this.currentMarketStore.symbol) return;
 
@@ -374,50 +408,6 @@ export default defineComponent({
         setTimeout(() => {
           this.shouldScrollToRealTime = false;
         }, 100);
-      }
-    },
-
-    async subscribeToCandles(): Promise<void> {
-      const requestId = this.candleSubscriptionRequestId + 1;
-      this.candleSubscriptionRequestId = requestId;
-      await this.unsubscribeFromCandles();
-
-      const symbol = this.currentMarketStore.symbol;
-      const timeframe = this.currentTimeframeStore.value;
-
-      if (!symbol || !timeframe) return;
-      if (requestId !== this.candleSubscriptionRequestId) return;
-
-      this.messageHandler = (message) => {
-        if (message.symbol !== symbol) {
-          return;
-        }
-
-        if (message.timeframe === timeframe) {
-          this.updateCurrentCandle(message);
-        }
-      };
-
-      wsService.on("candleUpdate", this.messageHandler);
-
-      try {
-        await wsService.send("subscribeCandles", { symbol, timeframe });
-      } catch (error) {
-        console.error("Failed to subscribe:", error);
-      }
-    },
-
-    async unsubscribeFromCandles(): Promise<void> {
-      if (this.messageHandler) {
-        wsService.off("candleUpdate", this.messageHandler);
-        this.messageHandler = null;
-      }
-
-      const symbol = this.currentMarketStore.symbol;
-      const timeframe = this.currentTimeframeStore.value;
-
-      if (symbol && timeframe) {
-        await wsService.send("unsubscribeCandles", { symbol, timeframe });
       }
     },
 
