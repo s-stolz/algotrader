@@ -25,9 +25,9 @@ from domain.types import (
     BarView,
     ExecutionArrayBundle,
     Fill,
+    PortfolioSnapshot,
 )
 from execution.fills import FillGenerationResult
-from execution.portfolio import build_equity_curve
 from execution.trades import build_trades_from_fills
 from reporting.metrics import compute_metrics
 from strategies.base import StrategyDefinition
@@ -58,16 +58,7 @@ def run_event_driven_backtest(
         symbol=symbol,
     )
 
-    equity_curve = build_equity_curve(
-        symbol=symbol,
-        timestamp_ms=run_result.timestamp_ms,
-        close_prices=run_result.close_prices,
-        executed_delta=run_result.fill_result.executed_delta,
-        executed_notional=run_result.fill_result.executed_notional,
-        executed_fees=run_result.fill_result.executed_fees,
-        initial_capital=request.initial_capital,
-    )
-
+    equity_curve = run_result.equity_curve
     trades = build_trades_from_fills(run_result.fill_result.fills)
     metrics = compute_metrics(equity_curve=equity_curve, trades=trades)
 
@@ -81,7 +72,7 @@ def run_event_driven_backtest(
             request=request,
             strategy=strategy,
             symbol=symbol,
-            bar_count=len(run_result.timestamp_ms),
+            bar_count=len(equity_curve),
             fill_result=run_result.fill_result,
             processed_bar_count=run_result.processed_bar_count,
             feature_snapshot_count=run_result.feature_snapshot_count,
@@ -92,8 +83,7 @@ def run_event_driven_backtest(
 
 @dataclass(frozen=True)
 class _SequentialRunResult:
-    timestamp_ms: list[int]
-    close_prices: list[float]
+    equity_curve: list[PortfolioSnapshot]
     fill_result: FillGenerationResult
     processed_bar_count: int
     feature_snapshot_count: int
@@ -108,6 +98,9 @@ class _PendingDelta:
 
 @dataclass
 class _SequentialRuntimeState:
+    initial_capital: float
+    cash: float = field(init=False)
+    cash_adjustment: float = 0.0
     raw_desired_target: float = 0.0
     desired_target: float = 0.0
     actual_position: float = 0.0
@@ -116,17 +109,32 @@ class _SequentialRuntimeState:
     executed_notional: list[float] = field(default_factory=list)
     executed_fees: list[float] = field(default_factory=list)
     fills: list[Fill] = field(default_factory=list)
+    snapshots: list[PortfolioSnapshot] = field(default_factory=list)
     total_slippage_cost: float = 0.0
     invalid_open_count: int = 0
     deferred_delta_count: int = 0
     expired_delta_count: int = 0
     executed_deferred_count: int = 0
 
+    def __post_init__(self) -> None:
+        self.cash = float(self.initial_capital)
+
     def start_bar(self) -> int:
         self.executed_delta.append(0.0)
         self.executed_notional.append(0.0)
         self.executed_fees.append(0.0)
         return len(self.executed_delta) - 1
+
+    def finish_bar(self, *, symbol: str, timestamp_ms: int, close_price: float) -> None:
+        position = float(self.actual_position)
+        self.snapshots.append(
+            PortfolioSnapshot(
+                timestamp_ms=timestamp_ms,
+                cash=float(self.cash),
+                equity=float(self.cash + (position * close_price)),
+                positions={symbol: position} if position != 0.0 else {},
+            )
+        )
 
 
 def _run_event_driven_loop(
@@ -148,13 +156,11 @@ def _run_event_driven_loop(
     bootstrap_bars = bars.loc[bars["timestamp_ms"] < start_ms]
     tradable_bars = bars.loc[(bars["timestamp_ms"] >= start_ms) & (bars["timestamp_ms"] < end_ms)]
 
-    timestamps: list[int] = []
-    closes: list[float] = []
     previous_features: dict[str, float] | None = None
     processed_bar_count = len(bars)
     feature_snapshot_count = 0
     nonzero_signal_count = 0
-    state = _SequentialRuntimeState()
+    state = _SequentialRuntimeState(initial_capital=float(request.initial_capital))
 
     for row in bootstrap_bars.itertuples(index=False):
         bar = _bar_from_row(row)
@@ -175,8 +181,6 @@ def _run_event_driven_loop(
     for row in tradable_bars.itertuples(index=False):
         bar = _bar_from_row(row)
         bar_index = state.start_bar()
-        timestamps.append(int(bar.timestamp_ms))
-        closes.append(float(bar.close))
 
         _execute_pending_at_open(
             state=state,
@@ -214,14 +218,19 @@ def _run_event_driven_loop(
             signal=int(signal),
         )
 
-    if not timestamps:
+        state.finish_bar(
+            symbol=symbol,
+            timestamp_ms=int(bar.timestamp_ms),
+            close_price=float(bar.close),
+        )
+
+    if not state.snapshots:
         raise ValueError(
             "No executable bars remain after warmup/feature trimming for the requested window"
         )
 
     return _SequentialRunResult(
-        timestamp_ms=timestamps,
-        close_prices=closes,
+        equity_curve=state.snapshots,
         fill_result=_build_fill_generation_result(state),
         processed_bar_count=processed_bar_count,
         feature_snapshot_count=feature_snapshot_count,
@@ -299,6 +308,8 @@ def _record_pending_fill(
     state.executed_delta[bar_index] = pending_total
     state.executed_notional[bar_index] = pending_total * execution_price
     state.executed_fees[bar_index] = float(fee)
+    state.cash_adjustment += -(pending_total * execution_price) - float(fee)
+    state.cash = float(state.initial_capital + state.cash_adjustment)
     state.actual_position += pending_total
     state.total_slippage_cost += quantity * abs(execution_price - raw_open)
     state.executed_deferred_count += sum(

@@ -84,7 +84,7 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
         self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
 
-    def test_event_driven_engine_does_not_call_array_fill_generation(self) -> None:
+    def test_event_driven_engine_does_not_call_vectorized_execution_helpers(self) -> None:
         tree = ast.parse(inspect.getsource(event_driven_engine))
         forbidden_calls: list[int] = []
         forbidden_imports: list[int] = []
@@ -93,11 +93,18 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
             if isinstance(node, ast.ImportFrom) and node.module == "execution.fills":
                 if any(alias.name == "generate_fills_from_targets" for alias in node.names):
                     forbidden_imports.append(node.lineno)
+            if isinstance(node, ast.ImportFrom) and node.module == "execution.portfolio":
+                if any(alias.name == "build_equity_curve" for alias in node.names):
+                    forbidden_imports.append(node.lineno)
             if isinstance(node, ast.Call):
                 call = node.func
                 if isinstance(call, ast.Name) and call.id == "generate_fills_from_targets":
                     forbidden_calls.append(node.lineno)
                 if isinstance(call, ast.Attribute) and call.attr == "generate_fills_from_targets":
+                    forbidden_calls.append(node.lineno)
+                if isinstance(call, ast.Name) and call.id == "build_equity_curve":
+                    forbidden_calls.append(node.lineno)
+                if isinstance(call, ast.Attribute) and call.attr == "build_equity_curve":
                     forbidden_calls.append(node.lineno)
 
         self.assertEqual(forbidden_imports, [])
