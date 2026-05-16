@@ -143,6 +143,53 @@ class TestBacktestEngineParity(unittest.TestCase):
         self.assertEqual(event_driven.fills[0].timestamp_ms, start_ms + (2 * minute))
         self.assertEqual(event_driven.fills[0].price, 12.0)
 
+    def test_final_bar_decision_expires_without_out_of_window_open(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + minute * i for i in range(5)],
+                "symbol": ["AAPL"] * 5,
+                "open": [10.0, 10.0, 10.0, 11.0, 99.0],
+                "high": [10.5, 10.5, 10.5, 12.5, 100.0],
+                "low": [8.5, 8.5, 8.5, 10.5, 98.0],
+                "close": [9.0, 9.0, 9.0, 12.0, 100.0],
+                "volume": [1_000.0] * 5,
+            }
+        )
+        strategy = _build_close_above_open_strategy()
+        end_ms = start_ms + (4 * minute)
+
+        vectorized = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.VECTORIZED,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=end_ms,
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+        event_driven = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=end_ms,
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self._assert_public_results_match(vectorized, event_driven)
+        self.assertEqual(event_driven.fills, [])
+        self.assertEqual(event_driven.trades, [])
+        self.assertEqual(event_driven.diagnostics["tail_expired_delta_count"], 1)
+        self.assertEqual(
+            [snapshot.timestamp_ms for snapshot in event_driven.equity_curve],
+            [start_ms + minute * i for i in range(4)],
+        )
+
     def test_both_engines_reject_multi_symbol_and_non_bar_requests(self) -> None:
         bars = self._build_sma_bars()
 

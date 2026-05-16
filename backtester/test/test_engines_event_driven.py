@@ -91,13 +91,16 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         tree = ast.parse(inspect.getsource(event_driven_engine))
         forbidden_calls: list[int] = []
         forbidden_imports: list[int] = []
+        forbidden_imports_by_module = {
+            "execution": {"generate_fills_from_targets", "build_equity_curve"},
+            "execution.fills": {"generate_fills_from_targets"},
+            "execution.portfolio": {"build_equity_curve"},
+        }
 
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "execution.fills":
-                if any(alias.name == "generate_fills_from_targets" for alias in node.names):
-                    forbidden_imports.append(node.lineno)
-            if isinstance(node, ast.ImportFrom) and node.module == "execution.portfolio":
-                if any(alias.name == "build_equity_curve" for alias in node.names):
+            if isinstance(node, ast.ImportFrom):
+                forbidden_names = forbidden_imports_by_module.get(node.module or "")
+                if forbidden_names and any(alias.name in forbidden_names for alias in node.names):
                     forbidden_imports.append(node.lineno)
             if isinstance(node, ast.Call):
                 call = node.func
