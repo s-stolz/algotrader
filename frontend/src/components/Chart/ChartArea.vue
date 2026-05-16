@@ -42,6 +42,7 @@ import { wsService, type WebSocketEventHandler } from "@/utils/websocketService"
 import {
   createChartSession,
   type ChartSession,
+  type ChartSessionSubscriptionsAdapter,
   type ChartSessionKeyInput,
 } from "@/components/Chart/chartSession";
 
@@ -97,9 +98,7 @@ interface ChartAreaData {
   indicatorBatchSize: number;
   shouldScrollToRealTime: boolean;
   indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
-  candlesFetchPromise: Promise<void> | null;
-  candlesFetchKey: string | null;
-  chartSession: ChartSession;
+  chartSession: ChartSession | null;
 }
 
 function isOhlcLegendPoint(value: unknown): value is OhlcLegendPoint {
@@ -146,27 +145,7 @@ export default defineComponent({
       indicatorBatchSize: 500,
       shouldScrollToRealTime: false,
       indicatorMessageHandler: null,
-      candlesFetchPromise: null,
-      candlesFetchKey: null,
-      chartSession: markRaw(createChartSession({
-        subscribeCandles: (key) => wsService.send("subscribeCandles", {
-          symbol: key.symbol,
-          timeframe: key.timeframe,
-        }),
-        unsubscribeCandles: (key) => wsService.send("unsubscribeCandles", {
-          symbol: key.symbol,
-          timeframe: key.timeframe,
-        }),
-        onCandleUpdate: (handler) => {
-          wsService.on("candleUpdate", handler);
-        },
-        offCandleUpdate: (handler) => {
-          wsService.off("candleUpdate", handler);
-        },
-        reportSubscriptionError: (operation, _key, error) => {
-          console.error(`Failed to ${operation} candle subscription:`, error);
-        },
-      })),
+      chartSession: null,
     };
   },
 
@@ -195,10 +174,7 @@ export default defineComponent({
 
     currentMarketKey: {
       handler(newKey: string, oldKey: string | undefined) {
-        void this.indicatorsStore.unsubscribeAllLive();
-        this.indicatorsStore.resetHistoryFlags();
         this.shouldScrollToRealTime = true;
-        void this.fetchCandlesticks();
 
         if (newKey !== oldKey) {
           this.syncChartSession();
@@ -209,10 +185,7 @@ export default defineComponent({
 
     "currentTimeframeStore.value": {
       handler(newTimeframe: string, oldTimeframe: string | undefined) {
-        void this.indicatorsStore.unsubscribeAllLive();
-        this.indicatorsStore.resetHistoryFlags();
         this.shouldScrollToRealTime = true;
-        void this.fetchCandlesticks();
 
         if (newTimeframe !== oldTimeframe) {
           this.syncChartSession();
@@ -222,13 +195,17 @@ export default defineComponent({
     },
   },
 
+  created(): void {
+    this.chartSession = markRaw(createChartSession(this.createChartSessionAdapter()));
+    this.syncChartSession();
+  },
+
   mounted(): void {
     this.initializeChartComponent();
   },
 
   beforeUnmount(): void {
-    void this.chartSession.stop();
-    void this.indicatorsStore.unsubscribeAllLive();
+    void this.chartSession?.stop();
     if (this.crosshairRafId !== null) {
       cancelAnimationFrame(this.crosshairRafId);
       this.crosshairRafId = null;
@@ -258,6 +235,47 @@ export default defineComponent({
   },
 
   methods: {
+    createChartSessionAdapter(): ChartSessionSubscriptionsAdapter {
+      return {
+        subscribeCandles: (key) => wsService.send("subscribeCandles", {
+          symbol: key.symbol,
+          timeframe: key.timeframe,
+        }),
+        unsubscribeCandles: (key) => wsService.send("unsubscribeCandles", {
+          symbol: key.symbol,
+          timeframe: key.timeframe,
+        }),
+        onCandleUpdate: (handler) => {
+          wsService.on("candleUpdate", handler);
+        },
+        offCandleUpdate: (handler) => {
+          wsService.off("candleUpdate", handler);
+        },
+        fetchCandles: async (key) => {
+          await this.candlesticksStore.fetch(key.symbol, key.timeframe, {
+            limit: this.candlesFetchLimit,
+            exchange: key.exchange,
+          });
+          return this.candlesticksStore.data;
+        },
+        renderCandles: (_key, candles) => {
+          this.renderCandlesticks(candles, {
+            scrollToRealtime: this.shouldScrollToRealTime,
+          });
+        },
+        requestIndicators: (key) => {
+          this.indicatorsStore.requestAllIndicators(key.symbol, key.timeframe, key.exchange);
+        },
+        unsubscribeIndicators: () => this.indicatorsStore.unsubscribeAllLive(),
+        resetIndicatorHistory: () => {
+          this.indicatorsStore.resetHistoryFlags();
+        },
+        reportSubscriptionError: (operation, _key, error) => {
+          console.error(`Failed to ${operation} candle subscription:`, error);
+        },
+      };
+    },
+
     initializeChartComponent(): void {
       this.chartInfrastructure.init(this.getChartContainer());
       this.subscribeCrosshairMove(this.onCrosshairMove);
@@ -351,41 +369,9 @@ export default defineComponent({
     },
 
     syncChartSession(): void {
-      void this.chartSession.setSession(this.currentChartSessionKey(), (message) => {
+      void this.chartSession?.setSession(this.currentChartSessionKey(), (message) => {
         this.updateCurrentCandle(message);
       });
-    },
-
-    async fetchCandlesticks(): Promise<void> {
-      if (!this.currentMarketStore.symbol) return;
-
-      const symbol = this.currentMarketStore.symbol;
-      const exchange = this.currentMarketStore.exchange;
-      const timeframe = this.currentTimeframeStore.value;
-      const fetchKey = `${symbol}:${exchange || ""}:${timeframe}:${this.candlesFetchLimit}`;
-
-      if (this.candlesFetchPromise && this.candlesFetchKey === fetchKey) {
-        await this.candlesFetchPromise;
-        return;
-      }
-
-      this.candlesFetchKey = fetchKey;
-      this.candlesFetchPromise = (async () => {
-        await this.candlesticksStore.fetch(symbol, timeframe, {
-          limit: this.candlesFetchLimit,
-          exchange: exchange,
-        });
-        this.renderCandlesticks(this.candlesticksStore.data, { scrollToRealtime: this.shouldScrollToRealTime });
-        this.indicatorsStore.requestAllIndicators(symbol, timeframe, exchange);
-      })();
-
-      try {
-        await this.candlesFetchPromise;
-      } finally {
-        if (this.candlesFetchKey === fetchKey) {
-          this.candlesFetchPromise = null;
-        }
-      }
     },
 
     renderCandlesticks(

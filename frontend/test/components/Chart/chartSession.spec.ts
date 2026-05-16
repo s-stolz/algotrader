@@ -5,19 +5,59 @@ import {
   type ChartSessionKey,
   type ChartSessionSubscriptionsAdapter,
 } from '@/components/Chart/chartSession';
-import type { CandleUpdateMessage } from '@/types/contracts';
+import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
+
+function keyLabel(key: ChartSessionKey): string {
+  return `${key.symbol}:${key.exchange ?? ''}:${key.timeframe}`;
+}
+
+function chartCandle(timestampMs: number, close = 1.5): ChartCandle {
+  return {
+    timestamp_ms: timestampMs,
+    time: Math.floor(timestampMs / 1000),
+    open: 1,
+    high: 2,
+    low: 0.5,
+    close,
+    volume: 10,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return {
+    promise,
+    resolve,
+  };
+}
+
+type FakeChartSessionAdapter = ChartSessionSubscriptionsAdapter & {
+  fetchCandles(key: ChartSessionKey): Promise<readonly ChartCandle[]> | readonly ChartCandle[];
+  renderCandles(key: ChartSessionKey, candles: readonly ChartCandle[]): void;
+  requestIndicators(key: ChartSessionKey): Promise<void> | void;
+  unsubscribeIndicators(): Promise<void> | void;
+  resetIndicatorHistory(): void;
+};
 
 function createFakeAdapter() {
   const handlers = new Set<(message: CandleUpdateMessage) => void>();
   const subscribes: ChartSessionKey[] = [];
   const unsubscribes: ChartSessionKey[] = [];
+  const events: string[] = [];
+  const fetchedCandles = [chartCandle(300_000)];
 
-  const adapter: ChartSessionSubscriptionsAdapter = {
+  const adapter: FakeChartSessionAdapter = {
     subscribeCandles: vi.fn((key) => {
       subscribes.push({ ...key });
+      events.push(`subscribe:${keyLabel(key)}`);
     }),
     unsubscribeCandles: vi.fn((key) => {
       unsubscribes.push({ ...key });
+      events.push(`unsubscribe:${keyLabel(key)}`);
     }),
     onCandleUpdate: vi.fn((handler) => {
       handlers.add(handler);
@@ -25,10 +65,28 @@ function createFakeAdapter() {
     offCandleUpdate: vi.fn((handler) => {
       handlers.delete(handler);
     }),
+    fetchCandles: vi.fn((key: ChartSessionKey) => {
+      events.push(`fetch:${keyLabel(key)}`);
+      return Promise.resolve(fetchedCandles);
+    }),
+    renderCandles: vi.fn((key: ChartSessionKey) => {
+      events.push(`render:${keyLabel(key)}`);
+    }),
+    requestIndicators: vi.fn((key: ChartSessionKey) => {
+      events.push(`indicators:${keyLabel(key)}`);
+    }),
+    unsubscribeIndicators: vi.fn(() => {
+      events.push('unsubscribe-indicators');
+    }),
+    resetIndicatorHistory: vi.fn(() => {
+      events.push('reset-indicator-history');
+    }),
   };
 
   return {
     adapter,
+    events,
+    fetchedCandles,
     handlers,
     subscribes,
     unsubscribes,
@@ -223,5 +281,129 @@ describe('chart session subscription ownership', () => {
         timeframe: 'M5',
       },
     );
+  });
+});
+
+describe('chart session candle fetch sequencing', () => {
+  it('requests the live candle subscription before starting the historical candle fetch', async () => {
+    const { adapter, events } = createFakeAdapter();
+    const session = createChartSession(adapter);
+
+    await session.setSession({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+
+    expect(events.indexOf('subscribe:EURUSD:FX:M5')).toBeLessThan(
+      events.indexOf('fetch:EURUSD:FX:M5'),
+    );
+  });
+
+  it('ignores a stale historical candle fetch result after the session key changes', async () => {
+    const { adapter } = createFakeAdapter();
+    const firstFetch = deferred<ChartCandle[]>();
+    const currentCandles = [chartCandle(600_000, 2.5)];
+
+    vi.mocked(adapter.fetchCandles).mockImplementation((key) => {
+      if (key.symbol === 'EURUSD') {
+        return firstFetch.promise;
+      }
+
+      return Promise.resolve(currentCandles);
+    });
+
+    const session = createChartSession(adapter);
+    const firstSession = session.setSession({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+    await vi.waitFor(() => {
+      expect(adapter.fetchCandles).toHaveBeenCalledWith({
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      });
+    });
+
+    await session.setSession({
+      symbol: 'GBPUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+
+    firstFetch.resolve([chartCandle(300_000)]);
+    await firstSession;
+
+    expect(adapter.renderCandles).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+      }),
+      expect.anything(),
+    );
+    expect(adapter.requestIndicators).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+      }),
+    );
+    expect(adapter.renderCandles).toHaveBeenCalledWith(
+      {
+        symbol: 'GBPUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+      currentCandles,
+    );
+  });
+
+  it('renders the current fetch result before requesting indicators for the same key', async () => {
+    const { adapter, events, fetchedCandles } = createFakeAdapter();
+    const session = createChartSession(adapter);
+
+    await session.setSession({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+
+    expect(adapter.renderCandles).toHaveBeenCalledWith(
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+      fetchedCandles,
+    );
+    expect(adapter.requestIndicators).toHaveBeenCalledWith({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    });
+    expect(events.indexOf('render:EURUSD:FX:M5')).toBeLessThan(
+      events.indexOf('indicators:EURUSD:FX:M5'),
+    );
+  });
+
+  it('unsubscribes old live indicator streams when the session changes', async () => {
+    const { adapter } = createFakeAdapter();
+    const session = createChartSession(adapter);
+
+    await session.setSession({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+    vi.mocked(adapter.unsubscribeIndicators).mockClear();
+
+    await session.setSession({
+      symbol: 'GBPUSD',
+      exchange: 'FX',
+      timeframe: 'M5',
+    }, vi.fn());
+
+    expect(adapter.unsubscribeIndicators).toHaveBeenCalledOnce();
   });
 });

@@ -1,4 +1,4 @@
-import type { CandleUpdateMessage } from '@/types/contracts';
+import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
 
 export interface ChartSessionKeyInput {
   symbol?: string | null;
@@ -25,6 +25,11 @@ export interface ChartSessionSubscriptionsAdapter {
   unsubscribeCandles(key: ChartSessionKey): Promise<void> | void;
   onCandleUpdate(handler: ChartSessionCandleHandler): void;
   offCandleUpdate(handler: ChartSessionCandleHandler): void;
+  fetchCandles(key: ChartSessionKey): Promise<readonly ChartCandle[]> | readonly ChartCandle[];
+  renderCandles(key: ChartSessionKey, candles: readonly ChartCandle[]): Promise<void> | void;
+  requestIndicators(key: ChartSessionKey): Promise<void> | void;
+  unsubscribeIndicators(): Promise<void> | void;
+  resetIndicatorHistory?(): void;
   reportSubscriptionError?: (
     operation: ChartSessionSubscriptionOperation,
     key: ChartSessionKey,
@@ -107,10 +112,16 @@ export class ChartSession {
       await this.unsubscribe(previousKey);
     }
 
+    const indicatorCleanup = previousKey || nextKey
+      ? this.startIndicatorCleanup()
+      : Promise.resolve();
+
     if (revision !== this.revision || !nextKey) {
+      await indicatorCleanup;
       return;
     }
 
+    this.adapter.resetIndicatorHistory?.();
     this.activeKey = cloneSessionKey(nextKey);
     this.liveCandleReceiver = receiveLiveCandle;
     this.listener = (message) => {
@@ -120,9 +131,21 @@ export class ChartSession {
 
     await this.subscribe(nextKey);
 
-    if (revision !== this.revision && !sessionKeysEqual(this.activeKey, nextKey)) {
-      await this.unsubscribe(nextKey);
+    if (revision !== this.revision) {
+      await indicatorCleanup;
+      if (!sessionKeysEqual(this.activeKey, nextKey)) {
+        await this.unsubscribe(nextKey);
+      }
+      return;
     }
+
+    if (!sessionKeysEqual(this.activeKey, nextKey)) {
+      await indicatorCleanup;
+      await this.unsubscribe(nextKey);
+      return;
+    }
+
+    await this.fetchCandlesForSession(nextKey, revision, indicatorCleanup);
   }
 
   async stop(): Promise<void> {
@@ -141,6 +164,8 @@ export class ChartSession {
     if (previousKey) {
       await this.unsubscribe(previousKey);
     }
+
+    await this.unsubscribeIndicators();
   }
 
   private handleCandleUpdate(message: CandleUpdateMessage): void {
@@ -164,6 +189,47 @@ export class ChartSession {
     } catch (error) {
       this.adapter.reportSubscriptionError?.('unsubscribe', cloneSessionKey(key), error);
     }
+  }
+
+  private async unsubscribeIndicators(): Promise<void> {
+    await this.adapter.unsubscribeIndicators();
+  }
+
+  private startIndicatorCleanup(): Promise<void> {
+    const cleanup = this.unsubscribeIndicators();
+    cleanup.catch(() => undefined);
+    return cleanup;
+  }
+
+  private async fetchCandlesForSession(
+    key: ChartSessionKey,
+    revision: number,
+    indicatorCleanup: Promise<void>,
+  ): Promise<void> {
+    const sessionKey = cloneSessionKey(key);
+    const candles = await this.adapter.fetchCandles(sessionKey);
+
+    if (!this.isCurrentSession(sessionKey, revision)) {
+      return;
+    }
+
+    await this.adapter.renderCandles(cloneSessionKey(sessionKey), candles);
+
+    if (!this.isCurrentSession(sessionKey, revision)) {
+      return;
+    }
+
+    await indicatorCleanup;
+
+    if (!this.isCurrentSession(sessionKey, revision)) {
+      return;
+    }
+
+    await this.adapter.requestIndicators(cloneSessionKey(sessionKey));
+  }
+
+  private isCurrentSession(key: ChartSessionKey, revision: number): boolean {
+    return revision === this.revision && sessionKeysEqual(this.activeKey, key);
   }
 }
 
