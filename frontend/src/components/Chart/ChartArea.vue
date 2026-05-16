@@ -39,7 +39,6 @@ import type {
   IndicatorUpdateMessage,
 } from "@/types/contracts";
 import { wsService, type WebSocketEventHandler } from "@/utils/websocketService";
-import { timeframeToMinutes } from "@/utils/timeframes";
 
 import {
   createChartInfrastructure,
@@ -396,11 +395,6 @@ export default defineComponent({
 
         if (message.timeframe === timeframe) {
           this.updateCurrentCandle(message);
-          return;
-        }
-
-        if (message.timeframe === "M1") {
-          this.updateCurrentCandleFromM1(message);
         }
       };
 
@@ -438,49 +432,6 @@ export default defineComponent({
         close: candle.close,
         volume: candle.volume,
       });
-    },
-
-    updateCurrentCandleFromM1(m1Candle: CandleUpdateMessage): void {
-      if (!this.candlesticksStore.data || this.candlesticksStore.data.length === 0) {
-        return;
-      }
-
-      const timeframeMinutes = timeframeToMinutes(this.currentTimeframeStore.value);
-      const timeframeMs = timeframeMinutes * 60 * 1000;
-      const bucketTimestampMs = Math.floor(m1Candle.timestamp_ms / timeframeMs) * timeframeMs;
-      const candleTimeSeconds = Math.floor(bucketTimestampMs / 1000);
-
-      const lastCandle = this.candlesticksStore.data[this.candlesticksStore.data.length - 1];
-
-      let updatedCandle: ChartCandle;
-
-      if (lastCandle.timestamp_ms === bucketTimestampMs) {
-        updatedCandle = {
-          timestamp_ms: bucketTimestampMs,
-          time: candleTimeSeconds,
-          open: lastCandle.open,
-          high: Math.max(lastCandle.high, m1Candle.high),
-          low: Math.min(lastCandle.low, m1Candle.low),
-          close: m1Candle.close,
-          volume: lastCandle.volume + m1Candle.volume,
-        };
-        this.candlesticksStore.data[this.candlesticksStore.data.length - 1] = updatedCandle;
-      } else if (bucketTimestampMs > lastCandle.timestamp_ms) {
-        updatedCandle = {
-          timestamp_ms: bucketTimestampMs,
-          time: candleTimeSeconds,
-          open: m1Candle.open,
-          high: m1Candle.high,
-          low: m1Candle.low,
-          close: m1Candle.close,
-          volume: m1Candle.volume,
-        };
-        this.candlesticksStore.data.push(updatedCandle);
-      } else {
-        return;
-      }
-
-      this.updateCandlestick(updatedCandle);
     },
 
     onCrosshairMove(param: MouseEventParams<Time>): void {

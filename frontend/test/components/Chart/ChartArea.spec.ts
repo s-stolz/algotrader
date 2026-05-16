@@ -276,7 +276,7 @@ describe('ChartArea', () => {
     expect(wrapper.find('.legend').text()).toContain('C: 1.2');
   });
 
-  it('aggregates M1 candle updates into the active larger timeframe bucket', async () => {
+  it('ignores M1 candle updates when the active timeframe is larger', async () => {
     const { candlesticksStore } = setupStores('M5');
     mountChartArea();
     await flushPromises();
@@ -299,23 +299,53 @@ describe('ChartArea', () => {
       handler(message);
     }
 
-    expect(candlesticksStore.data).toEqual([{
-      timestamp_ms: 300_000,
-      time: 300,
-      open: 1,
+    expect(candlesticksStore.data).toEqual([candle(300_000)]);
+    expect(chartAreaMocks.infrastructure.updateCandlestick).not.toHaveBeenCalled();
+  });
+
+  it('applies same-timeframe candle updates through the active live subscription', async () => {
+    const { candlesticksStore } = setupStores('M5');
+    mountChartArea();
+    await flushPromises();
+    chartAreaMocks.infrastructure.updateCandlestick.mockClear();
+
+    const message: CandleUpdateMessage = {
+      type: 'candleUpdate',
+      symbol: 'EURUSD',
+      timeframe: 'M5',
+      timestamp_ms: 600_000,
+      open: 2,
       high: 3,
-      low: 0.4,
+      low: 1.8,
       close: 2.5,
-      volume: 15,
-    }]);
+      volume: 5,
+    };
+
+    expect(chartAreaMocks.candleHandlers.size).toBe(1);
+    for (const handler of chartAreaMocks.candleHandlers) {
+      handler(message);
+    }
+
+    expect(candlesticksStore.data).toEqual([
+      candle(300_000),
+      {
+        timestamp_ms: 600_000,
+        time: 600,
+        open: 2,
+        high: 3,
+        low: 1.8,
+        close: 2.5,
+        volume: 5,
+      },
+    ]);
     expect(chartAreaMocks.infrastructure.updateCandlestick).toHaveBeenCalledWith({
-      timestamp_ms: 300_000,
-      time: 300,
-      open: 1,
+      timestamp_ms: 600_000,
+      time: 600,
+      open: 2,
       high: 3,
-      low: 0.4,
+      low: 1.8,
       close: 2.5,
-      volume: 15,
+      volume: 5,
     });
   });
 
