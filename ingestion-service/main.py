@@ -60,6 +60,11 @@ class IngestionService:
             return value.decode()
         return str(value)
 
+    @staticmethod
+    def _next_candle_ts_ms(latest_ts_ms: int, timeframe_minutes: int) -> int:
+        timeframe_ms = int(timedelta(minutes=timeframe_minutes).total_seconds() * 1000)
+        return latest_ts_ms + timeframe_ms
+
     def __init__(self):
         """Initialize the ingestion service."""
         self.config = load_config()
@@ -211,7 +216,7 @@ class IngestionService:
                 await self._backfill_symbol(
                     symbol_id=state.symbol_id,
                     symbol=state.symbol,
-                    from_ts=from_ts_ms,
+                    from_ts=self._next_candle_ts_ms(from_ts_ms, self.TIMEFRAME_M1),
                     to_ts=self._utc_now_ms(),
                 )
 
@@ -282,7 +287,7 @@ class IngestionService:
             await self._backfill_symbol(
                 symbol_id=state.symbol_id,
                 symbol=state.symbol,
-                from_ts=from_ts_ms,
+                from_ts=self._next_candle_ts_ms(from_ts_ms, self.TIMEFRAME_M1),
                 to_ts=self._utc_now_ms(),
             )
 
@@ -370,7 +375,7 @@ class IngestionService:
                     await self._backfill_symbol(
                         symbol_id=state.symbol_id,
                         symbol=state.symbol,
-                        from_ts=from_ts,
+                        from_ts=self._next_candle_ts_ms(from_ts, self.TIMEFRAME_M1),
                         to_ts=self._utc_now_ms(),
                     )
                     self.logger.info(f"Recovery complete for {state.symbol}")

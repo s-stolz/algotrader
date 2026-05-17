@@ -99,6 +99,45 @@ def _timeframe_to_minutes(timeframe: Timeframe) -> int:
     return mapping.get(timeframe, 1)
 
 
+def _trendbar_count_for_range(
+    timeframe: Timeframe,
+    from_ts: int,
+    to_ts: int | None,
+    max_count: int,
+) -> int:
+    if to_ts is None:
+        return max_count
+
+    if to_ts < from_ts:
+        return 0
+
+    timeframe_ms = _timeframe_to_minutes(timeframe) * 60 * 1000
+    range_count = ((to_ts - from_ts) // timeframe_ms) + 1
+    return min(max_count, range_count)
+
+
+def _trendbar_chunk_to(
+    timeframe: Timeframe,
+    from_ts: int,
+    chunk_size: int,
+    final_to: int | None,
+) -> int:
+    timeframe_ms = _timeframe_to_minutes(timeframe) * 60 * 1000
+    chunk_to = from_ts + ((chunk_size - 1) * timeframe_ms)
+    return min(chunk_to, final_to) if final_to is not None else chunk_to
+
+
+def _filter_trendbars_by_time_range(
+    bars: list[Trendbar],
+    from_ts: int,
+    to_ts: int | None,
+) -> list[Trendbar]:
+    if to_ts is None:
+        return [bar for bar in bars if bar.t >= from_ts]
+
+    return [bar for bar in bars if from_ts <= bar.t <= to_ts]
+
+
 class CtraderClient(BrokerPort, MarketDataPort):
     """Async wrapper that keeps Twisted reactor in a background thread."""
 
@@ -343,32 +382,41 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
         # If limit is specified and <= 10000, make single request
         if limit and limit <= 10000:
-            return await self._fetch_trendbar_chunk(
-                int(account_id), info.symbol_id, info.digits, timeframe, from_ts, to_ts, limit
+            chunk_limit = _trendbar_count_for_range(timeframe, from_ts, to_ts, limit)
+            if chunk_limit <= 0:
+                return []
+
+            bars = await self._fetch_trendbar_chunk(
+                int(account_id),
+                info.symbol_id,
+                info.digits,
+                timeframe,
+                from_ts,
+                to_ts,
+                chunk_limit,
             )
+            return _filter_trendbars_by_time_range(bars, from_ts, to_ts)
 
         # Otherwise, chunk the request
         all_bars: list[Trendbar] = []
         chunk_size = 10000
         timeframe_minutes = _timeframe_to_minutes(timeframe)
-        chunk_time_span_ms = chunk_size * timeframe_minutes * 60 * 1000
 
         current_from = from_ts
         final_to = to_ts or (from_ts + (limit * timeframe_minutes * 60 * 1000) if limit else None)
 
         while True:
             # Calculate chunk boundaries
-            chunk_to = None
-            if final_to:
-                chunk_to = min(current_from + chunk_time_span_ms, final_to)
-            else:
-                chunk_to = current_from + chunk_time_span_ms
+            chunk_to = _trendbar_chunk_to(timeframe, current_from, chunk_size, final_to)
 
             # Determine how many bars to fetch in this chunk
-            chunk_limit = chunk_size
+            chunk_limit = _trendbar_count_for_range(timeframe, current_from, chunk_to, chunk_size)
             if limit:
                 remaining = limit - len(all_bars)
-                chunk_limit = min(chunk_size, remaining)
+                chunk_limit = min(chunk_limit, remaining)
+
+            if chunk_limit <= 0:
+                break
 
             logger.debug(
                 f"Fetching chunk: from_ts={current_from}, to_ts={chunk_to}, "
@@ -376,7 +424,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             )
 
             # Fetch chunk
-            chunk_bars = await self._fetch_trendbar_chunk(
+            raw_chunk_bars = await self._fetch_trendbar_chunk(
                 int(account_id),
                 info.symbol_id,
                 info.digits,
@@ -385,9 +433,21 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 chunk_to,
                 chunk_limit,
             )
+            chunk_bars = _filter_trendbars_by_time_range(
+                raw_chunk_bars,
+                current_from,
+                chunk_to,
+            )
+
+            if not raw_chunk_bars:
+                break
 
             if not chunk_bars:
-                break
+                if final_to and chunk_to >= final_to:
+                    break
+
+                current_from = chunk_to + 1
+                continue
 
             all_bars.extend(chunk_bars)
 
@@ -489,7 +549,6 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
         chunk_size = 10000
         timeframe_minutes = _timeframe_to_minutes(timeframe)
-        chunk_time_span_ms = chunk_size * timeframe_minutes * 60 * 1000
 
         current_from = from_ts
         final_to = to_ts or (from_ts + (limit * timeframe_minutes * 60 * 1000) if limit else None)
@@ -497,17 +556,16 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
         while True:
             # Calculate chunk boundaries
-            chunk_to = None
-            if final_to:
-                chunk_to = min(current_from + chunk_time_span_ms, final_to)
-            else:
-                chunk_to = current_from + chunk_time_span_ms
+            chunk_to = _trendbar_chunk_to(timeframe, current_from, chunk_size, final_to)
 
             # Determine how many bars to fetch in this chunk
-            chunk_limit = chunk_size
+            chunk_limit = _trendbar_count_for_range(timeframe, current_from, chunk_to, chunk_size)
             if limit:
                 remaining = limit - total_yielded
-                chunk_limit = min(chunk_size, remaining)
+                chunk_limit = min(chunk_limit, remaining)
+
+            if chunk_limit <= 0:
+                break
 
             logger.debug(
                 f"Streaming chunk: from_ts={current_from}, to_ts={chunk_to}, "
@@ -515,7 +573,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             )
 
             # Fetch chunk
-            chunk_bars = await self._fetch_trendbar_chunk(
+            raw_chunk_bars = await self._fetch_trendbar_chunk(
                 int(account_id),
                 info.symbol_id,
                 info.digits,
@@ -524,8 +582,13 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 chunk_to,
                 chunk_limit,
             )
+            chunk_bars = _filter_trendbars_by_time_range(
+                raw_chunk_bars,
+                current_from,
+                chunk_to,
+            )
 
-            if not chunk_bars:
+            if not raw_chunk_bars:
                 # Empty chunk - skip to next chunk instead of breaking
                 # This handles cases where data doesn't exist for early time periods
                 logger.debug(f"Empty chunk from {current_from} to {chunk_to}, continuing...")
@@ -535,6 +598,17 @@ class CtraderClient(BrokerPort, MarketDataPort):
                     break
 
                 # Move to next chunk
+                current_from = chunk_to + 1
+                continue
+
+            if not chunk_bars:
+                logger.debug(
+                    f"Chunk from {current_from} to {chunk_to} only contained out-of-range bars"
+                )
+
+                if final_to and chunk_to >= final_to:
+                    break
+
                 current_from = chunk_to + 1
                 continue
 
