@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List
 
 import httpx
 
@@ -33,9 +33,9 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str = "M1",
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        limit: Optional[int] = None,
+        start_time: str | int | None = None,
+        end_time: str | int | None = None,
+        limit: int | None = None,
     ) -> List[Dict[str, Any]]:
         """Fetch historical trendbars (candles) from the broker-service.
 
@@ -51,7 +51,7 @@ class BrokerClient:
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbars"
 
-        params = {
+        params: dict[str, Any] = {
             "timeframe": timeframe,
         }
 
@@ -86,9 +86,9 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str = "M1",
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        limit: Optional[int] = None,
+        start_time: str | int | None = None,
+        end_time: str | int | None = None,
+        limit: int | None = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream historical trendbars from the broker-service.
 
@@ -107,7 +107,7 @@ class BrokerClient:
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbars/stream"
 
-        params = {
+        params: dict[str, Any] = {
             "timeframe": timeframe,
         }
 

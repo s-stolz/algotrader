@@ -9,8 +9,8 @@ from app.stream_consumer import StreamConsumer
 
 redis_module = types.ModuleType("redis")
 redis_asyncio_module = types.ModuleType("redis.asyncio")
-redis_asyncio_module.Redis = object
-redis_module.asyncio = redis_asyncio_module
+setattr(redis_asyncio_module, "Redis", object)
+setattr(redis_module, "asyncio", redis_asyncio_module)
 sys.modules.setdefault("redis", redis_module)
 sys.modules.setdefault("redis.asyncio", redis_asyncio_module)
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NoReturn
 
 import numpy as np
 import pandas as pd
@@ -446,7 +446,7 @@ def _raise_runtime_invalid_feature_snapshot(
     strategy: StrategyDefinition,
     symbol: str,
     timestamp_ms: int,
-) -> None:
+) -> NoReturn:
     required_features = _format_required_indicator_features(strategy)
     raise ValueError(
         "Event-driven bar runtime invalid feature snapshot at "

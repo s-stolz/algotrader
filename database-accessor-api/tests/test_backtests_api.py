@@ -2,8 +2,10 @@ import asyncio
 import os
 import unittest
 from datetime import datetime
+from typing import cast
 
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 os.environ.setdefault("TIMESCALEDB_USER", "test")
 os.environ.setdefault("TIMESCALEDB_PASSWORD", "test")
@@ -78,13 +80,17 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
         self.session.close()
 
+    @property
+    def db(self) -> AsyncSession:
+        return cast(AsyncSession, self.session)
+
     async def test_post_backtest_stores_summary_and_get_by_id_returns_it(self):
         saved = await main.create_backtest_summary(
             BacktestRunSummaryIn(**_summary_payload()),
-            db=self.session,
+            db=self.db,
         )
 
-        fetched = await main.get_backtest_summary(saved["run_id"], db=self.session)
+        fetched = await main.get_backtest_summary(saved["run_id"], db=self.db)
 
         self.assertEqual(fetched["run_id"], saved["run_id"])
         self.assertIsInstance(fetched["persisted_at"], datetime)
@@ -108,7 +114,7 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_list_backtests_filters_summaries_and_orders_newest_first(self):
         older = await main.create_backtest_summary(
             BacktestRunSummaryIn(**_summary_payload(strategy_id="ema-cross")),
-            db=self.session,
+            db=self.db,
         )
         await asyncio.sleep(0.001)
         newer = await main.create_backtest_summary(
@@ -122,7 +128,7 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
                     final_position_quantity=0.0,
                 )
             ),
-            db=self.session,
+            db=self.db,
         )
 
         all_summaries = await main.list_backtest_summaries(
@@ -130,35 +136,35 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
             timeframe=None,
             strategy_id=None,
             engine=None,
-            db=self.session,
+            db=self.db,
         )
         symbol_matches = await main.list_backtest_summaries(
             symbol="EURUSD",
             timeframe=None,
             strategy_id=None,
             engine=None,
-            db=self.session,
+            db=self.db,
         )
         timeframe_matches = await main.list_backtest_summaries(
             symbol=None,
             timeframe="H1",
             strategy_id=None,
             engine=None,
-            db=self.session,
+            db=self.db,
         )
         strategy_matches = await main.list_backtest_summaries(
             symbol=None,
             timeframe=None,
             strategy_id="breakout",
             engine=None,
-            db=self.session,
+            db=self.db,
         )
         engine_matches = await main.list_backtest_summaries(
             symbol=None,
             timeframe=None,
             strategy_id=None,
             engine="event_driven",
-            db=self.session,
+            db=self.db,
         )
 
         self.assertEqual(
@@ -190,16 +196,16 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
                     ],
                 )
             ),
-            db=self.session,
+            db=self.db,
         )
 
-        trades = await main.get_backtest_trades(saved["run_id"], db=self.session)
+        trades = await main.get_backtest_trades(saved["run_id"], db=self.db)
         summaries = await main.list_backtest_summaries(
             symbol=None,
             timeframe=None,
             strategy_id=None,
             engine=None,
-            db=self.session,
+            db=self.db,
         )
 
         self.assertEqual(
@@ -230,11 +236,11 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_post_backtest_with_no_closed_trades_returns_empty_trade_list(self):
         saved = await main.create_backtest_summary(
             BacktestRunSummaryIn(**_summary_payload(trade_count=0)),
-            db=self.session,
+            db=self.db,
         )
 
-        trades = await main.get_backtest_trades(saved["run_id"], db=self.session)
-        fetched = await main.get_backtest_summary(saved["run_id"], db=self.session)
+        trades = await main.get_backtest_trades(saved["run_id"], db=self.db)
+        fetched = await main.get_backtest_summary(saved["run_id"], db=self.db)
 
         self.assertEqual(trades, [])
         self.assertEqual(fetched["trade_count"], 0)

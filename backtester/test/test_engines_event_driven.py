@@ -525,6 +525,15 @@ class _RuntimeInvalidAfterBootstrapIndicator:
             },
         )
 
+    def batch_vectorized(self, *args, **kwargs):
+        return self.batch(*args, **kwargs)
+
+    def init_state(self, *args, **kwargs):
+        return None
+
+    def update(self, *args, **kwargs):
+        return None, self.batch(*args, **kwargs)
+
 
 def _register_runtime_invalid_indicator() -> None:
     try:

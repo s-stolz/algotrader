@@ -36,6 +36,8 @@ docker compose --env-file config/.env.shared up --build
 - Broker service: `make test broker-service`
 - Indicator engine: `make test indicator_engine`
 - Frontend quality gate: `make test frontend`
+- Full repository verification gate: `make verify`
+- Python-only verification gate: `make verify-python`
 
 Prefer `make` targets. Inspect `Makefile` only when debugging a target itself.
 
@@ -59,6 +61,7 @@ cd frontend && npm run build
 
 ```sh
 ./lint-python.sh
+make typecheck-python
 ```
 
 ## Local Service Entrypoints

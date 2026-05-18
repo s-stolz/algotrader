@@ -41,7 +41,11 @@ the decision should prevent future agents from re-litigating the same question.
 ## Verification
 
 - Prefer the narrow command from `docs/agent/COMMANDS.md`.
+- Run `make typecheck-python` when touching Python code; Pyright findings are
+  part of the repair loop, not editor-only advice.
 - Run broader commands when the changed interface is used by multiple areas.
+- Use `make verify` as the broad final gate when a change is ready for handoff or
+  CI-style validation.
 - If only markdown changes, verify internal links and context-map routing instead
   of running application tests.
 

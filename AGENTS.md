@@ -37,6 +37,8 @@ turn it into full project documentation. Open deeper context only when relevant.
 - Backend tests: `make test`
 - Frontend gate: `make test frontend`
 - Python lint/format check: `./lint-python.sh`
+- Python type check: `make typecheck-python`
+- Full verification gate: `make verify`
 
 More commands and per-area test commands live in `docs/agent/COMMANDS.md`.
 The end-to-end agent workflow lives in `docs/agent/WORKFLOW.md`.

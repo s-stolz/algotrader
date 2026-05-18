@@ -1,14 +1,18 @@
+from typing import AsyncIterator
+
 from app.application.interfaces import (
     MarketDataPort,
     StreamRegistryPort,
     TrendbarStreamRegistryPort,
 )
-from app.domain.models import Symbol
+from app.domain.models import Symbol, Trendbar
 from app.domain.value_objects import (
     AccountId,
     SymbolDescriptor,
     TickStreamOptions,
+    TickStreamStatus,
     Timeframe,
+    TrendbarStreamStatus,
 )
 
 
@@ -28,13 +32,13 @@ class MarketDataService:
         account_id: AccountId,
         symbol: str,
         options: TickStreamOptions,
-    ):
+    ) -> TickStreamStatus:
         return await self._streams.start_tick_stream(account_id, symbol, options)
 
     async def stop_tick_stream(self, account_id: AccountId, symbol: str) -> None:
         await self._streams.stop_tick_stream(account_id, symbol)
 
-    async def tick_stream_status(self, account_id: AccountId, symbol: str):
+    async def tick_stream_status(self, account_id: AccountId, symbol: str) -> TickStreamStatus:
         return await self._streams.get_tick_stream_status(account_id, symbol)
 
     async def get_trendbars(
@@ -45,7 +49,7 @@ class MarketDataService:
         from_ts: int,
         to_ts: int | None,
         limit: int | None,
-    ):
+    ) -> list[Trendbar]:
         return await self._market_data_port.get_trendbars(
             account_id,
             symbol,
@@ -63,7 +67,7 @@ class MarketDataService:
         from_ts: int,
         to_ts: int | None,
         limit: int | None,
-    ):
+    ) -> AsyncIterator[Trendbar]:
         return self._market_data_port.stream_trendbars(
             account_id,
             symbol,
@@ -84,7 +88,7 @@ class MarketDataService:
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
-    ):
+    ) -> TrendbarStreamStatus:
         return await self._trendbar_streams.start_trendbar_stream(account_id, symbol, timeframe)
 
     async def stop_trendbar_stream(
@@ -100,7 +104,7 @@ class MarketDataService:
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
-    ):
+    ) -> TrendbarStreamStatus:
         return await self._trendbar_streams.get_trendbar_stream_status(
             account_id, symbol, timeframe
         )

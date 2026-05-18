@@ -1,4 +1,5 @@
 import unittest
+from typing import Any, cast
 
 import numpy as np
 from strategies.conditions import ConditionRule, above, below, crossover, crossunder
@@ -144,10 +145,10 @@ class TestConditionHelpers(unittest.TestCase):
 
     def test_condition_rule_rejects_non_string_feature_names(self) -> None:
         with self.assertRaisesRegex(ValueError, "left_feature"):
-            ConditionRule.above(None, "slow")
+            ConditionRule.above(cast(Any, None), "slow")
 
         with self.assertRaisesRegex(ValueError, "right_feature"):
-            ConditionRule.below("fast", 123)
+            ConditionRule.below("fast", cast(Any, 123))
 
 
 if __name__ == "__main__":

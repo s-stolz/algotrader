@@ -14,7 +14,7 @@ ifneq ($(strip $(TEST_BACKEND_FROM_GOAL)),)
 TEST_BACKEND := $(TEST_BACKEND_FROM_GOAL)
 endif
 
-.PHONY: ensure-pyyaml config validate-config up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check test backtester ingestion-service broker-service indicator_engine frontend
+.PHONY: ensure-pyyaml config validate-config up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester ingestion-service broker-service indicator_engine frontend
 
 ifeq ($(DETACH),1)
 UP_FLAGS += -d
@@ -78,6 +78,18 @@ venvs-recreate:
 
 venvs-check:
 	./scripts/check_venvs.sh all
+
+typecheck-python:
+	./scripts/typecheck_python.sh
+
+verify-python:
+	./lint-python.sh
+	$(MAKE) typecheck-python
+	$(MAKE) test
+
+verify:
+	$(MAKE) verify-python
+	$(MAKE) test frontend
 
 test:
 	@status=0; \

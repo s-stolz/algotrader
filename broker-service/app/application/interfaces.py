@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Protocol
+from typing import Any, AsyncIterator, Mapping, Protocol
 
 from app.domain.models import Account, Deal, Order, Position, Symbol, Tick, Trendbar
 from app.domain.value_objects import (
@@ -30,7 +30,11 @@ class BrokerPort(Protocol):
     ) -> list[Order]: ...
 
     @abstractmethod
-    async def place_order(self, account_id: AccountId, order: dict) -> Order: ...
+    async def place_order(
+        self,
+        account_id: AccountId,
+        order: Mapping[str, Any],
+    ) -> dict[str, Any]: ...
 
     @abstractmethod
     async def cancel_order(self, account_id: AccountId, order_id: OrderId) -> None: ...
@@ -78,7 +82,7 @@ class MarketDataPort(Protocol):
         from_ts: int,
         to_ts: int | None,
         limit: int | None,
-    ): ...
+    ) -> AsyncIterator[Trendbar]: ...
 
     @abstractmethod
     async def list_symbols(self, account_id: AccountId | None = None) -> list[SymbolDescriptor]: ...

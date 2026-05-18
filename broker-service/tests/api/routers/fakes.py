@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any, Mapping
 
 from app.domain.models import Account, Deal, Order, Position, Symbol, TradeData, Trendbar
 from app.domain.value_objects import (
@@ -15,7 +16,7 @@ from app.domain.value_objects import (
 
 
 class FakeOrderService:
-    async def place_order(self, account_id: AccountId, payload: dict):
+    async def place_order(self, account_id: AccountId, payload: Mapping[str, Any]):
         return {"status": "accepted", "orderId": 7, "echo": payload}
 
     async def cancel_order(self, account_id: AccountId, order_id: int) -> None:

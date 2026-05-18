@@ -1,6 +1,7 @@
 """Main entry point for the ingestion service."""
 
 import asyncio
+import inspect
 import signal
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -97,7 +98,9 @@ class IngestionService:
             self.config.redis_url,
             decode_responses=False,
         )
-        await self.redis.ping()
+        ping_result = self.redis.ping()
+        if inspect.isawaitable(ping_result):
+            await ping_result
         self.logger.info(f"Connected to Redis at {self.config.redis_url}")
 
         self.consumer = StreamConsumer(
@@ -295,6 +298,7 @@ class IngestionService:
         """Start stream consumers and optionally run startup backfill per symbol immediately."""
         if self.consumer is None:
             raise RuntimeError("Consumer is not initialized")
+        consumer = self.consumer
 
         self.logger.info("Starting stream consumers...")
         if startup_watermarks is not None:
@@ -315,7 +319,7 @@ class IngestionService:
                 )
 
                 task = asyncio.create_task(
-                    self.consumer.consume_stream(
+                    consumer.consume_stream(
                         stream_key=state.stream_key,
                         symbol_id=state.symbol_id,
                         callback=self.write_candles_callback,

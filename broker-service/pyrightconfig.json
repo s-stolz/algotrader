@@ -2,6 +2,7 @@
   "typeCheckingMode": "basic",
   "venvPath": ".",
   "venv": ".venv",
+  "stubPath": "typings",
   "extraPaths": [
     "../libs/algotrader_logger",
     "../libs/indicator_engine",

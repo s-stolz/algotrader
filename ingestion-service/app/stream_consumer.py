@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 
 from redis.asyncio import Redis
 
 logger = logging.getLogger("ingestion-service.stream_consumer")
+
+CandleBatchCallback = Callable[[int, list[dict[str, Any]]], Awaitable[None]]
 
 
 # Timeframe mapping: string code to minutes
@@ -149,7 +151,11 @@ class StreamConsumer:
         return candles, last_id
 
     async def consume_stream(
-        self, stream_key: str, symbol_id: int, callback: callable, start_id: str = "0-0"
+        self,
+        stream_key: str,
+        symbol_id: int,
+        callback: CandleBatchCallback,
+        start_id: str = "0-0",
     ):
         """Consume messages from a single Redis stream.
 
@@ -192,7 +198,12 @@ class StreamConsumer:
                 await asyncio.sleep(5)
 
     async def backfill_from_stream(
-        self, stream_key: str, symbol_id: int, start_id: str, end_id: str, callback: callable
+        self,
+        stream_key: str,
+        symbol_id: int,
+        start_id: str,
+        end_id: str,
+        callback: CandleBatchCallback,
     ) -> int:
         """Backfill historical data from a stream between two message IDs.
 

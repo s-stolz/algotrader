@@ -1,4 +1,5 @@
 import unittest
+from typing import Any, cast
 from unittest.mock import patch
 
 import pandas as pd
@@ -45,12 +46,12 @@ class TestStrategyDefinition(unittest.TestCase):
                 feature_name="sma_fast",
                 indicator_id="sma",
                 output_key="sma",
-                parameters=(("window", 2),),
+                parameters=cast(Any, (("window", 2),)),
             )
 
         with self.assertRaisesRegex(ValueError, "feature_name"):
             IndicatorFeatureRequirement(
-                feature_name=None,
+                feature_name=cast(Any, None),
                 indicator_id="sma",
                 output_key="sma",
                 parameters={"window": 2},
@@ -59,7 +60,7 @@ class TestStrategyDefinition(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "indicator_id"):
             IndicatorFeatureRequirement(
                 feature_name="sma_fast",
-                indicator_id=None,
+                indicator_id=cast(Any, None),
                 output_key="sma",
                 parameters={"window": 2},
             )
@@ -68,7 +69,7 @@ class TestStrategyDefinition(unittest.TestCase):
             IndicatorFeatureRequirement(
                 feature_name="sma_fast",
                 indicator_id="sma",
-                output_key=123,
+                output_key=cast(Any, 123),
                 parameters={"window": 2},
             )
 

@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from redis.asyncio import Redis
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,7 +13,7 @@ class CtraderTokenState:
 
 
 class RedisTokenRepository:
-    def __init__(self, redis: "Redis", key: str) -> None:
+    def __init__(self, redis: Any, key: str) -> None:
         self._redis = redis
         self._key = key
 

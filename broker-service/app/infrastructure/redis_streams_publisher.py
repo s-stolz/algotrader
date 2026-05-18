@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from app.application.interfaces import RedisPublisherPort
 from app.domain.models import Tick, Trendbar
@@ -54,13 +54,13 @@ class RedisStreamsPublisher(RedisPublisherPort):
         if max_len:
             await self._redis.xadd(
                 key,
-                fields,
+                cast(Any, fields),
                 maxlen=max_len,
                 approximate=True,
-            )  # type: ignore[arg-type]
+            )
             return
 
-        await self._redis.xadd(key, fields)  # type: ignore[arg-type]
+        await self._redis.xadd(key, cast(Any, fields))
 
     @staticmethod
     def _stringify(payload: dict[str, Any]) -> dict[str, str]:

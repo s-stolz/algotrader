@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional
@@ -37,7 +38,9 @@ class RedisConsumer:
             self.redis = await aioredis.from_url(
                 f"redis://{self.redis_host}:{self.redis_port}", decode_responses=True
             )
-            await self.redis.ping()
+            ping_result = self.redis.ping()
+            if inspect.isawaitable(ping_result):
+                await ping_result
             self.is_connected = True
         except Exception as e:
             logger.error(f"Failed to connect to Redis: {e}")

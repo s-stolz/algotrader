@@ -2,7 +2,7 @@ import asyncio
 import logging
 import threading
 import uuid
-from typing import Any, Awaitable, Callable, Dict, Tuple, cast
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Mapping, Tuple, cast
 
 from app.application.interfaces import BrokerPort, MarketDataPort
 from app.domain.models import Account, Deal, Order, Position, Symbol, Tick, Trendbar
@@ -273,7 +273,11 @@ class CtraderClient(BrokerPort, MarketDataPort):
         res = cast(ProtoOAOrderListRes, res)
         return [map_order(order, self._symbol_cache.get_by_id) for order in res.order]
 
-    async def place_order(self, account_id: AccountId, payload: dict) -> dict[str, Any]:
+    async def place_order(
+        self,
+        account_id: AccountId,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
         symbol = payload["symbol"].upper()
         account_id_int = int(account_id)
         info = await self._get_symbol(account_id_int, symbol)
@@ -364,7 +368,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
     # ---------------------------------------------------------- MarketDataPort
 
-    async def get_trendbars(
+    async def get_trendbars(  # noqa: C901
         self,
         account_id: AccountId,
         symbol: str,
@@ -532,7 +536,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             )
             await asyncio.sleep(delay_seconds)
 
-    async def stream_trendbars(
+    async def stream_trendbars(  # noqa: C901
         self,
         account_id: AccountId,
         symbol: str,
@@ -540,7 +544,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         from_ts: int,
         to_ts: int | None,
         limit: int | None,
-    ):
+    ) -> AsyncIterator[Trendbar]:
         """Stream trendbars in chunks for memory-efficient processing.
 
         Yields trendbars in chunks of up to 10,000 bars at a time.
