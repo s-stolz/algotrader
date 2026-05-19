@@ -1,4 +1,5 @@
 import unittest
+from typing import Any, cast
 
 from domain.enums import (
     BacktestEngine,
@@ -60,6 +61,18 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(IntrabarExitPolicy.STOP_FIRST.value, "stop_first")
         self.assertEqual(IntrabarExitPolicy.TAKE_PROFIT_FIRST.value, "take_profit_first")
         self.assertEqual(IntrabarExitPolicy.ERROR.value, "error")
+
+    def test_execution_config_coerces_intrabar_exit_policy_text(self) -> None:
+        execution = ExecutionConfig(intrabar_exit_policy=cast(Any, "take_profit_first"))
+
+        self.assertEqual(
+            execution.intrabar_exit_policy,
+            IntrabarExitPolicy.TAKE_PROFIT_FIRST,
+        )
+
+    def test_execution_config_rejects_unknown_intrabar_exit_policy(self) -> None:
+        with self.assertRaisesRegex(ValueError, "intrabar_exit_policy"):
+            ExecutionConfig(intrabar_exit_policy=cast(Any, "optimistic"))
 
     def test_vectorized_contract_types_construct(self) -> None:
         feature_matrix = FeatureMatrix(

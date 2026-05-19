@@ -62,6 +62,15 @@ class ExecutionConfig:
     slippage_bps: float = 0.0
 
     def __post_init__(self) -> None:
+        try:
+            intrabar_exit_policy = IntrabarExitPolicy(self.intrabar_exit_policy)
+        except ValueError as exc:
+            valid_values = ", ".join(policy.value for policy in IntrabarExitPolicy)
+            raise ValueError(
+                f"intrabar_exit_policy must be one of: {valid_values}"
+            ) from exc
+        object.__setattr__(self, "intrabar_exit_policy", intrabar_exit_policy)
+
         if not math.isfinite(self.commission_bps):
             raise ValueError("commission_bps must be finite")
         if self.commission_bps < 0.0:
