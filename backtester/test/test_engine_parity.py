@@ -335,6 +335,153 @@ class TestBacktestEngineParity(unittest.TestCase):
         )
         self.assertEqual(event_driven.trades[0].exit_reason, ExitReason.STOP_LOSS)
 
+    def test_take_profit_is_active_on_entry_bar_and_takes_priority_over_signal_exit(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + minute * i for i in range(3)],
+                "symbol": ["AAPL"] * 3,
+                "open": [99.0, 100.0, 108.0],
+                "high": [101.0, 106.0, 109.0],
+                "low": [98.0, 99.0, 107.0],
+                "close": [100.0, 90.0, 108.0],
+                "volume": [1_000.0] * 3,
+            }
+        )
+        strategy = _build_price_action_strategy(take_profit_pct=5.0)
+
+        vectorized = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.VECTORIZED,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (3 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+        event_driven = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (3 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self._assert_public_results_match(vectorized, event_driven)
+        self.assertEqual(
+            [
+                (fill.timestamp_ms, fill.side, fill.price, fill.exit_reason)
+                for fill in event_driven.fills
+            ],
+            [
+                (start_ms + minute, OrderSide.BUY, 100.0, None),
+                (start_ms + minute, OrderSide.SELL, 105.0, ExitReason.TAKE_PROFIT),
+            ],
+        )
+        self.assertEqual(event_driven.trades[0].exit_reason, ExitReason.TAKE_PROFIT)
+
+    def test_gap_through_take_profit_fills_at_bar_open_across_engines(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + minute * i for i in range(4)],
+                "symbol": ["AAPL"] * 4,
+                "open": [99.0, 100.0, 107.0, 106.0],
+                "high": [101.0, 101.0, 108.0, 107.0],
+                "low": [98.0, 99.0, 106.0, 105.0],
+                "close": [100.0, 100.0, 107.0, 106.0],
+                "volume": [1_000.0] * 4,
+            }
+        )
+        strategy = _build_price_action_strategy(take_profit_pct=5.0)
+
+        vectorized = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.VECTORIZED,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (4 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+        event_driven = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (4 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self._assert_public_results_match(vectorized, event_driven)
+        self.assertEqual(
+            [(fill.timestamp_ms, fill.side, fill.price) for fill in event_driven.fills],
+            [
+                (start_ms + minute, OrderSide.BUY, 100.0),
+                (start_ms + (2 * minute), OrderSide.SELL, 107.0),
+            ],
+        )
+        self.assertEqual(event_driven.trades[0].exit_reason, ExitReason.TAKE_PROFIT)
+
+    def test_gap_through_take_profit_keeps_priority_over_pending_signal_exit(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + minute * i for i in range(4)],
+                "symbol": ["AAPL"] * 4,
+                "open": [99.0, 100.0, 107.0, 106.0],
+                "high": [101.0, 101.0, 108.0, 107.0],
+                "low": [98.0, 96.0, 106.0, 105.0],
+                "close": [100.0, 96.0, 107.0, 106.0],
+                "volume": [1_000.0] * 4,
+            }
+        )
+        strategy = _build_price_action_strategy(take_profit_pct=5.0)
+
+        vectorized = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.VECTORIZED,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (4 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+        event_driven = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (4 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self._assert_public_results_match(vectorized, event_driven)
+        self.assertEqual(
+            [
+                (fill.timestamp_ms, fill.side, fill.price, fill.exit_reason)
+                for fill in event_driven.fills
+            ],
+            [
+                (start_ms + minute, OrderSide.BUY, 100.0, None),
+                (start_ms + (2 * minute), OrderSide.SELL, 107.0, ExitReason.TAKE_PROFIT),
+            ],
+        )
+        self.assertEqual(event_driven.trades[0].exit_reason, ExitReason.TAKE_PROFIT)
+
     def test_both_engines_reject_multi_symbol_and_non_bar_requests(self) -> None:
         bars = self._build_sma_bars()
 
@@ -398,12 +545,19 @@ def _build_close_above_open_strategy() -> StrategyDefinition:
     )
 
 
-def _build_price_action_strategy(*, stop_loss_pct: float | None = None) -> StrategyDefinition:
+def _build_price_action_strategy(
+    *,
+    stop_loss_pct: float | None = None,
+    take_profit_pct: float | None = None,
+) -> StrategyDefinition:
     bar_model = BarStrategyModel(
         entry_conditions=(ConditionRule.above("close", "open"),),
         exit_conditions=(ConditionRule.below("close", "open"),),
         target_quantity=1.0,
-        protective_exit=ProtectiveExitSpec(stop_loss_pct=stop_loss_pct),
+        protective_exit=ProtectiveExitSpec(
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+        ),
     )
     return StrategyDefinition(
         strategy_id="price_action_fixture",

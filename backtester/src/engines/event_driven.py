@@ -183,6 +183,7 @@ def _run_event_driven_loop(
     for row in tradable_bars.itertuples(index=False):
         bar = _bar_from_row(row)
         bar_index = state.start_bar()
+        protective_exit = bar_model.protective_exit
 
         _execute_pending_at_open(
             state=state,
@@ -190,20 +191,23 @@ def _run_event_driven_loop(
             bar_index=bar_index,
             timestamp_ms=int(bar.timestamp_ms),
             raw_open=float(bar.open),
-            stop_loss_pct=bar_model.protective_exit.stop_loss_pct,
+            stop_loss_pct=protective_exit.stop_loss_pct,
+            take_profit_pct=protective_exit.take_profit_pct,
             gap_policy=request.execution.gap_policy,
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
         )
 
-        _execute_stop_loss_if_triggered(
+        _execute_protective_exit_if_triggered(
             state=state,
             symbol=symbol,
             bar_index=bar_index,
             timestamp_ms=int(bar.timestamp_ms),
             raw_open=float(bar.open),
+            high_price=float(bar.high),
             low_price=float(bar.low),
-            stop_loss_pct=bar_model.protective_exit.stop_loss_pct,
+            stop_loss_pct=protective_exit.stop_loss_pct,
+            take_profit_pct=protective_exit.take_profit_pct,
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
         )
@@ -261,6 +265,7 @@ def _execute_pending_at_open(
     timestamp_ms: int,
     raw_open: float,
     stop_loss_pct: float | None,
+    take_profit_pct: float | None,
     gap_policy: GapPolicy,
     slippage_bps: float,
     commission_bps: float,
@@ -279,6 +284,7 @@ def _execute_pending_at_open(
             pending_total=pending_total,
             raw_open=raw_open,
             stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
             slippage_bps=slippage_bps,
             commission_bps=commission_bps,
         )
@@ -301,6 +307,7 @@ def _record_pending_fill(
     pending_total: float,
     raw_open: float,
     stop_loss_pct: float | None,
+    take_profit_pct: float | None,
     slippage_bps: float,
     commission_bps: float,
 ) -> None:
@@ -309,6 +316,7 @@ def _record_pending_fill(
         pending_total=pending_total,
         raw_open=raw_open,
         stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
     )
     _record_fill(
         state=state,
@@ -327,41 +335,46 @@ def _record_pending_fill(
     state.pending.clear()
 
 
-def _execute_stop_loss_if_triggered(
+def _execute_protective_exit_if_triggered(
     *,
     state: _SequentialRuntimeState,
     symbol: str,
     bar_index: int,
     timestamp_ms: int,
     raw_open: float,
+    high_price: float,
     low_price: float,
     stop_loss_pct: float | None,
+    take_profit_pct: float | None,
     slippage_bps: float,
     commission_bps: float,
 ) -> None:
-    if stop_loss_pct is None:
+    if stop_loss_pct is None and take_profit_pct is None:
         return
 
-    stop_fill_price = _stop_loss_fill_price(
+    protective_exit = _protective_exit_fill_price(
         raw_open=raw_open,
+        high_price=high_price,
         low_price=low_price,
         entry_price=state.entry_price,
         stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
         actual_position=state.actual_position,
     )
-    if stop_fill_price is None:
+    if protective_exit is None:
         return
 
+    exit_fill_price, exit_reason = protective_exit
     _record_fill(
         state=state,
         symbol=symbol,
         bar_index=bar_index,
         timestamp_ms=timestamp_ms,
         quantity_delta=-float(state.actual_position),
-        raw_execution_price=stop_fill_price,
+        raw_execution_price=exit_fill_price,
         slippage_bps=slippage_bps,
         commission_bps=commission_bps,
-        exit_reason=ExitReason.STOP_LOSS,
+        exit_reason=exit_reason,
     )
     state.raw_desired_target = 0.0
     state.desired_target = 0.0
@@ -549,29 +562,96 @@ def _stop_loss_fill_price(
     return None
 
 
+def _take_profit_fill_price(
+    *,
+    raw_open: float,
+    high_price: float,
+    entry_price: float | None,
+    take_profit_pct: float,
+    actual_position: float,
+) -> float | None:
+    if actual_position <= 0.0 or entry_price is None:
+        return None
+
+    target_price = entry_price * (1.0 + (take_profit_pct / 100.0))
+    gap_fill_price = _take_profit_gap_fill_price(
+        raw_open=raw_open,
+        target_price=target_price,
+    )
+    if gap_fill_price is not None:
+        return gap_fill_price
+    if np.isfinite(high_price) and high_price >= target_price:
+        return float(target_price)
+    return None
+
+
+def _protective_exit_fill_price(
+    *,
+    raw_open: float,
+    high_price: float,
+    low_price: float,
+    entry_price: float | None,
+    stop_loss_pct: float | None,
+    take_profit_pct: float | None,
+    actual_position: float,
+) -> tuple[float, ExitReason] | None:
+    if stop_loss_pct is not None:
+        stop_fill_price = _stop_loss_fill_price(
+            raw_open=raw_open,
+            low_price=low_price,
+            entry_price=entry_price,
+            stop_loss_pct=stop_loss_pct,
+            actual_position=actual_position,
+        )
+        if stop_fill_price is not None:
+            return stop_fill_price, ExitReason.STOP_LOSS
+
+    if take_profit_pct is not None:
+        take_profit_fill_price = _take_profit_fill_price(
+            raw_open=raw_open,
+            high_price=high_price,
+            entry_price=entry_price,
+            take_profit_pct=take_profit_pct,
+            actual_position=actual_position,
+        )
+        if take_profit_fill_price is not None:
+            return take_profit_fill_price, ExitReason.TAKE_PROFIT
+
+    return None
+
+
 def _pending_exit_reason_at_open(
     *,
     state: _SequentialRuntimeState,
     pending_total: float,
     raw_open: float,
     stop_loss_pct: float | None,
+    take_profit_pct: float | None,
 ) -> ExitReason | None:
-    if (
-        pending_total >= 0.0
-        or stop_loss_pct is None
-        or state.actual_position <= 0.0
-        or state.entry_price is None
-    ):
+    if pending_total >= 0.0 or state.actual_position <= 0.0 or state.entry_price is None:
         return None
 
-    stop_price = state.entry_price * (1.0 - (stop_loss_pct / 100.0))
-    if _stop_loss_gap_fill_price(raw_open=raw_open, stop_price=stop_price) is None:
-        return None
-    return ExitReason.STOP_LOSS
+    if stop_loss_pct is not None:
+        stop_price = state.entry_price * (1.0 - (stop_loss_pct / 100.0))
+        if _stop_loss_gap_fill_price(raw_open=raw_open, stop_price=stop_price) is not None:
+            return ExitReason.STOP_LOSS
+
+    if take_profit_pct is not None:
+        target_price = state.entry_price * (1.0 + (take_profit_pct / 100.0))
+        if _take_profit_gap_fill_price(raw_open=raw_open, target_price=target_price) is not None:
+            return ExitReason.TAKE_PROFIT
+
+    return None
 
 
 def _stop_loss_gap_fill_price(*, raw_open: float, stop_price: float) -> float | None:
     if _is_valid_open(raw_open) and raw_open <= stop_price:
+        return raw_open
+    return None
+
+
+def _take_profit_gap_fill_price(*, raw_open: float, target_price: float) -> float | None:
+    if _is_valid_open(raw_open) and raw_open >= target_price:
         return raw_open
     return None
 

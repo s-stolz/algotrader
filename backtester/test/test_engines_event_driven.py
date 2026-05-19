@@ -93,8 +93,16 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         forbidden_imports: list[int] = []
         forbidden_imports_by_module = {
             "execution": {"generate_fills_from_targets", "build_equity_curve"},
-            "execution.fills": {"generate_fills_from_targets"},
+            "execution.fills": {
+                "generate_fills_from_targets",
+                "generate_fills_from_targets_with_protective_exits",
+            },
             "execution.portfolio": {"build_equity_curve"},
+        }
+        forbidden_call_names = {
+            "generate_fills_from_targets",
+            "generate_fills_from_targets_with_protective_exits",
+            "build_equity_curve",
         }
 
         for node in ast.walk(tree):
@@ -103,14 +111,8 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
                 if forbidden_names and any(alias.name in forbidden_names for alias in node.names):
                     forbidden_imports.append(node.lineno)
             if isinstance(node, ast.Call):
-                call = node.func
-                if isinstance(call, ast.Name) and call.id == "generate_fills_from_targets":
-                    forbidden_calls.append(node.lineno)
-                if isinstance(call, ast.Attribute) and call.attr == "generate_fills_from_targets":
-                    forbidden_calls.append(node.lineno)
-                if isinstance(call, ast.Name) and call.id == "build_equity_curve":
-                    forbidden_calls.append(node.lineno)
-                if isinstance(call, ast.Attribute) and call.attr == "build_equity_curve":
+                call_name = _ast_call_name(node.func)
+                if call_name in forbidden_call_names:
                     forbidden_calls.append(node.lineno)
 
         self.assertEqual(forbidden_imports, [])
@@ -571,6 +573,14 @@ def _build_runtime_invalid_feature_strategy() -> StrategyDefinition:
         ),
         bar_model=bar_model,
     )
+
+
+def _ast_call_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
 
 
 if __name__ == "__main__":

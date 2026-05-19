@@ -19,12 +19,13 @@ from domain.types import (
     BacktestResult,
     ExecutionArrayBundle,
     FeatureMatrix,
+    ProtectiveExitSpec,
     SignalMatrix,
 )
 from execution.fills import (
     FillGenerationResult,
     generate_fills_from_targets,
-    generate_fills_from_targets_with_stop_loss,
+    generate_fills_from_targets_with_protective_exits,
 )
 from execution.portfolio import build_equity_curve
 from execution.trades import build_trades_from_fills
@@ -64,11 +65,12 @@ def run_vectorized_backtest(
     )
 
     open_prices = normalized["open"].to_numpy(dtype="float64")
+    high_prices = normalized["high"].to_numpy(dtype="float64")
     low_prices = normalized["low"].to_numpy(dtype="float64")
     close_prices = normalized["close"].to_numpy(dtype="float64")
 
-    stop_loss_pct = _stop_loss_pct_for_strategy(strategy)
-    if stop_loss_pct is None:
+    protective_exit = _protective_exit_for_strategy(strategy)
+    if protective_exit is None:
         fill_result = generate_fills_from_targets(
             symbol=symbol,
             timestamp_ms=timestamp_ms,
@@ -85,14 +87,16 @@ def run_vectorized_backtest(
             symbol=symbol,
             expected_size=timestamp_ms.size,
         )
-        fill_result = generate_fills_from_targets_with_stop_loss(
+        fill_result = generate_fills_from_targets_with_protective_exits(
             symbol=symbol,
             timestamp_ms=timestamp_ms,
             open_prices=open_prices,
+            high_prices=high_prices,
             low_prices=low_prices,
             target_quantity=target_values,
             signal_values=signal_values,
-            stop_loss_pct=stop_loss_pct,
+            stop_loss_pct=protective_exit.stop_loss_pct,
+            take_profit_pct=protective_exit.take_profit_pct,
             gap_policy=request.execution.gap_policy,
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
@@ -215,10 +219,13 @@ def _extract_signal_values(
     return signal_values
 
 
-def _stop_loss_pct_for_strategy(strategy: StrategyDefinition) -> float | None:
+def _protective_exit_for_strategy(strategy: StrategyDefinition) -> ProtectiveExitSpec | None:
     if strategy.bar_model is None:
         return None
-    return strategy.bar_model.protective_exit.stop_loss_pct
+    protective_exit = strategy.bar_model.protective_exit
+    if protective_exit.stop_loss_pct is None and protective_exit.take_profit_pct is None:
+        return None
+    return protective_exit
 
 
 def _build_diagnostics(

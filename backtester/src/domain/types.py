@@ -27,16 +27,24 @@ class StrategyConfig:
 @dataclass(frozen=True)
 class ProtectiveExitSpec:
     stop_loss_pct: Optional[float] = None
+    take_profit_pct: Optional[float] = None
 
     def __post_init__(self) -> None:
-        if self.stop_loss_pct is None:
-            return
+        if self.stop_loss_pct is not None:
+            stop_loss_pct = float(self.stop_loss_pct)
+            if not math.isfinite(stop_loss_pct) or stop_loss_pct <= 0.0 or stop_loss_pct >= 100.0:
+                raise ValueError(
+                    "stop_loss_pct must be finite and greater than 0 and less than 100"
+                )
 
-        stop_loss_pct = float(self.stop_loss_pct)
-        if not math.isfinite(stop_loss_pct) or stop_loss_pct <= 0.0 or stop_loss_pct >= 100.0:
-            raise ValueError("stop_loss_pct must be finite and greater than 0 and less than 100")
+            object.__setattr__(self, "stop_loss_pct", stop_loss_pct)
 
-        object.__setattr__(self, "stop_loss_pct", stop_loss_pct)
+        if self.take_profit_pct is not None:
+            take_profit_pct = float(self.take_profit_pct)
+            if not math.isfinite(take_profit_pct) or take_profit_pct <= 0.0:
+                raise ValueError("take_profit_pct must be finite and greater than 0")
+
+            object.__setattr__(self, "take_profit_pct", take_profit_pct)
 
 
 @dataclass(frozen=True)
