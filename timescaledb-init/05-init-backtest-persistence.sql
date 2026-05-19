@@ -49,9 +49,36 @@ CREATE TABLE IF NOT EXISTS backtest_closed_trades (
     exit_price DOUBLE PRECISION NOT NULL,
     realized_pnl DOUBLE PRECISION NOT NULL,
     fees DOUBLE PRECISION NOT NULL,
+    exit_reason VARCHAR(32) NOT NULL DEFAULT 'signal',
     FOREIGN KEY (run_id) REFERENCES backtest_run_summaries (run_id) ON DELETE CASCADE,
     PRIMARY KEY (run_id, trade_id)
 );
+
+ALTER TABLE backtest_closed_trades
+    ADD COLUMN IF NOT EXISTS exit_reason VARCHAR(32) NOT NULL DEFAULT 'signal';
+
+ALTER TABLE backtest_closed_trades
+    ALTER COLUMN exit_reason SET DEFAULT 'signal';
+
+UPDATE backtest_closed_trades
+SET exit_reason = 'signal'
+WHERE exit_reason IS NULL;
+
+ALTER TABLE backtest_closed_trades
+    ALTER COLUMN exit_reason SET NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'backtest_closed_trades_exit_reason_check'
+    ) THEN
+        ALTER TABLE backtest_closed_trades
+            ADD CONSTRAINT backtest_closed_trades_exit_reason_check
+            CHECK (exit_reason IN ('signal', 'stop_loss', 'take_profit'));
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_backtest_closed_trades_run_id
     ON backtest_closed_trades (run_id);

@@ -68,6 +68,7 @@ def _closed_trade_payload(**overrides):
         "exit_price": 1.0740,
         "realized_pnl": 2.5,
         "fees": 0.15,
+        "exit_reason": "signal",
     }
     payload.update(overrides)
     return payload
@@ -232,6 +233,22 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("trades", saved)
         self.assertNotIn("trades", summaries[0])
+
+    async def test_post_backtest_defaults_missing_trade_exit_reason_to_signal(self):
+        legacy_trade = _closed_trade_payload()
+        legacy_trade.pop("exit_reason")
+        saved = await main.create_backtest_summary(
+            BacktestRunSummaryIn(
+                **_summary_payload(
+                    trades=[legacy_trade],
+                )
+            ),
+            db=self.db,
+        )
+
+        trades = await main.get_backtest_trades(saved["run_id"], db=self.db)
+
+        self.assertEqual(trades[0]["exit_reason"], "signal")
 
     async def test_post_backtest_with_no_closed_trades_returns_empty_trade_list(self):
         saved = await main.create_backtest_summary(

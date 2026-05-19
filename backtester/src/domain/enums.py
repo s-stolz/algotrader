@@ -41,6 +41,12 @@ class OrderSide(str, Enum):
     SELL = "sell"
 
 
+class ExitReason(str, Enum):
+    SIGNAL = "signal"
+    STOP_LOSS = "stop_loss"
+    TAKE_PROFIT = "take_profit"
+
+
 class PositionSide(str, Enum):
     LONG = "long"
     SHORT = "short"

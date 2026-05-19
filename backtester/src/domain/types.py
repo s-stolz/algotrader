@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 from domain.enums import (
     BacktestEngine,
     DataGranularity,
+    ExitReason,
     FillTiming,
     GapPolicy,
     OrderSide,
@@ -136,6 +137,7 @@ class Trade:
     exit_price: Optional[float] = None
     realized_pnl: float = 0.0
     fees: float = 0.0
+    exit_reason: ExitReason = ExitReason.SIGNAL
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 import unittest
 
-from domain.enums import BacktestEngine, DataGranularity, MarketEventType, OrderSide
+from domain.enums import BacktestEngine, DataGranularity, ExitReason, MarketEventType, OrderSide
 from domain.events import BarEvent, TickEvent
 from domain.types import (
     BacktestRequest,
@@ -38,6 +38,11 @@ class TestDomainTypes(unittest.TestCase):
     def test_backtest_engine_values_are_explicit(self) -> None:
         self.assertEqual(BacktestEngine.VECTORIZED.value, "vectorized")
         self.assertEqual(BacktestEngine.EVENT_DRIVEN.value, "event_driven")
+
+    def test_exit_reason_values_are_explicit(self) -> None:
+        self.assertEqual(ExitReason.SIGNAL.value, "signal")
+        self.assertEqual(ExitReason.STOP_LOSS.value, "stop_loss")
+        self.assertEqual(ExitReason.TAKE_PROFIT.value, "take_profit")
 
     def test_vectorized_contract_types_construct(self) -> None:
         feature_matrix = FeatureMatrix(
@@ -103,6 +108,7 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(result.backtest_run_id, "run-1")
         self.assertEqual(result.metrics["return_pct"], 0.01)
         self.assertEqual(result.trades[0].fees, 0.0)
+        self.assertEqual(result.trades[0].exit_reason, ExitReason.SIGNAL)
 
     def test_event_types_construct(self) -> None:
         bar_event = BarEvent(

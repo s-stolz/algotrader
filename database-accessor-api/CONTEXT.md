@@ -32,6 +32,8 @@ FastAPI interface for Markets and Candles stored in TimescaleDB.
   `exchange`.
 - M1 reads use the raw `candles` table. Higher timeframe reads may use Timescale
   continuous aggregates or direct `time_bucket` fallback.
+- Backtest closed-trade payloads store and return `exit_reason` values
+  `signal`, `stop_loss`, or `take_profit`; missing values default to `signal`.
 
 ## Change Triggers
 

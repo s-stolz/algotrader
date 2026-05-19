@@ -3,6 +3,7 @@
 from .enums import (
     BacktestEngine,
     DataGranularity,
+    ExitReason,
     FillTiming,
     GapPolicy,
     MarketEventType,
@@ -39,6 +40,7 @@ __all__ = [
     "DataGranularity",
     "ExecutionArrayBundle",
     "ExecutionConfig",
+    "ExitReason",
     "FeatureMatrix",
     "Fill",
     "FillTiming",

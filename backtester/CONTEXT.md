@@ -33,6 +33,9 @@ Standalone Python backtesting module for historical candle simulation.
 - Current parity slice is single-symbol bar-mode for vectorized and event-driven
   engines.
 - Candle input normalizes root `CONTEXT.md` candle fields plus `symbol`.
+- Closed `Trade` results include `exit_reason` using `signal`, `stop_loss`, or
+  `take_profit`; signal-only exits default to `signal` and persistence payloads
+  preserve the value.
 
 ## Change Triggers
 

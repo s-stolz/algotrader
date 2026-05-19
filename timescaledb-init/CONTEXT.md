@@ -25,6 +25,8 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
 - Current continuous aggregate views include M5, M15, M30, H1, H4, and D1.
 - Database-accessor-api may fall back to direct bucketing if an aggregate view is
   unavailable or not useful for the requested range.
+- Backtest closed trades include `exit_reason` with `signal`, `stop_loss`, or
+  `take_profit`; existing rows and missing payload values default to `signal`.
 
 ## Change Triggers
 

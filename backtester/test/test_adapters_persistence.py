@@ -140,6 +140,7 @@ class TestBacktestRunSummaryPersistenceAdapter(unittest.TestCase):
                     "exit_price": 1.074,
                     "realized_pnl": 2.5,
                     "fees": 0.15,
+                    "exit_reason": "signal",
                 }
             ],
         )
@@ -203,6 +204,7 @@ class TestBacktestRunSummaryPersistenceAdapter(unittest.TestCase):
                     "exit_price": 1.074,
                     "realized_pnl": 2.5,
                     "fees": 0.15,
+                    "exit_reason": "signal",
                 },
                 {
                     "trade_id": "trade-2",
@@ -214,6 +216,7 @@ class TestBacktestRunSummaryPersistenceAdapter(unittest.TestCase):
                     "exit_price": 1.076,
                     "realized_pnl": 12.0,
                     "fees": 0.3,
+                    "exit_reason": "signal",
                 },
             ],
         )
