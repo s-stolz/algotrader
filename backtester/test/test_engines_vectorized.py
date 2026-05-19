@@ -12,7 +12,7 @@ from domain.types import (
     SignalMatrix,
     StrategyConfig,
 )
-from strategies.base import StrategyDefinition
+from strategies.base import BarStrategyModel, StrategyDefinition
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
 
 
@@ -162,6 +162,36 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
 
         self.assertEqual(result.diagnostics["engine"], "vectorized")
         self.assertEqual(len(result.fills), 2)
+
+    def test_vectorized_bracket_engine_does_not_call_sequential_strategy_callbacks(self) -> None:
+        bars = self._build_bars()
+        request = self._build_request()
+        strategy = build_sma_crossover_strategy(
+            fast_window=2,
+            slow_window=3,
+            quantity=1.0,
+            stop_loss_pct=5.0,
+            take_profit_pct=5.0,
+        )
+
+        with patch.object(
+            BarStrategyModel,
+            "evaluate_sequential_signal",
+            side_effect=AssertionError("sequential callback called"),
+        ):
+            with patch.object(
+                pd.DataFrame,
+                "iterrows",
+                side_effect=AssertionError("iterrows called"),
+            ):
+                with patch.object(
+                    pd.DataFrame,
+                    "itertuples",
+                    side_effect=AssertionError("itertuples called"),
+                ):
+                    result = run_backtest(request=request, bars=bars, strategy=strategy)
+
+        self.assertEqual(result.diagnostics["engine"], "vectorized")
 
     def test_non_zero_costs_reduce_post_cost_result(self) -> None:
         bars = self._build_bars()
