@@ -10,6 +10,7 @@ from domain.enums import (
     ExitReason,
     FillTiming,
     GapPolicy,
+    IntrabarExitPolicy,
     OrderSide,
     PositionSide,
     PriceSource,
@@ -56,6 +57,7 @@ class ExecutionConfig:
     allow_short: bool = False
     trade_accounting_policy: TradeAccountingPolicy = TradeAccountingPolicy.AVERAGE_COST
     gap_policy: GapPolicy = GapPolicy.SKIP
+    intrabar_exit_policy: IntrabarExitPolicy = IntrabarExitPolicy.CONSERVATIVE
     commission_bps: float = 0.0
     slippage_bps: float = 0.0
 

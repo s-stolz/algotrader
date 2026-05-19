@@ -32,6 +32,13 @@ class GapPolicy(str, Enum):
     ERROR = "error"
 
 
+class IntrabarExitPolicy(str, Enum):
+    CONSERVATIVE = "conservative"
+    STOP_FIRST = "stop_first"
+    TAKE_PROFIT_FIRST = "take_profit_first"
+    ERROR = "error"
+
+
 class TradeAccountingPolicy(str, Enum):
     AVERAGE_COST = "average_cost"
 

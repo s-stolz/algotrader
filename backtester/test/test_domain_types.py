@@ -1,6 +1,13 @@
 import unittest
 
-from domain.enums import BacktestEngine, DataGranularity, ExitReason, MarketEventType, OrderSide
+from domain.enums import (
+    BacktestEngine,
+    DataGranularity,
+    ExitReason,
+    IntrabarExitPolicy,
+    MarketEventType,
+    OrderSide,
+)
 from domain.events import BarEvent, TickEvent
 from domain.types import (
     BacktestRequest,
@@ -34,6 +41,10 @@ class TestDomainTypes(unittest.TestCase):
         self.assertIsNone(request.run_metadata)
         self.assertEqual(request.execution.commission_bps, 0.0)
         self.assertEqual(request.execution.slippage_bps, 0.0)
+        self.assertEqual(
+            request.execution.intrabar_exit_policy,
+            IntrabarExitPolicy.CONSERVATIVE,
+        )
 
     def test_backtest_engine_values_are_explicit(self) -> None:
         self.assertEqual(BacktestEngine.VECTORIZED.value, "vectorized")
@@ -43,6 +54,12 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(ExitReason.SIGNAL.value, "signal")
         self.assertEqual(ExitReason.STOP_LOSS.value, "stop_loss")
         self.assertEqual(ExitReason.TAKE_PROFIT.value, "take_profit")
+
+    def test_intrabar_exit_policy_values_are_explicit(self) -> None:
+        self.assertEqual(IntrabarExitPolicy.CONSERVATIVE.value, "conservative")
+        self.assertEqual(IntrabarExitPolicy.STOP_FIRST.value, "stop_first")
+        self.assertEqual(IntrabarExitPolicy.TAKE_PROFIT_FIRST.value, "take_profit_first")
+        self.assertEqual(IntrabarExitPolicy.ERROR.value, "error")
 
     def test_vectorized_contract_types_construct(self) -> None:
         feature_matrix = FeatureMatrix(

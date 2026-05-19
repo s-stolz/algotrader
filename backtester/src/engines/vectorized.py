@@ -9,7 +9,9 @@ import pandas as pd
 from domain.enums import (
     BacktestEngine,
     DataGranularity,
+    ExitReason,
     FillTiming,
+    OrderSide,
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
@@ -18,6 +20,7 @@ from domain.types import (
     BacktestRequest,
     BacktestResult,
     ExecutionArrayBundle,
+    Fill,
     FeatureMatrix,
     ProtectiveExitSpec,
     SignalMatrix,
@@ -97,6 +100,7 @@ def run_vectorized_backtest(
             signal_values=signal_values,
             stop_loss_pct=protective_exit.stop_loss_pct,
             take_profit_pct=protective_exit.take_profit_pct,
+            intrabar_exit_policy=request.execution.intrabar_exit_policy,
             gap_policy=request.execution.gap_policy,
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
@@ -243,16 +247,44 @@ def _build_diagnostics(
         "strategy_id": strategy.strategy_id,
         "fill_timing": request.execution.fill_timing.value,
         "gap_policy": request.execution.gap_policy.value,
+        "intrabar_exit_policy": request.execution.intrabar_exit_policy.value,
         "commission_bps": float(request.execution.commission_bps),
         "slippage_bps": float(request.execution.slippage_bps),
         "total_fees": float(fill_result.executed_fees.sum()),
         "total_slippage_cost": float(fill_result.total_slippage_cost),
+        "stop_loss_exit_count": _exit_fill_count(
+            fills=fill_result.fills,
+            exit_reason=ExitReason.STOP_LOSS,
+        ),
+        "take_profit_exit_count": _exit_fill_count(
+            fills=fill_result.fills,
+            exit_reason=ExitReason.TAKE_PROFIT,
+        ),
+        "signal_exit_count": _signal_exit_fill_count(fill_result.fills),
+        "intrabar_ambiguous_bar_count": int(fill_result.intrabar_ambiguous_bar_count),
         "invalid_open_count": int(fill_result.invalid_open_count),
         "deferred_delta_count": int(fill_result.deferred_delta_count),
         "expired_delta_count": int(fill_result.expired_delta_count),
         "executed_deferred_count": int(fill_result.executed_deferred_count),
         "tail_expired_delta_count": int(fill_result.tail_expired_delta_count),
     }
+
+
+def _exit_fill_count(*, fills: list[Fill], exit_reason: ExitReason) -> int:
+    return sum(
+        1
+        for fill in fills
+        if fill.side == OrderSide.SELL and fill.exit_reason == exit_reason
+    )
+
+
+def _signal_exit_fill_count(fills: list[Fill]) -> int:
+    return sum(
+        1
+        for fill in fills
+        if fill.side == OrderSide.SELL
+        and (fill.exit_reason is None or fill.exit_reason == ExitReason.SIGNAL)
+    )
 
 
 def _normalize_bars(*, bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
