@@ -188,6 +188,13 @@ def generate_fills_from_targets_with_stop_loss(
         if pending_total != 0.0:
             raw_open = float(opens[dst_idx])
             if _is_valid_open(raw_open):
+                exit_reason = _pending_exit_reason_at_open(
+                    pending_total=pending_total,
+                    raw_open=raw_open,
+                    entry_price=entry_price,
+                    stop_loss_pct=stop_loss_pct,
+                    actual_position=actual_position,
+                )
                 fill = _record_fill(
                     state=state,
                     symbol=symbol,
@@ -197,7 +204,7 @@ def generate_fills_from_targets_with_stop_loss(
                     raw_execution_price=raw_open,
                     slippage_bps=slippage_bps,
                     commission_bps=commission_bps,
-                    exit_reason=None,
+                    exit_reason=exit_reason,
                 )
                 actual_position, entry_price = _apply_position_fill(
                     actual_position=actual_position,
@@ -466,10 +473,37 @@ def _stop_loss_fill_price(
         return None
 
     stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
-    if _is_valid_open(raw_open) and raw_open <= stop_price:
-        return raw_open
+    gap_fill_price = _stop_loss_gap_fill_price(
+        raw_open=raw_open,
+        stop_price=stop_price,
+    )
+    if gap_fill_price is not None:
+        return gap_fill_price
     if np.isfinite(low_price) and low_price <= stop_price:
         return float(stop_price)
+    return None
+
+
+def _pending_exit_reason_at_open(
+    *,
+    pending_total: float,
+    raw_open: float,
+    entry_price: float | None,
+    stop_loss_pct: float,
+    actual_position: float,
+) -> ExitReason | None:
+    if pending_total >= 0.0 or actual_position <= 0.0 or entry_price is None:
+        return None
+
+    stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
+    if _stop_loss_gap_fill_price(raw_open=raw_open, stop_price=stop_price) is None:
+        return None
+    return ExitReason.STOP_LOSS
+
+
+def _stop_loss_gap_fill_price(*, raw_open: float, stop_price: float) -> float | None:
+    if _is_valid_open(raw_open) and raw_open <= stop_price:
+        return raw_open
     return None
 
 

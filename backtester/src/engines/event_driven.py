@@ -190,6 +190,7 @@ def _run_event_driven_loop(
             bar_index=bar_index,
             timestamp_ms=int(bar.timestamp_ms),
             raw_open=float(bar.open),
+            stop_loss_pct=bar_model.protective_exit.stop_loss_pct,
             gap_policy=request.execution.gap_policy,
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
@@ -259,6 +260,7 @@ def _execute_pending_at_open(
     bar_index: int,
     timestamp_ms: int,
     raw_open: float,
+    stop_loss_pct: float | None,
     gap_policy: GapPolicy,
     slippage_bps: float,
     commission_bps: float,
@@ -276,6 +278,7 @@ def _execute_pending_at_open(
             timestamp_ms=timestamp_ms,
             pending_total=pending_total,
             raw_open=raw_open,
+            stop_loss_pct=stop_loss_pct,
             slippage_bps=slippage_bps,
             commission_bps=commission_bps,
         )
@@ -297,9 +300,16 @@ def _record_pending_fill(
     timestamp_ms: int,
     pending_total: float,
     raw_open: float,
+    stop_loss_pct: float | None,
     slippage_bps: float,
     commission_bps: float,
 ) -> None:
+    exit_reason = _pending_exit_reason_at_open(
+        state=state,
+        pending_total=pending_total,
+        raw_open=raw_open,
+        stop_loss_pct=stop_loss_pct,
+    )
     _record_fill(
         state=state,
         symbol=symbol,
@@ -309,7 +319,7 @@ def _record_pending_fill(
         raw_execution_price=raw_open,
         slippage_bps=slippage_bps,
         commission_bps=commission_bps,
-        exit_reason=None,
+        exit_reason=exit_reason,
     )
     state.executed_deferred_count += sum(
         1 for item in state.pending if item.deferred and item.quantity != 0.0
@@ -528,10 +538,41 @@ def _stop_loss_fill_price(
         return None
 
     stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
-    if _is_valid_open(raw_open) and raw_open <= stop_price:
-        return raw_open
+    gap_fill_price = _stop_loss_gap_fill_price(
+        raw_open=raw_open,
+        stop_price=stop_price,
+    )
+    if gap_fill_price is not None:
+        return gap_fill_price
     if np.isfinite(low_price) and low_price <= stop_price:
         return float(stop_price)
+    return None
+
+
+def _pending_exit_reason_at_open(
+    *,
+    state: _SequentialRuntimeState,
+    pending_total: float,
+    raw_open: float,
+    stop_loss_pct: float | None,
+) -> ExitReason | None:
+    if (
+        pending_total >= 0.0
+        or stop_loss_pct is None
+        or state.actual_position <= 0.0
+        or state.entry_price is None
+    ):
+        return None
+
+    stop_price = state.entry_price * (1.0 - (stop_loss_pct / 100.0))
+    if _stop_loss_gap_fill_price(raw_open=raw_open, stop_price=stop_price) is None:
+        return None
+    return ExitReason.STOP_LOSS
+
+
+def _stop_loss_gap_fill_price(*, raw_open: float, stop_price: float) -> float | None:
+    if _is_valid_open(raw_open) and raw_open <= stop_price:
+        return raw_open
     return None
 
 

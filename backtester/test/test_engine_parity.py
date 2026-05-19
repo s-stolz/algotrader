@@ -285,6 +285,56 @@ class TestBacktestEngineParity(unittest.TestCase):
         )
         self.assertEqual(event_driven.trades[0].exit_reason, ExitReason.STOP_LOSS)
 
+    def test_gap_through_stop_loss_keeps_priority_over_pending_signal_exit(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + minute * i for i in range(4)],
+                "symbol": ["AAPL"] * 4,
+                "open": [99.0, 100.0, 93.0, 96.0],
+                "high": [101.0, 101.0, 94.0, 97.0],
+                "low": [98.0, 96.0, 92.0, 95.0],
+                "close": [100.0, 96.0, 93.0, 96.0],
+                "volume": [1_000.0] * 4,
+            }
+        )
+        strategy = _build_price_action_strategy(stop_loss_pct=5.0)
+
+        vectorized = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.VECTORIZED,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (4 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+        event_driven = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (4 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self._assert_public_results_match(vectorized, event_driven)
+        self.assertEqual(
+            [
+                (fill.timestamp_ms, fill.side, fill.price, fill.exit_reason)
+                for fill in event_driven.fills
+            ],
+            [
+                (start_ms + minute, OrderSide.BUY, 100.0, None),
+                (start_ms + (2 * minute), OrderSide.SELL, 93.0, ExitReason.STOP_LOSS),
+            ],
+        )
+        self.assertEqual(event_driven.trades[0].exit_reason, ExitReason.STOP_LOSS)
+
     def test_both_engines_reject_multi_symbol_and_non_bar_requests(self) -> None:
         bars = self._build_sma_bars()
 
