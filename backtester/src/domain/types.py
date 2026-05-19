@@ -25,6 +25,21 @@ class StrategyConfig:
 
 
 @dataclass(frozen=True)
+class ProtectiveExitSpec:
+    stop_loss_pct: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        if self.stop_loss_pct is None:
+            return
+
+        stop_loss_pct = float(self.stop_loss_pct)
+        if not math.isfinite(stop_loss_pct) or stop_loss_pct <= 0.0 or stop_loss_pct >= 100.0:
+            raise ValueError("stop_loss_pct must be finite and greater than 0 and less than 100")
+
+        object.__setattr__(self, "stop_loss_pct", stop_loss_pct)
+
+
+@dataclass(frozen=True)
 class ExecutionConfig:
     signal_timing: SignalTiming = SignalTiming.CLOSE
     fill_timing: FillTiming = FillTiming.NEXT_OPEN
@@ -124,6 +139,7 @@ class Fill:
     price: float
     side: OrderSide
     fees: float = 0.0
+    exit_reason: Optional[ExitReason] = None
 
 
 @dataclass(frozen=True)

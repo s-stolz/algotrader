@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List, Sequence
 
-from domain.enums import OrderSide
+from domain.enums import ExitReason, OrderSide
 from domain.types import Fill, Trade
 
 
@@ -68,6 +68,7 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
                     exit_price=float(fill.price),
                     realized_pnl=realized_pnl,
                     fees=trade_fees,
+                    exit_reason=_exit_reason_from_fill(fill),
                 )
             )
             open_qty -= close_qty
@@ -78,3 +79,9 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
                 entry_timestamp_ms = 0
 
     return trades
+
+
+def _exit_reason_from_fill(fill: Fill) -> ExitReason:
+    if fill.exit_reason is None:
+        return ExitReason.SIGNAL
+    return ExitReason(fill.exit_reason)

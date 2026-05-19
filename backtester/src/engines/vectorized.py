@@ -14,8 +14,18 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
-from domain.types import BacktestRequest, BacktestResult, ExecutionArrayBundle, FeatureMatrix
-from execution.fills import FillGenerationResult, generate_fills_from_targets
+from domain.types import (
+    BacktestRequest,
+    BacktestResult,
+    ExecutionArrayBundle,
+    FeatureMatrix,
+    SignalMatrix,
+)
+from execution.fills import (
+    FillGenerationResult,
+    generate_fills_from_targets,
+    generate_fills_from_targets_with_stop_loss,
+)
 from execution.portfolio import build_equity_curve
 from execution.trades import build_trades_from_fills
 from reporting.metrics import compute_metrics
@@ -54,17 +64,39 @@ def run_vectorized_backtest(
     )
 
     open_prices = normalized["open"].to_numpy(dtype="float64")
+    low_prices = normalized["low"].to_numpy(dtype="float64")
     close_prices = normalized["close"].to_numpy(dtype="float64")
 
-    fill_result = generate_fills_from_targets(
-        symbol=symbol,
-        timestamp_ms=timestamp_ms,
-        open_prices=open_prices,
-        target_quantity=target_values,
-        gap_policy=request.execution.gap_policy,
-        slippage_bps=float(request.execution.slippage_bps),
-        commission_bps=float(request.execution.commission_bps),
-    )
+    stop_loss_pct = _stop_loss_pct_for_strategy(strategy)
+    if stop_loss_pct is None:
+        fill_result = generate_fills_from_targets(
+            symbol=symbol,
+            timestamp_ms=timestamp_ms,
+            open_prices=open_prices,
+            target_quantity=target_values,
+            gap_policy=request.execution.gap_policy,
+            slippage_bps=float(request.execution.slippage_bps),
+            commission_bps=float(request.execution.commission_bps),
+        )
+    else:
+        signal_matrix = strategy.require_v1_parity_model().build_signals(feature_matrix)
+        signal_values = _extract_signal_values(
+            signal_matrix=signal_matrix,
+            symbol=symbol,
+            expected_size=timestamp_ms.size,
+        )
+        fill_result = generate_fills_from_targets_with_stop_loss(
+            symbol=symbol,
+            timestamp_ms=timestamp_ms,
+            open_prices=open_prices,
+            low_prices=low_prices,
+            target_quantity=target_values,
+            signal_values=signal_values,
+            stop_loss_pct=stop_loss_pct,
+            gap_policy=request.execution.gap_policy,
+            slippage_bps=float(request.execution.slippage_bps),
+            commission_bps=float(request.execution.commission_bps),
+        )
 
     equity_curve = build_equity_curve(
         symbol=symbol,
@@ -163,6 +195,30 @@ def _extract_target_values(
             f"for symbol {symbol}"
         )
     return target_values
+
+
+def _extract_signal_values(
+    *,
+    signal_matrix: SignalMatrix,
+    symbol: str,
+    expected_size: int,
+) -> np.ndarray:
+    signals = signal_matrix.signals_by_symbol.get(symbol)
+    if signals is None:
+        raise ValueError(f"Strategy did not produce signals for symbol {symbol}")
+
+    signal_values = np.asarray(signals, dtype=np.int64)
+    if signal_values.size != expected_size:
+        raise ValueError(
+            f"Strategy signal length must match executable bar count for symbol {symbol}"
+        )
+    return signal_values
+
+
+def _stop_loss_pct_for_strategy(strategy: StrategyDefinition) -> float | None:
+    if strategy.bar_model is None:
+        return None
+    return strategy.bar_model.protective_exit.stop_loss_pct
 
 
 def _build_diagnostics(

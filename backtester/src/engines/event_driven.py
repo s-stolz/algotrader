@@ -12,6 +12,7 @@ from data.normalization import normalize_bar_data
 from domain.enums import (
     BacktestEngine,
     DataGranularity,
+    ExitReason,
     FillTiming,
     GapPolicy,
     OrderSide,
@@ -104,6 +105,7 @@ class _SequentialRuntimeState:
     raw_desired_target: float = 0.0
     desired_target: float = 0.0
     actual_position: float = 0.0
+    entry_price: float | None = None
     pending: list[_PendingDelta] = field(default_factory=list)
     executed_delta: list[float] = field(default_factory=list)
     executed_notional: list[float] = field(default_factory=list)
@@ -189,6 +191,18 @@ def _run_event_driven_loop(
             timestamp_ms=int(bar.timestamp_ms),
             raw_open=float(bar.open),
             gap_policy=request.execution.gap_policy,
+            slippage_bps=float(request.execution.slippage_bps),
+            commission_bps=float(request.execution.commission_bps),
+        )
+
+        _execute_stop_loss_if_triggered(
+            state=state,
+            symbol=symbol,
+            bar_index=bar_index,
+            timestamp_ms=int(bar.timestamp_ms),
+            raw_open=float(bar.open),
+            low_price=float(bar.low),
+            stop_loss_pct=bar_model.protective_exit.stop_loss_pct,
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
         )
@@ -286,36 +300,116 @@ def _record_pending_fill(
     slippage_bps: float,
     commission_bps: float,
 ) -> None:
-    side = OrderSide.BUY if pending_total > 0.0 else OrderSide.SELL
-    quantity = abs(pending_total)
-    execution_price = _apply_slippage(
-        raw_open=raw_open,
-        side=side,
+    _record_fill(
+        state=state,
+        symbol=symbol,
+        bar_index=bar_index,
+        timestamp_ms=timestamp_ms,
+        quantity_delta=pending_total,
+        raw_execution_price=raw_open,
         slippage_bps=slippage_bps,
+        commission_bps=commission_bps,
+        exit_reason=None,
     )
-    fee = quantity * execution_price * (commission_bps / 10_000.0)
-
-    state.fills.append(
-        Fill(
-            timestamp_ms=timestamp_ms,
-            symbol=symbol,
-            quantity=quantity,
-            price=execution_price,
-            side=side,
-            fees=float(fee),
-        )
-    )
-    state.executed_delta[bar_index] = pending_total
-    state.executed_notional[bar_index] = pending_total * execution_price
-    state.executed_fees[bar_index] = float(fee)
-    state.cash_adjustment += -(pending_total * execution_price) - float(fee)
-    state.cash = float(state.initial_capital + state.cash_adjustment)
-    state.actual_position += pending_total
-    state.total_slippage_cost += quantity * abs(execution_price - raw_open)
     state.executed_deferred_count += sum(
         1 for item in state.pending if item.deferred and item.quantity != 0.0
     )
     state.pending.clear()
+
+
+def _execute_stop_loss_if_triggered(
+    *,
+    state: _SequentialRuntimeState,
+    symbol: str,
+    bar_index: int,
+    timestamp_ms: int,
+    raw_open: float,
+    low_price: float,
+    stop_loss_pct: float | None,
+    slippage_bps: float,
+    commission_bps: float,
+) -> None:
+    if stop_loss_pct is None:
+        return
+
+    stop_fill_price = _stop_loss_fill_price(
+        raw_open=raw_open,
+        low_price=low_price,
+        entry_price=state.entry_price,
+        stop_loss_pct=stop_loss_pct,
+        actual_position=state.actual_position,
+    )
+    if stop_fill_price is None:
+        return
+
+    _record_fill(
+        state=state,
+        symbol=symbol,
+        bar_index=bar_index,
+        timestamp_ms=timestamp_ms,
+        quantity_delta=-float(state.actual_position),
+        raw_execution_price=stop_fill_price,
+        slippage_bps=slippage_bps,
+        commission_bps=commission_bps,
+        exit_reason=ExitReason.STOP_LOSS,
+    )
+    state.raw_desired_target = 0.0
+    state.desired_target = 0.0
+    state.pending.clear()
+
+
+def _record_fill(
+    *,
+    state: _SequentialRuntimeState,
+    symbol: str,
+    bar_index: int,
+    timestamp_ms: int,
+    quantity_delta: float,
+    raw_execution_price: float,
+    slippage_bps: float,
+    commission_bps: float,
+    exit_reason: ExitReason | None,
+) -> Fill:
+    side = OrderSide.BUY if quantity_delta > 0.0 else OrderSide.SELL
+    quantity = abs(quantity_delta)
+    execution_price = _apply_slippage(
+        raw_open=raw_execution_price,
+        side=side,
+        slippage_bps=slippage_bps,
+    )
+    fee = quantity * execution_price * (commission_bps / 10_000.0)
+    fill = Fill(
+        timestamp_ms=timestamp_ms,
+        symbol=symbol,
+        quantity=quantity,
+        price=execution_price,
+        side=side,
+        fees=float(fee),
+        exit_reason=exit_reason,
+    )
+
+    previous_position = float(state.actual_position)
+    state.fills.append(fill)
+    state.executed_delta[bar_index] += quantity_delta
+    state.executed_notional[bar_index] += quantity_delta * execution_price
+    state.executed_fees[bar_index] += float(fee)
+    state.cash_adjustment += -(quantity_delta * execution_price) - float(fee)
+    state.cash = float(state.initial_capital + state.cash_adjustment)
+    state.actual_position += quantity_delta
+    state.total_slippage_cost += quantity * abs(execution_price - raw_execution_price)
+
+    if quantity_delta > 0.0:
+        if previous_position <= 0.0 or state.entry_price is None:
+            state.entry_price = float(execution_price)
+        else:
+            state.entry_price = (
+                (state.entry_price * previous_position) + (float(execution_price) * quantity_delta)
+            ) / state.actual_position
+    elif state.actual_position <= 0.0:
+        state.actual_position = 0.0
+        state.entry_price = None
+
+    return fill
 
 
 def _handle_invalid_open(
@@ -420,6 +514,25 @@ def _apply_slippage(*, raw_open: float, side: OrderSide, slippage_bps: float) ->
     if side == OrderSide.BUY:
         return float(raw_open * (1.0 + factor))
     return float(raw_open * (1.0 - factor))
+
+
+def _stop_loss_fill_price(
+    *,
+    raw_open: float,
+    low_price: float,
+    entry_price: float | None,
+    stop_loss_pct: float,
+    actual_position: float,
+) -> float | None:
+    if actual_position <= 0.0 or entry_price is None:
+        return None
+
+    stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
+    if _is_valid_open(raw_open) and raw_open <= stop_price:
+        return raw_open
+    if np.isfinite(low_price) and low_price <= stop_price:
+        return float(stop_price)
+    return None
 
 
 def _pending_total(pending: list[_PendingDelta]) -> float:
