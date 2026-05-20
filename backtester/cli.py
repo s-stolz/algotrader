@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import math
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -60,6 +62,16 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--fast-window", default=5, type=int)
     run_parser.add_argument("--slow-window", default=20, type=int)
     run_parser.add_argument("--quantity", default=1.0, type=float)
+    run_parser.add_argument("--stop-loss-pct", default=None, type=_stop_loss_pct_arg)
+    run_parser.add_argument("--take-profit-pct", default=None, type=_take_profit_pct_arg)
+    run_parser.add_argument(
+        "--intrabar-exit-policy",
+        "--intrabar-policy",
+        dest="intrabar_exit_policy",
+        default=_APP_CONFIG_MODULE.build_default_execution_config().intrabar_exit_policy.value,
+        choices=tuple(policy.value for policy in _DOMAIN_ENUMS_MODULE.IntrabarExitPolicy),
+        help="Policy for ambiguous bars where stop loss and take profit are both touched.",
+    )
     run_parser.add_argument("--initial-capital", default=10_000.0, type=float)
     run_parser.add_argument("--exchange", default=None)
     run_parser.add_argument(
@@ -118,6 +130,17 @@ def _build_request(args: argparse.Namespace) -> Any:
         "slow_window": int(args.slow_window),
         "quantity": float(args.quantity),
     }
+    if args.stop_loss_pct is not None:
+        strategy_parameters["stop_loss_pct"] = float(args.stop_loss_pct)
+    if args.take_profit_pct is not None:
+        strategy_parameters["take_profit_pct"] = float(args.take_profit_pct)
+
+    execution = replace(
+        _APP_CONFIG_MODULE.build_default_execution_config(),
+        intrabar_exit_policy=_DOMAIN_ENUMS_MODULE.IntrabarExitPolicy(
+            str(args.intrabar_exit_policy)
+        ),
+    )
 
     return _DOMAIN_TYPES_MODULE.BacktestRequest(
         symbols=[str(args.symbol)],
@@ -128,11 +151,37 @@ def _build_request(args: argparse.Namespace) -> Any:
             strategy_id=str(args.strategy),
             parameters=strategy_parameters,
         ),
-        execution=_APP_CONFIG_MODULE.build_default_execution_config(),
+        execution=execution,
         initial_capital=float(args.initial_capital),
         persist_result=bool(args.persist_result),
         engine=_DOMAIN_ENUMS_MODULE.BacktestEngine(str(args.engine)),
     )
+
+
+def _stop_loss_pct_arg(value: str) -> float:
+    parsed = _finite_float_arg(value)
+    if parsed <= 0.0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    if parsed >= 100.0:
+        raise argparse.ArgumentTypeError("must be less than 100")
+    return parsed
+
+
+def _take_profit_pct_arg(value: str) -> float:
+    parsed = _finite_float_arg(value)
+    if parsed <= 0.0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return parsed
+
+
+def _finite_float_arg(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed):
+        raise argparse.ArgumentTypeError("must be finite")
+    return parsed
 
 
 def _print_summary(result: Any) -> None:
