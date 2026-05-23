@@ -172,9 +172,7 @@ class TestCli(unittest.TestCase):
         self.assertIn("final_equity=10005.000000", output)
 
     def test_run_command_maps_stop_loss_pct_into_strategy_parameters(self) -> None:
-        exit_code, request = self._run_command_and_capture_request(
-            ["--stop-loss-pct", "4.5"]
-        )
+        exit_code, request = self._run_command_and_capture_request(["--stop-loss-pct", "4.5"])
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(request.strategy.parameters["stop_loss_pct"], 4.5)
@@ -185,9 +183,7 @@ class TestCli(unittest.TestCase):
         )
 
     def test_run_command_maps_take_profit_pct_into_strategy_parameters(self) -> None:
-        exit_code, request = self._run_command_and_capture_request(
-            ["--take-profit-pct", "9.25"]
-        )
+        exit_code, request = self._run_command_and_capture_request(["--take-profit-pct", "9.25"])
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(request.strategy.parameters["take_profit_pct"], 9.25)

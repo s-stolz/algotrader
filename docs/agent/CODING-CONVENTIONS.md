@@ -15,7 +15,7 @@ restating generic language style.
 
 ## Python Services
 
-- Prefer service-local `unittest` tests under `test/` or `tests/`.
+- Prefer service-local `unittest` tests under `tests/`.
 - Follow the established service layout where it exists:
   - `api/` for transport routes and request/response helpers.
   - `application/` for use-case modules.
@@ -35,6 +35,9 @@ restating generic language style.
 - Run the narrow relevant target from `docs/agent/COMMANDS.md`; broaden when the
   blast radius crosses services.
 - Add API contract or integration tests for new endpoints and stream behavior.
+- Backtester tests mirror the first-level `backtester/src/` folders under
+  `backtester/tests/`. Do not put source-area tests directly in
+  `backtester/tests/`; the backtester layout guard fails those files.
 
 ## Contracts
 

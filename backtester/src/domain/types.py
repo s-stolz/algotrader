@@ -66,9 +66,7 @@ class ExecutionConfig:
             intrabar_exit_policy = IntrabarExitPolicy(self.intrabar_exit_policy)
         except ValueError as exc:
             valid_values = ", ".join(policy.value for policy in IntrabarExitPolicy)
-            raise ValueError(
-                f"intrabar_exit_policy must be one of: {valid_values}"
-            ) from exc
+            raise ValueError(f"intrabar_exit_policy must be one of: {valid_values}") from exc
         object.__setattr__(self, "intrabar_exit_policy", intrabar_exit_policy)
 
         if not math.isfinite(self.commission_bps):

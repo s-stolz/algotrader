@@ -38,7 +38,7 @@ needed for a backtester task.
 
 Historical automated-test baseline before the Ralph parity campaign:
 
-- `backtester`: legacy tests plus M0 skeleton coverage (`test/signals/test_signals.py`, `test/portfolio/test_portfolio.py`, `test/test_skeleton_imports.py`, `test/test_domain_types.py`, `test/test_strategy_base.py`).
+- `backtester`: legacy tests plus M0 skeleton coverage (`tests/signals/test_signals.py`, `tests/portfolio/test_portfolio.py`, `tests/test_skeleton_imports.py`, `tests/test_domain_types.py`, `tests/test_strategy_base.py`).
 - `libs/db_accessor_client`: unit tests for current market/candle client endpoints.
 - `database-accessor-api`: currently no automated tests.
 
@@ -74,7 +74,7 @@ Create the simplified package skeleton and minimal domain contracts to support t
 
 - package layout under `backtester/src/` using the simplified domains:
   - `app`, `domain`, `execution`, `engines`, `data`, `strategies`, `adapters`, `reporting`
-- mirrored test layout under `test/`
+- mirrored test layout under `tests/`
 - flattened top-level module imports (`PYTHONPATH=src`, e.g. `from domain.types import ...`)
 - minimal `domain/types.py`, `domain/enums.py`, `domain/events.py`
 - minimal `app/config.py`
@@ -397,7 +397,7 @@ Lock parity between vectorized and event-driven engines for supported **shared**
 
 ### Test Coverage
 
-- parity test suite in `test/engines/`
+- parity test suite in `tests/engines/`
 
 ### Acceptance Criteria
 

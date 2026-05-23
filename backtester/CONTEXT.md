@@ -49,6 +49,9 @@ Standalone Python backtesting module for historical candle simulation.
 - Do not duplicate Timeframe maps if shared `db_accessor_client` can be used.
 - Strategy definitions should remain explicit and reproducible through the
   strategy registry.
+- Tests for `src/<area>/...` must live under the matching `tests/<area>/...`
+  folder. Root-level `tests/test_*.py` files are only for root modules such as
+  `cli.py` plus layout/import checks; `tests/test_layout.py` enforces this.
 - Treat `backtester_implementation_plan.md` as historical roadmap context, not
   the active task queue.
 

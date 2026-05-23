@@ -129,7 +129,7 @@ backtester/
 
     cli.py
 
-  test/
+  tests/
     app/
     domain/
     execution/
@@ -421,14 +421,14 @@ Single-orchestration rule:
 
 Tests mirror source structure:
 
-- `test/app/`
-- `test/domain/`
-- `test/execution/`
-- `test/engines/`
-- `test/data/`
-- `test/strategies/`
-- `test/adapters/`
-- `test/reporting/`
+- `tests/app/`
+- `tests/domain/`
+- `tests/execution/`
+- `tests/engines/`
+- `tests/data/`
+- `tests/strategies/`
+- `tests/adapters/`
+- `tests/reporting/`
 
 Required test priorities:
 

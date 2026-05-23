@@ -20,8 +20,8 @@ from domain.types import (
     BacktestRequest,
     BacktestResult,
     ExecutionArrayBundle,
-    Fill,
     FeatureMatrix,
+    Fill,
     ProtectiveExitSpec,
     SignalMatrix,
 )
@@ -272,9 +272,7 @@ def _build_diagnostics(
 
 def _exit_fill_count(*, fills: list[Fill], exit_reason: ExitReason) -> int:
     return sum(
-        1
-        for fill in fills
-        if fill.side == OrderSide.SELL and fill.exit_reason == exit_reason
+        1 for fill in fills if fill.side == OrderSide.SELL and fill.exit_reason == exit_reason
     )
 
 

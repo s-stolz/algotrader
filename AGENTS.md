@@ -46,7 +46,7 @@ The end-to-end agent workflow lives in `docs/agent/WORKFLOW.md`.
 ## Development Conventions
 
 - Prefer existing module patterns over new architecture.
-- For Python services, tests use `unittest` and service-local `tests/` or `test/`.
+- For Python services, tests use `unittest` and service-local `tests/`.
 - For frontend changes, use Vitest and Vue Test Utils.
 - When a cross-service contract changes, update the producer and consumer context files.
 - Durable architecture decisions live in `docs/adr/`; check them before revisiting
