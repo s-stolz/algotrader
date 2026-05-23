@@ -45,6 +45,7 @@ def _closed_trade_payload() -> dict:
         "exit_price": 1.074,
         "realized_pnl": 2.5,
         "fees": 0.15,
+        "exit_reason": "signal",
     }
 
 
@@ -126,10 +127,12 @@ class DatabaseAccessorClientTests(unittest.TestCase):
                     "exit_price",
                     "realized_pnl",
                     "fees",
+                    "exit_reason",
                 },
             )
             self.assertEqual(posted["trades"][0]["entry_timestamp_ms"], 1714525200000)
             self.assertEqual(posted["trades"][0]["exit_timestamp_ms"], 1714532400000)
+            self.assertEqual(posted["trades"][0]["exit_reason"], "signal")
             return httpx.Response(
                 201,
                 json={
@@ -233,6 +236,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         self.assertEqual(trades, [trade])
         self.assertEqual(trades[0]["entry_timestamp_ms"], 1714525200000)
         self.assertEqual(trades[0]["exit_timestamp_ms"], 1714532400000)
+        self.assertEqual(trades[0]["exit_reason"], "signal")
 
     def test_list_backtest_closed_trades_returns_empty_list(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -423,10 +427,12 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
                     "exit_price",
                     "realized_pnl",
                     "fees",
+                    "exit_reason",
                 },
             )
             self.assertEqual(posted["trades"][0]["entry_timestamp_ms"], 1714525200000)
             self.assertEqual(posted["trades"][0]["exit_timestamp_ms"], 1714532400000)
+            self.assertEqual(posted["trades"][0]["exit_reason"], "signal")
             return httpx.Response(
                 201,
                 json={
@@ -531,6 +537,7 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(trades, [trade])
         self.assertEqual(trades[0]["entry_timestamp_ms"], 1714525200000)
         self.assertEqual(trades[0]["exit_timestamp_ms"], 1714532400000)
+        self.assertEqual(trades[0]["exit_reason"], "signal")
 
     async def test_async_list_backtest_closed_trades_returns_empty_list(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

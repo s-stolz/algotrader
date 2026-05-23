@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Literal
 
 from pydantic import BaseModel, Field, field_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -51,6 +51,7 @@ class BacktestClosedTradeIn(BaseModel):
     exit_price: float
     realized_pnl: float
     fees: float
+    exit_reason: Literal["signal", "stop_loss", "take_profit"] = "signal"
 
 
 class BacktestClosedTradeOut(BacktestClosedTradeIn):

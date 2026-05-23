@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
-from domain.enums import BacktestEngine
 from domain.types import BacktestResult, PortfolioSnapshot, Trade
 
 
@@ -121,6 +120,7 @@ def _closed_trade_payload(trade: Trade) -> dict[str, Any]:
         "exit_price": float(trade.exit_price),
         "realized_pnl": float(trade.realized_pnl),
         "fees": float(trade.fees),
+        "exit_reason": _enum_or_text_value(trade.exit_reason),
     }
 
 
@@ -242,6 +242,9 @@ def _append_monorepo_lib_path(lib_name: str) -> None:
 
 
 def _engine_value(engine: object) -> str:
-    if isinstance(engine, BacktestEngine):
-        return engine.value
-    return str(engine)
+    return _enum_or_text_value(engine)
+
+
+def _enum_or_text_value(value: object) -> str:
+    enum_value = getattr(value, "value", value)
+    return str(enum_value)

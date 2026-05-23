@@ -2,15 +2,61 @@ import io
 import os
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from typing import Any
 from unittest.mock import patch
 
 import cli
 import pandas as pd
-from domain.enums import BacktestEngine, OrderSide
+from domain.enums import BacktestEngine, IntrabarExitPolicy, OrderSide
 from domain.types import BacktestResult, Fill, PortfolioSnapshot, Trade
 
 
 class TestCli(unittest.TestCase):
+    def _run_command_and_capture_request(self, extra_args: list[str]) -> tuple[int, Any]:
+        captured_requests: list[Any] = []
+
+        def _fake_run_backtest_with_market_data(
+            *,
+            request,
+            strategy=None,
+            exchange=None,
+            data_adapter=None,
+        ):
+            _ = (strategy, exchange, data_adapter)
+            captured_requests.append(request)
+            return BacktestResult(
+                request=request,
+                fills=[],
+                trades=[],
+                equity_curve=[],
+                metrics={},
+                diagnostics={},
+            )
+
+        stdout = io.StringIO()
+        with patch(
+            "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+            side_effect=_fake_run_backtest_with_market_data,
+        ):
+            with redirect_stdout(stdout):
+                exit_code = cli.main(
+                    [
+                        "run",
+                        "--symbol",
+                        "AAPL",
+                        "--timeframe",
+                        "M1",
+                        "--start-ms",
+                        "1700000000000",
+                        "--end-ms",
+                        "1700000600000",
+                        *extra_args,
+                    ]
+                )
+
+        self.assertEqual(len(captured_requests), 1)
+        return exit_code, captured_requests[0]
+
     def test_run_command_maps_args_and_prints_summary(self) -> None:
         captured_requests = []
 
@@ -109,6 +155,12 @@ class TestCli(unittest.TestCase):
         self.assertEqual(request.strategy.parameters["fast_window"], 7)
         self.assertEqual(request.strategy.parameters["slow_window"], 20)
         self.assertEqual(request.strategy.parameters["quantity"], 2.5)
+        self.assertNotIn("stop_loss_pct", request.strategy.parameters)
+        self.assertNotIn("take_profit_pct", request.strategy.parameters)
+        self.assertEqual(
+            request.execution.intrabar_exit_policy,
+            IntrabarExitPolicy.CONSERVATIVE,
+        )
         self.assertIsNone(strategy)
         self.assertEqual(exchange, "NASDAQ")
 
@@ -118,6 +170,84 @@ class TestCli(unittest.TestCase):
         self.assertIn("fills=1 trades=1", output)
         self.assertIn("total_return_pct=0.050000", output)
         self.assertIn("final_equity=10005.000000", output)
+
+    def test_run_command_maps_stop_loss_pct_into_strategy_parameters(self) -> None:
+        exit_code, request = self._run_command_and_capture_request(
+            ["--stop-loss-pct", "4.5"]
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(request.strategy.parameters["stop_loss_pct"], 4.5)
+        self.assertNotIn("take_profit_pct", request.strategy.parameters)
+        self.assertEqual(
+            request.execution.intrabar_exit_policy,
+            IntrabarExitPolicy.CONSERVATIVE,
+        )
+
+    def test_run_command_maps_take_profit_pct_into_strategy_parameters(self) -> None:
+        exit_code, request = self._run_command_and_capture_request(
+            ["--take-profit-pct", "9.25"]
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(request.strategy.parameters["take_profit_pct"], 9.25)
+        self.assertNotIn("stop_loss_pct", request.strategy.parameters)
+
+    def test_run_command_maps_combined_bracket_and_intrabar_exit_policy(self) -> None:
+        exit_code, request = self._run_command_and_capture_request(
+            [
+                "--stop-loss-pct",
+                "4.5",
+                "--take-profit-pct",
+                "9.25",
+                "--intrabar-exit-policy",
+                "take_profit_first",
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(request.strategy.parameters["stop_loss_pct"], 4.5)
+        self.assertEqual(request.strategy.parameters["take_profit_pct"], 9.25)
+        self.assertEqual(
+            request.execution.intrabar_exit_policy,
+            IntrabarExitPolicy.TAKE_PROFIT_FIRST,
+        )
+
+    def test_run_command_rejects_invalid_bracket_parameters_before_running(self) -> None:
+        invalid_cases = (
+            ("--stop-loss-pct", "0", "greater than 0"),
+            ("--stop-loss-pct", "100", "less than 100"),
+            ("--take-profit-pct", "nan", "finite"),
+        )
+
+        for option, value, message in invalid_cases:
+            with self.subTest(option=option, value=value):
+                stderr = io.StringIO()
+                with patch(
+                    "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+                    side_effect=AssertionError("runner should not execute"),
+                ):
+                    with redirect_stderr(stderr):
+                        with self.assertRaises(SystemExit) as raised:
+                            cli.main(
+                                [
+                                    "run",
+                                    "--symbol",
+                                    "AAPL",
+                                    "--timeframe",
+                                    "M1",
+                                    "--start-ms",
+                                    "1700000000000",
+                                    "--end-ms",
+                                    "1700000600000",
+                                    option,
+                                    value,
+                                ]
+                            )
+
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn(option, stderr.getvalue())
+                self.assertIn(message, stderr.getvalue())
 
     def test_run_command_can_request_persistence_and_prints_saved_metadata(self) -> None:
         captured_requests = []

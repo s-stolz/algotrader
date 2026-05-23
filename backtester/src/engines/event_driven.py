@@ -12,8 +12,10 @@ from data.normalization import normalize_bar_data
 from domain.enums import (
     BacktestEngine,
     DataGranularity,
+    ExitReason,
     FillTiming,
     GapPolicy,
+    IntrabarExitPolicy,
     OrderSide,
     PriceSource,
     SignalTiming,
@@ -104,6 +106,7 @@ class _SequentialRuntimeState:
     raw_desired_target: float = 0.0
     desired_target: float = 0.0
     actual_position: float = 0.0
+    entry_price: float | None = None
     pending: list[_PendingDelta] = field(default_factory=list)
     executed_delta: list[float] = field(default_factory=list)
     executed_notional: list[float] = field(default_factory=list)
@@ -115,6 +118,7 @@ class _SequentialRuntimeState:
     deferred_delta_count: int = 0
     expired_delta_count: int = 0
     executed_deferred_count: int = 0
+    intrabar_ambiguous_bar_count: int = 0
 
     def __post_init__(self) -> None:
         self.cash = float(self.initial_capital)
@@ -181,6 +185,7 @@ def _run_event_driven_loop(
     for row in tradable_bars.itertuples(index=False):
         bar = _bar_from_row(row)
         bar_index = state.start_bar()
+        protective_exit = bar_model.protective_exit
 
         _execute_pending_at_open(
             state=state,
@@ -188,7 +193,24 @@ def _run_event_driven_loop(
             bar_index=bar_index,
             timestamp_ms=int(bar.timestamp_ms),
             raw_open=float(bar.open),
+            stop_loss_pct=protective_exit.stop_loss_pct,
+            take_profit_pct=protective_exit.take_profit_pct,
             gap_policy=request.execution.gap_policy,
+            slippage_bps=float(request.execution.slippage_bps),
+            commission_bps=float(request.execution.commission_bps),
+        )
+
+        _execute_protective_exit_if_triggered(
+            state=state,
+            symbol=symbol,
+            bar_index=bar_index,
+            timestamp_ms=int(bar.timestamp_ms),
+            raw_open=float(bar.open),
+            high_price=float(bar.high),
+            low_price=float(bar.low),
+            stop_loss_pct=protective_exit.stop_loss_pct,
+            take_profit_pct=protective_exit.take_profit_pct,
+            intrabar_exit_policy=request.execution.intrabar_exit_policy,
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
         )
@@ -245,6 +267,8 @@ def _execute_pending_at_open(
     bar_index: int,
     timestamp_ms: int,
     raw_open: float,
+    stop_loss_pct: float | None,
+    take_profit_pct: float | None,
     gap_policy: GapPolicy,
     slippage_bps: float,
     commission_bps: float,
@@ -262,6 +286,8 @@ def _execute_pending_at_open(
             timestamp_ms=timestamp_ms,
             pending_total=pending_total,
             raw_open=raw_open,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
             slippage_bps=slippage_bps,
             commission_bps=commission_bps,
         )
@@ -283,39 +309,137 @@ def _record_pending_fill(
     timestamp_ms: int,
     pending_total: float,
     raw_open: float,
+    stop_loss_pct: float | None,
+    take_profit_pct: float | None,
     slippage_bps: float,
     commission_bps: float,
 ) -> None:
-    side = OrderSide.BUY if pending_total > 0.0 else OrderSide.SELL
-    quantity = abs(pending_total)
-    execution_price = _apply_slippage(
+    exit_reason = _pending_exit_reason_at_open(
+        state=state,
+        pending_total=pending_total,
         raw_open=raw_open,
-        side=side,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+    )
+    _record_fill(
+        state=state,
+        symbol=symbol,
+        bar_index=bar_index,
+        timestamp_ms=timestamp_ms,
+        quantity_delta=pending_total,
+        raw_execution_price=raw_open,
         slippage_bps=slippage_bps,
+        commission_bps=commission_bps,
+        exit_reason=exit_reason,
     )
-    fee = quantity * execution_price * (commission_bps / 10_000.0)
-
-    state.fills.append(
-        Fill(
-            timestamp_ms=timestamp_ms,
-            symbol=symbol,
-            quantity=quantity,
-            price=execution_price,
-            side=side,
-            fees=float(fee),
-        )
-    )
-    state.executed_delta[bar_index] = pending_total
-    state.executed_notional[bar_index] = pending_total * execution_price
-    state.executed_fees[bar_index] = float(fee)
-    state.cash_adjustment += -(pending_total * execution_price) - float(fee)
-    state.cash = float(state.initial_capital + state.cash_adjustment)
-    state.actual_position += pending_total
-    state.total_slippage_cost += quantity * abs(execution_price - raw_open)
     state.executed_deferred_count += sum(
         1 for item in state.pending if item.deferred and item.quantity != 0.0
     )
     state.pending.clear()
+
+
+def _execute_protective_exit_if_triggered(
+    *,
+    state: _SequentialRuntimeState,
+    symbol: str,
+    bar_index: int,
+    timestamp_ms: int,
+    raw_open: float,
+    high_price: float,
+    low_price: float,
+    stop_loss_pct: float | None,
+    take_profit_pct: float | None,
+    intrabar_exit_policy: IntrabarExitPolicy,
+    slippage_bps: float,
+    commission_bps: float,
+) -> None:
+    if stop_loss_pct is None and take_profit_pct is None:
+        return
+
+    protective_exit = _protective_exit_fill_price(
+        raw_open=raw_open,
+        high_price=high_price,
+        low_price=low_price,
+        entry_price=state.entry_price,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+        actual_position=state.actual_position,
+        timestamp_ms=timestamp_ms,
+        intrabar_exit_policy=intrabar_exit_policy,
+    )
+    if protective_exit is None:
+        return
+
+    if protective_exit.ambiguous:
+        state.intrabar_ambiguous_bar_count += 1
+    _record_fill(
+        state=state,
+        symbol=symbol,
+        bar_index=bar_index,
+        timestamp_ms=timestamp_ms,
+        quantity_delta=-float(state.actual_position),
+        raw_execution_price=protective_exit.fill_price,
+        slippage_bps=slippage_bps,
+        commission_bps=commission_bps,
+        exit_reason=protective_exit.exit_reason,
+    )
+    state.raw_desired_target = 0.0
+    state.desired_target = 0.0
+    state.pending.clear()
+
+
+def _record_fill(
+    *,
+    state: _SequentialRuntimeState,
+    symbol: str,
+    bar_index: int,
+    timestamp_ms: int,
+    quantity_delta: float,
+    raw_execution_price: float,
+    slippage_bps: float,
+    commission_bps: float,
+    exit_reason: ExitReason | None,
+) -> Fill:
+    side = OrderSide.BUY if quantity_delta > 0.0 else OrderSide.SELL
+    quantity = abs(quantity_delta)
+    execution_price = _apply_slippage(
+        raw_open=raw_execution_price,
+        side=side,
+        slippage_bps=slippage_bps,
+    )
+    fee = quantity * execution_price * (commission_bps / 10_000.0)
+    fill = Fill(
+        timestamp_ms=timestamp_ms,
+        symbol=symbol,
+        quantity=quantity,
+        price=execution_price,
+        side=side,
+        fees=float(fee),
+        exit_reason=exit_reason,
+    )
+
+    previous_position = float(state.actual_position)
+    state.fills.append(fill)
+    state.executed_delta[bar_index] += quantity_delta
+    state.executed_notional[bar_index] += quantity_delta * execution_price
+    state.executed_fees[bar_index] += float(fee)
+    state.cash_adjustment += -(quantity_delta * execution_price) - float(fee)
+    state.cash = float(state.initial_capital + state.cash_adjustment)
+    state.actual_position += quantity_delta
+    state.total_slippage_cost += quantity * abs(execution_price - raw_execution_price)
+
+    if quantity_delta > 0.0:
+        if previous_position <= 0.0 or state.entry_price is None:
+            state.entry_price = float(execution_price)
+        else:
+            state.entry_price = (
+                (state.entry_price * previous_position) + (float(execution_price) * quantity_delta)
+            ) / state.actual_position
+    elif state.actual_position <= 0.0:
+        state.actual_position = 0.0
+        state.entry_price = None
+
+    return fill
 
 
 def _handle_invalid_open(
@@ -408,6 +532,7 @@ def _build_fill_generation_result(state: _SequentialRuntimeState) -> FillGenerat
         expired_delta_count=state.expired_delta_count,
         executed_deferred_count=state.executed_deferred_count,
         tail_expired_delta_count=_tail_expired_delta_count(state.pending),
+        intrabar_ambiguous_bar_count=state.intrabar_ambiguous_bar_count,
     )
 
 
@@ -420,6 +545,193 @@ def _apply_slippage(*, raw_open: float, side: OrderSide, slippage_bps: float) ->
     if side == OrderSide.BUY:
         return float(raw_open * (1.0 + factor))
     return float(raw_open * (1.0 - factor))
+
+
+def _stop_loss_fill_price(
+    *,
+    raw_open: float,
+    low_price: float,
+    entry_price: float | None,
+    stop_loss_pct: float,
+    actual_position: float,
+) -> float | None:
+    if actual_position <= 0.0 or entry_price is None:
+        return None
+
+    stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
+    gap_fill_price = _stop_loss_gap_fill_price(
+        raw_open=raw_open,
+        stop_price=stop_price,
+    )
+    if gap_fill_price is not None:
+        return gap_fill_price
+    if np.isfinite(low_price) and low_price <= stop_price:
+        return float(stop_price)
+    return None
+
+
+def _take_profit_fill_price(
+    *,
+    raw_open: float,
+    high_price: float,
+    entry_price: float | None,
+    take_profit_pct: float,
+    actual_position: float,
+) -> float | None:
+    if actual_position <= 0.0 or entry_price is None:
+        return None
+
+    target_price = entry_price * (1.0 + (take_profit_pct / 100.0))
+    gap_fill_price = _take_profit_gap_fill_price(
+        raw_open=raw_open,
+        target_price=target_price,
+    )
+    if gap_fill_price is not None:
+        return gap_fill_price
+    if np.isfinite(high_price) and high_price >= target_price:
+        return float(target_price)
+    return None
+
+
+@dataclass(frozen=True)
+class _ProtectiveExitDecision:
+    fill_price: float
+    exit_reason: ExitReason
+    ambiguous: bool = False
+
+
+def _protective_exit_fill_price(
+    *,
+    raw_open: float,
+    high_price: float,
+    low_price: float,
+    entry_price: float | None,
+    stop_loss_pct: float | None,
+    take_profit_pct: float | None,
+    actual_position: float,
+    timestamp_ms: int,
+    intrabar_exit_policy: IntrabarExitPolicy,
+) -> _ProtectiveExitDecision | None:
+    if actual_position <= 0.0 or entry_price is None:
+        return None
+
+    stop_price: float | None = None
+    target_price: float | None = None
+
+    if stop_loss_pct is not None:
+        stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
+        stop_gap_fill_price = _stop_loss_gap_fill_price(
+            raw_open=raw_open,
+            stop_price=stop_price,
+        )
+        if stop_gap_fill_price is not None:
+            return _ProtectiveExitDecision(
+                fill_price=stop_gap_fill_price,
+                exit_reason=ExitReason.STOP_LOSS,
+            )
+
+    if take_profit_pct is not None:
+        target_price = entry_price * (1.0 + (take_profit_pct / 100.0))
+        take_profit_gap_fill_price = _take_profit_gap_fill_price(
+            raw_open=raw_open,
+            target_price=target_price,
+        )
+        if take_profit_gap_fill_price is not None:
+            return _ProtectiveExitDecision(
+                fill_price=take_profit_gap_fill_price,
+                exit_reason=ExitReason.TAKE_PROFIT,
+            )
+
+    stop_touched = stop_price is not None and np.isfinite(low_price) and low_price <= stop_price
+    target_touched = (
+        target_price is not None and np.isfinite(high_price) and high_price >= target_price
+    )
+
+    if stop_touched and target_touched:
+        assert stop_price is not None
+        assert target_price is not None
+        return _resolve_ambiguous_intrabar_exit(
+            stop_price=stop_price,
+            target_price=target_price,
+            timestamp_ms=timestamp_ms,
+            intrabar_exit_policy=intrabar_exit_policy,
+        )
+    if stop_touched:
+        assert stop_price is not None
+        return _ProtectiveExitDecision(
+            fill_price=float(stop_price),
+            exit_reason=ExitReason.STOP_LOSS,
+        )
+    if target_touched:
+        assert target_price is not None
+        return _ProtectiveExitDecision(
+            fill_price=float(target_price),
+            exit_reason=ExitReason.TAKE_PROFIT,
+        )
+
+    return None
+
+
+def _resolve_ambiguous_intrabar_exit(
+    *,
+    stop_price: float,
+    target_price: float,
+    timestamp_ms: int,
+    intrabar_exit_policy: IntrabarExitPolicy,
+) -> _ProtectiveExitDecision:
+    if intrabar_exit_policy == IntrabarExitPolicy.ERROR:
+        raise ValueError(
+            "Ambiguous intrabar protective exit for long position at "
+            f"timestamp_ms {timestamp_ms}: both stop_loss and take_profit levels "
+            "were touched"
+        )
+    if intrabar_exit_policy == IntrabarExitPolicy.TAKE_PROFIT_FIRST:
+        return _ProtectiveExitDecision(
+            fill_price=float(target_price),
+            exit_reason=ExitReason.TAKE_PROFIT,
+            ambiguous=True,
+        )
+    return _ProtectiveExitDecision(
+        fill_price=float(stop_price),
+        exit_reason=ExitReason.STOP_LOSS,
+        ambiguous=True,
+    )
+
+
+def _pending_exit_reason_at_open(
+    *,
+    state: _SequentialRuntimeState,
+    pending_total: float,
+    raw_open: float,
+    stop_loss_pct: float | None,
+    take_profit_pct: float | None,
+) -> ExitReason | None:
+    if pending_total >= 0.0 or state.actual_position <= 0.0 or state.entry_price is None:
+        return None
+
+    if stop_loss_pct is not None:
+        stop_price = state.entry_price * (1.0 - (stop_loss_pct / 100.0))
+        if _stop_loss_gap_fill_price(raw_open=raw_open, stop_price=stop_price) is not None:
+            return ExitReason.STOP_LOSS
+
+    if take_profit_pct is not None:
+        target_price = state.entry_price * (1.0 + (take_profit_pct / 100.0))
+        if _take_profit_gap_fill_price(raw_open=raw_open, target_price=target_price) is not None:
+            return ExitReason.TAKE_PROFIT
+
+    return None
+
+
+def _stop_loss_gap_fill_price(*, raw_open: float, stop_price: float) -> float | None:
+    if _is_valid_open(raw_open) and raw_open <= stop_price:
+        return raw_open
+    return None
+
+
+def _take_profit_gap_fill_price(*, raw_open: float, target_price: float) -> float | None:
+    if _is_valid_open(raw_open) and raw_open >= target_price:
+        return raw_open
+    return None
 
 
 def _pending_total(pending: list[_PendingDelta]) -> float:
@@ -569,16 +881,44 @@ def _build_diagnostics(
         "nonzero_signal_count": int(nonzero_signal_count),
         "fill_timing": request.execution.fill_timing.value,
         "gap_policy": request.execution.gap_policy.value,
+        "intrabar_exit_policy": request.execution.intrabar_exit_policy.value,
         "commission_bps": float(request.execution.commission_bps),
         "slippage_bps": float(request.execution.slippage_bps),
         "total_fees": float(fill_result.executed_fees.sum()),
         "total_slippage_cost": float(fill_result.total_slippage_cost),
+        "stop_loss_exit_count": _exit_fill_count(
+            fills=fill_result.fills,
+            exit_reason=ExitReason.STOP_LOSS,
+        ),
+        "take_profit_exit_count": _exit_fill_count(
+            fills=fill_result.fills,
+            exit_reason=ExitReason.TAKE_PROFIT,
+        ),
+        "signal_exit_count": _signal_exit_fill_count(fill_result.fills),
+        "intrabar_ambiguous_bar_count": int(fill_result.intrabar_ambiguous_bar_count),
         "invalid_open_count": int(fill_result.invalid_open_count),
         "deferred_delta_count": int(fill_result.deferred_delta_count),
         "expired_delta_count": int(fill_result.expired_delta_count),
         "executed_deferred_count": int(fill_result.executed_deferred_count),
         "tail_expired_delta_count": int(fill_result.tail_expired_delta_count),
     }
+
+
+def _exit_fill_count(*, fills: list[Fill], exit_reason: ExitReason) -> int:
+    return sum(
+        1
+        for fill in fills
+        if fill.side == OrderSide.SELL and fill.exit_reason == exit_reason
+    )
+
+
+def _signal_exit_fill_count(fills: list[Fill]) -> int:
+    return sum(
+        1
+        for fill in fills
+        if fill.side == OrderSide.SELL
+        and (fill.exit_reason is None or fill.exit_reason == ExitReason.SIGNAL)
+    )
 
 
 def _bar_from_row(row: Any) -> BarView:

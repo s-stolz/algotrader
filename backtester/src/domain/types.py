@@ -7,8 +7,10 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 from domain.enums import (
     BacktestEngine,
     DataGranularity,
+    ExitReason,
     FillTiming,
     GapPolicy,
+    IntrabarExitPolicy,
     OrderSide,
     PositionSide,
     PriceSource,
@@ -24,6 +26,29 @@ class StrategyConfig:
 
 
 @dataclass(frozen=True)
+class ProtectiveExitSpec:
+    stop_loss_pct: Optional[float] = None
+    take_profit_pct: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        if self.stop_loss_pct is not None:
+            stop_loss_pct = float(self.stop_loss_pct)
+            if not math.isfinite(stop_loss_pct) or stop_loss_pct <= 0.0 or stop_loss_pct >= 100.0:
+                raise ValueError(
+                    "stop_loss_pct must be finite and greater than 0 and less than 100"
+                )
+
+            object.__setattr__(self, "stop_loss_pct", stop_loss_pct)
+
+        if self.take_profit_pct is not None:
+            take_profit_pct = float(self.take_profit_pct)
+            if not math.isfinite(take_profit_pct) or take_profit_pct <= 0.0:
+                raise ValueError("take_profit_pct must be finite and greater than 0")
+
+            object.__setattr__(self, "take_profit_pct", take_profit_pct)
+
+
+@dataclass(frozen=True)
 class ExecutionConfig:
     signal_timing: SignalTiming = SignalTiming.CLOSE
     fill_timing: FillTiming = FillTiming.NEXT_OPEN
@@ -32,10 +57,20 @@ class ExecutionConfig:
     allow_short: bool = False
     trade_accounting_policy: TradeAccountingPolicy = TradeAccountingPolicy.AVERAGE_COST
     gap_policy: GapPolicy = GapPolicy.SKIP
+    intrabar_exit_policy: IntrabarExitPolicy = IntrabarExitPolicy.CONSERVATIVE
     commission_bps: float = 0.0
     slippage_bps: float = 0.0
 
     def __post_init__(self) -> None:
+        try:
+            intrabar_exit_policy = IntrabarExitPolicy(self.intrabar_exit_policy)
+        except ValueError as exc:
+            valid_values = ", ".join(policy.value for policy in IntrabarExitPolicy)
+            raise ValueError(
+                f"intrabar_exit_policy must be one of: {valid_values}"
+            ) from exc
+        object.__setattr__(self, "intrabar_exit_policy", intrabar_exit_policy)
+
         if not math.isfinite(self.commission_bps):
             raise ValueError("commission_bps must be finite")
         if self.commission_bps < 0.0:
@@ -123,6 +158,7 @@ class Fill:
     price: float
     side: OrderSide
     fees: float = 0.0
+    exit_reason: Optional[ExitReason] = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +172,7 @@ class Trade:
     exit_price: Optional[float] = None
     realized_pnl: float = 0.0
     fees: float = 0.0
+    exit_reason: ExitReason = ExitReason.SIGNAL
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 import unittest
 
-from domain.enums import OrderSide
+from domain.enums import ExitReason, OrderSide
 from domain.types import Fill
 from execution.trades import build_trades_from_fills
 
@@ -35,6 +35,7 @@ class TestTradeLifecycle(unittest.TestCase):
         self.assertEqual(trades[0].fees, 3.0)
         self.assertGreaterEqual(trades[0].fees, 0.0)
         self.assertEqual(trades[0].realized_pnl, 7.0)
+        self.assertEqual(trades[0].exit_reason, ExitReason.SIGNAL)
 
     def test_partial_exits_allocate_entry_and_exit_fees(self) -> None:
         fills = [
@@ -71,6 +72,29 @@ class TestTradeLifecycle(unittest.TestCase):
         self.assertEqual(trades[0].realized_pnl, 8.0)
         self.assertEqual(trades[1].fees, 2.0)
         self.assertEqual(trades[1].realized_pnl, 18.0)
+
+    def test_sell_fill_exit_reason_is_copied_to_closed_trade(self) -> None:
+        fills = [
+            Fill(
+                timestamp_ms=1,
+                symbol="AAPL",
+                quantity=1.0,
+                price=100.0,
+                side=OrderSide.BUY,
+            ),
+            Fill(
+                timestamp_ms=2,
+                symbol="AAPL",
+                quantity=1.0,
+                price=95.0,
+                side=OrderSide.SELL,
+                exit_reason=ExitReason.STOP_LOSS,
+            ),
+        ]
+
+        trades = build_trades_from_fills(fills)
+
+        self.assertEqual(trades[0].exit_reason, ExitReason.STOP_LOSS)
 
     def test_sell_without_open_long_is_rejected(self) -> None:
         fills = [

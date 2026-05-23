@@ -77,5 +77,6 @@ backtest_closed_trades = Table(
     Column("exit_price", Float, nullable=False),
     Column("realized_pnl", Float, nullable=False),
     Column("fees", Float, nullable=False),
+    Column("exit_reason", String(32), nullable=False, default="signal", server_default="signal"),
     PrimaryKeyConstraint("run_id", "trade_id"),
 )

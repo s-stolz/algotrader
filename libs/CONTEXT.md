@@ -32,6 +32,8 @@ Shared Python packages used by multiple services.
 - `include_timestamp_ms=True` preserves expanded timestamp fields for callers
   that need JSON-style records.
 - `indicator_engine` intentionally propagates NaN and does not forward-fill.
+- `db_accessor_client` backtest closed-trade payloads and responses pass through
+  `exit_reason` values `signal`, `stop_loss`, or `take_profit`.
 
 ## Change Triggers
 

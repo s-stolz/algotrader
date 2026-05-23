@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pandas as pd
 from data.indicators import build_feature_frame
 from domain.types import ExecutionArrayBundle, FeatureMatrix, SignalMatrix
-from strategies.base import IndicatorFeatureRequirement, StrategyDefinition
+from strategies.base import IndicatorFeatureRequirement, ProtectiveExitSpec, StrategyDefinition
 from strategies.conditions import ConditionRule
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
 
@@ -72,6 +72,30 @@ class TestStrategyDefinition(unittest.TestCase):
                 output_key=cast(Any, 123),
                 parameters={"window": 2},
             )
+
+    def test_protective_exit_spec_accepts_optional_positive_stop_loss_pct(self) -> None:
+        self.assertIsNone(ProtectiveExitSpec().stop_loss_pct)
+        self.assertEqual(ProtectiveExitSpec(stop_loss_pct=2).stop_loss_pct, 2.0)
+
+    def test_protective_exit_spec_accepts_optional_positive_take_profit_pct(self) -> None:
+        self.assertIsNone(ProtectiveExitSpec().take_profit_pct)
+        self.assertEqual(ProtectiveExitSpec(take_profit_pct=2).take_profit_pct, 2.0)
+
+    def test_protective_exit_spec_rejects_invalid_stop_loss_pct(self) -> None:
+        invalid_values = (0.0, -1.0, float("inf"), float("-inf"), float("nan"), 100.0)
+
+        for value in invalid_values:
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "stop_loss_pct"):
+                    ProtectiveExitSpec(stop_loss_pct=value)
+
+    def test_protective_exit_spec_rejects_invalid_take_profit_pct(self) -> None:
+        invalid_values = (0.0, -1.0, float("inf"), float("-inf"), float("nan"))
+
+        for value in invalid_values:
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "take_profit_pct"):
+                    ProtectiveExitSpec(take_profit_pct=value)
 
     def test_build_execution_targets_applies_decision_sizing_and_risk(self) -> None:
         def decision_model(features: FeatureMatrix) -> SignalMatrix:
@@ -164,6 +188,7 @@ class TestStrategyDefinition(unittest.TestCase):
         )
 
         bar_model = strategy.require_v1_parity_model()
+        self.assertEqual(bar_model.protective_exit, ProtectiveExitSpec())
         self.assertEqual(
             bar_model.entry_conditions,
             (ConditionRule.crossover("sma_fast", "sma_slow"),),
@@ -197,6 +222,28 @@ class TestStrategyDefinition(unittest.TestCase):
             targets.target_quantity_by_symbol["AAPL"],
             [0.0, 0.0, 2.5, 2.5, 0.0],
         )
+
+    def test_sma_crossover_accepts_optional_stop_loss_pct(self) -> None:
+        strategy = build_sma_crossover_strategy(
+            fast_window=2,
+            slow_window=3,
+            quantity=2.5,
+            stop_loss_pct=4.0,
+        )
+
+        bar_model = strategy.require_v1_parity_model()
+        self.assertEqual(bar_model.protective_exit, ProtectiveExitSpec(stop_loss_pct=4.0))
+
+    def test_sma_crossover_accepts_optional_take_profit_pct(self) -> None:
+        strategy = build_sma_crossover_strategy(
+            fast_window=2,
+            slow_window=3,
+            quantity=2.5,
+            take_profit_pct=8.0,
+        )
+
+        bar_model = strategy.require_v1_parity_model()
+        self.assertEqual(bar_model.protective_exit, ProtectiveExitSpec(take_profit_pct=8.0))
 
     def test_feature_frame_uses_typed_indicator_requirements(self) -> None:
         bars = pd.DataFrame(

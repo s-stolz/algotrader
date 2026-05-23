@@ -1,7 +1,7 @@
 import unittest
 
 from domain.types import StrategyConfig
-from strategies.base import IndicatorFeatureRequirement
+from strategies.base import IndicatorFeatureRequirement, ProtectiveExitSpec
 from strategies.registry import resolve_strategy
 
 
@@ -35,6 +35,43 @@ class TestStrategyRegistry(unittest.TestCase):
             ),
         )
         self.assertTrue(strategy.is_v1_parity_compatible)
+        self.assertEqual(strategy.require_v1_parity_model().protective_exit, ProtectiveExitSpec())
+
+    def test_resolves_sma_crossover_stop_loss_parameter(self) -> None:
+        strategy = resolve_strategy(
+            StrategyConfig(
+                strategy_id="sma_crossover",
+                parameters={
+                    "fast_window": 2,
+                    "slow_window": 3,
+                    "quantity": 2.5,
+                    "stop_loss_pct": 4.0,
+                },
+            )
+        )
+
+        self.assertEqual(
+            strategy.require_v1_parity_model().protective_exit,
+            ProtectiveExitSpec(stop_loss_pct=4.0),
+        )
+
+    def test_resolves_sma_crossover_take_profit_parameter(self) -> None:
+        strategy = resolve_strategy(
+            StrategyConfig(
+                strategy_id="sma_crossover",
+                parameters={
+                    "fast_window": 2,
+                    "slow_window": 3,
+                    "quantity": 2.5,
+                    "take_profit_pct": 8.0,
+                },
+            )
+        )
+
+        self.assertEqual(
+            strategy.require_v1_parity_model().protective_exit,
+            ProtectiveExitSpec(take_profit_pct=8.0),
+        )
 
     def test_unknown_strategy_id_fails_clearly(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unknown strategy_id 'not_registered'"):

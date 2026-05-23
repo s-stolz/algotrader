@@ -9,13 +9,27 @@ import pandas as pd
 from domain.enums import (
     BacktestEngine,
     DataGranularity,
+    ExitReason,
     FillTiming,
+    OrderSide,
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
 )
-from domain.types import BacktestRequest, BacktestResult, ExecutionArrayBundle, FeatureMatrix
-from execution.fills import FillGenerationResult, generate_fills_from_targets
+from domain.types import (
+    BacktestRequest,
+    BacktestResult,
+    ExecutionArrayBundle,
+    Fill,
+    FeatureMatrix,
+    ProtectiveExitSpec,
+    SignalMatrix,
+)
+from execution.fills import (
+    FillGenerationResult,
+    generate_fills_from_targets,
+    generate_fills_from_targets_with_protective_exits,
+)
 from execution.portfolio import build_equity_curve
 from execution.trades import build_trades_from_fills
 from reporting.metrics import compute_metrics
@@ -54,17 +68,43 @@ def run_vectorized_backtest(
     )
 
     open_prices = normalized["open"].to_numpy(dtype="float64")
+    high_prices = normalized["high"].to_numpy(dtype="float64")
+    low_prices = normalized["low"].to_numpy(dtype="float64")
     close_prices = normalized["close"].to_numpy(dtype="float64")
 
-    fill_result = generate_fills_from_targets(
-        symbol=symbol,
-        timestamp_ms=timestamp_ms,
-        open_prices=open_prices,
-        target_quantity=target_values,
-        gap_policy=request.execution.gap_policy,
-        slippage_bps=float(request.execution.slippage_bps),
-        commission_bps=float(request.execution.commission_bps),
-    )
+    protective_exit = _protective_exit_for_strategy(strategy)
+    if protective_exit is None:
+        fill_result = generate_fills_from_targets(
+            symbol=symbol,
+            timestamp_ms=timestamp_ms,
+            open_prices=open_prices,
+            target_quantity=target_values,
+            gap_policy=request.execution.gap_policy,
+            slippage_bps=float(request.execution.slippage_bps),
+            commission_bps=float(request.execution.commission_bps),
+        )
+    else:
+        signal_matrix = strategy.require_v1_parity_model().build_signals(feature_matrix)
+        signal_values = _extract_signal_values(
+            signal_matrix=signal_matrix,
+            symbol=symbol,
+            expected_size=timestamp_ms.size,
+        )
+        fill_result = generate_fills_from_targets_with_protective_exits(
+            symbol=symbol,
+            timestamp_ms=timestamp_ms,
+            open_prices=open_prices,
+            high_prices=high_prices,
+            low_prices=low_prices,
+            target_quantity=target_values,
+            signal_values=signal_values,
+            stop_loss_pct=protective_exit.stop_loss_pct,
+            take_profit_pct=protective_exit.take_profit_pct,
+            intrabar_exit_policy=request.execution.intrabar_exit_policy,
+            gap_policy=request.execution.gap_policy,
+            slippage_bps=float(request.execution.slippage_bps),
+            commission_bps=float(request.execution.commission_bps),
+        )
 
     equity_curve = build_equity_curve(
         symbol=symbol,
@@ -165,6 +205,33 @@ def _extract_target_values(
     return target_values
 
 
+def _extract_signal_values(
+    *,
+    signal_matrix: SignalMatrix,
+    symbol: str,
+    expected_size: int,
+) -> np.ndarray:
+    signals = signal_matrix.signals_by_symbol.get(symbol)
+    if signals is None:
+        raise ValueError(f"Strategy did not produce signals for symbol {symbol}")
+
+    signal_values = np.asarray(signals, dtype=np.int64)
+    if signal_values.size != expected_size:
+        raise ValueError(
+            f"Strategy signal length must match executable bar count for symbol {symbol}"
+        )
+    return signal_values
+
+
+def _protective_exit_for_strategy(strategy: StrategyDefinition) -> ProtectiveExitSpec | None:
+    if strategy.bar_model is None:
+        return None
+    protective_exit = strategy.bar_model.protective_exit
+    if protective_exit.stop_loss_pct is None and protective_exit.take_profit_pct is None:
+        return None
+    return protective_exit
+
+
 def _build_diagnostics(
     *,
     request: BacktestRequest,
@@ -180,16 +247,44 @@ def _build_diagnostics(
         "strategy_id": strategy.strategy_id,
         "fill_timing": request.execution.fill_timing.value,
         "gap_policy": request.execution.gap_policy.value,
+        "intrabar_exit_policy": request.execution.intrabar_exit_policy.value,
         "commission_bps": float(request.execution.commission_bps),
         "slippage_bps": float(request.execution.slippage_bps),
         "total_fees": float(fill_result.executed_fees.sum()),
         "total_slippage_cost": float(fill_result.total_slippage_cost),
+        "stop_loss_exit_count": _exit_fill_count(
+            fills=fill_result.fills,
+            exit_reason=ExitReason.STOP_LOSS,
+        ),
+        "take_profit_exit_count": _exit_fill_count(
+            fills=fill_result.fills,
+            exit_reason=ExitReason.TAKE_PROFIT,
+        ),
+        "signal_exit_count": _signal_exit_fill_count(fill_result.fills),
+        "intrabar_ambiguous_bar_count": int(fill_result.intrabar_ambiguous_bar_count),
         "invalid_open_count": int(fill_result.invalid_open_count),
         "deferred_delta_count": int(fill_result.deferred_delta_count),
         "expired_delta_count": int(fill_result.expired_delta_count),
         "executed_deferred_count": int(fill_result.executed_deferred_count),
         "tail_expired_delta_count": int(fill_result.tail_expired_delta_count),
     }
+
+
+def _exit_fill_count(*, fills: list[Fill], exit_reason: ExitReason) -> int:
+    return sum(
+        1
+        for fill in fills
+        if fill.side == OrderSide.SELL and fill.exit_reason == exit_reason
+    )
+
+
+def _signal_exit_fill_count(fills: list[Fill]) -> int:
+    return sum(
+        1
+        for fill in fills
+        if fill.side == OrderSide.SELL
+        and (fill.exit_reason is None or fill.exit_reason == ExitReason.SIGNAL)
+    )
 
 
 def _normalize_bars(*, bars: pd.DataFrame, symbol: str) -> pd.DataFrame:

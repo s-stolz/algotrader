@@ -7,7 +7,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-from domain.types import ExecutionArrayBundle, FeatureMatrix, SignalMatrix
+from domain.types import ExecutionArrayBundle, FeatureMatrix, ProtectiveExitSpec, SignalMatrix
 
 from strategies.conditions import ConditionRule
 
@@ -61,12 +61,15 @@ class BarStrategyModel:
     exit_conditions: Tuple[ConditionRule, ...]
     target_quantity: float
     long_only: bool = True
+    protective_exit: ProtectiveExitSpec = field(default_factory=ProtectiveExitSpec)
 
     def __post_init__(self) -> None:
         if not math.isfinite(float(self.target_quantity)) or float(self.target_quantity) <= 0.0:
             raise ValueError("bar strategy target_quantity must be positive and finite")
         if not self.long_only:
             raise ValueError("v1 bar strategy model supports long_only=True only")
+        if not isinstance(self.protective_exit, ProtectiveExitSpec):
+            raise ValueError("bar strategy protective_exit must be a ProtectiveExitSpec")
 
         object.__setattr__(self, "entry_conditions", tuple(self.entry_conditions))
         object.__setattr__(self, "exit_conditions", tuple(self.exit_conditions))
