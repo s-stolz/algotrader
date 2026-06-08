@@ -1,6 +1,9 @@
 -e ../libs/db_accessor_client
 -e ../libs/indicator_engine
+fastapi>=0.128.0
 pandas>=2.1.0
 numpy>=1.24.0
+pydantic>=2.12.0
 PyYAML>=6.0
+uvicorn[standard]>=0.40.0
 watchdog>=3.0.0

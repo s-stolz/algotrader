@@ -1,0 +1,1 @@
+"""FastAPI adapter tests."""

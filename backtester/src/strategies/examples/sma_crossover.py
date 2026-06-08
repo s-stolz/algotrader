@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from execution.risk import long_only_rule
 from execution.sizing import fixed_quantity_sizer
 
@@ -24,12 +26,24 @@ def build_sma_crossover_strategy(
 ) -> StrategyDefinition:
     """Build a long-only SMA crossover strategy definition."""
 
+    if (
+        not isinstance(fast_window, int)
+        or isinstance(fast_window, bool)
+        or not isinstance(slow_window, int)
+        or isinstance(slow_window, bool)
+    ):
+        raise ValueError("SMA windows must be integers")
     if fast_window <= 0 or slow_window <= 0:
         raise ValueError("SMA windows must be positive integers")
     if fast_window >= slow_window:
         raise ValueError("fast_window must be strictly smaller than slow_window")
-    if quantity <= 0.0:
-        raise ValueError("quantity must be positive")
+    if (
+        not isinstance(quantity, (int, float))
+        or isinstance(quantity, bool)
+        or not math.isfinite(float(quantity))
+        or quantity <= 0.0
+    ):
+        raise ValueError("quantity must be positive and finite")
 
     indicator_requirements = (
         IndicatorFeatureRequirement(

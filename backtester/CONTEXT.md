@@ -17,6 +17,8 @@ Standalone Python backtesting module for historical candle simulation.
 
 - `backtester_design.md`: target architecture and active design vocabulary.
 - `src/app/backtest_runner.py`: orchestration for one backtest run.
+- `src/app/backtest_runs.py`: deterministic asynchronous submission validation
+  and durable single-run retrieval.
 - `src/domain/`: runtime dataclasses, enums, and event types.
 - `src/data/`: market data loading, normalization, indicators, feature streams,
   and warmup trimming.
@@ -25,6 +27,7 @@ Standalone Python backtesting module for historical candle simulation.
 - `src/execution/`: fills, portfolio, sizing, risk, and trade accounting.
 - `src/strategies/`: strategy contracts, conditions, registry, and examples.
 - `src/adapters/db_accessor.py`: database accessor adapter.
+- `src/adapters/api/`: FastAPI submission and lifecycle-status transport.
 - `src/reporting/metrics.py`: metrics from equity curve and trades.
 
 ## Contracts
@@ -38,6 +41,12 @@ Standalone Python backtesting module for historical candle simulation.
 - Durable lifecycle values are `queued`, `running`, `succeeded`, and `failed`.
   The backtester owns lifecycle policy; database-accessor-api exposes storage
   primitives.
+- `POST /backtests` validates deterministic request rules without loading market
+  data or invoking an engine, persists a queued immutable request, and returns
+  `202 Accepted` with `Location: /backtests/{run_id}`.
+- `GET /backtests/{run_id}` returns epoch-millisecond lifecycle timestamps and
+  state-specific fields: no artifacts while queued/running, metrics and
+  diagnostics when succeeded, and bounded sanitized errors when failed.
 - `BacktestRunLifecyclePersistenceAdapter` maps domain status enums and completed
   results to conditional lifecycle updates and atomic successful completion.
   Completion payloads include metrics, diagnostics, fills, and closed trades,

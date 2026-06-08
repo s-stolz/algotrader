@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol
 from uuid import uuid4
 
+from db_accessor_client import DatabaseAccessorClientError
 from domain.enums import BacktestRunStatus
 from domain.types import (
     BACKTEST_RESULT_SCHEMA_VERSION,
     BacktestRequestSnapshot,
     BacktestResult,
+    BacktestRunRecord,
     Fill,
     Trade,
 )
@@ -25,6 +27,12 @@ class BacktestRunClient(Protocol):
     """Client protocol for durable run persistence through database-accessor-api."""
 
     def create_backtest_run(self, run: dict[str, Any]) -> Mapping[str, Any]: ...
+
+
+class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
+    """Client protocol for queued run creation and status retrieval."""
+
+    def get_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
 
 
 class BacktestLifecycleClient(Protocol):
@@ -47,6 +55,42 @@ class BacktestLifecycleClient(Protocol):
 class BacktestPersistenceMetadata:
     run_id: str
     persisted_at: int
+
+
+class DatabaseAccessorBacktestRunRepository:
+    """Maps durable run domain records to the database-accessor client contract."""
+
+    def __init__(self, client: BacktestRunRepositoryClient | None = None) -> None:
+        self._client = client
+
+    def create(self, run: BacktestRunRecord) -> BacktestRunRecord:
+        response = self._create_run(_run_record_payload(run))
+        return _run_record_from_response(response)
+
+    def get(self, run_id: str) -> BacktestRunRecord | None:
+        try:
+            response = self._get_run(run_id)
+        except DatabaseAccessorClientError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+        return _run_record_from_response(response)
+
+    def _create_run(self, run: dict[str, Any]) -> Mapping[str, Any]:
+        if self._client is not None:
+            return self._client.create_backtest_run(run)
+
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            return client.create_backtest_run(run)
+
+    def _get_run(self, run_id: str) -> Mapping[str, Any]:
+        if self._client is not None:
+            return self._client.get_backtest_run(run_id)
+
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            return client.get_backtest_run(run_id)
 
 
 class BacktestRunPersistenceAdapter:
@@ -204,6 +248,59 @@ def build_successful_completion_payload(
     }
 
 
+def _run_record_payload(run: BacktestRunRecord) -> dict[str, Any]:
+    return {
+        "run_id": run.run_id,
+        "status": _enum_or_text_value(run.status),
+        "submitted_at": _epoch_ms_to_utc_text(run.submitted_at_ms),
+        "started_at": (
+            _epoch_ms_to_utc_text(run.started_at_ms) if run.started_at_ms is not None else None
+        ),
+        "completed_at": (
+            _epoch_ms_to_utc_text(run.completed_at_ms) if run.completed_at_ms is not None else None
+        ),
+        "error_code": run.error_code,
+        "error_message": run.error_message,
+        "request_schema_version": run.request_snapshot.schema_version,
+        "request": deepcopy(dict(run.request_snapshot.payload)),
+        "result_schema_version": run.result_schema_version,
+        "metrics": deepcopy(run.metrics),
+        "diagnostics": deepcopy(run.diagnostics),
+        "fills": [],
+        "trades": [],
+    }
+
+
+def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
+    request = response.get("request")
+    if not isinstance(request, Mapping):
+        raise ValueError("Backtest run response missing request")
+
+    request_snapshot = BacktestRequestSnapshot(
+        schema_version=int(response["request_schema_version"]),
+        payload=deepcopy(dict(request)),
+    )
+    request_snapshot.to_request()
+
+    return BacktestRunRecord(
+        run_id=str(response["run_id"]),
+        status=BacktestRunStatus(str(response["status"])),
+        submitted_at_ms=_timestamp_to_epoch_ms(response["submitted_at"]),
+        started_at_ms=_optional_timestamp_to_epoch_ms(response.get("started_at")),
+        completed_at_ms=_optional_timestamp_to_epoch_ms(response.get("completed_at")),
+        error_code=_optional_text(response.get("error_code")),
+        error_message=_optional_text(response.get("error_message")),
+        request_snapshot=request_snapshot,
+        result_schema_version=(
+            int(response["result_schema_version"])
+            if response.get("result_schema_version") is not None
+            else None
+        ),
+        metrics=_optional_mapping(response.get("metrics")),
+        diagnostics=_optional_mapping(response.get("diagnostics")),
+    )
+
+
 def _result_artifact_payload(result: BacktestResult) -> dict[str, Any]:
     return {
         "fills": [
@@ -297,6 +394,26 @@ def _timestamp_to_epoch_ms(value: Any) -> int:
     if completed_at.tzinfo is None:
         completed_at = completed_at.replace(tzinfo=timezone.utc)
     return int(completed_at.timestamp() * 1000)
+
+
+def _optional_timestamp_to_epoch_ms(value: Any) -> int | None:
+    if value is None:
+        return None
+    return _timestamp_to_epoch_ms(value)
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("Backtest run response artifact must be an object")
+    return deepcopy(dict(value))
 
 
 def _epoch_ms_to_utc_text(value: int) -> str:
