@@ -1,0 +1,248 @@
+import unittest
+from dataclasses import replace
+
+from adapters.api.app import create_app
+from adapters.api.schemas import BacktestSubmissionRequestSchema
+from app.backtest_runs import BacktestRunService
+from domain.enums import BacktestRunStatus
+from domain.types import BacktestRunRecord
+from fastapi.testclient import TestClient
+
+
+class _FakeRunRepository:
+    def __init__(self) -> None:
+        self.runs_by_id: dict[str, BacktestRunRecord] = {}
+
+    def create(self, run: BacktestRunRecord) -> BacktestRunRecord:
+        self.runs_by_id[run.run_id] = run
+        return run
+
+    def get(self, run_id: str) -> BacktestRunRecord | None:
+        return self.runs_by_id.get(run_id)
+
+
+class _FailingRunRepository(_FakeRunRepository):
+    def get(self, run_id: str) -> BacktestRunRecord | None:
+        raise RuntimeError("postgres password=do-not-expose")
+
+
+class TestBacktestSubmissionRoute(unittest.TestCase):
+    def test_submit_returns_accepted_queued_resource_location(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(
+            repository=repository,
+            new_run_id=lambda: "run-123",
+            now_ms=lambda: 1_780_921_805_123,
+        )
+
+        with TestClient(create_app(service=service)) as client:
+            response = client.post("/backtests", json=_valid_payload())
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json(), {"run_id": "run-123", "status": "queued"})
+        self.assertEqual(response.headers["location"], "/backtests/run-123")
+        self.assertIn("run-123", repository.runs_by_id)
+
+    def test_submit_rejects_deterministically_invalid_requests_before_create(self) -> None:
+        invalid_payloads = (
+            {**_valid_payload(), "start_ms": 1_714_608_000_000},
+            {**_valid_payload(), "symbols": ["EURUSD", "GBPUSD"]},
+            {**_valid_payload(), "data_granularity": "tick"},
+            {
+                **_valid_payload(),
+                "strategy": {"strategy_id": "unknown", "parameters": {}},
+            },
+            {
+                **_valid_payload(),
+                "strategy": {
+                    "strategy_id": "sma_crossover",
+                    "parameters": {"fast_window": 20, "slow_window": 5},
+                },
+            },
+            {
+                **_valid_payload(),
+                "execution": {
+                    **_valid_payload()["execution"],
+                    "allow_short": True,
+                },
+            },
+        )
+
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                repository = _FakeRunRepository()
+                service = BacktestRunService(repository=repository)
+
+                with TestClient(create_app(service=service)) as client:
+                    response = client.post("/backtests", json=payload)
+
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(repository.runs_by_id, {})
+
+
+class TestBacktestStatusRoute(unittest.TestCase):
+    def test_get_exposes_only_fields_valid_for_each_lifecycle_state(self) -> None:
+        repository = _FakeRunRepository()
+        request = BacktestSubmissionRequestSchema(**_valid_payload()).to_domain()
+        queued = BacktestRunService(
+            repository=repository,
+            new_run_id=lambda: "run-base",
+            now_ms=lambda: 1_780_921_805_123,
+        ).submit(request)
+        repository.runs_by_id = {
+            "run-queued": replace(queued, run_id="run-queued"),
+            "run-running": replace(
+                queued,
+                run_id="run-running",
+                status=BacktestRunStatus.RUNNING,
+                started_at_ms=1_780_921_860_000,
+            ),
+            "run-succeeded": replace(
+                queued,
+                run_id="run-succeeded",
+                status=BacktestRunStatus.SUCCEEDED,
+                started_at_ms=1_780_921_860_000,
+                completed_at_ms=1_780_922_100_000,
+                result_schema_version=1,
+                metrics={"total_return_pct": 1.25},
+                diagnostics={"execution_duration_ms": 240_000},
+            ),
+            "run-failed": replace(
+                queued,
+                run_id="run-failed",
+                status=BacktestRunStatus.FAILED,
+                started_at_ms=1_780_921_860_000,
+                completed_at_ms=1_780_922_100_000,
+                error_code="market_data_unavailable",
+                error_message="Historical market data is unavailable",
+            ),
+            "run-failed-internal": replace(
+                queued,
+                run_id="run-failed-internal",
+                status=BacktestRunStatus.FAILED,
+                started_at_ms=1_780_921_860_000,
+                completed_at_ms=1_780_922_100_000,
+                error_code="engine_failure",
+                error_message=(
+                    "Traceback (most recent call last):\n"
+                    "RuntimeError: secret implementation detail"
+                ),
+            ),
+        }
+        service = BacktestRunService(repository=repository)
+
+        with TestClient(create_app(service=service)) as client:
+            queued_response = client.get("/backtests/run-queued")
+            running_response = client.get("/backtests/run-running")
+            succeeded_response = client.get("/backtests/run-succeeded")
+            failed_response = client.get("/backtests/run-failed")
+            internal_failure_response = client.get("/backtests/run-failed-internal")
+
+        self.assertEqual(queued_response.status_code, 200)
+        self.assertEqual(
+            queued_response.json(),
+            {
+                "run_id": "run-queued",
+                "status": "queued",
+                "submitted_at_ms": 1_780_921_805_123,
+                "request_schema_version": 1,
+                "request": _valid_payload(),
+            },
+        )
+
+        running_body = running_response.json()
+        self.assertEqual(running_response.status_code, 200)
+        self.assertEqual(running_body["started_at_ms"], 1_780_921_860_000)
+        self.assertNotIn("metrics", running_body)
+        self.assertNotIn("diagnostics", running_body)
+        self.assertNotIn("error_code", running_body)
+        self.assertNotIn("error_message", running_body)
+
+        succeeded_body = succeeded_response.json()
+        self.assertEqual(succeeded_response.status_code, 200)
+        self.assertEqual(succeeded_body["completed_at_ms"], 1_780_922_100_000)
+        self.assertEqual(succeeded_body["result_schema_version"], 1)
+        self.assertEqual(succeeded_body["metrics"], {"total_return_pct": 1.25})
+        self.assertEqual(
+            succeeded_body["diagnostics"],
+            {"execution_duration_ms": 240_000},
+        )
+        self.assertNotIn("error_code", succeeded_body)
+        self.assertNotIn("error_message", succeeded_body)
+
+        failed_body = failed_response.json()
+        self.assertEqual(failed_response.status_code, 200)
+        self.assertEqual(failed_body["error_code"], "market_data_unavailable")
+        self.assertEqual(
+            failed_body["error_message"],
+            "Historical market data is unavailable",
+        )
+        self.assertNotIn("result_schema_version", failed_body)
+        self.assertNotIn("metrics", failed_body)
+        self.assertNotIn("diagnostics", failed_body)
+        self.assertEqual(
+            internal_failure_response.json()["error_message"],
+            "Backtest execution failed",
+        )
+        self.assertNotIn("Traceback", internal_failure_response.text)
+
+    def test_get_missing_run_returns_not_found(self) -> None:
+        service = BacktestRunService(repository=_FakeRunRepository())
+
+        with TestClient(create_app(service=service)) as client:
+            response = client.get("/backtests/run-missing")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"detail": "Backtest run not found"})
+
+    def test_get_does_not_expose_internal_persistence_exception_details(self) -> None:
+        service = BacktestRunService(repository=_FailingRunRepository())
+
+        with TestClient(
+            create_app(service=service),
+            raise_server_exceptions=False,
+        ) as client:
+            response = client.get("/backtests/run-123")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"detail": "Backtest persistence unavailable"})
+        self.assertNotIn("password", response.text)
+
+
+def _valid_payload() -> dict:
+    return {
+        "symbols": ["EURUSD"],
+        "exchange": "FX",
+        "timeframe": "M15",
+        "start_ms": 1_714_521_600_000,
+        "end_ms": 1_714_608_000_000,
+        "engine": "event_driven",
+        "data_granularity": "bar",
+        "initial_capital": 25_000.0,
+        "strategy": {
+            "strategy_id": "sma_crossover",
+            "parameters": {
+                "fast_window": 5,
+                "slow_window": 20,
+                "quantity": 1_000.0,
+            },
+        },
+        "execution": {
+            "signal_timing": "close",
+            "fill_timing": "next_open",
+            "price_source": "open",
+            "allow_partial_fills": False,
+            "allow_short": False,
+            "trade_accounting_policy": "average_cost",
+            "gap_policy": "skip",
+            "intrabar_exit_policy": "conservative",
+            "commission_bps": 0.0,
+            "slippage_bps": 0.0,
+        },
+        "persist_result": False,
+        "run_metadata": {"label": "api-smoke"},
+    }
+
+
+if __name__ == "__main__":
+    unittest.main()
