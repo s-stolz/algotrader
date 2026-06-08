@@ -37,7 +37,8 @@ to a chart UI, and supports standalone backtesting.
 7. `frontend` fetches historical candles/indicators and applies live WebSocket
    updates to the chart.
 8. `backtester` loads candle history through shared data access and runs selected
-   strategy engines.
+   strategy engines. Durable backtest run lifecycle and result records are stored
+   through `database-accessor-api`.
 
 ## Data Contracts
 
@@ -52,6 +53,10 @@ to a chart UI, and supports standalone backtesting.
   continuous aggregates or direct bucketing.
 - Broker historical trendbar routes use cTrader-style query names `fromTs` and `toTs`.
 - Database accessor routes use `start_ms` and `end_ms`.
+- Durable backtest runs use `queued`, `running`, `succeeded`, and `failed`
+  lifecycle states. Lifecycle timestamps are normalized storage fields; the
+  complete immutable request is versioned JSON, and fills/trades are normalized
+  child records.
 
 ## Change Guidance
 

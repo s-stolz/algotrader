@@ -12,7 +12,7 @@ class _RecordingPersistenceAdapter:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    def save_run_summary(
+    def save_run(
         self,
         *,
         result: BacktestResult,
@@ -32,7 +32,7 @@ class _RecordingPersistenceAdapter:
 
 
 class _ExplodingPersistenceAdapter:
-    def save_run_summary(
+    def save_run(
         self,
         *,
         result: BacktestResult,
@@ -46,7 +46,7 @@ class _FailingPersistenceAdapter:
     def __init__(self) -> None:
         self.calls = 0
 
-    def save_run_summary(
+    def save_run(
         self,
         *,
         result: BacktestResult,
@@ -73,7 +73,7 @@ class _FakeDatabaseAccessorClient:
     instances: list["_FakeDatabaseAccessorClient"] = []
 
     def __init__(self) -> None:
-        self.saved_summaries: list[dict] = []
+        self.saved_runs: list[dict] = []
         self.closed = False
         self.__class__.instances.append(self)
 
@@ -84,12 +84,9 @@ class _FakeDatabaseAccessorClient:
         _ = (exc_type, exc, tb)
         self.closed = True
 
-    def store_backtest_run_summary(self, summary: dict) -> dict:
-        self.saved_summaries.append(dict(summary))
-        return {
-            "run_id": "run-manual-1",
-            "persisted_at": "2026-05-15T12:30:05.123000+00:00",
-        }
+    def create_backtest_run(self, run: dict) -> dict:
+        self.saved_runs.append(dict(run))
+        return {key: value for key, value in run.items() if key not in {"fills", "trades"}}
 
 
 class TestBacktestPersistenceIntegration(unittest.TestCase):
@@ -220,11 +217,14 @@ class TestBacktestPersistenceIntegration(unittest.TestCase):
         self.assertEqual(len(_FakeDatabaseAccessorClient.instances), 1)
         client = _FakeDatabaseAccessorClient.instances[0]
         self.assertTrue(client.closed)
-        self.assertEqual(client.saved_summaries[0]["execution_duration_ms"], 321)
-        self.assertEqual(client.saved_summaries[0]["symbol"], "AAPL")
-        self.assertEqual(client.saved_summaries[0]["trade_count"], 1)
-        self.assertEqual(saved_result.backtest_run_id, "run-manual-1")
-        self.assertEqual(saved_result.persisted_at, 1_778_848_205_123)
+        self.assertEqual(
+            client.saved_runs[0]["diagnostics"]["execution_duration_ms"],
+            321,
+        )
+        self.assertEqual(client.saved_runs[0]["request"]["symbols"], ["AAPL"])
+        self.assertEqual(client.saved_runs[0]["metrics"]["trade_count"], 1.0)
+        self.assertEqual(saved_result.backtest_run_id, client.saved_runs[0]["run_id"])
+        self.assertIsInstance(saved_result.persisted_at, int)
         self.assertIsNone(completed_result.backtest_run_id)
 
 

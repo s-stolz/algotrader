@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import List, Literal
+from typing import Any, List, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -41,7 +41,61 @@ class CandleBatchIn(BaseModel):
     candles: List[CandleIn]
 
 
-class BacktestClosedTradeIn(BaseModel):
+class BacktestContractModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class BacktestStrategyPayload(BacktestContractModel):
+    strategy_id: str
+    parameters: dict[str, Any]
+
+
+class BacktestExecutionPayload(BacktestContractModel):
+    signal_timing: Literal["close"]
+    fill_timing: Literal["next_open"]
+    price_source: Literal["open", "close"]
+    allow_partial_fills: bool
+    allow_short: bool
+    trade_accounting_policy: Literal["average_cost"]
+    gap_policy: Literal["expire", "skip", "error"]
+    intrabar_exit_policy: Literal[
+        "conservative",
+        "stop_first",
+        "take_profit_first",
+        "error",
+    ]
+    commission_bps: float
+    slippage_bps: float
+
+
+class BacktestRequestPayload(BacktestContractModel):
+    symbols: list[str]
+    exchange: str | None
+    timeframe: str
+    start_ms: int
+    end_ms: int
+    engine: Literal["vectorized", "event_driven"]
+    data_granularity: Literal["bar", "tick"]
+    initial_capital: float
+    strategy: BacktestStrategyPayload
+    execution: BacktestExecutionPayload
+    persist_result: bool
+    run_metadata: dict[str, Any] | None
+
+
+class BacktestFillIn(BacktestContractModel):
+    fill_sequence: int
+    timestamp_ms: int
+    symbol: str
+    side: Literal["buy", "sell"]
+    quantity: float
+    price: float
+    fees: float
+    exit_reason: Literal["signal", "stop_loss", "take_profit"] | None = None
+
+
+class BacktestClosedTradeIn(BacktestContractModel):
+    trade_sequence: int
     trade_id: str
     symbol: str
     quantity: float
@@ -51,35 +105,42 @@ class BacktestClosedTradeIn(BaseModel):
     exit_price: float
     realized_pnl: float
     fees: float
-    exit_reason: Literal["signal", "stop_loss", "take_profit"] = "signal"
+    exit_reason: Literal["signal", "stop_loss", "take_profit"]
 
 
-class BacktestClosedTradeOut(BacktestClosedTradeIn):
+class BacktestRunBase(BacktestContractModel):
     run_id: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    submitted_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    request_schema_version: int
+    request: BacktestRequestPayload
+    result_schema_version: int | None = None
+    metrics: dict[str, Any] | None = None
+    diagnostics: dict[str, Any] | None = None
+
+    @field_validator("request_schema_version")
+    @classmethod
+    def validate_request_schema_version(cls, value: int) -> int:
+        if value != 1:
+            raise ValueError("request_schema_version must be 1")
+        return value
+
+    @field_validator("result_schema_version")
+    @classmethod
+    def validate_result_schema_version(cls, value: int | None) -> int | None:
+        if value is not None and value != 1:
+            raise ValueError("result_schema_version must be 1 when present")
+        return value
 
 
-class BacktestRunSummaryBase(BaseModel):
-    execution_duration_ms: int
-    symbol: str
-    timeframe: str
-    engine: str
-    strategy_id: str
-    start_ms: int
-    end_ms: int
-    initial_capital: float
-    final_equity: float
-    final_cash: float
-    final_position_symbol: str | None = None
-    final_position_quantity: float
-    total_return_pct: float
-    max_drawdown_pct: float
-    trade_count: int
-
-
-class BacktestRunSummaryIn(BacktestRunSummaryBase):
+class BacktestRunCreateIn(BacktestRunBase):
+    fills: list[BacktestFillIn] = Field(default_factory=list)
     trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
 
 
-class BacktestRunSummaryOut(BacktestRunSummaryBase):
-    run_id: str
-    persisted_at: datetime
+class BacktestRunOut(BacktestRunBase):
+    pass

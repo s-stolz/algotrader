@@ -8,6 +8,8 @@ Standalone Python backtesting module for historical candle simulation.
   strategy, execution config, initial capital, and data granularity.
 - Shared backtest result contracts for engines, execution, portfolio, metrics, and
   reporting.
+- Canonical durable run status, request snapshot, run, fill, trade, and query
+  contracts.
 - Strategy registry and reproducible strategy definitions.
 - Candle input normalization from root `CONTEXT.md` fields plus `symbol`.
 
@@ -29,7 +31,15 @@ Standalone Python backtesting module for historical candle simulation.
 
 - Run with `PYTHONPATH=src` when invoking tests or local modules directly.
 - `BacktestRequest` selects engine, symbols, timeframe, start/end, strategy,
-  execution config, initial capital, and data granularity.
+  execution config, initial capital, exchange, and data granularity.
+- Version 1 request snapshots materialize every request field, including defaults,
+  before persistence. Historical requests must not be reconstructed from current
+  defaults.
+- Durable lifecycle values are `queued`, `running`, `succeeded`, and `failed`.
+  The backtester owns lifecycle policy; database-accessor-api exposes storage
+  primitives.
+- Successful synchronous CLI persistence creates a terminal `succeeded` run using
+  the versioned request/result contract and normalized fill/trade payloads.
 - Current parity slice is single-symbol bar-mode for vectorized and event-driven
   engines.
 - Candle input normalizes root `CONTEXT.md` candle fields plus `symbol`.

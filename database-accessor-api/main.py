@@ -5,9 +5,8 @@ from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_l
 from app import crud, market_cache
 from app.database import get_db
 from app.schemas import (
-    BacktestClosedTradeOut,
-    BacktestRunSummaryIn,
-    BacktestRunSummaryOut,
+    BacktestRunCreateIn,
+    BacktestRunOut,
     CandleBatchIn,
     MarketIn,
 )
@@ -79,45 +78,20 @@ async def create_market(market: MarketIn, db: AsyncSession = Depends(get_db)):
     return {"symbol_id": symbol_id, "status": "created"}
 
 
-@app.post("/backtests", response_model=BacktestRunSummaryOut, status_code=201)
-async def create_backtest_summary(
-    summary: BacktestRunSummaryIn,
+@app.post("/backtests", response_model=BacktestRunOut, status_code=201)
+async def create_backtest_run(
+    run: BacktestRunCreateIn,
     db: AsyncSession = Depends(get_db),
 ):
-    return await crud.insert_backtest_run_summary(db, summary.model_dump())
+    return await crud.insert_backtest_run(db, run.model_dump())
 
 
-@app.get("/backtests", response_model=list[BacktestRunSummaryOut])
-async def list_backtest_summaries(
-    symbol: Optional[str] = Query(None, description="Filter by symbol"),
-    timeframe: Optional[str] = Query(None, description="Filter by timeframe"),
-    strategy_id: Optional[str] = Query(None, description="Filter by strategy id"),
-    engine: Optional[str] = Query(None, description="Filter by engine"),
-    db: AsyncSession = Depends(get_db),
-):
-    return await crud.list_backtest_run_summaries(
-        db,
-        symbol=symbol,
-        timeframe=timeframe,
-        strategy_id=strategy_id,
-        engine=engine,
-    )
-
-
-@app.get("/backtests/{run_id}", response_model=BacktestRunSummaryOut)
-async def get_backtest_summary(run_id: str, db: AsyncSession = Depends(get_db)):
-    summary = await crud.get_backtest_run_summary(db, run_id)
-    if summary is None:
+@app.get("/backtests/{run_id}", response_model=BacktestRunOut)
+async def get_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await crud.get_backtest_run(db, run_id)
+    if run is None:
         raise HTTPException(status_code=404, detail="Backtest run not found")
-    return summary
-
-
-@app.get("/backtests/{run_id}/trades", response_model=list[BacktestClosedTradeOut])
-async def get_backtest_trades(run_id: str, db: AsyncSession = Depends(get_db)):
-    summary = await crud.get_backtest_run_summary(db, run_id)
-    if summary is None:
-        raise HTTPException(status_code=404, detail="Backtest run not found")
-    return await crud.list_backtest_closed_trades(db, run_id)
+    return run
 
 
 @app.delete("/markets/{symbol}")

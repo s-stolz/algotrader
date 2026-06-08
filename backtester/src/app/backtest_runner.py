@@ -7,7 +7,7 @@ from typing import Protocol
 
 import pandas as pd
 from adapters.db_accessor import HistoricalBarDataAdapter
-from adapters.persistence import BacktestRunSummaryPersistenceAdapter
+from adapters.persistence import BacktestRunPersistenceAdapter
 from data.indicators import build_feature_frame
 from data.market_data import load_market_data, load_raw_market_data
 from data.normalization import normalize_bar_data
@@ -23,7 +23,7 @@ from strategies.registry import resolve_strategy
 class BacktestPersistenceAdapter(Protocol):
     """Persistence adapter surface used by app orchestration."""
 
-    def save_run_summary(
+    def save_run(
         self,
         *,
         result: BacktestResult,
@@ -183,8 +183,8 @@ def save_backtest_result(
 ) -> BacktestResult:
     """Persist an already completed backtest result and return metadata on the result."""
 
-    adapter = persistence_adapter or BacktestRunSummaryPersistenceAdapter()
-    return adapter.save_run_summary(
+    adapter = persistence_adapter or BacktestRunPersistenceAdapter()
+    return adapter.save_run(
         result=result,
         execution_duration_ms=execution_duration_ms,
     )

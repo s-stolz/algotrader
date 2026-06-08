@@ -3,16 +3,27 @@ from typing import Any, cast
 
 from domain.enums import (
     BacktestEngine,
+    BacktestRunStatus,
     DataGranularity,
     ExitReason,
+    FillTiming,
+    GapPolicy,
     IntrabarExitPolicy,
     MarketEventType,
     OrderSide,
+    PriceSource,
+    SignalTiming,
+    TradeAccountingPolicy,
 )
 from domain.events import BarEvent, TickEvent
 from domain.types import (
+    BacktestFillRecord,
     BacktestRequest,
+    BacktestRequestSnapshot,
     BacktestResult,
+    BacktestRunQuery,
+    BacktestRunRecord,
+    BacktestTradeRecord,
     ExecutionArrayBundle,
     ExecutionConfig,
     FeatureMatrix,
@@ -38,6 +49,7 @@ class TestDomainTypes(unittest.TestCase):
 
         self.assertEqual(request.data_granularity, DataGranularity.BAR)
         self.assertEqual(request.engine, BacktestEngine.VECTORIZED)
+        self.assertIsNone(request.exchange)
         self.assertFalse(request.persist_result)
         self.assertIsNone(request.run_metadata)
         self.assertEqual(request.execution.commission_bps, 0.0)
@@ -98,6 +110,7 @@ class TestDomainTypes(unittest.TestCase):
             strategy=StrategyConfig(strategy_id="sma_crossover"),
             execution=ExecutionConfig(),
             initial_capital=10_000.0,
+            exchange="NASDAQ",
             persist_result=True,
             run_metadata={"label": "m0-smoke"},
         )
@@ -139,6 +152,136 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(result.metrics["return_pct"], 0.01)
         self.assertEqual(result.trades[0].fees, 0.0)
         self.assertEqual(result.trades[0].exit_reason, ExitReason.SIGNAL)
+
+    def test_backtest_request_round_trips_through_versioned_snapshot(self) -> None:
+        request = BacktestRequest(
+            symbols=["EURUSD"],
+            exchange="FX",
+            timeframe="M15",
+            start_ms=1_714_521_600_000,
+            end_ms=1_714_608_000_000,
+            strategy=StrategyConfig(
+                strategy_id="sma_crossover",
+                parameters={
+                    "fast_window": 5,
+                    "slow_window": 20,
+                    "quantity": 1_000.0,
+                    "nested": {"enabled": True},
+                },
+            ),
+            execution=ExecutionConfig(
+                signal_timing=SignalTiming.CLOSE,
+                fill_timing=FillTiming.NEXT_OPEN,
+                price_source=PriceSource.OPEN,
+                allow_partial_fills=False,
+                allow_short=False,
+                trade_accounting_policy=TradeAccountingPolicy.AVERAGE_COST,
+                gap_policy=GapPolicy.ERROR,
+                intrabar_exit_policy=IntrabarExitPolicy.TAKE_PROFIT_FIRST,
+                commission_bps=1.5,
+                slippage_bps=0.75,
+            ),
+            initial_capital=25_000.0,
+            data_granularity=DataGranularity.BAR,
+            persist_result=True,
+            run_metadata={
+                "label": "exchange-preservation",
+                "tags": ["smoke", "durable"],
+            },
+            engine=BacktestEngine.EVENT_DRIVEN,
+        )
+
+        snapshot = BacktestRequestSnapshot.from_request(request)
+        restored = snapshot.to_request()
+
+        self.assertEqual(snapshot.schema_version, 1)
+        self.assertEqual(snapshot.payload["exchange"], "FX")
+        self.assertEqual(
+            snapshot.payload["strategy"]["parameters"],
+            request.strategy.parameters,
+        )
+        self.assertEqual(snapshot.payload["execution"]["gap_policy"], "error")
+        self.assertEqual(
+            snapshot.payload["execution"]["intrabar_exit_policy"],
+            "take_profit_first",
+        )
+        self.assertEqual(snapshot.payload["run_metadata"], request.run_metadata)
+        self.assertEqual(restored, request)
+
+    def test_backtest_request_snapshot_rejects_unknown_version(self) -> None:
+        snapshot = BacktestRequestSnapshot(
+            schema_version=99,
+            payload={},
+        )
+
+        with self.assertRaisesRegex(ValueError, "Unsupported backtest request schema version"):
+            snapshot.to_request()
+
+    def test_backtest_request_snapshot_rejects_incomplete_payload(self) -> None:
+        snapshot = BacktestRequestSnapshot(
+            schema_version=1,
+            payload={"symbols": ["EURUSD"]},
+        )
+
+        with self.assertRaisesRegex(ValueError, "missing required fields"):
+            snapshot.to_request()
+
+    def test_durable_run_contract_types_construct(self) -> None:
+        request = BacktestRequest(
+            symbols=["EURUSD"],
+            exchange="FX",
+            timeframe="M1",
+            start_ms=1_714_521_600_000,
+            end_ms=1_714_608_000_000,
+            strategy=StrategyConfig(strategy_id="sma_crossover"),
+            execution=ExecutionConfig(),
+            initial_capital=10_000.0,
+        )
+        fill = BacktestFillRecord(
+            run_id="run-1",
+            sequence=0,
+            timestamp_ms=1_714_522_500_000,
+            symbol="EURUSD",
+            side=OrderSide.BUY,
+            quantity=1_000.0,
+            price=1.0715,
+            fees=0.15,
+        )
+        trade = BacktestTradeRecord(
+            run_id="run-1",
+            sequence=0,
+            trade_id="trade-1",
+            symbol="EURUSD",
+            quantity=1_000.0,
+            entry_timestamp_ms=1_714_522_500_000,
+            entry_price=1.0715,
+            exit_timestamp_ms=1_714_526_100_000,
+            exit_price=1.074,
+            realized_pnl=2.5,
+            fees=0.15,
+            exit_reason=ExitReason.SIGNAL,
+        )
+        run = BacktestRunRecord(
+            run_id="run-1",
+            status=BacktestRunStatus.QUEUED,
+            submitted_at_ms=1_778_848_205_123,
+            request_snapshot=BacktestRequestSnapshot.from_request(request),
+        )
+        query = BacktestRunQuery(
+            status=BacktestRunStatus.QUEUED,
+            symbol="EURUSD",
+            timeframe="M1",
+            strategy_id="sma_crossover",
+            engine=BacktestEngine.VECTORIZED,
+            submitted_from_ms=1_778_800_000_000,
+            submitted_to_ms=1_778_900_000_000,
+        )
+
+        self.assertEqual(run.status, BacktestRunStatus.QUEUED)
+        self.assertEqual(run.request_snapshot.to_request(), request)
+        self.assertEqual(fill.side, OrderSide.BUY)
+        self.assertEqual(trade.exit_reason, ExitReason.SIGNAL)
+        self.assertEqual(query.engine, BacktestEngine.VECTORIZED)
 
     def test_event_types_construct(self) -> None:
         bar_event = BarEvent(

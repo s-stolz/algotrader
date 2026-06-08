@@ -1,10 +1,11 @@
-import asyncio
 import os
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import cast
 
-from sqlalchemy import create_engine
+from pydantic import ValidationError
+from sqlalchemy import create_engine, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 os.environ.setdefault("TIMESCALEDB_USER", "test")
@@ -14,8 +15,13 @@ os.environ.setdefault("TIMESCALEDB_PORT", "5432")
 os.environ.setdefault("TIMESCALEDB_DB", "test")
 
 import main  # noqa: E402
-from app.models import metadata  # noqa: E402
-from app.schemas import BacktestRunSummaryIn  # noqa: E402
+from app.models import (  # noqa: E402
+    backtest_closed_trades,
+    backtest_fills,
+    backtest_runs,
+    metadata,
+)
+from app.schemas import BacktestRequestPayload, BacktestRunCreateIn  # noqa: E402
 
 
 class InMemoryAsyncSession:
@@ -30,51 +36,76 @@ class InMemoryAsyncSession:
     async def commit(self):
         self.connection.commit()
 
+    async def rollback(self):
+        self.connection.rollback()
+
     def close(self):
         self.connection.close()
         self.engine.dispose()
 
 
-def _summary_payload(**overrides):
+def _request_payload(**overrides):
     payload = {
-        "execution_duration_ms": 125,
-        "symbol": "EURUSD",
-        "timeframe": "M1",
-        "engine": "vectorized",
-        "strategy_id": "ema-cross",
+        "symbols": ["EURUSD"],
+        "exchange": "FX",
+        "timeframe": "M15",
         "start_ms": 1714521600000,
         "end_ms": 1714608000000,
-        "initial_capital": 10000.0,
-        "final_equity": 10450.25,
-        "final_cash": 9450.25,
-        "final_position_symbol": "EURUSD",
-        "final_position_quantity": 1000.0,
-        "total_return_pct": 4.5025,
-        "max_drawdown_pct": 1.25,
-        "trade_count": 3,
+        "engine": "event_driven",
+        "data_granularity": "bar",
+        "initial_capital": 25000.0,
+        "strategy": {
+            "strategy_id": "sma_crossover",
+            "parameters": {
+                "fast_window": 5,
+                "slow_window": 20,
+                "quantity": 1000.0,
+            },
+        },
+        "execution": {
+            "signal_timing": "close",
+            "fill_timing": "next_open",
+            "price_source": "open",
+            "allow_partial_fills": False,
+            "allow_short": False,
+            "trade_accounting_policy": "average_cost",
+            "gap_policy": "error",
+            "intrabar_exit_policy": "take_profit_first",
+            "commission_bps": 1.5,
+            "slippage_bps": 0.75,
+        },
+        "persist_result": False,
+        "run_metadata": {
+            "label": "queued-smoke",
+            "tags": ["durable", "api"],
+        },
     }
     payload.update(overrides)
     return payload
 
 
-def _closed_trade_payload(**overrides):
+def _run_payload(**overrides):
     payload = {
-        "trade_id": "trade-1",
-        "symbol": "EURUSD",
-        "quantity": 1000.0,
-        "entry_timestamp_ms": 1714525200000,
-        "entry_price": 1.0715,
-        "exit_timestamp_ms": 1714532400000,
-        "exit_price": 1.0740,
-        "realized_pnl": 2.5,
-        "fees": 0.15,
-        "exit_reason": "signal",
+        "run_id": "run-queued-1",
+        "status": "queued",
+        "submitted_at": datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+        "started_at": None,
+        "completed_at": None,
+        "error_code": None,
+        "error_message": None,
+        "request_schema_version": 1,
+        "request": _request_payload(),
+        "result_schema_version": None,
+        "metrics": None,
+        "diagnostics": None,
+        "fills": [],
+        "trades": [],
     }
     payload.update(overrides)
     return payload
 
 
-class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
+class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.session = InMemoryAsyncSession()
 
@@ -85,180 +116,220 @@ class BacktestRunSummaryApiTests(unittest.IsolatedAsyncioTestCase):
     def db(self) -> AsyncSession:
         return cast(AsyncSession, self.session)
 
-    async def test_post_backtest_stores_summary_and_get_by_id_returns_it(self):
-        saved = await main.create_backtest_summary(
-            BacktestRunSummaryIn(**_summary_payload()),
+    async def test_create_queued_run_and_get_preserves_complete_request(self):
+        created = await main.create_backtest_run(
+            BacktestRunCreateIn(**_run_payload()),
             db=self.db,
         )
 
-        fetched = await main.get_backtest_summary(saved["run_id"], db=self.db)
+        fetched = await main.get_backtest_run(created["run_id"], db=self.db)
 
-        self.assertEqual(fetched["run_id"], saved["run_id"])
-        self.assertIsInstance(fetched["persisted_at"], datetime)
-        self.assertEqual(fetched["execution_duration_ms"], 125)
-        self.assertEqual(fetched["symbol"], "EURUSD")
-        self.assertEqual(fetched["timeframe"], "M1")
-        self.assertEqual(fetched["engine"], "vectorized")
-        self.assertEqual(fetched["strategy_id"], "ema-cross")
-        self.assertEqual(fetched["start_ms"], 1714521600000)
-        self.assertEqual(fetched["end_ms"], 1714608000000)
-        self.assertEqual(fetched["initial_capital"], 10000.0)
-        self.assertEqual(fetched["final_equity"], 10450.25)
-        self.assertEqual(fetched["final_cash"], 9450.25)
-        self.assertEqual(fetched["final_position_symbol"], "EURUSD")
-        self.assertEqual(fetched["final_position_quantity"], 1000.0)
-        self.assertEqual(fetched["total_return_pct"], 4.5025)
-        self.assertEqual(fetched["max_drawdown_pct"], 1.25)
-        self.assertEqual(fetched["trade_count"], 3)
+        self.assertEqual(fetched["run_id"], "run-queued-1")
+        self.assertEqual(fetched["status"], "queued")
+        self.assertEqual(fetched["request_schema_version"], 1)
+        self.assertEqual(fetched["request"], _request_payload())
+        self.assertEqual(fetched["request"]["exchange"], "FX")
+        self.assertEqual(
+            fetched["request"]["strategy"]["parameters"],
+            _request_payload()["strategy"]["parameters"],
+        )
+        self.assertEqual(
+            fetched["request"]["execution"],
+            _request_payload()["execution"],
+        )
+        self.assertEqual(
+            fetched["request"]["run_metadata"],
+            _request_payload()["run_metadata"],
+        )
+        self.assertIsNone(fetched["started_at"])
+        self.assertIsNone(fetched["completed_at"])
+        self.assertIsNone(fetched["result_schema_version"])
+        self.assertIsNone(fetched["metrics"])
+        self.assertIsNone(fetched["diagnostics"])
+        self.assertNotIn("fills", fetched)
         self.assertNotIn("trades", fetched)
 
-    async def test_list_backtests_filters_summaries_and_orders_newest_first(self):
-        older = await main.create_backtest_summary(
-            BacktestRunSummaryIn(**_summary_payload(strategy_id="ema-cross")),
-            db=self.db,
-        )
-        await asyncio.sleep(0.001)
-        newer = await main.create_backtest_summary(
-            BacktestRunSummaryIn(
-                **_summary_payload(
-                    symbol="GBPUSD",
-                    timeframe="H1",
-                    engine="event_driven",
-                    strategy_id="breakout",
-                    final_position_symbol=None,
-                    final_position_quantity=0.0,
-                )
-            ),
-            db=self.db,
+    async def test_create_queued_run_defaults_absent_terminal_fields(self):
+        run = BacktestRunCreateIn(
+            run_id="run-minimal-queued",
+            status="queued",
+            submitted_at=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+            request_schema_version=1,
+            request=BacktestRequestPayload(**_request_payload()),
         )
 
-        all_summaries = await main.list_backtest_summaries(
-            symbol=None,
-            timeframe=None,
-            strategy_id=None,
-            engine=None,
-            db=self.db,
-        )
-        symbol_matches = await main.list_backtest_summaries(
-            symbol="EURUSD",
-            timeframe=None,
-            strategy_id=None,
-            engine=None,
-            db=self.db,
-        )
-        timeframe_matches = await main.list_backtest_summaries(
-            symbol=None,
-            timeframe="H1",
-            strategy_id=None,
-            engine=None,
-            db=self.db,
-        )
-        strategy_matches = await main.list_backtest_summaries(
-            symbol=None,
-            timeframe=None,
-            strategy_id="breakout",
-            engine=None,
-            db=self.db,
-        )
-        engine_matches = await main.list_backtest_summaries(
-            symbol=None,
-            timeframe=None,
-            strategy_id=None,
-            engine="event_driven",
-            db=self.db,
+        created = await main.create_backtest_run(run, db=self.db)
+
+        self.assertIsNone(created["started_at"])
+        self.assertIsNone(created["completed_at"])
+        self.assertIsNone(created["error_code"])
+        self.assertIsNone(created["error_message"])
+        self.assertIsNone(created["result_schema_version"])
+        self.assertIsNone(created["metrics"])
+        self.assertIsNone(created["diagnostics"])
+        self.assertEqual(run.fills, [])
+        self.assertEqual(run.trades, [])
+
+    async def test_get_missing_run_returns_404(self):
+        with self.assertRaises(main.HTTPException) as ctx:
+            await main.get_backtest_run("missing", db=self.db)
+
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_create_succeeded_run_stores_normalized_fills_and_trades(self):
+        completed_at = datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)
+        run = BacktestRunCreateIn(
+            **_run_payload(
+                run_id="run-succeeded-1",
+                status="succeeded",
+                started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                completed_at=completed_at,
+                result_schema_version=1,
+                metrics={"total_return_pct": 1.25},
+                diagnostics={"execution_duration_ms": 240000},
+                fills=[
+                    {
+                        "fill_sequence": 0,
+                        "timestamp_ms": 1714525200000,
+                        "symbol": "EURUSD",
+                        "side": "buy",
+                        "quantity": 1000.0,
+                        "price": 1.0715,
+                        "fees": 0.15,
+                        "exit_reason": None,
+                    }
+                ],
+                trades=[
+                    {
+                        "trade_sequence": 0,
+                        "trade_id": "trade-1",
+                        "symbol": "EURUSD",
+                        "quantity": 1000.0,
+                        "entry_timestamp_ms": 1714525200000,
+                        "entry_price": 1.0715,
+                        "exit_timestamp_ms": 1714532400000,
+                        "exit_price": 1.074,
+                        "realized_pnl": 2.5,
+                        "fees": 0.3,
+                        "exit_reason": "signal",
+                    }
+                ],
+            )
         )
 
+        created = await main.create_backtest_run(run, db=self.db)
+        fill_result = await self.session.execute(select(backtest_fills))
+        trade_result = await self.session.execute(select(backtest_closed_trades))
+        fill_row = fill_result.fetchone()
+        trade_row = trade_result.fetchone()
+        if fill_row is None or trade_row is None:
+            self.fail("Expected persisted fill and trade rows")
+        fill = dict(fill_row._mapping)
+        trade = dict(trade_row._mapping)
+
+        self.assertEqual(created["status"], "succeeded")
+        self.assertEqual(created["result_schema_version"], 1)
+        self.assertEqual(fill["run_id"], "run-succeeded-1")
+        self.assertEqual(fill["fill_sequence"], 0)
+        self.assertEqual(fill["side"], "buy")
+        self.assertEqual(trade["run_id"], "run-succeeded-1")
+        self.assertEqual(trade["trade_sequence"], 0)
+        self.assertEqual(trade["exit_reason"], "signal")
+
+    def test_create_rejects_unknown_request_schema_version(self):
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(**_run_payload(request_schema_version=2))
+
+    def test_create_rejects_incomplete_request_snapshot(self):
+        request = _request_payload()
+        request.pop("exchange")
+
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(**_run_payload(request=request))
+
+    def test_create_rejects_invalid_request_enums_and_unknown_fields(self):
+        invalid_execution = _request_payload()
+        invalid_execution["execution"] = {
+            **invalid_execution["execution"],
+            "gap_policy": "invented",
+        }
+        unknown_field = _request_payload(extra_default="must-not-be-reconstructed")
+
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(**_run_payload(request=invalid_execution))
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(**_run_payload(request=unknown_field))
+
+    def test_schema_uses_lifecycle_columns_and_json_request_only(self):
         self.assertEqual(
-            [row["run_id"] for row in all_summaries],
-            [newer["run_id"], older["run_id"]],
+            set(backtest_runs.c.keys()),
+            {
+                "run_id",
+                "status",
+                "submitted_at",
+                "started_at",
+                "completed_at",
+                "error_code",
+                "error_message",
+                "request_schema_version",
+                "request",
+                "result_schema_version",
+                "metrics",
+                "diagnostics",
+            },
         )
-        self.assertEqual([row["run_id"] for row in symbol_matches], [older["run_id"]])
-        self.assertEqual([row["run_id"] for row in timeframe_matches], [newer["run_id"]])
-        self.assertEqual([row["run_id"] for row in strategy_matches], [newer["run_id"]])
-        self.assertEqual([row["run_id"] for row in engine_matches], [newer["run_id"]])
-        self.assertNotIn("trades", all_summaries[0])
-
-    async def test_post_backtest_stores_closed_trades_for_separate_fetch(self):
-        saved = await main.create_backtest_summary(
-            BacktestRunSummaryIn(
-                **_summary_payload(
-                    trades=[
-                        _closed_trade_payload(),
-                        _closed_trade_payload(
-                            trade_id="trade-2",
-                            quantity=500.0,
-                            entry_timestamp_ms=1714536000000,
-                            entry_price=1.0750,
-                            exit_timestamp_ms=1714543200000,
-                            exit_price=1.0730,
-                            realized_pnl=-1.0,
-                            fees=0.1,
-                        ),
-                    ],
-                )
-            ),
-            db=self.db,
-        )
-
-        trades = await main.get_backtest_trades(saved["run_id"], db=self.db)
-        summaries = await main.list_backtest_summaries(
-            symbol=None,
-            timeframe=None,
-            strategy_id=None,
-            engine=None,
-            db=self.db,
-        )
-
+        self.assertNotIn("symbol", backtest_runs.c)
+        self.assertNotIn("timeframe", backtest_runs.c)
+        self.assertNotIn("strategy_id", backtest_runs.c)
+        self.assertNotIn("engine", backtest_runs.c)
         self.assertEqual(
-            trades,
-            [
-                {
-                    **_closed_trade_payload(),
-                    "run_id": saved["run_id"],
-                },
-                {
-                    **_closed_trade_payload(
-                        trade_id="trade-2",
-                        quantity=500.0,
-                        entry_timestamp_ms=1714536000000,
-                        entry_price=1.0750,
-                        exit_timestamp_ms=1714543200000,
-                        exit_price=1.0730,
-                        realized_pnl=-1.0,
-                        fees=0.1,
-                    ),
-                    "run_id": saved["run_id"],
-                },
-            ],
+            set(backtest_fills.c.keys()),
+            {
+                "run_id",
+                "fill_sequence",
+                "timestamp_ms",
+                "symbol",
+                "side",
+                "quantity",
+                "price",
+                "fees",
+                "exit_reason",
+            },
         )
-        self.assertNotIn("trades", saved)
-        self.assertNotIn("trades", summaries[0])
-
-    async def test_post_backtest_defaults_missing_trade_exit_reason_to_signal(self):
-        legacy_trade = _closed_trade_payload()
-        legacy_trade.pop("exit_reason")
-        saved = await main.create_backtest_summary(
-            BacktestRunSummaryIn(
-                **_summary_payload(
-                    trades=[legacy_trade],
-                )
-            ),
-            db=self.db,
+        self.assertEqual(
+            set(backtest_closed_trades.c.keys()),
+            {
+                "run_id",
+                "trade_sequence",
+                "trade_id",
+                "symbol",
+                "quantity",
+                "entry_timestamp_ms",
+                "entry_price",
+                "exit_timestamp_ms",
+                "exit_price",
+                "realized_pnl",
+                "fees",
+                "exit_reason",
+            },
         )
 
-        trades = await main.get_backtest_trades(saved["run_id"], db=self.db)
-
-        self.assertEqual(trades[0]["exit_reason"], "signal")
-
-    async def test_post_backtest_with_no_closed_trades_returns_empty_trade_list(self):
-        saved = await main.create_backtest_summary(
-            BacktestRunSummaryIn(**_summary_payload(trade_count=0)),
-            db=self.db,
+    def test_sql_reset_is_scoped_to_backtest_tables(self):
+        migration_path = (
+            Path(__file__).resolve().parents[2]
+            / "timescaledb-init"
+            / "05-init-backtest-persistence.sql"
         )
+        sql = migration_path.read_text(encoding="utf-8").lower()
 
-        trades = await main.get_backtest_trades(saved["run_id"], db=self.db)
-        fetched = await main.get_backtest_summary(saved["run_id"], db=self.db)
+        self.assertIn("drop table if exists backtest_run_summaries", sql)
+        self.assertIn("create table backtest_runs", sql)
+        self.assertIn("request jsonb not null", sql)
+        self.assertIn("metrics jsonb", sql)
+        self.assertIn("diagnostics jsonb", sql)
+        self.assertNotIn("drop table if exists markets", sql)
+        self.assertNotIn("drop table if exists candles", sql)
 
-        self.assertEqual(trades, [])
-        self.assertEqual(fetched["trade_count"], 0)
-        self.assertNotIn("trades", fetched)
+
+if __name__ == "__main__":
+    unittest.main()

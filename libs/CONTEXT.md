@@ -6,6 +6,7 @@ Shared Python packages used by multiple services.
 
 - `db_accessor_client` HTTP clients, Candle DataFrame conversion, and Python
   Timeframe helpers.
+- Synchronous and asynchronous durable backtest run create/get client methods.
 - `indicator_engine` batch and streaming compute interface.
 - `algotrader_logger` shared logging helpers and request middleware.
 
@@ -32,8 +33,9 @@ Shared Python packages used by multiple services.
 - `include_timestamp_ms=True` preserves expanded timestamp fields for callers
   that need JSON-style records.
 - `indicator_engine` intentionally propagates NaN and does not forward-fill.
-- `db_accessor_client` backtest closed-trade payloads and responses pass through
-  `exit_reason` values `signal`, `stop_loss`, or `take_profit`.
+- `db_accessor_client.create_backtest_run` and `get_backtest_run` pass versioned
+  durable run documents through unchanged. Lifecycle policy and domain mapping
+  remain in backtester.
 
 ## Change Triggers
 

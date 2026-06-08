@@ -150,6 +150,7 @@ class TestCli(unittest.TestCase):
         self.assertEqual(request.start_ms, 1_700_000_000_000)
         self.assertEqual(request.end_ms, 1_700_000_900_000)
         self.assertEqual(request.initial_capital, 50_000.0)
+        self.assertEqual(request.exchange, "NASDAQ")
         self.assertEqual(request.engine, BacktestEngine.EVENT_DRIVEN)
         self.assertFalse(request.persist_result)
         self.assertEqual(request.strategy.parameters["fast_window"], 7)

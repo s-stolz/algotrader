@@ -1,15 +1,21 @@
 from sqlalchemy import (
+    JSON,
     TIMESTAMP,
     BigInteger,
+    CheckConstraint,
     Column,
     Float,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     PrimaryKeyConstraint,
     String,
     Table,
+    Text,
+    UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
 
@@ -37,26 +43,60 @@ candles = Table(
     PrimaryKeyConstraint("symbol_id", "timestamp_utc"),
 )
 
-backtest_run_summaries = Table(
-    "backtest_run_summaries",
+json_document = JSON().with_variant(JSONB(), "postgresql")
+
+backtest_runs = Table(
+    "backtest_runs",
     metadata,
     Column("run_id", String(36), primary_key=True),
-    Column("persisted_at", TIMESTAMP(timezone=True), nullable=False),
-    Column("execution_duration_ms", Integer, nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("submitted_at", TIMESTAMP(timezone=True), nullable=False),
+    Column("started_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("completed_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("error_code", String(64), nullable=True),
+    Column("error_message", Text, nullable=True),
+    Column("request_schema_version", Integer, nullable=False),
+    Column("request", json_document, nullable=False),
+    Column("result_schema_version", Integer, nullable=True),
+    Column("metrics", json_document, nullable=True),
+    Column("diagnostics", json_document, nullable=True),
+    CheckConstraint(
+        "status IN ('queued', 'running', 'succeeded', 'failed')",
+        name="backtest_runs_status_check",
+    ),
+    Index("idx_backtest_runs_submitted_at", "submitted_at", "run_id"),
+    Index("idx_backtest_runs_status_submitted_at", "status", "submitted_at", "run_id"),
+)
+
+backtest_fills = Table(
+    "backtest_fills",
+    metadata,
+    Column(
+        "run_id",
+        String(36),
+        ForeignKey("backtest_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("fill_sequence", Integer, nullable=False),
+    Column("timestamp_ms", BigInteger, nullable=False),
     Column("symbol", String(32), nullable=False),
-    Column("timeframe", String(16), nullable=False),
-    Column("engine", String(32), nullable=False),
-    Column("strategy_id", String(128), nullable=False),
-    Column("start_ms", BigInteger, nullable=False),
-    Column("end_ms", BigInteger, nullable=False),
-    Column("initial_capital", Float, nullable=False),
-    Column("final_equity", Float, nullable=False),
-    Column("final_cash", Float, nullable=False),
-    Column("final_position_symbol", String(32), nullable=True),
-    Column("final_position_quantity", Float, nullable=False),
-    Column("total_return_pct", Float, nullable=False),
-    Column("max_drawdown_pct", Float, nullable=False),
-    Column("trade_count", Integer, nullable=False),
+    Column("side", String(8), nullable=False),
+    Column("quantity", Float, nullable=False),
+    Column("price", Float, nullable=False),
+    Column("fees", Float, nullable=False),
+    Column("exit_reason", String(32), nullable=True),
+    PrimaryKeyConstraint("run_id", "fill_sequence"),
+    CheckConstraint("side IN ('buy', 'sell')", name="backtest_fills_side_check"),
+    CheckConstraint(
+        "exit_reason IS NULL OR " "exit_reason IN ('signal', 'stop_loss', 'take_profit')",
+        name="backtest_fills_exit_reason_check",
+    ),
+    Index(
+        "idx_backtest_fills_run_order",
+        "run_id",
+        "timestamp_ms",
+        "fill_sequence",
+    ),
 )
 
 backtest_closed_trades = Table(
@@ -65,9 +105,10 @@ backtest_closed_trades = Table(
     Column(
         "run_id",
         String(36),
-        ForeignKey("backtest_run_summaries.run_id", ondelete="CASCADE"),
+        ForeignKey("backtest_runs.run_id", ondelete="CASCADE"),
         nullable=False,
     ),
+    Column("trade_sequence", Integer, nullable=False),
     Column("trade_id", String(64), nullable=False),
     Column("symbol", String(32), nullable=False),
     Column("quantity", Float, nullable=False),
@@ -77,6 +118,18 @@ backtest_closed_trades = Table(
     Column("exit_price", Float, nullable=False),
     Column("realized_pnl", Float, nullable=False),
     Column("fees", Float, nullable=False),
-    Column("exit_reason", String(32), nullable=False, default="signal", server_default="signal"),
-    PrimaryKeyConstraint("run_id", "trade_id"),
+    Column("exit_reason", String(32), nullable=False),
+    PrimaryKeyConstraint("run_id", "trade_sequence"),
+    UniqueConstraint("run_id", "trade_id", name="uq_backtest_closed_trades_identity"),
+    CheckConstraint(
+        "exit_reason IN ('signal', 'stop_loss', 'take_profit')",
+        name="backtest_closed_trades_exit_reason_check",
+    ),
+    Index(
+        "idx_backtest_closed_trades_run_order",
+        "run_id",
+        "entry_timestamp_ms",
+        "exit_timestamp_ms",
+        "trade_sequence",
+    ),
 )

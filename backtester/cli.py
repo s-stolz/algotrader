@@ -153,6 +153,7 @@ def _build_request(args: argparse.Namespace) -> Any:
         ),
         execution=execution,
         initial_capital=float(args.initial_capital),
+        exchange=str(args.exchange) if args.exchange is not None else None,
         persist_result=bool(args.persist_result),
         engine=_DOMAIN_ENUMS_MODULE.BacktestEngine(str(args.engine)),
     )

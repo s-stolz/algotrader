@@ -1,6 +1,7 @@
 # Database Accessor API Context
 
-FastAPI interface for Markets and Candles stored in TimescaleDB.
+FastAPI persistence interface for Markets, Candles, and durable backtest runs
+stored in TimescaleDB.
 
 ## Owned Interfaces
 
@@ -10,11 +11,12 @@ FastAPI interface for Markets and Candles stored in TimescaleDB.
   bucketing.
 - Timescale timestamp conversion between transport milliseconds and
   `timestamp_utc`.
+- Primitive durable backtest run create/get storage operations.
 
 ## Key Modules
 
-- `main.py`: FastAPI routes for health, markets, candle reads, candle writes,
-  latest candle, and deletes.
+- `main.py`: FastAPI routes for health, markets, candles, and backtest run
+  persistence.
 - `app/crud.py`: SQLAlchemy and SQL query helpers, candle query planning,
   continuous aggregate fallback, bucketing, and timestamp conversion.
 - `app/market_cache.py`: in-process market cache and symbol resolution.
@@ -32,8 +34,13 @@ FastAPI interface for Markets and Candles stored in TimescaleDB.
   `exchange`.
 - M1 reads use the raw `candles` table. Higher timeframe reads may use Timescale
   continuous aggregates or direct `time_bucket` fallback.
-- Backtest closed-trade payloads store and return `exit_reason` values
-  `signal`, `stop_loss`, or `take_profit`; missing values default to `signal`.
+- Backtest request attributes live only in versioned `request` JSON. Lifecycle
+  status and timestamps are normalized columns; result metrics and diagnostics
+  are nullable versioned JSON documents.
+- Backtest fills and closed trades are normalized child rows with caller-supplied
+  sequence values and cascade deletion.
+- Backtester code owns lifecycle transitions, queue selection, and scheduling.
+  This service accepts caller-owned run identity and state as persistence data.
 
 ## Change Triggers
 

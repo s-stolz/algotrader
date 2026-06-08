@@ -67,12 +67,13 @@ def load_raw_market_data(
     )
 
     adapter = data_adapter or DatabaseAccessorHistoricalDataAdapter()
+    resolved_exchange = exchange if exchange is not None else request.exchange
     raw_bars = adapter.fetch_bars(
         symbol=symbol,
         timeframe=request.timeframe,
         start_ms=fetch_start_ms,
         end_ms=int(request.end_ms),
-        exchange=exchange,
+        exchange=resolved_exchange,
     )
 
     return normalize_bar_data(bars=raw_bars, symbol=symbol)

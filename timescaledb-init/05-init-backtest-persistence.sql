@@ -1,5 +1,6 @@
--- Backtester persistence foundation schema.
--- Idempotent and safe to run after the base database bootstrap.
+-- Deliberate one-time reset of backtest persistence.
+-- This migration is destructive only for backtest tables. It must be run
+-- explicitly for an existing database and is not part of application startup.
 
 SELECT 'CREATE DATABASE finance_data'
 WHERE NOT EXISTS (
@@ -12,34 +13,60 @@ WHERE NOT EXISTS (
 
 CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 
-CREATE TABLE IF NOT EXISTS backtest_run_summaries (
+DROP TABLE IF EXISTS backtest_fills;
+DROP TABLE IF EXISTS backtest_closed_trades;
+DROP TABLE IF EXISTS backtest_runs;
+DROP TABLE IF EXISTS backtest_run_summaries;
+
+CREATE TABLE backtest_runs (
     run_id VARCHAR(36) PRIMARY KEY,
-    persisted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    execution_duration_ms INTEGER NOT NULL,
-    symbol VARCHAR(32) NOT NULL,
-    timeframe VARCHAR(16) NOT NULL,
-    engine VARCHAR(32) NOT NULL,
-    strategy_id VARCHAR(128) NOT NULL,
-    start_ms BIGINT NOT NULL,
-    end_ms BIGINT NOT NULL,
-    initial_capital DOUBLE PRECISION NOT NULL,
-    final_equity DOUBLE PRECISION NOT NULL,
-    final_cash DOUBLE PRECISION NOT NULL,
-    final_position_symbol VARCHAR(32),
-    final_position_quantity DOUBLE PRECISION NOT NULL,
-    total_return_pct DOUBLE PRECISION NOT NULL,
-    max_drawdown_pct DOUBLE PRECISION NOT NULL,
-    trade_count INTEGER NOT NULL
+    status VARCHAR(16) NOT NULL,
+    submitted_at TIMESTAMPTZ NOT NULL,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    error_code VARCHAR(64),
+    error_message TEXT,
+    request_schema_version INTEGER NOT NULL,
+    request JSONB NOT NULL,
+    result_schema_version INTEGER,
+    metrics JSONB,
+    diagnostics JSONB,
+    CONSTRAINT backtest_runs_status_check
+        CHECK (status IN ('queued', 'running', 'succeeded', 'failed'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_backtest_run_summaries_persisted_at
-    ON backtest_run_summaries (persisted_at DESC);
+CREATE INDEX idx_backtest_runs_submitted_at
+    ON backtest_runs (submitted_at DESC, run_id);
 
-CREATE INDEX IF NOT EXISTS idx_backtest_run_summaries_filters
-    ON backtest_run_summaries (symbol, timeframe, strategy_id, engine);
+CREATE INDEX idx_backtest_runs_status_submitted_at
+    ON backtest_runs (status, submitted_at, run_id);
 
-CREATE TABLE IF NOT EXISTS backtest_closed_trades (
+CREATE TABLE backtest_fills (
     run_id VARCHAR(36) NOT NULL,
+    fill_sequence INTEGER NOT NULL,
+    timestamp_ms BIGINT NOT NULL,
+    symbol VARCHAR(32) NOT NULL,
+    side VARCHAR(8) NOT NULL,
+    quantity DOUBLE PRECISION NOT NULL,
+    price DOUBLE PRECISION NOT NULL,
+    fees DOUBLE PRECISION NOT NULL,
+    exit_reason VARCHAR(32),
+    FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id) ON DELETE CASCADE,
+    PRIMARY KEY (run_id, fill_sequence),
+    CONSTRAINT backtest_fills_side_check CHECK (side IN ('buy', 'sell')),
+    CONSTRAINT backtest_fills_exit_reason_check
+        CHECK (
+            exit_reason IS NULL
+            OR exit_reason IN ('signal', 'stop_loss', 'take_profit')
+        )
+);
+
+CREATE INDEX idx_backtest_fills_run_order
+    ON backtest_fills (run_id, timestamp_ms, fill_sequence);
+
+CREATE TABLE backtest_closed_trades (
+    run_id VARCHAR(36) NOT NULL,
+    trade_sequence INTEGER NOT NULL,
     trade_id VARCHAR(64) NOT NULL,
     symbol VARCHAR(32) NOT NULL,
     quantity DOUBLE PRECISION NOT NULL,
@@ -49,36 +76,18 @@ CREATE TABLE IF NOT EXISTS backtest_closed_trades (
     exit_price DOUBLE PRECISION NOT NULL,
     realized_pnl DOUBLE PRECISION NOT NULL,
     fees DOUBLE PRECISION NOT NULL,
-    exit_reason VARCHAR(32) NOT NULL DEFAULT 'signal',
-    FOREIGN KEY (run_id) REFERENCES backtest_run_summaries (run_id) ON DELETE CASCADE,
-    PRIMARY KEY (run_id, trade_id)
+    exit_reason VARCHAR(32) NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id) ON DELETE CASCADE,
+    PRIMARY KEY (run_id, trade_sequence),
+    CONSTRAINT uq_backtest_closed_trades_identity UNIQUE (run_id, trade_id),
+    CONSTRAINT backtest_closed_trades_exit_reason_check
+        CHECK (exit_reason IN ('signal', 'stop_loss', 'take_profit'))
 );
 
-ALTER TABLE backtest_closed_trades
-    ADD COLUMN IF NOT EXISTS exit_reason VARCHAR(32) NOT NULL DEFAULT 'signal';
-
-ALTER TABLE backtest_closed_trades
-    ALTER COLUMN exit_reason SET DEFAULT 'signal';
-
-UPDATE backtest_closed_trades
-SET exit_reason = 'signal'
-WHERE exit_reason IS NULL;
-
-ALTER TABLE backtest_closed_trades
-    ALTER COLUMN exit_reason SET NOT NULL;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'backtest_closed_trades_exit_reason_check'
-    ) THEN
-        ALTER TABLE backtest_closed_trades
-            ADD CONSTRAINT backtest_closed_trades_exit_reason_check
-            CHECK (exit_reason IN ('signal', 'stop_loss', 'take_profit'));
-    END IF;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_backtest_closed_trades_run_id
-    ON backtest_closed_trades (run_id);
+CREATE INDEX idx_backtest_closed_trades_run_order
+    ON backtest_closed_trades (
+        run_id,
+        entry_timestamp_ms,
+        exit_timestamp_ms,
+        trade_sequence
+    );

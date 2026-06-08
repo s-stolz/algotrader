@@ -8,6 +8,13 @@ class BacktestEngine(str, Enum):
     EVENT_DRIVEN = "event_driven"
 
 
+class BacktestRunStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class DataGranularity(str, Enum):
     BAR = "bar"
     TICK = "tick"

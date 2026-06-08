@@ -11,6 +11,7 @@ normal implementation work. Keep each ADR small and focused on one decision.
 | [0002](0002-root-context-owns-cross-service-contracts.md) | Accepted | Root `CONTEXT.md` owns cross-service contract summaries. |
 | [0003](0003-generated-runtime-configuration.md) | Accepted | Runtime env files are generated from tracked topology and local secrets. |
 | [0004](0004-python-typecheck-verify-gate.md) | Accepted | Python Pyright checks are a strict verify gate. |
+| [0005](0005-backtester-owns-durable-run-lifecycle.md) | Accepted | Backtester owns durable run lifecycle policy over database accessor storage primitives. |
 
 ## When To Add An ADR
 

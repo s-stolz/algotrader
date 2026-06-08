@@ -169,32 +169,11 @@ class DatabaseAccessorClient(_BaseClient):
             payload["exchange"] = exchange
         return self._request("POST", "/candles", json=payload)
 
-    def store_backtest_run_summary(self, summary: dict[str, Any]) -> dict[str, Any]:
-        return self._request("POST", "/backtests", json=summary)
+    def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/backtests", json=run)
 
-    def list_backtest_run_summaries(
-        self,
-        symbol: str | None = None,
-        timeframe: str | None = None,
-        strategy_id: str | None = None,
-        engine: str | None = None,
-    ) -> list[dict[str, Any]]:
-        params = _build_params(
-            symbol=symbol,
-            timeframe=timeframe,
-            strategy_id=strategy_id,
-            engine=engine,
-        )
-        return self._request("GET", "/backtests", params=params)
-
-    def get_backtest_run_summary(self, run_id: str) -> dict[str, Any]:
+    def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/backtests/{run_id}")
-
-    def list_backtest_closed_trades(self, run_id: str) -> list[dict[str, Any]]:
-        return self._request("GET", f"/backtests/{run_id}/trades")
-
-    def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
-        return self.list_backtest_closed_trades(run_id)
 
     def close(self) -> None:
         self.client.close()
@@ -334,32 +313,11 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             payload["exchange"] = exchange
         return await self._request("POST", "/candles", json=payload)
 
-    async def store_backtest_run_summary(self, summary: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", "/backtests", json=summary)
+    async def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/backtests", json=run)
 
-    async def list_backtest_run_summaries(
-        self,
-        symbol: str | None = None,
-        timeframe: str | None = None,
-        strategy_id: str | None = None,
-        engine: str | None = None,
-    ) -> list[dict[str, Any]]:
-        params = _build_params(
-            symbol=symbol,
-            timeframe=timeframe,
-            strategy_id=strategy_id,
-            engine=engine,
-        )
-        return await self._request("GET", "/backtests", params=params)
-
-    async def get_backtest_run_summary(self, run_id: str) -> dict[str, Any]:
+    async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/backtests/{run_id}")
-
-    async def list_backtest_closed_trades(self, run_id: str) -> list[dict[str, Any]]:
-        return await self._request("GET", f"/backtests/{run_id}/trades")
-
-    async def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
-        return await self.list_backtest_closed_trades(run_id)
 
     async def aclose(self) -> None:
         await self.client.aclose()

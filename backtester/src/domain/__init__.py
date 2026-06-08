@@ -2,6 +2,7 @@
 
 from .enums import (
     BacktestEngine,
+    BacktestRunStatus,
     DataGranularity,
     ExitReason,
     FillTiming,
@@ -16,8 +17,15 @@ from .enums import (
 )
 from .events import BarEvent, TickEvent
 from .types import (
+    BACKTEST_REQUEST_SCHEMA_VERSION,
+    BACKTEST_RESULT_SCHEMA_VERSION,
+    BacktestFillRecord,
     BacktestRequest,
+    BacktestRequestSnapshot,
     BacktestResult,
+    BacktestRunQuery,
+    BacktestRunRecord,
+    BacktestTradeRecord,
     BarView,
     ExecutionArrayBundle,
     ExecutionConfig,
@@ -34,9 +42,17 @@ from .types import (
 )
 
 __all__ = [
+    "BACKTEST_REQUEST_SCHEMA_VERSION",
+    "BACKTEST_RESULT_SCHEMA_VERSION",
+    "BacktestFillRecord",
     "BacktestRequest",
+    "BacktestRequestSnapshot",
     "BacktestEngine",
     "BacktestResult",
+    "BacktestRunQuery",
+    "BacktestRunRecord",
+    "BacktestRunStatus",
+    "BacktestTradeRecord",
     "BarEvent",
     "BarView",
     "DataGranularity",
