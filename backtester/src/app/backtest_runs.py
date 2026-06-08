@@ -85,6 +85,8 @@ def _validate_submission(request: BacktestRequest) -> None:
 
 
 def _validate_request_shape(request: BacktestRequest) -> None:
+    if not _is_epoch_millisecond(request.start_ms) or not _is_epoch_millisecond(request.end_ms):
+        raise InvalidBacktestRequestError("start_ms and end_ms must be integer epoch milliseconds")
     if request.start_ms >= request.end_ms:
         raise InvalidBacktestRequestError("start_ms must be less than end_ms")
     if len(request.symbols) != 1:
@@ -124,6 +126,10 @@ def _validate_strategy(request: BacktestRequest) -> None:
         raise InvalidBacktestRequestError(str(exc)) from exc
     if not strategy.is_v1_parity_compatible:
         raise InvalidBacktestRequestError("Backtest requests require a v1 declarative bar strategy")
+
+
+def _is_epoch_millisecond(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _new_run_id() -> str:

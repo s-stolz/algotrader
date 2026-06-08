@@ -53,6 +53,25 @@ class TestBacktestRunService(unittest.TestCase):
 
         self.assertEqual(repository.created_runs, [])
 
+    def test_submit_rejects_non_integer_timestamps_before_persistence(self) -> None:
+        invalid_timestamps = (
+            replace(_valid_request(), start_ms=True),
+            replace(_valid_request(), end_ms=1_714_608_000_000.5),
+        )
+
+        for request in invalid_timestamps:
+            with self.subTest(request=request):
+                repository = _FakeRunRepository()
+                service = BacktestRunService(repository=repository)
+
+                with self.assertRaisesRegex(
+                    InvalidBacktestRequestError,
+                    "integer epoch milliseconds",
+                ):
+                    service.submit(request)
+
+                self.assertEqual(repository.created_runs, [])
+
     def test_submit_rejects_non_single_symbol_or_non_bar_requests(self) -> None:
         invalid_requests = (
             (replace(_valid_request(), symbols=["EURUSD", "GBPUSD"]), "exactly one symbol"),
@@ -90,6 +109,16 @@ class TestBacktestRunService(unittest.TestCase):
                     ),
                 ),
                 "fast_window must be strictly smaller",
+            ),
+            (
+                replace(
+                    _valid_request(),
+                    strategy=StrategyConfig(
+                        strategy_id="sma_crossover",
+                        parameters={"fast_window": 1.5, "slow_window": 20},
+                    ),
+                ),
+                "SMA windows must be integers",
             ),
         )
 

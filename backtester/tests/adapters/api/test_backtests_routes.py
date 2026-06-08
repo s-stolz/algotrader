@@ -66,6 +66,21 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
                     "allow_short": True,
                 },
             },
+            {**_valid_payload(), "start_ms": True},
+            {
+                **_valid_payload(),
+                "strategy": {
+                    "strategy_id": "sma_crossover",
+                    "parameters": {"fast_window": 1.5, "slow_window": 20},
+                },
+            },
+            {
+                **_valid_payload(),
+                "strategy": {
+                    "strategy_id": "sma_crossover",
+                    "parameters": {"quantity": True},
+                },
+            },
         )
 
         for payload in invalid_payloads:
@@ -128,6 +143,15 @@ class TestBacktestStatusRoute(unittest.TestCase):
                     "RuntimeError: secret implementation detail"
                 ),
             ),
+            "run-failed-one-line-internal": replace(
+                queued,
+                run_id="run-failed-one-line-internal",
+                status=BacktestRunStatus.FAILED,
+                started_at_ms=1_780_921_860_000,
+                completed_at_ms=1_780_922_100_000,
+                error_code="RuntimeError: database password exposed",
+                error_message="RuntimeError: database password exposed",
+            ),
         }
         service = BacktestRunService(repository=repository)
 
@@ -137,6 +161,9 @@ class TestBacktestStatusRoute(unittest.TestCase):
             succeeded_response = client.get("/backtests/run-succeeded")
             failed_response = client.get("/backtests/run-failed")
             internal_failure_response = client.get("/backtests/run-failed-internal")
+            one_line_internal_failure_response = client.get(
+                "/backtests/run-failed-one-line-internal"
+            )
 
         self.assertEqual(queued_response.status_code, 200)
         self.assertEqual(
@@ -185,6 +212,20 @@ class TestBacktestStatusRoute(unittest.TestCase):
             "Backtest execution failed",
         )
         self.assertNotIn("Traceback", internal_failure_response.text)
+        self.assertEqual(
+            one_line_internal_failure_response.json(),
+            {
+                **{
+                    key: value
+                    for key, value in failed_body.items()
+                    if key not in {"run_id", "error_code", "error_message"}
+                },
+                "run_id": "run-failed-one-line-internal",
+                "error_code": "backtest_failed",
+                "error_message": "Backtest execution failed",
+            },
+        )
+        self.assertNotIn("password", one_line_internal_failure_response.text)
 
     def test_get_missing_run_returns_not_found(self) -> None:
         service = BacktestRunService(repository=_FakeRunRepository())

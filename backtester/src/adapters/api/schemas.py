@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from domain.enums import (
@@ -20,7 +21,10 @@ from domain.types import (
     ExecutionConfig,
     StrategyConfig,
 )
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
+
+_PUBLIC_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,100}$")
+_EXCEPTION_DETAIL_PATTERN = re.compile(r"(?:^|\s)[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception):")
 
 
 class ApiContractModel(BaseModel):
@@ -54,8 +58,8 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
     symbols: list[str]
     exchange: str | None = None
     timeframe: str
-    start_ms: int
-    end_ms: int
+    start_ms: StrictInt
+    end_ms: StrictInt
     engine: Literal["vectorized", "event_driven"] = "vectorized"
     data_granularity: Literal["bar", "tick"] = "bar"
     initial_capital: float = Field(default=10_000.0, gt=0.0)
@@ -145,15 +149,15 @@ class BacktestRunResponseSchema(ApiContractModel):
 
 def _public_error_code(error_code: str | None) -> str:
     value = (error_code or "").strip()
-    if not value:
+    if not _PUBLIC_ERROR_CODE_PATTERN.fullmatch(value):
         return "backtest_failed"
-    return value[:100]
+    return value
 
 
 def _public_error_message(error_message: str | None) -> str:
     value = (error_message or "").strip()
     if not value:
         return "Backtest execution failed"
-    if "\n" in value or "traceback" in value.lower():
+    if "\n" in value or "traceback" in value.lower() or _EXCEPTION_DETAIL_PATTERN.search(value):
         return "Backtest execution failed"
     return value[:500]
