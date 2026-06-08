@@ -11,7 +11,8 @@ stored in TimescaleDB.
   bucketing.
 - Timescale timestamp conversion between transport milliseconds and
   `timestamp_utc`.
-- Primitive durable backtest run create/get storage operations.
+- Primitive durable backtest run create/get, conditional update, and transactional
+  successful-completion storage operations.
 
 ## Key Modules
 
@@ -41,6 +42,10 @@ stored in TimescaleDB.
   sequence values and cascade deletion.
 - Backtester code owns lifecycle transitions, queue selection, and scheduling.
   This service accepts caller-owned run identity and state as persistence data.
+- Conditional updates compare the stored status with `expected_status` in the
+  update statement. Successful completion updates the parent run and inserts all
+  fills and trades in one transaction, returning `updated=false` on a stale
+  expected status.
 
 ## Change Triggers
 

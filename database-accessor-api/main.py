@@ -5,7 +5,10 @@ from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_l
 from app import crud, market_cache
 from app.database import get_db
 from app.schemas import (
+    BacktestRunCompleteIn,
+    BacktestRunConditionalUpdateIn,
     BacktestRunCreateIn,
+    BacktestRunMutationOut,
     BacktestRunOut,
     CandleBatchIn,
     MarketIn,
@@ -92,6 +95,44 @@ async def get_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
     if run is None:
         raise HTTPException(status_code=404, detail="Backtest run not found")
     return run
+
+
+@app.patch("/backtests/{run_id}", response_model=BacktestRunMutationOut)
+async def conditional_update_backtest_run(
+    run_id: str,
+    update: BacktestRunConditionalUpdateIn,
+    db: AsyncSession = Depends(get_db),
+):
+    update_data = update.model_dump(exclude_unset=True)
+    expected_status = update_data.pop("expected_status")
+    update_data["status"] = update_data.pop("new_status")
+    updated = await crud.conditional_update_backtest_run(
+        db,
+        run_id=run_id,
+        expected_status=expected_status,
+        updates=update_data,
+    )
+    return {"updated": updated}
+
+
+@app.post(
+    "/backtests/{run_id}/complete",
+    response_model=BacktestRunMutationOut,
+)
+async def complete_backtest_run(
+    run_id: str,
+    completion: BacktestRunCompleteIn,
+    db: AsyncSession = Depends(get_db),
+):
+    completion_data = completion.model_dump()
+    expected_status = completion_data.pop("expected_status")
+    updated = await crud.complete_backtest_run(
+        db,
+        run_id=run_id,
+        expected_status=expected_status,
+        completion=completion_data,
+    )
+    return {"updated": updated}
 
 
 @app.delete("/markets/{symbol}")

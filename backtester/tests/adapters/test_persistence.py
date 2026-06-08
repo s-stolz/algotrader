@@ -1,9 +1,13 @@
 import unittest
 from unittest.mock import patch
 
-from adapters.persistence import BacktestRunPersistenceAdapter
+from adapters.persistence import (
+    BacktestRunLifecyclePersistenceAdapter,
+    BacktestRunPersistenceAdapter,
+)
 from domain.enums import (
     BacktestEngine,
+    BacktestRunStatus,
     ExitReason,
     GapPolicy,
     IntrabarExitPolicy,
@@ -27,6 +31,20 @@ class _FakeRunClient:
     def create_backtest_run(self, run: dict) -> dict:
         self.saved_runs.append(dict(run))
         return {key: value for key, value in run.items() if key not in {"fills", "trades"}}
+
+
+class _FakeLifecycleClient:
+    def __init__(self) -> None:
+        self.conditional_updates: list[tuple[str, dict]] = []
+        self.completions: list[tuple[str, dict]] = []
+
+    def conditional_update_backtest_run(self, run_id: str, update: dict) -> bool:
+        self.conditional_updates.append((run_id, update))
+        return True
+
+    def complete_backtest_run(self, run_id: str, completion: dict) -> bool:
+        self.completions.append((run_id, completion))
+        return True
 
 
 class _FailingRunClient:
@@ -187,6 +205,95 @@ class TestBacktestRunPersistenceAdapter(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "database accessor unavailable"):
             adapter.save_run(result=_build_result())
+
+
+class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
+    def test_conditional_update_maps_status_enums_and_lifecycle_fields(self) -> None:
+        client = _FakeLifecycleClient()
+        adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
+
+        updated = adapter.conditional_update(
+            run_id="run-123",
+            expected_status=BacktestRunStatus.QUEUED,
+            new_status=BacktestRunStatus.RUNNING,
+            started_at_ms=1_780_921_860_000,
+        )
+
+        self.assertTrue(updated)
+        self.assertEqual(
+            client.conditional_updates,
+            [
+                (
+                    "run-123",
+                    {
+                        "expected_status": "queued",
+                        "new_status": "running",
+                        "started_at": "2026-06-08T12:31:00+00:00",
+                    },
+                )
+            ],
+        )
+
+    def test_complete_maps_result_without_equity_curve(self) -> None:
+        client = _FakeLifecycleClient()
+        adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
+        result = _build_result()
+        result.fills[1] = Fill(
+            timestamp_ms=1_714_526_100_000,
+            symbol="EURUSD",
+            quantity=1_000.0,
+            price=1.074,
+            side=OrderSide.SELL,
+            fees=0.15,
+            exit_reason=ExitReason.TAKE_PROFIT,
+        )
+        result.trades[0] = Trade(
+            trade_id="trade-1",
+            symbol="EURUSD",
+            quantity=1_000.0,
+            entry_timestamp_ms=1_714_522_500_000,
+            entry_price=1.0715,
+            exit_timestamp_ms=1_714_526_100_000,
+            exit_price=1.074,
+            realized_pnl=2.5,
+            fees=0.3,
+            exit_reason=ExitReason.TAKE_PROFIT,
+        )
+
+        updated = adapter.complete(
+            run_id="run-123",
+            expected_status=BacktestRunStatus.RUNNING,
+            completed_at_ms=1_780_922_100_000,
+            result=result,
+            execution_duration_ms=275,
+        )
+
+        self.assertTrue(updated)
+        run_id, payload = client.completions[0]
+        self.assertEqual(run_id, "run-123")
+        self.assertEqual(payload["expected_status"], "running")
+        self.assertEqual(payload["completed_at"], "2026-06-08T12:35:00+00:00")
+        self.assertEqual(payload["result_schema_version"], 1)
+        self.assertEqual(payload["metrics"], result.metrics)
+        self.assertEqual(payload["diagnostics"]["execution_duration_ms"], 275)
+        self.assertEqual(payload["fills"][1]["exit_reason"], "take_profit")
+        self.assertEqual(payload["trades"][0]["exit_reason"], "take_profit")
+        self.assertNotIn("equity_curve", payload)
+
+    def test_complete_preserves_empty_artifact_collections(self) -> None:
+        client = _FakeLifecycleClient()
+        adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
+
+        adapter.complete(
+            run_id="run-empty",
+            expected_status=BacktestRunStatus.RUNNING,
+            completed_at_ms=1_780_922_100_000,
+            result=_build_result(fills=[], trades=[]),
+        )
+
+        payload = client.completions[0][1]
+        self.assertEqual(payload["fills"], [])
+        self.assertEqual(payload["trades"], [])
 
 
 def _build_result(

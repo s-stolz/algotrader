@@ -144,3 +144,33 @@ class BacktestRunCreateIn(BacktestRunBase):
 
 class BacktestRunOut(BacktestRunBase):
     pass
+
+
+class BacktestRunConditionalUpdateIn(BacktestContractModel):
+    expected_status: Literal["queued", "running", "succeeded", "failed"]
+    new_status: Literal["queued", "running", "succeeded", "failed"]
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class BacktestRunCompleteIn(BacktestContractModel):
+    expected_status: Literal["queued", "running", "succeeded", "failed"]
+    completed_at: datetime
+    result_schema_version: int
+    metrics: dict[str, Any]
+    diagnostics: dict[str, Any]
+    fills: list[BacktestFillIn] = Field(default_factory=list)
+    trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
+
+    @field_validator("result_schema_version")
+    @classmethod
+    def validate_result_schema_version(cls, value: int) -> int:
+        if value != 1:
+            raise ValueError("result_schema_version must be 1")
+        return value
+
+
+class BacktestRunMutationOut(BacktestContractModel):
+    updated: bool

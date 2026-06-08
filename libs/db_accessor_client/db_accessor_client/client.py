@@ -31,6 +31,14 @@ def _candles_to_dataframe(
     return df
 
 
+def _mutation_updated(response: Any) -> bool:
+    if not isinstance(response, dict) or not isinstance(response.get("updated"), bool):
+        raise DatabaseAccessorClientError(
+            "database-accessor-api returned an invalid mutation response"
+        )
+    return response["updated"]
+
+
 class _BaseClient:
     def __init__(self) -> None:
         host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
@@ -175,6 +183,26 @@ class DatabaseAccessorClient(_BaseClient):
     def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/backtests/{run_id}")
 
+    def conditional_update_backtest_run(
+        self,
+        run_id: str,
+        update: dict[str, Any],
+    ) -> bool:
+        response = self._request("PATCH", f"/backtests/{run_id}", json=update)
+        return _mutation_updated(response)
+
+    def complete_backtest_run(
+        self,
+        run_id: str,
+        completion: dict[str, Any],
+    ) -> bool:
+        response = self._request(
+            "POST",
+            f"/backtests/{run_id}/complete",
+            json=completion,
+        )
+        return _mutation_updated(response)
+
     def close(self) -> None:
         self.client.close()
 
@@ -318,6 +346,26 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/backtests/{run_id}")
+
+    async def conditional_update_backtest_run(
+        self,
+        run_id: str,
+        update: dict[str, Any],
+    ) -> bool:
+        response = await self._request("PATCH", f"/backtests/{run_id}", json=update)
+        return _mutation_updated(response)
+
+    async def complete_backtest_run(
+        self,
+        run_id: str,
+        completion: dict[str, Any],
+    ) -> bool:
+        response = await self._request(
+            "POST",
+            f"/backtests/{run_id}/complete",
+            json=completion,
+        )
+        return _mutation_updated(response)
 
     async def aclose(self) -> None:
         await self.client.aclose()

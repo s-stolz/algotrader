@@ -38,6 +38,10 @@ Standalone Python backtesting module for historical candle simulation.
 - Durable lifecycle values are `queued`, `running`, `succeeded`, and `failed`.
   The backtester owns lifecycle policy; database-accessor-api exposes storage
   primitives.
+- `BacktestRunLifecyclePersistenceAdapter` maps domain status enums and completed
+  results to conditional lifecycle updates and atomic successful completion.
+  Completion payloads include metrics, diagnostics, fills, and closed trades,
+  but never the equity curve.
 - Successful synchronous CLI persistence creates a terminal `succeeded` run using
   the versioned request/result contract and normalized fill/trade payloads.
 - Current parity slice is single-symbol bar-mode for vectorized and event-driven

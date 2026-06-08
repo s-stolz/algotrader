@@ -6,6 +6,7 @@ from typing import cast
 
 from pydantic import ValidationError
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 os.environ.setdefault("TIMESCALEDB_USER", "test")
@@ -21,7 +22,14 @@ from app.models import (  # noqa: E402
     backtest_runs,
     metadata,
 )
-from app.schemas import BacktestRequestPayload, BacktestRunCreateIn  # noqa: E402
+from app.schemas import (  # noqa: E402
+    BacktestClosedTradeIn,
+    BacktestFillIn,
+    BacktestRequestPayload,
+    BacktestRunCompleteIn,
+    BacktestRunConditionalUpdateIn,
+    BacktestRunCreateIn,
+)
 
 
 class InMemoryAsyncSession:
@@ -175,6 +183,318 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             await main.get_backtest_run("missing", db=self.db)
 
         self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_conditional_update_changes_fields_only_for_expected_status(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(**_run_payload()),
+            db=self.db,
+        )
+        started_at = datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc)
+
+        updated = await main.conditional_update_backtest_run(
+            "run-queued-1",
+            BacktestRunConditionalUpdateIn(
+                expected_status="queued",
+                new_status="running",
+                started_at=started_at,
+            ),
+            db=self.db,
+        )
+        stale_update = await main.conditional_update_backtest_run(
+            "run-queued-1",
+            BacktestRunConditionalUpdateIn(
+                expected_status="queued",
+                new_status="failed",
+                completed_at=datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc),
+                error_code="stale_claim",
+                error_message="must not be stored",
+            ),
+            db=self.db,
+        )
+        fetched = await main.get_backtest_run("run-queued-1", db=self.db)
+
+        self.assertEqual(updated, {"updated": True})
+        self.assertEqual(stale_update, {"updated": False})
+        self.assertEqual(fetched["status"], "running")
+        self.assertEqual(
+            fetched["started_at"].replace(tzinfo=timezone.utc),
+            started_at,
+        )
+        self.assertIsNone(fetched["completed_at"])
+        self.assertIsNone(fetched["error_code"])
+        self.assertIsNone(fetched["error_message"])
+
+    async def test_competing_claims_have_exactly_one_winner(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(**_run_payload()),
+            db=self.db,
+        )
+
+        claims = [
+            await main.conditional_update_backtest_run(
+                "run-queued-1",
+                BacktestRunConditionalUpdateIn(
+                    expected_status="queued",
+                    new_status="running",
+                    started_at=datetime(
+                        2026,
+                        6,
+                        8,
+                        12,
+                        31 + offset,
+                        tzinfo=timezone.utc,
+                    ),
+                ),
+                db=self.db,
+            )
+            for offset in range(2)
+        ]
+
+        self.assertEqual(claims.count({"updated": True}), 1)
+        self.assertEqual(claims.count({"updated": False}), 1)
+
+    async def test_successful_completion_stores_all_artifacts_atomically(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    status="running",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+        completed_at = datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)
+
+        completed = await main.complete_backtest_run(
+            "run-queued-1",
+            BacktestRunCompleteIn(
+                expected_status="running",
+                completed_at=completed_at,
+                result_schema_version=1,
+                metrics={"total_return_pct": 1.25},
+                diagnostics={"execution_duration_ms": 240000},
+                fills=[
+                    BacktestFillIn(
+                        fill_sequence=0,
+                        timestamp_ms=1714525200000,
+                        symbol="EURUSD",
+                        side="buy",
+                        quantity=1000.0,
+                        price=1.0715,
+                        fees=0.15,
+                        exit_reason=None,
+                    ),
+                    BacktestFillIn(
+                        fill_sequence=1,
+                        timestamp_ms=1714532400000,
+                        symbol="EURUSD",
+                        side="sell",
+                        quantity=1000.0,
+                        price=1.074,
+                        fees=0.15,
+                        exit_reason="stop_loss",
+                    ),
+                ],
+                trades=[
+                    BacktestClosedTradeIn(
+                        trade_sequence=0,
+                        trade_id="trade-1",
+                        symbol="EURUSD",
+                        quantity=1000.0,
+                        entry_timestamp_ms=1714525200000,
+                        entry_price=1.0715,
+                        exit_timestamp_ms=1714532400000,
+                        exit_price=1.074,
+                        realized_pnl=2.5,
+                        fees=0.3,
+                        exit_reason="stop_loss",
+                    )
+                ],
+            ),
+            db=self.db,
+        )
+        fetched = await main.get_backtest_run("run-queued-1", db=self.db)
+        fill_result = await self.session.execute(
+            select(backtest_fills).order_by(backtest_fills.c.fill_sequence)
+        )
+        trade_result = await self.session.execute(select(backtest_closed_trades))
+        fills = [dict(row._mapping) for row in fill_result.fetchall()]
+        trades = [dict(row._mapping) for row in trade_result.fetchall()]
+
+        self.assertEqual(completed, {"updated": True})
+        self.assertEqual(fetched["status"], "succeeded")
+        self.assertEqual(
+            fetched["completed_at"].replace(tzinfo=timezone.utc),
+            completed_at,
+        )
+        self.assertEqual(fetched["result_schema_version"], 1)
+        self.assertEqual(fetched["metrics"], {"total_return_pct": 1.25})
+        self.assertEqual(
+            fetched["diagnostics"],
+            {"execution_duration_ms": 240000},
+        )
+        self.assertEqual([fill["fill_sequence"] for fill in fills], [0, 1])
+        self.assertEqual(
+            fills[1],
+            {
+                "run_id": "run-queued-1",
+                "fill_sequence": 1,
+                "timestamp_ms": 1714532400000,
+                "symbol": "EURUSD",
+                "side": "sell",
+                "quantity": 1000.0,
+                "price": 1.074,
+                "fees": 0.15,
+                "exit_reason": "stop_loss",
+            },
+        )
+        self.assertEqual(
+            trades[0],
+            {
+                "run_id": "run-queued-1",
+                "trade_sequence": 0,
+                "trade_id": "trade-1",
+                "symbol": "EURUSD",
+                "quantity": 1000.0,
+                "entry_timestamp_ms": 1714525200000,
+                "entry_price": 1.0715,
+                "exit_timestamp_ms": 1714532400000,
+                "exit_price": 1.074,
+                "realized_pnl": 2.5,
+                "fees": 0.3,
+                "exit_reason": "stop_loss",
+            },
+        )
+
+    async def test_completion_does_not_store_artifacts_for_stale_status(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(**_run_payload()),
+            db=self.db,
+        )
+
+        completed = await main.complete_backtest_run(
+            "run-queued-1",
+            BacktestRunCompleteIn(
+                expected_status="running",
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                result_schema_version=1,
+                metrics={"total_return_pct": 1.25},
+                diagnostics={"bars": 25},
+                fills=[
+                    BacktestFillIn(
+                        fill_sequence=0,
+                        timestamp_ms=1714525200000,
+                        symbol="EURUSD",
+                        side="buy",
+                        quantity=1000.0,
+                        price=1.0715,
+                        fees=0.15,
+                    )
+                ],
+                trades=[],
+            ),
+            db=self.db,
+        )
+        fetched = await main.get_backtest_run("run-queued-1", db=self.db)
+        fill_result = await self.session.execute(select(backtest_fills))
+
+        self.assertEqual(completed, {"updated": False})
+        self.assertEqual(fetched["status"], "queued")
+        self.assertIsNone(fetched["completed_at"])
+        self.assertIsNone(fetched["metrics"])
+        self.assertEqual(fill_result.fetchall(), [])
+
+    async def test_completion_accepts_empty_artifact_collections(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    status="running",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+
+        completed = await main.complete_backtest_run(
+            "run-queued-1",
+            BacktestRunCompleteIn(
+                expected_status="running",
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                result_schema_version=1,
+                metrics={"trade_count": 0},
+                diagnostics={"bars": 0},
+                fills=[],
+                trades=[],
+            ),
+            db=self.db,
+        )
+        fill_result = await self.session.execute(select(backtest_fills))
+        trade_result = await self.session.execute(select(backtest_closed_trades))
+
+        self.assertEqual(completed, {"updated": True})
+        self.assertEqual(fill_result.fetchall(), [])
+        self.assertEqual(trade_result.fetchall(), [])
+
+    async def test_artifact_insert_failure_rolls_back_completion(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    status="running",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+        fill = BacktestFillIn(
+            fill_sequence=0,
+            timestamp_ms=1714525200000,
+            symbol="EURUSD",
+            side="buy",
+            quantity=1000.0,
+            price=1.0715,
+            fees=0.15,
+            exit_reason=None,
+        )
+        duplicate_trade = BacktestClosedTradeIn(
+            trade_sequence=0,
+            trade_id="trade-1",
+            symbol="EURUSD",
+            quantity=1000.0,
+            entry_timestamp_ms=1714525200000,
+            entry_price=1.0715,
+            exit_timestamp_ms=1714532400000,
+            exit_price=1.074,
+            realized_pnl=2.5,
+            fees=0.3,
+            exit_reason="signal",
+        )
+
+        with self.assertRaises(IntegrityError):
+            await main.complete_backtest_run(
+                "run-queued-1",
+                BacktestRunCompleteIn(
+                    expected_status="running",
+                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                    result_schema_version=1,
+                    metrics={"total_return_pct": 1.25},
+                    diagnostics={"execution_duration_ms": 240000},
+                    fills=[fill],
+                    trades=[duplicate_trade, duplicate_trade],
+                ),
+                db=self.db,
+            )
+
+        fetched = await main.get_backtest_run("run-queued-1", db=self.db)
+        fill_result = await self.session.execute(select(backtest_fills))
+        trade_result = await self.session.execute(select(backtest_closed_trades))
+
+        self.assertEqual(fetched["status"], "running")
+        self.assertIsNone(fetched["completed_at"])
+        self.assertIsNone(fetched["result_schema_version"])
+        self.assertIsNone(fetched["metrics"])
+        self.assertIsNone(fetched["diagnostics"])
+        self.assertEqual(fill_result.fetchall(), [])
+        self.assertEqual(trade_result.fetchall(), [])
 
     async def test_create_succeeded_run_stores_normalized_fills_and_trades(self):
         completed_at = datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)

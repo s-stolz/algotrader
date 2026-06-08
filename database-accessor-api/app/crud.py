@@ -8,7 +8,7 @@ from app.models import (
     candles,
     markets,
 )
-from sqlalchemy import delete, insert, select, text
+from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -508,17 +508,18 @@ async def delete_candles(session, symbol_id: int):
 
 
 async def insert_backtest_run(session, run_data: dict):
-    fills = run_data.pop("fills", [])
-    trades = run_data.pop("trades", [])
+    stored_run = dict(run_data)
+    fills = stored_run.pop("fills", [])
+    trades = stored_run.pop("trades", [])
     try:
-        stmt = insert(backtest_runs).values(**run_data).returning(backtest_runs)
+        stmt = insert(backtest_runs).values(**stored_run).returning(backtest_runs)
         result = await session.execute(stmt)
         row = result.fetchone()
         if fills:
-            fill_values = [{"run_id": run_data["run_id"], **fill} for fill in fills]
+            fill_values = [{"run_id": stored_run["run_id"], **fill} for fill in fills]
             await session.execute(insert(backtest_fills).values(fill_values))
         if trades:
-            trade_values = [{"run_id": run_data["run_id"], **trade} for trade in trades]
+            trade_values = [{"run_id": stored_run["run_id"], **trade} for trade in trades]
             await session.execute(insert(backtest_closed_trades).values(trade_values))
         await session.commit()
     except Exception:
@@ -532,3 +533,72 @@ async def get_backtest_run(session, run_id: str):
     result = await session.execute(stmt)
     row = result.fetchone()
     return dict(row._mapping) if row else None
+
+
+async def conditional_update_backtest_run(
+    session,
+    *,
+    run_id: str,
+    expected_status: str,
+    updates: dict,
+) -> bool:
+    stmt = (
+        update(backtest_runs)
+        .where(
+            backtest_runs.c.run_id == run_id,
+            backtest_runs.c.status == expected_status,
+        )
+        .values(**updates)
+    )
+    try:
+        result = await session.execute(stmt)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return result.rowcount == 1
+
+
+async def complete_backtest_run(
+    session,
+    *,
+    run_id: str,
+    expected_status: str,
+    completion: dict,
+) -> bool:
+    completion_data = dict(completion)
+    fills = completion_data.pop("fills", [])
+    trades = completion_data.pop("trades", [])
+    completion_data.update(
+        {
+            "status": "succeeded",
+            "error_code": None,
+            "error_message": None,
+        }
+    )
+    stmt = (
+        update(backtest_runs)
+        .where(
+            backtest_runs.c.run_id == run_id,
+            backtest_runs.c.status == expected_status,
+        )
+        .values(**completion_data)
+    )
+
+    try:
+        result = await session.execute(stmt)
+        if result.rowcount != 1:
+            await session.rollback()
+            return False
+
+        if fills:
+            fill_values = [{"run_id": run_id, **fill} for fill in fills]
+            await session.execute(insert(backtest_fills).values(fill_values))
+        if trades:
+            trade_values = [{"run_id": run_id, **trade} for trade in trades]
+            await session.execute(insert(backtest_closed_trades).values(trade_values))
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return True
