@@ -11,6 +11,26 @@ from domain.enums import BacktestEngine, IntrabarExitPolicy, OrderSide
 from domain.types import BacktestResult, Fill, PortfolioSnapshot, Trade
 
 
+class _RecordingDurableRunClient:
+    instances: list["_RecordingDurableRunClient"] = []
+
+    def __init__(self) -> None:
+        self.saved_runs: list[dict[str, Any]] = []
+        self.closed = False
+        self.__class__.instances.append(self)
+
+    def __enter__(self) -> "_RecordingDurableRunClient":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        _ = (exc_type, exc, tb)
+        self.closed = True
+
+    def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        self.saved_runs.append(dict(run))
+        return {key: value for key, value in run.items() if key not in {"fills", "trades"}}
+
+
 class TestCli(unittest.TestCase):
     def _run_command_and_capture_request(self, extra_args: list[str]) -> tuple[int, Any]:
         captured_requests: list[Any] = []
@@ -64,11 +84,10 @@ class TestCli(unittest.TestCase):
             *,
             request,
             strategy=None,
-            exchange=None,
             data_adapter=None,
         ):
             _ = data_adapter
-            captured_requests.append((request, strategy, exchange))
+            captured_requests.append((request, strategy))
             return BacktestResult(
                 request=request,
                 fills=[
@@ -144,7 +163,7 @@ class TestCli(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(len(captured_requests), 1)
 
-        request, strategy, exchange = captured_requests[0]
+        request, strategy = captured_requests[0]
         self.assertEqual(request.symbols, ["AAPL"])
         self.assertEqual(request.timeframe, "M15")
         self.assertEqual(request.start_ms, 1_700_000_000_000)
@@ -163,7 +182,6 @@ class TestCli(unittest.TestCase):
             IntrabarExitPolicy.CONSERVATIVE,
         )
         self.assertIsNone(strategy)
-        self.assertEqual(exchange, "NASDAQ")
 
         output = stdout.getvalue()
         self.assertIn("Backtest completed", output)
@@ -307,6 +325,110 @@ class TestCli(unittest.TestCase):
         output = stdout.getvalue()
         self.assertIn("backtest_run_id=run-123", output)
         self.assertIn("persisted_at_ms=1700000000123", output)
+
+    def test_persist_result_saves_durable_vectorized_and_event_driven_runs(self) -> None:
+        start_ms = 1_700_000_000_000
+        end_ms = start_ms + (9 * 60_000)
+
+        for engine in BacktestEngine:
+            with self.subTest(engine=engine.value):
+                _RecordingDurableRunClient.instances.clear()
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                run_id = f"run-{engine.value}"
+
+                with patch(
+                    "adapters.db_accessor.DatabaseAccessorHistoricalDataAdapter.fetch_bars",
+                    autospec=True,
+                    return_value=_build_raw_bars(),
+                ):
+                    with patch(
+                        "adapters.persistence._import_database_accessor_client",
+                        return_value=_RecordingDurableRunClient,
+                    ):
+                        with patch("adapters.persistence._new_run_id", return_value=run_id):
+                            with patch(
+                                "adapters.persistence._utc_now_text",
+                                return_value="2026-06-08T12:30:05.123000+00:00",
+                            ):
+                                with redirect_stdout(stdout), redirect_stderr(stderr):
+                                    exit_code = cli.main(
+                                        [
+                                            "run",
+                                            "--symbol",
+                                            "AAPL",
+                                            "--exchange",
+                                            "NASDAQ",
+                                            "--timeframe",
+                                            "M1",
+                                            "--start-ms",
+                                            str(start_ms),
+                                            "--end-ms",
+                                            str(end_ms),
+                                            "--engine",
+                                            engine.value,
+                                            "--fast-window",
+                                            "2",
+                                            "--slow-window",
+                                            "3",
+                                            "--persist-result",
+                                        ]
+                                    )
+
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(stderr.getvalue(), "")
+                self.assertEqual(len(_RecordingDurableRunClient.instances), 1)
+                client = _RecordingDurableRunClient.instances[0]
+                self.assertTrue(client.closed)
+                self.assertEqual(len(client.saved_runs), 1)
+
+                payload = client.saved_runs[0]
+                self.assertEqual(payload["run_id"], run_id)
+                self.assertEqual(payload["status"], "succeeded")
+                self.assertEqual(payload["request_schema_version"], 1)
+                self.assertEqual(payload["request"]["exchange"], "NASDAQ")
+                self.assertEqual(payload["request"]["engine"], engine.value)
+                self.assertTrue(payload["request"]["persist_result"])
+                self.assertEqual(payload["result_schema_version"], 1)
+                self.assertEqual(payload["diagnostics"]["engine"], engine.value)
+                self.assertGreater(len(payload["fills"]), 0)
+                self.assertGreater(len(payload["trades"]), 0)
+                self.assertNotIn("equity_curve", payload)
+
+                output = stdout.getvalue()
+                self.assertIn(f"backtest_run_id={run_id}", output)
+                self.assertIn("persisted_at_ms=1780921805123", output)
+
+    def test_failed_persisting_run_does_not_create_history(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with patch(
+            "adapters.db_accessor.DatabaseAccessorHistoricalDataAdapter.fetch_bars",
+            autospec=True,
+            side_effect=RuntimeError("market data unavailable"),
+        ):
+            with patch("adapters.persistence._import_database_accessor_client") as client_factory:
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    exit_code = cli.main(
+                        [
+                            "run",
+                            "--symbol",
+                            "AAPL",
+                            "--timeframe",
+                            "M1",
+                            "--start-ms",
+                            "1700000000000",
+                            "--end-ms",
+                            "1700000600000",
+                            "--persist-result",
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("Error: market data unavailable", stderr.getvalue())
+        client_factory.assert_not_called()
 
     def test_run_command_accepts_explicit_vectorized_and_defaults_to_vectorized(self) -> None:
         captured_requests = []
@@ -552,17 +674,7 @@ class TestCli(unittest.TestCase):
         start_ms = 1_700_000_000_000
         minute = 60_000
         end_ms = start_ms + (9 * minute)
-        raw_bars = pd.DataFrame(
-            {
-                "timestamp_ms": [start_ms - (2 * minute) + (minute * i) for i in range(11)],
-                "symbol": ["AAPL"] * 11,
-                "open": [12.0, 11.0, 10.0, 9.0, 8.0, 9.0, 10.0, 10.0, 11.0, 12.0, 13.0],
-                "high": [12.5, 11.5, 10.5, 9.5, 8.5, 9.5, 10.5, 10.5, 11.5, 12.5, 13.5],
-                "low": [11.5, 10.5, 9.5, 8.5, 7.5, 8.5, 9.5, 9.5, 10.5, 11.5, 12.5],
-                "close": [12.0, 11.0, 10.0, 9.0, 8.0, 9.0, 10.0, 11.0, 10.0, 9.0, 8.0],
-                "volume": [1_000.0] * 11,
-            }
-        )
+        raw_bars = _build_raw_bars()
 
         fetch_calls: list[dict] = []
 
@@ -593,21 +705,23 @@ class TestCli(unittest.TestCase):
             autospec=True,
             side_effect=_fake_fetch_bars,
         ):
-            stdout_one = io.StringIO()
-            stderr_one = io.StringIO()
-            with redirect_stdout(stdout_one), redirect_stderr(stderr_one):
-                exit_code_one = cli.main(argv)
+            with patch("adapters.persistence._import_database_accessor_client") as client_factory:
+                stdout_one = io.StringIO()
+                stderr_one = io.StringIO()
+                with redirect_stdout(stdout_one), redirect_stderr(stderr_one):
+                    exit_code_one = cli.main(argv)
 
-            stdout_two = io.StringIO()
-            stderr_two = io.StringIO()
-            with redirect_stdout(stdout_two), redirect_stderr(stderr_two):
-                exit_code_two = cli.main(argv)
+                stdout_two = io.StringIO()
+                stderr_two = io.StringIO()
+                with redirect_stdout(stdout_two), redirect_stderr(stderr_two):
+                    exit_code_two = cli.main(argv)
 
         self.assertEqual(exit_code_one, 0)
         self.assertEqual(exit_code_two, 0)
         self.assertEqual(stderr_one.getvalue(), "")
         self.assertEqual(stderr_two.getvalue(), "")
         self.assertEqual(len(fetch_calls), 2)
+        client_factory.assert_not_called()
 
         expected_fetch_start = start_ms - (2 * minute)
         self.assertEqual(fetch_calls[0]["symbol"], "AAPL")
@@ -679,6 +793,25 @@ class TestCli(unittest.TestCase):
             'Error: database-accessor-api HTTP error: 404: {"detail":"Market not found"}',
             stderr.getvalue(),
         )
+
+
+def _build_raw_bars() -> pd.DataFrame:
+    start_ms = 1_700_000_000_000
+    minute = 60_000
+    timestamps = [start_ms - (3 * minute) + (minute * i) for i in range(12)]
+    opens = [13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 9.0, 10.0, 10.0, 11.0, 12.0, 13.0]
+    closes = [13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 9.0, 10.0, 11.0, 10.0, 9.0, 8.0]
+    return pd.DataFrame(
+        {
+            "timestamp_ms": timestamps,
+            "symbol": ["AAPL"] * len(timestamps),
+            "open": opens,
+            "high": [price + 0.5 for price in opens],
+            "low": [price - 0.5 for price in opens],
+            "close": closes,
+            "volume": [1_000.0] * len(timestamps),
+        }
+    )
 
 
 if __name__ == "__main__":

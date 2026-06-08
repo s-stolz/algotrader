@@ -114,7 +114,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         request = _build_request(args)
         result = _BACKTEST_RUNNER_MODULE.run_backtest_with_market_data(
             request=request,
-            exchange=args.exchange,
         )
     except Exception as exc:
         print(f"Error: {_format_cli_error(exc)}", file=sys.stderr)
