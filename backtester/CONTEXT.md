@@ -19,6 +19,8 @@ Standalone Python backtesting module for historical candle simulation.
 - `src/app/backtest_runner.py`: orchestration for one backtest run.
 - `src/app/backtest_runs.py`: deterministic asynchronous submission validation,
   durable single-run retrieval, and filterable run history.
+- `src/app/backtest_worker.py`: singleton FIFO polling, conditional claiming,
+  child-process execution, and successful completion persistence.
 - `src/domain/`: runtime dataclasses, enums, and event types.
 - `src/data/`: market data loading, normalization, indicators, feature streams,
   and warmup trimming.
@@ -54,6 +56,12 @@ Standalone Python backtesting module for historical candle simulation.
   results to conditional lifecycle updates and atomic successful completion.
   Completion payloads include metrics, diagnostics, fills, and closed trades,
   but never the equity curve.
+- The singleton worker selects queued runs by `(submitted_at_ms, run_id)`, refreshes
+  the queue after a lost conditional claim, and executes at most one claimed run
+  at a time.
+- Claimed requests execute in a spawned child process from their immutable
+  snapshot. Child output is compact and excludes the equity curve; only the
+  worker parent persists lifecycle and result state.
 - Successful synchronous CLI persistence creates a terminal `succeeded` run using
   the versioned request/result contract and normalized fill/trade payloads.
 - Current parity slice is single-symbol bar-mode for vectorized and event-driven
