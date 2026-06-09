@@ -4,14 +4,16 @@ from dataclasses import replace
 from adapters.api.app import create_app
 from adapters.api.schemas import BacktestSubmissionRequestSchema
 from app.backtest_runs import BacktestRunService
-from domain.enums import BacktestRunStatus
-from domain.types import BacktestRunRecord
+from domain.enums import BacktestEngine, BacktestRunStatus
+from domain.types import BacktestRunQuery, BacktestRunRecord
 from fastapi.testclient import TestClient
 
 
 class _FakeRunRepository:
     def __init__(self) -> None:
         self.runs_by_id: dict[str, BacktestRunRecord] = {}
+        self.listed_runs: list[BacktestRunRecord] = []
+        self.queries: list[BacktestRunQuery] = []
 
     def create(self, run: BacktestRunRecord) -> BacktestRunRecord:
         self.runs_by_id[run.run_id] = run
@@ -19,6 +21,10 @@ class _FakeRunRepository:
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
         return self.runs_by_id.get(run_id)
+
+    def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
+        self.queries.append(query)
+        return list(self.listed_runs)
 
 
 class _FailingRunRepository(_FakeRunRepository):
@@ -96,6 +102,88 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
 
 
 class TestBacktestStatusRoute(unittest.TestCase):
+    def test_list_passes_all_filters_and_returns_every_matching_run(self) -> None:
+        repository = _FakeRunRepository()
+        request = BacktestSubmissionRequestSchema(**_valid_payload()).to_domain()
+        base_run = BacktestRunService(
+            repository=repository,
+            new_run_id=lambda: "run-base",
+            now_ms=lambda: 1_780_921_805_123,
+        ).submit(request)
+        repository.listed_runs = [
+            replace(base_run, run_id="run-newer", submitted_at_ms=1_780_922_000_000),
+            replace(base_run, run_id="run-older", submitted_at_ms=1_780_921_900_000),
+        ]
+        service = BacktestRunService(repository=repository)
+
+        with TestClient(create_app(service=service)) as client:
+            response = client.get(
+                "/backtests",
+                params={
+                    "status": "queued",
+                    "symbol": "EURUSD",
+                    "timeframe": "M15",
+                    "strategy": "sma_crossover",
+                    "engine": "event_driven",
+                    "submitted_from_ms": 1_780_921_800_000,
+                    "submitted_to_ms": 1_780_922_100_000,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [run["run_id"] for run in response.json()],
+            ["run-newer", "run-older"],
+        )
+        self.assertEqual(
+            repository.queries,
+            [
+                BacktestRunQuery(
+                    status=BacktestRunStatus.QUEUED,
+                    symbol="EURUSD",
+                    timeframe="M15",
+                    strategy_id="sma_crossover",
+                    engine=BacktestEngine.EVENT_DRIVEN,
+                    submitted_from_ms=1_780_921_800_000,
+                    submitted_to_ms=1_780_922_100_000,
+                )
+            ],
+        )
+
+    def test_list_exposes_no_pagination_controls(self) -> None:
+        app = create_app(service=BacktestRunService(repository=_FakeRunRepository()))
+
+        parameters = app.openapi()["paths"]["/backtests"]["get"]["parameters"]
+
+        self.assertEqual(
+            {parameter["name"] for parameter in parameters},
+            {
+                "status",
+                "symbol",
+                "timeframe",
+                "strategy",
+                "engine",
+                "submitted_from_ms",
+                "submitted_to_ms",
+            },
+        )
+
+    def test_list_rejects_inverted_submission_date_range(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(repository=repository)
+
+        with TestClient(create_app(service=service)) as client:
+            response = client.get(
+                "/backtests",
+                params={
+                    "submitted_from_ms": 1_780_922_100_000,
+                    "submitted_to_ms": 1_780_921_800_000,
+                },
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(repository.queries, [])
+
     def test_get_exposes_only_fields_valid_for_each_lifecycle_state(self) -> None:
         repository = _FakeRunRepository()
         request = BacktestSubmissionRequestSchema(**_valid_payload()).to_domain()

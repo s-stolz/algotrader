@@ -183,6 +183,28 @@ class DatabaseAccessorClient(_BaseClient):
     def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/backtests/{run_id}")
 
+    def list_backtest_runs(
+        self,
+        *,
+        status: str | None = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        strategy: str | None = None,
+        engine: str | None = None,
+        submitted_from: str | None = None,
+        submitted_to: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params = _build_params(
+            status=status,
+            symbol=symbol,
+            timeframe=timeframe,
+            strategy=strategy,
+            engine=engine,
+            submitted_from=submitted_from,
+            submitted_to=submitted_to,
+        )
+        return self._request("GET", "/backtests", params=params)
+
     def conditional_update_backtest_run(
         self,
         run_id: str,
@@ -346,6 +368,28 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/backtests/{run_id}")
+
+    async def list_backtest_runs(
+        self,
+        *,
+        status: str | None = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        strategy: str | None = None,
+        engine: str | None = None,
+        submitted_from: str | None = None,
+        submitted_to: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params = _build_params(
+            status=status,
+            symbol=symbol,
+            timeframe=timeframe,
+            strategy=strategy,
+            engine=engine,
+            submitted_from=submitted_from,
+            submitted_to=submitted_to,
+        )
+        return await self._request("GET", "/backtests", params=params)
 
     async def conditional_update_backtest_run(
         self,

@@ -6,7 +6,7 @@ Shared Python packages used by multiple services.
 
 - `db_accessor_client` HTTP clients, Candle DataFrame conversion, and Python
   Timeframe helpers.
-- Synchronous and asynchronous durable backtest run create/get, conditional
+- Synchronous and asynchronous durable backtest run create/get/list, conditional
   update, and successful-completion client methods.
 - `indicator_engine` batch and streaming compute interface.
 - `algotrader_logger` shared logging helpers and request middleware.
@@ -37,6 +37,9 @@ Shared Python packages used by multiple services.
 - `db_accessor_client.create_backtest_run` and `get_backtest_run` pass versioned
   durable run documents through unchanged. Lifecycle policy and domain mapping
   remain in backtester.
+- Synchronous and asynchronous `list_backtest_runs` methods pass optional
+  lifecycle, immutable-request, and submission-date filters without pagination
+  or queue-selection behavior.
 - Conditional run updates and successful completion return whether the accessor
   atomically matched the caller-provided expected status.
 

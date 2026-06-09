@@ -1,5 +1,6 @@
 import os
-from typing import Optional
+from datetime import datetime
+from typing import Literal, Optional
 
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
 from app import crud, market_cache
@@ -87,6 +88,29 @@ async def create_backtest_run(
     db: AsyncSession = Depends(get_db),
 ):
     return await crud.insert_backtest_run(db, run.model_dump())
+
+
+@app.get("/backtests", response_model=list[BacktestRunOut])
+async def list_backtest_runs(
+    status: Literal["queued", "running", "succeeded", "failed"] | None = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    strategy: str | None = None,
+    engine: Literal["vectorized", "event_driven"] | None = None,
+    submitted_from: datetime | None = None,
+    submitted_to: datetime | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    return await crud.list_backtest_runs(
+        db,
+        status=status,
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy=strategy,
+        engine=engine,
+        submitted_from=submitted_from,
+        submitted_to=submitted_to,
+    )
 
 
 @app.get("/backtests/{run_id}", response_model=BacktestRunOut)

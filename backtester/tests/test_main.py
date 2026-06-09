@@ -12,6 +12,7 @@ class TestBacktesterServiceEntrypoint(unittest.TestCase):
                 route_methods.add((path, method))
 
         self.assertIn(("/backtests", "POST"), route_methods)
+        self.assertIn(("/backtests", "GET"), route_methods)
         self.assertIn(("/backtests/{run_id}", "GET"), route_methods)
 
 

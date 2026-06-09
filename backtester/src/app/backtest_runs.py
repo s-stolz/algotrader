@@ -17,7 +17,12 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
-from domain.types import BacktestRequest, BacktestRequestSnapshot, BacktestRunRecord
+from domain.types import (
+    BacktestRequest,
+    BacktestRequestSnapshot,
+    BacktestRunQuery,
+    BacktestRunRecord,
+)
 from strategies.registry import resolve_strategy
 
 
@@ -27,6 +32,8 @@ class BacktestRunRepository(Protocol):
     def create(self, run: BacktestRunRecord) -> BacktestRunRecord: ...
 
     def get(self, run_id: str) -> BacktestRunRecord | None: ...
+
+    def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]: ...
 
 
 class InvalidBacktestRequestError(ValueError):
@@ -76,6 +83,20 @@ class BacktestRunService:
         if run is None:
             raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
         return run
+
+    def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
+        if (
+            query.submitted_from_ms is not None
+            and query.submitted_to_ms is not None
+            and query.submitted_from_ms > query.submitted_to_ms
+        ):
+            raise InvalidBacktestRequestError(
+                "submitted_from_ms must be less than or equal to submitted_to_ms"
+            )
+        try:
+            return self._repository.list(query)
+        except Exception as exc:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
 
 def _validate_submission(request: BacktestRequest) -> None:

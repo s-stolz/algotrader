@@ -11,8 +11,8 @@ stored in TimescaleDB.
   bucketing.
 - Timescale timestamp conversion between transport milliseconds and
   `timestamp_utc`.
-- Primitive durable backtest run create/get, conditional update, and transactional
-  successful-completion storage operations.
+- Primitive durable backtest run create/get/list, conditional update, and
+  transactional successful-completion storage operations.
 
 ## Key Modules
 
@@ -38,6 +38,10 @@ stored in TimescaleDB.
 - Backtest request attributes live only in versioned `request` JSON. Lifecycle
   status and timestamps are normalized columns; result metrics and diagnostics
   are nullable versioned JSON documents.
+- Run listing filters status and submission dates through lifecycle columns and
+  symbol, timeframe, strategy, and engine through immutable request JSON. Symbol
+  matching uses collection membership. Results use `submitted_at DESC`, then
+  `run_id ASC`, with no persistence-layer limit or queue-selection policy.
 - Backtest fills and closed trades are normalized child rows with caller-supplied
   sequence values and cascade deletion.
 - Backtester code owns lifecycle transitions, queue selection, and scheduling.

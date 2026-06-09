@@ -8,7 +8,9 @@ from app.backtest_runs import (
     BacktestRunService,
     InvalidBacktestRequestError,
 )
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from domain.enums import BacktestEngine, BacktestRunStatus
+from domain.types import BacktestRunQuery
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from adapters.api.schemas import (
     BacktestRunResponseSchema,
@@ -49,6 +51,44 @@ def submit_backtest(
 
     response.headers["Location"] = f"/backtests/{run.run_id}"
     return BacktestSubmissionResponseSchema(run_id=run.run_id, status="queued")
+
+
+@router.get(
+    "",
+    response_model=list[BacktestRunResponseSchema],
+    response_model_exclude_none=True,
+)
+def list_backtests(
+    status_filter: BacktestRunStatus | None = Query(default=None, alias="status"),
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    strategy: str | None = None,
+    engine: BacktestEngine | None = None,
+    submitted_from_ms: int | None = None,
+    submitted_to_ms: int | None = None,
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> list[BacktestRunResponseSchema]:
+    query = BacktestRunQuery(
+        status=status_filter,
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy_id=strategy,
+        engine=engine,
+        submitted_from_ms=submitted_from_ms,
+        submitted_to_ms=submitted_to_ms,
+    )
+    try:
+        return [BacktestRunResponseSchema.from_domain(run) for run in service.list(query)]
+    except InvalidBacktestRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    except (BacktestRunPersistenceError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backtest persistence unavailable",
+        ) from exc
 
 
 @router.get(

@@ -8,7 +8,8 @@ from app.models import (
     candles,
     markets,
 )
-from sqlalchemy import delete, insert, select, text, update
+from sqlalchemy import cast, delete, exists, func, insert, select, text, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -533,6 +534,55 @@ async def get_backtest_run(session, run_id: str):
     result = await session.execute(stmt)
     row = result.fetchone()
     return dict(row._mapping) if row else None
+
+
+async def list_backtest_runs(
+    session,
+    *,
+    status: str | None = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    strategy: str | None = None,
+    engine: str | None = None,
+    submitted_from: datetime | None = None,
+    submitted_to: datetime | None = None,
+):
+    stmt = select(backtest_runs)
+    if status is not None:
+        stmt = stmt.where(backtest_runs.c.status == status)
+    if symbol is not None:
+        stmt = stmt.where(_symbol_membership_filter(session, symbol))
+    if timeframe is not None:
+        stmt = stmt.where(backtest_runs.c.request["timeframe"].as_string() == timeframe)
+    if strategy is not None:
+        stmt = stmt.where(
+            backtest_runs.c.request["strategy"]["strategy_id"].as_string() == strategy
+        )
+    if engine is not None:
+        stmt = stmt.where(backtest_runs.c.request["engine"].as_string() == engine)
+    if submitted_from is not None:
+        stmt = stmt.where(backtest_runs.c.submitted_at >= submitted_from)
+    if submitted_to is not None:
+        stmt = stmt.where(backtest_runs.c.submitted_at <= submitted_to)
+    stmt = stmt.order_by(
+        backtest_runs.c.submitted_at.desc(),
+        backtest_runs.c.run_id.asc(),
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+def _symbol_membership_filter(session, symbol: str):
+    bind = session.get_bind() if hasattr(session, "get_bind") else session.engine
+    if bind.dialect.name == "postgresql":
+        symbols = cast(backtest_runs.c.request["symbols"], JSONB)
+        return symbols.contains([symbol])
+
+    symbols = func.json_each(
+        backtest_runs.c.request,
+        "$.symbols",
+    ).table_valued("key", "value")
+    return exists(select(1).select_from(symbols).where(symbols.c.value == symbol))
 
 
 async def conditional_update_backtest_run(

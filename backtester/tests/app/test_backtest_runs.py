@@ -7,7 +7,13 @@ from app.backtest_runs import (
     InvalidBacktestRequestError,
 )
 from domain.enums import BacktestRunStatus, DataGranularity, PriceSource
-from domain.types import BacktestRequest, BacktestRunRecord, ExecutionConfig, StrategyConfig
+from domain.types import (
+    BacktestRequest,
+    BacktestRunQuery,
+    BacktestRunRecord,
+    ExecutionConfig,
+    StrategyConfig,
+)
 
 
 class _FakeRunRepository:
@@ -22,6 +28,10 @@ class _FakeRunRepository:
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
         return self.runs_by_id.get(run_id)
+
+    def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
+        del query
+        return list(self.runs_by_id.values())
 
 
 class TestBacktestRunService(unittest.TestCase):

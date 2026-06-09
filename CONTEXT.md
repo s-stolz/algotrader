@@ -56,7 +56,8 @@ to a chart UI, and supports standalone backtesting.
 - Durable backtest runs use `queued`, `running`, `succeeded`, and `failed`
   lifecycle states. Lifecycle timestamps are normalized storage fields; the
   complete immutable request is versioned JSON, and fills/trades are normalized
-  child records.
+  child records. Run history filters request attributes from that JSON document
+  and returns matches by `submitted_at DESC`, then `run_id ASC`.
 
 ## Change Guidance
 

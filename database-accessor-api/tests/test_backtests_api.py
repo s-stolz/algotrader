@@ -2,7 +2,7 @@ import os
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from pydantic import ValidationError
 from sqlalchemy import create_engine, select
@@ -183,6 +183,200 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             await main.get_backtest_run("missing", db=self.db)
 
         self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_list_filters_status_and_orders_newest_first(self):
+        runs = (
+            _run_payload(
+                run_id="run-b",
+                submitted_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+            ),
+            _run_payload(
+                run_id="run-newest",
+                submitted_at=datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc),
+            ),
+            _run_payload(
+                run_id="run-a",
+                submitted_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+            ),
+            _run_payload(
+                run_id="run-failed",
+                status="failed",
+                submitted_at=datetime(2026, 6, 8, 12, 33, tzinfo=timezone.utc),
+            ),
+        )
+        for run in runs:
+            await main.create_backtest_run(BacktestRunCreateIn(**run), db=self.db)
+
+        listed = await main.list_backtest_runs(status="queued", db=self.db)
+
+        self.assertEqual(
+            [run["run_id"] for run in listed],
+            ["run-newest", "run-a", "run-b"],
+        )
+
+    async def test_list_filters_each_immutable_request_json_field(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-target",
+                    request=_request_payload(
+                        symbols=["GBPUSD", "EURUSD"],
+                        timeframe="H1",
+                        engine="vectorized",
+                        strategy={
+                            "strategy_id": "mean_reversion",
+                            "parameters": {},
+                        },
+                    ),
+                )
+            ),
+            db=self.db,
+        )
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-other",
+                    request=_request_payload(
+                        symbols=["USDJPY"],
+                        timeframe="M15",
+                        engine="event_driven",
+                        strategy={
+                            "strategy_id": "sma_crossover",
+                            "parameters": {},
+                        },
+                    ),
+                )
+            ),
+            db=self.db,
+        )
+
+        filters: tuple[dict[str, Any], ...] = (
+            {"symbol": "EURUSD"},
+            {"timeframe": "H1"},
+            {"strategy": "mean_reversion"},
+            {"engine": "vectorized"},
+        )
+        for query in filters:
+            with self.subTest(query=query):
+                listed = await main.list_backtest_runs(**query, db=self.db)
+                self.assertEqual([run["run_id"] for run in listed], ["run-target"])
+
+    async def test_list_submission_date_filters_include_boundary_timestamps(self):
+        timestamps = (
+            ("run-before", datetime(2026, 6, 8, 12, 29, tzinfo=timezone.utc)),
+            ("run-from", datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc)),
+            ("run-to", datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc)),
+            ("run-after", datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc)),
+        )
+        for run_id, submitted_at in timestamps:
+            await main.create_backtest_run(
+                BacktestRunCreateIn(
+                    **_run_payload(
+                        run_id=run_id,
+                        submitted_at=submitted_at,
+                    )
+                ),
+                db=self.db,
+            )
+
+        listed = await main.list_backtest_runs(
+            submitted_from=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+            submitted_to=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+            db=self.db,
+        )
+
+        self.assertEqual(
+            [run["run_id"] for run in listed],
+            ["run-to", "run-from"],
+        )
+
+    async def test_list_combines_lifecycle_request_and_date_filters(self):
+        matching_request = _request_payload(
+            symbols=["GBPUSD", "EURUSD"],
+            timeframe="H1",
+            engine="vectorized",
+            strategy={"strategy_id": "mean_reversion", "parameters": {}},
+        )
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-target",
+                    status="running",
+                    submitted_at=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+                    request=matching_request,
+                )
+            ),
+            db=self.db,
+        )
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-wrong-status",
+                    submitted_at=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+                    request=matching_request,
+                )
+            ),
+            db=self.db,
+        )
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-wrong-request",
+                    status="running",
+                    submitted_at=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+
+        listed = await main.list_backtest_runs(
+            status="running",
+            symbol="EURUSD",
+            timeframe="H1",
+            strategy="mean_reversion",
+            engine="vectorized",
+            submitted_from=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+            submitted_to=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+            db=self.db,
+        )
+
+        self.assertEqual([run["run_id"] for run in listed], ["run-target"])
+
+    async def test_list_returns_empty_collection_when_no_runs_match(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(**_run_payload()),
+            db=self.db,
+        )
+
+        listed = await main.list_backtest_runs(symbol="USDJPY", db=self.db)
+
+        self.assertEqual(listed, [])
+
+    async def test_list_returns_all_matching_runs_without_a_hard_limit(self):
+        for index in range(105):
+            await main.create_backtest_run(
+                BacktestRunCreateIn(
+                    **_run_payload(
+                        run_id=f"run-{index:03d}",
+                        submitted_at=datetime(
+                            2026,
+                            6,
+                            8,
+                            12,
+                            index // 60,
+                            index % 60,
+                            tzinfo=timezone.utc,
+                        ),
+                    )
+                ),
+                db=self.db,
+            )
+
+        listed = await main.list_backtest_runs(status="queued", db=self.db)
+
+        self.assertEqual(len(listed), 105)
+        self.assertEqual(listed[0]["run_id"], "run-104")
+        self.assertEqual(listed[-1]["run_id"], "run-000")
 
     async def test_conditional_update_changes_fields_only_for_expected_status(self):
         await main.create_backtest_run(

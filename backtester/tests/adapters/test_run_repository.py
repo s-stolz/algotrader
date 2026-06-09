@@ -6,6 +6,7 @@ from domain.enums import BacktestEngine, BacktestRunStatus
 from domain.types import (
     BacktestRequest,
     BacktestRequestSnapshot,
+    BacktestRunQuery,
     BacktestRunRecord,
     ExecutionConfig,
     StrategyConfig,
@@ -16,6 +17,8 @@ class _FakeRunClient:
     def __init__(self) -> None:
         self.created_payloads: list[dict] = []
         self.runs_by_id: dict[str, dict] = {}
+        self.listed_payloads: list[dict] = []
+        self.list_queries: list[dict] = []
 
     def create_backtest_run(self, run: dict) -> dict:
         self.created_payloads.append(run)
@@ -24,6 +27,10 @@ class _FakeRunClient:
 
     def get_backtest_run(self, run_id: str) -> dict:
         return dict(self.runs_by_id[run_id])
+
+    def list_backtest_runs(self, **query) -> list[dict]:
+        self.list_queries.append(query)
+        return [dict(run) for run in self.listed_payloads]
 
 
 class _MissingRunClient(_FakeRunClient):
@@ -103,6 +110,42 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
 
         self.assertIsNone(repository.get("run-missing"))
 
+    def test_list_maps_domain_filters_and_preserves_accessor_order(self) -> None:
+        client = _FakeRunClient()
+        client.listed_payloads = [
+            _persisted_run("run-newer", "2026-06-08T12:35:00+00:00"),
+            _persisted_run("run-older", "2026-06-08T12:30:00+00:00"),
+        ]
+        repository = DatabaseAccessorBacktestRunRepository(client=client)
+
+        runs = repository.list(
+            BacktestRunQuery(
+                status=BacktestRunStatus.QUEUED,
+                symbol="EURUSD",
+                timeframe="M15",
+                strategy_id="sma_crossover",
+                engine=BacktestEngine.EVENT_DRIVEN,
+                submitted_from_ms=1_780_921_800_000,
+                submitted_to_ms=1_780_922_100_000,
+            )
+        )
+
+        self.assertEqual([run.run_id for run in runs], ["run-newer", "run-older"])
+        self.assertEqual(
+            client.list_queries,
+            [
+                {
+                    "status": "queued",
+                    "symbol": "EURUSD",
+                    "timeframe": "M15",
+                    "strategy": "sma_crossover",
+                    "engine": "event_driven",
+                    "submitted_from": "2026-06-08T12:30:00+00:00",
+                    "submitted_to": "2026-06-08T12:35:00+00:00",
+                }
+            ],
+        )
+
 
 def _request() -> BacktestRequest:
     return BacktestRequest(
@@ -123,6 +166,23 @@ def _request() -> BacktestRequest:
         initial_capital=25_000.0,
         engine=BacktestEngine.EVENT_DRIVEN,
     )
+
+
+def _persisted_run(run_id: str, submitted_at: str) -> dict:
+    return {
+        "run_id": run_id,
+        "status": "queued",
+        "submitted_at": submitted_at,
+        "started_at": None,
+        "completed_at": None,
+        "error_code": None,
+        "error_message": None,
+        "request_schema_version": 1,
+        "request": dict(BacktestRequestSnapshot.from_request(_request()).payload),
+        "result_schema_version": None,
+        "metrics": None,
+        "diagnostics": None,
+    }
 
 
 if __name__ == "__main__":

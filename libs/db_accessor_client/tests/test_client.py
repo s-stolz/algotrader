@@ -177,6 +177,49 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
         self.assertEqual(run, response_payload)
 
+    def test_list_backtest_runs_passes_all_filters_without_pagination(self) -> None:
+        payload = _backtest_run_payload()
+        response_payload = {
+            key: value for key, value in payload.items() if key not in {"fills", "trades"}
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(request.url.params.get("status"), "queued")
+            self.assertEqual(request.url.params.get("symbol"), "EURUSD")
+            self.assertEqual(request.url.params.get("timeframe"), "M15")
+            self.assertEqual(request.url.params.get("strategy"), "sma_crossover")
+            self.assertEqual(request.url.params.get("engine"), "event_driven")
+            self.assertEqual(
+                request.url.params.get("submitted_from"),
+                "2026-06-08T12:00:00+00:00",
+            )
+            self.assertEqual(
+                request.url.params.get("submitted_to"),
+                "2026-06-08T13:00:00+00:00",
+            )
+            self.assertNotIn("limit", request.url.params)
+            self.assertNotIn("offset", request.url.params)
+            return httpx.Response(200, json=[response_payload])
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            runs = client.list_backtest_runs(
+                status="queued",
+                symbol="EURUSD",
+                timeframe="M15",
+                strategy="sma_crossover",
+                engine="event_driven",
+                submitted_from="2026-06-08T12:00:00+00:00",
+                submitted_to="2026-06-08T13:00:00+00:00",
+            )
+        finally:
+            client.close()
+
+        self.assertEqual(runs, [response_payload])
+
     def test_conditional_update_backtest_run_patches_expected_status(self) -> None:
         payload = {
             "expected_status": "queued",
@@ -232,6 +275,22 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.status_code, 404)
         self.assertEqual(ctx.exception.response_text, "missing")
+
+    def test_list_backtest_runs_raises_client_error_on_http_failure(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/backtests")
+            return httpx.Response(503, text="unavailable")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                client.list_backtest_runs(status="queued")
+        finally:
+            client.close()
+
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertEqual(ctx.exception.response_text, "unavailable")
 
     def test_get_latest_candle_m1_uses_latest_endpoint(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -369,6 +428,46 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(run, response_payload)
 
+    async def test_async_list_backtest_runs_passes_all_filters(self) -> None:
+        payload = _backtest_run_payload(run_id="run-async-123")
+        response_payload = {
+            key: value for key, value in payload.items() if key not in {"fills", "trades"}
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(
+                dict(request.url.params),
+                {
+                    "status": "running",
+                    "symbol": "EURUSD",
+                    "timeframe": "M15",
+                    "strategy": "sma_crossover",
+                    "engine": "event_driven",
+                    "submitted_from": "2026-06-08T12:00:00+00:00",
+                    "submitted_to": "2026-06-08T13:00:00+00:00",
+                },
+            )
+            return httpx.Response(200, json=[response_payload])
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            runs = await client.list_backtest_runs(
+                status="running",
+                symbol="EURUSD",
+                timeframe="M15",
+                strategy="sma_crossover",
+                engine="event_driven",
+                submitted_from="2026-06-08T12:00:00+00:00",
+                submitted_to="2026-06-08T13:00:00+00:00",
+            )
+        finally:
+            await client.aclose()
+
+        self.assertEqual(runs, [response_payload])
+
     async def test_async_conditional_update_backtest_run_patches_expected_status(
         self,
     ) -> None:
@@ -432,6 +531,22 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 500)
         self.assertEqual(ctx.exception.response_text, "boom")
+
+    async def test_async_list_backtest_runs_raises_client_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/backtests")
+            return httpx.Response(503, text="unavailable")
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                await client.list_backtest_runs(status="running")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertEqual(ctx.exception.response_text, "unavailable")
 
     async def test_async_get_candles_returns_payload(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

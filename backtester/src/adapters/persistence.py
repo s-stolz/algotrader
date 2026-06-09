@@ -8,7 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Mapping, Protocol, Sequence
 from uuid import uuid4
 
 from db_accessor_client import DatabaseAccessorClientError
@@ -17,6 +17,7 @@ from domain.types import (
     BACKTEST_RESULT_SCHEMA_VERSION,
     BacktestRequestSnapshot,
     BacktestResult,
+    BacktestRunQuery,
     BacktestRunRecord,
     Fill,
     Trade,
@@ -33,6 +34,8 @@ class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
     """Client protocol for queued run creation and status retrieval."""
 
     def get_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
+
+    def list_backtest_runs(self, **query: Any) -> Sequence[Mapping[str, Any]]: ...
 
 
 class BacktestLifecycleClient(Protocol):
@@ -76,6 +79,10 @@ class DatabaseAccessorBacktestRunRepository:
             raise
         return _run_record_from_response(response)
 
+    def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
+        responses = self._list_runs(_run_query_params(query))
+        return [_run_record_from_response(response) for response in responses]
+
     def _create_run(self, run: dict[str, Any]) -> Mapping[str, Any]:
         if self._client is not None:
             return self._client.create_backtest_run(run)
@@ -91,6 +98,14 @@ class DatabaseAccessorBacktestRunRepository:
         client_cls = _import_database_accessor_client()
         with client_cls() as client:
             return client.get_backtest_run(run_id)
+
+    def _list_runs(self, query: dict[str, Any]) -> Sequence[Mapping[str, Any]]:
+        if self._client is not None:
+            return self._client.list_backtest_runs(**query)
+
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            return client.list_backtest_runs(**query)
 
 
 class BacktestRunPersistenceAdapter:
@@ -269,6 +284,27 @@ def _run_record_payload(run: BacktestRunRecord) -> dict[str, Any]:
         "fills": [],
         "trades": [],
     }
+
+
+def _run_query_params(query: BacktestRunQuery) -> dict[str, Any]:
+    params = {
+        "status": (_enum_or_text_value(query.status) if query.status is not None else None),
+        "symbol": query.symbol,
+        "timeframe": query.timeframe,
+        "strategy": query.strategy_id,
+        "engine": (_enum_or_text_value(query.engine) if query.engine is not None else None),
+        "submitted_from": (
+            _epoch_ms_to_utc_text(query.submitted_from_ms)
+            if query.submitted_from_ms is not None
+            else None
+        ),
+        "submitted_to": (
+            _epoch_ms_to_utc_text(query.submitted_to_ms)
+            if query.submitted_to_ms is not None
+            else None
+        ),
+    }
+    return {name: value for name, value in params.items() if value is not None}
 
 
 def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
