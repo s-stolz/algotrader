@@ -62,6 +62,13 @@ Standalone Python backtesting module for historical candle simulation.
 - Claimed requests execute in a spawned child process from their immutable
   snapshot. Child output is compact and excludes the equity curve; only the
   worker parent persists lifecycle and result state.
+- Child-reported execution failures and abnormal child exits become sanitized,
+  bounded failed-run records. Detailed exception tracebacks remain in worker
+  logs and failed runs persist no result artifacts.
+- Worker startup conditionally marks pre-existing running records failed with
+  `worker_interrupted` before claiming queued work. Terminal persistence errors
+  are logged and terminate the worker without retry so restart reconciliation
+  can resolve the still-running record.
 - Successful synchronous CLI persistence creates a terminal `succeeded` run using
   the versioned request/result contract and normalized fill/trade payloads.
 - Current parity slice is single-symbol bar-mode for vectorized and event-driven
