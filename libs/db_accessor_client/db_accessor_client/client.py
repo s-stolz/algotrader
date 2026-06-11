@@ -66,6 +66,8 @@ class DatabaseAccessorClient(_BaseClient):
         try:
             response = self.client.request(method, self._url(path), **kwargs)
             response.raise_for_status()
+            if response.status_code == 204:
+                return None
             return response.json()
         except httpx.HTTPStatusError as exc:
             raise DatabaseAccessorClientError(
@@ -183,6 +185,12 @@ class DatabaseAccessorClient(_BaseClient):
     def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/backtests/{run_id}")
 
+    def get_backtest_fills(self, run_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtests/{run_id}/fills")
+
+    def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtests/{run_id}/trades")
+
     def list_backtest_runs(
         self,
         *,
@@ -225,6 +233,9 @@ class DatabaseAccessorClient(_BaseClient):
         )
         return _mutation_updated(response)
 
+    def delete_backtest_run(self, run_id: str) -> None:
+        self._request("DELETE", f"/backtests/{run_id}")
+
     def close(self) -> None:
         self.client.close()
 
@@ -246,6 +257,8 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         try:
             response = await self.client.request(method, self._url(path), **kwargs)
             response.raise_for_status()
+            if response.status_code == 204:
+                return None
             return response.json()
         except httpx.HTTPStatusError as exc:
             raise DatabaseAccessorClientError(
@@ -369,6 +382,12 @@ class AsyncDatabaseAccessorClient(_BaseClient):
     async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/backtests/{run_id}")
 
+    async def get_backtest_fills(self, run_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtests/{run_id}/fills")
+
+    async def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtests/{run_id}/trades")
+
     async def list_backtest_runs(
         self,
         *,
@@ -410,6 +429,9 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             json=completion,
         )
         return _mutation_updated(response)
+
+    async def delete_backtest_run(self, run_id: str) -> None:
+        await self._request("DELETE", f"/backtests/{run_id}")
 
     async def aclose(self) -> None:
         await self.client.aclose()

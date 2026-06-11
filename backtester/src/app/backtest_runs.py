@@ -18,10 +18,12 @@ from domain.enums import (
     TradeAccountingPolicy,
 )
 from domain.types import (
+    BacktestFillRecord,
     BacktestRequest,
     BacktestRequestSnapshot,
     BacktestRunQuery,
     BacktestRunRecord,
+    BacktestTradeRecord,
 )
 from strategies.registry import resolve_strategy
 
@@ -35,6 +37,12 @@ class BacktestRunRepository(Protocol):
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]: ...
 
+    def get_fills(self, run_id: str) -> list[BacktestFillRecord]: ...
+
+    def get_trades(self, run_id: str) -> list[BacktestTradeRecord]: ...
+
+    def delete(self, run_id: str) -> bool: ...
+
 
 class InvalidBacktestRequestError(ValueError):
     """Raised when a deterministic submission rule is violated."""
@@ -42,6 +50,10 @@ class InvalidBacktestRequestError(ValueError):
 
 class BacktestRunNotFoundError(LookupError):
     """Raised when a requested durable run does not exist."""
+
+
+class BacktestRunConflictError(RuntimeError):
+    """Raised when an operation conflicts with the current run lifecycle."""
 
 
 class BacktestRunPersistenceError(RuntimeError):
@@ -97,6 +109,31 @@ class BacktestRunService:
             return self._repository.list(query)
         except Exception as exc:
             raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+
+    def get_fills(self, run_id: str) -> list[BacktestFillRecord]:
+        self.get(run_id)
+        try:
+            return self._repository.get_fills(run_id)
+        except Exception as exc:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+
+    def get_trades(self, run_id: str) -> list[BacktestTradeRecord]:
+        self.get(run_id)
+        try:
+            return self._repository.get_trades(run_id)
+        except Exception as exc:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+
+    def delete(self, run_id: str) -> None:
+        run = self.get(run_id)
+        if run.status not in (BacktestRunStatus.SUCCEEDED, BacktestRunStatus.FAILED):
+            raise BacktestRunConflictError("Only terminal backtest runs can be deleted")
+        try:
+            deleted = self._repository.delete(run_id)
+        except Exception as exc:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+        if not deleted:
+            raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
 
 
 def _validate_submission(request: BacktestRequest) -> None:

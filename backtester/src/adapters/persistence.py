@@ -12,13 +12,15 @@ from typing import Any, Mapping, Protocol, Sequence
 from uuid import uuid4
 
 from db_accessor_client import DatabaseAccessorClientError
-from domain.enums import BacktestRunStatus
+from domain.enums import BacktestRunStatus, ExitReason, OrderSide
 from domain.types import (
     BACKTEST_RESULT_SCHEMA_VERSION,
+    BacktestFillRecord,
     BacktestRequestSnapshot,
     BacktestResult,
     BacktestRunQuery,
     BacktestRunRecord,
+    BacktestTradeRecord,
     Fill,
     Trade,
 )
@@ -36,6 +38,12 @@ class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
     def get_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
 
     def list_backtest_runs(self, **query: Any) -> Sequence[Mapping[str, Any]]: ...
+
+    def get_backtest_fills(self, run_id: str) -> Sequence[Mapping[str, Any]]: ...
+
+    def get_backtest_trades(self, run_id: str) -> Sequence[Mapping[str, Any]]: ...
+
+    def delete_backtest_run(self, run_id: str) -> None: ...
 
 
 class BacktestLifecycleClient(Protocol):
@@ -83,6 +91,21 @@ class DatabaseAccessorBacktestRunRepository:
         responses = self._list_runs(_run_query_params(query))
         return [_run_record_from_response(response) for response in responses]
 
+    def get_fills(self, run_id: str) -> list[BacktestFillRecord]:
+        return [_fill_record_from_response(response) for response in self._get_fills(run_id)]
+
+    def get_trades(self, run_id: str) -> list[BacktestTradeRecord]:
+        return [_trade_record_from_response(response) for response in self._get_trades(run_id)]
+
+    def delete(self, run_id: str) -> bool:
+        try:
+            self._delete_run(run_id)
+        except DatabaseAccessorClientError as exc:
+            if exc.status_code == 404:
+                return False
+            raise
+        return True
+
     def _create_run(self, run: dict[str, Any]) -> Mapping[str, Any]:
         if self._client is not None:
             return self._client.create_backtest_run(run)
@@ -106,6 +129,31 @@ class DatabaseAccessorBacktestRunRepository:
         client_cls = _import_database_accessor_client()
         with client_cls() as client:
             return client.list_backtest_runs(**query)
+
+    def _get_fills(self, run_id: str) -> Sequence[Mapping[str, Any]]:
+        if self._client is not None:
+            return self._client.get_backtest_fills(run_id)
+
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            return client.get_backtest_fills(run_id)
+
+    def _get_trades(self, run_id: str) -> Sequence[Mapping[str, Any]]:
+        if self._client is not None:
+            return self._client.get_backtest_trades(run_id)
+
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            return client.get_backtest_trades(run_id)
+
+    def _delete_run(self, run_id: str) -> None:
+        if self._client is not None:
+            self._client.delete_backtest_run(run_id)
+            return
+
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            client.delete_backtest_run(run_id)
 
 
 class BacktestRunPersistenceAdapter:
@@ -334,6 +382,38 @@ def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
         ),
         metrics=_optional_mapping(response.get("metrics")),
         diagnostics=_optional_mapping(response.get("diagnostics")),
+    )
+
+
+def _fill_record_from_response(response: Mapping[str, Any]) -> BacktestFillRecord:
+    exit_reason = response.get("exit_reason")
+    return BacktestFillRecord(
+        run_id=str(response["run_id"]),
+        sequence=int(response["fill_sequence"]),
+        timestamp_ms=int(response["timestamp_ms"]),
+        symbol=str(response["symbol"]),
+        side=OrderSide(str(response["side"])),
+        quantity=float(response["quantity"]),
+        price=float(response["price"]),
+        fees=float(response["fees"]),
+        exit_reason=(ExitReason(str(exit_reason)) if exit_reason is not None else None),
+    )
+
+
+def _trade_record_from_response(response: Mapping[str, Any]) -> BacktestTradeRecord:
+    return BacktestTradeRecord(
+        run_id=str(response["run_id"]),
+        sequence=int(response["trade_sequence"]),
+        trade_id=str(response["trade_id"]),
+        symbol=str(response["symbol"]),
+        quantity=float(response["quantity"]),
+        entry_timestamp_ms=int(response["entry_timestamp_ms"]),
+        entry_price=float(response["entry_price"]),
+        exit_timestamp_ms=int(response["exit_timestamp_ms"]),
+        exit_price=float(response["exit_price"]),
+        realized_pnl=float(response["realized_pnl"]),
+        fees=float(response["fees"]),
+        exit_reason=ExitReason(str(response["exit_reason"])),
     )
 
 

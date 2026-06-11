@@ -16,8 +16,10 @@ from domain.enums import (
     TradeAccountingPolicy,
 )
 from domain.types import (
+    BacktestFillRecord,
     BacktestRequest,
     BacktestRunRecord,
+    BacktestTradeRecord,
     ExecutionConfig,
     StrategyConfig,
 )
@@ -103,6 +105,60 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
 class BacktestSubmissionResponseSchema(ApiContractModel):
     run_id: str
     status: Literal["queued"]
+
+
+class BacktestFillResponseSchema(ApiContractModel):
+    sequence: int
+    timestamp_ms: int
+    symbol: str
+    side: Literal["buy", "sell"]
+    quantity: float
+    price: float
+    fees: float
+    exit_reason: Literal["signal", "stop_loss", "take_profit"] | None = None
+
+    @classmethod
+    def from_domain(cls, fill: BacktestFillRecord) -> "BacktestFillResponseSchema":
+        return cls(
+            sequence=fill.sequence,
+            timestamp_ms=fill.timestamp_ms,
+            symbol=fill.symbol,
+            side=fill.side.value,
+            quantity=fill.quantity,
+            price=fill.price,
+            fees=fill.fees,
+            exit_reason=(fill.exit_reason.value if fill.exit_reason is not None else None),
+        )
+
+
+class BacktestTradeResponseSchema(ApiContractModel):
+    sequence: int
+    trade_id: str
+    symbol: str
+    quantity: float
+    entry_timestamp_ms: int
+    entry_price: float
+    exit_timestamp_ms: int
+    exit_price: float
+    realized_pnl: float
+    fees: float
+    exit_reason: Literal["signal", "stop_loss", "take_profit"]
+
+    @classmethod
+    def from_domain(cls, trade: BacktestTradeRecord) -> "BacktestTradeResponseSchema":
+        return cls(
+            sequence=trade.sequence,
+            trade_id=trade.trade_id,
+            symbol=trade.symbol,
+            quantity=trade.quantity,
+            entry_timestamp_ms=trade.entry_timestamp_ms,
+            entry_price=trade.entry_price,
+            exit_timestamp_ms=trade.exit_timestamp_ms,
+            exit_price=trade.exit_price,
+            realized_pnl=trade.realized_pnl,
+            fees=trade.fees,
+            exit_reason=trade.exit_reason.value,
+        )
 
 
 class BacktestRunResponseSchema(ApiContractModel):

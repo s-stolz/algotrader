@@ -1,16 +1,27 @@
+from __future__ import annotations
+
 import unittest
 from dataclasses import replace
 
 from app.backtest_runs import (
+    BacktestRunConflictError,
     BacktestRunNotFoundError,
     BacktestRunService,
     InvalidBacktestRequestError,
 )
-from domain.enums import BacktestRunStatus, DataGranularity, PriceSource
+from domain.enums import (
+    BacktestRunStatus,
+    DataGranularity,
+    ExitReason,
+    OrderSide,
+    PriceSource,
+)
 from domain.types import (
+    BacktestFillRecord,
     BacktestRequest,
     BacktestRunQuery,
     BacktestRunRecord,
+    BacktestTradeRecord,
     ExecutionConfig,
     StrategyConfig,
 )
@@ -20,6 +31,9 @@ class _FakeRunRepository:
     def __init__(self) -> None:
         self.created_runs: list[BacktestRunRecord] = []
         self.runs_by_id: dict[str, BacktestRunRecord] = {}
+        self.fills_by_run_id: dict[str, list[BacktestFillRecord]] = {}
+        self.trades_by_run_id: dict[str, list[BacktestTradeRecord]] = {}
+        self.deleted_run_ids: list[str] = []
 
     def create(self, run: BacktestRunRecord) -> BacktestRunRecord:
         self.created_runs.append(run)
@@ -32,6 +46,21 @@ class _FakeRunRepository:
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         del query
         return list(self.runs_by_id.values())
+
+    def get_fills(self, run_id: str) -> list[BacktestFillRecord]:
+        return list(self.fills_by_run_id.get(run_id, []))
+
+    def get_trades(self, run_id: str) -> list[BacktestTradeRecord]:
+        return list(self.trades_by_run_id.get(run_id, []))
+
+    def delete(self, run_id: str) -> bool:
+        if run_id not in self.runs_by_id:
+            return False
+        self.deleted_run_ids.append(run_id)
+        del self.runs_by_id[run_id]
+        self.fills_by_run_id.pop(run_id, None)
+        self.trades_by_run_id.pop(run_id, None)
+        return True
 
 
 class TestBacktestRunService(unittest.TestCase):
@@ -174,6 +203,112 @@ class TestBacktestRunService(unittest.TestCase):
         self.assertEqual(service.get("run-123"), submitted)
         with self.assertRaisesRegex(BacktestRunNotFoundError, "run-missing"):
             service.get("run-missing")
+
+    def test_get_execution_logs_requires_existing_run_and_preserves_order(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(
+            repository=repository,
+            new_run_id=lambda: "run-123",
+            now_ms=lambda: 1_780_921_805_123,
+        )
+        queued = service.submit(_valid_request())
+        repository.runs_by_id["run-123"] = replace(
+            queued,
+            status=BacktestRunStatus.SUCCEEDED,
+            started_at_ms=1_780_921_860_000,
+            completed_at_ms=1_780_922_100_000,
+            result_schema_version=1,
+            metrics={"trade_count": 1},
+            diagnostics={"bars": 10},
+        )
+        fills = [
+            BacktestFillRecord(
+                run_id="run-123",
+                sequence=0,
+                timestamp_ms=1_714_525_200_000,
+                symbol="EURUSD",
+                side=OrderSide.BUY,
+                quantity=1_000.0,
+                price=1.0715,
+                fees=0.15,
+            ),
+            BacktestFillRecord(
+                run_id="run-123",
+                sequence=1,
+                timestamp_ms=1_714_532_400_000,
+                symbol="EURUSD",
+                side=OrderSide.SELL,
+                quantity=1_000.0,
+                price=1.074,
+                fees=0.15,
+                exit_reason=ExitReason.TAKE_PROFIT,
+            ),
+        ]
+        trades = [
+            BacktestTradeRecord(
+                run_id="run-123",
+                sequence=0,
+                trade_id="trade-1",
+                symbol="EURUSD",
+                quantity=1_000.0,
+                entry_timestamp_ms=1_714_525_200_000,
+                entry_price=1.0715,
+                exit_timestamp_ms=1_714_532_400_000,
+                exit_price=1.074,
+                realized_pnl=2.5,
+                fees=0.3,
+                exit_reason=ExitReason.TAKE_PROFIT,
+            )
+        ]
+        repository.fills_by_run_id["run-123"] = fills
+        repository.trades_by_run_id["run-123"] = trades
+
+        self.assertEqual(service.get_fills("run-123"), fills)
+        self.assertEqual(service.get_trades("run-123"), trades)
+        with self.assertRaisesRegex(BacktestRunNotFoundError, "run-missing"):
+            service.get_fills("run-missing")
+        with self.assertRaisesRegex(BacktestRunNotFoundError, "run-missing"):
+            service.get_trades("run-missing")
+
+    def test_delete_allows_terminal_runs_and_rejects_active_runs(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(
+            repository=repository,
+            new_run_id=lambda: "run-base",
+            now_ms=lambda: 1_780_921_805_123,
+        )
+        queued = service.submit(_valid_request())
+        repository.runs_by_id = {
+            "run-queued": replace(queued, run_id="run-queued"),
+            "run-running": replace(
+                queued,
+                run_id="run-running",
+                status=BacktestRunStatus.RUNNING,
+            ),
+            "run-succeeded": replace(
+                queued,
+                run_id="run-succeeded",
+                status=BacktestRunStatus.SUCCEEDED,
+            ),
+            "run-failed": replace(
+                queued,
+                run_id="run-failed",
+                status=BacktestRunStatus.FAILED,
+            ),
+        }
+
+        service.delete("run-succeeded")
+        service.delete("run-failed")
+
+        self.assertEqual(repository.deleted_run_ids, ["run-succeeded", "run-failed"])
+        for run_id in ("run-queued", "run-running"):
+            with self.subTest(run_id=run_id):
+                with self.assertRaisesRegex(BacktestRunConflictError, "terminal"):
+                    service.delete(run_id)
+                self.assertIn(run_id, repository.runs_by_id)
+
+        with self.assertRaisesRegex(BacktestRunNotFoundError, "run-missing"):
+            service.delete("run-missing")
 
 
 def _valid_request() -> BacktestRequest:

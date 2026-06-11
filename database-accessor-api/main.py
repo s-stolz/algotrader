@@ -6,6 +6,8 @@ from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_l
 from app import crud, market_cache
 from app.database import get_db
 from app.schemas import (
+    BacktestClosedTradeOut,
+    BacktestFillOut,
     BacktestRunCompleteIn,
     BacktestRunConditionalUpdateIn,
     BacktestRunCreateIn,
@@ -15,7 +17,7 @@ from app.schemas import (
     MarketIn,
 )
 from app.timeframes import TimeframeCode, timeframe_to_minutes
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -119,6 +121,31 @@ async def get_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
     if run is None:
         raise HTTPException(status_code=404, detail="Backtest run not found")
     return run
+
+
+@app.get("/backtests/{run_id}/fills", response_model=list[BacktestFillOut])
+async def get_backtest_fills(run_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest_run(db, run_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return await crud.get_backtest_fills(db, run_id)
+
+
+@app.get("/backtests/{run_id}/trades", response_model=list[BacktestClosedTradeOut])
+async def get_backtest_trades(run_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest_run(db, run_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return await crud.get_backtest_trades(db, run_id)
+
+
+@app.delete("/backtests/{run_id}", status_code=204, response_class=Response)
+async def delete_backtest_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    deleted = await crud.delete_backtest_run(db, run_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return Response(status_code=204)
 
 
 @app.patch("/backtests/{run_id}", response_model=BacktestRunMutationOut)

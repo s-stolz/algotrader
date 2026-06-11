@@ -11,8 +11,8 @@ stored in TimescaleDB.
   bucketing.
 - Timescale timestamp conversion between transport milliseconds and
   `timestamp_utc`.
-- Primitive durable backtest run create/get/list, conditional update, and
-  transactional successful-completion storage operations.
+- Primitive durable backtest run create/get/list/delete, fill/trade reads,
+  conditional update, and transactional successful-completion storage operations.
 
 ## Key Modules
 
@@ -44,6 +44,10 @@ stored in TimescaleDB.
   `run_id ASC`, with no persistence-layer limit or queue-selection policy.
 - Backtest fills and closed trades are normalized child rows with caller-supplied
   sequence values and cascade deletion.
+- Fill and trade reads are ordered by their per-run sequence values. Missing parent
+  runs return not found, while existing runs with no child rows return empty lists.
+- Run deletion removes the parent row and relies on database foreign-key cascades
+  for fills and trades; terminal-state policy remains in the backtester.
 - Backtester code owns lifecycle transitions, queue selection, and scheduling.
   This service accepts caller-owned run identity and state as persistence data.
 - Conditional updates compare the stored status with `expected_status` in the

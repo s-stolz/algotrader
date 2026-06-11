@@ -536,6 +536,37 @@ async def get_backtest_run(session, run_id: str):
     return dict(row._mapping) if row else None
 
 
+async def get_backtest_fills(session, run_id: str):
+    stmt = (
+        select(backtest_fills)
+        .where(backtest_fills.c.run_id == run_id)
+        .order_by(backtest_fills.c.fill_sequence.asc())
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+async def get_backtest_trades(session, run_id: str):
+    stmt = (
+        select(backtest_closed_trades)
+        .where(backtest_closed_trades.c.run_id == run_id)
+        .order_by(backtest_closed_trades.c.trade_sequence.asc())
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+async def delete_backtest_run(session, run_id: str) -> bool:
+    stmt = delete(backtest_runs).where(backtest_runs.c.run_id == run_id)
+    try:
+        result = await session.execute(stmt)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return result.rowcount == 1
+
+
 async def list_backtest_runs(
     session,
     *,

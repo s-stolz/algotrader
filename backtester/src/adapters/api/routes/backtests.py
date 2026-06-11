@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.backtest_runs import (
+    BacktestRunConflictError,
     BacktestRunNotFoundError,
     BacktestRunPersistenceError,
     BacktestRunService,
@@ -13,9 +14,11 @@ from domain.types import BacktestRunQuery
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from adapters.api.schemas import (
+    BacktestFillResponseSchema,
     BacktestRunResponseSchema,
     BacktestSubmissionRequestSchema,
     BacktestSubmissionResponseSchema,
+    BacktestTradeResponseSchema,
 )
 from adapters.persistence import DatabaseAccessorBacktestRunRepository
 
@@ -113,3 +116,78 @@ def get_backtest(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Backtest persistence unavailable",
         ) from exc
+
+
+@router.get(
+    "/{run_id}/fills",
+    response_model=list[BacktestFillResponseSchema],
+)
+def get_backtest_fills(
+    run_id: str,
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> list[BacktestFillResponseSchema]:
+    try:
+        return [BacktestFillResponseSchema.from_domain(fill) for fill in service.get_fills(run_id)]
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Backtest run not found",
+        ) from exc
+    except (BacktestRunPersistenceError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backtest persistence unavailable",
+        ) from exc
+
+
+@router.get(
+    "/{run_id}/trades",
+    response_model=list[BacktestTradeResponseSchema],
+)
+def get_backtest_trades(
+    run_id: str,
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> list[BacktestTradeResponseSchema]:
+    try:
+        return [
+            BacktestTradeResponseSchema.from_domain(trade) for trade in service.get_trades(run_id)
+        ]
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Backtest run not found",
+        ) from exc
+    except (BacktestRunPersistenceError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backtest persistence unavailable",
+        ) from exc
+
+
+@router.delete(
+    "/{run_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_backtest(
+    run_id: str,
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> Response:
+    try:
+        service.delete(run_id)
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Backtest run not found",
+        ) from exc
+    except BacktestRunConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only terminal backtest runs can be deleted",
+        ) from exc
+    except BacktestRunPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backtest persistence unavailable",
+        ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

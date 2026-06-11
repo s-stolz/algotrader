@@ -1,11 +1,18 @@
+from __future__ import annotations
+
 import unittest
 from dataclasses import replace
 
 from adapters.api.app import create_app
 from adapters.api.schemas import BacktestSubmissionRequestSchema
 from app.backtest_runs import BacktestRunService
-from domain.enums import BacktestEngine, BacktestRunStatus
-from domain.types import BacktestRunQuery, BacktestRunRecord
+from domain.enums import BacktestEngine, BacktestRunStatus, ExitReason, OrderSide
+from domain.types import (
+    BacktestFillRecord,
+    BacktestRunQuery,
+    BacktestRunRecord,
+    BacktestTradeRecord,
+)
 from fastapi.testclient import TestClient
 
 
@@ -14,6 +21,9 @@ class _FakeRunRepository:
         self.runs_by_id: dict[str, BacktestRunRecord] = {}
         self.listed_runs: list[BacktestRunRecord] = []
         self.queries: list[BacktestRunQuery] = []
+        self.fills_by_run_id: dict[str, list[BacktestFillRecord]] = {}
+        self.trades_by_run_id: dict[str, list[BacktestTradeRecord]] = {}
+        self.deleted_run_ids: list[str] = []
 
     def create(self, run: BacktestRunRecord) -> BacktestRunRecord:
         self.runs_by_id[run.run_id] = run
@@ -25,6 +35,21 @@ class _FakeRunRepository:
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         self.queries.append(query)
         return list(self.listed_runs)
+
+    def get_fills(self, run_id: str) -> list[BacktestFillRecord]:
+        return list(self.fills_by_run_id.get(run_id, []))
+
+    def get_trades(self, run_id: str) -> list[BacktestTradeRecord]:
+        return list(self.trades_by_run_id.get(run_id, []))
+
+    def delete(self, run_id: str) -> bool:
+        if run_id not in self.runs_by_id:
+            return False
+        self.deleted_run_ids.append(run_id)
+        del self.runs_by_id[run_id]
+        self.fills_by_run_id.pop(run_id, None)
+        self.trades_by_run_id.pop(run_id, None)
+        return True
 
 
 class _FailingRunRepository(_FakeRunRepository):
@@ -336,6 +361,198 @@ class TestBacktestStatusRoute(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json(), {"detail": "Backtest persistence unavailable"})
         self.assertNotIn("password", response.text)
+
+
+class TestBacktestExecutionLogAndDeletionRoutes(unittest.TestCase):
+    def test_get_fills_and_trades_returns_ordered_public_records(self) -> None:
+        repository, service = _terminal_run_service("run-succeeded")
+        repository.fills_by_run_id["run-succeeded"] = [
+            BacktestFillRecord(
+                run_id="run-succeeded",
+                sequence=0,
+                timestamp_ms=1_714_525_200_000,
+                symbol="EURUSD",
+                side=OrderSide.BUY,
+                quantity=1_000.0,
+                price=1.0715,
+                fees=0.15,
+            ),
+            BacktestFillRecord(
+                run_id="run-succeeded",
+                sequence=1,
+                timestamp_ms=1_714_532_400_000,
+                symbol="EURUSD",
+                side=OrderSide.SELL,
+                quantity=1_000.0,
+                price=1.074,
+                fees=0.15,
+                exit_reason=ExitReason.STOP_LOSS,
+            ),
+        ]
+        repository.trades_by_run_id["run-succeeded"] = [
+            BacktestTradeRecord(
+                run_id="run-succeeded",
+                sequence=0,
+                trade_id="trade-1",
+                symbol="EURUSD",
+                quantity=1_000.0,
+                entry_timestamp_ms=1_714_525_200_000,
+                entry_price=1.0715,
+                exit_timestamp_ms=1_714_532_400_000,
+                exit_price=1.074,
+                realized_pnl=2.5,
+                fees=0.3,
+                exit_reason=ExitReason.STOP_LOSS,
+            )
+        ]
+
+        with TestClient(create_app(service=service)) as client:
+            fills_response = client.get("/backtests/run-succeeded/fills")
+            trades_response = client.get("/backtests/run-succeeded/trades")
+
+        self.assertEqual(fills_response.status_code, 200)
+        self.assertEqual(
+            fills_response.json(),
+            [
+                {
+                    "sequence": 0,
+                    "timestamp_ms": 1_714_525_200_000,
+                    "symbol": "EURUSD",
+                    "side": "buy",
+                    "quantity": 1_000.0,
+                    "price": 1.0715,
+                    "fees": 0.15,
+                    "exit_reason": None,
+                },
+                {
+                    "sequence": 1,
+                    "timestamp_ms": 1_714_532_400_000,
+                    "symbol": "EURUSD",
+                    "side": "sell",
+                    "quantity": 1_000.0,
+                    "price": 1.074,
+                    "fees": 0.15,
+                    "exit_reason": "stop_loss",
+                },
+            ],
+        )
+        self.assertEqual(trades_response.status_code, 200)
+        self.assertEqual(
+            trades_response.json(),
+            [
+                {
+                    "sequence": 0,
+                    "trade_id": "trade-1",
+                    "symbol": "EURUSD",
+                    "quantity": 1_000.0,
+                    "entry_timestamp_ms": 1_714_525_200_000,
+                    "entry_price": 1.0715,
+                    "exit_timestamp_ms": 1_714_532_400_000,
+                    "exit_price": 1.074,
+                    "realized_pnl": 2.5,
+                    "fees": 0.3,
+                    "exit_reason": "stop_loss",
+                }
+            ],
+        )
+
+    def test_execution_logs_return_empty_collections_and_missing_is_not_found(self) -> None:
+        _, service = _terminal_run_service("run-empty")
+
+        with TestClient(create_app(service=service)) as client:
+            self.assertEqual(client.get("/backtests/run-empty/fills").json(), [])
+            self.assertEqual(client.get("/backtests/run-empty/trades").json(), [])
+            for path in (
+                "/backtests/run-missing/fills",
+                "/backtests/run-missing/trades",
+                "/backtests/run-missing",
+            ):
+                with self.subTest(path=path):
+                    response = (
+                        client.delete(path)
+                        if path == "/backtests/run-missing"
+                        else client.get(path)
+                    )
+                    self.assertEqual(response.status_code, 404)
+                    self.assertEqual(
+                        response.json(),
+                        {"detail": "Backtest run not found"},
+                    )
+
+    def test_delete_terminal_runs_and_reject_active_runs(self) -> None:
+        repository, service = _terminal_run_service("run-succeeded")
+        failed = replace(
+            repository.runs_by_id["run-succeeded"],
+            run_id="run-failed",
+            status=BacktestRunStatus.FAILED,
+            result_schema_version=None,
+            metrics=None,
+            diagnostics=None,
+            error_code="engine_failure",
+            error_message="Backtest execution failed",
+        )
+        queued = replace(
+            repository.runs_by_id["run-succeeded"],
+            run_id="run-queued",
+            status=BacktestRunStatus.QUEUED,
+            started_at_ms=None,
+            completed_at_ms=None,
+            result_schema_version=None,
+            metrics=None,
+            diagnostics=None,
+        )
+        running = replace(
+            queued,
+            run_id="run-running",
+            status=BacktestRunStatus.RUNNING,
+            started_at_ms=1_780_921_860_000,
+        )
+        repository.runs_by_id.update(
+            {
+                "run-failed": failed,
+                "run-queued": queued,
+                "run-running": running,
+            }
+        )
+
+        with TestClient(create_app(service=service)) as client:
+            for run_id in ("run-succeeded", "run-failed"):
+                with self.subTest(run_id=run_id):
+                    response = client.delete(f"/backtests/{run_id}")
+                    self.assertEqual(response.status_code, 204)
+                    self.assertEqual(response.content, b"")
+
+            for run_id in ("run-queued", "run-running"):
+                with self.subTest(run_id=run_id):
+                    response = client.delete(f"/backtests/{run_id}")
+                    self.assertEqual(response.status_code, 409)
+                    self.assertEqual(
+                        response.json(),
+                        {"detail": "Only terminal backtest runs can be deleted"},
+                    )
+                    self.assertIn(run_id, repository.runs_by_id)
+
+        self.assertEqual(repository.deleted_run_ids, ["run-succeeded", "run-failed"])
+
+
+def _terminal_run_service(run_id: str) -> tuple[_FakeRunRepository, BacktestRunService]:
+    repository = _FakeRunRepository()
+    request = BacktestSubmissionRequestSchema(**_valid_payload()).to_domain()
+    queued = BacktestRunService(
+        repository=repository,
+        new_run_id=lambda: run_id,
+        now_ms=lambda: 1_780_921_805_123,
+    ).submit(request)
+    repository.runs_by_id[run_id] = replace(
+        queued,
+        status=BacktestRunStatus.SUCCEEDED,
+        started_at_ms=1_780_921_860_000,
+        completed_at_ms=1_780_922_100_000,
+        result_schema_version=1,
+        metrics={"trade_count": 0},
+        diagnostics={"bars": 10},
+    )
+    return repository, BacktestRunService(repository=repository)
 
 
 def _valid_payload() -> dict:

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic import ValidationError
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,7 @@ class InMemoryAsyncSession:
         self.engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
         metadata.create_all(self.engine)
         self.connection = self.engine.connect()
+        self.connection.execute(text("PRAGMA foreign_keys=ON"))
 
     async def execute(self, statement, params=None):
         return self.connection.execute(statement, params or {})
@@ -749,6 +750,211 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(trade["run_id"], "run-succeeded-1")
         self.assertEqual(trade["trade_sequence"], 0)
         self.assertEqual(trade["exit_reason"], "signal")
+
+    async def test_get_execution_logs_orders_by_sequence_and_preserves_exit_reasons(self):
+        fills = [
+            {
+                "fill_sequence": 3,
+                "timestamp_ms": 1714536000000,
+                "symbol": "EURUSD",
+                "side": "sell",
+                "quantity": 1000.0,
+                "price": 1.075,
+                "fees": 0.15,
+                "exit_reason": "take_profit",
+            },
+            {
+                "fill_sequence": 0,
+                "timestamp_ms": 1714525200000,
+                "symbol": "EURUSD",
+                "side": "buy",
+                "quantity": 1000.0,
+                "price": 1.0715,
+                "fees": 0.15,
+                "exit_reason": None,
+            },
+            {
+                "fill_sequence": 2,
+                "timestamp_ms": 1714532400000,
+                "symbol": "EURUSD",
+                "side": "sell",
+                "quantity": 1000.0,
+                "price": 1.074,
+                "fees": 0.15,
+                "exit_reason": "stop_loss",
+            },
+            {
+                "fill_sequence": 1,
+                "timestamp_ms": 1714528800000,
+                "symbol": "EURUSD",
+                "side": "sell",
+                "quantity": 1000.0,
+                "price": 1.073,
+                "fees": 0.15,
+                "exit_reason": "signal",
+            },
+        ]
+        trades = [
+            {
+                "trade_sequence": 2,
+                "trade_id": "trade-take-profit",
+                "symbol": "EURUSD",
+                "quantity": 1000.0,
+                "entry_timestamp_ms": 1714533000000,
+                "entry_price": 1.072,
+                "exit_timestamp_ms": 1714536000000,
+                "exit_price": 1.075,
+                "realized_pnl": 3.0,
+                "fees": 0.3,
+                "exit_reason": "take_profit",
+            },
+            {
+                "trade_sequence": 0,
+                "trade_id": "trade-signal",
+                "symbol": "EURUSD",
+                "quantity": 1000.0,
+                "entry_timestamp_ms": 1714525200000,
+                "entry_price": 1.0715,
+                "exit_timestamp_ms": 1714528800000,
+                "exit_price": 1.073,
+                "realized_pnl": 1.5,
+                "fees": 0.3,
+                "exit_reason": "signal",
+            },
+            {
+                "trade_sequence": 1,
+                "trade_id": "trade-stop-loss",
+                "symbol": "EURUSD",
+                "quantity": 1000.0,
+                "entry_timestamp_ms": 1714529400000,
+                "entry_price": 1.076,
+                "exit_timestamp_ms": 1714532400000,
+                "exit_price": 1.074,
+                "realized_pnl": -2.0,
+                "fees": 0.3,
+                "exit_reason": "stop_loss",
+            },
+        ]
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-succeeded-logs",
+                    status="succeeded",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                    result_schema_version=1,
+                    metrics={"trade_count": 3},
+                    diagnostics={"bars": 100},
+                    fills=fills,
+                    trades=trades,
+                )
+            ),
+            db=self.db,
+        )
+
+        fetched_fills = await main.get_backtest_fills("run-succeeded-logs", db=self.db)
+        fetched_trades = await main.get_backtest_trades("run-succeeded-logs", db=self.db)
+
+        self.assertEqual(
+            [fill["fill_sequence"] for fill in fetched_fills],
+            [0, 1, 2, 3],
+        )
+        self.assertEqual(
+            [fill["exit_reason"] for fill in fetched_fills],
+            [None, "signal", "stop_loss", "take_profit"],
+        )
+        self.assertEqual(
+            [trade["trade_sequence"] for trade in fetched_trades],
+            [0, 1, 2],
+        )
+        self.assertEqual(
+            [trade["exit_reason"] for trade in fetched_trades],
+            ["signal", "stop_loss", "take_profit"],
+        )
+        self.assertEqual(fetched_trades[0]["realized_pnl"], 1.5)
+        self.assertEqual(fetched_trades[0]["fees"], 0.3)
+
+    async def test_get_execution_logs_returns_empty_collections_and_missing_is_not_found(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-empty",
+                    status="succeeded",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                    result_schema_version=1,
+                    metrics={"trade_count": 0},
+                    diagnostics={"bars": 0},
+                )
+            ),
+            db=self.db,
+        )
+
+        self.assertEqual(await main.get_backtest_fills("run-empty", db=self.db), [])
+        self.assertEqual(await main.get_backtest_trades("run-empty", db=self.db), [])
+
+        for getter in (main.get_backtest_fills, main.get_backtest_trades):
+            with self.subTest(getter=getter.__name__):
+                with self.assertRaises(main.HTTPException) as ctx:
+                    await getter("run-missing", db=self.db)
+                self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_delete_backtest_run_cascades_execution_logs(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-delete",
+                    status="succeeded",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                    result_schema_version=1,
+                    metrics={"trade_count": 1},
+                    diagnostics={"bars": 10},
+                    fills=[
+                        {
+                            "fill_sequence": 0,
+                            "timestamp_ms": 1714525200000,
+                            "symbol": "EURUSD",
+                            "side": "buy",
+                            "quantity": 1000.0,
+                            "price": 1.0715,
+                            "fees": 0.15,
+                            "exit_reason": None,
+                        }
+                    ],
+                    trades=[
+                        {
+                            "trade_sequence": 0,
+                            "trade_id": "trade-delete",
+                            "symbol": "EURUSD",
+                            "quantity": 1000.0,
+                            "entry_timestamp_ms": 1714525200000,
+                            "entry_price": 1.0715,
+                            "exit_timestamp_ms": 1714532400000,
+                            "exit_price": 1.074,
+                            "realized_pnl": 2.5,
+                            "fees": 0.3,
+                            "exit_reason": "signal",
+                        }
+                    ],
+                )
+            ),
+            db=self.db,
+        )
+
+        response = await main.delete_backtest_run("run-delete", db=self.db)
+        run_result = await self.session.execute(select(backtest_runs))
+        fill_result = await self.session.execute(select(backtest_fills))
+        trade_result = await self.session.execute(select(backtest_closed_trades))
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(run_result.fetchall(), [])
+        self.assertEqual(fill_result.fetchall(), [])
+        self.assertEqual(trade_result.fetchall(), [])
+
+        with self.assertRaises(main.HTTPException) as ctx:
+            await main.delete_backtest_run("run-delete", db=self.db)
+        self.assertEqual(ctx.exception.status_code, 404)
 
     def test_create_rejects_unknown_request_schema_version(self):
         with self.assertRaises(ValidationError):

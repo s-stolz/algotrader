@@ -18,7 +18,7 @@ Standalone Python backtesting module for historical candle simulation.
 - `backtester_design.md`: target architecture and active design vocabulary.
 - `src/app/backtest_runner.py`: orchestration for one backtest run.
 - `src/app/backtest_runs.py`: deterministic asynchronous submission validation,
-  durable single-run retrieval, and filterable run history.
+  durable run retrieval/history, execution-log reads, and terminal-only deletion.
 - `src/app/backtest_worker.py`: singleton FIFO polling, conditional claiming,
   child-process execution, and successful completion persistence.
 - `src/domain/`: runtime dataclasses, enums, and event types.
@@ -52,6 +52,11 @@ Standalone Python backtesting module for historical candle simulation.
 - `GET /backtests` accepts optional status, symbol, timeframe, strategy, engine,
   `submitted_from_ms`, and `submitted_to_ms` filters. It returns all matches in
   storage-provided newest-first order without pagination.
+- `GET /backtests/{run_id}/fills` and `/trades` return separate execution-log
+  collections in storage-provided sequence order. Existing runs with no artifacts
+  return empty lists; missing runs return not found.
+- `DELETE /backtests/{run_id}` permits only `succeeded` and `failed` runs.
+  Queued and running runs return a conflict because deletion is not cancellation.
 - `BacktestRunLifecyclePersistenceAdapter` maps domain status enums and completed
   results to conditional lifecycle updates and atomic successful completion.
   Completion payloads include metrics, diagnostics, fills, and closed trades,

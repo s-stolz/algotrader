@@ -101,6 +101,37 @@ def _completion_payload() -> dict:
     }
 
 
+def _fill_payload() -> dict:
+    return {
+        "run_id": "run-123",
+        "fill_sequence": 0,
+        "timestamp_ms": 1714525200000,
+        "symbol": "EURUSD",
+        "side": "buy",
+        "quantity": 1000.0,
+        "price": 1.0715,
+        "fees": 0.15,
+        "exit_reason": None,
+    }
+
+
+def _trade_payload() -> dict:
+    return {
+        "run_id": "run-123",
+        "trade_sequence": 0,
+        "trade_id": "trade-1",
+        "symbol": "EURUSD",
+        "quantity": 1000.0,
+        "entry_timestamp_ms": 1714525200000,
+        "entry_price": 1.0715,
+        "exit_timestamp_ms": 1714532400000,
+        "exit_price": 1.074,
+        "realized_pnl": 2.5,
+        "fees": 0.3,
+        "exit_reason": "take_profit",
+    }
+
+
 class DatabaseAccessorClientTests(unittest.TestCase):
     def setUp(self) -> None:
         self._env_patcher = patch.dict(
@@ -259,6 +290,51 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             client.close()
 
         self.assertTrue(updated)
+
+    def test_get_execution_logs_and_delete_backtest_run(self) -> None:
+        fill = _fill_payload()
+        trade = _trade_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/backtests/run-123/fills":
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json=[fill])
+            if request.url.path == "/backtests/run-123/trades":
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json=[trade])
+            if request.url.path == "/backtests/run-123":
+                self.assertEqual(request.method, "DELETE")
+                return httpx.Response(204)
+            return httpx.Response(404, text="missing")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            fills = client.get_backtest_fills("run-123")
+            trades = client.get_backtest_trades("run-123")
+            client.delete_backtest_run("run-123")
+        finally:
+            client.close()
+
+        self.assertEqual(fills, [fill])
+        self.assertEqual(trades, [trade])
+
+    def test_delete_backtest_run_translates_http_failure(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "DELETE")
+            self.assertEqual(request.url.path, "/backtests/run-missing")
+            return httpx.Response(404, text="missing")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                client.delete_backtest_run("run-missing")
+        finally:
+            client.close()
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(ctx.exception.response_text, "missing")
 
     def test_backtest_run_methods_raise_client_error_on_http_failure(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -515,6 +591,34 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
             await client.aclose()
 
         self.assertTrue(updated)
+
+    async def test_async_get_execution_logs_and_delete_backtest_run(self) -> None:
+        fill = {**_fill_payload(), "run_id": "run-async-123"}
+        trade = {**_trade_payload(), "run_id": "run-async-123"}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/backtests/run-async-123/fills":
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json=[fill])
+            if request.url.path == "/backtests/run-async-123/trades":
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json=[trade])
+            if request.url.path == "/backtests/run-async-123":
+                self.assertEqual(request.method, "DELETE")
+                return httpx.Response(204)
+            return httpx.Response(404, text="missing")
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            fills = await client.get_backtest_fills("run-async-123")
+            trades = await client.get_backtest_trades("run-async-123")
+            await client.delete_backtest_run("run-async-123")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(fills, [fill])
+        self.assertEqual(trades, [trade])
 
     async def test_async_backtest_run_methods_raise_client_error(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

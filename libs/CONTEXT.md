@@ -6,8 +6,8 @@ Shared Python packages used by multiple services.
 
 - `db_accessor_client` HTTP clients, Candle DataFrame conversion, and Python
   Timeframe helpers.
-- Synchronous and asynchronous durable backtest run create/get/list, conditional
-  update, and successful-completion client methods.
+- Synchronous and asynchronous durable backtest run create/get/list/delete,
+  fill/trade retrieval, conditional update, and successful-completion methods.
 - `indicator_engine` batch and streaming compute interface.
 - `algotrader_logger` shared logging helpers and request middleware.
 
@@ -42,6 +42,8 @@ Shared Python packages used by multiple services.
   or queue-selection behavior.
 - Conditional run updates and successful completion return whether the accessor
   atomically matched the caller-provided expected status.
+- Execution-log methods pass ordered normalized fill/trade records through
+  unchanged, and deletion accepts the accessor's `204 No Content` response.
 
 ## Change Triggers
 

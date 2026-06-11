@@ -94,6 +94,10 @@ class BacktestFillIn(BacktestContractModel):
     exit_reason: Literal["signal", "stop_loss", "take_profit"] | None = None
 
 
+class BacktestFillOut(BacktestFillIn):
+    run_id: str
+
+
 class BacktestClosedTradeIn(BacktestContractModel):
     trade_sequence: int
     trade_id: str
@@ -106,6 +110,10 @@ class BacktestClosedTradeIn(BacktestContractModel):
     realized_pnl: float
     fees: float
     exit_reason: Literal["signal", "stop_loss", "take_profit"]
+
+
+class BacktestClosedTradeOut(BacktestClosedTradeIn):
+    run_id: str
 
 
 class BacktestRunBase(BacktestContractModel):
