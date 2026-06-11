@@ -231,6 +231,30 @@ class TestBacktestWorker(unittest.TestCase):
         )
         self.assertEqual(len(failure_update["error_message"]), 500)
 
+    def test_child_reported_failure_code_is_bounded_to_storage_contract(self) -> None:
+        selected = _queued_run("run-bounded-code", submitted_at_ms=100)
+        lifecycle = _FakeLifecycle([True, True])
+        worker = BacktestWorker(
+            repository=_FakeRunRepository([[selected]]),
+            lifecycle=lifecycle,
+            child_executor=_FakeChildExecutor(
+                CompactBacktestFailure(
+                    error_code="a" * 65,
+                    error_message="Historical market data is unavailable",
+                )
+            ),
+            now_ms=iter([1_000, 2_000]).__next__,
+        )
+
+        self.assertTrue(worker.run_once())
+
+        failure_update = lifecycle.claims[1]
+        self.assertEqual(failure_update["error_code"], "backtest_failed")
+        self.assertEqual(
+            failure_update["error_message"],
+            "Historical market data is unavailable",
+        )
+
     def test_abnormal_child_exit_persists_stable_worker_failure(self) -> None:
         selected = _queued_run("run-crashed", submitted_at_ms=100)
         lifecycle = _FakeLifecycle([True, True])

@@ -28,7 +28,7 @@ from domain.types import (
 from app.backtest_runner import run_backtest_with_market_data
 
 _LOGGER = logging.getLogger(__name__)
-_PUBLIC_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,100}$")
+_PUBLIC_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,64}$")
 _EXCEPTION_DETAIL_PATTERN = re.compile(r"(?:^|\s)[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception):")
 _DEFAULT_FAILURE_CODE = "backtest_failed"
 _DEFAULT_FAILURE_MESSAGE = "Backtest execution failed"
