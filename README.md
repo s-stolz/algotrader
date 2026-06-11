@@ -118,6 +118,28 @@ Direct Docker Compose usage:
    ```
 This will build and start all necessary services as defined in the `docker-compose.yml` file.
 
+### Asynchronous backtests
+
+Compose starts two processes from the same backtester image:
+
+- `backtester-api` exposes the public API on `http://localhost:8020` by default
+  and provides `GET /health`.
+- `backtester-worker` is a singleton worker that claims and executes one durable
+  run at a time.
+
+The API port, logging settings, and worker poll interval come from
+`config/topology.yaml`. The tracked worker default is one second. After the stack
+is healthy, run the fixture-backed success and failure smoke paths:
+
+```sh
+make smoke-backtester
+```
+
+The smoke command seeds a temporary market and candles through
+`database-accessor-api`, submits through the public backtester API, waits for
+terminal status, verifies metrics/fills/trades for the successful run, verifies
+no partial artifacts for the failed run, and cleans up its terminal runs.
+
 ## Central Configuration Model
 
 - Tracked shared topology: `config/topology.yaml`
@@ -137,6 +159,7 @@ python scripts/generate_env.py --force
 ```sh
 make config
 make validate-config
+make smoke-backtester
 make up
 make build
 make down

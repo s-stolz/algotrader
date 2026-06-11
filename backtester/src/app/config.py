@@ -1,6 +1,7 @@
 """Minimal runtime configuration for backtester orchestration."""
 
 import math
+import os
 from dataclasses import dataclass
 
 from domain.enums import DataGranularity
@@ -20,6 +21,14 @@ class BacktesterConfig:
             or self.worker_poll_interval_seconds <= 0
         ):
             raise ValueError("worker_poll_interval_seconds must be positive and finite")
+
+    @classmethod
+    def from_env(cls) -> "BacktesterConfig":
+        return cls(
+            worker_poll_interval_seconds=float(
+                os.getenv("BACKTESTER_WORKER_POLL_INTERVAL_SECONDS", "1.0")
+            )
+        )
 
 
 def build_default_execution_config() -> ExecutionConfig:

@@ -16,5 +16,7 @@ WORKDIR /app
 # Copy application code
 COPY backtester /app
 
+EXPOSE 8020
+
 # Run the service
 CMD ["python", "main.py"]

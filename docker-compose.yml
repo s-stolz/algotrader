@@ -30,6 +30,54 @@ services:
       retries: 5
       start_period: 10s
 
+  backtester-api:
+    container_name: backtester-api
+    image: algotrader-backtester
+    build:
+      context: .
+      dockerfile: backtester/Dockerfile
+    ports:
+      - "${BACKTESTER_API_PUBLISHED_PORT:-8020}:${BACKTESTER_API_PORT:-8020}"
+    volumes:
+      - ./backtester:/app
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+    env_file:
+      - ./config/.env.shared
+    command: ["python", "main.py"]
+    init: true
+    restart: always
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, urllib.request; urllib.request.urlopen(f\"http://localhost:{os.getenv('BACKTESTER_API_PORT', '8020')}/health\")"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  backtester-worker:
+    container_name: backtester-worker
+    image: algotrader-backtester
+    build:
+      context: .
+      dockerfile: backtester/Dockerfile
+    volumes:
+      - ./backtester:/app
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+    env_file:
+      - ./config/.env.shared
+    command: ["python", "worker.py"]
+    init: true
+    restart: always
+
   indicator-api:
     container_name: indicator-api
     build:

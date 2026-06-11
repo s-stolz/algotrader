@@ -12,7 +12,8 @@ Centralized non-secret topology plus generated runtime environment files.
 ## Key Files
 
 - `topology.yaml`: tracked shared topology for hosts, ports, logging, Redis,
-  TimescaleDB, broker limits, and ingestion/webserver knobs.
+  TimescaleDB, broker limits, backtester worker polling, and
+  ingestion/webserver knobs.
 - `.env.secrets.example`: template for local secrets.
 - `.env.secrets.local`: local secrets, gitignored.
 - `.env.shared`: generated shared runtime env, gitignored.
@@ -28,6 +29,9 @@ Centralized non-secret topology plus generated runtime environment files.
 - Run `make validate-config` or `python scripts/generate_env.py --validate` to
   check required secret values.
 - Docker Compose uses `config/.env.shared` plus service-specific secret env files.
+- Backtester topology generates API host/port/logging values and
+  `BACKTESTER_WORKER_POLL_INTERVAL_SECONDS`; the default poll interval is one
+  second.
 
 ## Change Triggers
 

@@ -12,6 +12,7 @@ Run commands from the repository root unless noted.
 - Stop stack: `make down`
 - View logs: `make logs`
 - View containers: `make ps`
+- Exercise asynchronous backtester success/failure paths: `make smoke-backtester`
 
 Direct Compose path:
 
@@ -68,7 +69,8 @@ make typecheck-python
 
 ```sh
 cd broker-service && uvicorn app.main:app --host 0.0.0.0 --port 8050
-cd backtester && python main.py
+cd backtester && python main.py        # API
+cd backtester && python worker.py      # singleton worker
 cd webserver && python main.py
 cd ingestion-service && python main.py
 ```

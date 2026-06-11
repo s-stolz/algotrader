@@ -9,6 +9,7 @@
 - `infrastructure` (map): shared infra hosts/ports/databases
 - `webserver` (map): webserver stream tuning values
 - `ingestion` (map): ingestion-service tuning values
+- `backtester` (map): backtester worker tuning values
 - `broker` (map): broker-service non-secret tuning values
 
 ## Required service keys
@@ -18,6 +19,11 @@
 - `services.indicator_api.host` (string)
 - `services.indicator_api.port` (int)
 - `services.indicator_api.published_port` (int)
+- `services.backtester_api.host` (string)
+- `services.backtester_api.port` (int)
+- `services.backtester_api.published_port` (int)
+- `services.backtester_api.log_level` (string)
+- `services.backtester_api.log_format` (`pretty` or `json`)
 - `services.broker_service.host` (string)
 - `services.broker_service.port` (int)
 - `services.broker_service.published_port` (int)
@@ -41,6 +47,9 @@
 - `infrastructure.timescaledb.user` (string)
 - `infrastructure.timescaledb.database` (string)
 - `infrastructure.timescaledb.echo` (bool)
+
+## Required backtester keys
+- `backtester.worker_poll_interval_seconds` (positive float, default topology value `1.0`)
 
 ## Secrets
 Secrets are not stored in `config/topology.yaml`. Put them in `config/.env.secrets.local`.

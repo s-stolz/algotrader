@@ -31,6 +31,9 @@ Standalone Python backtesting module for historical candle simulation.
 - `src/adapters/db_accessor.py`: database accessor adapter.
 - `src/adapters/api/`: FastAPI submission and lifecycle-status transport.
 - `src/reporting/metrics.py`: metrics from equity curve and trades.
+- `main.py`: backtester API process entrypoint.
+- `worker.py`: singleton asynchronous worker process entrypoint.
+- `smoke.py`: deployed success/failure lifecycle smoke check.
 
 ## Contracts
 
@@ -57,6 +60,7 @@ Standalone Python backtesting module for historical candle simulation.
   return empty lists; missing runs return not found.
 - `DELETE /backtests/{run_id}` permits only `succeeded` and `failed` runs.
   Queued and running runs return a conflict because deletion is not cancellation.
+- `GET /health` reports API process readiness for the local stack healthcheck.
 - `BacktestRunLifecyclePersistenceAdapter` maps domain status enums and completed
   results to conditional lifecycle updates and atomic successful completion.
   Completion payloads include metrics, diagnostics, fills, and closed trades,
@@ -78,6 +82,9 @@ Standalone Python backtesting module for historical candle simulation.
   the versioned request/result contract and normalized fill/trade payloads.
 - Current parity slice is single-symbol bar-mode for vectorized and event-driven
   engines.
+- Docker Compose runs `backtester-api` and one `backtester-worker` service from
+  the same image. The worker reads `BACKTESTER_WORKER_POLL_INTERVAL_SECONDS`,
+  defaults to one second, and processes one run at a time.
 - Candle input normalizes root `CONTEXT.md` candle fields plus `symbol`.
 - Declarative bar strategies may attach `ProtectiveExitSpec.stop_loss_pct` or
   `take_profit_pct`; long protective exits are active on the entry fill bar,
@@ -104,5 +111,7 @@ Standalone Python backtesting module for historical candle simulation.
 ## Verification
 
 - Backtester tests: `make test backtester`.
+- Deployed asynchronous workflow: start the stack, then run
+  `make smoke-backtester`.
 - Run shared client or indicator engine tests when data loading or indicator
   integration changes.

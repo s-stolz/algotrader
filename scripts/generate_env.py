@@ -117,6 +117,12 @@ def build_env(
     indicator_log_level = required(topology, "services.indicator_api.log_level")
     indicator_log_format = required(topology, "services.indicator_api.log_format")
 
+    backtester_host = required(topology, "services.backtester_api.host")
+    backtester_port = required(topology, "services.backtester_api.port")
+    backtester_published_port = required(topology, "services.backtester_api.published_port")
+    backtester_log_level = required(topology, "services.backtester_api.log_level")
+    backtester_log_format = required(topology, "services.backtester_api.log_format")
+
     broker_host = required(topology, "services.broker_service.host")
     broker_port = required(topology, "services.broker_service.port")
     broker_published_port = required(topology, "services.broker_service.published_port")
@@ -157,6 +163,11 @@ def build_env(
     ingestion_batch_size = required(topology, "ingestion.consumer_batch_size")
     ingestion_block_ms = required(topology, "ingestion.consumer_block_ms")
 
+    backtester_worker_poll_interval = required(
+        topology,
+        "backtester.worker_poll_interval_seconds",
+    )
+
     broker_redis_stream_db = required(topology, "broker.redis_stream_db")
     broker_tick_queue_size = required(topology, "broker.tick_queue_size")
     broker_tick_stream_maxlen = required(topology, "broker.tick_stream_maxlen")
@@ -183,6 +194,13 @@ def build_env(
         "INDICATOR_API_BASE_URL": f"http://{indicator_host}:{indicator_port}",
         "INDICATOR_API_LOG_LEVEL": stringify(indicator_log_level),
         "INDICATOR_API_LOG_FORMAT": stringify(indicator_log_format),
+        "BACKTESTER_API_HOST": stringify(backtester_host),
+        "BACKTESTER_API_PORT": stringify(backtester_port),
+        "BACKTESTER_API_PUBLISHED_PORT": stringify(backtester_published_port),
+        "BACKTESTER_API_BASE_URL": f"http://{backtester_host}:{backtester_port}",
+        "BACKTESTER_LOG_LEVEL": stringify(backtester_log_level),
+        "BACKTESTER_LOG_FORMAT": stringify(backtester_log_format),
+        "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS": stringify(backtester_worker_poll_interval),
         "BROKER_SERVICE_HOST": stringify(broker_host),
         "BROKER_SERVICE_PORT": stringify(broker_port),
         "BROKER_SERVICE_PUBLISHED_PORT": stringify(broker_published_port),

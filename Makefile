@@ -14,7 +14,7 @@ ifneq ($(strip $(TEST_BACKEND_FROM_GOAL)),)
 TEST_BACKEND := $(TEST_BACKEND_FROM_GOAL)
 endif
 
-.PHONY: ensure-pyyaml config validate-config up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester ingestion-service broker-service indicator_engine frontend
+.PHONY: ensure-pyyaml config validate-config smoke-backtester up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester ingestion-service broker-service indicator_engine frontend
 
 ifeq ($(DETACH),1)
 UP_FLAGS += -d
@@ -30,7 +30,16 @@ config: ensure-pyyaml
 	$(PYTHON) scripts/generate_env.py --force
 
 validate-config: ensure-pyyaml
+	$(PYTHON) -m unittest discover -s scripts/tests -t . -p "test_*.py"
 	$(PYTHON) scripts/generate_env.py --validate
+
+smoke-backtester: config
+	@(cd backtester && \
+		py_bin="$(PYTHON)"; \
+		[ ! -x "$$py_bin" ] && py_bin="python"; \
+		[ -x .venv/bin/python ] && py_bin=".venv/bin/python"; \
+		set -a; . ../config/.env.shared; set +a; \
+		PYTHONPATH=src $$py_bin smoke.py)
 
 up: config
 	$(COMPOSE) up $(UP_FLAGS)

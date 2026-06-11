@@ -16,6 +16,12 @@ services:
     published_port: 8010
     log_level: INFO
     log_format: pretty
+  backtester_api:
+    host: backtester-api
+    port: 8020
+    published_port: 8020
+    log_level: INFO
+    log_format: pretty
   broker_service:
     host: broker-service
     port: 8050
@@ -60,6 +66,9 @@ ingestion:
   consumer_block_ms: 5000
   log_level: INFO
   log_format: pretty
+
+backtester:
+  worker_poll_interval_seconds: 1.0
 
 broker:
   redis_stream_db: 0
