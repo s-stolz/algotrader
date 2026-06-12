@@ -12,14 +12,13 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
 
 ## Key Files
 
-- `01-init.sql`: database, extension, `markets`, and `candles` tables.
+- `01-init.sql`: database, extension, market/candle tables, and durable backtest
+  lifecycle/result tables.
 - `02-migrate-timestamps.sql`: timestamp migration support.
 - `03-optimize-candles.sql`: hypertable setup, compression, indexes, continuous
   aggregates, and aggregate policies.
 - `04-retune-cagg-and-index.sql`: continuous aggregate policy retuning and
   historical refresh.
-- `05-init-backtest-persistence.sql`: deliberate backtest-only reset and durable
-  run schema.
 
 ## Contracts
 
@@ -32,8 +31,8 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   versions, immutable request JSONB, and nullable metrics/diagnostics JSONB.
 - `backtest_fills` and `backtest_closed_trades` use per-run sequence keys for
   deterministic ordering and cascade when the parent run is deleted.
-- The backtest reset drops only prior backtest tables. It does not alter `markets`
-  or `candles` and must not be run as application startup logic.
+- Fresh database initialization creates the complete durable backtest schema
+  without a separate destructive reset script.
 
 ## Change Triggers
 

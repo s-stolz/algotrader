@@ -12,14 +12,16 @@ Ralph artifacts rather than by extending this document directly.
 Agents should read this only when historical sequencing or deferred scope is
 needed for a backtester task.
 
-- M0-M3 are completed baseline work and should not be redone.
+- M0-M7 are completed baseline work and should not be redone. M6/M7 were
+  delivered together and expanded by `backtester-durable-async-runs`.
 - The Ralph PRD `backtester-bar-engine-parity` covered single-symbol, bar-mode
   vectorized/event-driven parity: request-level engine selection, mandatory strategy
   resolution, declarative SMA crossover support, event-driven bar execution, shared
   fill/accounting semantics, CLI engine selection, and parity/no-lookahead coverage.
-- Future PRD candidates include persistence, FastAPI start/query surfaces, research
-  ergonomics and sweeps, richer order realism, tick support, multi-symbol runs, and
-  multi-timeframe parallelism.
+- The bracket-exit campaign added stop-loss, take-profit, and deterministic
+  ambiguous-bar handling to the supported shared bar semantics.
+- Future PRD candidates include research ergonomics and sweeps, richer order
+  realism, tick support, multi-symbol runs, and multi-timeframe parallelism.
 
 ## Delivery Rules
 
@@ -29,25 +31,29 @@ needed for a backtester task.
 4. Start with fewer modules; split only when code growth requires it.
 5. Keep one source of truth for shared types in `domain/types.py`.
 6. Do not implement tick support before bar-mode parity is stable.
-7. CLI and FastAPI must call the same app-layer orchestration.
+7. CLI and worker child execution must call the same app-layer backtest
+   orchestration; FastAPI submission must remain a non-executing queue boundary.
 8. Keep Ralph PRDs/issues updated during delivery; keep this plan as historical context.
 9. `engines/vectorized.py` must be true array-based runtime (no per-bar `StrategyInput`/`StrategyState` interpreter loop).
 10. `StrategyInput` and `StrategyState` are event-driven runtime concepts; vectorized mode evaluates arrays/masks/targets directly and only maps outputs into shared result contracts where required.
 
 ## Current Coverage Baseline
 
-Historical automated-test baseline before the Ralph parity campaign:
+Current automated coverage includes:
 
-- `backtester`: legacy tests plus M0 skeleton coverage (`tests/signals/test_signals.py`, `tests/portfolio/test_portfolio.py`, `tests/test_skeleton_imports.py`, `tests/test_domain_types.py`, `tests/test_strategy_base.py`).
-- `libs/db_accessor_client`: unit tests for current market/candle client endpoints.
-- `database-accessor-api`: currently no automated tests.
+- Backtester domain, strategy, data preparation, execution, engine parity,
+  bracket exits, persistence adapters, public API routes, worker lifecycle,
+  process isolation, CLI behavior, configuration, and smoke-runner tests.
+- Database-accessor tests for durable JSON mapping, filters, compare-and-set
+  claiming, transactional completion and rollback, execution-log ordering, and
+  cascade deletion.
+- Shared `db_accessor_client` tests for synchronous and asynchronous durable-run
+  operations and HTTP error translation.
+- A deployed smoke command covering successful and failed asynchronous lifecycle
+  paths through API, worker, database accessor, and Timescale.
 
-Historical high-priority gaps from the original plan:
-
-- M0 coverage exists for package imports and minimal contracts; execution/data/engine/adapters/reporting behavior coverage still missing
-- no vectorized vs event-driven parity tests
-- no persistence flow smoke test
-- no FastAPI adapter route tests for backtest start/query
+The standard `make test` backend gate includes the backtester,
+database-accessor-api, and shared database accessor client suites.
 
 ## Milestone Template
 
@@ -485,108 +491,119 @@ public parity with vectorized mode for supported shared semantics.
 
 ---
 
-## M6: Persistence Foundation (DB + Accessor Stack)
+## M5B: Bar Bracket Exits
 
-Ralph status: future PRD candidate.
+Ralph status: implemented by the `backtester-bar-bracket-exits` campaign for the
+single-symbol declarative bar parity slice.
 
 ### Goal
 
-Add optional persistence for backtest runs/results/trades/hyperparameters using existing DB and accessor stack.
+Add deterministic long stop-loss and take-profit exits without changing the
+supported baseline engine contract.
 
-### In Scope
+### Implemented Scope
 
-- DB schema extension for backtest persistence tables
-- `database-accessor-api` extension:
-  - create run
-  - list/query runs
-  - get one run/result
-  - get trades for run
-- `libs/db_accessor_client` extension for typed methods
-- `adapters/persistence.py`
-- `adapters/db_accessor.py` persistence-query wiring
-- `persist_result` flow from `BacktestRequest`
-
-### Out of Scope
-
-- FastAPI orchestration endpoints in backtester
-- distributed job queue
-- tick support
-
-### Deliverables
-
-- optional persistence in runnable backtests
-- persisted runs retrievable through adapter/client path
-
-### Executable Path
-
-- run backtest with `persist_result=true`, then query run + trades
-
-### Test Coverage
-
-- DB accessor API integration tests for new backtest endpoints
-- client contract tests for new methods
-- backtester integration test for persist-on-run flow
-
-### Acceptance Criteria
-
-- persistence remains optional
-- retrieved data matches stored run payload/trades deterministically
+- optional `ProtectiveExitSpec.stop_loss_pct` and `take_profit_pct`
+- entry-bar activation and gap-through fills at the bar open
+- deterministic ambiguous stop/target handling through
+  `ExecutionConfig.intrabar_exit_policy`
+- signal, stop-loss, and take-profit exit reasons on fills and closed trades
+- vectorized/event-driven parity, cost, CLI, validation, and persistence coverage
 
 ### Deferred Follow-ups
 
-- FastAPI adapter endpoints
+- short protective exits
+- trailing stops
+- richer order types and intrabar path simulation
 
 ---
 
-## M7: FastAPI Adapter for Backtest Start/Query
+## M6: Durable Persistence Foundation
 
-Ralph status: future PRD candidate.
+Ralph status: implemented and expanded by `backtester-durable-async-runs`.
 
 ### Goal
 
-Expose start/query operations through FastAPI next to CLI without duplicating orchestration logic.
+Persist immutable requests, lifecycle state, successful results, fills, and
+closed trades through the existing database accessor stack.
 
-### In Scope
+### Implemented Scope
 
-- `adapters/api/main.py`
-- `adapters/api/dependencies.py`
-- `adapters/api/schemas.py`
-- `adapters/api/routes/backtests.py`
-- endpoints:
-  - start backtest
-  - list/query runs
-  - get run/result
-  - get run trades
-- route handlers delegate to app-layer orchestration (`app/backtest_runner.py`, `app/experiment_runner.py`)
-
-### Out of Scope
-
-- distributed scheduling
-- multi-tenant auth
-- tick support
-
-### Deliverables
-
-- runnable FastAPI service for backtest operations
-
-### Executable Path
-
-- start and query backtests via FastAPI
+- versioned immutable request JSON and normalized lifecycle timestamps/status
+- versioned metrics and diagnostics JSON
+- normalized ordered fill and closed-trade tables with cascade deletion
+- primitive create/get/list/delete, conditional update, and transactional
+  completion operations in `database-accessor-api`
+- synchronous and asynchronous shared-client methods
+- synchronous CLI `--persist-result` using the same terminal result schema
+- JSON request filters for symbol, timeframe, strategy, and engine
 
 ### Test Coverage
 
-- API integration tests for start/list/get/trades
-- schema serialization tests
-- tests proving CLI/API share same app orchestration behavior
+- mapping and schema-version tests
+- filter and deterministic ordering tests
+- compare-and-set race coverage
+- atomic completion and rollback tests
+- execution-log and cascade-deletion tests
+- synchronous/asynchronous shared-client contract tests
 
 ### Acceptance Criteria
 
-- all required operations available via CLI and FastAPI
-- persisted retrieval works through API
+- accepted queued work is durable
+- successful completion exposes all artifacts atomically
+- failed runs contain no partial result artifacts
+- persisted CLI and worker results share one schema
+
+---
+
+## M7: Durable Asynchronous API and Worker
+
+Ralph status: implemented by `backtester-durable-async-runs`.
+
+### Goal
+
+Expose a non-blocking lifecycle API and execute accepted work outside the API
+process.
+
+### Implemented Scope
+
+- `POST /backtests` returning `202 Accepted`, `run_id`, and `Location`
+- lifecycle, filtered history, fills, trades, and terminal deletion endpoints
+- deterministic pre-persistence request validation
+- separate API and singleton worker processes from the same image
+- FIFO queue selection with atomic queued-to-running claiming
+- spawned child-process execution from the immutable request
+- parent-owned success/failure persistence and sanitized public errors
+- startup reconciliation of interrupted running records
+- configurable one-second worker polling default
+- deployed success/failure smoke workflow
+
+### Out of Scope
+
+- cancellation, leases, heartbeats, retries, or execution timeouts
+- multiple deployed workers or concurrent runs within one worker
+- pagination, idempotency keys, or push completion notifications
+- multi-tenant authentication
+
+### Test Coverage
+
+- submission, lifecycle response, filters, logs, and deletion route tests
+- FIFO, claim-race, reconciliation, child isolation, and persistence-failure tests
+- API/worker entrypoint and configuration tests
+- deployed success/failure smoke-runner coverage
+
+### Acceptance Criteria
+
+- accepted work survives API restart
+- child execution failures become terminal records without stopping future queue
+  progress
+- completion artifacts and succeeded state are transactionally visible together
+- API and worker run as separate long-lived processes
 
 ### Deferred Follow-ups
 
-- ergonomics and parameter-sweep UX over API
+- research and parameter-sweep UX over the durable API
+- operational features listed in the out-of-scope section
 
 ---
 
@@ -600,7 +617,7 @@ Improve day-to-day usability for strategy research.
 
 ### In Scope
 
-- `app/experiment_runner.py` enhancements
+- introduce `app/experiment_runner.py` or an equivalent focused sweep use case
 - deterministic parameter sweep support
 - output serialization/reporting improvements
 - CLI polish on top of M2 baseline command (ergonomics, richer output formats, sweep-friendly UX)

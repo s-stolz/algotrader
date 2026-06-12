@@ -1034,21 +1034,17 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-    def test_sql_reset_is_scoped_to_backtest_tables(self):
-        migration_path = (
-            Path(__file__).resolve().parents[2]
-            / "timescaledb-init"
-            / "05-init-backtest-persistence.sql"
-        )
-        sql = migration_path.read_text(encoding="utf-8").lower()
+    def test_initial_schema_includes_durable_backtest_tables(self):
+        schema_path = Path(__file__).resolve().parents[2] / "timescaledb-init" / "01-init.sql"
+        sql = schema_path.read_text(encoding="utf-8").lower()
 
-        self.assertIn("drop table if exists backtest_run_summaries", sql)
-        self.assertIn("create table backtest_runs", sql)
+        self.assertIn("create table if not exists backtest_runs", sql)
+        self.assertIn("create table if not exists backtest_fills", sql)
+        self.assertIn("create table if not exists backtest_closed_trades", sql)
         self.assertIn("request jsonb not null", sql)
         self.assertIn("metrics jsonb", sql)
         self.assertIn("diagnostics jsonb", sql)
-        self.assertNotIn("drop table if exists markets", sql)
-        self.assertNotIn("drop table if exists candles", sql)
+        self.assertNotIn("drop table", sql)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ ifneq ($(strip $(TEST_BACKEND_FROM_GOAL)),)
 TEST_BACKEND := $(TEST_BACKEND_FROM_GOAL)
 endif
 
-.PHONY: ensure-pyyaml config validate-config smoke-backtester up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester ingestion-service broker-service indicator_engine frontend
+.PHONY: ensure-pyyaml config validate-config smoke-backtester up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine frontend
 
 ifeq ($(DETACH),1)
 UP_FLAGS += -d
@@ -106,6 +106,14 @@ test:
 		echo "Running backtester tests..."; \
 		(cd backtester && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; [ -x .venv/bin/python ] && py_bin=".venv/bin/python"; PYTHONPATH=src $$py_bin -m unittest discover -s tests -t . -p "test_*.py") || status=1; \
 	fi; \
+	if [ "$(TEST_BACKEND)" = "all" ] || [ "$(TEST_BACKEND)" = "database-accessor-api" ]; then \
+		echo "Running database-accessor-api tests..."; \
+		(cd database-accessor-api && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; [ -x .venv/bin/python ] && py_bin=".venv/bin/python"; $$py_bin -m unittest discover -s tests -p "test_*.py") || status=1; \
+	fi; \
+	if [ "$(TEST_BACKEND)" = "all" ] || [ "$(TEST_BACKEND)" = "db_accessor_client" ]; then \
+		echo "Running db_accessor_client tests..."; \
+		(cd libs/db_accessor_client && py_bin="../../$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; PYTHONPATH=. $$py_bin -m unittest discover -s tests -p "test_*.py") || status=1; \
+	fi; \
 	if [ "$(TEST_BACKEND)" = "all" ] || [ "$(TEST_BACKEND)" = "ingestion-service" ]; then \
 		echo "Running ingestion-service tests..."; \
 		(cd ingestion-service && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; [ -x .venv/bin/python ] && py_bin=".venv/bin/python"; $$py_bin -m unittest discover -s tests -p "test_*.py") || status=1; \
@@ -126,11 +134,11 @@ test:
 		npm --prefix frontend run test:unit || status=1; \
 		npm --prefix frontend run build || status=1; \
 	fi; \
-	if [ "$(TEST_BACKEND)" != "all" ] && [ "$(TEST_BACKEND)" != "backtester" ] && [ "$(TEST_BACKEND)" != "ingestion-service" ] && [ "$(TEST_BACKEND)" != "broker-service" ] && [ "$(TEST_BACKEND)" != "indicator_engine" ] && [ "$(TEST_BACKEND)" != "frontend" ]; then \
-		echo "Invalid test target '$(TEST_BACKEND)'. Use: make test [backtester|ingestion-service|broker-service|indicator_engine|frontend]"; \
+	if [ "$(TEST_BACKEND)" != "all" ] && [ "$(TEST_BACKEND)" != "backtester" ] && [ "$(TEST_BACKEND)" != "database-accessor-api" ] && [ "$(TEST_BACKEND)" != "db_accessor_client" ] && [ "$(TEST_BACKEND)" != "ingestion-service" ] && [ "$(TEST_BACKEND)" != "broker-service" ] && [ "$(TEST_BACKEND)" != "indicator_engine" ] && [ "$(TEST_BACKEND)" != "frontend" ]; then \
+		echo "Invalid test target '$(TEST_BACKEND)'. Use: make test [backtester|database-accessor-api|db_accessor_client|ingestion-service|broker-service|indicator_engine|frontend]"; \
 		exit 1; \
 	fi; \
 	exit $$status
 
-backtester ingestion-service broker-service indicator_engine frontend:
+backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine frontend:
 	@:

@@ -1,7 +1,9 @@
 # Backtester Design Plan
 
-This document defines the target architecture/spec (end state).
-Implementation order is defined in `backtester_implementation_plan.md`.
+This document defines the current architecture and the intended direction for
+deferred backtester capabilities. Historical implementation sequencing is kept in
+`backtester_implementation_plan.md`; active delivery scope comes from Ralph
+PRDs/issues.
 
 ## Ralph Planning Status
 
@@ -14,9 +16,13 @@ slice: single-symbol, bar-mode runs with request-level selection between the
 `vectorized` and `event_driven` engines. The Ralph PRD
 `backtester-sequential-event-engine` then replaced the event-driven parity shortcut
 with a bootstrap phase plus a true sequential tradable bar loop while preserving
-the supported public baseline semantics. Persistence, FastAPI start/query
-workflows, research sweeps, richer order realism, tick support, multi-symbol runs,
-and multi-timeframe parallelism remain future PRD candidates.
+the supported public baseline semantics. The bracket-exit campaign added
+stop-loss, take-profit, and deterministic ambiguous-bar handling across both
+engines. The Ralph PRD `backtester-durable-async-runs` added durable request/result
+persistence, the public FastAPI lifecycle API, and a separate singleton worker.
+
+Research sweeps, richer order realism, tick execution, multi-symbol runs, and
+multi-timeframe parallelism remain future PRD candidates.
 
 ## Architecture Rules
 
@@ -47,7 +53,7 @@ Build a backtester with:
 
 1. Vectorized engine for fast research.
 2. Event-driven engine for sequential execution realism.
-3. Request-level engine selection so CLI and future API calls are explicit and reproducible.
+3. Request-level engine selection so CLI and API calls are explicit and reproducible.
 4. Optional persistence of backtest run metadata, hyperparameters, results, and trades in the existing DB.
 5. FastAPI access for start/query workflows, next to CLI.
 
@@ -74,14 +80,15 @@ Key boundary:
 - Vectorized mode evaluates full arrays and builds target arrays directly; it
   does not run per-bar runtime evaluation.
 
-## Target Package Structure
+## Current Package Structure
 
 ```text
 backtester/
   src/
     app/
       backtest_runner.py
-      experiment_runner.py
+      backtest_runs.py
+      backtest_worker.py
       config.py
 
     domain/
@@ -101,6 +108,7 @@ backtester/
       event_driven.py
 
     data/
+      feature_stream.py
       market_data.py
       indicators.py
       normalization.py
@@ -109,6 +117,7 @@ backtester/
     strategies/
       base.py
       conditions.py
+      registry.py
       examples/
         sma_crossover.py
       custom/
@@ -117,17 +126,18 @@ backtester/
       db_accessor.py
       persistence.py
       api/
-        main.py
-        dependencies.py
+        app.py
         schemas.py
         routes/
           backtests.py
 
     reporting/
       metrics.py
-      serializers.py
 
-    cli.py
+  cli.py
+  main.py
+  worker.py
+  smoke.py
 
   tests/
     app/
@@ -149,9 +159,13 @@ Import convention for this layout:
 
 - `app/backtest_runner.py`
   - Orchestrates one backtest run end-to-end.
-  - Called by CLI and FastAPI.
-- `app/experiment_runner.py`
-  - Orchestrates parameter sweeps and experiment batches.
+  - Called by CLI and worker child execution.
+- `app/backtest_runs.py`
+  - Owns deterministic submission validation, run reads/history, execution-log
+    reads, and terminal deletion policy.
+- `app/backtest_worker.py`
+  - Owns FIFO selection, atomic claiming, child-process execution, startup
+    reconciliation, and terminal lifecycle decisions.
 - `domain/types.py`
   - Canonical runtime and result dataclasses.
 - `execution/`
@@ -178,13 +192,16 @@ Import convention for this layout:
   - FastAPI transport layer only.
 - `reporting/metrics.py`
   - Result metrics.
+- `main.py`, `worker.py`, `smoke.py`
+  - API process entrypoint, singleton worker entrypoint, and deployed lifecycle
+    smoke check.
 
 ## Domain Contracts (In `domain/types.py`)
 
-Minimum required types for v1:
+Current v1 types:
 
 - `BacktestRequest`
-  - symbols/timeframe/start/end
+  - symbols/exchange/timeframe/start/end
   - `engine` (`vectorized` or `event_driven` for the current bar-mode parity slice)
   - strategy config
   - execution config
@@ -192,6 +209,11 @@ Minimum required types for v1:
   - `data_granularity` (`bar` in v1, `tick` in v2)
   - `persist_result: bool = False`
   - `run_metadata` (optional labels/tags/context)
+- `BacktestRequestSnapshot`
+  - immutable versioned request document used by durable runs
+- `BacktestRunRecord`, `BacktestFillRecord`, `BacktestTradeRecord`,
+  `BacktestRunQuery`
+  - lifecycle, execution-log, and history-query contracts
 - `ExecutionConfig`
   - `signal_timing`
   - `fill_timing`
@@ -200,30 +222,25 @@ Minimum required types for v1:
   - `allow_short`
   - `trade_accounting_policy`
   - `gap_policy`
-- `BarView`, `TickView`, `MarketView` (v1 uses `BarView`)
+  - `intrabar_exit_policy`
+- `ProtectiveExitSpec`
+  - optional stop-loss and take-profit percentages for declarative bar strategies
+- `BarView`, `TickView` (v1 execution uses bars)
 - `PositionView`, `PortfolioView`
 - `FeatureMatrix` / `SignalMatrix` / `ExecutionArrayBundle` (vectorized-runtime array contracts)
-- `StrategyInput`
-  - event-driven runtime snapshot contract
-  - timestamp/symbol/market_view/features/position/portfolio
-- `StrategyState`
-  - event-driven runtime state contract
-  - persistent per `(strategy_id, symbol)` state payload
-- `TradingIntent` (semantic)
-  - event-driven decision output contract
-  - v1 variants: `EnterLong`, `ExitLong`, `ClosePosition`
-- `ExecutionTarget` (resolved)
-  - v1 variant: `SetTargetQuantity`
-- `OrderRequest`
-  - event-driven only
 - `Fill`, `Trade`, `PortfolioSnapshot`
 - `BacktestResult`
   - result payload + diagnostics + optional persistence metadata (`backtest_run_id`, `persisted_at`)
-- `BacktestRunRecord`, `BacktestTradeRecord`, `BacktestQuery`
-  - persistence/query-facing types
+
+Deferred public event-driven contracts:
+
+- `StrategyInput` and `StrategyState`
+- semantic `TradingIntent`
+- resolved `ExecutionTarget`
+- explicit `OrderRequest`
 
 `domain/enums.py` owns policy and side enums.
-`domain/events.py` owns event types (`BAR` v1, `TICK` v2).
+`domain/events.py` owns bar and tick event shapes; tick execution remains deferred.
 
 ## Strategy Contract
 
@@ -231,8 +248,9 @@ In `strategies/base.py`:
 
 - `StrategyDefinition`
   - `feature_specs`
-  - `decision_model` (event-driven contract)
-  - `sizing_model`
+  - vectorized `decision_model` and `position_builder`
+  - optional `BarStrategyModel` shared by current vectorized/event-driven parity
+  - optional sizing and risk transforms
   - optional `risk_rules`
 
 Future event-driven lifecycle contract:
@@ -387,6 +405,20 @@ Current bar-mode non-goals:
 4. Flips are split as close-then-open.
 5. Trade records are symbol-scoped and strategy-tagged.
 
+## Protective Exit Policy
+
+- Declarative long strategies may configure percentage stop-loss and take-profit
+  exits through `ProtectiveExitSpec`.
+- Protective exits are active on the entry fill bar.
+- Gap-through exits fill at the bar open; intrabar touches fill at the configured
+  stop or target price.
+- Bars touching both stop and target use
+  `ExecutionConfig.intrabar_exit_policy`; the default is conservative stop-first.
+- Fills and closed trades retain `signal`, `stop_loss`, or `take_profit` exit
+  reasons.
+- Vectorized and event-driven engines preserve parity for the supported bracket
+  semantics, including fees and slippage.
+
 ## Portfolio Scope (v1)
 
 1. One strategy per backtest run.
@@ -397,16 +429,23 @@ Current bar-mode non-goals:
 
 ## Persistence and API Integration
 
-Persistence target:
+Current durable architecture:
 
-- Optional DB persistence for runs/hyperparameters/results/trades.
-
-Integration path:
-
-1. Extend DB schema for backtest tables.
-2. Extend `database-accessor-api` for create/list/get run + get trades.
-3. Extend `libs/db_accessor_client` with typed methods.
-4. Implement adapter layer in backtester (`adapters/db_accessor.py`, `adapters/persistence.py`).
+1. Backtester domain types own the canonical request, lifecycle, fill, trade, and
+   query contracts.
+2. `database-accessor-api` exposes primitive create/read/list/delete,
+   compare-and-set update, execution-log reads, and transactional completion
+   operations.
+3. `libs/db_accessor_client` provides synchronous and asynchronous HTTP clients
+   for those primitives.
+4. The public backtester API validates and persists queued work without loading
+   market data.
+5. A separate singleton worker selects FIFO work, conditionally claims it, and
+   executes the immutable request in a spawned child process.
+6. The worker parent atomically persists successful metrics, diagnostics, fills,
+   and trades, or records a sanitized terminal failure.
+7. The CLI remains synchronous; `--persist-result` writes a terminal succeeded
+   run through the same durable schema.
 
 Invocation surfaces:
 
@@ -415,7 +454,15 @@ Invocation surfaces:
 
 Single-orchestration rule:
 
-- CLI and API must call the same app-layer use cases (`app/backtest_runner.py` / `app/experiment_runner.py`).
+- CLI execution and worker child execution call `app/backtest_runner.py`; the API
+  queues immutable requests and does not execute engines in-process.
+
+Known persistence limitation:
+
+- Successful completion currently inserts all fills and all closed trades using
+  one statement per artifact type. Very high execution-log counts can exceed
+  PostgreSQL driver bind-parameter limits. Add bounded chunked inserts inside the
+  existing completion transaction when large-run support requires it.
 
 ## Testing Structure
 
@@ -437,7 +484,7 @@ Required test priorities:
    - fill timestamp semantics
    - vectorized warmup/trimming behavior and event-driven bootstrap readiness
    - gap-policy behavior
-   - strategy-state lifecycle determinism
+   - sequential runtime-state determinism
    - portfolio/trade accounting invariants
    - vectorized no-interpreter constraint (`iterrows`/per-bar runtime not used)
 2. Engine parity:
@@ -445,12 +492,16 @@ Required test priorities:
 3. Adapter boundary tests (thin and contract-focused):
    - keep these only for mapping/serialization/error-translation behavior in `adapters/*`
    - do not build heavy duplicate tests for pure pass-through wrappers already covered elsewhere
-4. Persistence/API smoke path (minimal but required):
-   - one end-to-end persisted run (`persist_result=true`) and successful retrieval of run/trades via API
+4. Persistence/API smoke path:
+   - deployed queued -> running -> succeeded lifecycle with metrics, fills, and
+     trades
+   - deployed runtime failure -> failed lifecycle with no partial artifacts
 5. Reporting/sweep reproducibility:
    - stable metrics/serialization shape and deterministic experiment outputs
 
 ## Scope and Sequencing Note
 
-- This design plan defines architecture and contracts only.
-- Non-goals, roadmap items, and version/sequencing decisions are tracked in `backtester_implementation_plan.md`.
+- This document owns current architecture and durable design vocabulary.
+- `backtester_implementation_plan.md` is historical milestone context, not the
+  active task queue.
+- New delivery scope and sequencing belong in Ralph PRDs/issues.

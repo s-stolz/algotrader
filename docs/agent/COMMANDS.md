@@ -33,6 +33,8 @@ docker compose --env-file config/.env.shared up --build
 
 - All configured backend tests: `make test`
 - Backtester: `make test backtester`
+- Database accessor API: `make test database-accessor-api`
+- Shared database accessor client: `make test db_accessor_client`
 - Ingestion service: `make test ingestion-service`
 - Broker service: `make test broker-service`
 - Indicator engine: `make test indicator_engine`
