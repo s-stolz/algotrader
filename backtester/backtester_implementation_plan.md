@@ -12,16 +12,18 @@ Ralph artifacts rather than by extending this document directly.
 Agents should read this only when historical sequencing or deferred scope is
 needed for a backtester task.
 
-- M0-M7 are completed baseline work and should not be redone. M6/M7 were
-  delivered together and expanded by `backtester-durable-async-runs`.
+- M0-M7, including M5A and M5B, are implemented baseline work and should
+  not be redone. M6/M7 were delivered together and expanded by
+  `backtester-durable-async-runs`.
 - The Ralph PRD `backtester-bar-engine-parity` covered single-symbol, bar-mode
   vectorized/event-driven parity: request-level engine selection, mandatory strategy
   resolution, declarative SMA crossover support, event-driven bar execution, shared
   fill/accounting semantics, CLI engine selection, and parity/no-lookahead coverage.
 - The bracket-exit campaign added stop-loss, take-profit, and deterministic
   ambiguous-bar handling to the supported shared bar semantics.
-- Future PRD candidates include research ergonomics and sweeps, richer order
-  realism, tick support, multi-symbol runs, and multi-timeframe parallelism.
+- M8-M10B are not implemented. They remain future PRD candidates for research
+  ergonomics and sweeps, richer order realism, tick support, multi-symbol runs,
+  and multi-timeframe parallelism.
 
 ## Delivery Rules
 
@@ -55,10 +57,33 @@ Current automated coverage includes:
 The standard `make test` backend gate includes the backtester,
 database-accessor-api, and shared database accessor client suites.
 
+## Milestone Status Snapshot
+
+Last audited against the current working tree with `make test backtester`
+passing 200 tests.
+
+| Milestone | Status | Current implementation note |
+| --- | --- | --- |
+| M0 Skeleton + Minimal Types | Implemented | Package and mirrored test layout, domain types/enums/events, config, and strategy base are present. |
+| M1 Minimal Vectorized Bar Backtest | Implemented | Array-native vectorized engine, execution modules, SMA strategy, metrics, and row-iterator guard coverage are present. |
+| M2 Real Data + Indicator Integration | Implemented | Historical bar adapter, normalization, indicator/warmup trimming, app orchestration, and single-run CLI are present. |
+| M3 Vectorized Baseline Hardening | Implemented | Next-open semantics, gap policy, fees/slippage, sizing/risk, diagnostics, and unsupported execution guards are present. |
+| M4 Minimal Event-Driven Bar Backtest | Implemented | Event-driven bar execution exists for the supported single-symbol declarative strategy slice; later superseded by M5A internals. |
+| M5 Bar-Mode Parity Stabilization | Implemented | Parity tests cover supported vectorized/event-driven bar semantics, including no-lookahead and cost behavior. |
+| M5A Sequential Event-Driven Bar Runtime | Implemented | Event-driven mode uses explicit bootstrap and sequential tradable-bar runtime with gap handling and helper-reuse guards. |
+| M5B Bar Bracket Exits | Implemented | Stop-loss/take-profit exits, ambiguous-bar policy, exit reasons, CLI validation, parity, and persistence coverage are present. |
+| M6 Durable Persistence Foundation | Implemented | Durable run schema, JSON request/result snapshots, normalized fills/trades, accessor routes, shared clients, and CLI persistence are present. |
+| M7 Durable Asynchronous API and Worker | Implemented | FastAPI lifecycle API, singleton worker, FIFO claiming, child execution, terminal failure handling, and smoke coverage are present. |
+| M8 Research Ergonomics | Not implemented | No experiment/sweep use case, sweep CLI/API workflow, stable sweep artifacts, custom-strategy docs, or second example strategy are present. |
+| M9 Richer Event-Driven Bar Execution | Not implemented | Current API and engines reject partial fills and shorts; no limit/stop order, latency, spread/liquidity, or queue-position mode exists. |
+| M10A Vectorized Tick Replay | Not implemented | Tick enum/view placeholders exist, but the runner and vectorized engine reject `data_granularity=tick`; no tick replay exists. |
+| M10B Event-Driven Tick Simulation | Not implemented | Tick event placeholders exist, but the event-driven engine rejects tick requests; no sequential tick loop exists. |
+
 ## Milestone Template
 
 Each milestone defines:
 
+- Status
 - Goal
 - In scope
 - Out of scope
@@ -70,7 +95,9 @@ Each milestone defines:
 
 ---
 
-## M0: :checkmark: Skeleton + Minimal Types
+## M0: Skeleton + Minimal Types
+
+Status: Implemented.
 
 ### Goal
 
@@ -119,7 +146,9 @@ Create the simplified package skeleton and minimal domain contracts to support t
 
 ---
 
-## M1: :checkmark: Minimal Vectorized Bar Backtest (Fixture Data)
+## M1: Minimal Vectorized Bar Backtest (Fixture Data)
+
+Status: Implemented.
 
 ### Goal
 
@@ -181,7 +210,9 @@ Deliver the first end-to-end runnable **true vectorized** backtest using fixture
 
 ---
 
-## M2: :checkmark: Real Data + Indicator Integration (Vectorized)
+## M2: Real Data + Indicator Integration (Vectorized)
+
+Status: Implemented.
 
 ### Goal
 
@@ -243,7 +274,9 @@ ship a minimal CLI path for running a single strategy backtest easily.
 
 ---
 
-## M3: :checkmark: Vectorized Baseline Hardening
+## M3: Vectorized Baseline Hardening
+
+Status: Implemented.
 
 ### Goal
 
@@ -313,8 +346,10 @@ Make vectorized bar mode stable enough to be parity baseline.
 
 ## M4: Minimal Event-Driven Bar Backtest
 
-Ralph status: implemented as part of `backtester-bar-engine-parity` for single-symbol
-bar-mode parity. Future event-driven expansion should be covered by later Ralph PRDs.
+Status: Implemented.
+
+Ralph source: `backtester-bar-engine-parity` for single-symbol bar-mode parity.
+Future event-driven expansion should be covered by later Ralph PRDs.
 The initial M4/M5 parity slice proved the public contract first; it streamed
 event-driven strategy decisions but still reused array-style fill generation and
 portfolio accounting to match the vectorized baseline quickly. The later Ralph PRD
@@ -365,9 +400,11 @@ Implement first runnable event-driven bar engine using shared domain/execution m
 
 ## M5: Bar-Mode Parity Stabilization
 
-Ralph status: implemented as part of `backtester-bar-engine-parity` for supported
-single-symbol declarative bar strategies. Any broader parity matrix belongs in later
-Ralph PRDs. The historical M5 implementation locked public parity while the
+Status: Implemented.
+
+Ralph source: `backtester-bar-engine-parity` for supported single-symbol
+declarative bar strategies. Any broader parity matrix belongs in later Ralph
+PRDs. The historical M5 implementation locked public parity while the
 event-driven engine still leaned on vectorized-style fill/accounting helpers; that
 implementation shortcut is no longer part of event-driven mode after
 `backtester-sequential-event-engine`.
@@ -418,8 +455,10 @@ Lock parity between vectorized and event-driven engines for supported **shared**
 
 ## M5A: Sequential Event-Driven Bar Runtime
 
-Ralph status: implemented as part of `backtester-sequential-event-engine` for the
-single-symbol v1 declarative bar parity slice.
+Status: Implemented.
+
+Ralph source: `backtester-sequential-event-engine` for the single-symbol v1
+declarative bar parity slice.
 
 ### Goal
 
@@ -493,8 +532,10 @@ public parity with vectorized mode for supported shared semantics.
 
 ## M5B: Bar Bracket Exits
 
-Ralph status: implemented by the `backtester-bar-bracket-exits` campaign for the
-single-symbol declarative bar parity slice.
+Status: Implemented.
+
+Ralph source: `backtester-bar-bracket-exits` for the single-symbol declarative
+bar parity slice.
 
 ### Goal
 
@@ -520,7 +561,9 @@ supported baseline engine contract.
 
 ## M6: Durable Persistence Foundation
 
-Ralph status: implemented and expanded by `backtester-durable-async-runs`.
+Status: Implemented.
+
+Ralph source: `backtester-durable-async-runs`.
 
 ### Goal
 
@@ -558,7 +601,9 @@ closed trades through the existing database accessor stack.
 
 ## M7: Durable Asynchronous API and Worker
 
-Ralph status: implemented by `backtester-durable-async-runs`.
+Status: Implemented.
+
+Ralph source: `backtester-durable-async-runs`.
 
 ### Goal
 
@@ -609,7 +654,15 @@ process.
 
 ## M8: Research Ergonomics
 
-Ralph status: future PRD candidate for sweeps and research workflow improvements.
+Status: Not implemented.
+
+Ralph source: future PRD candidate for sweeps and research workflow
+improvements.
+
+Current gap: no `app/experiment_runner.py` or equivalent sweep use case exists,
+the CLI still exposes only the single-run workflow, and the repository does not
+yet include custom-strategy documentation, sweep output artifacts, or a second
+example strategy.
 
 ### Goal
 
@@ -654,7 +707,13 @@ Improve day-to-day usability for strategy research.
 
 ## M9: Richer Event-Driven Bar Execution
 
-Ralph status: future PRD candidate for richer order realism.
+Status: Not implemented.
+
+Ralph source: future PRD candidate for richer order realism.
+
+Current gap: the current API and both engines still reject `allow_partial_fills`
+and `allow_short`, and there is no richer order request, partial-fill, latency,
+spread/liquidity, queue-position, or optional realism mode.
 
 ### Goal
 
@@ -701,7 +760,13 @@ Increase event-driven execution realism on bar data beyond the M3 baseline cost 
 
 ## M10A: Vectorized Tick Replay (v2)
 
-Ralph status: future PRD candidate for tick support.
+Status: Not implemented.
+
+Ralph source: future PRD candidate for tick support.
+
+Current gap: tick enums and view types exist as forward-compatible contracts, but
+`data_granularity=tick` is rejected before vectorized execution and no vectorized
+tick replay path exists.
 
 ### Goal
 
@@ -732,7 +797,13 @@ Add deterministic vectorized tick replay.
 
 ## M10B: Event-Driven Tick Simulation (v2)
 
-Ralph status: future PRD candidate for tick support.
+Status: Not implemented.
+
+Ralph source: future PRD candidate for tick support.
+
+Current gap: tick event shapes exist as forward-compatible contracts, but
+`data_granularity=tick` is rejected before event-driven execution and no
+sequential tick loop exists.
 
 ### Goal
 
