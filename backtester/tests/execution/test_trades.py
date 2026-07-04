@@ -124,6 +124,42 @@ class TestTradeLifecycle(unittest.TestCase):
         self.assertEqual(trades[0].stop_loss_price, 95.0)
         self.assertEqual(trades[0].take_profit_price, 110.0)
 
+    def test_planned_protective_prices_follow_average_entry_after_scale_in(self) -> None:
+        fills = [
+            Fill(
+                timestamp_ms=1,
+                symbol="AAPL",
+                quantity=1.0,
+                price=100.0,
+                side=OrderSide.BUY,
+                stop_loss_price=95.0,
+                take_profit_price=110.0,
+            ),
+            Fill(
+                timestamp_ms=2,
+                symbol="AAPL",
+                quantity=1.0,
+                price=120.0,
+                side=OrderSide.BUY,
+                stop_loss_price=114.0,
+                take_profit_price=132.0,
+            ),
+            Fill(
+                timestamp_ms=3,
+                symbol="AAPL",
+                quantity=2.0,
+                price=130.0,
+                side=OrderSide.SELL,
+                exit_reason=ExitReason.SIGNAL,
+            ),
+        ]
+
+        trades = build_trades_from_fills(fills)
+
+        self.assertEqual(trades[0].entry_price, 110.0)
+        self.assertEqual(trades[0].stop_loss_price, 104.5)
+        self.assertEqual(trades[0].take_profit_price, 121.0)
+
     def test_sell_without_open_long_is_rejected(self) -> None:
         fills = [
             Fill(

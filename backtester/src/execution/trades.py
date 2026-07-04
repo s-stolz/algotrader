@@ -43,6 +43,18 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
 
             new_qty = open_qty + qty
             avg_entry_price = ((avg_entry_price * open_qty) + (float(fill.price) * qty)) / new_qty
+            stop_loss_price = _weighted_optional_price(
+                current_value=stop_loss_price,
+                current_qty=open_qty,
+                added_value=_optional_float(fill.stop_loss_price),
+                added_qty=qty,
+            )
+            take_profit_price = _weighted_optional_price(
+                current_value=take_profit_price,
+                current_qty=open_qty,
+                added_value=_optional_float(fill.take_profit_price),
+                added_qty=qty,
+            )
             open_qty = new_qty
             open_entry_fees += fill_fees
             continue
@@ -99,3 +111,22 @@ def _optional_float(value: float | None) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _weighted_optional_price(
+    *,
+    current_value: float | None,
+    current_qty: float,
+    added_value: float | None,
+    added_qty: float,
+) -> float | None:
+    if current_value is None and added_value is None:
+        return None
+    if current_value is None:
+        return added_value
+    if added_value is None:
+        return current_value
+    total_qty = current_qty + added_qty
+    if total_qty <= 0.0:
+        return None
+    return ((current_value * current_qty) + (added_value * added_qty)) / total_qty
