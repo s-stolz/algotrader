@@ -90,6 +90,23 @@ function formatMarketMissingReason(run: BacktestRun): string {
   return `Market ${symbol} is not available in the chart market list.`;
 }
 
+function getBacktestRunSelectabilityForMarkets(
+  run: BacktestRun,
+  markets: Market[],
+): BacktestRunSelectability {
+  const selectability = getBacktestRunSelectability(run);
+
+  if (!selectability.selectable) {
+    return selectability;
+  }
+
+  if (!findMarketForRun(run, markets)) {
+    return unavailable(formatMarketMissingReason(run));
+  }
+
+  return selectability;
+}
+
 export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
   const selectedRunId = ref<string | null>(readStoredRunId());
   const selectedRun = ref<BacktestRun | null>(null);
@@ -109,15 +126,20 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     error.value = null;
   }
 
+  function getSelectableBacktestRun(run: BacktestRun): BacktestRunSelectability {
+    return getBacktestRunSelectabilityForMarkets(run, useMarketsStore().all);
+  }
+
   async function selectRun(run: BacktestRun): Promise<BacktestRunSelectability> {
-    const selectability = getBacktestRunSelectability(run);
+    const markets = useMarketsStore().all;
+    const selectability = getBacktestRunSelectabilityForMarkets(run, markets);
 
     if (!selectability.selectable) {
       error.value = selectability.reason;
       return selectability;
     }
 
-    const market = findMarketForRun(run, useMarketsStore().all);
+    const market = findMarketForRun(run, markets);
 
     if (!market) {
       const reason = formatMarketMissingReason(run);
@@ -197,7 +219,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     isLoading,
     error,
     clearOverlay,
-    getBacktestRunSelectability,
+    getBacktestRunSelectability: getSelectableBacktestRun,
     getClosedTradesForRange,
     restorePersistedSelection,
     selectRun,

@@ -8,6 +8,7 @@
       @upload-data="onUploadData"
     />
     <IndicatorSearchModal v-if="modalStore.isModalOpen('indicatorSearch')" />
+    <BacktestRunHistoryModal v-if="modalStore.isModalOpen('backtestRuns')" />
     <SymbolFormModal v-if="modalStore.isModalOpen('symbolForm')" />
     <RemoveMarketModal
       v-if="modalStore.isModalOpen('removeMarket') && marketToRemove"
@@ -25,6 +26,7 @@
 <script setup lang="ts">
 import { ref, type ComponentPublicInstance } from 'vue';
 
+import BacktestRunHistoryModal from '@/components/TopBar/Modals/BacktestRunHistoryModal.vue';
 import IndicatorSearchModal from '@/components/TopBar/Modals/IndicatorSearchModal.vue';
 import RemoveMarketModal from '@/components/TopBar/Modals/RemoveMarketModal.vue';
 import SymbolFormModal from '@/components/TopBar/Modals/SymbolFormModal.vue';
