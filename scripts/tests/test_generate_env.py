@@ -23,6 +23,10 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(shared_env["BACKTESTER_LOG_LEVEL"], "INFO")
         self.assertEqual(shared_env["BACKTESTER_LOG_FORMAT"], "pretty")
         self.assertEqual(shared_env["BACKTESTER_WORKER_POLL_INTERVAL_SECONDS"], "1.0")
+        self.assertEqual(
+            shared_env["VITE_PROXY_BACKTESTER_TARGET"],
+            "http://backtester-api:8020",
+        )
 
     def test_compose_runs_api_and_singleton_worker_from_same_image(self) -> None:
         compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
