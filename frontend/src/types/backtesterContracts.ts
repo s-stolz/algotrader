@@ -39,7 +39,7 @@ export interface BacktestExecutionPayload {
 
 export interface BacktestRequestPayload {
   symbols: string[];
-  exchange: string | null;
+  exchange?: string | null;
   timeframe: string;
   start_ms: number;
   end_ms: number;
@@ -49,7 +49,7 @@ export interface BacktestRequestPayload {
   strategy: BacktestStrategyPayload;
   execution: BacktestExecutionPayload;
   persist_result: boolean;
-  run_metadata: JsonObject | null;
+  run_metadata?: JsonObject | null;
 }
 
 export interface BacktestRun {
@@ -199,9 +199,8 @@ export function isBacktestRequestPayload(value: unknown): value is BacktestReque
 
   return (
     Array.isArray(value.symbols) &&
-    value.symbols.length > 0 &&
     value.symbols.every(isNonEmptyString) &&
-    isNullableString(value.exchange) &&
+    isOptionalNullableString(value, 'exchange') &&
     isNonEmptyString(value.timeframe) &&
     isFiniteNumber(value.start_ms) &&
     value.start_ms > 0 &&
@@ -216,7 +215,7 @@ export function isBacktestRequestPayload(value: unknown): value is BacktestReque
     isBacktestStrategyPayload(value.strategy) &&
     isBacktestExecutionPayload(value.execution) &&
     typeof value.persist_result === 'boolean' &&
-    (value.run_metadata === null || isJsonObject(value.run_metadata))
+    isOptionalNullableJsonObject(value, 'run_metadata')
   );
 }
 

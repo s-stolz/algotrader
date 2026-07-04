@@ -52,13 +52,29 @@ describe('backtester contract validators', () => {
       diagnostics: {},
     })).toBe(true);
 
+    expect(isBacktestRun({
+      run_id: 'run-missing-null-fields',
+      status: 'queued',
+      submitted_at_ms: 1_780_921_805_123,
+      request_schema_version: 1,
+      request: withoutNullRequestFields(backtestRequest()),
+    })).toBe(true);
+
+    expect(isBacktestRun({
+      run_id: 'run-empty-symbols',
+      status: 'queued',
+      submitted_at_ms: 1_780_921_805_123,
+      request_schema_version: 1,
+      request: { ...backtestRequest(), symbols: [] },
+    })).toBe(true);
+
     expect(isBacktestRun({ run_id: 'run-123', status: 'mystery' })).toBe(false);
     expect(isBacktestRun({
       run_id: 'run-123',
       status: 'queued',
       submitted_at_ms: 1_780_921_805_123,
       request_schema_version: 1,
-      request: { ...backtestRequest(), symbols: [] },
+      request: { ...backtestRequest(), symbols: [''] },
     })).toBe(false);
     expect(isBacktestRun({
       run_id: 'run-123',
@@ -149,4 +165,13 @@ function backtestRequest() {
     persist_result: true,
     run_metadata: null,
   };
+}
+
+function withoutNullRequestFields(request: ReturnType<typeof backtestRequest>) {
+  const { exchange: _exchange, run_metadata: _runMetadata, ...rest } = {
+    ...request,
+    exchange: null,
+    run_metadata: null,
+  };
+  return rest;
 }
