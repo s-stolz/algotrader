@@ -31,6 +31,9 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   versions, immutable request JSONB, and nullable metrics/diagnostics JSONB.
 - `backtest_fills` and `backtest_closed_trades` use per-run sequence keys for
   deterministic ordering and cascade when the parent run is deleted.
+- `backtest_closed_trades` includes nullable planned protective exit prices for
+  stop-loss and take-profit overlays. The adoption path may delete old local
+  backtest runs rather than backfilling v1 result artifacts.
 - Fresh database initialization creates the complete durable backtest schema
   without a separate destructive reset script.
 

@@ -13,6 +13,16 @@ class BackfillRangeTests(unittest.TestCase):
 
         self.assertEqual(next_ts, latest_ts + 60_000)
 
+    def test_redis_socket_timeout_exceeds_block_window(self) -> None:
+        timeout = IngestionService._redis_socket_timeout_seconds(block_ms=5000)
+
+        self.assertEqual(timeout, 6.0)
+
+    def test_redis_socket_timeout_allows_indefinite_block(self) -> None:
+        timeout = IngestionService._redis_socket_timeout_seconds(block_ms=0)
+
+        self.assertIsNone(timeout)
+
 
 if __name__ == "__main__":
     unittest.main()

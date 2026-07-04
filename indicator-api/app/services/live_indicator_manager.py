@@ -36,6 +36,12 @@ log = get_logger(__name__)
 CANDLE_FIELDS = ["open", "high", "low", "close", "volume"]
 
 
+def _redis_socket_timeout_seconds(block_ms: int) -> float | None:
+    if block_ms <= 0:
+        return None
+    return (block_ms / 1000.0) + 1.0
+
+
 @dataclass(frozen=True)
 class LiveStreamSpec:
     account_id: str
@@ -254,6 +260,7 @@ class LiveIndicatorManager:
             self._redis = await aioredis.from_url(
                 f"redis://{self.redis_host}:{self.redis_port}",
                 decode_responses=True,
+                socket_timeout=_redis_socket_timeout_seconds(self.redis_block_ms),
             )
         redis = self._redis
         assert redis is not None

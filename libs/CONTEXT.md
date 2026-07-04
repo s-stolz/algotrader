@@ -43,7 +43,8 @@ Shared Python packages used by multiple services.
 - Conditional run updates and successful completion return whether the accessor
   atomically matched the caller-provided expected status.
 - Execution-log methods pass ordered normalized fill/trade records through
-  unchanged, and deletion accepts the accessor's `204 No Content` response.
+  unchanged, including result schema version 2 closed-trade planned protective
+  exit prices, and deletion accepts the accessor's `204 No Content` response.
 
 ## Change Triggers
 

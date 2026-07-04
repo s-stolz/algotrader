@@ -21,6 +21,13 @@ to a chart UI, and supports standalone backtesting.
 - **Position**: open broker exposure that can be closed fully or partially.
 - **Deal**: broker execution history entry.
 - **Backtest**: offline simulation over historical candle data.
+- **Backtest Run**: one durable execution of a backtest request. Avoid
+  **Strategy Run** for this concept because a strategy can also exist outside a
+  completed historical backtest.
+- **Backtest Fill**: one simulated execution event inside a Backtest Run.
+- **Backtest Closed Trade**: one completed simulated round-trip position inside a
+  Backtest Run, with entry, exit, realized PnL, fees, exit reason, and optional
+  planned protective exit prices.
 
 ## System Flow
 
@@ -56,8 +63,13 @@ to a chart UI, and supports standalone backtesting.
 - Durable backtest runs use `queued`, `running`, `succeeded`, and `failed`
   lifecycle states. Lifecycle timestamps are normalized storage fields; the
   complete immutable request is versioned JSON, and fills/trades are normalized
-  child records. Run history filters request attributes from that JSON document
-  and returns matches by `submitted_at DESC`, then `run_id ASC`.
+  child records. Result schema version 2 closed trades carry nullable
+  `stop_loss_price` and `take_profit_price` planned levels. Run history filters
+  request attributes from that JSON document and returns matches by
+  `submitted_at DESC`, then `run_id ASC`.
+- Frontend and other non-storage consumers read durable backtest run history,
+  fills, and trades through the public backtester API. `database-accessor-api`
+  remains the primitive persistence API behind the backtester boundary.
 
 ## Change Guidance
 

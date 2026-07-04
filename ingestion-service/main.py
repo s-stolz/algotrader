@@ -62,6 +62,12 @@ class IngestionService:
         return str(value)
 
     @staticmethod
+    def _redis_socket_timeout_seconds(block_ms: int) -> float | None:
+        if block_ms <= 0:
+            return None
+        return (block_ms / 1000.0) + 1.0
+
+    @staticmethod
     def _next_candle_ts_ms(latest_ts_ms: int, timeframe_minutes: int) -> int:
         timeframe_ms = int(timedelta(minutes=timeframe_minutes).total_seconds() * 1000)
         return latest_ts_ms + timeframe_ms
@@ -97,6 +103,7 @@ class IngestionService:
         self.redis = Redis.from_url(
             self.config.redis_url,
             decode_responses=False,
+            socket_timeout=self._redis_socket_timeout_seconds(self.config.consumer_block_ms),
         )
         ping_result = self.redis.ping()
         if inspect.isawaitable(ping_result):

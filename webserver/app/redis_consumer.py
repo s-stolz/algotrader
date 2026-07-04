@@ -33,10 +33,18 @@ class RedisConsumer:
         self.active_streams: Dict[str, dict] = {}
         self.is_connected = False
 
+    @staticmethod
+    def _redis_socket_timeout_seconds(block_ms: int) -> float | None:
+        if block_ms <= 0:
+            return None
+        return (block_ms / 1000.0) + 1.0
+
     async def connect(self):
         try:
             self.redis = await aioredis.from_url(
-                f"redis://{self.redis_host}:{self.redis_port}", decode_responses=True
+                f"redis://{self.redis_host}:{self.redis_port}",
+                decode_responses=True,
+                socket_timeout=self._redis_socket_timeout_seconds(self.block_ms),
             )
             ping_result = self.redis.ping()
             if inspect.isawaitable(ping_result):
