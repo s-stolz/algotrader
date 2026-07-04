@@ -96,6 +96,34 @@ class TestTradeLifecycle(unittest.TestCase):
 
         self.assertEqual(trades[0].exit_reason, ExitReason.STOP_LOSS)
 
+    def test_entry_fill_planned_protective_prices_are_copied_to_closed_trade(self) -> None:
+        fills = [
+            Fill(
+                timestamp_ms=1,
+                symbol="AAPL",
+                quantity=1.0,
+                price=100.0,
+                side=OrderSide.BUY,
+                stop_loss_price=95.0,
+                take_profit_price=110.0,
+            ),
+            Fill(
+                timestamp_ms=2,
+                symbol="AAPL",
+                quantity=1.0,
+                price=104.0,
+                side=OrderSide.SELL,
+                exit_reason=ExitReason.SIGNAL,
+            ),
+        ]
+
+        trades = build_trades_from_fills(fills)
+
+        self.assertEqual(trades[0].exit_reason, ExitReason.SIGNAL)
+        self.assertEqual(trades[0].exit_price, 104.0)
+        self.assertEqual(trades[0].stop_loss_price, 95.0)
+        self.assertEqual(trades[0].take_profit_price, 110.0)
+
     def test_sell_without_open_long_is_rejected(self) -> None:
         fills = [
             Fill(

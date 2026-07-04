@@ -231,7 +231,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
                 status=BacktestRunStatus.SUCCEEDED,
                 started_at_ms=1_780_921_860_000,
                 completed_at_ms=1_780_922_100_000,
-                result_schema_version=1,
+                result_schema_version=2,
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240_000},
             ),
@@ -301,7 +301,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
         succeeded_body = succeeded_response.json()
         self.assertEqual(succeeded_response.status_code, 200)
         self.assertEqual(succeeded_body["completed_at_ms"], 1_780_922_100_000)
-        self.assertEqual(succeeded_body["result_schema_version"], 1)
+        self.assertEqual(succeeded_body["result_schema_version"], 2)
         self.assertEqual(succeeded_body["metrics"], {"total_return_pct": 1.25})
         self.assertEqual(
             succeeded_body["diagnostics"],
@@ -403,6 +403,8 @@ class TestBacktestExecutionLogAndDeletionRoutes(unittest.TestCase):
                 realized_pnl=2.5,
                 fees=0.3,
                 exit_reason=ExitReason.STOP_LOSS,
+                stop_loss_price=1.05,
+                take_profit_price=1.08,
             )
         ]
 
@@ -452,6 +454,8 @@ class TestBacktestExecutionLogAndDeletionRoutes(unittest.TestCase):
                     "realized_pnl": 2.5,
                     "fees": 0.3,
                     "exit_reason": "stop_loss",
+                    "stop_loss_price": 1.05,
+                    "take_profit_price": 1.08,
                 }
             ],
         )
@@ -548,7 +552,7 @@ def _terminal_run_service(run_id: str) -> tuple[_FakeRunRepository, BacktestRunS
         status=BacktestRunStatus.SUCCEEDED,
         started_at_ms=1_780_921_860_000,
         completed_at_ms=1_780_922_100_000,
-        result_schema_version=1,
+        result_schema_version=2,
         metrics={"trade_count": 0},
         diagnostics={"bars": 10},
     )

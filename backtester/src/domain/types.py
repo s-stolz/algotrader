@@ -21,7 +21,7 @@ from domain.enums import (
 )
 
 BACKTEST_REQUEST_SCHEMA_VERSION = 1
-BACKTEST_RESULT_SCHEMA_VERSION = 1
+BACKTEST_RESULT_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -162,6 +162,8 @@ class BacktestTradeRecord:
     realized_pnl: float
     fees: float
     exit_reason: ExitReason
+    stop_loss_price: Optional[float] = None
+    take_profit_price: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -238,6 +240,8 @@ class Fill:
     side: OrderSide
     fees: float = 0.0
     exit_reason: Optional[ExitReason] = None
+    stop_loss_price: Optional[float] = None
+    take_profit_price: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -252,6 +256,8 @@ class Trade:
     realized_pnl: float = 0.0
     fees: float = 0.0
     exit_reason: ExitReason = ExitReason.SIGNAL
+    stop_loss_price: Optional[float] = None
+    take_profit_price: Optional[float] = None
 
 
 @dataclass(frozen=True)

@@ -389,10 +389,12 @@ class TestCli(unittest.TestCase):
                 self.assertEqual(payload["request"]["exchange"], "NASDAQ")
                 self.assertEqual(payload["request"]["engine"], engine.value)
                 self.assertTrue(payload["request"]["persist_result"])
-                self.assertEqual(payload["result_schema_version"], 1)
+                self.assertEqual(payload["result_schema_version"], 2)
                 self.assertEqual(payload["diagnostics"]["engine"], engine.value)
                 self.assertGreater(len(payload["fills"]), 0)
                 self.assertGreater(len(payload["trades"]), 0)
+                self.assertIsNone(payload["trades"][0]["stop_loss_price"])
+                self.assertIsNone(payload["trades"][0]["take_profit_price"])
                 self.assertNotIn("equity_curve", payload)
 
                 output = stdout.getvalue()

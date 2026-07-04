@@ -414,6 +414,8 @@ def _trade_record_from_response(response: Mapping[str, Any]) -> BacktestTradeRec
         realized_pnl=float(response["realized_pnl"]),
         fees=float(response["fees"]),
         exit_reason=ExitReason(str(response["exit_reason"])),
+        stop_loss_price=_optional_float(response.get("stop_loss_price")),
+        take_profit_price=_optional_float(response.get("take_profit_price")),
     )
 
 
@@ -463,6 +465,8 @@ def _closed_trade_payload(*, sequence: int, trade: Trade) -> dict[str, Any]:
         "realized_pnl": float(trade.realized_pnl),
         "fees": float(trade.fees),
         "exit_reason": _enum_or_text_value(trade.exit_reason),
+        "stop_loss_price": _optional_float(trade.stop_loss_price),
+        "take_profit_price": _optional_float(trade.take_profit_price),
     }
 
 
@@ -516,6 +520,12 @@ def _optional_timestamp_to_epoch_ms(value: Any) -> int | None:
     if value is None:
         return None
     return _timestamp_to_epoch_ms(value)
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
 
 
 def _optional_text(value: Any) -> str | None:

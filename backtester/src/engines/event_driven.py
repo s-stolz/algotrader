@@ -331,6 +331,8 @@ def _record_pending_fill(
         slippage_bps=slippage_bps,
         commission_bps=commission_bps,
         exit_reason=exit_reason,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
     )
     state.executed_deferred_count += sum(
         1 for item in state.pending if item.deferred and item.quantity != 0.0
@@ -399,6 +401,8 @@ def _record_fill(
     slippage_bps: float,
     commission_bps: float,
     exit_reason: ExitReason | None,
+    stop_loss_pct: float | None = None,
+    take_profit_pct: float | None = None,
 ) -> Fill:
     side = OrderSide.BUY if quantity_delta > 0.0 else OrderSide.SELL
     quantity = abs(quantity_delta)
@@ -416,6 +420,16 @@ def _record_fill(
         side=side,
         fees=float(fee),
         exit_reason=exit_reason,
+        stop_loss_price=_planned_stop_loss_price(
+            entry_price=execution_price,
+            side=side,
+            stop_loss_pct=stop_loss_pct,
+        ),
+        take_profit_price=_planned_take_profit_price(
+            entry_price=execution_price,
+            side=side,
+            take_profit_pct=take_profit_pct,
+        ),
     )
 
     previous_position = float(state.actual_position)
@@ -440,6 +454,28 @@ def _record_fill(
         state.entry_price = None
 
     return fill
+
+
+def _planned_stop_loss_price(
+    *,
+    entry_price: float,
+    side: OrderSide,
+    stop_loss_pct: float | None,
+) -> float | None:
+    if side != OrderSide.BUY or stop_loss_pct is None:
+        return None
+    return float(entry_price * (1.0 - (stop_loss_pct / 100.0)))
+
+
+def _planned_take_profit_price(
+    *,
+    entry_price: float,
+    side: OrderSide,
+    take_profit_pct: float | None,
+) -> float | None:
+    if side != OrderSide.BUY or take_profit_pct is None:
+        return None
+    return float(entry_price * (1.0 + (take_profit_pct / 100.0)))
 
 
 def _handle_invalid_open(

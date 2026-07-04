@@ -20,6 +20,8 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
     avg_entry_price = 0.0
     open_entry_fees = 0.0
     entry_timestamp_ms = 0
+    stop_loss_price: float | None = None
+    take_profit_price: float | None = None
     trade_counter = 0
 
     for fill in fills:
@@ -35,6 +37,8 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
                 avg_entry_price = float(fill.price)
                 open_qty = qty
                 open_entry_fees = fill_fees
+                stop_loss_price = _optional_float(fill.stop_loss_price)
+                take_profit_price = _optional_float(fill.take_profit_price)
                 continue
 
             new_qty = open_qty + qty
@@ -69,6 +73,8 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
                     realized_pnl=realized_pnl,
                     fees=trade_fees,
                     exit_reason=_exit_reason_from_fill(fill),
+                    stop_loss_price=stop_loss_price,
+                    take_profit_price=take_profit_price,
                 )
             )
             open_qty -= close_qty
@@ -77,6 +83,8 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
                 avg_entry_price = 0.0
                 open_entry_fees = 0.0
                 entry_timestamp_ms = 0
+                stop_loss_price = None
+                take_profit_price = None
 
     return trades
 
@@ -85,3 +93,9 @@ def _exit_reason_from_fill(fill: Fill) -> ExitReason:
     if fill.exit_reason is None:
         return ExitReason.SIGNAL
     return ExitReason(fill.exit_reason)
+
+
+def _optional_float(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return float(value)

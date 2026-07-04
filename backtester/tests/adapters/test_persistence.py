@@ -102,7 +102,7 @@ class TestBacktestRunPersistenceAdapter(unittest.TestCase):
             "take_profit_first",
         )
         self.assertEqual(payload["request"]["run_metadata"], {"label": "cli-persist"})
-        self.assertEqual(payload["result_schema_version"], 1)
+        self.assertEqual(payload["result_schema_version"], 2)
         self.assertEqual(payload["metrics"], result.metrics)
         self.assertEqual(
             payload["diagnostics"],
@@ -152,6 +152,8 @@ class TestBacktestRunPersistenceAdapter(unittest.TestCase):
                     "realized_pnl": 2.5,
                     "fees": 0.3,
                     "exit_reason": "signal",
+                    "stop_loss_price": None,
+                    "take_profit_price": None,
                 }
             ],
         )
@@ -258,6 +260,8 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
             realized_pnl=2.5,
             fees=0.3,
             exit_reason=ExitReason.TAKE_PROFIT,
+            stop_loss_price=1.05,
+            take_profit_price=1.08,
         )
 
         updated = adapter.complete(
@@ -273,11 +277,14 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         self.assertEqual(run_id, "run-123")
         self.assertEqual(payload["expected_status"], "running")
         self.assertEqual(payload["completed_at"], "2026-06-08T12:35:00+00:00")
-        self.assertEqual(payload["result_schema_version"], 1)
+        self.assertEqual(payload["result_schema_version"], 2)
         self.assertEqual(payload["metrics"], result.metrics)
         self.assertEqual(payload["diagnostics"]["execution_duration_ms"], 275)
         self.assertEqual(payload["fills"][1]["exit_reason"], "take_profit")
         self.assertEqual(payload["trades"][0]["exit_reason"], "take_profit")
+        self.assertEqual(payload["trades"][0]["exit_price"], 1.074)
+        self.assertEqual(payload["trades"][0]["stop_loss_price"], 1.05)
+        self.assertEqual(payload["trades"][0]["take_profit_price"], 1.08)
         self.assertNotIn("equity_curve", payload)
 
     def test_complete_preserves_empty_artifact_collections(self) -> None:

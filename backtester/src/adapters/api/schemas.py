@@ -143,6 +143,8 @@ class BacktestTradeResponseSchema(ApiContractModel):
     realized_pnl: float
     fees: float
     exit_reason: Literal["signal", "stop_loss", "take_profit"]
+    stop_loss_price: float | None = None
+    take_profit_price: float | None = None
 
     @classmethod
     def from_domain(cls, trade: BacktestTradeRecord) -> "BacktestTradeResponseSchema":
@@ -158,6 +160,8 @@ class BacktestTradeResponseSchema(ApiContractModel):
             realized_pnl=trade.realized_pnl,
             fees=trade.fees,
             exit_reason=trade.exit_reason.value,
+            stop_loss_price=trade.stop_loss_price,
+            take_profit_price=trade.take_profit_price,
         )
 
 

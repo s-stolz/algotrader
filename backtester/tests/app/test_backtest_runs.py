@@ -217,7 +217,7 @@ class TestBacktestRunService(unittest.TestCase):
             status=BacktestRunStatus.SUCCEEDED,
             started_at_ms=1_780_921_860_000,
             completed_at_ms=1_780_922_100_000,
-            result_schema_version=1,
+            result_schema_version=2,
             metrics={"trade_count": 1},
             diagnostics={"bars": 10},
         )
@@ -258,6 +258,8 @@ class TestBacktestRunService(unittest.TestCase):
                 realized_pnl=2.5,
                 fees=0.3,
                 exit_reason=ExitReason.TAKE_PROFIT,
+                stop_loss_price=1.05,
+                take_profit_price=1.08,
             )
         ]
         repository.fills_by_run_id["run-123"] = fills

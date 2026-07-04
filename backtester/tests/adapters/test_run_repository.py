@@ -110,7 +110,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
             "error_message": None,
             "request_schema_version": 1,
             "request": dict(BacktestRequestSnapshot.from_request(_request()).payload),
-            "result_schema_version": 1,
+            "result_schema_version": 2,
             "metrics": {"total_return_pct": 1.25},
             "diagnostics": {"execution_duration_ms": 240_000},
         }
@@ -125,7 +125,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
         self.assertEqual(run.started_at_ms, 1_780_921_860_000)
         self.assertEqual(run.completed_at_ms, 1_780_922_100_000)
         self.assertEqual(run.request_snapshot.to_request(), _request())
-        self.assertEqual(run.result_schema_version, 1)
+        self.assertEqual(run.result_schema_version, 2)
         self.assertEqual(run.metrics, {"total_return_pct": 1.25})
         self.assertEqual(run.diagnostics, {"execution_duration_ms": 240_000})
 
@@ -210,6 +210,8 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
                 "realized_pnl": 2.5,
                 "fees": 0.3,
                 "exit_reason": "take_profit",
+                "stop_loss_price": 1.05,
+                "take_profit_price": 1.08,
             }
         ]
         repository = DatabaseAccessorBacktestRunRepository(client=client)
@@ -259,6 +261,8 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
                     realized_pnl=2.5,
                     fees=0.3,
                     exit_reason=ExitReason.TAKE_PROFIT,
+                    stop_loss_price=1.05,
+                    take_profit_price=1.08,
                 )
             ],
         )

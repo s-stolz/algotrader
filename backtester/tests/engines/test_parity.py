@@ -613,6 +613,48 @@ class TestBacktestEngineParity(unittest.TestCase):
         self.assertEqual(event_driven.diagnostics["signal_exit_count"], 0)
         self.assertEqual(event_driven.diagnostics["intrabar_ambiguous_bar_count"], 1)
 
+    def test_signal_exit_keeps_planned_protective_prices_across_engines(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = _build_ohlc_bars(
+            start_ms=start_ms,
+            minute=minute,
+            opens=(99.0, 100.0, 102.0),
+            highs=(101.0, 103.0, 103.0),
+            lows=(98.0, 98.0, 101.0),
+            closes=(100.0, 99.0, 102.0),
+        )
+        strategy = _build_price_action_strategy(stop_loss_pct=5.0, take_profit_pct=10.0)
+
+        vectorized = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.VECTORIZED,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (3 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+        event_driven = run_backtest(
+            request=_build_request_for_strategy(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                strategy=strategy,
+                start_ms=start_ms,
+                end_ms=start_ms + (3 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self._assert_public_results_match(vectorized, event_driven)
+        self.assertEqual(len(event_driven.trades), 1)
+        trade = event_driven.trades[0]
+        self.assertEqual(trade.exit_reason, ExitReason.SIGNAL)
+        self.assertEqual(trade.exit_price, 102.0)
+        self.assertAlmostEqual(trade.stop_loss_price or 0.0, 95.0)
+        self.assertAlmostEqual(trade.take_profit_price or 0.0, 110.0)
+
     def test_error_policy_rejects_ambiguous_combined_bracket_bar(self) -> None:
         start_ms = 1_700_000_000_000
         minute = 60_000
@@ -655,6 +697,8 @@ class TestBacktestEngineParity(unittest.TestCase):
                 1,
                 0,
                 0,
+                95.095,
+                None,
             ),
             (
                 "target_only",
@@ -671,6 +715,8 @@ class TestBacktestEngineParity(unittest.TestCase):
                 0,
                 1,
                 0,
+                None,
+                105.105,
             ),
             (
                 "combined_default_ambiguous",
@@ -687,10 +733,22 @@ class TestBacktestEngineParity(unittest.TestCase):
                 1,
                 0,
                 1,
+                95.095,
+                105.105,
             ),
         )
 
-        for name, bars, strategy, exit_reason, stop_count, target_count, ambiguous_count in cases:
+        for (
+            name,
+            bars,
+            strategy,
+            exit_reason,
+            stop_count,
+            target_count,
+            ambiguous_count,
+            expected_stop_price,
+            expected_target_price,
+        ) in cases:
             with self.subTest(name=name):
                 vectorized = run_backtest(
                     request=_build_request_for_strategy(
@@ -717,7 +775,19 @@ class TestBacktestEngineParity(unittest.TestCase):
 
                 self._assert_public_results_match(vectorized, event_driven)
                 self.assertEqual(len(event_driven.trades), 1)
-                self.assertEqual(event_driven.trades[0].exit_reason, exit_reason)
+                trade = event_driven.trades[0]
+                self.assertEqual(trade.exit_reason, exit_reason)
+                if expected_stop_price is None:
+                    self.assertIsNone(trade.stop_loss_price)
+                else:
+                    self.assertAlmostEqual(trade.stop_loss_price or 0.0, expected_stop_price)
+                if expected_target_price is None:
+                    self.assertIsNone(trade.take_profit_price)
+                else:
+                    self.assertAlmostEqual(
+                        trade.take_profit_price or 0.0,
+                        expected_target_price,
+                    )
                 self.assertEqual(event_driven.fills[-1].exit_reason, exit_reason)
                 self.assertGreater(event_driven.fills[-1].fees, 0.0)
                 self.assertGreater(event_driven.diagnostics["total_fees"], 0.0)
