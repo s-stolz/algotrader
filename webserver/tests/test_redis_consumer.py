@@ -11,7 +11,7 @@ setattr(redis_module, "asyncio", redis_asyncio_module)
 sys.modules.setdefault("redis", redis_module)
 sys.modules.setdefault("redis.asyncio", redis_asyncio_module)
 
-from app.redis_consumer import RedisConsumer
+from app.redis_consumer import RedisConsumer  # noqa: E402
 
 
 class RedisConsumerTests(unittest.TestCase):
