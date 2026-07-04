@@ -1,6 +1,7 @@
 export const STORAGE_KEYS = {
   CURRENT_MARKET: 'algotrader_current_market',
   CURRENT_TIMEFRAME: 'algotrader_current_timeframe',
+  SELECTED_BACKTEST_RUN: 'algotrader_selected_backtest_run',
 } as const;
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS] | string;
