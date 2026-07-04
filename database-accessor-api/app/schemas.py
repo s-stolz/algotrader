@@ -110,6 +110,8 @@ class BacktestClosedTradeIn(BacktestContractModel):
     realized_pnl: float
     fees: float
     exit_reason: Literal["signal", "stop_loss", "take_profit"]
+    stop_loss_price: float | None = None
+    take_profit_price: float | None = None
 
 
 class BacktestClosedTradeOut(BacktestClosedTradeIn):
@@ -140,8 +142,8 @@ class BacktestRunBase(BacktestContractModel):
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int | None) -> int | None:
-        if value is not None and value != 1:
-            raise ValueError("result_schema_version must be 1 when present")
+        if value is not None and value not in (1, 2):
+            raise ValueError("result_schema_version must be 1 or 2 when present")
         return value
 
 
@@ -175,8 +177,8 @@ class BacktestRunCompleteIn(BacktestContractModel):
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int) -> int:
-        if value != 1:
-            raise ValueError("result_schema_version must be 1")
+        if value not in (1, 2):
+            raise ValueError("result_schema_version must be 1 or 2")
         return value
 
 

@@ -465,7 +465,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestRunCompleteIn(
                 expected_status="running",
                 completed_at=completed_at,
-                result_schema_version=1,
+                result_schema_version=2,
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240000},
                 fills=[
@@ -503,6 +503,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         realized_pnl=2.5,
                         fees=0.3,
                         exit_reason="stop_loss",
+                        stop_loss_price=1.069,
+                        take_profit_price=1.081,
                     )
                 ],
             ),
@@ -522,7 +524,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             fetched["completed_at"].replace(tzinfo=timezone.utc),
             completed_at,
         )
-        self.assertEqual(fetched["result_schema_version"], 1)
+        self.assertEqual(fetched["result_schema_version"], 2)
         self.assertEqual(fetched["metrics"], {"total_return_pct": 1.25})
         self.assertEqual(
             fetched["diagnostics"],
@@ -558,7 +560,73 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "realized_pnl": 2.5,
                 "fees": 0.3,
                 "exit_reason": "stop_loss",
+                "stop_loss_price": 1.069,
+                "take_profit_price": 1.081,
             },
+        )
+
+    async def test_successful_completion_preserves_closed_trade_protective_prices(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    status="running",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+
+        completed = await main.complete_backtest_run(
+            "run-queued-1",
+            BacktestRunCompleteIn(
+                expected_status="running",
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                result_schema_version=2,
+                metrics={"trade_count": 2},
+                diagnostics={"bars": 120},
+                trades=[
+                    BacktestClosedTradeIn(
+                        trade_sequence=0,
+                        trade_id="trade-no-protection",
+                        symbol="EURUSD",
+                        quantity=1000.0,
+                        entry_timestamp_ms=1714525200000,
+                        entry_price=1.0715,
+                        exit_timestamp_ms=1714528800000,
+                        exit_price=1.073,
+                        realized_pnl=1.5,
+                        fees=0.3,
+                        exit_reason="signal",
+                        stop_loss_price=None,
+                        take_profit_price=None,
+                    ),
+                    BacktestClosedTradeIn(
+                        trade_sequence=1,
+                        trade_id="trade-configured-protection",
+                        symbol="EURUSD",
+                        quantity=1000.0,
+                        entry_timestamp_ms=1714529400000,
+                        entry_price=1.076,
+                        exit_timestamp_ms=1714532400000,
+                        exit_price=1.074,
+                        realized_pnl=-2.0,
+                        fees=0.3,
+                        exit_reason="signal",
+                        stop_loss_price=1.069,
+                        take_profit_price=1.081,
+                    ),
+                ],
+            ),
+            db=self.db,
+        )
+        fetched_run = await main.get_backtest_run("run-queued-1", db=self.db)
+        fetched_trades = await main.get_backtest_trades("run-queued-1", db=self.db)
+
+        self.assertEqual(completed, {"updated": True})
+        self.assertEqual(fetched_run["result_schema_version"], 2)
+        self.assertEqual(
+            [(trade["stop_loss_price"], trade["take_profit_price"]) for trade in fetched_trades],
+            [(None, None), (1.069, 1.081)],
         )
 
     async def test_completion_does_not_store_artifacts_for_stale_status(self):
@@ -699,7 +767,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 status="succeeded",
                 started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                 completed_at=completed_at,
-                result_schema_version=1,
+                result_schema_version=2,
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240000},
                 fills=[
@@ -727,6 +795,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         "realized_pnl": 2.5,
                         "fees": 0.3,
                         "exit_reason": "signal",
+                        "stop_loss_price": 1.068,
+                        "take_profit_price": None,
                     }
                 ],
             )
@@ -743,13 +813,15 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         trade = dict(trade_row._mapping)
 
         self.assertEqual(created["status"], "succeeded")
-        self.assertEqual(created["result_schema_version"], 1)
+        self.assertEqual(created["result_schema_version"], 2)
         self.assertEqual(fill["run_id"], "run-succeeded-1")
         self.assertEqual(fill["fill_sequence"], 0)
         self.assertEqual(fill["side"], "buy")
         self.assertEqual(trade["run_id"], "run-succeeded-1")
         self.assertEqual(trade["trade_sequence"], 0)
         self.assertEqual(trade["exit_reason"], "signal")
+        self.assertEqual(trade["stop_loss_price"], 1.068)
+        self.assertIsNone(trade["take_profit_price"])
 
     async def test_get_execution_logs_orders_by_sequence_and_preserves_exit_reasons(self):
         fills = [
@@ -807,6 +879,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "realized_pnl": 3.0,
                 "fees": 0.3,
                 "exit_reason": "take_profit",
+                "stop_loss_price": 1.068,
+                "take_profit_price": 1.08,
             },
             {
                 "trade_sequence": 0,
@@ -820,6 +894,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "realized_pnl": 1.5,
                 "fees": 0.3,
                 "exit_reason": "signal",
+                "stop_loss_price": None,
+                "take_profit_price": None,
             },
             {
                 "trade_sequence": 1,
@@ -833,6 +909,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "realized_pnl": -2.0,
                 "fees": 0.3,
                 "exit_reason": "stop_loss",
+                "stop_loss_price": 1.069,
+                "take_profit_price": None,
             },
         ]
         await main.create_backtest_run(
@@ -873,6 +951,12 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(fetched_trades[0]["realized_pnl"], 1.5)
         self.assertEqual(fetched_trades[0]["fees"], 0.3)
+        self.assertIsNone(fetched_trades[0]["stop_loss_price"])
+        self.assertIsNone(fetched_trades[0]["take_profit_price"])
+        self.assertEqual(fetched_trades[1]["stop_loss_price"], 1.069)
+        self.assertIsNone(fetched_trades[1]["take_profit_price"])
+        self.assertEqual(fetched_trades[2]["stop_loss_price"], 1.068)
+        self.assertEqual(fetched_trades[2]["take_profit_price"], 1.08)
 
     async def test_get_execution_logs_returns_empty_collections_and_missing_is_not_found(self):
         await main.create_backtest_run(
@@ -935,6 +1019,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                             "realized_pnl": 2.5,
                             "fees": 0.3,
                             "exit_reason": "signal",
+                            "stop_loss_price": None,
+                            "take_profit_price": None,
                         }
                     ],
                 )
@@ -959,6 +1045,22 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     def test_create_rejects_unknown_request_schema_version(self):
         with self.assertRaises(ValidationError):
             BacktestRunCreateIn(**_run_payload(request_schema_version=2))
+
+    def test_result_schema_version_supports_v1_and_v2_only(self):
+        BacktestRunCreateIn(**_run_payload(result_schema_version=1))
+        BacktestRunCreateIn(**_run_payload(result_schema_version=2))
+
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(**_run_payload(result_schema_version=3))
+
+        with self.assertRaises(ValidationError):
+            BacktestRunCompleteIn(
+                expected_status="running",
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                result_schema_version=3,
+                metrics={},
+                diagnostics={},
+            )
 
     def test_create_rejects_incomplete_request_snapshot(self):
         request = _request_payload()
@@ -1031,6 +1133,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "realized_pnl",
                 "fees",
                 "exit_reason",
+                "stop_loss_price",
+                "take_profit_price",
             },
         )
 
@@ -1041,6 +1145,10 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("create table if not exists backtest_runs", sql)
         self.assertIn("create table if not exists backtest_fills", sql)
         self.assertIn("create table if not exists backtest_closed_trades", sql)
+        self.assertIn("stop_loss_price double precision", sql)
+        self.assertIn("take_profit_price double precision", sql)
+        self.assertIn("add column if not exists stop_loss_price", sql)
+        self.assertIn("add column if not exists take_profit_price", sql)
         self.assertIn("request jsonb not null", sql)
         self.assertIn("metrics jsonb", sql)
         self.assertIn("diagnostics jsonb", sql)

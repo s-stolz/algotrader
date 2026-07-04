@@ -96,6 +96,8 @@ def _completion_payload() -> dict:
                 "realized_pnl": 2.5,
                 "fees": 0.3,
                 "exit_reason": "take_profit",
+                "stop_loss_price": 1.069,
+                "take_profit_price": 1.081,
             }
         ],
     }
@@ -129,6 +131,8 @@ def _trade_payload() -> dict:
         "realized_pnl": 2.5,
         "fees": 0.3,
         "exit_reason": "take_profit",
+        "stop_loss_price": None,
+        "take_profit_price": 1.081,
     }
 
 

@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS backtest_closed_trades (
     entry_price DOUBLE PRECISION NOT NULL,
     exit_timestamp_ms BIGINT NOT NULL,
     exit_price DOUBLE PRECISION NOT NULL,
+    stop_loss_price DOUBLE PRECISION,
+    take_profit_price DOUBLE PRECISION,
     realized_pnl DOUBLE PRECISION NOT NULL,
     fees DOUBLE PRECISION NOT NULL,
     exit_reason VARCHAR(32) NOT NULL,
@@ -106,3 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_backtest_closed_trades_run_order
         exit_timestamp_ms,
         trade_sequence
     );
+
+ALTER TABLE IF EXISTS backtest_closed_trades
+    ADD COLUMN IF NOT EXISTS stop_loss_price DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS take_profit_price DOUBLE PRECISION;
