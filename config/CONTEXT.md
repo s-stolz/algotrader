@@ -32,6 +32,9 @@ Centralized non-secret topology plus generated runtime environment files.
 - Backtester topology generates API host/port/logging values and
   `BACKTESTER_WORKER_POLL_INTERVAL_SECONDS`; the default poll interval is one
   second.
+- Frontend proxy targets are generated from service topology as
+  `VITE_PROXY_DATA_ACCESSOR_TARGET`, `VITE_PROXY_BACKTESTER_TARGET`, and
+  `VITE_PROXY_INDICATOR_TARGET`.
 
 ## Change Triggers
 
