@@ -64,6 +64,7 @@ const chartAreaMocks = vi.hoisted(() => {
     updateCandlestick: vi.fn(() => true),
     setMinMove: vi.fn(() => true),
     setCandlestickMarkers: vi.fn((_markers: readonly unknown[]) => true),
+    setCandlestickProtectiveLines: vi.fn((_segments: readonly unknown[]) => true),
     subscribeCrosshairMove: vi.fn((handler) => {
       chartAreaMocks.crosshairHandler = handler;
     }),
@@ -310,6 +311,7 @@ describe('ChartArea', () => {
     chartAreaMocks.infrastructure.updateCandlestick.mockClear();
     chartAreaMocks.infrastructure.setMinMove.mockClear();
     chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
+    chartAreaMocks.infrastructure.setCandlestickProtectiveLines.mockClear();
     chartAreaMocks.infrastructure.subscribeCrosshairMove.mockClear();
     chartAreaMocks.infrastructure.subscribeVisibleLogicalRangeChange.mockClear();
     chartAreaMocks.infrastructure.scrollToRealTime.mockClear();
@@ -453,7 +455,7 @@ describe('ChartArea', () => {
     );
   });
 
-  it('renders selected Backtest Run markers for entries and exits inside the loaded candle range', async () => {
+  it('renders selected Backtest Run markers and protective lines inside the loaded candle range', async () => {
     setupStores('M15');
     const backtestOverlayStore = useBacktestOverlayStore();
     backtestOverlayStore.selectedRunId = 'run-123';
@@ -466,6 +468,8 @@ describe('ChartArea', () => {
         exit_timestamp_ms: 1_200_000,
         exit_price: 110,
         exit_reason: 'signal',
+        stop_loss_price: 99.5,
+        take_profit_price: 109.75,
       }),
       closedTrade({
         trade_id: 'exit-only',
@@ -474,17 +478,22 @@ describe('ChartArea', () => {
         exit_timestamp_ms: 600_000,
         exit_price: 104.5,
         exit_reason: 'take_profit',
+        stop_loss_price: null,
+        take_profit_price: 104,
       }),
       closedTrade({
         trade_id: 'outside-range',
         entry_timestamp_ms: 1_500_000,
         exit_timestamp_ms: 1_800_000,
         exit_reason: 'stop_loss',
+        stop_loss_price: 97,
+        take_profit_price: 110,
       }),
     ];
     mountChartArea();
     await flushPromises();
     chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
+    chartAreaMocks.infrastructure.setCandlestickProtectiveLines.mockClear();
 
     await latestChartSessionAdapter().renderCandles(eurUsdM15Key, [
       candle(300_000),
@@ -514,9 +523,33 @@ describe('ChartArea', () => {
     expect(markersJson).not.toContain('signal');
     expect(markersJson).not.toContain('stop_loss');
     expect(markersJson).not.toContain('take_profit');
+
+    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
+      {
+        id: 'entry-only:stop-loss',
+        startTime: 300,
+        endTime: 1_200,
+        price: 99.5,
+        color: '#dc2626',
+      },
+      {
+        id: 'entry-only:take-profit',
+        startTime: 300,
+        endTime: 1_200,
+        price: 109.75,
+        color: '#2563eb',
+      },
+      {
+        id: 'exit-only:take-profit',
+        startTime: 60,
+        endTime: 600,
+        price: 104,
+        color: '#2563eb',
+      },
+    ]);
   });
 
-  it('refreshes Backtest Run markers after older candles and live candles extend the loaded range', async () => {
+  it('refreshes Backtest Run overlays after older candles and live candles extend the loaded range', async () => {
     const { candlesticksStore } = setupStores('M5');
     const backtestOverlayStore = useBacktestOverlayStore();
     backtestOverlayStore.selectedRunId = 'run-123';
@@ -528,11 +561,14 @@ describe('ChartArea', () => {
         entry_price: 99,
         exit_timestamp_ms: 900_000,
         exit_price: 105,
+        stop_loss_price: 96,
+        take_profit_price: 106,
       }),
     ];
     mountChartArea();
     await flushPromises();
     chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
+    chartAreaMocks.infrastructure.setCandlestickProtectiveLines.mockClear();
 
     await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
       candle(300_000),
@@ -540,6 +576,18 @@ describe('ChartArea', () => {
     ]);
 
     expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([]);
+    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: 'range-extension:stop-loss',
+        startTime: 60,
+        endTime: 900,
+      }),
+      expect.objectContaining({
+        id: 'range-extension:take-profit',
+        startTime: 60,
+        endTime: 900,
+      }),
+    ]);
 
     latestChartSessionAdapter().prependOlderCandles(eurUsdM5Key, [candle(60_000)]);
     latestChartSessionAdapter().renderOlderCandles(eurUsdM5Key);
@@ -549,6 +597,18 @@ describe('ChartArea', () => {
         id: 'range-extension:entry',
         time: 60,
         text: 'Buy @ 99',
+      }),
+    ]);
+    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: 'range-extension:stop-loss',
+        startTime: 60,
+        endTime: 900,
+      }),
+      expect.objectContaining({
+        id: 'range-extension:take-profit',
+        startTime: 60,
+        endTime: 900,
       }),
     ]);
 
@@ -584,6 +644,18 @@ describe('ChartArea', () => {
         text: 'Sell @ 105',
       }),
     ]);
+    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: 'range-extension:stop-loss',
+        startTime: 60,
+        endTime: 900,
+      }),
+      expect.objectContaining({
+        id: 'range-extension:take-profit',
+        startTime: 60,
+        endTime: 900,
+      }),
+    ]);
   });
 
   it('shows a compact Backtest Run overlay panel and removes the selected overlay', async () => {
@@ -604,6 +676,7 @@ describe('ChartArea', () => {
     expect(panel.text()).toContain('run-123');
 
     chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
+    chartAreaMocks.infrastructure.setCandlestickProtectiveLines.mockClear();
 
     await wrapper.find('[data-testid="remove-backtest-overlay"]').trigger('click');
 
@@ -611,6 +684,7 @@ describe('ChartArea', () => {
     expect(backtestOverlayStore.selectedRun).toBeNull();
     expect(backtestOverlayStore.closedTrades).toEqual([]);
     expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenCalledWith([]);
+    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenCalledWith([]);
     expect(wrapper.find('.backtest-overlay-panel').exists()).toBe(false);
   });
 
