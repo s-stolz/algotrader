@@ -191,6 +191,17 @@ describe('backtestOverlayStore', () => {
     });
   });
 
+  it('classifies supported-shape Backtest Runs as non-selectable when the market is missing', () => {
+    useMarketsStore().all = [gbpUsdMarket];
+
+    const store = useBacktestOverlayStore();
+
+    expect(store.getBacktestRunSelectability(backtestRun())).toEqual({
+      selectable: false,
+      reason: 'Market FX:EURUSD is not available in the chart market list.',
+    });
+  });
+
   it('clears selected run metadata, cached trades, errors, and persistence', async () => {
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
     useMarketsStore().all = [eurUsdMarket];

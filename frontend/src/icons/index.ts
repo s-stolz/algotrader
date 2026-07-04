@@ -6,3 +6,4 @@ export { default as AddCircleOutline } from '@vicons/ionicons5/AddCircleOutline'
 export { default as CloudUploadOutline } from '@vicons/ionicons5/CloudUploadOutline';
 export { default as EllipsisHorizontalCircleOutline } from '@vicons/ionicons5/EllipsisHorizontalCircleOutline';
 export { default as WarningOutline } from '@vicons/ionicons5/WarningOutline';
+export { default as ListOutline } from '@vicons/ionicons5/ListOutline';
