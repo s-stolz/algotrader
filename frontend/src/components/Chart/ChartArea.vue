@@ -54,7 +54,6 @@ import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
 import { useBacktestOverlayStore } from "@/stores/backtestOverlayStore";
 import { fetchCandles as fetchHistoricalCandles } from "@/api/candleClient";
-import type { BacktestClosedTrade } from "@/types/backtesterContracts";
 import type {
   CandleUpdateMessage,
   ChartCandle,
@@ -73,9 +72,13 @@ import {
   type ChartInfrastructure,
   type ChartLogicalRange,
   type ChartOhlcPoint,
-  type ChartSeriesMarker,
   type ManagedSeriesApi,
 } from "@/utils/chart";
+import {
+  buildBacktestProtectiveLineSegments,
+  buildBacktestTradeMarkers,
+  type LoadedCandleRange,
+} from "@/utils/chart/backtestOverlay";
 import Indicator from "@/components/Chart/Indicator/Indicator.vue";
 import { CloseCircleOutline } from "@/icons";
 
@@ -96,11 +99,6 @@ interface OhlcLegendPoint {
 
 interface RenderCandlestickOptions {
   scrollToRealtime?: boolean;
-}
-
-interface LoadedCandleRange {
-  startMs: number;
-  endMs: number;
 }
 
 interface ChartAreaData {
@@ -125,54 +123,6 @@ interface ChartAreaData {
   shouldScrollToRealTime: boolean;
   indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
   chartSession: ChartSession | null;
-}
-
-const ENTRY_MARKER_COLOR = "#16a34a";
-const EXIT_MARKER_COLOR = "#dc2626";
-
-function timestampToChartTime(timestampMs: number): Time {
-  return Math.floor(timestampMs / 1000) as Time;
-}
-
-function formatTradePrice(price: number): string {
-  return String(price);
-}
-
-function isTimestampInRange(timestampMs: number, range: LoadedCandleRange): boolean {
-  return timestampMs >= range.startMs && timestampMs <= range.endMs;
-}
-
-function buildBacktestTradeMarkers(
-  trades: readonly BacktestClosedTrade[],
-  range: LoadedCandleRange,
-): ChartSeriesMarker[] {
-  const markers: ChartSeriesMarker[] = [];
-
-  for (const trade of trades) {
-    if (isTimestampInRange(trade.entry_timestamp_ms, range)) {
-      markers.push({
-        id: `${trade.trade_id}:entry`,
-        time: timestampToChartTime(trade.entry_timestamp_ms),
-        position: "belowBar",
-        shape: "arrowUp",
-        color: ENTRY_MARKER_COLOR,
-        text: `Buy @ ${formatTradePrice(trade.entry_price)}`,
-      });
-    }
-
-    if (isTimestampInRange(trade.exit_timestamp_ms, range)) {
-      markers.push({
-        id: `${trade.trade_id}:exit`,
-        time: timestampToChartTime(trade.exit_timestamp_ms),
-        position: "aboveBar",
-        shape: "arrowDown",
-        color: EXIT_MARKER_COLOR,
-        text: `Sell @ ${formatTradePrice(trade.exit_price)}`,
-      });
-    }
-  }
-
-  return markers.sort((left, right) => Number(left.time) - Number(right.time));
 }
 
 function isOhlcLegendPoint(value: unknown): value is OhlcLegendPoint {
@@ -560,11 +510,15 @@ export default defineComponent({
 
       if (!this.backtestOverlayStore.selectedRun || !range) {
         this.chartInfrastructure.setCandlestickMarkers([]);
+        this.chartInfrastructure.setCandlestickProtectiveLines([]);
         return;
       }
 
       const trades = this.backtestOverlayStore.getClosedTradesForRange(range.startMs, range.endMs);
       this.chartInfrastructure.setCandlestickMarkers(buildBacktestTradeMarkers(trades, range));
+      this.chartInfrastructure.setCandlestickProtectiveLines(
+        buildBacktestProtectiveLineSegments(trades),
+      );
     },
 
     removeBacktestOverlay(): void {

@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 import {
   ChartManager,
+  type ChartProtectiveLineSegment,
   type ChartSeriesMarker,
   type ChartValuePoint,
 } from '@/utils/chart/ChartManager';
@@ -12,6 +13,9 @@ const chartMocks = vi.hoisted(() => {
     update: vi.fn(),
     applyOptions: vi.fn(),
     barsInLogicalRange: vi.fn(),
+    attachPrimitive: vi.fn(),
+    detachPrimitive: vi.fn(),
+    createPriceLine: vi.fn(),
   });
 
   const timeScale = {
@@ -178,6 +182,51 @@ describe('ChartManager', () => {
 
     expect(manager.clearSeriesMarkers('ohlc')).toBe(true);
     expect(markerPlugin.detach).toHaveBeenCalled();
+  });
+
+  it('attaches, updates, and clears protective line primitives without price lines', () => {
+    const manager = new ChartManager();
+    manager.init(document.createElement('div'));
+    const series = chartMocks.createSeriesApi();
+    chartMocks.chart.addSeries.mockReturnValue(series);
+    const firstSegments: ChartProtectiveLineSegment[] = [
+      {
+        id: 'trade-1:stop-loss',
+        startTime: markerTime(300),
+        endTime: markerTime(600),
+        price: 98.5,
+        color: '#dc2626',
+      },
+    ];
+    const nextSegments: ChartProtectiveLineSegment[] = [
+      ...firstSegments,
+      {
+        id: 'trade-1:take-profit',
+        startTime: markerTime(300),
+        endTime: markerTime(600),
+        price: 108.25,
+        color: '#2563eb',
+      },
+    ];
+
+    manager.addSeries('ohlc', 'candlestick', [candle(1)]);
+
+    expect(manager.setSeriesProtectiveLines('ohlc', firstSegments)).toBe(true);
+    const primitive = series.attachPrimitive.mock.calls[0]?.[0] as
+      | { paneViews?: () => readonly unknown[] }
+      | undefined;
+
+    expect(series.attachPrimitive).toHaveBeenCalledTimes(1);
+    expect(series.createPriceLine).not.toHaveBeenCalled();
+    expect(primitive?.paneViews?.()).toHaveLength(1);
+
+    expect(manager.setSeriesProtectiveLines('ohlc', nextSegments)).toBe(true);
+
+    expect(series.attachPrimitive).toHaveBeenCalledTimes(1);
+    expect(series.createPriceLine).not.toHaveBeenCalled();
+
+    expect(manager.clearSeriesProtectiveLines('ohlc')).toBe(true);
+    expect(series.detachPrimitive).toHaveBeenCalledWith(primitive);
   });
 
   it('updates changed series points, skips same-value points, and appends newer points', () => {

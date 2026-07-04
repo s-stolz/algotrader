@@ -33,6 +33,11 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 
+import {
+  ProtectiveLinesPrimitive,
+  type ChartProtectiveLineSegment,
+} from './protectiveLinesPrimitive';
+
 export type ChartSeriesType =
   | 'line'
   | 'area'
@@ -111,6 +116,7 @@ export class ChartManager {
   public readonly initialVisibleCandles = 50;
 
   private readonly markerPlugins = new Map<string, ISeriesMarkersPluginApi<Time>>();
+  private readonly protectiveLinePrimitives = new Map<string, ProtectiveLinesPrimitive>();
   private readonly defaultOptions: DeepPartial<ChartOptions>;
   private readonly timeScaleOptions: DeepPartial<HorzScaleOptions>;
   private crosshairMoveHandler: ChartCrosshairMoveHandler | null = null;
@@ -319,6 +325,7 @@ export class ChartManager {
 
     try {
       this.clearSeriesMarkers(key);
+      this.clearSeriesProtectiveLines(key);
       this.chart.removeSeries(seriesInfo.series);
       this.series.delete(key);
       return true;
@@ -363,6 +370,57 @@ export class ChartManager {
       return true;
     } catch (error) {
       console.error(`Failed to clear markers for series '${key}':`, error);
+      return false;
+    }
+  }
+
+  setSeriesProtectiveLines(
+    key: string,
+    segments: readonly ChartProtectiveLineSegment[],
+  ): boolean {
+    const seriesInfo = this.series.get(key);
+    if (!seriesInfo) {
+      return false;
+    }
+
+    try {
+      const nextSegments = [...segments];
+
+      if (nextSegments.length === 0) {
+        this.clearSeriesProtectiveLines(key);
+        return true;
+      }
+
+      const primitive = this.protectiveLinePrimitives.get(key);
+      if (primitive) {
+        primitive.setSegments(nextSegments);
+        return true;
+      }
+
+      const nextPrimitive = new ProtectiveLinesPrimitive(nextSegments);
+      seriesInfo.series.attachPrimitive(nextPrimitive);
+      this.protectiveLinePrimitives.set(key, nextPrimitive);
+      return true;
+    } catch (error) {
+      console.error(`Failed to set protective lines for series '${key}':`, error);
+      return false;
+    }
+  }
+
+  clearSeriesProtectiveLines(key: string): boolean {
+    const primitive = this.protectiveLinePrimitives.get(key);
+    const seriesInfo = this.series.get(key);
+
+    if (!primitive || !seriesInfo) {
+      return false;
+    }
+
+    try {
+      seriesInfo.series.detachPrimitive(primitive);
+      this.protectiveLinePrimitives.delete(key);
+      return true;
+    } catch (error) {
+      console.error(`Failed to clear protective lines for series '${key}':`, error);
       return false;
     }
   }
@@ -526,6 +584,12 @@ export class ChartManager {
       this.clearSeriesMarkers(key);
     }
 
+    for (const key of Array.from(this.protectiveLinePrimitives.keys())) {
+      this.clearSeriesProtectiveLines(key);
+    }
+
     this.series.clear();
   }
 }
+
+export type { ChartProtectiveLineSegment };
