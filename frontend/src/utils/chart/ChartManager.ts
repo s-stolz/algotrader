@@ -5,6 +5,7 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  createSeriesMarkers,
   CrosshairMode,
   HistogramSeries,
   LineSeries,
@@ -19,10 +20,12 @@ import {
   type IChartApi,
   type IPaneApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type LineData,
   type LogicalRange,
   type LogicalRangeChangeEventHandler,
   type MouseEventHandler,
+  type SeriesMarker,
   type SeriesDefinition,
   type SeriesPartialOptionsMap,
   type SeriesType,
@@ -57,6 +60,7 @@ export interface ChartValuePoint {
 export type ChartDataPoint = ChartOhlcPoint | ChartValuePoint;
 export type ChartSeriesOptions = SeriesPartialOptionsMap[SeriesType];
 export type ManagedSeriesApi = ISeriesApi<SeriesType, Time>;
+export type ChartSeriesMarker = SeriesMarker<Time>;
 export type ChartCrosshairMoveHandler = MouseEventHandler<Time>;
 export type ChartVisibleRangeHandler = LogicalRangeChangeEventHandler;
 export type ChartLogicalRange = LogicalRange;
@@ -106,6 +110,7 @@ export class ChartManager {
   public readonly loadedBars = 500;
   public readonly initialVisibleCandles = 50;
 
+  private readonly markerPlugins = new Map<string, ISeriesMarkersPluginApi<Time>>();
   private readonly defaultOptions: DeepPartial<ChartOptions>;
   private readonly timeScaleOptions: DeepPartial<HorzScaleOptions>;
   private crosshairMoveHandler: ChartCrosshairMoveHandler | null = null;
@@ -313,11 +318,51 @@ export class ChartManager {
     }
 
     try {
+      this.clearSeriesMarkers(key);
       this.chart.removeSeries(seriesInfo.series);
       this.series.delete(key);
       return true;
     } catch (error) {
       console.error(`Failed to remove series '${key}':`, error);
+      return false;
+    }
+  }
+
+  setSeriesMarkers(key: string, markers: readonly ChartSeriesMarker[]): boolean {
+    const seriesInfo = this.series.get(key);
+    if (!seriesInfo) {
+      return false;
+    }
+
+    try {
+      const nextMarkers = [...markers];
+      const markerPlugin = this.markerPlugins.get(key);
+
+      if (markerPlugin) {
+        markerPlugin.setMarkers(nextMarkers);
+        return true;
+      }
+
+      this.markerPlugins.set(key, createSeriesMarkers(seriesInfo.series, nextMarkers));
+      return true;
+    } catch (error) {
+      console.error(`Failed to set markers for series '${key}':`, error);
+      return false;
+    }
+  }
+
+  clearSeriesMarkers(key: string): boolean {
+    const markerPlugin = this.markerPlugins.get(key);
+    if (!markerPlugin) {
+      return false;
+    }
+
+    try {
+      markerPlugin.detach();
+      this.markerPlugins.delete(key);
+      return true;
+    } catch (error) {
+      console.error(`Failed to clear markers for series '${key}':`, error);
       return false;
     }
   }
@@ -475,6 +520,10 @@ export class ChartManager {
       this.chart.remove();
       this.chart = null;
       this.container = null;
+    }
+
+    for (const key of Array.from(this.markerPlugins.keys())) {
+      this.clearSeriesMarkers(key);
     }
 
     this.series.clear();

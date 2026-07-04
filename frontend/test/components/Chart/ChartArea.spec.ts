@@ -15,6 +15,8 @@ import { useCandlesticksStore } from '@/stores/candlesticksStore';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
+import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
+import type { BacktestClosedTrade, BacktestRun } from '@/types/backtesterContracts';
 import type { ChartLogicalRange } from '@/utils/chart';
 
 import ChartArea from '@/components/Chart/ChartArea.vue';
@@ -61,6 +63,7 @@ const chartAreaMocks = vi.hoisted(() => {
     addCandlestickData: vi.fn(() => ohlcSeries),
     updateCandlestick: vi.fn(() => true),
     setMinMove: vi.fn(() => true),
+    setCandlestickMarkers: vi.fn((_markers: readonly unknown[]) => true),
     subscribeCrosshairMove: vi.fn((handler) => {
       chartAreaMocks.crosshairHandler = handler;
     }),
@@ -148,6 +151,67 @@ const candle = (timestampMs: number, close = 1.5): ChartCandle => ({
 });
 
 const eurUsdM5Key: ChartSessionKey = { symbol: 'EURUSD', exchange: 'FX', timeframe: 'M5' };
+const eurUsdM15Key: ChartSessionKey = { symbol: 'EURUSD', exchange: 'FX', timeframe: 'M15' };
+
+const backtestRun = (overrides: Partial<BacktestRun> = {}): BacktestRun => ({
+  run_id: 'run-123',
+  status: 'succeeded',
+  submitted_at_ms: 1_780_921_805_123,
+  started_at_ms: 1_780_921_900_000,
+  completed_at_ms: 1_780_922_100_000,
+  request_schema_version: 1,
+  request: {
+    symbols: ['EURUSD'],
+    exchange: 'FX',
+    timeframe: 'M15',
+    start_ms: 60_000,
+    end_ms: 900_000,
+    engine: 'event_driven',
+    data_granularity: 'bar',
+    initial_capital: 10_000,
+    strategy: {
+      strategy_id: 'sma_crossover',
+      parameters: { fast_window: 10, slow_window: 20 },
+    },
+    execution: {
+      signal_timing: 'close',
+      fill_timing: 'next_open',
+      price_source: 'open',
+      allow_partial_fills: false,
+      allow_short: false,
+      trade_accounting_policy: 'average_cost',
+      gap_policy: 'skip',
+      intrabar_exit_policy: 'conservative',
+      commission_bps: 1,
+      slippage_bps: 0.5,
+    },
+    persist_result: true,
+    run_metadata: null,
+  },
+  result_schema_version: 2,
+  metrics: null,
+  diagnostics: null,
+  error_code: null,
+  error_message: null,
+  ...overrides,
+});
+
+const closedTrade = (overrides: Partial<BacktestClosedTrade> = {}): BacktestClosedTrade => ({
+  sequence: 0,
+  trade_id: 'trade-1',
+  symbol: 'EURUSD',
+  quantity: 1_000,
+  entry_timestamp_ms: 300_000,
+  entry_price: 101.25,
+  exit_timestamp_ms: 600_000,
+  exit_price: 104.5,
+  realized_pnl: 3.25,
+  fees: 0.25,
+  exit_reason: 'signal',
+  stop_loss_price: null,
+  take_profit_price: null,
+  ...overrides,
+});
 
 type MockChartSession = (typeof chartAreaMocks.chartSessions)[number];
 
@@ -245,6 +309,7 @@ describe('ChartArea', () => {
     chartAreaMocks.infrastructure.addCandlestickData.mockClear();
     chartAreaMocks.infrastructure.updateCandlestick.mockClear();
     chartAreaMocks.infrastructure.setMinMove.mockClear();
+    chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
     chartAreaMocks.infrastructure.subscribeCrosshairMove.mockClear();
     chartAreaMocks.infrastructure.subscribeVisibleLogicalRangeChange.mockClear();
     chartAreaMocks.infrastructure.scrollToRealTime.mockClear();
@@ -386,6 +451,167 @@ describe('ChartArea', () => {
     expect(chartAreaMocks.infrastructure.updateCandlestick).toHaveBeenCalledWith(
       expect.objectContaining({ timestamp_ms: 600_000, time: 600, close: 2.5 }),
     );
+  });
+
+  it('renders selected Backtest Run markers for entries and exits inside the loaded candle range', async () => {
+    setupStores('M15');
+    const backtestOverlayStore = useBacktestOverlayStore();
+    backtestOverlayStore.selectedRunId = 'run-123';
+    backtestOverlayStore.selectedRun = backtestRun();
+    backtestOverlayStore.closedTrades = [
+      closedTrade({
+        trade_id: 'entry-only',
+        entry_timestamp_ms: 300_000,
+        entry_price: 101.25,
+        exit_timestamp_ms: 1_200_000,
+        exit_price: 110,
+        exit_reason: 'signal',
+      }),
+      closedTrade({
+        trade_id: 'exit-only',
+        entry_timestamp_ms: 60_000,
+        entry_price: 95,
+        exit_timestamp_ms: 600_000,
+        exit_price: 104.5,
+        exit_reason: 'take_profit',
+      }),
+      closedTrade({
+        trade_id: 'outside-range',
+        entry_timestamp_ms: 1_500_000,
+        exit_timestamp_ms: 1_800_000,
+        exit_reason: 'stop_loss',
+      }),
+    ];
+    mountChartArea();
+    await flushPromises();
+    chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
+
+    await latestChartSessionAdapter().renderCandles(eurUsdM15Key, [
+      candle(300_000),
+      candle(600_000),
+      candle(900_000),
+    ]);
+
+    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: 'entry-only:entry',
+        time: 300,
+        position: 'belowBar',
+        shape: 'arrowUp',
+        text: 'Buy @ 101.25',
+      }),
+      expect.objectContaining({
+        id: 'exit-only:exit',
+        time: 600,
+        position: 'aboveBar',
+        shape: 'arrowDown',
+        text: 'Sell @ 104.5',
+      }),
+    ]);
+    const markersJson = JSON.stringify(
+      chartAreaMocks.infrastructure.setCandlestickMarkers.mock.calls.at(-1)?.[0],
+    );
+    expect(markersJson).not.toContain('signal');
+    expect(markersJson).not.toContain('stop_loss');
+    expect(markersJson).not.toContain('take_profit');
+  });
+
+  it('refreshes Backtest Run markers after older candles and live candles extend the loaded range', async () => {
+    const { candlesticksStore } = setupStores('M5');
+    const backtestOverlayStore = useBacktestOverlayStore();
+    backtestOverlayStore.selectedRunId = 'run-123';
+    backtestOverlayStore.selectedRun = backtestRun();
+    backtestOverlayStore.closedTrades = [
+      closedTrade({
+        trade_id: 'range-extension',
+        entry_timestamp_ms: 60_000,
+        entry_price: 99,
+        exit_timestamp_ms: 900_000,
+        exit_price: 105,
+      }),
+    ];
+    mountChartArea();
+    await flushPromises();
+    chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
+
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+      candle(600_000),
+    ]);
+
+    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([]);
+
+    latestChartSessionAdapter().prependOlderCandles(eurUsdM5Key, [candle(60_000)]);
+    latestChartSessionAdapter().renderOlderCandles(eurUsdM5Key);
+
+    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: 'range-extension:entry',
+        time: 60,
+        text: 'Buy @ 99',
+      }),
+    ]);
+
+    const message: CandleUpdateMessage = {
+      type: 'candleUpdate',
+      symbol: 'EURUSD',
+      timeframe: 'M5',
+      timestamp_ms: 900_000,
+      open: 2,
+      high: 3,
+      low: 1.8,
+      close: 2.5,
+      volume: 5,
+    };
+
+    latestLiveCandleReceiver()(message);
+
+    expect(candlesticksStore.data.at(-1)).toEqual(
+      expect.objectContaining({ timestamp_ms: 900_000, time: 900 }),
+    );
+    expect(chartAreaMocks.infrastructure.updateCandlestick).toHaveBeenCalledWith(
+      expect.objectContaining({ timestamp_ms: 900_000, time: 900 }),
+    );
+    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: 'range-extension:entry',
+        time: 60,
+        text: 'Buy @ 99',
+      }),
+      expect.objectContaining({
+        id: 'range-extension:exit',
+        time: 900,
+        text: 'Sell @ 105',
+      }),
+    ]);
+  });
+
+  it('shows a compact Backtest Run overlay panel and removes the selected overlay', async () => {
+    setupStores('M15');
+    const backtestOverlayStore = useBacktestOverlayStore();
+    backtestOverlayStore.selectedRunId = 'run-123';
+    backtestOverlayStore.selectedRun = backtestRun();
+    backtestOverlayStore.closedTrades = [closedTrade()];
+    const wrapper = mountChartArea();
+    await flushPromises();
+
+    const panel = wrapper.find('.backtest-overlay-panel');
+    expect(panel.exists()).toBe(true);
+    expect(panel.text()).toContain('Backtest Run');
+    expect(panel.text()).toContain('FX:EURUSD');
+    expect(panel.text()).toContain('M15');
+    expect(panel.text()).toContain('sma_crossover');
+    expect(panel.text()).toContain('run-123');
+
+    chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
+
+    await wrapper.find('[data-testid="remove-backtest-overlay"]').trigger('click');
+
+    expect(backtestOverlayStore.selectedRunId).toBeNull();
+    expect(backtestOverlayStore.selectedRun).toBeNull();
+    expect(backtestOverlayStore.closedTrades).toEqual([]);
+    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenCalledWith([]);
+    expect(wrapper.find('.backtest-overlay-panel').exists()).toBe(false);
   });
 
   it('constructs a chart session adapter over stores, websocket, and chart infrastructure', async () => {

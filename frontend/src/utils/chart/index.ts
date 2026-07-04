@@ -4,6 +4,7 @@ export {
   type ChartInfrastructure,
   type ChartLogicalRange,
   type ChartOhlcPoint,
+  type ChartSeriesMarker,
   type ManagedSeriesApi,
 } from './chartInfrastructure';
 export { IndicatorManager, type IndicatorChartManager } from './IndicatorManager';

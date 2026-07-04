@@ -2,6 +2,25 @@
   <div id="chart-wrapper">
     <div ref="chartContainer" id="lightweight-chart" class="chart-container" />
 
+    <div
+      v-if="backtestOverlayStore.selectedRun"
+      class="backtest-overlay-panel"
+    >
+      <div class="backtest-overlay-details">
+        <span class="backtest-overlay-title">Backtest Run</span>
+        <span class="backtest-overlay-context">{{ activeBacktestRunContext }}</span>
+      </div>
+      <button
+        type="button"
+        class="backtest-overlay-remove"
+        data-testid="remove-backtest-overlay"
+        aria-label="Remove Backtest Run overlay"
+        @click="removeBacktestOverlay"
+      >
+        <CloseCircleOutline class="backtest-overlay-remove-icon" />
+      </button>
+    </div>
+
     <span class="legend">
       <span class="legend-value">O: <span ref="legendOpen">-</span></span>
       <span class="legend-value">H: <span ref="legendHigh">-</span></span>
@@ -33,7 +52,9 @@ import { useCandlesticksStore } from "@/stores/candlesticksStore";
 import { useIndicatorsStore } from "@/stores/indicatorsStore";
 import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
+import { useBacktestOverlayStore } from "@/stores/backtestOverlayStore";
 import { fetchCandles as fetchHistoricalCandles } from "@/api/candleClient";
+import type { BacktestClosedTrade } from "@/types/backtesterContracts";
 import type {
   CandleUpdateMessage,
   ChartCandle,
@@ -52,9 +73,11 @@ import {
   type ChartInfrastructure,
   type ChartLogicalRange,
   type ChartOhlcPoint,
+  type ChartSeriesMarker,
   type ManagedSeriesApi,
 } from "@/utils/chart";
 import Indicator from "@/components/Chart/Indicator/Indicator.vue";
+import { CloseCircleOutline } from "@/icons";
 
 const WHEEL_SETTLE_MS = 250;
 
@@ -62,6 +85,7 @@ type CandlesticksStore = ReturnType<typeof useCandlesticksStore>;
 type IndicatorsStore = ReturnType<typeof useIndicatorsStore>;
 type CurrentMarketStore = ReturnType<typeof useCurrentMarketStore>;
 type CurrentTimeframeStore = ReturnType<typeof useCurrentTimeframeStore>;
+type BacktestOverlayStore = ReturnType<typeof useBacktestOverlayStore>;
 
 interface OhlcLegendPoint {
   open?: number;
@@ -74,11 +98,17 @@ interface RenderCandlestickOptions {
   scrollToRealtime?: boolean;
 }
 
+interface LoadedCandleRange {
+  startMs: number;
+  endMs: number;
+}
+
 interface ChartAreaData {
   candlesticksStore: CandlesticksStore;
   indicatorsStore: IndicatorsStore;
   currentMarketStore: CurrentMarketStore;
   currentTimeframeStore: CurrentTimeframeStore;
+  backtestOverlayStore: BacktestOverlayStore;
   chartInfrastructure: ChartInfrastructure;
   seriesOptions: CandlestickSeriesPartialOptions;
   crosshairRafId: number | null;
@@ -97,6 +127,54 @@ interface ChartAreaData {
   chartSession: ChartSession | null;
 }
 
+const ENTRY_MARKER_COLOR = "#16a34a";
+const EXIT_MARKER_COLOR = "#dc2626";
+
+function timestampToChartTime(timestampMs: number): Time {
+  return Math.floor(timestampMs / 1000) as Time;
+}
+
+function formatTradePrice(price: number): string {
+  return String(price);
+}
+
+function isTimestampInRange(timestampMs: number, range: LoadedCandleRange): boolean {
+  return timestampMs >= range.startMs && timestampMs <= range.endMs;
+}
+
+function buildBacktestTradeMarkers(
+  trades: readonly BacktestClosedTrade[],
+  range: LoadedCandleRange,
+): ChartSeriesMarker[] {
+  const markers: ChartSeriesMarker[] = [];
+
+  for (const trade of trades) {
+    if (isTimestampInRange(trade.entry_timestamp_ms, range)) {
+      markers.push({
+        id: `${trade.trade_id}:entry`,
+        time: timestampToChartTime(trade.entry_timestamp_ms),
+        position: "belowBar",
+        shape: "arrowUp",
+        color: ENTRY_MARKER_COLOR,
+        text: `Buy @ ${formatTradePrice(trade.entry_price)}`,
+      });
+    }
+
+    if (isTimestampInRange(trade.exit_timestamp_ms, range)) {
+      markers.push({
+        id: `${trade.trade_id}:exit`,
+        time: timestampToChartTime(trade.exit_timestamp_ms),
+        position: "aboveBar",
+        shape: "arrowDown",
+        color: EXIT_MARKER_COLOR,
+        text: `Sell @ ${formatTradePrice(trade.exit_price)}`,
+      });
+    }
+  }
+
+  return markers.sort((left, right) => Number(left.time) - Number(right.time));
+}
+
 function isOhlcLegendPoint(value: unknown): value is OhlcLegendPoint {
   return (
     typeof value === "object" &&
@@ -109,6 +187,7 @@ export default defineComponent({
   name: "ChartArea",
 
   components: {
+    CloseCircleOutline,
     Indicator,
   },
 
@@ -118,6 +197,7 @@ export default defineComponent({
       indicatorsStore: useIndicatorsStore(),
       currentMarketStore: useCurrentMarketStore(),
       currentTimeframeStore: useCurrentTimeframeStore(),
+      backtestOverlayStore: useBacktestOverlayStore(),
       chartInfrastructure: markRaw(createChartInfrastructure()),
       seriesOptions: {
         priceFormat: {
@@ -155,6 +235,18 @@ export default defineComponent({
       const exchange = this.currentMarketStore.exchange || "";
       return `${symbol}|${exchange}`;
     },
+
+    activeBacktestRunContext(): string {
+      const run = this.backtestOverlayStore.selectedRun;
+      if (!run) {
+        return "";
+      }
+
+      const symbol = run.request.symbols[0] ?? "unknown";
+      const market = run.request.exchange ? `${run.request.exchange}:${symbol}` : symbol;
+
+      return `${market} ${run.request.timeframe} ${run.request.strategy.strategy_id} ${run.run_id}`;
+    },
   },
 
   watch: {
@@ -184,6 +276,14 @@ export default defineComponent({
         }
       },
       immediate: true,
+    },
+
+    "backtestOverlayStore.selectedRunId"() {
+      this.refreshBacktestMarkers();
+    },
+
+    "backtestOverlayStore.closedTrades"() {
+      this.refreshBacktestMarkers();
     },
   },
 
@@ -415,6 +515,7 @@ export default defineComponent({
       }
 
       this.ohlcSeriesRef = this.addCandlestickData(data, this.seriesOptions);
+      this.refreshBacktestMarkers();
 
       if (scrollToRealtime) {
         this.scrollToRealTime();
@@ -435,6 +536,40 @@ export default defineComponent({
         close: candle.close,
         volume: candle.volume,
       });
+      this.refreshBacktestMarkers();
+    },
+
+    getLoadedCandleRange(): LoadedCandleRange | null {
+      if (this.candlesticksStore.data.length === 0) {
+        return null;
+      }
+
+      let startMs = Number.POSITIVE_INFINITY;
+      let endMs = Number.NEGATIVE_INFINITY;
+
+      for (const candle of this.candlesticksStore.data) {
+        startMs = Math.min(startMs, candle.timestamp_ms);
+        endMs = Math.max(endMs, candle.timestamp_ms);
+      }
+
+      return { startMs, endMs };
+    },
+
+    refreshBacktestMarkers(): void {
+      const range = this.getLoadedCandleRange();
+
+      if (!this.backtestOverlayStore.selectedRun || !range) {
+        this.chartInfrastructure.setCandlestickMarkers([]);
+        return;
+      }
+
+      const trades = this.backtestOverlayStore.getClosedTradesForRange(range.startMs, range.endMs);
+      this.chartInfrastructure.setCandlestickMarkers(buildBacktestTradeMarkers(trades, range));
+    },
+
+    removeBacktestOverlay(): void {
+      this.backtestOverlayStore.clearOverlay();
+      this.refreshBacktestMarkers();
     },
 
     onCrosshairMove(param: MouseEventParams<Time>): void {
@@ -533,6 +668,69 @@ export default defineComponent({
 .chart-container {
   width: 100%;
   height: 100%;
+}
+
+.backtest-overlay-panel {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 20px);
+  padding: 6px 8px;
+  color: #e5e7eb;
+  font-size: 12px;
+  line-height: 1.25;
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 6px;
+}
+
+.backtest-overlay-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.backtest-overlay-title {
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.backtest-overlay-context {
+  overflow: hidden;
+  color: #cbd5e1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backtest-overlay-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #f8fafc;
+  cursor: pointer;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(226, 232, 240, 0.25);
+  border-radius: 4px;
+}
+
+.backtest-overlay-remove:hover,
+.backtest-overlay-remove:focus-visible {
+  background: rgba(148, 163, 184, 0.28);
+}
+
+.backtest-overlay-remove-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .legend {

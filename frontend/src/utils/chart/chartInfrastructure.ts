@@ -7,6 +7,7 @@ import {
   type ChartCrosshairMoveHandler,
   type ChartLogicalRange,
   type ChartOhlcPoint,
+  type ChartSeriesMarker,
   type ChartSeriesInfo,
   type ChartVisibleRangeHandler,
   type ManagedSeriesApi,
@@ -26,6 +27,7 @@ export interface ChartInfrastructure {
   ): ManagedSeriesApi | null;
   updateCandlestick(candle: ChartOhlcPoint): boolean;
   setMinMove(minMove: number): boolean;
+  setCandlestickMarkers(markers: readonly ChartSeriesMarker[]): boolean;
   subscribeCrosshairMove(callback: ChartCrosshairMoveHandler): void;
   unsubscribeCrosshairMove(callback?: ChartCrosshairMoveHandler | null): void;
   subscribeVisibleLogicalRangeChange(callback: ChartVisibleRangeHandler): void;
@@ -96,6 +98,10 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
     });
   }
 
+  setCandlestickMarkers(markers: readonly ChartSeriesMarker[]): boolean {
+    return this.chartManager.setSeriesMarkers('ohlc', markers);
+  }
+
   subscribeCrosshairMove(callback: ChartCrosshairMoveHandler): void {
     this.chartManager.subscribeCrosshairMove(callback);
   }
@@ -133,6 +139,7 @@ export type {
   ChartCrosshairMoveHandler,
   ChartLogicalRange,
   ChartOhlcPoint,
+  ChartSeriesMarker,
   ChartVisibleRangeHandler,
   ManagedSeriesApi,
 };

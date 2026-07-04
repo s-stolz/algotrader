@@ -1,6 +1,10 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 
-import { ChartManager, type ChartValuePoint } from '@/utils/chart/ChartManager';
+import {
+  ChartManager,
+  type ChartSeriesMarker,
+  type ChartValuePoint,
+} from '@/utils/chart/ChartManager';
 
 const chartMocks = vi.hoisted(() => {
   const createSeriesApi = () => ({
@@ -35,6 +39,7 @@ const chartMocks = vi.hoisted(() => {
   return {
     chart,
     createChart: vi.fn(() => chart),
+    createSeriesMarkers: vi.fn(),
     createSeriesApi,
     pane,
     timeScale,
@@ -48,6 +53,7 @@ vi.mock('lightweight-charts', () => ({
   CandlestickSeries: { type: 'Candlestick', isBuiltIn: true, defaultOptions: {} },
   ColorType: { Solid: 'solid' },
   createChart: chartMocks.createChart,
+  createSeriesMarkers: chartMocks.createSeriesMarkers,
   CrosshairMode: { Normal: 0 },
   HistogramSeries: { type: 'Histogram', isBuiltIn: true, defaultOptions: {} },
   LineSeries: { type: 'Line', isBuiltIn: true, defaultOptions: {} },
@@ -63,11 +69,18 @@ const candle = (time: number) => ({
   volume: 100,
 });
 
+const markerTime = (time: number): ChartSeriesMarker['time'] => time as ChartSeriesMarker['time'];
+
 describe('ChartManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chartMocks.chart.addSeries.mockReturnValue(chartMocks.createSeriesApi());
     chartMocks.createChart.mockReturnValue(chartMocks.chart);
+    chartMocks.createSeriesMarkers.mockImplementation(() => ({
+      detach: vi.fn(),
+      markers: vi.fn(() => []),
+      setMarkers: vi.fn(),
+    }));
   });
 
   it('initializes a chart and applies time-scale options', () => {
@@ -123,6 +136,48 @@ describe('ChartManager', () => {
     expect(series.update).toHaveBeenNthCalledWith(2, candle(11));
     expect(series.update).toHaveBeenCalledTimes(2);
     expect(manager.series.get('ohlc')?.data).toEqual([candle(10), candle(11)]);
+  });
+
+  it('creates, updates, and clears series markers for a managed series', () => {
+    const manager = new ChartManager();
+    manager.init(document.createElement('div'));
+    const series = chartMocks.createSeriesApi();
+    chartMocks.chart.addSeries.mockReturnValue(series);
+    const firstMarkers: ChartSeriesMarker[] = [
+      {
+        id: 'trade-1:entry',
+        time: markerTime(300),
+        position: 'belowBar',
+        shape: 'arrowUp',
+        color: '#16a34a',
+        text: 'Buy @ 101.25',
+      },
+    ];
+    const nextMarkers: ChartSeriesMarker[] = [
+      ...firstMarkers,
+      {
+        id: 'trade-1:exit',
+        time: markerTime(600),
+        position: 'aboveBar',
+        shape: 'arrowDown',
+        color: '#dc2626',
+        text: 'Sell @ 104.5',
+      },
+    ];
+
+    manager.addSeries('ohlc', 'candlestick', [candle(1)]);
+
+    expect(manager.setSeriesMarkers('ohlc', firstMarkers)).toBe(true);
+    const markerPlugin = chartMocks.createSeriesMarkers.mock.results[0]?.value;
+
+    expect(chartMocks.createSeriesMarkers).toHaveBeenCalledWith(series, firstMarkers);
+
+    expect(manager.setSeriesMarkers('ohlc', nextMarkers)).toBe(true);
+
+    expect(markerPlugin.setMarkers).toHaveBeenCalledWith(nextMarkers);
+
+    expect(manager.clearSeriesMarkers('ohlc')).toBe(true);
+    expect(markerPlugin.detach).toHaveBeenCalled();
   });
 
   it('updates changed series points, skips same-value points, and appends newer points', () => {
