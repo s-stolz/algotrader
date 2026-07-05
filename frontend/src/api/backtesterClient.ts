@@ -47,6 +47,16 @@ export async function getBacktestRun(runId: string): Promise<BacktestRun> {
   return payload;
 }
 
+export async function deleteBacktestRun(runId: string): Promise<void> {
+  const response = await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete backtest run: ${response.statusText || response.status}`);
+  }
+}
+
 export async function fetchBacktestClosedTrades(
   runId: string,
 ): Promise<BacktestClosedTrade[]> {

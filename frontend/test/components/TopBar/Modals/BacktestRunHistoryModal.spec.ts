@@ -1,20 +1,24 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  deleteBacktestRun,
   fetchBacktestClosedTrades,
   getBacktestRun,
   listBacktestRuns,
 } from '@/api/backtesterClient';
+import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import type { Market } from '@/types/contracts';
+import { STORAGE_KEYS } from '@/utils/localStorage';
 
 import BacktestRunHistoryModal from '@/components/TopBar/Modals/BacktestRunHistoryModal.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
+  deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   getBacktestRun: vi.fn(),
   listBacktestRuns: vi.fn(),
@@ -97,12 +101,18 @@ describe('BacktestRunHistoryModal', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     localStorage.clear();
+    vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(listBacktestRuns).mockReset();
+    vi.mocked(deleteBacktestRun).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
     vi.mocked(getBacktestRun).mockResolvedValue(backtestRun());
     useMarketsStore().all = [eurUsdMarket];
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('loads all run states, filters locally, shows disabled reasons, and selects through the overlay store', async () => {
@@ -180,6 +190,66 @@ describe('BacktestRunHistoryModal', () => {
     expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('run-succeeded-123456');
   });
 
+  it('deletes terminal runs, removes them from history, and clears a selected overlay', async () => {
+    vi.mocked(listBacktestRuns).mockResolvedValue([
+      backtestRun({ run_id: 'run-succeeded-123456', status: 'succeeded' }),
+      backtestRun({
+        run_id: 'run-running-123456',
+        status: 'running',
+        completed_at_ms: null,
+        metrics: null,
+      }),
+    ]);
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+
+    const wrapper = mountModal();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="backtest-run-select-run-succeeded-123456"]').trigger('click');
+    await flushPromises();
+    expect(useBacktestOverlayStore().selectedRunId).toBe('run-succeeded-123456');
+
+    await wrapper.find('[data-testid="backtest-run-delete-run-succeeded-123456"]').trigger('click');
+    await flushPromises();
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('all trades and fills'),
+    );
+    expect(deleteBacktestRun).toHaveBeenCalledWith('run-succeeded-123456');
+    expect(wrapper.find('[data-testid="backtest-run-row-run-succeeded-123456"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-testid="backtest-run-row-run-running-123456"]').exists()).toBe(
+      true,
+    );
+    expect(
+      wrapper.find('[data-testid="backtest-run-delete-run-running-123456"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(useBacktestOverlayStore().selectedRunId).toBeNull();
+    expect(localStorage.getItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN)).toBeNull();
+  });
+
+  it('keeps a run visible and shows an error when deletion fails', async () => {
+    vi.mocked(listBacktestRuns).mockResolvedValue([
+      backtestRun({ run_id: 'run-failed-123456', status: 'failed' }),
+    ]);
+    vi.mocked(deleteBacktestRun).mockRejectedValue(
+      new Error('Failed to delete backtest run: Conflict'),
+    );
+    vi.stubGlobal('confirm', vi.fn(() => true));
+
+    const wrapper = mountModal();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="backtest-run-delete-run-failed-123456"]').trigger('click');
+    await flushPromises();
+
+    expect(deleteBacktestRun).toHaveBeenCalledWith('run-failed-123456');
+    expect(wrapper.find('[data-testid="backtest-run-row-run-failed-123456"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Failed to delete backtest run: Conflict');
+  });
+
   it('surfaces client loading errors without hiding history controls', async () => {
     vi.mocked(listBacktestRuns).mockRejectedValue(new Error('API unavailable'));
 
@@ -202,12 +272,14 @@ function mountModal() {
         NInput: NInputStub,
         NScrollbar: { template: '<div><slot /></div>' },
         SearchOutline: true,
+        TrashOutline: true,
         'base-modal': BaseModalStub,
         'n-button': NButtonStub,
         'n-icon': true,
         'n-input': NInputStub,
         'n-scrollbar': { template: '<div><slot /></div>' },
         'search-outline': true,
+        'trash-outline': true,
       },
     },
   });

@@ -47,6 +47,9 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Backtest Run history modal loads runs when opened, supports lightweight
   client-side status/text filtering, and does not include a dedicated refresh
   control in v1.
+- Backtest Run history can delete terminal `succeeded` or `failed` runs through
+  the public backtester API; deletion removes the run and its execution logs from
+  storage, while queued/running deletion is left to future cancellation behavior.
 - Opening the Backtest Run history modal fetches the latest run list from the
   backtester API; closing and reopening refetches.
 - Backtest Run selection requires the run's market to still exist in the

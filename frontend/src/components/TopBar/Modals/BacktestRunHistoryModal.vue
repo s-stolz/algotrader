@@ -36,6 +36,7 @@
       </div>
 
       <p v-if="loadError" class="modal-error">{{ loadError }}</p>
+      <p v-if="deleteError" class="modal-error">{{ deleteError }}</p>
       <p v-if="overlayStore.error" class="modal-error">{{ overlayStore.error }}</p>
       <p v-if="isLoading" class="modal-state">Loading Backtest Runs...</p>
 
@@ -85,15 +86,31 @@
                 >
                   {{ selectability.reason }}
                 </p>
-                <n-button
-                  size="small"
-                  class="select-run-button"
-                  :data-testid="`backtest-run-select-${run.run_id}`"
-                  :disabled="!selectability.selectable || overlayStore.isLoading"
-                  @click="onSelectRun(run)"
-                >
-                  Open
-                </n-button>
+                <div class="run-action-buttons">
+                  <n-button
+                    size="small"
+                    class="select-run-button"
+                    :data-testid="`backtest-run-select-${run.run_id}`"
+                    :disabled="!selectability.selectable || overlayStore.isLoading"
+                    @click="onSelectRun(run)"
+                  >
+                    Open
+                  </n-button>
+                  <n-button
+                    text
+                    size="small"
+                    class="delete-run-button"
+                    :data-testid="`backtest-run-delete-${run.run_id}`"
+                    :aria-label="`Delete Backtest Run ${run.run_id}`"
+                    :title="deleteRunTitle(run)"
+                    :disabled="!canDeleteRun(run) || isDeletingRun(run.run_id)"
+                    @click="onDeleteRun(run)"
+                  >
+                    <n-icon size="18">
+                      <TrashOutline />
+                    </n-icon>
+                  </n-button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -115,9 +132,9 @@
 import { computed, onMounted, ref } from 'vue';
 import { NButton, NIcon, NInput, NScrollbar } from 'naive-ui';
 
-import { listBacktestRuns } from '@/api/backtesterClient';
+import { deleteBacktestRun, listBacktestRuns } from '@/api/backtesterClient';
 import BaseModal from '@/components/Common/BaseModal.vue';
-import { SearchOutline } from '@/icons';
+import { SearchOutline, TrashOutline } from '@/icons';
 import {
   useBacktestOverlayStore,
   type BacktestRunSelectability,
@@ -149,6 +166,8 @@ const baseModal = ref<BaseModalExpose | null>(null);
 const runs = ref<BacktestRun[]>([]);
 const isLoading = ref(false);
 const loadError = ref<string | null>(null);
+const deleteError = ref<string | null>(null);
+const deletingRunIds = ref<ReadonlySet<string>>(new Set());
 const textFilter = ref('');
 const statusFilter = ref<StatusFilter>('all');
 const overlayStore = useBacktestOverlayStore();
@@ -207,6 +226,34 @@ function selectabilityFor(run: BacktestRun): BacktestRunSelectability {
   return overlayStore.getBacktestRunSelectability(run);
 }
 
+function canDeleteRun(run: BacktestRun): boolean {
+  return run.status === 'succeeded' || run.status === 'failed';
+}
+
+function deleteRunTitle(run: BacktestRun): string {
+  if (canDeleteRun(run)) {
+    return 'Delete Backtest Run and all trades and fills';
+  }
+
+  return 'Only succeeded or failed Backtest Runs can be deleted';
+}
+
+function isDeletingRun(runId: string): boolean {
+  return deletingRunIds.value.has(runId);
+}
+
+function setRunDeleting(runId: string, isDeleting: boolean): void {
+  const nextRunIds = new Set(deletingRunIds.value);
+
+  if (isDeleting) {
+    nextRunIds.add(runId);
+  } else {
+    nextRunIds.delete(runId);
+  }
+
+  deletingRunIds.value = nextRunIds;
+}
+
 async function onSelectRun(run: BacktestRun): Promise<void> {
   const selectability = selectabilityFor(run);
 
@@ -222,6 +269,38 @@ async function onSelectRun(run: BacktestRun): Promise<void> {
     }
   } catch {
     // The overlay store owns the user-facing selection error.
+  }
+}
+
+async function onDeleteRun(run: BacktestRun): Promise<void> {
+  if (!canDeleteRun(run) || isDeletingRun(run.run_id)) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Delete Backtest Run ${shortRunId(run.run_id)} and all trades and fills? This cannot be undone.`,
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  setRunDeleting(run.run_id, true);
+  deleteError.value = null;
+
+  try {
+    await deleteBacktestRun(run.run_id);
+    runs.value = runs.value.filter((candidate) => candidate.run_id !== run.run_id);
+
+    if (overlayStore.selectedRunId === run.run_id) {
+      overlayStore.clearOverlay();
+    }
+  } catch (error) {
+    deleteError.value = error instanceof Error
+      ? error.message
+      : 'Failed to delete Backtest Run.';
+  } finally {
+    setRunDeleting(run.run_id, false);
   }
 }
 
@@ -410,8 +489,26 @@ onMounted(() => {
   text-align: right;
 }
 
+.run-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .select-run-button {
   min-width: 64px;
+}
+
+.delete-run-button {
+  width: 30px;
+  height: 30px;
+  color: #ffb4b4;
+}
+
+.delete-run-button:hover,
+.delete-run-button:focus-visible {
+  color: #ff7777;
 }
 
 .modal-state,
@@ -441,6 +538,10 @@ onMounted(() => {
 
   .run-actions {
     padding-top: 0;
+  }
+
+  .run-action-buttons {
+    justify-content: flex-start;
   }
 }
 </style>

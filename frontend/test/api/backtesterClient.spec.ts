@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  deleteBacktestRun,
   fetchBacktestClosedTrades,
   getBacktestRun,
   listBacktestRuns,
@@ -73,6 +74,27 @@ describe('backtester API client', () => {
 
     await expect(fetchBacktestClosedTrades('run-123')).resolves.toEqual(trades);
     expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123/trades');
+  });
+
+  it('deletes one Backtest Run through the public backtester proxy', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+
+    await expect(deleteBacktestRun('run-123')).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123', {
+      method: 'DELETE',
+    });
+  });
+
+  it('surfaces delete failures from the public backtester proxy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 409, statusText: 'Conflict' }),
+    );
+
+    await expect(deleteBacktestRun('run-running')).rejects.toThrow(
+      'Failed to delete backtest run: Conflict',
+    );
   });
 
   it('rejects malformed Backtest Run and closed-trade responses', async () => {

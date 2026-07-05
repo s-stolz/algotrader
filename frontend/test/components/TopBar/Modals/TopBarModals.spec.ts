@@ -4,6 +4,7 @@ import { defineComponent, h } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  deleteBacktestRun,
   fetchBacktestClosedTrades,
   getBacktestRun,
   listBacktestRuns,
@@ -15,6 +16,7 @@ import type { Market } from '@/types/contracts';
 import TopBarModals from '@/components/TopBar/Modals/TopBarModals.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
+  deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   getBacktestRun: vi.fn(),
   listBacktestRuns: vi.fn(),
@@ -127,9 +129,11 @@ describe('TopBarModals', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     updateCurrentMarket.mockReset();
+    vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(listBacktestRuns).mockReset();
+    vi.mocked(deleteBacktestRun).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
     vi.mocked(getBacktestRun).mockResolvedValue(backtestRun());
     vi.mocked(listBacktestRuns).mockResolvedValue([]);
@@ -181,6 +185,7 @@ describe('TopBarModals', () => {
           NScrollbar: { template: '<div><slot /></div>' },
           RemoveMarketModal: true,
           SearchOutline: true,
+          TrashOutline: true,
           SymbolFormModal: true,
           SymbolSearchModal: true,
           UploadDataModal: true,
@@ -192,6 +197,7 @@ describe('TopBarModals', () => {
           'n-scrollbar': { template: '<div><slot /></div>' },
           'remove-market-modal': true,
           'search-outline': true,
+          'trash-outline': true,
           'symbol-form-modal': true,
           'symbol-search-modal': true,
           'upload-data-modal': true,
