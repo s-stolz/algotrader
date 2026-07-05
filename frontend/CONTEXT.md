@@ -6,6 +6,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 
 - Chart UI state for selected Market, Timeframe, Candle history, live Candle
   updates, and Indicators.
+- Historical indicators align to the currently loaded candle range: newly
+  applied or refreshed indicators render the latest batch first, backfill older
+  batches until they cover loaded candles, and trim indicator points outside the
+  loaded candle timestamp range.
 - WebSocket client commands, control acknowledgements, errors, and live updates
   shared with `webserver`.
 - Chart series points that convert transport `timestamp_ms` into chart `time`

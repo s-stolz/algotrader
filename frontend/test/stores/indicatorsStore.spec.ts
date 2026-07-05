@@ -47,6 +47,14 @@ const indicatorResponse = (points: IndicatorDataPoint[]): IndicatorResponse => (
   },
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
+
 describe('indicators store', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -110,27 +118,187 @@ describe('indicators store', () => {
     });
   });
 
-  it('prepends older history through the typed client', async () => {
+  it('requests the latest visible batch first and backfills older batches until candles are covered', async () => {
+    vi.mocked(requestIndicatorClient)
+      .mockResolvedValueOnce(indicatorResponse([
+        { timestamp_ms: 3_000, sma: 1.3 },
+        { timestamp_ms: 4_000, sma: 1.4 },
+      ]))
+      .mockResolvedValueOnce(indicatorResponse([
+        { timestamp_ms: 1_000, sma: 1.1 },
+        { timestamp_ms: 2_000, sma: 1.2 },
+      ]));
+
+    const store = useIndicatorsStore();
+    const coverageOptions = {
+      batchSize: 2,
+      getLoadedCandleRange: () => ({
+        oldestTimestampMs: 1_000,
+        newestTimestampMs: 4_000,
+        exclusiveEndMs: 5_000,
+      }),
+    };
+
+    const localId = await store.requestIndicator(null, 1, {
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    }, {}, coverageOptions);
+    await store.ensureCoverageForAll('EURUSD', 'M1', 'FX', coverageOptions);
+
+    expect(requestIndicatorClient).toHaveBeenNthCalledWith(1, 1, {
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+      endMs: 5_000,
+      limit: 2,
+    }, {});
+    expect(requestIndicatorClient).toHaveBeenNthCalledWith(2, 1, {
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+      exchange: 'FX',
+      endMs: 3_000,
+      limit: 2,
+    }, {
+      parameters: { length: 14, source: 'close' },
+    });
+    expect(store.getById(localId!)?.data).toEqual([
+      { timestamp_ms: 1_000, sma: 1.1 },
+      { timestamp_ms: 2_000, sma: 1.2 },
+      { timestamp_ms: 3_000, sma: 1.3 },
+      { timestamp_ms: 4_000, sma: 1.4 },
+    ]);
+  });
+
+  it('widens the target range without starting overlapping backfill requests', async () => {
+    const firstBackfill = deferred<IndicatorResponse>();
+    const secondBackfill = deferred<IndicatorResponse>();
+    vi.mocked(requestIndicatorClient)
+      .mockReturnValueOnce(firstBackfill.promise)
+      .mockReturnValueOnce(secondBackfill.promise);
+
+    const store = useIndicatorsStore();
+    const localId = store.addIndicator(indicatorInfo, [
+      { timestamp_ms: 3_000, sma: 1.3 },
+      { timestamp_ms: 4_000, sma: 1.4 },
+    ], 1);
+    let oldestTimestampMs = 2_000;
+    const coverageOptions = {
+      batchSize: 1,
+      getLoadedCandleRange: () => ({
+        oldestTimestampMs,
+        newestTimestampMs: 4_000,
+        exclusiveEndMs: 5_000,
+      }),
+    };
+
+    const firstEnsure = store.ensureCoverageForAll('EURUSD', 'M1', 'FX', coverageOptions);
+    expect(requestIndicatorClient).toHaveBeenCalledTimes(1);
+
+    oldestTimestampMs = 1_000;
+    const secondEnsure = store.ensureCoverageForAll('EURUSD', 'M1', 'FX', coverageOptions);
+    expect(requestIndicatorClient).toHaveBeenCalledTimes(1);
+
+    firstBackfill.resolve(indicatorResponse([{ timestamp_ms: 2_000, sma: 1.2 }]));
+    await Promise.resolve();
+    expect(requestIndicatorClient).toHaveBeenCalledTimes(2);
+
+    secondBackfill.resolve(indicatorResponse([{ timestamp_ms: 1_000, sma: 1.1 }]));
+    await Promise.all([firstEnsure, secondEnsure]);
+
+    expect(store.getById(localId)?.data).toEqual([
+      { timestamp_ms: 1_000, sma: 1.1 },
+      { timestamp_ms: 2_000, sma: 1.2 },
+      { timestamp_ms: 3_000, sma: 1.3 },
+      { timestamp_ms: 4_000, sma: 1.4 },
+    ]);
+  });
+
+  it('ignores stale backfill results after a parameter refresh invalidates the generation', async () => {
+    const staleBackfill = deferred<IndicatorResponse>();
+    vi.mocked(requestIndicatorClient)
+      .mockReturnValueOnce(staleBackfill.promise)
+      .mockResolvedValueOnce(indicatorResponse([
+        { timestamp_ms: 3_000, sma: 9.9 },
+      ]));
+
+    const store = useIndicatorsStore();
+    const localId = store.addIndicator(indicatorInfo, [{ timestamp_ms: 3_000, sma: 1.3 }], 1);
+    let oldestTimestampMs = 1_000;
+    const coverageOptions = {
+      batchSize: 1,
+      getLoadedCandleRange: () => ({
+        oldestTimestampMs,
+        newestTimestampMs: 3_000,
+        exclusiveEndMs: 4_000,
+      }),
+    };
+
+    const staleEnsure = store.ensureCoverageForAll('EURUSD', 'M1', 'FX', coverageOptions);
+    oldestTimestampMs = 3_000;
+    await store.requestIndicator(localId, 1, {
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    }, {
+      parameters: { length: 20 },
+    }, coverageOptions);
+
+    staleBackfill.resolve(indicatorResponse([{ timestamp_ms: 1_000, sma: 1.1 }]));
+    await staleEnsure;
+
+    expect(store.getById(localId)?.data).toEqual([
+      { timestamp_ms: 3_000, sma: 9.9 },
+    ]);
+  });
+
+  it('marks history exhausted when an older batch returns no data', async () => {
+    vi.mocked(requestIndicatorClient).mockResolvedValue(indicatorResponse([]));
+    const store = useIndicatorsStore();
+    const localId = store.addIndicator(indicatorInfo, [{ timestamp_ms: 3_000, sma: 1.3 }], 1);
+    const coverageOptions = {
+      batchSize: 1,
+      getLoadedCandleRange: () => ({
+        oldestTimestampMs: 1_000,
+        newestTimestampMs: 3_000,
+        exclusiveEndMs: 4_000,
+      }),
+    };
+
+    await store.ensureCoverageForAll('EURUSD', 'M1', 'FX', coverageOptions);
+    await store.ensureCoverageForAll('EURUSD', 'M1', 'FX', coverageOptions);
+
+    expect(requestIndicatorClient).toHaveBeenCalledTimes(1);
+    expect(store.getById(localId)?.historyExhausted).toBe(true);
+  });
+
+  it('trims merged historical data to the loaded candle range and keeps existing duplicates', async () => {
     vi.mocked(requestIndicatorClient).mockResolvedValue(indicatorResponse([
       { timestamp_ms: 1_000, sma: 1.1 },
+      { timestamp_ms: 2_000, sma: 1.2 },
+      { timestamp_ms: 3_000, sma: 7.7 },
     ]));
     const store = useIndicatorsStore();
-    const localId = store.addIndicator(indicatorInfo, [{ timestamp_ms: 2_000, sma: 1.2 }], 1);
+    const localId = store.addIndicator(indicatorInfo, [{ timestamp_ms: 3_000, sma: 1.3 }], 1);
 
-    await store.fetchOlderForAll('EURUSD', 'M1', 'FX', 250);
+    await store.ensureCoverageForAll('EURUSD', 'M1', 'FX', {
+      batchSize: 3,
+      getLoadedCandleRange: () => ({
+        oldestTimestampMs: 2_000,
+        newestTimestampMs: 3_000,
+        exclusiveEndMs: 4_000,
+      }),
+    });
 
     expect(requestIndicatorClient).toHaveBeenCalledWith(1, {
       symbol: 'EURUSD',
       timeframe: 'M1',
       exchange: 'FX',
-      endMs: 2_000,
-      limit: 250,
+      endMs: 3_000,
+      limit: 3,
     }, {
       parameters: { length: 14, source: 'close' },
     });
     expect(store.getById(localId)?.data).toEqual([
-      { timestamp_ms: 1_000, sma: 1.1 },
       { timestamp_ms: 2_000, sma: 1.2 },
+      { timestamp_ms: 3_000, sma: 1.3 },
     ]);
     expect(store.getById(localId)?.hasExpandedHistory).toBe(true);
   });

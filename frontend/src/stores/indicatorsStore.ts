@@ -21,6 +21,17 @@ export type IndicatorParameterUpdate = Record<string, JsonValue | IndicatorParam
 export type IndicatorParameterValues = JsonObject;
 export type IndicatorStyles = Record<string, JsonObject>;
 
+export interface IndicatorLoadedCandleRange {
+  oldestTimestampMs: number;
+  newestTimestampMs: number;
+  exclusiveEndMs: number;
+}
+
+export interface IndicatorCoverageOptions {
+  batchSize?: number;
+  getLoadedCandleRange?: () => IndicatorLoadedCandleRange | null;
+}
+
 export interface IndicatorStoreQuery {
   symbol?: string | null;
   timeframe?: string | null;
@@ -56,6 +67,13 @@ export interface StoreIndicator {
   styles: IndicatorStyles;
   currentLimit: number;
   hasExpandedHistory: boolean;
+  historyGeneration: number;
+  isBackfilling: boolean;
+  historyExhausted: boolean;
+  targetOldestTimestampMs: number | null;
+  targetNewestTimestampMs: number | null;
+  nextBackfillEndMs: number | null;
+  activeBackfillPromise: Promise<void> | null;
 }
 
 interface IndicatorInfoMessage {
@@ -159,6 +177,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
   const paneCount = ref(1);
   const liveSubscriptions = reactive(new Map<string, IndicatorLiveSubscription>());
   const all = computed(() => Array.from(indicators.values()));
+  const defaultCoverageOptions = ref<IndicatorCoverageOptions | null>(null);
 
   function getById(_id: string): StoreIndicator | undefined {
     return indicators.get(_id);
@@ -183,55 +202,148 @@ export const useIndicatorsStore = defineStore('indicators', () => {
 
   function resetHistoryFlags(): void {
     for (const indicator of all.value) {
-      indicator.hasExpandedHistory = false;
-      indicator.currentLimit = INITIAL_INDICATOR_LIMIT;
+      resetIndicatorHistoryState(indicator, true);
     }
+  }
+
+  function configureHistoryCoverage(options: IndicatorCoverageOptions | null): void {
+    defaultCoverageOptions.value = options;
+  }
+
+  function resolveCoverageOptions(options: IndicatorCoverageOptions = {}): IndicatorCoverageOptions {
+    return {
+      ...(defaultCoverageOptions.value ?? {}),
+      ...options,
+    };
+  }
+
+  function getBatchSize(options: IndicatorCoverageOptions): number {
+    return options.batchSize ?? INITIAL_INDICATOR_LIMIT;
+  }
+
+  function getLoadedCandleRange(options: IndicatorCoverageOptions): IndicatorLoadedCandleRange | null {
+    const range = options.getLoadedCandleRange?.() ?? null;
+    if (!range) return null;
+
+    if (
+      !Number.isFinite(range.oldestTimestampMs) ||
+      !Number.isFinite(range.newestTimestampMs) ||
+      !Number.isFinite(range.exclusiveEndMs)
+    ) {
+      return null;
+    }
+
+    return range;
+  }
+
+  function resetIndicatorHistoryState(indicator: StoreIndicator, invalidateGeneration = false): void {
+    indicator.hasExpandedHistory = false;
+    indicator.currentLimit = INITIAL_INDICATOR_LIMIT;
+    indicator.isBackfilling = false;
+    indicator.historyExhausted = false;
+    indicator.targetOldestTimestampMs = null;
+    indicator.targetNewestTimestampMs = null;
+    indicator.nextBackfillEndMs = null;
+    indicator.activeBackfillPromise = null;
+    if (invalidateGeneration) {
+      indicator.historyGeneration += 1;
+    }
+  }
+
+  function applyCoverageTarget(
+    indicator: StoreIndicator,
+    range: IndicatorLoadedCandleRange,
+  ): void {
+    indicator.targetOldestTimestampMs = indicator.targetOldestTimestampMs === null
+      ? range.oldestTimestampMs
+      : Math.min(indicator.targetOldestTimestampMs, range.oldestTimestampMs);
+    indicator.targetNewestTimestampMs = indicator.targetNewestTimestampMs === null
+      ? range.newestTimestampMs
+      : Math.max(indicator.targetNewestTimestampMs, range.newestTimestampMs);
+  }
+
+  function trimDataToRange(
+    data: readonly IndicatorDataPoint[],
+    range: IndicatorLoadedCandleRange | null,
+  ): IndicatorDataPoint[] {
+    if (!range) return [...data];
+
+    return data.filter((point) => {
+      const timestampMs = Number(point.timestamp_ms);
+      return (
+        Number.isFinite(timestampMs) &&
+        timestampMs >= range.oldestTimestampMs &&
+        timestampMs <= range.newestTimestampMs
+      );
+    });
+  }
+
+  function mergeIndicatorData(
+    existingData: readonly IndicatorDataPoint[],
+    incomingData: readonly IndicatorDataPoint[],
+    range: IndicatorLoadedCandleRange | null,
+  ): IndicatorDataPoint[] {
+    const byTimestamp = new Map<number, IndicatorDataPoint>();
+
+    for (const point of incomingData) {
+      const timestampMs = Number(point.timestamp_ms);
+      if (Number.isFinite(timestampMs)) {
+        byTimestamp.set(timestampMs, { ...point, timestamp_ms: timestampMs });
+      }
+    }
+
+    for (const point of existingData) {
+      const timestampMs = Number(point.timestamp_ms);
+      if (Number.isFinite(timestampMs)) {
+        byTimestamp.set(timestampMs, { ...point, timestamp_ms: timestampMs });
+      }
+    }
+
+    return trimDataToRange(
+      Array.from(byTimestamp.values()).sort((left, right) => left.timestamp_ms - right.timestamp_ms),
+      range,
+    );
+  }
+
+  function trimIndicatorToRange(
+    _id: string,
+    range: IndicatorLoadedCandleRange | null,
+  ): void {
+    const indicator = indicators.get(_id);
+    if (!indicator || !range) return;
+
+    updateIndicatorData(_id, trimDataToRange(indicator.data, range));
+  }
+
+  function buildLatestQuery(
+    query: IndicatorStoreQuery,
+    options: IndicatorCoverageOptions,
+  ): IndicatorStoreQuery {
+    const range = getLoadedCandleRange(options);
+    const batchSize = getBatchSize(options);
+
+    return {
+      ...query,
+      endMs: query.endMs ?? query.end_ms ?? range?.exclusiveEndMs ?? null,
+      limit: query.limit ?? batchSize,
+    };
   }
 
   function requestAllIndicators(
     symbol: string | null | undefined,
     timeframe: string | null | undefined,
     exchange: string | null = null,
+    options: IndicatorCoverageOptions = {},
   ): void {
     if (!symbol || !timeframe) return;
 
-    for (const indicator of all.value) {
-      if (indicator.hasExpandedHistory) continue;
+    const coverageOptions = resolveCoverageOptions(options);
+    const batchSize = getBatchSize(coverageOptions);
 
+    for (const indicator of all.value) {
       const queryParams: IndicatorStoreQuery = {
         symbol,
         timeframe,
-        limit: indicator.currentLimit || INITIAL_INDICATOR_LIMIT,
-      };
-      if (exchange) {
-        queryParams.exchange = exchange;
-      }
-
-      const body: IndicatorRequestBody = {
-        parameters: extractParameterValues(indicator.parameters),
-      };
-
-      void requestIndicator(indicator._id, indicator.indicatorId, queryParams, body);
-    }
-  }
-
-  async function fetchOlderForAll(
-    symbol: string | null | undefined,
-    timeframe: string | null | undefined,
-    exchange: string | null = null,
-    batchSize = 5000,
-  ): Promise<void> {
-    if (!symbol || !timeframe) return;
-
-    for (const indicator of all.value) {
-      if (!indicator.data.length) continue;
-      indicator.hasExpandedHistory = true;
-
-      const earliestTs = indicator.data[0].timestamp_ms;
-      const queryParams: IndicatorStoreQuery = {
-        symbol,
-        timeframe,
-        endMs: earliestTs,
         limit: batchSize,
       };
       if (exchange) {
@@ -242,8 +354,35 @@ export const useIndicatorsStore = defineStore('indicators', () => {
         parameters: extractParameterValues(indicator.parameters),
       };
 
-      await requestIndicatorPrepend(indicator._id, indicator.indicatorId, queryParams, body);
+      void requestIndicator(indicator._id, indicator.indicatorId, queryParams, body, coverageOptions);
     }
+  }
+
+  async function ensureCoverageForAll(
+    symbol: string | null | undefined,
+    timeframe: string | null | undefined,
+    exchange: string | null = null,
+    options: IndicatorCoverageOptions = {},
+  ): Promise<void> {
+    if (!symbol || !timeframe) return;
+
+    const coverageOptions = resolveCoverageOptions(options);
+    await Promise.all(all.value.map((indicator) => ensureCoverageForIndicator(
+      indicator._id,
+      symbol,
+      timeframe,
+      exchange,
+      coverageOptions,
+    )));
+  }
+
+  async function fetchOlderForAll(
+    symbol: string | null | undefined,
+    timeframe: string | null | undefined,
+    exchange: string | null = null,
+    batchSize = INITIAL_INDICATOR_LIMIT,
+  ): Promise<void> {
+    await ensureCoverageForAll(symbol, timeframe, exchange, { batchSize });
   }
 
   async function requestIndicator(
@@ -251,9 +390,17 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     indicatorId: number,
     query: IndicatorStoreQuery,
     body: IndicatorRequestBody = {},
+    options: IndicatorCoverageOptions = {},
   ): Promise<string | null> {
-    const clientQuery = toClientQuery(query);
+    const coverageOptions = resolveCoverageOptions(options);
+    const clientQuery = toClientQuery(buildLatestQuery(query, coverageOptions));
     if (!clientQuery) return null;
+
+    const existingIndicator = _id ? indicators.get(_id) : undefined;
+    const generation = existingIndicator ? existingIndicator.historyGeneration + 1 : null;
+    if (existingIndicator) {
+      resetIndicatorHistoryState(existingIndicator, true);
+    }
 
     if (_id && liveSubscriptions.has(_id)) {
       await unsubscribeIndicatorLive(_id);
@@ -261,6 +408,9 @@ export const useIndicatorsStore = defineStore('indicators', () => {
 
     try {
       const response = await requestIndicatorFromApi(indicatorId, clientQuery, body);
+      if (_id && generation !== null && indicators.get(_id)?.historyGeneration !== generation) {
+        return null;
+      }
 
       const localId = handleMessageIndicatorInfo({
         _id,
@@ -272,6 +422,9 @@ export const useIndicatorsStore = defineStore('indicators', () => {
       const indicator = activeId ? indicators.get(activeId) : undefined;
 
       if (activeId && indicator) {
+        const loadedRange = getLoadedCandleRange(coverageOptions);
+        trimIndicatorToRange(activeId, loadedRange);
+
         await subscribeIndicatorLive(activeId, {
           symbol: clientQuery.symbol,
           timeframe: clientQuery.timeframe,
@@ -279,6 +432,14 @@ export const useIndicatorsStore = defineStore('indicators', () => {
           indicatorId: indicator.indicatorId,
           parameters: extractParameterValues(indicator.parameters),
         });
+
+        void ensureCoverageForIndicator(
+          activeId,
+          clientQuery.symbol,
+          clientQuery.timeframe,
+          clientQuery.exchange || null,
+          coverageOptions,
+        );
       }
 
       return activeId;
@@ -301,10 +462,128 @@ export const useIndicatorsStore = defineStore('indicators', () => {
 
     try {
       const response = await requestIndicatorFromApi(indicatorId, clientQuery, body);
-      const mergedData = [...response.data.indicator_data, ...indicator.data];
+      const mergedData = mergeIndicatorData(
+        indicator.data,
+        response.data.indicator_data,
+        null,
+      );
       updateIndicatorData(_id, mergedData);
     } catch (error) {
       console.error('Failed to prepend indicator data', error);
+    }
+  }
+
+  async function ensureCoverageForIndicator(
+    _id: string,
+    symbol: string,
+    timeframe: string,
+    exchange: string | null,
+    options: IndicatorCoverageOptions,
+  ): Promise<void> {
+    const indicator = indicators.get(_id);
+    const range = getLoadedCandleRange(options);
+    if (!indicator || !range || !indicator.data.length) return;
+
+    applyCoverageTarget(indicator, range);
+    trimIndicatorToRange(_id, range);
+
+    if (indicator.historyExhausted) return;
+    if (indicator.isBackfilling) {
+      await indicator.activeBackfillPromise;
+      return;
+    }
+
+    const generation = indicator.historyGeneration;
+    indicator.isBackfilling = true;
+    const promise = runCoverageBackfill(_id, symbol, timeframe, exchange, options, generation);
+    indicator.activeBackfillPromise = promise;
+    await promise;
+  }
+
+  async function runCoverageBackfill(
+    _id: string,
+    symbol: string,
+    timeframe: string,
+    exchange: string | null,
+    options: IndicatorCoverageOptions,
+    generation: number,
+  ): Promise<void> {
+    try {
+      while (true) {
+        const indicator = indicators.get(_id);
+        const range = getLoadedCandleRange(options);
+        if (!indicator || !range || indicator.historyGeneration !== generation) return;
+
+        applyCoverageTarget(indicator, range);
+        trimIndicatorToRange(_id, range);
+
+        const current = indicators.get(_id);
+        if (!current || current.historyGeneration !== generation) return;
+        if (current.historyExhausted || !current.data.length) return;
+
+        const earliestTs = current.data[0].timestamp_ms;
+        const targetOldestTs = current.targetOldestTimestampMs ?? range.oldestTimestampMs;
+        if (earliestTs <= targetOldestTs) return;
+
+        const endMs = Math.min(current.nextBackfillEndMs ?? earliestTs, earliestTs);
+        const queryParams: IndicatorStoreQuery = {
+          symbol,
+          timeframe,
+          endMs,
+          limit: getBatchSize(options),
+        };
+        if (exchange) {
+          queryParams.exchange = exchange;
+        }
+
+        const body: IndicatorRequestBody = {
+          parameters: extractParameterValues(current.parameters),
+        };
+
+        const response = await requestIndicatorFromApi(
+          current.indicatorId,
+          toClientQuery(queryParams)!,
+          body,
+        );
+
+        const afterFetch = indicators.get(_id);
+        const latestRange = getLoadedCandleRange(options);
+        if (!afterFetch || !latestRange || afterFetch.historyGeneration !== generation) return;
+
+        const incomingData = response.data.indicator_data;
+        if (!incomingData.length) {
+          afterFetch.historyExhausted = true;
+          return;
+        }
+
+        const previousEarliestTs = afterFetch.data[0]?.timestamp_ms ?? null;
+        const mergedData = mergeIndicatorData(afterFetch.data, incomingData, latestRange);
+        updateIndicatorData(_id, mergedData);
+
+        const updated = indicators.get(_id);
+        const nextEarliestTs = updated?.data[0]?.timestamp_ms ?? null;
+        if (!updated || updated.historyGeneration !== generation) return;
+
+        updated.hasExpandedHistory = true;
+        updated.nextBackfillEndMs = nextEarliestTs;
+
+        if (
+          previousEarliestTs !== null &&
+          nextEarliestTs !== null &&
+          nextEarliestTs >= previousEarliestTs
+        ) {
+          updated.historyExhausted = true;
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to backfill indicator data', error);
+    } finally {
+      const indicator = indicators.get(_id);
+      if (indicator && indicator.historyGeneration === generation) {
+        indicator.isBackfilling = false;
+        indicator.activeBackfillPromise = null;
+      }
     }
   }
 
@@ -355,6 +634,13 @@ export const useIndicatorsStore = defineStore('indicators', () => {
       styles: createStyles(info.outputs || {}),
       currentLimit: indicatorData.length || INITIAL_INDICATOR_LIMIT,
       hasExpandedHistory: false,
+      historyGeneration: 0,
+      isBackfilling: false,
+      historyExhausted: false,
+      targetOldestTimestampMs: null,
+      targetNewestTimestampMs: null,
+      nextBackfillEndMs: null,
+      activeBackfillPromise: null,
     };
 
     indicators.set(_id, indicator);
@@ -548,8 +834,10 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     all,
     getById,
     exists,
+    configureHistoryCoverage,
     resetHistoryFlags,
     requestAllIndicators,
+    ensureCoverageForAll,
     fetchOlderForAll,
     requestIndicator,
     requestIndicatorPrepend,

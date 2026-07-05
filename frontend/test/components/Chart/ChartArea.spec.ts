@@ -249,7 +249,7 @@ function setupStores(timeframe: TimeframeCode = 'M5') {
   candlesticksStore.data = [candle(300_000)];
   vi.mocked(fetchCandles).mockResolvedValue([candle(300_000)]);
   vi.spyOn(indicatorsStore, 'requestAllIndicators').mockImplementation(() => undefined);
-  vi.spyOn(indicatorsStore, 'fetchOlderForAll').mockResolvedValue();
+  vi.spyOn(indicatorsStore, 'ensureCoverageForAll').mockResolvedValue();
   vi.spyOn(indicatorsStore, 'unsubscribeAllLive').mockResolvedValue();
   vi.spyOn(indicatorsStore, 'resetHistoryFlags').mockImplementation(() => undefined);
 
@@ -769,11 +769,34 @@ describe('ChartArea', () => {
         priceFormat: expect.objectContaining({ minMove: 0.0001, precision: 4 }),
       }),
     );
-    expect(indicatorsStore.requestAllIndicators).toHaveBeenCalledWith('EURUSD', 'M5', 'FX');
+    expect(indicatorsStore.requestAllIndicators).toHaveBeenCalledWith(
+      'EURUSD',
+      'M5',
+      'FX',
+      expect.objectContaining({
+        batchSize: 500,
+        getLoadedCandleRange: expect.any(Function),
+      }),
+    );
     expect(indicatorsStore.unsubscribeAllLive).toHaveBeenCalled();
-    expect(indicatorsStore.fetchOlderForAll).toHaveBeenCalledWith('EURUSD', 'M5', 'FX', 500);
+    expect(indicatorsStore.ensureCoverageForAll).toHaveBeenCalledWith(
+      'EURUSD',
+      'M5',
+      'FX',
+      expect.objectContaining({
+        batchSize: 500,
+        getLoadedCandleRange: expect.any(Function),
+      }),
+    );
     expect(indicatorsStore.resetHistoryFlags).toHaveBeenCalled();
     expect(adapter.getOldestCandleTimestampMs()).toBe(600_000);
+
+    const requestCoverageOptions = vi.mocked(indicatorsStore.requestAllIndicators).mock.calls[0][3]!;
+    expect(requestCoverageOptions.getLoadedCandleRange?.()).toEqual({
+      oldestTimestampMs: 600_000,
+      newestTimestampMs: 600_000,
+      exclusiveEndMs: 900_000,
+    });
   });
 
   it('bridges visible range events into the chart session after wheel settling', async () => {

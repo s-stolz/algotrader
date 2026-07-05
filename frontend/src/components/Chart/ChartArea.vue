@@ -298,6 +298,7 @@ export default defineComponent({
     if (chartContainer) {
       chartContainer.removeEventListener("wheel", this.onWheelPassive);
     }
+    this.indicatorsStore.configureHistoryCoverage(null);
     this.chartInfrastructure.cleanup();
   },
 
