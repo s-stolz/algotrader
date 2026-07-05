@@ -53,8 +53,11 @@ const chartAreaMocks = vi.hoisted(() => {
     updateIndicatorSeriesPoint: vi.fn(),
     updateMissingPaneHtmlElements: vi.fn(),
   };
+  const chartManager = {
+    getPaneHtmlElement: vi.fn(() => Promise.resolve(chartAreaMocks.mainPaneElement)),
+  };
   const infrastructure = {
-    chartManager: {},
+    chartManager,
     indicatorManager,
     chartInitialized: false,
     chartError: null,
@@ -99,6 +102,7 @@ const chartAreaMocks = vi.hoisted(() => {
     }),
     indicatorHandlers: new Set<MockMessageHandler>(),
     infrastructure,
+    mainPaneElement: null as HTMLElement | null,
     ohlcSeries,
     ohlcSeriesInfo,
     visibleRangeHandler: null as ((range: ChartLogicalRange | null) => void) | null,
@@ -302,6 +306,12 @@ describe('ChartArea', () => {
       barsBefore: 50,
       barsAfter: 0,
     });
+    chartAreaMocks.mainPaneElement = document.createElement('div');
+    document.body.appendChild(chartAreaMocks.mainPaneElement);
+    chartAreaMocks.infrastructure.chartManager.getPaneHtmlElement.mockClear();
+    chartAreaMocks.infrastructure.chartManager.getPaneHtmlElement.mockImplementation(() => (
+      Promise.resolve(chartAreaMocks.mainPaneElement)
+    ));
     Object.values(chartAreaMocks.infrastructure.indicatorManager).forEach((mock) => {
       mock.mockClear();
     });
@@ -341,6 +351,8 @@ describe('ChartArea', () => {
   });
 
   afterEach(() => {
+    chartAreaMocks.mainPaneElement?.remove();
+    chartAreaMocks.mainPaneElement = null;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -667,25 +679,32 @@ describe('ChartArea', () => {
     const wrapper = mountChartArea();
     await flushPromises();
 
-    const panel = wrapper.find('.backtest-overlay-panel');
-    expect(panel.exists()).toBe(true);
-    expect(panel.text()).toContain('Backtest Run');
-    expect(panel.text()).toContain('FX:EURUSD');
-    expect(panel.text()).toContain('M15');
-    expect(panel.text()).toContain('sma_crossover');
-    expect(panel.text()).toContain('run-123');
+    const paneOverlay = chartAreaMocks.mainPaneElement?.querySelector('.indicators-wrapper');
+    const panel = paneOverlay?.querySelector('.backtest-overlay-panel');
+    expect(paneOverlay).toBeInstanceOf(HTMLDivElement);
+    expect(panel).toBeInstanceOf(HTMLDivElement);
+    expect(panel?.textContent).toContain('Backtest Run');
+    expect(panel?.textContent).toContain('FX:EURUSD');
+    expect(panel?.textContent).toContain('M15');
+    expect(panel?.textContent).toContain('sma_crossover');
+    expect(panel?.textContent).toContain('run-123');
+    expect(wrapper.find('.legend').exists()).toBe(true);
+    expect(wrapper.find('.backtest-overlay-panel').exists()).toBe(false);
 
     chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
     chartAreaMocks.infrastructure.setCandlestickProtectiveLines.mockClear();
 
-    await wrapper.find('[data-testid="remove-backtest-overlay"]').trigger('click');
+    const removeButton = paneOverlay?.querySelector('[data-testid="remove-backtest-overlay"]');
+    expect(removeButton).toBeInstanceOf(HTMLButtonElement);
+    removeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
 
     expect(backtestOverlayStore.selectedRunId).toBeNull();
     expect(backtestOverlayStore.selectedRun).toBeNull();
     expect(backtestOverlayStore.closedTrades).toEqual([]);
     expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenCalledWith([]);
     expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenCalledWith([]);
-    expect(wrapper.find('.backtest-overlay-panel').exists()).toBe(false);
+    expect(paneOverlay?.querySelector('.backtest-overlay-panel')).toBeNull();
   });
 
   it('constructs a chart session adapter over stores, websocket, and chart infrastructure', async () => {

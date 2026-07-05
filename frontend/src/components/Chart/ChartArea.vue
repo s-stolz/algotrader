@@ -2,24 +2,30 @@
   <div id="chart-wrapper">
     <div ref="chartContainer" id="lightweight-chart" class="chart-container" />
 
-    <div
-      v-if="backtestOverlayStore.selectedRun"
-      class="backtest-overlay-panel"
+    <Teleport
+      v-if="backtestOverlayStore.selectedRun && backtestOverlayTarget"
+      :to="backtestOverlayTarget"
     >
-      <div class="backtest-overlay-details">
-        <span class="backtest-overlay-title">Backtest Run</span>
-        <span class="backtest-overlay-context">{{ activeBacktestRunContext }}</span>
+      <div class="backtest-overlay-container">
+        <div
+          class="backtest-overlay-panel"
+        >
+          <div class="backtest-overlay-details">
+            <span class="backtest-overlay-title">Backtest Run</span>
+            <span class="backtest-overlay-context">{{ activeBacktestRunContext }}</span>
+          </div>
+          <button
+            type="button"
+            class="backtest-overlay-remove"
+            data-testid="remove-backtest-overlay"
+            aria-label="Remove Backtest Run overlay"
+            @click="removeBacktestOverlay"
+          >
+            <CloseCircleOutline class="backtest-overlay-remove-icon" />
+          </button>
+        </div>
       </div>
-      <button
-        type="button"
-        class="backtest-overlay-remove"
-        data-testid="remove-backtest-overlay"
-        aria-label="Remove Backtest Run overlay"
-        @click="removeBacktestOverlay"
-      >
-        <CloseCircleOutline class="backtest-overlay-remove-icon" />
-      </button>
-    </div>
+    </Teleport>
 
     <span class="legend">
       <span class="legend-value">O: <span ref="legendOpen">-</span></span>
@@ -79,6 +85,7 @@ import {
   buildBacktestTradeMarkers,
   type LoadedCandleRange,
 } from "@/utils/chart/backtestOverlay";
+import { getOrCreatePaneOverlayWrapper } from "@/utils/chart/paneOverlay";
 import Indicator from "@/components/Chart/Indicator/Indicator.vue";
 import { CloseCircleOutline } from "@/icons";
 
@@ -123,6 +130,7 @@ interface ChartAreaData {
   shouldScrollToRealTime: boolean;
   indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
   chartSession: ChartSession | null;
+  backtestOverlayTarget: HTMLElement | null;
 }
 
 function isOhlcLegendPoint(value: unknown): value is OhlcLegendPoint {
@@ -168,6 +176,7 @@ export default defineComponent({
       shouldScrollToRealTime: false,
       indicatorMessageHandler: null,
       chartSession: null,
+      backtestOverlayTarget: null,
     };
   },
 
@@ -355,6 +364,7 @@ export default defineComponent({
 
     initializeChartComponent(): void {
       this.chartInfrastructure.init(this.getChartContainer());
+      void this.syncBacktestOverlayTarget();
       this.subscribeCrosshairMove(this.onCrosshairMove);
       this.subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChange);
       const chartContainer = this.getChartContainer();
@@ -376,6 +386,13 @@ export default defineComponent({
 
     getSeries() {
       return this.chartInfrastructure.getSeries();
+    },
+
+    async syncBacktestOverlayTarget(): Promise<void> {
+      const paneHtmlElement = await this.chartInfrastructure.chartManager.getPaneHtmlElement(0);
+      this.backtestOverlayTarget = paneHtmlElement
+        ? getOrCreatePaneOverlayWrapper(paneHtmlElement)
+        : null;
     },
 
     addCandlestickData(
@@ -465,6 +482,7 @@ export default defineComponent({
       }
 
       this.ohlcSeriesRef = this.addCandlestickData(data, this.seriesOptions);
+      void this.syncBacktestOverlayTarget();
       this.refreshBacktestMarkers();
 
       if (scrollToRealtime) {
@@ -624,15 +642,16 @@ export default defineComponent({
   height: 100%;
 }
 
+.backtest-overlay-container {
+  margin-bottom: 8px;
+}
+
 .backtest-overlay-panel {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 2;
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: calc(100% - 20px);
+  width: min(350px, calc(100vw - 20px));
+  max-width: 100%;
   padding: 6px 8px;
   color: #e5e7eb;
   font-size: 12px;
@@ -646,6 +665,7 @@ export default defineComponent({
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
+  flex: 1 1 auto;
   gap: 4px 8px;
   min-width: 0;
 }
@@ -656,6 +676,8 @@ export default defineComponent({
 }
 
 .backtest-overlay-context {
+  flex: 1 1 160px;
+  min-width: 0;
   overflow: hidden;
   color: #cbd5e1;
   text-overflow: ellipsis;

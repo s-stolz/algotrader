@@ -1,7 +1,7 @@
 <template>
   <div>
     <Teleport
-      :to="indicator.paneHtmlElement?.querySelector('.indicators-wrapper')"
+      :to="indicator.paneHtmlElement?.querySelector(PANE_OVERLAY_SELECTOR)"
       v-if="indicator.paneHtmlElement"
     >
       <div class="indicator-container">
@@ -22,6 +22,10 @@ import { watch } from "vue";
 
 import IndicatorPanel from "./IndicatorPanel.vue";
 import IndicatorSettingsModal from "./IndicatorSettingsModal.vue";
+import {
+  getOrCreatePaneOverlayWrapper,
+  PANE_OVERLAY_SELECTOR,
+} from "@/utils/chart/paneOverlay";
 
 import type {
   IndicatorInstance,
@@ -76,12 +80,7 @@ watch(
       return;
     }
 
-    paneHtmlElement.style.position = "relative";
-
-    if (!paneHtmlElement.querySelector(".indicators-wrapper")) {
-      const wrapper = createNewIndicatorsWrapper();
-      paneHtmlElement.appendChild(wrapper);
-    }
+    getOrCreatePaneOverlayWrapper(paneHtmlElement);
   },
   { immediate: true },
 );
@@ -96,18 +95,6 @@ function onUpdateStyles({ outputKey, styles }: IndicatorStyleUpdatePayload): voi
   props.indicatorManager.updateIndicatorStyles(props.indicator._id, outputKey, styles);
 }
 
-function createNewIndicatorsWrapper(): HTMLDivElement {
-  const wrapper = document.createElement("div");
-  wrapper.className = "indicators-wrapper";
-  wrapper.style.cssText = `
-    position: absolute;
-    top: 10px;
-    left: 0px;
-    z-index: 1000;
-    max-width: 350px;
-  `;
-  return wrapper;
-}
 </script>
 
 <style scoped>
