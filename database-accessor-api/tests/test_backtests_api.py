@@ -1154,6 +1154,19 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("diagnostics jsonb", sql)
         self.assertNotIn("drop table", sql)
 
+    def test_backtest_result_schema_v2_migration_adds_protective_prices(self):
+        migration_path = (
+            Path(__file__).resolve().parents[2]
+            / "timescaledb-init"
+            / "05-backtest-result-schema-v2.sql"
+        )
+        sql = migration_path.read_text(encoding="utf-8").lower()
+
+        self.assertIn("alter table if exists backtest_closed_trades", sql)
+        self.assertIn("add column if not exists stop_loss_price", sql)
+        self.assertIn("add column if not exists take_profit_price", sql)
+        self.assertNotIn("drop table", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

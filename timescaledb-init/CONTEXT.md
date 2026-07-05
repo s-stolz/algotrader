@@ -19,6 +19,8 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   aggregates, and aggregate policies.
 - `04-retune-cagg-and-index.sql`: continuous aggregate policy retuning and
   historical refresh.
+- `05-backtest-result-schema-v2.sql`: existing-volume migration for nullable
+  backtest closed-trade protective exit prices.
 
 ## Contracts
 
@@ -36,6 +38,8 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   backtest runs rather than backfilling v1 result artifacts.
 - Fresh database initialization creates the complete durable backtest schema
   without a separate destructive reset script.
+- Existing database volumes created before result schema version 2 need the
+  idempotent `05-backtest-result-schema-v2.sql` migration applied manually.
 
 ## Change Triggers
 
