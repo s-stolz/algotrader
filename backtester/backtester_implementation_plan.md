@@ -22,8 +22,12 @@ needed for a backtester task.
 - The bracket-exit campaign added stop-loss, take-profit, and deterministic
   ambiguous-bar handling to the supported shared bar semantics.
 - M8-M10B are not implemented. They remain future PRD candidates for research
-  ergonomics and sweeps, richer order realism, tick support, multi-symbol runs,
-  and multi-timeframe parallelism.
+  ergonomics and sweeps, bar-mode short support, richer order realism, tick
+  support, multi-symbol runs, and multi-timeframe parallelism.
+- Short support is a good independent candidate before full M9 order realism:
+  current domain fields already expose `allow_short` and `PositionSide.SHORT`,
+  but request validation, both engines, strategy targets, sizing, protective
+  exits, and trade accounting are still explicitly long-only.
 
 ## Delivery Rules
 
@@ -75,7 +79,8 @@ passing 200 tests.
 | M6 Durable Persistence Foundation | Implemented | Durable run schema, JSON request/result snapshots, normalized fills/trades, accessor routes, shared clients, and CLI persistence are present. |
 | M7 Durable Asynchronous API and Worker | Implemented | FastAPI lifecycle API, singleton worker, FIFO claiming, child execution, terminal failure handling, and smoke coverage are present. |
 | M8 Research Ergonomics | Not implemented | No experiment/sweep use case, sweep CLI/API workflow, stable sweep artifacts, custom-strategy docs, or second example strategy are present. |
-| M9 Richer Event-Driven Bar Execution | Not implemented | Current API and engines reject partial fills and shorts; no limit/stop order, latency, spread/liquidity, or queue-position mode exists. |
+| M8A Bar-Mode Short Support | Not implemented | Domain placeholders exist, but validation rejects `allow_short`, both engines reject negative targets, v1 bar strategies are long-only, sizing clamps short-like targets to zero, protective exits only model long stops/targets, and trade accounting rejects SELL without an open long. |
+| M9 Richer Event-Driven Bar Execution | Not implemented | Current API and engines reject partial fills; no limit/stop order, latency, spread/liquidity, queue-position, or optional richer realism mode exists. Short support should be handled first as M8A unless the PRD deliberately combines it with broader order realism. |
 | M10A Vectorized Tick Replay | Not implemented | Tick enum/view placeholders exist, but the runner and vectorized engine reject `data_granularity=tick`; no tick replay exists. |
 | M10B Event-Driven Tick Simulation | Not implemented | Tick event placeholders exist, but the event-driven engine rejects tick requests; no sequential tick loop exists. |
 
@@ -705,15 +710,129 @@ Improve day-to-day usability for strategy research.
 
 ---
 
+## M8A: Bar-Mode Short Support
+
+Status: Not implemented.
+
+Ralph source: future PRD candidate for enabling symmetric long/short bar-mode
+backtests before broader M9 order realism.
+
+Current gap: short-facing domain fields exist (`ExecutionConfig.allow_short`,
+`PositionSide.SHORT`, signed target quantities), but the runnable implementation
+is still long-only:
+
+- `app/backtest_runs.py` rejects `allow_short=True` during durable submission
+  validation.
+- `engines/vectorized.py` and `engines/event_driven.py` reject
+  `allow_short=True` and negative target quantities.
+- `strategies/base.py` requires `BarStrategyModel.long_only=True` and maps exit
+  signals to flat exposure, not short exposure.
+- `execution/sizing.py` maps only positive targets to fixed size and maps zero
+  or negative targets to flat.
+- `execution/fills.py` and the event-driven protective-exit path only compute
+  long stop-loss/take-profit levels.
+- `execution/trades.py` raises on `SELL` without an open long and computes PnL
+  only for long round trips.
+- Existing parity tests intentionally assert that both engines reject
+  `allow_short=True` and negative strategy outputs.
+
+### Goal
+
+Support deterministic single-symbol bar-mode short trades in both vectorized and
+event-driven engines while preserving the existing long-only baseline when
+`allow_short=False`.
+
+### In Scope
+
+- signed target quantity semantics:
+  - positive target = long exposure
+  - zero target = flat
+  - negative target = short exposure only when `allow_short=True`
+- strategy contract extension for a v1 declarative long/short bar strategy, or a
+  new example strategy that emits negative targets through an explicit parameter
+- sizing transforms that preserve target sign while applying fixed absolute size
+- risk/validation rule that rejects negative targets when `allow_short=False`
+  and permits them when `allow_short=True`
+- vectorized fill generation for long opens/closes, short opens/covers, and
+  direct flips through flat accounting
+- event-driven sequential runtime parity for the same signed-target semantics
+- average-cost trade accounting for short round trips:
+  - short entry on SELL
+  - cover on BUY
+  - realized PnL as entry price minus exit price, net of fees
+- long and short stop-loss/take-profit protective exits:
+  - long stop below entry and target above entry
+  - short stop above entry and target below entry
+  - deterministic ambiguous-bar handling through the existing
+    `intrabar_exit_policy`
+- persistence/API schema compatibility using existing fill side and closed-trade
+  fields; add a trade-side field only if result consumers need to distinguish
+  long and short trades without inferring from fill sequence
+
+### Out of Scope
+
+- partial fills
+- limit/stop order request objects separate from protective exits
+- latency, spread/liquidity, queue-position, or broker margin modeling
+- multi-symbol exposure netting
+- tick support
+
+### Deliverables
+
+- `allow_short=True` accepted for supported single-symbol bar-mode requests
+- one reproducible short-capable strategy fixture or example
+- vectorized/event-driven parity for long-only, short-only, and flip scenarios
+- closed trades and metrics include short realized PnL correctly
+
+### Executable Path
+
+- run a short-capable strategy in vectorized and event-driven bar mode with
+  `allow_short=True` and receive matching fills, trades, equity curve, metrics,
+  and diagnostics.
+
+### Test Coverage
+
+- request-validation tests for `allow_short=True` acceptance in supported bar
+  mode and continued rejection of negative targets when `allow_short=False`
+- unit tests for signed fixed sizing and long-only risk behavior
+- fill-generation tests for open short, cover short, long-to-short flip,
+  short-to-long flip, invalid-open gap policies, fees, and slippage
+- trade-accounting tests for short round trips, partial covers if supported by
+  target deltas, and direct flips producing closed trades
+- protective-exit tests for short stop-loss/take-profit, gap-through fills, and
+  ambiguous OHLC bars
+- parity tests covering long-only regression, short-only, flip, costs, gap
+  policy, no-lookahead, and bracket exits
+- persistence/API tests for short fills/trades if a trade-side result field is
+  added
+
+### Acceptance Criteria
+
+- `allow_short=False` preserves current long-only behavior and rejection tests.
+- `allow_short=True` allows negative targets only in the supported single-symbol
+  bar-mode slice.
+- Vectorized and event-driven engines produce matching public results for the
+  agreed short-support parity matrix.
+- Short protective exits are deterministic and documented in backtester context.
+
+### Deferred Follow-ups
+
+- richer order realism in M9
+- margin, borrow cost, locate availability, and broker-specific short-sale rules
+
+---
+
 ## M9: Richer Event-Driven Bar Execution
 
 Status: Not implemented.
 
 Ralph source: future PRD candidate for richer order realism.
 
-Current gap: the current API and both engines still reject `allow_partial_fills`
-and `allow_short`, and there is no richer order request, partial-fill, latency,
-spread/liquidity, queue-position, or optional realism mode.
+Current gap: the current API and both engines still reject `allow_partial_fills`,
+and there is no richer order request, partial-fill, latency, spread/liquidity,
+queue-position, or optional realism mode. Short support is tracked separately in
+M8A because it can be delivered against the existing next-open bar execution
+contract without introducing richer order simulation.
 
 ### Goal
 
@@ -723,7 +842,6 @@ Increase event-driven execution realism on bar data beyond the M3 baseline cost 
 
 - optional partial fills
 - richer order request fields
-- optional short support
 - advanced fee/slippage models beyond M3 baseline
 - optional spread/liquidity-aware execution costs
 - symbol-specific fees where explicitly required

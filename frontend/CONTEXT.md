@@ -6,6 +6,21 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 
 - Chart UI state for selected Market, Timeframe, Candle history, live Candle
   updates, and Indicators.
+- Chart Interaction Mode controls what pointer drag does on the candlestick
+  pane. Pan is the default mode for scrolling through the chart; Measure enables
+  transient Measurement Overlays. A selected mode remains active until the user
+  selects another mode. Measure mode takes over primary left-button pointer drag
+  only; wheel-based zooming and horizontal chart navigation remain available.
+  Mobile touch gestures are outside the initial Measurement Overlay behavior.
+  Measure mode uses a crosshair-style cursor over the candlestick pane. Chart
+  Interaction Mode controls belong above the chart with the other chart controls
+  and use circular icon-only buttons with hover tooltips: `HandRightOutline` for
+  Pan and `ExpandOutline` for Measure. Pan is selected by default, and the active
+  mode has a visible selected state. Changing modes cancels any active
+  Measurement Overlay. Changing market, timeframe, or chart session does not
+  change the selected Chart Interaction Mode. Chart Interaction Mode is not
+  persisted across page refreshes. Measure can be selected without loaded Candle
+  data, but Measurement Overlays require Candle data to exist.
 - Historical indicators align to the currently loaded candle range: newly
   applied or refreshed indicators render the latest batch first, backfill older
   batches until they cover loaded candles, and trim indicator points outside the
@@ -24,9 +39,12 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Backtest Closed Trade entry and exit markers label the executed action and
   price, such as `Buy @ 101.25` and `Sell @ 104.50`; exit reason is not marker
   label text.
-- Backtest marker labels assume the current long-only backtester contract:
-  entries are buys and exits are sells until short-capable trades add explicit
-  side fields.
+- Backtest marker labels must use closed-trade direction for short-capable
+  results. Long trades enter with buy markers and exit with sell markers; short
+  trades enter with sell markers and exit with buy markers.
+- Short-support frontend work is consumer-side unless a backtest submission UI
+  already exists: update runtime contracts, run-history metric display, and
+  chart overlay labels for result schema version 3 closed-trade direction.
 - Backtest protective exit overlays show configured stop-loss and take-profit
   levels for each closed trade whenever the run's strategy defined them,
   regardless of whether the trade exited by signal, stop loss, or take profit.
@@ -45,6 +63,32 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   reloaded after browser refresh when the run remains available.
 - Backtest overlays are removable chart annotations applied only to the main
   candlestick pane, not indicator panes.
+- Measurement Overlay is a transient chart overlay used to compare one
+  candlestick-pane point to another while the pointer is held, and is limited to
+  the main candlestick pane. Its price comparison uses exact pointer price
+  levels, not snapped candle OHLC values.
+  Its horizontal endpoints use the nearest logical bar slots to the pointer
+  positions.
+  Its displayed price and percent deltas preserve upward or downward direction,
+  and percent delta is measured relative to the anchor price. Its candle count is
+  inclusive of both endpoint logical bar slots, including slots without loaded
+  Candle data. Its value label shows price delta, percent delta, and candle
+  count; follows the current pointer endpoint; and remains bounded by the chart
+  pane. Positive deltas include a `+` sign, negative deltas include a `-` sign,
+  and zero deltas have no sign. The UI labels the count as candle/candles. If the
+  anchor price is zero, percent delta is shown as `N/A`. Price delta precision
+  follows the active Market min move, and percent delta uses two decimals; these
+  are display formats applied after calculating from raw pointer-derived prices.
+  Avoid "drawing tool" for this concept unless the overlay becomes persistent or
+  editable. The overlay is removed when the pointer is released, measurement is
+  cancelled, or the window loses focus. Horizontal drag direction only changes
+  the measured span; vertical drag direction controls the signed price and
+  percent deltas. Its box uses the exact endpoint price levels as vertical bounds
+  rather than snapping to candle highs or lows. Its box uses endpoint logical bar
+  slot centers as horizontal bounds, even though the candle count is inclusive. A
+  zero-span measurement still appears immediately on pointer hold. Its box uses a
+  semi-transparent fill and one-pixel solid border with color encoded by price
+  direction. It coexists with chart crosshair and OHLC legend updates.
 - Backtest overlays expose a compact candlestick-pane panel showing the applied
   run context and a remove action; run selection remains in the Backtest Run
   history modal.
@@ -65,7 +109,8 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Backtest Run history shows all lifecycle states, but only `succeeded` runs are
   selectable for chart overlays.
 - Backtest Run chart overlays require result schema version 2 closed-trade
-  fields for planned protective exit lines.
+  fields for planned protective exit lines. Short-capable overlays require
+  result schema version 3 closed-trade direction.
 - Runtime validation for frontend-facing HTTP and WebSocket payloads.
 
 ## Key Modules

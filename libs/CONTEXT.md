@@ -35,16 +35,17 @@ Shared Python packages used by multiple services.
   that need JSON-style records.
 - `indicator_engine` intentionally propagates NaN and does not forward-fill.
 - `db_accessor_client.create_backtest_run` and `get_backtest_run` pass versioned
-  durable run documents through unchanged. Lifecycle policy and domain mapping
-  remain in backtester.
+  durable run documents through unchanged, including request schema version 2
+  Allowed Directions. Lifecycle policy and domain mapping remain in backtester.
 - Synchronous and asynchronous `list_backtest_runs` methods pass optional
   lifecycle, immutable-request, and submission-date filters without pagination
   or queue-selection behavior.
 - Conditional run updates and successful completion return whether the accessor
   atomically matched the caller-provided expected status.
 - Execution-log methods pass ordered normalized fill/trade records through
-  unchanged, including result schema version 2 closed-trade planned protective
-  exit prices, and deletion accepts the accessor's `204 No Content` response.
+  unchanged, including result schema version 3 closed-trade direction and result
+  schema version 2 planned protective exit prices, and deletion accepts the
+  accessor's `204 No Content` response.
 
 ## Change Triggers
 

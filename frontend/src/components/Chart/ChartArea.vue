@@ -308,13 +308,13 @@ export default defineComponent({
         batchSize: this.indicatorBatchSize,
         getLoadedCandleRange: () => {
           const key = this.currentChartSessionKey();
-          return key ? this.getLoadedCandleRange(key.timeframe) : null;
+          return key.timeframe ? this.getIndicatorLoadedCandleRange(key.timeframe) : null;
         },
       });
 
       const indicatorCoverageOptions = (key: ChartSessionKey) => ({
         batchSize: this.indicatorBatchSize,
-        getLoadedCandleRange: () => this.getLoadedCandleRange(key.timeframe),
+        getLoadedCandleRange: () => this.getIndicatorLoadedCandleRange(key.timeframe),
       });
 
       return {
@@ -548,7 +548,7 @@ export default defineComponent({
       this.refreshBacktestMarkers();
     },
 
-    getLoadedCandleRange(): LoadedCandleRange | null {
+    getBacktestLoadedCandleRange(): LoadedCandleRange | null {
       if (this.candlesticksStore.data.length === 0) {
         return null;
       }
@@ -565,7 +565,7 @@ export default defineComponent({
     },
 
     refreshBacktestMarkers(): void {
-      const range = this.getLoadedCandleRange();
+      const range = this.getBacktestLoadedCandleRange();
 
       if (!this.backtestOverlayStore.selectedRun || !range) {
         this.chartInfrastructure.setCandlestickMarkers([]);
@@ -668,7 +668,7 @@ export default defineComponent({
       return this.indicatorsStore.all;
     },
 
-    getLoadedCandleRange(timeframe: string) {
+    getIndicatorLoadedCandleRange(timeframe: string) {
       const firstCandle = this.candlesticksStore.data[0];
       const lastCandle = this.candlesticksStore.data[this.candlesticksStore.data.length - 1];
       if (!firstCandle || !lastCandle) return null;

@@ -35,20 +35,27 @@ stored in TimescaleDB.
   `exchange`.
 - M1 reads use the raw `candles` table. Higher timeframe reads may use Timescale
   continuous aggregates or direct `time_bucket` fallback.
-- Backtest request attributes live only in versioned `request` JSON. Lifecycle
-  status and timestamps are normalized columns; result metrics and diagnostics
-  are nullable versioned JSON documents.
+- Backtest request attributes live only in versioned `request` JSON. Request
+  schema version 2 replaces legacy `allow_short` with Allowed Directions.
+  Lifecycle status and timestamps are normalized columns; result metrics and
+  diagnostics are nullable versioned JSON documents.
+- Request schema version 2 adoption requires schema support only; existing local
+  durable backtest rows may be deleted instead of rewritten.
 - Backtest result schema version 2 closed trades include nullable planned
-  protective exit prices. Older local v1 runs may be deleted during adoption
-  rather than backfilled.
+  protective exit prices. Result schema version 3 adds required closed-trade
+  trade direction. Existing local durable backtest rows may be deleted during
+  adoption rather than read through legacy compatibility logic.
+- Stored backtest closed-trade `trade_direction` is required and limited to
+  `long` or `short`.
 - Run listing filters status and submission dates through lifecycle columns and
   symbol, timeframe, strategy, and engine through immutable request JSON. Symbol
   matching uses collection membership. Results use `submitted_at DESC`, then
   `run_id ASC`, with no persistence-layer limit or queue-selection policy.
 - Backtest fills and closed trades are normalized child rows with caller-supplied
   sequence values and cascade deletion.
-- Backtest closed trades carry nullable `stop_loss_price` and `take_profit_price`
-  values for planned protective exit levels.
+- Backtest closed trades carry explicit trade direction plus nullable
+  `stop_loss_price` and `take_profit_price` values for planned protective exit
+  levels.
 - Fill and trade reads are ordered by their per-run sequence values. Missing parent
   runs return not found, while existing runs with no child rows return empty lists.
 - Run deletion removes the parent row and relies on database foreign-key cascades

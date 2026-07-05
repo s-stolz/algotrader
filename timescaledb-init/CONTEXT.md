@@ -33,9 +33,17 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   versions, immutable request JSONB, and nullable metrics/diagnostics JSONB.
 - `backtest_fills` and `backtest_closed_trades` use per-run sequence keys for
   deterministic ordering and cascade when the parent run is deleted.
-- `backtest_closed_trades` includes nullable planned protective exit prices for
-  stop-loss and take-profit overlays. The adoption path may delete old local
-  backtest runs rather than backfilling v1 result artifacts.
+- `backtest_closed_trades` includes explicit trade direction plus nullable
+  planned protective exit prices for stop-loss and take-profit overlays. Result
+  schema version 3 requires trade direction. The adoption path may delete old
+  local backtest runs rather than reading legacy result artifacts.
+- `backtest_closed_trades.trade_direction` is required and constrained to
+  `long` or `short`.
+- Request schema version 2 and result schema version 3 adoption require schema
+  migration only; existing local durable backtest rows may be deleted instead of
+  rewritten.
+- The trade-direction schema migration may assume `backtest_closed_trades` is
+  empty when adding the required constrained column.
 - Fresh database initialization creates the complete durable backtest schema
   without a separate destructive reset script.
 - Existing database volumes created before result schema version 2 need the
