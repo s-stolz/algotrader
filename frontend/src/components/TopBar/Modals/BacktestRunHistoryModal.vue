@@ -40,19 +40,25 @@
       <p v-if="overlayStore.error" class="modal-error">{{ overlayStore.error }}</p>
       <p v-if="isLoading" class="modal-state">Loading Backtest Runs...</p>
 
-      <n-scrollbar style="max-height: 420px">
+      <n-scrollbar class="run-history-scrollbar" style="max-height: 420px">
         <table class="run-table">
           <tbody>
             <tr
               v-for="{ run, selectability, metrics } in filteredRunRows"
               :key="run.run_id"
               class="backtest-run-row"
-              :class="{ 'backtest-run-row-disabled': !selectability.selectable }"
+              :class="{
+                'backtest-run-row-disabled': !selectability.selectable || overlayStore.isLoading,
+              }"
               :data-testid="`backtest-run-row-${run.run_id}`"
+              :tabindex="selectability.selectable && !overlayStore.isLoading ? 0 : undefined"
+              :aria-disabled="!selectability.selectable || overlayStore.isLoading"
+              @click="onSelectRun(run)"
+              @keydown.enter="onSelectRun(run)"
+              @keydown.space.prevent="onSelectRun(run)"
             >
               <td class="run-main">
                 <div class="run-title-line">
-                  <span class="run-id">{{ shortRunId(run.run_id) }}</span>
                   <span class="run-status" :class="`run-status-${run.status}`">
                     {{ run.status }}
                   </span>
@@ -88,23 +94,14 @@
                 </p>
                 <div class="run-action-buttons">
                   <n-button
-                    size="small"
-                    class="select-run-button"
-                    :data-testid="`backtest-run-select-${run.run_id}`"
-                    :disabled="!selectability.selectable || overlayStore.isLoading"
-                    @click="onSelectRun(run)"
-                  >
-                    Open
-                  </n-button>
-                  <n-button
                     text
                     size="small"
                     class="delete-run-button"
                     :data-testid="`backtest-run-delete-${run.run_id}`"
-                    :aria-label="`Delete Backtest Run ${run.run_id}`"
+                    aria-label="Delete Backtest Run"
                     :title="deleteRunTitle(run)"
                     :disabled="!canDeleteRun(run) || isDeletingRun(run.run_id)"
-                    @click="onDeleteRun(run)"
+                    @click.stop="onDeleteRun(run)"
                   >
                     <n-icon size="18">
                       <TrashOutline />
@@ -255,6 +252,10 @@ function setRunDeleting(runId: string, isDeleting: boolean): void {
 }
 
 async function onSelectRun(run: BacktestRun): Promise<void> {
+  if (overlayStore.isLoading) {
+    return;
+  }
+
   const selectability = selectabilityFor(run);
 
   if (!selectability.selectable) {
@@ -278,7 +279,7 @@ async function onDeleteRun(run: BacktestRun): Promise<void> {
   }
 
   const confirmed = window.confirm(
-    `Delete Backtest Run ${shortRunId(run.run_id)} and all trades and fills? This cannot be undone.`,
+    'Delete this Backtest Run and all trades and fills? This cannot be undone.',
   );
 
   if (!confirmed) {
@@ -302,14 +303,6 @@ async function onDeleteRun(run: BacktestRun): Promise<void> {
   } finally {
     setRunDeleting(run.run_id, false);
   }
-}
-
-function shortRunId(runId: string): string {
-  if (runId.length <= 12) {
-    return runId;
-  }
-
-  return runId.slice(0, 12);
 }
 
 function formatSymbols(run: BacktestRun): string {
@@ -377,7 +370,6 @@ onMounted(() => {
 }
 
 .backtest-run-history {
-  width: min(860px, calc(100vw - 32px));
   max-width: 100%;
 }
 
@@ -401,18 +393,26 @@ onMounted(() => {
 .run-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.run-history-scrollbar :deep(.n-scrollbar-content) {
+  min-width: 100%;
 }
 
 .backtest-run-row {
   border-top: 1px solid #a0a0a029;
+  cursor: pointer;
 }
 
-.backtest-run-row:hover {
+.backtest-run-row:hover,
+.backtest-run-row:focus-visible {
   background-color: #36363661;
 }
 
 .backtest-run-row-disabled {
   color: #ffffff99;
+  cursor: default;
 }
 
 .run-main,
@@ -433,11 +433,6 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-
-.run-id {
-  font-size: 13px;
-  color: #ffffff;
 }
 
 .run-status {
@@ -496,10 +491,6 @@ onMounted(() => {
   gap: 8px;
 }
 
-.select-run-button {
-  min-width: 64px;
-}
-
 .delete-run-button {
   width: 30px;
   height: 30px;
@@ -521,10 +512,6 @@ onMounted(() => {
 }
 
 @media (max-width: 760px) {
-  .backtest-run-history {
-    width: calc(100vw - 32px);
-  }
-
   .history-filters {
     grid-template-columns: 1fr;
   }

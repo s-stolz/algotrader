@@ -58,9 +58,9 @@ const NButtonStub = defineComponent({
     return () => h('button', {
       ...attrs,
       disabled: props.disabled,
-      onClick: () => {
+      onClick: (event: MouseEvent) => {
         if (!props.disabled) {
-          emit('click');
+          emit('click', event);
         }
       },
     }, slots.default?.());
@@ -168,10 +168,12 @@ describe('BacktestRunHistoryModal', () => {
     expect(wrapper.text()).toContain('Only succeeded Backtest Runs can be opened.');
     expect(wrapper.text()).toContain('Market FX:USDJPY is not available in the chart market list.');
     expect(wrapper.text()).not.toMatch(/refresh/i);
+    expect(wrapper.text()).not.toMatch(/run-(succeeded|running|failed|missing-market|queued)/);
+    expect(wrapper.findAll('[data-testid^="backtest-run-select-"]')).toHaveLength(0);
+    expect(wrapper.text()).not.toContain('Open');
 
     await wrapper.find('#backtest-run-search-input').setValue('breakout');
     expect(wrapper.findAll('.backtest-run-row')).toHaveLength(1);
-    expect(wrapper.text()).toContain('run-failed');
     expect(wrapper.text()).toContain('GBPUSD');
 
     await wrapper.find('#backtest-run-search-input').setValue('');
@@ -181,10 +183,10 @@ describe('BacktestRunHistoryModal', () => {
     expect(wrapper.text()).toContain('AUDUSD');
 
     await wrapper.find('[data-testid="backtest-run-status-filter"]').setValue('all');
-    await wrapper.find('[data-testid="backtest-run-select-run-running-123456"]').trigger('click');
+    await wrapper.find('[data-testid="backtest-run-row-run-running-123456"]').trigger('click');
     expect(fetchBacktestClosedTrades).not.toHaveBeenCalled();
 
-    await wrapper.find('[data-testid="backtest-run-select-run-succeeded-123456"]').trigger('click');
+    await wrapper.find('[data-testid="backtest-run-row-run-succeeded-123456"]').trigger('click');
     await flushPromises();
 
     expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('run-succeeded-123456');
@@ -206,9 +208,10 @@ describe('BacktestRunHistoryModal', () => {
     const wrapper = mountModal();
     await flushPromises();
 
-    await wrapper.find('[data-testid="backtest-run-select-run-succeeded-123456"]').trigger('click');
+    await wrapper.find('[data-testid="backtest-run-row-run-succeeded-123456"]').trigger('click');
     await flushPromises();
     expect(useBacktestOverlayStore().selectedRunId).toBe('run-succeeded-123456');
+    vi.mocked(fetchBacktestClosedTrades).mockClear();
 
     await wrapper.find('[data-testid="backtest-run-delete-run-succeeded-123456"]').trigger('click');
     await flushPromises();
@@ -217,6 +220,7 @@ describe('BacktestRunHistoryModal', () => {
       expect.stringContaining('all trades and fills'),
     );
     expect(deleteBacktestRun).toHaveBeenCalledWith('run-succeeded-123456');
+    expect(fetchBacktestClosedTrades).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="backtest-run-row-run-succeeded-123456"]').exists()).toBe(
       false,
     );

@@ -11,18 +11,20 @@
           class="backtest-overlay-panel"
         >
           <div class="backtest-overlay-details">
-            <span class="backtest-overlay-title">Backtest Run</span>
+            <span class="backtest-overlay-title">{{ activeBacktestRunTitle }}</span>
             <span class="backtest-overlay-context">{{ activeBacktestRunContext }}</span>
           </div>
-          <button
-            type="button"
+          <n-button
+            text
             class="backtest-overlay-remove"
             data-testid="remove-backtest-overlay"
             aria-label="Remove Backtest Run overlay"
             @click="removeBacktestOverlay"
           >
-            <CloseCircleOutline class="backtest-overlay-remove-icon" />
-          </button>
+            <n-icon size="20">
+              <CloseCircleOutline />
+            </n-icon>
+          </n-button>
         </div>
       </div>
     </Teleport>
@@ -53,6 +55,7 @@ import type {
   Point,
   Time,
 } from "lightweight-charts";
+import { NButton, NIcon } from "naive-ui";
 
 import { useCandlesticksStore } from "@/stores/candlesticksStore";
 import { useIndicatorsStore } from "@/stores/indicatorsStore";
@@ -69,6 +72,7 @@ import { wsService, type WebSocketEventHandler } from "@/utils/websocketService"
 import {
   createChartSession,
   type ChartSession,
+  type ChartSessionKey,
   type ChartSessionSubscriptionsAdapter,
   type ChartSessionKeyInput,
 } from "@/components/Chart/chartSession";
@@ -86,6 +90,7 @@ import {
   type LoadedCandleRange,
 } from "@/utils/chart/backtestOverlay";
 import { getOrCreatePaneOverlayWrapper } from "@/utils/chart/paneOverlay";
+import { timeframeToMinutes } from "@/utils/timeframes";
 import Indicator from "@/components/Chart/Indicator/Indicator.vue";
 import { CloseCircleOutline } from "@/icons";
 
@@ -147,6 +152,8 @@ export default defineComponent({
   components: {
     CloseCircleOutline,
     Indicator,
+    NButton,
+    NIcon,
   },
 
   data(): ChartAreaData {
@@ -195,6 +202,15 @@ export default defineComponent({
       return `${symbol}|${exchange}`;
     },
 
+    activeBacktestRunTitle(): string {
+      const run = this.backtestOverlayStore.selectedRun;
+      if (!run) {
+        return "";
+      }
+
+      return run.request.strategy.strategy_id;
+    },
+
     activeBacktestRunContext(): string {
       const run = this.backtestOverlayStore.selectedRun;
       if (!run) {
@@ -204,7 +220,7 @@ export default defineComponent({
       const symbol = run.request.symbols[0] ?? "unknown";
       const market = run.request.exchange ? `${run.request.exchange}:${symbol}` : symbol;
 
-      return `${market} ${run.request.timeframe} ${run.request.strategy.strategy_id} ${run.run_id}`;
+      return `${run.request.timeframe} ${market}`;
     },
   },
 
@@ -287,6 +303,19 @@ export default defineComponent({
 
   methods: {
     createChartSessionAdapter(): ChartSessionSubscriptionsAdapter {
+      this.indicatorsStore.configureHistoryCoverage({
+        batchSize: this.indicatorBatchSize,
+        getLoadedCandleRange: () => {
+          const key = this.currentChartSessionKey();
+          return key ? this.getLoadedCandleRange(key.timeframe) : null;
+        },
+      });
+
+      const indicatorCoverageOptions = (key: ChartSessionKey) => ({
+        batchSize: this.indicatorBatchSize,
+        getLoadedCandleRange: () => this.getLoadedCandleRange(key.timeframe),
+      });
+
       return {
         subscribeCandles: (key) => wsService.send("subscribeCandles", {
           symbol: key.symbol,
@@ -313,7 +342,12 @@ export default defineComponent({
           });
         },
         requestIndicators: (key) => {
-          this.indicatorsStore.requestAllIndicators(key.symbol, key.timeframe, key.exchange);
+          this.indicatorsStore.requestAllIndicators(
+            key.symbol,
+            key.timeframe,
+            key.exchange,
+            indicatorCoverageOptions(key),
+          );
         },
         unsubscribeIndicators: () => this.indicatorsStore.unsubscribeAllLive(),
         getOldestCandleTimestampMs: () => {
@@ -327,15 +361,21 @@ export default defineComponent({
         prependOlderCandles: (_key, candles) => {
           this.candlesticksStore.prepend(candles);
         },
-        renderOlderCandles: () => {
+        renderOlderCandles: (key) => {
           this.renderCandlesticks(this.candlesticksStore.data);
-        },
-        requestOlderIndicators: (key) => {
-          return this.indicatorsStore.fetchOlderForAll(
+          void this.indicatorsStore.ensureCoverageForAll(
             key.symbol,
             key.timeframe,
             key.exchange,
-            this.indicatorBatchSize,
+            indicatorCoverageOptions(key),
+          );
+        },
+        requestOlderIndicators: (key) => {
+          return this.indicatorsStore.ensureCoverageForAll(
+            key.symbol,
+            key.timeframe,
+            key.exchange,
+            indicatorCoverageOptions(key),
           );
         },
         resetIndicatorHistory: () => {
@@ -626,6 +666,18 @@ export default defineComponent({
     getAllIndicators() {
       return this.indicatorsStore.all;
     },
+
+    getLoadedCandleRange(timeframe: string) {
+      const firstCandle = this.candlesticksStore.data[0];
+      const lastCandle = this.candlesticksStore.data[this.candlesticksStore.data.length - 1];
+      if (!firstCandle || !lastCandle) return null;
+
+      return {
+        oldestTimestampMs: firstCandle.timestamp_ms,
+        newestTimestampMs: lastCandle.timestamp_ms,
+        exclusiveEndMs: lastCandle.timestamp_ms + timeframeToMinutes(timeframe) * 60_000,
+      };
+    },
   },
 });
 </script>
@@ -650,15 +702,16 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 300px;
   width: min(350px, calc(100vw - 20px));
   max-width: 100%;
-  padding: 6px 8px;
-  color: #e5e7eb;
-  font-size: 12px;
-  line-height: 1.25;
-  background: rgba(17, 24, 39, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 6px;
+  padding: 8px 12px;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.3;
+  background: rgba(19, 23, 34, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
 }
 
 .backtest-overlay-details {
@@ -686,27 +739,11 @@ export default defineComponent({
 
 .backtest-overlay-remove {
   flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
   color: #f8fafc;
-  cursor: pointer;
-  background: rgba(148, 163, 184, 0.16);
-  border: 1px solid rgba(226, 232, 240, 0.25);
-  border-radius: 4px;
 }
 
-.backtest-overlay-remove:hover,
-.backtest-overlay-remove:focus-visible {
-  background: rgba(148, 163, 184, 0.28);
-}
-
-.backtest-overlay-remove-icon {
-  width: 16px;
-  height: 16px;
+.backtest-overlay-remove:hover {
+  color: #e98b8b;
 }
 
 .legend {

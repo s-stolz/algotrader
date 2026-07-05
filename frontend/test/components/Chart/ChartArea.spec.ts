@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import type { ComponentPublicInstance } from 'vue';
+import { defineComponent, h, type ComponentPublicInstance } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,6 +33,17 @@ interface MockCrosshairParam {
 
 type MockCrosshairHandler = (param: MockCrosshairParam) => void;
 type MockMessageHandler = (message: CandleUpdateMessage | IndicatorUpdateMessage) => void;
+
+const NButtonStub = defineComponent({
+  name: 'NButton',
+  emits: ['click'],
+  setup(_, { attrs, emit, slots }) {
+    return () => h('button', {
+      ...attrs,
+      onClick: (event: MouseEvent) => emit('click', event),
+    }, slots.default?.());
+  },
+});
 
 const chartAreaMocks = vi.hoisted(() => {
   const ohlcSeries = { id: 'ohlc-series' };
@@ -255,6 +266,10 @@ function mountChartArea() {
     global: {
       stubs: {
         Indicator: true,
+        NButton: NButtonStub,
+        NIcon: { template: '<span><slot /></span>' },
+        'n-button': NButtonStub,
+        'n-icon': { template: '<span><slot /></span>' },
       },
     },
   });
@@ -681,13 +696,15 @@ describe('ChartArea', () => {
 
     const paneOverlay = chartAreaMocks.mainPaneElement?.querySelector('.indicators-wrapper');
     const panel = paneOverlay?.querySelector('.backtest-overlay-panel');
+    const title = paneOverlay?.querySelector('.backtest-overlay-title');
     expect(paneOverlay).toBeInstanceOf(HTMLDivElement);
     expect(panel).toBeInstanceOf(HTMLDivElement);
-    expect(panel?.textContent).toContain('Backtest Run');
+    expect(panel?.textContent).not.toContain('Backtest Run');
+    expect(title?.textContent).toBe('sma_crossover');
     expect(panel?.textContent).toContain('FX:EURUSD');
     expect(panel?.textContent).toContain('M15');
     expect(panel?.textContent).toContain('sma_crossover');
-    expect(panel?.textContent).toContain('run-123');
+    expect(panel?.textContent).not.toContain('run-123');
     expect(wrapper.find('.legend').exists()).toBe(true);
     expect(wrapper.find('.backtest-overlay-panel').exists()).toBe(false);
 
