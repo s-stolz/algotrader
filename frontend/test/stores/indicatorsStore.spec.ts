@@ -81,6 +81,7 @@ describe('indicators store', () => {
       symbol: 'EURUSD',
       timeframe: 'M5',
       exchange: 'FX',
+      endMs: null,
       limit: 500,
     }, {});
     expect(localId).toBe('12345');
@@ -142,12 +143,14 @@ describe('indicators store', () => {
     const localId = await store.requestIndicator(null, 1, {
       symbol: 'EURUSD',
       timeframe: 'M1',
+      exchange: 'FX',
     }, {}, coverageOptions);
     await store.ensureCoverageForAll('EURUSD', 'M1', 'FX', coverageOptions);
 
     expect(requestIndicatorClient).toHaveBeenNthCalledWith(1, 1, {
       symbol: 'EURUSD',
       timeframe: 'M1',
+      exchange: 'FX',
       endMs: 5_000,
       limit: 2,
     }, {});

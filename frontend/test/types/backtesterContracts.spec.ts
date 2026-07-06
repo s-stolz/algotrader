@@ -180,6 +180,21 @@ describe('backtester contract validators', () => {
       },
       result_schema_version: BACKTEST_RESULT_SCHEMA_VERSION,
     })).toBe(false);
+
+    expect(isBacktestRun({
+      run_id: 'run-mixed-direction-contract',
+      status: 'succeeded',
+      submitted_at_ms: 1_780_921_805_123,
+      request_schema_version: 2,
+      request: {
+        ...backtestRequest(),
+        execution: {
+          ...backtestRequest().execution,
+          allow_short: true,
+        },
+      },
+      result_schema_version: BACKTEST_RESULT_SCHEMA_VERSION,
+    })).toBe(false);
   });
 });
 

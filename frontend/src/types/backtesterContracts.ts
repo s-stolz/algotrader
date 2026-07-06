@@ -188,6 +188,7 @@ function isBacktestExecutionPayload(value: unknown): value is BacktestExecutionP
     typeof value.price_source === 'string' &&
     BACKTEST_PRICE_SOURCE_SET.has(value.price_source) &&
     typeof value.allow_partial_fills === 'boolean' &&
+    !('allow_short' in value) &&
     typeof value.allowed_directions === 'string' &&
     BACKTEST_ALLOWED_DIRECTIONS_SET.has(value.allowed_directions) &&
     value.trade_accounting_policy === 'average_cost' &&

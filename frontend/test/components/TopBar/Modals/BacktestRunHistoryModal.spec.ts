@@ -122,9 +122,14 @@ describe('BacktestRunHistoryModal', () => {
         status: 'succeeded',
         metrics: {
           total_return_pct: 1.25,
+          max_drawdown_pct: -0.5,
           trade_count: 3,
           long_trade_count: 2,
           short_trade_count: 1,
+          long_win_rate_pct: 50,
+          short_win_rate_pct: 100,
+          long_realized_pnl: 12.5,
+          short_realized_pnl: 8,
         },
       }),
       backtestRun({
@@ -169,9 +174,14 @@ describe('BacktestRunHistoryModal', () => {
     expect(wrapper.text()).toContain('Submitted');
     expect(wrapper.text()).toContain('Completed');
     expect(wrapper.text()).toContain('total_return_pct 1.25');
+    expect(wrapper.text()).toContain('max_drawdown_pct -0.5');
     expect(wrapper.text()).toContain('trade_count 3');
     expect(wrapper.text()).toContain('long_trade_count 2');
     expect(wrapper.text()).toContain('short_trade_count 1');
+    expect(wrapper.text()).toContain('long_win_rate_pct 50');
+    expect(wrapper.text()).toContain('short_win_rate_pct 100');
+    expect(wrapper.text()).toContain('long_realized_pnl 12.5');
+    expect(wrapper.text()).toContain('short_realized_pnl 8');
     expect(wrapper.text()).toContain('Only succeeded Backtest Runs can be opened.');
     expect(wrapper.text()).toContain('Market FX:USDJPY is not available in the chart market list.');
     expect(wrapper.text()).not.toMatch(/refresh/i);
