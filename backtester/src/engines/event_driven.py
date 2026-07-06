@@ -10,6 +10,7 @@ import pandas as pd
 from data.feature_stream import EventDrivenFeatureStream
 from data.normalization import normalize_bar_data
 from domain.enums import (
+    AllowedDirections,
     BacktestEngine,
     DataGranularity,
     ExitReason,
@@ -238,6 +239,7 @@ def _run_event_driven_loop(
             symbol=symbol,
             timestamp_ms=int(snapshot.timestamp_ms),
             signal=int(signal),
+            allowed_directions=request.execution.allowed_directions,
         )
 
         state.finish_bar(
@@ -439,21 +441,48 @@ def _record_fill(
     state.executed_fees[bar_index] += float(fee)
     state.cash_adjustment += -(quantity_delta * execution_price) - float(fee)
     state.cash = float(state.initial_capital + state.cash_adjustment)
-    state.actual_position += quantity_delta
+    state.actual_position, state.entry_price = _apply_position_fill(
+        actual_position=previous_position,
+        entry_price=state.entry_price,
+        quantity_delta=quantity_delta,
+        fill_price=float(execution_price),
+    )
     state.total_slippage_cost += quantity * abs(execution_price - raw_execution_price)
 
-    if quantity_delta > 0.0:
-        if previous_position <= 0.0 or state.entry_price is None:
-            state.entry_price = float(execution_price)
-        else:
-            state.entry_price = (
-                (state.entry_price * previous_position) + (float(execution_price) * quantity_delta)
-            ) / state.actual_position
-    elif state.actual_position <= 0.0:
-        state.actual_position = 0.0
-        state.entry_price = None
-
     return fill
+
+
+def _apply_position_fill(
+    *,
+    actual_position: float,
+    entry_price: float | None,
+    quantity_delta: float,
+    fill_price: float,
+) -> tuple[float, float | None]:
+    if quantity_delta == 0.0:
+        return actual_position, entry_price
+
+    if actual_position == 0.0 or _same_direction(actual_position, quantity_delta):
+        previous_abs_position = abs(actual_position)
+        added_abs_quantity = abs(quantity_delta)
+        next_position = actual_position + quantity_delta
+        if previous_abs_position == 0.0 or entry_price is None:
+            return next_position, fill_price
+        next_entry_price = (
+            (entry_price * previous_abs_position) + (fill_price * added_abs_quantity)
+        ) / (previous_abs_position + added_abs_quantity)
+        return next_position, next_entry_price
+
+    next_position = actual_position + quantity_delta
+    if next_position == 0.0:
+        return 0.0, None
+    if _same_direction(actual_position, next_position):
+        return next_position, entry_price
+    return next_position, fill_price
+
+
+def _same_direction(left: float, right: float) -> bool:
+    return (left > 0.0 and right > 0.0) or (left < 0.0 and right < 0.0)
 
 
 def _planned_stop_loss_price(
@@ -509,6 +538,7 @@ def _queue_target_delta_from_signal(
     symbol: str,
     timestamp_ms: int,
     signal: int,
+    allowed_directions: AllowedDirections,
 ) -> None:
     if signal > 0:
         next_raw_target = float(bar_model.target_quantity)
@@ -522,6 +552,7 @@ def _queue_target_delta_from_signal(
         symbol=symbol,
         timestamp_ms=timestamp_ms,
         target_quantity=next_raw_target,
+        allowed_directions=allowed_directions,
     )
     target_delta = next_desired_target - state.desired_target
 
@@ -539,6 +570,7 @@ def _apply_single_target_transforms(
     symbol: str,
     timestamp_ms: int,
     target_quantity: float,
+    allowed_directions: AllowedDirections,
 ) -> float:
     execution_targets = ExecutionArrayBundle(
         timestamp_ms=[timestamp_ms],
@@ -552,6 +584,7 @@ def _apply_single_target_transforms(
         execution_targets=transformed,
         symbol=symbol,
         expected_size=1,
+        allowed_directions=allowed_directions,
     )
     return float(values[0])
 
@@ -871,6 +904,7 @@ def _extract_target_values(
     execution_targets: ExecutionArrayBundle,
     symbol: str,
     expected_size: int,
+    allowed_directions: AllowedDirections,
 ) -> np.ndarray:
     target = execution_targets.target_quantity_by_symbol.get(symbol)
     if target is None:
@@ -883,10 +917,15 @@ def _extract_target_values(
         )
     if not np.isfinite(target_values).all():
         raise ValueError(f"Strategy produced non-finite target quantities for symbol {symbol}")
-    if np.any(target_values < 0.0):
+    if allowed_directions == AllowedDirections.LONG_ONLY and np.any(target_values < 0.0):
         raise ValueError(
-            "Event-driven engine is long-only and requires non-negative target quantities "
-            f"for symbol {symbol}"
+            "Event-driven engine allowed_directions=long_only requires non-negative "
+            f"target quantities for symbol {symbol}"
+        )
+    if allowed_directions == AllowedDirections.SHORT_ONLY and np.any(target_values > 0.0):
+        raise ValueError(
+            "Event-driven engine allowed_directions=short_only requires non-positive "
+            f"target quantities for symbol {symbol}"
         )
     return target_values
 
