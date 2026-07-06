@@ -202,6 +202,59 @@ class TestBacktestEngineParity(unittest.TestCase):
             [start_ms + minute * i for i in range(4)],
         )
 
+    def test_signal_exit_diagnostics_count_short_covers_not_short_entries(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = _build_ohlc_bars(
+            start_ms=start_ms,
+            minute=minute,
+            opens=(100.0, 99.0, 98.0, 97.0),
+            highs=(101.0, 100.0, 99.0, 98.0),
+            lows=(99.0, 98.0, 97.0, 96.0),
+            closes=(101.0, 100.0, 99.0, 98.0),
+        )
+        open_short_strategy = _build_timestamp_target_strategy(
+            strategy_id="open_short_diagnostics_fixture",
+            target_by_timestamp={
+                start_ms: -1.0,
+                start_ms + minute: -1.0,
+                start_ms + (2 * minute): -1.0,
+                start_ms + (3 * minute): -1.0,
+            },
+        )
+        reduce_and_cover_strategy = _build_timestamp_target_strategy(
+            strategy_id="short_cover_diagnostics_fixture",
+            target_by_timestamp={
+                start_ms: -2.0,
+                start_ms + minute: -1.0,
+                start_ms + (2 * minute): 0.0,
+                start_ms + (3 * minute): 0.0,
+            },
+        )
+
+        cases = (
+            (open_short_strategy, 0),
+            (reduce_and_cover_strategy, 2),
+        )
+        for strategy, expected_exit_count in cases:
+            for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
+                with self.subTest(strategy=strategy.strategy_id, engine=engine):
+                    result = run_backtest(
+                        request=_build_request_for_strategy(
+                            engine=engine,
+                            strategy=strategy,
+                            start_ms=start_ms,
+                            end_ms=start_ms + (4 * minute),
+                        ),
+                        bars=bars,
+                        strategy=strategy,
+                    )
+
+                    self.assertEqual(
+                        result.diagnostics["signal_exit_count"],
+                        expected_exit_count,
+                    )
+
     def test_stop_loss_is_active_on_entry_bar_and_takes_priority_over_signal_exit(self) -> None:
         start_ms = 1_700_000_000_000
         minute = 60_000
@@ -979,6 +1032,39 @@ def _build_close_above_open_strategy() -> StrategyDefinition:
         feature_specs=("close", "open"),
         decision_model=bar_model.build_signals,
         position_builder=bar_model.build_positions,
+        bar_model=bar_model,
+    )
+
+
+def _build_timestamp_target_strategy(
+    *,
+    strategy_id: str,
+    target_by_timestamp: dict[int, float],
+) -> StrategyDefinition:
+    bar_model = BarStrategyModel(
+        entry_conditions=(ConditionRule.above("close", "open"),),
+        exit_conditions=(),
+        target_quantity=1.0,
+    )
+
+    def apply_targets(bundle: ExecutionArrayBundle) -> ExecutionArrayBundle:
+        return ExecutionArrayBundle(
+            timestamp_ms=bundle.timestamp_ms,
+            target_quantity_by_symbol={
+                symbol: [
+                    float(target_by_timestamp.get(int(timestamp_ms), 0.0))
+                    for timestamp_ms in bundle.timestamp_ms
+                ]
+                for symbol in bundle.target_quantity_by_symbol
+            },
+        )
+
+    return StrategyDefinition(
+        strategy_id=strategy_id,
+        feature_specs=("close", "open"),
+        decision_model=bar_model.build_signals,
+        position_builder=bar_model.build_positions,
+        risk_rules=(apply_targets,),
         bar_model=bar_model,
     )
 

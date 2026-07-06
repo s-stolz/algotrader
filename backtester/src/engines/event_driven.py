@@ -976,18 +976,36 @@ def _build_diagnostics(
 
 
 def _exit_fill_count(*, fills: list[Fill], exit_reason: ExitReason) -> int:
-    return sum(
-        1 for fill in fills if fill.side == OrderSide.SELL and fill.exit_reason == exit_reason
+    return _position_reducing_fill_count(
+        fills=fills,
+        exit_reasons={exit_reason},
     )
 
 
 def _signal_exit_fill_count(fills: list[Fill]) -> int:
-    return sum(
-        1
-        for fill in fills
-        if fill.side == OrderSide.SELL
-        and (fill.exit_reason is None or fill.exit_reason == ExitReason.SIGNAL)
+    return _position_reducing_fill_count(
+        fills=fills,
+        exit_reasons={None, ExitReason.SIGNAL},
     )
+
+
+def _position_reducing_fill_count(
+    *,
+    fills: list[Fill],
+    exit_reasons: set[ExitReason | None],
+) -> int:
+    position = 0.0
+    count = 0
+    for fill in fills:
+        quantity = float(fill.quantity)
+        if quantity <= 0.0:
+            continue
+
+        signed_delta = quantity if fill.side == OrderSide.BUY else -quantity
+        if _same_direction(position, -signed_delta) and fill.exit_reason in exit_reasons:
+            count += 1
+        position += signed_delta
+    return count
 
 
 def _bar_from_row(row: Any) -> BarView:
