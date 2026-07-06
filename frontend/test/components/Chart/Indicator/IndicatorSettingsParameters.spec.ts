@@ -124,6 +124,13 @@ function createIndicator(overrides: Partial<StoreIndicator> = {}): StoreIndicato
     },
     currentLimit: 500,
     hasExpandedHistory: false,
+    historyGeneration: 0,
+    isBackfilling: false,
+    historyExhausted: false,
+    targetOldestTimestampMs: null,
+    targetNewestTimestampMs: null,
+    nextBackfillEndMs: null,
+    activeBackfillPromise: null,
     ...overrides,
   };
 }
