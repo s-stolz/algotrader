@@ -856,10 +856,7 @@ def _pending_exit_reason_at_open(
     stop_loss_pct: float | None,
     take_profit_pct: float | None,
 ) -> ExitReason | None:
-    if (
-        not _same_direction(state.actual_position, -pending_total)
-        or state.entry_price is None
-    ):
+    if not _same_direction(state.actual_position, -pending_total) or state.entry_price is None:
         return None
 
     if stop_loss_pct is not None:

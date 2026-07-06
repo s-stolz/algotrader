@@ -124,9 +124,7 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
 
 
 def _same_direction(current_qty: float, signed_delta: float) -> bool:
-    return (current_qty > 0.0 and signed_delta > 0.0) or (
-        current_qty < 0.0 and signed_delta < 0.0
-    )
+    return (current_qty > 0.0 and signed_delta > 0.0) or (current_qty < 0.0 and signed_delta < 0.0)
 
 
 def _trade_direction_for_open_qty(open_qty: float) -> TradeDirection:

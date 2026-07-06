@@ -62,7 +62,7 @@ class _ProtectiveExitDecision:
     ambiguous: bool = False
 
 
-def generate_fills_from_targets(
+def generate_fills_from_targets(  # noqa: C901
     *,
     symbol: str,
     timestamp_ms: ArrayLike,

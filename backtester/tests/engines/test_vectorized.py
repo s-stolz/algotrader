@@ -363,7 +363,10 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         self.assertEqual(result.equity_curve[3].positions, {"AAPL": -1.0})
         self.assertEqual(result.equity_curve[4].positions, {})
         self.assertEqual(
-            [(trade.trade_direction, trade.quantity, trade.realized_pnl) for trade in result.trades],
+            [
+                (trade.trade_direction, trade.quantity, trade.realized_pnl)
+                for trade in result.trades
+            ],
             [
                 (TradeDirection.SHORT, 1.0, -1.0),
                 (TradeDirection.SHORT, 1.0, -2.0),
@@ -400,7 +403,10 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         self.assertEqual(result.equity_curve[3].positions, {"AAPL": -1.0})
         self.assertEqual(result.equity_curve[4].positions, {"AAPL": 1.0})
         self.assertEqual(
-            [(trade.trade_direction, trade.quantity, trade.realized_pnl) for trade in result.trades],
+            [
+                (trade.trade_direction, trade.quantity, trade.realized_pnl)
+                for trade in result.trades
+            ],
             [
                 (TradeDirection.LONG, 1.0, 1.0),
                 (TradeDirection.SHORT, 1.0, -1.0),

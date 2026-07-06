@@ -1,9 +1,15 @@
 import unittest
+from copy import deepcopy
 from dataclasses import replace
 from unittest.mock import patch
 
 import pandas as pd
+from adapters.persistence import (
+    BacktestRunPersistenceAdapter,
+    DatabaseAccessorBacktestRunRepository,
+)
 from app.backtest_runner import run_backtest, run_backtest_with_market_data, save_backtest_result
+from domain.enums import OrderSide, TradeDirection
 from domain.types import BacktestRequest, BacktestResult, ExecutionConfig, StrategyConfig
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
 
@@ -89,7 +95,132 @@ class _FakeDatabaseAccessorClient:
         return {key: value for key, value in run.items() if key not in {"fills", "trades"}}
 
 
+class _InMemoryBacktestRunClient:
+    def __init__(self) -> None:
+        self.saved_runs: list[dict] = []
+        self._runs: dict[str, dict] = {}
+        self._fills: dict[str, list[dict]] = {}
+        self._trades: dict[str, list[dict]] = {}
+
+    def create_backtest_run(self, run: dict) -> dict:
+        saved = deepcopy(run)
+        run_id = str(saved["run_id"])
+        self.saved_runs.append(saved)
+        self._runs[run_id] = {
+            key: value for key, value in deepcopy(saved).items() if key not in {"fills", "trades"}
+        }
+        self._fills[run_id] = [{"run_id": run_id, **fill} for fill in deepcopy(saved["fills"])]
+        self._trades[run_id] = [{"run_id": run_id, **trade} for trade in deepcopy(saved["trades"])]
+        return deepcopy(self._runs[run_id])
+
+    def get_backtest_run(self, run_id: str) -> dict:
+        return deepcopy(self._runs[run_id])
+
+    def list_backtest_runs(self, **query) -> list[dict]:
+        _ = query
+        return [deepcopy(run) for run in self._runs.values()]
+
+    def get_backtest_fills(self, run_id: str) -> list[dict]:
+        return deepcopy(self._fills[run_id])
+
+    def get_backtest_trades(self, run_id: str) -> list[dict]:
+        return deepcopy(self._trades[run_id])
+
+    def delete_backtest_run(self, run_id: str) -> None:
+        del self._runs[run_id]
+        del self._fills[run_id]
+        del self._trades[run_id]
+
+
 class TestBacktestPersistenceIntegration(unittest.TestCase):
+    def test_default_long_and_short_run_persists_short_acceptance_artifacts(self) -> None:
+        client = _InMemoryBacktestRunClient()
+        request = _build_short_acceptance_request()
+        strategy = build_sma_crossover_strategy(
+            fast_window=2,
+            slow_window=3,
+            quantity=1.0,
+            stop_loss_pct=5.0,
+            take_profit_pct=10.0,
+        )
+
+        with patch("adapters.persistence._new_run_id", return_value="run-short-acceptance"):
+            result = run_backtest(
+                request=request,
+                bars=_build_short_acceptance_bars(),
+                strategy=strategy,
+                persistence_adapter=BacktestRunPersistenceAdapter(client=client),
+            )
+
+        saved_run = client.saved_runs[0]
+        self.assertEqual(result.backtest_run_id, "run-short-acceptance")
+        self.assertEqual(saved_run["request_schema_version"], 2)
+        self.assertEqual(
+            saved_run["request"]["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+        self.assertNotIn("allow_short", saved_run["request"]["execution"])
+        self.assertEqual(saved_run["result_schema_version"], 3)
+
+        self.assertEqual(
+            [(fill["side"], fill["exit_reason"]) for fill in saved_run["fills"]],
+            [("sell", None), ("buy", "stop_loss")],
+        )
+        self.assertTrue(all("trade_direction" not in fill for fill in saved_run["fills"]))
+        self.assertGreater(saved_run["fills"][0]["fees"], 0.0)
+        self.assertGreater(saved_run["fills"][1]["fees"], 0.0)
+
+        self.assertEqual(len(saved_run["trades"]), 1)
+        closed_short = saved_run["trades"][0]
+        self.assertEqual(closed_short["trade_direction"], "short")
+        self.assertEqual(closed_short["quantity"], 1.0)
+        self.assertEqual(closed_short["exit_reason"], "stop_loss")
+        self.assertAlmostEqual(closed_short["fees"], 0.01845)
+        self.assertAlmostEqual(closed_short["realized_pnl"], -0.46845)
+        self.assertAlmostEqual(closed_short["stop_loss_price"], 9.45)
+        self.assertAlmostEqual(closed_short["take_profit_price"], 8.1)
+
+        self.assertEqual(saved_run["metrics"]["trade_count"], 1.0)
+        self.assertEqual(saved_run["metrics"]["long_trade_count"], 0.0)
+        self.assertEqual(saved_run["metrics"]["short_trade_count"], 1.0)
+        self.assertEqual(saved_run["metrics"]["long_win_rate_pct"], 0.0)
+        self.assertEqual(saved_run["metrics"]["short_win_rate_pct"], 0.0)
+        self.assertEqual(saved_run["metrics"]["long_realized_pnl"], 0.0)
+        self.assertAlmostEqual(
+            saved_run["metrics"]["short_realized_pnl"],
+            closed_short["realized_pnl"],
+        )
+
+        repository = DatabaseAccessorBacktestRunRepository(client=client)
+        run_record = repository.get("run-short-acceptance")
+        fetched_fills = repository.get_fills("run-short-acceptance")
+        fetched_trades = repository.get_trades("run-short-acceptance")
+
+        self.assertIsNotNone(run_record)
+        assert run_record is not None
+        self.assertEqual(run_record.request_snapshot.schema_version, 2)
+        self.assertEqual(
+            run_record.request_snapshot.payload["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+        self.assertEqual(run_record.result_schema_version, 3)
+        self.assertEqual(run_record.metrics, saved_run["metrics"])
+        self.assertEqual(
+            [(fill.side, fill.exit_reason) for fill in fetched_fills],
+            [(OrderSide.SELL, None), (OrderSide.BUY, result.fills[1].exit_reason)],
+        )
+        self.assertEqual(fetched_trades[0].trade_direction, TradeDirection.SHORT)
+        self.assertAlmostEqual(
+            fetched_trades[0].realized_pnl,
+            closed_short["realized_pnl"],
+        )
+        self.assertIsNotNone(fetched_trades[0].stop_loss_price)
+        self.assertIsNotNone(fetched_trades[0].take_profit_price)
+        assert fetched_trades[0].stop_loss_price is not None
+        assert fetched_trades[0].take_profit_price is not None
+        self.assertAlmostEqual(fetched_trades[0].stop_loss_price, 9.45)
+        self.assertAlmostEqual(fetched_trades[0].take_profit_price, 8.1)
+
     def test_opt_in_request_persists_successful_run_and_attaches_metadata(self) -> None:
         adapter = _RecordingPersistenceAdapter()
         request = _build_request(persist_result=True)
@@ -238,6 +369,48 @@ def _build_request(*, persist_result: bool = False) -> BacktestRequest:
         execution=ExecutionConfig(),
         initial_capital=10_000.0,
         persist_result=persist_result,
+    )
+
+
+def _build_short_acceptance_request() -> BacktestRequest:
+    start_ms = 1_700_000_000_000
+    minute = 60_000
+    return BacktestRequest(
+        symbols=["AAPL"],
+        timeframe="1m",
+        start_ms=start_ms,
+        end_ms=start_ms + (7 * minute),
+        strategy=StrategyConfig(
+            strategy_id="sma_crossover",
+            parameters={
+                "fast_window": 2,
+                "slow_window": 3,
+                "quantity": 1.0,
+                "stop_loss_pct": 5.0,
+                "take_profit_pct": 10.0,
+            },
+        ),
+        execution=ExecutionConfig(commission_bps=10.0),
+        initial_capital=10_000.0,
+        persist_result=True,
+    )
+
+
+def _build_short_acceptance_bars() -> pd.DataFrame:
+    start_ms = 1_700_000_000_000
+    minute = 60_000
+    closes = [10.0, 12.0, 14.0, 13.0, 11.0, 9.0, 8.0]
+
+    return pd.DataFrame(
+        {
+            "timestamp_ms": [start_ms + minute * i for i in range(len(closes))],
+            "symbol": ["AAPL"] * len(closes),
+            "open": closes,
+            "high": [price + 0.5 for price in closes],
+            "low": [price - 0.5 for price in closes],
+            "close": closes,
+            "volume": [1_000.0] * len(closes),
+        }
     )
 
 

@@ -1100,10 +1100,7 @@ class TestBacktestEngineParity(unittest.TestCase):
 
                 self._assert_public_results_match(vectorized, event_driven)
                 self.assertEqual(
-                    [
-                        (fill.side, fill.price, fill.exit_reason)
-                        for fill in event_driven.fills
-                    ],
+                    [(fill.side, fill.price, fill.exit_reason) for fill in event_driven.fills],
                     [
                         (OrderSide.SELL, 100.0, None),
                         (OrderSide.BUY, exit_price, exit_reason),
@@ -1199,14 +1196,8 @@ class TestBacktestEngineParity(unittest.TestCase):
                 "timestamp_ms": [start_ms + minute * index for index in range(len(closes))],
                 "symbol": ["AAPL"] * len(closes),
                 "open": opens,
-                "high": [
-                    max(open_price, close) + 0.5
-                    for open_price, close in zip(opens, closes)
-                ],
-                "low": [
-                    min(open_price, close) - 0.5
-                    for open_price, close in zip(opens, closes)
-                ],
+                "high": [max(open_price, close) + 0.5 for open_price, close in zip(opens, closes)],
+                "low": [min(open_price, close) - 0.5 for open_price, close in zip(opens, closes)],
                 "close": closes,
                 "volume": [1_000.0] * len(closes),
             }

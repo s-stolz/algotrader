@@ -633,6 +633,106 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             [(None, None), (1.069, 1.081)],
         )
 
+    async def test_short_completion_readback_preserves_direction_metrics_and_fill_shape(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-short-acceptance",
+                    status="running",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+
+        metrics = {
+            "total_return_pct": -0.0046845,
+            "max_drawdown_pct": -0.0046845,
+            "trade_count": 1.0,
+            "long_trade_count": 0.0,
+            "short_trade_count": 1.0,
+            "long_win_rate_pct": 0.0,
+            "short_win_rate_pct": 0.0,
+            "long_realized_pnl": 0.0,
+            "short_realized_pnl": -0.46845,
+        }
+        completed = await main.complete_backtest_run(
+            "run-short-acceptance",
+            BacktestRunCompleteIn(
+                expected_status="running",
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                result_schema_version=3,
+                metrics=metrics,
+                diagnostics={"engine": "vectorized", "execution_duration_ms": 12},
+                fills=[
+                    BacktestFillIn(
+                        fill_sequence=0,
+                        timestamp_ms=1700000300000,
+                        symbol="AAPL",
+                        side="sell",
+                        quantity=1.0,
+                        price=9.0,
+                        fees=0.009,
+                        exit_reason=None,
+                    ),
+                    BacktestFillIn(
+                        fill_sequence=1,
+                        timestamp_ms=1700000300000,
+                        symbol="AAPL",
+                        side="buy",
+                        quantity=1.0,
+                        price=9.45,
+                        fees=0.00945,
+                        exit_reason="stop_loss",
+                    ),
+                ],
+                trades=[
+                    BacktestClosedTradeIn(
+                        trade_sequence=0,
+                        trade_id="AAPL-trade-1",
+                        symbol="AAPL",
+                        trade_direction="short",
+                        quantity=1.0,
+                        entry_timestamp_ms=1700000300000,
+                        entry_price=9.0,
+                        exit_timestamp_ms=1700000300000,
+                        exit_price=9.45,
+                        realized_pnl=-0.46845,
+                        fees=0.01845,
+                        exit_reason="stop_loss",
+                        stop_loss_price=9.45,
+                        take_profit_price=8.1,
+                    )
+                ],
+            ),
+            db=self.db,
+        )
+
+        fetched_run = await main.get_backtest_run("run-short-acceptance", db=self.db)
+        fetched_fills = await main.get_backtest_fills("run-short-acceptance", db=self.db)
+        fetched_trades = await main.get_backtest_trades("run-short-acceptance", db=self.db)
+
+        self.assertEqual(completed, {"updated": True})
+        self.assertEqual(fetched_run["request_schema_version"], 2)
+        self.assertEqual(
+            fetched_run["request"]["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+        self.assertNotIn("allow_short", fetched_run["request"]["execution"])
+        self.assertEqual(fetched_run["result_schema_version"], 3)
+        self.assertEqual(fetched_run["metrics"], metrics)
+        self.assertEqual(
+            [(fill["side"], fill["exit_reason"]) for fill in fetched_fills],
+            [("sell", None), ("buy", "stop_loss")],
+        )
+        self.assertTrue(all("trade_direction" not in fill for fill in fetched_fills))
+        self.assertEqual(fetched_trades[0]["trade_direction"], "short")
+        self.assertEqual(fetched_trades[0]["exit_reason"], "stop_loss")
+        self.assertEqual(fetched_trades[0]["fees"], 0.01845)
+        self.assertEqual(fetched_trades[0]["realized_pnl"], -0.46845)
+        self.assertEqual(fetched_trades[0]["stop_loss_price"], 9.45)
+        self.assertEqual(fetched_trades[0]["take_profit_price"], 8.1)
+
     async def test_completion_does_not_store_artifacts_for_stale_status(self):
         await main.create_backtest_run(
             BacktestRunCreateIn(**_run_payload()),

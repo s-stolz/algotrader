@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BacktestClosedTrade } from '@/types/backtesterContracts';
+import {
+  BACKTEST_RESULT_SCHEMA_VERSION,
+  type BacktestClosedTrade,
+  isBacktestClosedTrade,
+  isBacktestRun,
+} from '@/types/backtesterContracts';
 import {
   buildBacktestProtectiveLineSegments,
   buildBacktestTradeMarkers,
@@ -29,6 +34,102 @@ const closedTrade = (overrides: Partial<BacktestClosedTrade> = {}): BacktestClos
 });
 
 describe('backtest chart overlay utilities', () => {
+  it('accepts persisted short result contracts and renders entry and cover actions', () => {
+    const run = {
+      run_id: 'run-short-acceptance',
+      status: 'succeeded',
+      submitted_at_ms: 1_780_921_805_123,
+      started_at_ms: 1_780_921_900_000,
+      completed_at_ms: 1_780_922_100_000,
+      request_schema_version: 2,
+      request: {
+        symbols: ['AAPL'],
+        exchange: null,
+        timeframe: '1m',
+        start_ms: 1_700_000_000_000,
+        end_ms: 1_700_000_420_000,
+        engine: 'vectorized',
+        data_granularity: 'bar',
+        initial_capital: 10_000,
+        strategy: {
+          strategy_id: 'sma_crossover',
+          parameters: {
+            fast_window: 2,
+            slow_window: 3,
+            quantity: 1,
+            stop_loss_pct: 5,
+            take_profit_pct: 10,
+          },
+        },
+        execution: {
+          signal_timing: 'close',
+          fill_timing: 'next_open',
+          price_source: 'open',
+          allow_partial_fills: false,
+          allowed_directions: 'long_and_short',
+          trade_accounting_policy: 'average_cost',
+          gap_policy: 'skip',
+          intrabar_exit_policy: 'conservative',
+          commission_bps: 10,
+          slippage_bps: 0,
+        },
+        persist_result: true,
+        run_metadata: null,
+      },
+      result_schema_version: BACKTEST_RESULT_SCHEMA_VERSION,
+      metrics: {
+        total_return_pct: -0.0046845,
+        max_drawdown_pct: -0.0046845,
+        trade_count: 1,
+        long_trade_count: 0,
+        short_trade_count: 1,
+        long_win_rate_pct: 0,
+        short_win_rate_pct: 0,
+        long_realized_pnl: 0,
+        short_realized_pnl: -0.46845,
+      },
+      diagnostics: { engine: 'vectorized', execution_duration_ms: 12 },
+    };
+    const shortTrade = closedTrade({
+      trade_id: 'AAPL-trade-1',
+      symbol: 'AAPL',
+      trade_direction: 'short',
+      entry_timestamp_ms: 1_700_000_300_000,
+      entry_price: 9,
+      exit_timestamp_ms: 1_700_000_300_000,
+      exit_price: 9.45,
+      realized_pnl: -0.46845,
+      fees: 0.01845,
+      exit_reason: 'stop_loss',
+      stop_loss_price: 9.45,
+      take_profit_price: 8.1,
+    });
+
+    expect(isBacktestRun(run)).toBe(true);
+    expect(isBacktestClosedTrade(shortTrade)).toBe(true);
+    expect(buildBacktestTradeMarkers([shortTrade], {
+      startMs: 1_700_000_000_000,
+      endMs: 1_700_000_420_000,
+    })).toEqual([
+      {
+        id: 'AAPL-trade-1:entry',
+        time: 1_700_000_300,
+        position: 'aboveBar',
+        shape: 'arrowDown',
+        color: SELL_MARKER_COLOR,
+        text: 'Sell @ 9',
+      },
+      {
+        id: 'AAPL-trade-1:exit',
+        time: 1_700_000_300,
+        position: 'belowBar',
+        shape: 'arrowUp',
+        color: BUY_MARKER_COLOR,
+        text: 'Buy @ 9.45',
+      },
+    ]);
+  });
+
   it('builds marker actions from closed trade direction', () => {
     const markers = buildBacktestTradeMarkers([
       closedTrade({
