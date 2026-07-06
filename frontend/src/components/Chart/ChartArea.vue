@@ -536,6 +536,16 @@ export default defineComponent({
       this.cancelMeasurementOverlay();
     },
 
+    onMeasurementKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        this.cancelMeasurementOverlay();
+      }
+    },
+
+    onMeasurementWindowBlur(): void {
+      this.cancelMeasurementOverlay();
+    },
+
     canStartMeasurement(event: PointerEvent): boolean {
       return (
         this.interactionMode === 'measure' &&
@@ -593,12 +603,16 @@ export default defineComponent({
       window.addEventListener("pointermove", this.onMeasurementPointerMove);
       window.addEventListener("pointerup", this.onMeasurementPointerRelease);
       window.addEventListener("pointercancel", this.onMeasurementPointerRelease);
+      window.addEventListener("keydown", this.onMeasurementKeyDown);
+      window.addEventListener("blur", this.onMeasurementWindowBlur);
     },
 
     removeMeasurementWindowListeners(): void {
       window.removeEventListener("pointermove", this.onMeasurementPointerMove);
       window.removeEventListener("pointerup", this.onMeasurementPointerRelease);
       window.removeEventListener("pointercancel", this.onMeasurementPointerRelease);
+      window.removeEventListener("keydown", this.onMeasurementKeyDown);
+      window.removeEventListener("blur", this.onMeasurementWindowBlur);
     },
 
     cancelMeasurementOverlay(): void {

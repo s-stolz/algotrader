@@ -594,6 +594,71 @@ describe('ChartArea', () => {
     expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
   });
 
+  it('does not start a measurement without candle data', async () => {
+    setupStores();
+    mountChartArea({ interactionMode: 'measure' });
+    await flushPromises();
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, []);
+    chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
+
+    stubMainPaneRect().dispatchEvent(
+      new MouseEvent('pointerdown', {
+        bubbles: true,
+        button: 0,
+        buttons: 1,
+        cancelable: true,
+        clientX: 120,
+        clientY: 280,
+      }),
+    );
+
+    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
+  });
+
+  it('cancels active measurements on Escape, pointer cancel, window blur, and mode changes', async () => {
+    setupStores();
+    const wrapper = mountChartArea({ interactionMode: 'measure' });
+    await flushPromises();
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
+
+    const mainPaneElement = stubMainPaneRect();
+    const startMeasurement = () => {
+      chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
+      chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay.mockClear();
+      mainPaneElement.dispatchEvent(
+        new MouseEvent('pointerdown', {
+          bubbles: true,
+          button: 0,
+          buttons: 1,
+          cancelable: true,
+          clientX: 120,
+          clientY: 280,
+        }),
+      );
+      expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).toHaveBeenCalled();
+    };
+
+    startMeasurement();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
+
+    startMeasurement();
+    window.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true, buttons: 0 }));
+    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
+
+    startMeasurement();
+    window.dispatchEvent(new Event('blur'));
+    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
+
+    startMeasurement();
+    await wrapper.setProps({ interactionMode: 'pan' });
+    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
+  });
+
   it('updates the OHLC legend from the chart crosshair callback', async () => {
     setupStores();
     const wrapper = mountChartArea();
