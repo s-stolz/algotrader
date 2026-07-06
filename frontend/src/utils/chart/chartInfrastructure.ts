@@ -6,6 +6,7 @@ import {
   ChartManager,
   type ChartCrosshairMoveHandler,
   type ChartLogicalRange,
+  type ChartMeasurementOverlayModel,
   type ChartOhlcPoint,
   type ChartProtectiveLineSegment,
   type ChartSeriesMarker,
@@ -30,6 +31,8 @@ export interface ChartInfrastructure {
   setMinMove(minMove: number): boolean;
   setCandlestickMarkers(markers: readonly ChartSeriesMarker[]): boolean;
   setCandlestickProtectiveLines(segments: readonly ChartProtectiveLineSegment[]): boolean;
+  setCandlestickMeasurementOverlay(model: ChartMeasurementOverlayModel): boolean;
+  clearCandlestickMeasurementOverlay(): boolean;
   subscribeCrosshairMove(callback: ChartCrosshairMoveHandler): void;
   unsubscribeCrosshairMove(callback?: ChartCrosshairMoveHandler | null): void;
   subscribeVisibleLogicalRangeChange(callback: ChartVisibleRangeHandler): void;
@@ -108,6 +111,14 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
     return this.chartManager.setSeriesProtectiveLines('ohlc', segments);
   }
 
+  setCandlestickMeasurementOverlay(model: ChartMeasurementOverlayModel): boolean {
+    return this.chartManager.setSeriesMeasurementOverlay('ohlc', model);
+  }
+
+  clearCandlestickMeasurementOverlay(): boolean {
+    return this.chartManager.clearSeriesMeasurementOverlay('ohlc');
+  }
+
   subscribeCrosshairMove(callback: ChartCrosshairMoveHandler): void {
     this.chartManager.subscribeCrosshairMove(callback);
   }
@@ -144,6 +155,7 @@ export function createChartInfrastructure(
 export type {
   ChartCrosshairMoveHandler,
   ChartLogicalRange,
+  ChartMeasurementOverlayModel,
   ChartOhlcPoint,
   ChartProtectiveLineSegment,
   ChartSeriesMarker,

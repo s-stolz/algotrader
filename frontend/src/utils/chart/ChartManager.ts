@@ -37,6 +37,12 @@ import {
   ProtectiveLinesPrimitive,
   type ChartProtectiveLineSegment,
 } from './protectiveLinesPrimitive';
+import type { ChartMeasurementOverlayModel } from './measurementOverlay';
+import {
+  clearMeasurementOverlayPrimitive,
+  setMeasurementOverlayPrimitive,
+} from './measurementOverlayLifecycle';
+import type { MeasurementOverlayPrimitive } from './measurementOverlayPrimitive';
 
 export type ChartSeriesType =
   | 'line'
@@ -117,6 +123,7 @@ export class ChartManager {
 
   private readonly markerPlugins = new Map<string, ISeriesMarkersPluginApi<Time>>();
   private readonly protectiveLinePrimitives = new Map<string, ProtectiveLinesPrimitive>();
+  private readonly measurementOverlayPrimitives = new Map<string, MeasurementOverlayPrimitive>();
   private readonly defaultOptions: DeepPartial<ChartOptions>;
   private readonly timeScaleOptions: DeepPartial<HorzScaleOptions>;
   private crosshairMoveHandler: ChartCrosshairMoveHandler | null = null;
@@ -326,6 +333,7 @@ export class ChartManager {
     try {
       this.clearSeriesMarkers(key);
       this.clearSeriesProtectiveLines(key);
+      this.clearSeriesMeasurementOverlay(key);
       this.chart.removeSeries(seriesInfo.series);
       this.series.delete(key);
       return true;
@@ -423,6 +431,26 @@ export class ChartManager {
       console.error(`Failed to clear protective lines for series '${key}':`, error);
       return false;
     }
+  }
+
+  setSeriesMeasurementOverlay(
+    key: string,
+    model: ChartMeasurementOverlayModel,
+  ): boolean {
+    return setMeasurementOverlayPrimitive(
+      this.series,
+      this.measurementOverlayPrimitives,
+      key,
+      model,
+    );
+  }
+
+  clearSeriesMeasurementOverlay(key: string): boolean {
+    return clearMeasurementOverlayPrimitive(
+      this.series,
+      this.measurementOverlayPrimitives,
+      key,
+    );
   }
 
   scrollToRealTime(): void {
@@ -588,8 +616,12 @@ export class ChartManager {
       this.clearSeriesProtectiveLines(key);
     }
 
+    for (const key of Array.from(this.measurementOverlayPrimitives.keys())) {
+      this.clearSeriesMeasurementOverlay(key);
+    }
+
     this.series.clear();
   }
 }
 
-export type { ChartProtectiveLineSegment };
+export type { ChartMeasurementOverlayModel, ChartProtectiveLineSegment };

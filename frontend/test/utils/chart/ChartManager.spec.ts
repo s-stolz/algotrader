@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 import {
   ChartManager,
+  type ChartMeasurementOverlayModel,
   type ChartProtectiveLineSegment,
   type ChartSeriesMarker,
   type ChartValuePoint,
@@ -227,6 +228,100 @@ describe('ChartManager', () => {
 
     expect(manager.clearSeriesProtectiveLines('ohlc')).toBe(true);
     expect(series.detachPrimitive).toHaveBeenCalledWith(primitive);
+  });
+
+  it('attaches, updates, and clears a transient measurement overlay without disturbing markers or protective lines', () => {
+    const manager = new ChartManager();
+    manager.init(document.createElement('div'));
+    const series = chartMocks.createSeriesApi();
+    chartMocks.chart.addSeries.mockReturnValue(series);
+    const markers: ChartSeriesMarker[] = [
+      {
+        id: 'trade-1:entry',
+        time: markerTime(300),
+        position: 'belowBar',
+        shape: 'arrowUp',
+        color: '#16a34a',
+      },
+    ];
+    const protectiveLines: ChartProtectiveLineSegment[] = [
+      {
+        id: 'trade-1:stop-loss',
+        startTime: markerTime(300),
+        endTime: markerTime(600),
+        price: 98.5,
+        color: '#dc2626',
+      },
+    ];
+    const firstOverlay: ChartMeasurementOverlayModel = {
+      priceDelta: 10,
+      percentDelta: 10,
+      candleCount: 4,
+      direction: 'positive',
+      box: {
+        anchorPrice: 100,
+        endpointPrice: 110,
+        topPrice: 110,
+        bottomPrice: 100,
+        anchorLogical: 1,
+        endpointLogical: 4,
+        leftLogical: 1,
+        rightLogical: 4,
+      },
+      label: {
+        priceDelta: '+10.00',
+        percentDelta: '+10.00%',
+        candleCount: '4 candles',
+        text: '+10.00 (+10.00%) 4 candles',
+      },
+    };
+    const nextOverlay: ChartMeasurementOverlayModel = {
+      ...firstOverlay,
+      priceDelta: -5,
+      percentDelta: -5,
+      candleCount: 2,
+      direction: 'negative',
+      box: {
+        anchorPrice: 100,
+        endpointPrice: 95,
+        topPrice: 100,
+        bottomPrice: 95,
+        anchorLogical: 1,
+        endpointLogical: 2,
+        leftLogical: 1,
+        rightLogical: 2,
+      },
+      label: {
+        priceDelta: '-5.00',
+        percentDelta: '-5.00%',
+        candleCount: '2 candles',
+        text: '-5.00 (-5.00%) 2 candles',
+      },
+    };
+
+    manager.addSeries('ohlc', 'candlestick', [candle(1)]);
+    manager.setSeriesMarkers('ohlc', markers);
+    manager.setSeriesProtectiveLines('ohlc', protectiveLines);
+    const protectivePrimitive = series.attachPrimitive.mock.calls[0]?.[0];
+
+    expect(manager.setSeriesMeasurementOverlay('ohlc', firstOverlay)).toBe(true);
+    const measurementPrimitive = series.attachPrimitive.mock.calls[1]?.[0] as
+      | { setModel?: (model: ChartMeasurementOverlayModel) => void; paneViews?: () => readonly unknown[] }
+      | undefined;
+
+    expect(series.attachPrimitive).toHaveBeenCalledTimes(2);
+    expect(measurementPrimitive).not.toBe(protectivePrimitive);
+    expect(measurementPrimitive?.paneViews?.()).toHaveLength(1);
+
+    expect(manager.setSeriesMeasurementOverlay('ohlc', nextOverlay)).toBe(true);
+
+    expect(series.attachPrimitive).toHaveBeenCalledTimes(2);
+    expect(series.detachPrimitive).not.toHaveBeenCalledWith(protectivePrimitive);
+    expect(chartMocks.createSeriesMarkers.mock.results[0]?.value.setMarkers).not.toHaveBeenCalled();
+
+    expect(manager.clearSeriesMeasurementOverlay('ohlc')).toBe(true);
+    expect(series.detachPrimitive).toHaveBeenCalledWith(measurementPrimitive);
+    expect(series.detachPrimitive).not.toHaveBeenCalledWith(protectivePrimitive);
   });
 
   it('updates changed series points, skips same-value points, and appends newer points', () => {
