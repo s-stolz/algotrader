@@ -6,6 +6,16 @@
 
     <TimeframeDropdown />
 
+    <n-button round @click="modalStore.openModal('indicatorSearch')">Indicator</n-button>
+    <n-button round data-testid="open-backtest-runs" @click="modalStore.openModal('backtestRuns')">
+      <template #icon>
+        <n-icon>
+          <ListOutline />
+        </n-icon>
+      </template>
+      Backtest Runs
+    </n-button>
+
     <div class="chart-interaction-controls" role="group" aria-label="Chart interaction mode">
       <n-tooltip trigger="hover">
         <template #trigger>
@@ -49,16 +59,6 @@
         <span data-testid="chart-interaction-mode-measure-tooltip">Measure</span>
       </n-tooltip>
     </div>
-
-    <n-button round @click="modalStore.openModal('indicatorSearch')">Indicator</n-button>
-    <n-button round data-testid="open-backtest-runs" @click="modalStore.openModal('backtestRuns')">
-      <template #icon>
-        <n-icon>
-          <ListOutline />
-        </n-icon>
-      </template>
-      Backtest Runs
-    </n-button>
 
     <TopBarModals />
   </div>
@@ -117,6 +117,7 @@ function selectChartInteractionMode(mode: ChartInteractionMode): void {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
 }
 
 .chart-interaction-mode-button {
@@ -135,8 +136,8 @@ function selectChartInteractionMode(mode: ChartInteractionMode): void {
 
 .chart-interaction-mode-button--active {
   color: #ffffff;
-  background: rgba(37, 99, 235, 0.32);
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.4);
+  background: #36363661;
+  border-color: #dadee2;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 </style>
