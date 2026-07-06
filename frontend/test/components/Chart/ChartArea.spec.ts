@@ -261,8 +261,9 @@ function setupStores(timeframe: TimeframeCode = 'M5') {
   };
 }
 
-function mountChartArea() {
+function mountChartArea(props: Record<string, unknown> = {}) {
   return mount(ChartArea, {
+    props,
     global: {
       stubs: {
         Indicator: true,
@@ -390,6 +391,22 @@ describe('ChartArea', () => {
     expect(session.stop).toHaveBeenCalled();
     expect(chartAreaMocks.infrastructure.cleanup).toHaveBeenCalled();
     expect(chartAreaMocks.wsOff).toHaveBeenCalledWith('indicatorUpdate', expect.any(Function));
+  });
+
+  it('applies the measure cursor state to the candlestick pane container', async () => {
+    setupStores();
+    const wrapper = mountChartArea({ interactionMode: 'measure' });
+    await flushPromises();
+
+    expect(wrapper.find('#lightweight-chart').classes()).toContain(
+      'chart-container--measure-mode',
+    );
+
+    await wrapper.setProps({ interactionMode: 'pan' });
+
+    expect(wrapper.find('#lightweight-chart').classes()).not.toContain(
+      'chart-container--measure-mode',
+    );
   });
 
   it('updates the OHLC legend from the chart crosshair callback', async () => {

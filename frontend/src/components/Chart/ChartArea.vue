@@ -1,6 +1,11 @@
 <template>
   <div id="chart-wrapper">
-    <div ref="chartContainer" id="lightweight-chart" class="chart-container" />
+    <div
+      ref="chartContainer"
+      id="lightweight-chart"
+      class="chart-container"
+      :class="{ 'chart-container--measure-mode': interactionMode === 'measure' }"
+    />
 
     <Teleport
       v-if="backtestOverlayStore.selectedRun && backtestOverlayTarget"
@@ -48,7 +53,7 @@
 </template>
 
 <script lang="ts">
-import { markRaw, defineComponent } from "vue";
+import { markRaw, defineComponent, type PropType } from "vue";
 import type {
   CandlestickSeriesPartialOptions,
   MouseEventParams,
@@ -76,6 +81,10 @@ import {
   type ChartSessionSubscriptionsAdapter,
   type ChartSessionKeyInput,
 } from "@/components/Chart/chartSession";
+import {
+  DEFAULT_CHART_INTERACTION_MODE,
+  type ChartInteractionMode,
+} from "@/components/Chart/chartInteractionMode";
 
 import {
   createChartInfrastructure,
@@ -154,6 +163,13 @@ export default defineComponent({
     Indicator,
     NButton,
     NIcon,
+  },
+
+  props: {
+    interactionMode: {
+      type: String as PropType<ChartInteractionMode>,
+      default: DEFAULT_CHART_INTERACTION_MODE,
+    },
   },
 
   data(): ChartAreaData {
@@ -693,6 +709,11 @@ export default defineComponent({
 .chart-container {
   width: 100%;
   height: 100%;
+}
+
+.chart-container--measure-mode,
+.chart-container--measure-mode :deep(*) {
+  cursor: crosshair;
 }
 
 .backtest-overlay-container {

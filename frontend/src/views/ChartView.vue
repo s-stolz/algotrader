@@ -1,15 +1,21 @@
 <template>
   <div>
-    <TheTopBar />
+    <TheTopBar v-model:chart-interaction-mode="chartInteractionMode" />
     <ChartArea
       id="chart-area"
       ref="chartArea"
+      :interaction-mode="chartInteractionMode"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import ChartArea from '@/components/Chart/ChartArea.vue';
+import {
+  DEFAULT_CHART_INTERACTION_MODE,
+  type ChartInteractionMode,
+} from '@/components/Chart/chartInteractionMode';
 import TheTopBar from '@/components/TopBar/TheTopBar.vue';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useMarketsStore } from '@/stores/marketsStore';
@@ -20,6 +26,7 @@ defineOptions({
 
 const marketsStore = useMarketsStore();
 const currentMarketStore = useCurrentMarketStore();
+const chartInteractionMode = ref<ChartInteractionMode>(DEFAULT_CHART_INTERACTION_MODE);
 
 async function fetchMarketsAndInitCurrent(): Promise<void> {
   await marketsStore.fetch();
