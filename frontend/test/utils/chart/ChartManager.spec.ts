@@ -30,19 +30,30 @@ const chartMocks = vi.hoisted(() => {
   const pane = {
     getHTMLElement: vi.fn(),
   };
+  const chartOptions = {
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: true,
+    },
+  };
 
   const chart = {
     addSeries: vi.fn(),
+    applyOptions: vi.fn(),
     removeSeries: vi.fn(),
     subscribeCrosshairMove: vi.fn(),
     unsubscribeCrosshairMove: vi.fn(),
     timeScale: vi.fn(() => timeScale),
     panes: vi.fn(() => [pane]),
+    options: vi.fn(() => chartOptions),
     remove: vi.fn(),
   };
 
   return {
     chart,
+    chartOptions,
     createChart: vi.fn(() => chart),
     createSeriesMarkers: vi.fn(),
     createSeriesApi,
@@ -79,6 +90,12 @@ const markerTime = (time: number): ChartSeriesMarker['time'] => time as ChartSer
 describe('ChartManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    chartMocks.chartOptions.handleScroll = {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: true,
+    };
     chartMocks.chart.addSeries.mockReturnValue(chartMocks.createSeriesApi());
     chartMocks.createChart.mockReturnValue(chartMocks.chart);
     chartMocks.createSeriesMarkers.mockImplementation(() => ({
@@ -371,5 +388,28 @@ describe('ChartManager', () => {
     expect(chartMocks.chart.unsubscribeCrosshairMove).toHaveBeenCalledWith(crosshairHandler);
     expect(chartMocks.timeScale.unsubscribeVisibleLogicalRangeChange).toHaveBeenCalledWith(rangeHandler);
     expect(chartMocks.chart.remove).toHaveBeenCalled();
+  });
+
+  it('restores the previous pressed-drag scroll option after a temporary disable', () => {
+    const manager = new ChartManager();
+    const previousHandleScroll = {
+      mouseWheel: true,
+      pressedMouseMove: false,
+      horzTouchDrag: false,
+      vertTouchDrag: true,
+    };
+    chartMocks.chartOptions.handleScroll = previousHandleScroll;
+
+    manager.init(document.createElement('div'));
+
+    expect(manager.setPressedMouseMoveEnabled(false)).toBe(true);
+    expect(chartMocks.chart.applyOptions).toHaveBeenLastCalledWith({
+      handleScroll: { pressedMouseMove: false },
+    });
+
+    expect(manager.setPressedMouseMoveEnabled(true)).toBe(true);
+    expect(chartMocks.chart.applyOptions).toHaveBeenLastCalledWith({
+      handleScroll: previousHandleScroll,
+    });
   });
 });

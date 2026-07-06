@@ -128,6 +128,7 @@ export class ChartManager {
   private readonly timeScaleOptions: DeepPartial<HorzScaleOptions>;
   private crosshairMoveHandler: ChartCrosshairMoveHandler | null = null;
   private visibleLogicalRangeHandler: ChartVisibleRangeHandler | null = null;
+  private pressedMouseMoveRestoreOptions: ChartOptions['handleScroll'] | null = null;
 
   constructor(options: DeepPartial<ChartOptions> = {}) {
     this.defaultOptions = {
@@ -459,10 +460,28 @@ export class ChartManager {
     }
 
     try {
+      if (!enabled) {
+        if (this.pressedMouseMoveRestoreOptions === null) {
+          const handleScroll = this.chart.options().handleScroll;
+          this.pressedMouseMoveRestoreOptions = typeof handleScroll === 'boolean'
+            ? handleScroll
+            : { ...handleScroll };
+        }
+
+        this.chart.applyOptions({
+          handleScroll: {
+            pressedMouseMove: false,
+          },
+        });
+        return true;
+      }
+
+      const handleScroll = this.pressedMouseMoveRestoreOptions ?? {
+        pressedMouseMove: true,
+      };
+      this.pressedMouseMoveRestoreOptions = null;
       this.chart.applyOptions({
-        handleScroll: {
-          pressedMouseMove: enabled,
-        },
+        handleScroll,
       });
       return true;
     } catch (error) {
@@ -624,6 +643,7 @@ export class ChartManager {
       this.chart.remove();
       this.chart = null;
       this.container = null;
+      this.pressedMouseMoveRestoreOptions = null;
     }
 
     for (const key of Array.from(this.markerPlugins.keys())) {
