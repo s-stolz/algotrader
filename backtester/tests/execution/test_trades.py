@@ -161,7 +161,7 @@ class TestTradeLifecycle(unittest.TestCase):
         self.assertEqual(trades[0].stop_loss_price, 104.5)
         self.assertEqual(trades[0].take_profit_price, 121.0)
 
-    def test_sell_without_open_long_is_rejected(self) -> None:
+    def test_sell_from_flat_opens_short_trade_closed_by_buy(self) -> None:
         fills = [
             Fill(
                 timestamp_ms=1,
@@ -169,12 +169,27 @@ class TestTradeLifecycle(unittest.TestCase):
                 quantity=1.0,
                 price=100.0,
                 side=OrderSide.SELL,
-                fees=0.0,
-            )
+                fees=1.0,
+            ),
+            Fill(
+                timestamp_ms=2,
+                symbol="AAPL",
+                quantity=1.0,
+                price=90.0,
+                side=OrderSide.BUY,
+                fees=2.0,
+            ),
         ]
 
-        with self.assertRaises(ValueError):
-            build_trades_from_fills(fills)
+        trades = build_trades_from_fills(fills)
+
+        self.assertEqual(len(trades), 1)
+        self.assertEqual(trades[0].trade_direction, TradeDirection.SHORT)
+        self.assertEqual(trades[0].quantity, 1.0)
+        self.assertEqual(trades[0].entry_price, 100.0)
+        self.assertEqual(trades[0].exit_price, 90.0)
+        self.assertEqual(trades[0].fees, 3.0)
+        self.assertEqual(trades[0].realized_pnl, 7.0)
 
 
 if __name__ == "__main__":

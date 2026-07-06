@@ -3,6 +3,7 @@ import unittest
 import pandas as pd
 from app.backtest_runner import run_backtest
 from domain.enums import (
+    AllowedDirections,
     BacktestEngine,
     DataGranularity,
     ExitReason,
@@ -890,7 +891,7 @@ class TestBacktestEngineParity(unittest.TestCase):
         self.assertEqual(event_driven.diagnostics["tail_expired_delta_count"], 0)
         self.assertEqual(event_driven.diagnostics["signal_exit_count"], 0)
 
-    def test_both_engines_reject_negative_strategy_outputs(self) -> None:
+    def test_both_engines_reject_negative_strategy_outputs_in_long_only_mode(self) -> None:
         start_ms = 1_700_000_000_000
         minute = 60_000
         bars = _build_ohlc_bars(
@@ -904,13 +905,16 @@ class TestBacktestEngineParity(unittest.TestCase):
         negative_target_strategy = _build_short_like_target_strategy()
         for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
             with self.subTest(engine=engine, invalid="negative_target"):
-                with self.assertRaisesRegex(ValueError, "long-only"):
+                with self.assertRaisesRegex(ValueError, "long[-_]only"):
                     run_backtest(
                         request=_build_request_for_strategy(
                             engine=engine,
                             strategy=negative_target_strategy,
                             start_ms=start_ms,
                             end_ms=start_ms + (3 * minute),
+                            execution=ExecutionConfig(
+                                allowed_directions=AllowedDirections.LONG_ONLY
+                            ),
                         ),
                         bars=bars,
                         strategy=negative_target_strategy,

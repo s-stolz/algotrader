@@ -7,6 +7,7 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 from domain.enums import (
+    AllowedDirections,
     BacktestEngine,
     DataGranularity,
     ExitReason,
@@ -65,6 +66,7 @@ def run_vectorized_backtest(
         execution_targets=execution_targets,
         symbol=symbol,
         expected_size=timestamp_ms.size,
+        allowed_directions=request.execution.allowed_directions,
     )
 
     open_prices = normalized["open"].to_numpy(dtype="float64")
@@ -181,6 +183,7 @@ def _extract_target_values(
     execution_targets: ExecutionArrayBundle,
     symbol: str,
     expected_size: int,
+    allowed_directions: AllowedDirections,
 ) -> np.ndarray:
     target = execution_targets.target_quantity_by_symbol.get(symbol)
     if target is None:
@@ -193,10 +196,15 @@ def _extract_target_values(
         )
     if not np.isfinite(target_values).all():
         raise ValueError(f"Strategy produced non-finite target quantities for symbol {symbol}")
-    if np.any(target_values < 0.0):
+    if allowed_directions == AllowedDirections.LONG_ONLY and np.any(target_values < 0.0):
         raise ValueError(
-            "Vectorized M3 baseline is long-only and requires non-negative target quantities "
-            f"for symbol {symbol}"
+            "Vectorized engine allowed_directions=long_only requires non-negative "
+            f"target quantities for symbol {symbol}"
+        )
+    if allowed_directions == AllowedDirections.SHORT_ONLY and np.any(target_values > 0.0):
+        raise ValueError(
+            "Vectorized engine allowed_directions=short_only requires non-positive "
+            f"target quantities for symbol {symbol}"
         )
     return target_values
 
