@@ -541,13 +541,13 @@ def _queue_target_delta_from_signal(
     allowed_directions: AllowedDirections,
 ) -> None:
     if signal == 0:
-        next_raw_target = state.raw_desired_target
-    else:
-        next_raw_target = _target_quantity_for_signal(
-            signal=signal,
-            target_quantity=float(bar_model.target_quantity),
-            allowed_directions=allowed_directions,
-        )
+        return
+
+    next_raw_target = _target_quantity_for_signal(
+        signal=signal,
+        target_quantity=float(bar_model.target_quantity),
+        allowed_directions=allowed_directions,
+    )
 
     next_desired_target = _apply_single_target_transforms(
         strategy=strategy,
@@ -556,7 +556,12 @@ def _queue_target_delta_from_signal(
         target_quantity=next_raw_target,
         allowed_directions=allowed_directions,
     )
-    target_delta = next_desired_target - state.desired_target
+    if next_desired_target == state.desired_target:
+        state.raw_desired_target = next_raw_target
+        return
+
+    effective_position = state.actual_position + _pending_total(state.pending)
+    target_delta = next_desired_target - effective_position
 
     state.raw_desired_target = next_raw_target
     state.desired_target = next_desired_target
