@@ -19,10 +19,11 @@ from domain.enums import (
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
+    TradeDirection,
 )
 
 BACKTEST_REQUEST_SCHEMA_VERSION = 2
-BACKTEST_RESULT_SCHEMA_VERSION = 2
+BACKTEST_RESULT_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,7 @@ class BacktestTradeRecord:
     sequence: int
     trade_id: str
     symbol: str
+    trade_direction: TradeDirection
     quantity: float
     entry_timestamp_ms: int
     entry_price: float
@@ -172,6 +174,13 @@ class BacktestTradeRecord:
     exit_reason: ExitReason
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "trade_direction",
+            TradeDirection(self.trade_direction),
+        )
 
 
 @dataclass(frozen=True)
@@ -256,6 +265,7 @@ class Fill:
 class Trade:
     trade_id: str
     symbol: str
+    trade_direction: TradeDirection
     quantity: float
     entry_timestamp_ms: int
     entry_price: float
@@ -266,6 +276,13 @@ class Trade:
     exit_reason: ExitReason = ExitReason.SIGNAL
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "trade_direction",
+            TradeDirection(self.trade_direction),
+        )
 
 
 @dataclass(frozen=True)

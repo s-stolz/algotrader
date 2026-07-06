@@ -16,6 +16,7 @@ from domain.enums import (
     ExitReason,
     OrderSide,
     PriceSource,
+    TradeDirection,
 )
 from domain.types import (
     BacktestFillRecord,
@@ -242,7 +243,7 @@ class TestBacktestRunService(unittest.TestCase):
             status=BacktestRunStatus.SUCCEEDED,
             started_at_ms=1_780_921_860_000,
             completed_at_ms=1_780_922_100_000,
-            result_schema_version=2,
+            result_schema_version=3,
             metrics={"trade_count": 1},
             diagnostics={"bars": 10},
         )
@@ -275,6 +276,7 @@ class TestBacktestRunService(unittest.TestCase):
                 sequence=0,
                 trade_id="trade-1",
                 symbol="EURUSD",
+                trade_direction=TradeDirection.LONG,
                 quantity=1_000.0,
                 entry_timestamp_ms=1_714_525_200_000,
                 entry_price=1.0715,

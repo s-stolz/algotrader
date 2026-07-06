@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List, Sequence
 
-from domain.enums import ExitReason, OrderSide
+from domain.enums import ExitReason, OrderSide, TradeDirection
 from domain.types import Fill, Trade
 
 
@@ -77,6 +77,7 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
                 Trade(
                     trade_id=f"{fill.symbol}-trade-{trade_counter}",
                     symbol=fill.symbol,
+                    trade_direction=TradeDirection.LONG,
                     quantity=close_qty,
                     entry_timestamp_ms=entry_timestamp_ms,
                     entry_price=avg_entry_price,

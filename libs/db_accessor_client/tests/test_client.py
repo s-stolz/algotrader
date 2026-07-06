@@ -23,7 +23,7 @@ def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
         "completed_at": None,
         "error_code": None,
         "error_message": None,
-        "request_schema_version": 1,
+        "request_schema_version": 2,
         "request": {
             "symbols": ["EURUSD"],
             "exchange": "FX",
@@ -46,7 +46,7 @@ def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
                 "fill_timing": "next_open",
                 "price_source": "open",
                 "allow_partial_fills": False,
-                "allow_short": False,
+                "allowed_directions": "long_and_short",
                 "trade_accounting_policy": "average_cost",
                 "gap_policy": "error",
                 "intrabar_exit_policy": "take_profit_first",
@@ -68,7 +68,7 @@ def _completion_payload() -> dict:
     return {
         "expected_status": "running",
         "completed_at": "2026-06-08T12:35:00Z",
-        "result_schema_version": 1,
+        "result_schema_version": 3,
         "metrics": {"total_return_pct": 1.25},
         "diagnostics": {"execution_duration_ms": 240000},
         "fills": [
@@ -88,6 +88,7 @@ def _completion_payload() -> dict:
                 "trade_sequence": 0,
                 "trade_id": "trade-1",
                 "symbol": "EURUSD",
+                "trade_direction": "long",
                 "quantity": 1000.0,
                 "entry_timestamp_ms": 1714525200000,
                 "entry_price": 1.0715,
@@ -123,6 +124,7 @@ def _trade_payload() -> dict:
         "trade_sequence": 0,
         "trade_id": "trade-1",
         "symbol": "EURUSD",
+        "trade_direction": "long",
         "quantity": 1000.0,
         "entry_timestamp_ms": 1714525200000,
         "entry_price": 1.0715,

@@ -56,6 +56,11 @@ class TradeAccountingPolicy(str, Enum):
     AVERAGE_COST = "average_cost"
 
 
+class TradeDirection(str, Enum):
+    LONG = "long"
+    SHORT = "short"
+
+
 class OrderSide(str, Enum):
     BUY = "buy"
     SELL = "sell"

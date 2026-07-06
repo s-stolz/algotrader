@@ -12,6 +12,7 @@ from domain.enums import (
     GapPolicy,
     IntrabarExitPolicy,
     OrderSide,
+    TradeDirection,
 )
 from domain.types import (
     BacktestRequest,
@@ -107,7 +108,7 @@ class TestBacktestRunPersistenceAdapter(unittest.TestCase):
             "take_profit_first",
         )
         self.assertEqual(payload["request"]["run_metadata"], {"label": "cli-persist"})
-        self.assertEqual(payload["result_schema_version"], 2)
+        self.assertEqual(payload["result_schema_version"], 3)
         self.assertEqual(payload["metrics"], result.metrics)
         self.assertEqual(
             payload["diagnostics"],
@@ -149,6 +150,7 @@ class TestBacktestRunPersistenceAdapter(unittest.TestCase):
                     "trade_sequence": 0,
                     "trade_id": "trade-1",
                     "symbol": "EURUSD",
+                    "trade_direction": "long",
                     "quantity": 1_000.0,
                     "entry_timestamp_ms": 1_714_522_500_000,
                     "entry_price": 1.0715,
@@ -197,6 +199,7 @@ class TestBacktestRunPersistenceAdapter(unittest.TestCase):
                 Trade(
                     trade_id="open-1",
                     symbol="EURUSD",
+                    trade_direction=TradeDirection.LONG,
                     quantity=1_000.0,
                     entry_timestamp_ms=1_714_522_500_000,
                     entry_price=1.0715,
@@ -257,6 +260,7 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         result.trades[0] = Trade(
             trade_id="trade-1",
             symbol="EURUSD",
+            trade_direction=TradeDirection.LONG,
             quantity=1_000.0,
             entry_timestamp_ms=1_714_522_500_000,
             entry_price=1.0715,
@@ -282,11 +286,12 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         self.assertEqual(run_id, "run-123")
         self.assertEqual(payload["expected_status"], "running")
         self.assertEqual(payload["completed_at"], "2026-06-08T12:35:00+00:00")
-        self.assertEqual(payload["result_schema_version"], 2)
+        self.assertEqual(payload["result_schema_version"], 3)
         self.assertEqual(payload["metrics"], result.metrics)
         self.assertEqual(payload["diagnostics"]["execution_duration_ms"], 275)
         self.assertEqual(payload["fills"][1]["exit_reason"], "take_profit")
         self.assertEqual(payload["trades"][0]["exit_reason"], "take_profit")
+        self.assertEqual(payload["trades"][0]["trade_direction"], "long")
         self.assertEqual(payload["trades"][0]["exit_price"], 1.074)
         self.assertEqual(payload["trades"][0]["stop_loss_price"], 1.05)
         self.assertEqual(payload["trades"][0]["take_profit_price"], 1.08)
@@ -361,6 +366,7 @@ def _build_result(
         Trade(
             trade_id="trade-1",
             symbol="EURUSD",
+            trade_direction=TradeDirection.LONG,
             quantity=1_000.0,
             entry_timestamp_ms=1_714_522_500_000,
             entry_price=1.0715,

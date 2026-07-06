@@ -12,7 +12,7 @@ from typing import Any, Mapping, Protocol, Sequence
 from uuid import uuid4
 
 from db_accessor_client import DatabaseAccessorClientError
-from domain.enums import BacktestRunStatus, ExitReason, OrderSide
+from domain.enums import BacktestRunStatus, ExitReason, OrderSide, TradeDirection
 from domain.types import (
     BACKTEST_RESULT_SCHEMA_VERSION,
     BacktestFillRecord,
@@ -406,6 +406,7 @@ def _trade_record_from_response(response: Mapping[str, Any]) -> BacktestTradeRec
         sequence=int(response["trade_sequence"]),
         trade_id=str(response["trade_id"]),
         symbol=str(response["symbol"]),
+        trade_direction=TradeDirection(str(response["trade_direction"])),
         quantity=float(response["quantity"]),
         entry_timestamp_ms=int(response["entry_timestamp_ms"]),
         entry_price=float(response["entry_price"]),
@@ -457,6 +458,7 @@ def _closed_trade_payload(*, sequence: int, trade: Trade) -> dict[str, Any]:
         "trade_sequence": sequence,
         "trade_id": str(trade.trade_id),
         "symbol": str(trade.symbol),
+        "trade_direction": _enum_or_text_value(trade.trade_direction),
         "quantity": float(trade.quantity),
         "entry_timestamp_ms": int(trade.entry_timestamp_ms),
         "entry_price": float(trade.entry_price),

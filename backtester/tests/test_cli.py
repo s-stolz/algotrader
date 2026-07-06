@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import cli
 import pandas as pd
-from domain.enums import BacktestEngine, IntrabarExitPolicy, OrderSide
+from domain.enums import BacktestEngine, IntrabarExitPolicy, OrderSide, TradeDirection
 from domain.types import BacktestResult, Fill, PortfolioSnapshot, Trade
 
 
@@ -103,6 +103,7 @@ class TestCli(unittest.TestCase):
                     Trade(
                         trade_id="trade-1",
                         symbol=request.symbols[0],
+                        trade_direction=TradeDirection.LONG,
                         quantity=1.0,
                         entry_timestamp_ms=request.start_ms + 60_000,
                         entry_price=101.0,
@@ -394,12 +395,13 @@ class TestCli(unittest.TestCase):
                 self.assertEqual(payload["request"]["exchange"], "NASDAQ")
                 self.assertEqual(payload["request"]["engine"], engine.value)
                 self.assertTrue(payload["request"]["persist_result"])
-                self.assertEqual(payload["result_schema_version"], 2)
+                self.assertEqual(payload["result_schema_version"], 3)
                 self.assertEqual(payload["diagnostics"]["engine"], engine.value)
                 self.assertGreater(len(payload["fills"]), 0)
                 self.assertGreater(len(payload["trades"]), 0)
                 self.assertIsNone(payload["trades"][0]["stop_loss_price"])
                 self.assertIsNone(payload["trades"][0]["take_profit_price"])
+                self.assertEqual(payload["trades"][0]["trade_direction"], "long")
                 self.assertNotIn("equity_curve", payload)
 
                 output = stdout.getvalue()
