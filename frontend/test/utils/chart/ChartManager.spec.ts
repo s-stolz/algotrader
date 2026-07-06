@@ -390,7 +390,7 @@ describe('ChartManager', () => {
     expect(chartMocks.chart.remove).toHaveBeenCalled();
   });
 
-  it('restores the previous pressed-drag scroll option after a temporary disable', () => {
+  it('disables pressed-drag scroll without dropping wheel options and restores prior options', () => {
     const manager = new ChartManager();
     const previousHandleScroll = {
       mouseWheel: true,
@@ -404,7 +404,10 @@ describe('ChartManager', () => {
 
     expect(manager.setPressedMouseMoveEnabled(false)).toBe(true);
     expect(chartMocks.chart.applyOptions).toHaveBeenLastCalledWith({
-      handleScroll: { pressedMouseMove: false },
+      handleScroll: {
+        ...previousHandleScroll,
+        pressedMouseMove: false,
+      },
     });
 
     expect(manager.setPressedMouseMoveEnabled(true)).toBe(true);

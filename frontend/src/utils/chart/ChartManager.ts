@@ -16,6 +16,7 @@ import {
   type ChartOptions,
   type DeepPartial,
   type HistogramData,
+  type HandleScrollOptions,
   type HorzScaleOptions,
   type IChartApi,
   type IPaneApi,
@@ -103,6 +104,13 @@ const SERIES_TYPES: Record<ChartSeriesType, SeriesDefinition<SeriesType>> = {
   histogram: HistogramSeries,
 };
 
+const ENABLED_HANDLE_SCROLL_OPTIONS: HandleScrollOptions = {
+  mouseWheel: true,
+  pressedMouseMove: true,
+  horzTouchDrag: true,
+  vertTouchDrag: true,
+};
+
 function toLightweightPoint(point: ChartDataPoint): ManagedSeriesPoint {
   return {
     ...point,
@@ -112,6 +120,25 @@ function toLightweightPoint(point: ChartDataPoint): ManagedSeriesPoint {
 
 function toLightweightData(data: readonly ChartDataPoint[]): ManagedSeriesData {
   return data.map((point) => toLightweightPoint(point)) as ManagedSeriesData;
+}
+
+function cloneHandleScrollOptions(
+  handleScroll: ChartOptions['handleScroll'],
+): ChartOptions['handleScroll'] {
+  return typeof handleScroll === 'boolean' ? handleScroll : { ...handleScroll };
+}
+
+function withPressedMouseMove(
+  handleScroll: ChartOptions['handleScroll'],
+  pressedMouseMove: boolean,
+): ChartOptions['handleScroll'] {
+  if (typeof handleScroll === 'boolean') {
+    return handleScroll
+      ? { ...ENABLED_HANDLE_SCROLL_OPTIONS, pressedMouseMove }
+      : false;
+  }
+
+  return { ...handleScroll, pressedMouseMove };
 }
 
 export class ChartManager {
@@ -463,15 +490,14 @@ export class ChartManager {
       if (!enabled) {
         if (this.pressedMouseMoveRestoreOptions === null) {
           const handleScroll = this.chart.options().handleScroll;
-          this.pressedMouseMoveRestoreOptions = typeof handleScroll === 'boolean'
-            ? handleScroll
-            : { ...handleScroll };
+          this.pressedMouseMoveRestoreOptions = cloneHandleScrollOptions(handleScroll);
         }
 
         this.chart.applyOptions({
-          handleScroll: {
-            pressedMouseMove: false,
-          },
+          handleScroll: withPressedMouseMove(
+            this.pressedMouseMoveRestoreOptions,
+            false,
+          ),
         });
         return true;
       }

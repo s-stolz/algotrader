@@ -521,7 +521,7 @@ export default defineComponent({
         return;
       }
 
-      if ((event.buttons & 1) !== 1) {
+      if (event.buttons !== 1) {
         this.cancelMeasurementOverlay();
         return;
       }
@@ -550,7 +550,7 @@ export default defineComponent({
       return (
         this.interactionMode === 'measure' &&
         event.button === 0 &&
-        (event.buttons & 1) === 1 &&
+        event.buttons === 1 &&
         this.activeMeasurement === null &&
         this.candlesticksStore.data.length > 0 &&
         this.ohlcSeriesRef !== null &&

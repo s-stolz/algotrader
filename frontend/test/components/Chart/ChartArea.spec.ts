@@ -594,6 +594,29 @@ describe('ChartArea', () => {
     expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
   });
 
+  it('ignores pointer holds that include non-primary buttons while Measure mode is active', async () => {
+    setupStores();
+    mountChartArea({ interactionMode: 'measure' });
+    await flushPromises();
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
+    chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
+
+    stubMainPaneRect().dispatchEvent(
+      new MouseEvent('pointerdown', {
+        bubbles: true,
+        button: 0,
+        buttons: 3,
+        cancelable: true,
+        clientX: 120,
+        clientY: 280,
+      }),
+    );
+
+    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
+  });
+
   it('does not start a measurement without candle data', async () => {
     setupStores();
     mountChartArea({ interactionMode: 'measure' });
@@ -614,6 +637,41 @@ describe('ChartArea', () => {
       }),
     );
 
+    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
+  });
+
+  it('cancels an active measurement when non-primary buttons join the drag', async () => {
+    setupStores();
+    mountChartArea({ interactionMode: 'measure' });
+    await flushPromises();
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
+
+    stubMainPaneRect().dispatchEvent(
+      new MouseEvent('pointerdown', {
+        bubbles: true,
+        button: 0,
+        buttons: 1,
+        cancelable: true,
+        clientX: 120,
+        clientY: 280,
+      }),
+    );
+
+    chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
+    chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay.mockClear();
+
+    window.dispatchEvent(
+      new MouseEvent('pointermove', {
+        bubbles: true,
+        buttons: 3,
+        clientX: 240,
+        clientY: 240,
+      }),
+    );
+
+    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
     expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
   });
 
