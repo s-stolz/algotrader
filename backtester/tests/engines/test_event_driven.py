@@ -93,7 +93,8 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(result.fills[1].price, 13.0)
         self.assertEqual(len(result.trades), 1)
         self.assertAlmostEqual(result.trades[0].realized_pnl, 3.0)
-        self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
+        self.assertEqual(result.equity_curve[-1].positions, {"AAPL": -1.0})
+        self.assertEqual(result.equity_curve[-1].equity, 10_008.0)
         self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
 
     def test_event_driven_engine_does_not_call_vectorized_execution_helpers(self) -> None:
@@ -320,7 +321,10 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
 
         result = run_backtest(
             request=self._build_request(
-                execution=ExecutionConfig(gap_policy=GapPolicy.SKIP),
+                execution=ExecutionConfig(
+                    allowed_directions=AllowedDirections.LONG_ONLY,
+                    gap_policy=GapPolicy.SKIP,
+                ),
                 strategy=StrategyConfig(strategy_id=strategy.strategy_id),
                 start_ms=start_ms,
                 end_ms=start_ms + (3 * minute),

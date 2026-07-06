@@ -92,16 +92,22 @@ def generate_fills_from_targets(
     if ts.size == 0:
         return _empty_fill_generation_result()
 
-    previous_target = np.concatenate(([0.0], target[:-1]))
-    target_delta = target - previous_target
     state = _initialize_fill_state(target)
     pending: list[_PendingDelta] = []
+    previous_target = 0.0
+    actual_position = 0.0
 
     for dst_idx in range(1, ts.size):
         src_idx = dst_idx - 1
-        decision_delta = float(target_delta[src_idx])
-        if decision_delta != 0.0:
-            pending.append(_PendingDelta(quantity=decision_delta))
+        next_target = float(target[src_idx])
+        if next_target != previous_target:
+            effective_position = actual_position + _pending_total(pending)
+            decision_delta = next_target - effective_position
+            if decision_delta != 0.0:
+                pending.append(_PendingDelta(quantity=float(decision_delta)))
+            if _pending_total(pending) == 0.0:
+                pending.clear()
+            previous_target = next_target
 
         pending_total = _pending_total(pending)
         if pending_total == 0.0:
@@ -121,6 +127,7 @@ def generate_fills_from_targets(
                 slippage_bps=slippage_bps,
                 commission_bps=commission_bps,
             )
+            actual_position += pending_total
             continue
 
         _handle_invalid_open(
@@ -132,9 +139,14 @@ def generate_fills_from_targets(
         )
 
     # Decision on the final bar has no in-range next-open and therefore expires.
-    final_delta = float(target_delta[-1])
+    final_target = float(target[-1])
+    final_delta = 0.0
+    if final_target != previous_target:
+        final_delta = final_target - (actual_position + _pending_total(pending))
     if final_delta != 0.0:
-        pending.append(_PendingDelta(quantity=final_delta))
+        pending.append(_PendingDelta(quantity=float(final_delta)))
+        if _pending_total(pending) == 0.0:
+            pending.clear()
 
     return FillGenerationResult(
         fills=state.fills,
@@ -234,6 +246,7 @@ def generate_fills_from_targets_with_protective_exits(
         desired_target = _queue_signal_target_delta(
             pending=pending,
             desired_target=desired_target,
+            actual_position=actual_position,
             signal=int(signals[src_idx]),
             signal_target=float(target[src_idx]),
         )
@@ -321,6 +334,7 @@ def generate_fills_from_targets_with_protective_exits(
     desired_target = _queue_signal_target_delta(
         pending=pending,
         desired_target=desired_target,
+        actual_position=actual_position,
         signal=int(signals[-1]),
         signal_target=float(target[-1]),
     )
@@ -510,6 +524,7 @@ def _queue_signal_target_delta(
     *,
     pending: list[_PendingDelta],
     desired_target: float,
+    actual_position: float,
     signal: int,
     signal_target: float,
 ) -> float:
@@ -517,7 +532,11 @@ def _queue_signal_target_delta(
         return desired_target
 
     next_desired_target = signal_target
-    target_delta = next_desired_target - desired_target
+    if next_desired_target == desired_target:
+        return desired_target
+
+    effective_position = actual_position + _pending_total(pending)
+    target_delta = next_desired_target - effective_position
     if target_delta != 0.0:
         pending.append(_PendingDelta(quantity=float(target_delta)))
     if _pending_total(pending) == 0.0:

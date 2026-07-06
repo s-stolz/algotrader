@@ -82,6 +82,48 @@ class TestFillGeneration(unittest.TestCase):
         self.assertEqual(result.expired_delta_count, 1)
         self.assertEqual(result.tail_expired_delta_count, 0)
 
+    def test_expired_entry_then_flat_target_does_not_open_opposite_position(self) -> None:
+        cases = (
+            ("long", [1.0, 1.0, 0.0, 0.0]),
+            ("short", [-1.0, -1.0, 0.0, 0.0]),
+        )
+
+        for direction, target_quantity in cases:
+            with self.subTest(direction=direction):
+                result = generate_fills_from_targets(
+                    symbol="AAPL",
+                    timestamp_ms=[1, 2, 3, 4],
+                    open_prices=[100.0, 0.0, 99.0, 98.0],
+                    target_quantity=target_quantity,
+                    gap_policy=GapPolicy.EXPIRE,
+                )
+
+                self.assertEqual(result.fills, [])
+                np.testing.assert_allclose(result.executed_delta, np.array([0.0] * 4))
+                self.assertEqual(result.invalid_open_count, 1)
+                self.assertEqual(result.expired_delta_count, 1)
+                self.assertEqual(result.tail_expired_delta_count, 0)
+
+    def test_expired_protective_entry_then_flat_signal_does_not_open_opposite_position(
+        self,
+    ) -> None:
+        result = generate_fills_from_targets_with_protective_exits(
+            symbol="AAPL",
+            timestamp_ms=[1, 2, 3, 4],
+            open_prices=[100.0, 0.0, 99.0, 98.0],
+            low_prices=[99.0, 0.0, 98.0, 97.0],
+            target_quantity=[-1.0, -1.0, 0.0, 0.0],
+            signal_values=[-1, -1, 1, 0],
+            stop_loss_pct=5.0,
+            gap_policy=GapPolicy.EXPIRE,
+        )
+
+        self.assertEqual(result.fills, [])
+        np.testing.assert_allclose(result.executed_delta, np.array([0.0] * 4))
+        self.assertEqual(result.invalid_open_count, 1)
+        self.assertEqual(result.expired_delta_count, 1)
+        self.assertEqual(result.tail_expired_delta_count, 0)
+
     def test_costs_use_slippage_adjusted_execution_notional(self) -> None:
         result = generate_fills_from_targets(
             symbol="AAPL",

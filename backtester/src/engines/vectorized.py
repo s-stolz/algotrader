@@ -60,7 +60,10 @@ def run_vectorized_backtest(
     normalized = _normalize_bars(bars=bars, symbol=symbol)
 
     feature_matrix = _build_feature_matrix(normalized)
-    execution_targets = strategy.build_execution_targets(feature_matrix)
+    execution_targets = strategy.build_execution_targets(
+        feature_matrix,
+        allowed_directions=request.execution.allowed_directions,
+    )
     timestamp_ms = normalized["timestamp_ms"].to_numpy(dtype="int64")
     target_values = _extract_target_values(
         execution_targets=execution_targets,

@@ -7,6 +7,7 @@ from domain.enums import (
     BacktestEngine,
     DataGranularity,
     ExitReason,
+    GapPolicy,
     IntrabarExitPolicy,
     OrderSide,
     TradeDirection,
@@ -271,6 +272,7 @@ class TestBacktestEngineParity(unittest.TestCase):
             }
         )
         strategy = _build_price_action_strategy(stop_loss_pct=5.0)
+        execution = ExecutionConfig(allowed_directions=AllowedDirections.LONG_ONLY)
 
         vectorized = run_backtest(
             request=_build_request_for_strategy(
@@ -278,6 +280,7 @@ class TestBacktestEngineParity(unittest.TestCase):
                 strategy=strategy,
                 start_ms=start_ms,
                 end_ms=start_ms + (3 * minute),
+                execution=execution,
             ),
             bars=bars,
             strategy=strategy,
@@ -288,6 +291,7 @@ class TestBacktestEngineParity(unittest.TestCase):
                 strategy=strategy,
                 start_ms=start_ms,
                 end_ms=start_ms + (3 * minute),
+                execution=execution,
             ),
             bars=bars,
             strategy=strategy,
@@ -416,6 +420,7 @@ class TestBacktestEngineParity(unittest.TestCase):
             }
         )
         strategy = _build_price_action_strategy(take_profit_pct=5.0)
+        execution = ExecutionConfig(allowed_directions=AllowedDirections.LONG_ONLY)
 
         vectorized = run_backtest(
             request=_build_request_for_strategy(
@@ -423,6 +428,7 @@ class TestBacktestEngineParity(unittest.TestCase):
                 strategy=strategy,
                 start_ms=start_ms,
                 end_ms=start_ms + (3 * minute),
+                execution=execution,
             ),
             bars=bars,
             strategy=strategy,
@@ -433,6 +439,7 @@ class TestBacktestEngineParity(unittest.TestCase):
                 strategy=strategy,
                 start_ms=start_ms,
                 end_ms=start_ms + (3 * minute),
+                execution=execution,
             ),
             bars=bars,
             strategy=strategy,
@@ -908,6 +915,7 @@ class TestBacktestEngineParity(unittest.TestCase):
             closes=(100.0, 100.0, 90.0),
         )
         strategy = _build_price_action_strategy(stop_loss_pct=5.0)
+        execution = ExecutionConfig(allowed_directions=AllowedDirections.LONG_ONLY)
 
         vectorized = run_backtest(
             request=_build_request_for_strategy(
@@ -915,6 +923,7 @@ class TestBacktestEngineParity(unittest.TestCase):
                 strategy=strategy,
                 start_ms=start_ms,
                 end_ms=start_ms + (3 * minute),
+                execution=execution,
             ),
             bars=bars,
             strategy=strategy,
@@ -925,6 +934,7 @@ class TestBacktestEngineParity(unittest.TestCase):
                 strategy=strategy,
                 start_ms=start_ms,
                 end_ms=start_ms + (3 * minute),
+                execution=execution,
             ),
             bars=bars,
             strategy=strategy,
@@ -1141,6 +1151,92 @@ class TestBacktestEngineParity(unittest.TestCase):
                         bars=bars,
                         strategy=negative_target_strategy,
                     )
+
+    def test_short_only_sma_flat_exit_while_flat_emits_no_execution_artifacts(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        closes = [10.0, 9.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + minute * index for index in range(len(closes))],
+                "symbol": ["AAPL"] * len(closes),
+                "open": closes,
+                "high": [price + 0.5 for price in closes],
+                "low": [price - 0.5 for price in closes],
+                "close": closes,
+                "volume": [1_000.0] * len(closes),
+            }
+        )
+        execution = ExecutionConfig(allowed_directions=AllowedDirections.SHORT_ONLY)
+
+        vectorized = run_backtest(
+            request=self._build_sma_request(
+                engine=BacktestEngine.VECTORIZED,
+                execution=execution,
+            ),
+            bars=bars,
+        )
+        event_driven = run_backtest(
+            request=self._build_sma_request(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                execution=execution,
+            ),
+            bars=bars,
+        )
+
+        self._assert_public_results_match(vectorized, event_driven)
+        self.assertEqual(event_driven.fills, [])
+        self.assertEqual(event_driven.trades, [])
+        self.assertEqual(event_driven.diagnostics["signal_exit_count"], 0)
+
+    def test_short_only_sma_flat_exit_after_expired_entry_stays_flat(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        closes = [10.0, 11.0, 12.0, 11.0, 10.0, 9.0, 10.0, 11.0, 12.0, 13.0]
+        opens = [10.0, 11.0, 12.0, 11.0, 10.0, 0.0, 10.0, 11.0, 12.0, 13.0]
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + minute * index for index in range(len(closes))],
+                "symbol": ["AAPL"] * len(closes),
+                "open": opens,
+                "high": [
+                    max(open_price, close) + 0.5
+                    for open_price, close in zip(opens, closes)
+                ],
+                "low": [
+                    min(open_price, close) - 0.5
+                    for open_price, close in zip(opens, closes)
+                ],
+                "close": closes,
+                "volume": [1_000.0] * len(closes),
+            }
+        )
+        execution = ExecutionConfig(
+            allowed_directions=AllowedDirections.SHORT_ONLY,
+            gap_policy=GapPolicy.EXPIRE,
+        )
+
+        vectorized = run_backtest(
+            request=self._build_sma_request(
+                engine=BacktestEngine.VECTORIZED,
+                execution=execution,
+            ),
+            bars=bars,
+        )
+        event_driven = run_backtest(
+            request=self._build_sma_request(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                execution=execution,
+            ),
+            bars=bars,
+        )
+
+        self._assert_public_results_match(vectorized, event_driven)
+        self.assertEqual(event_driven.fills, [])
+        self.assertEqual(event_driven.trades, [])
+        self.assertEqual(event_driven.equity_curve[-1].positions, {})
+        self.assertEqual(event_driven.diagnostics["expired_delta_count"], 1)
+        self.assertEqual(event_driven.diagnostics["signal_exit_count"], 0)
 
     def test_both_engines_reject_multi_symbol_and_non_bar_requests(self) -> None:
         bars = self._build_sma_bars()
