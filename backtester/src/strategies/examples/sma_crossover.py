@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import math
 
-from execution.risk import long_only_rule
-from execution.sizing import fixed_quantity_sizer
-
 from strategies.base import (
     BarStrategyModel,
     IndicatorFeatureRequirement,
@@ -24,7 +21,7 @@ def build_sma_crossover_strategy(
     stop_loss_pct: float | None = None,
     take_profit_pct: float | None = None,
 ) -> StrategyDefinition:
-    """Build a long-only SMA crossover strategy definition."""
+    """Build a direction-neutral SMA crossover strategy definition."""
 
     if (
         not isinstance(fast_window, int)
@@ -63,7 +60,6 @@ def build_sma_crossover_strategy(
         entry_conditions=(ConditionRule.crossover("sma_fast", "sma_slow"),),
         exit_conditions=(ConditionRule.crossunder("sma_fast", "sma_slow"),),
         target_quantity=quantity,
-        long_only=True,
         protective_exit=ProtectiveExitSpec(
             stop_loss_pct=stop_loss_pct,
             take_profit_pct=take_profit_pct,
@@ -77,8 +73,6 @@ def build_sma_crossover_strategy(
         position_builder=bar_model.build_positions,
         indicator_requirements=indicator_requirements,
         bar_model=bar_model,
-        sizing_model=fixed_quantity_sizer(quantity),
-        risk_rules=(long_only_rule,),
         metadata={
             "warmup_bars": slow_window,
         },

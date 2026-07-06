@@ -59,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=tuple(engine.value for engine in _DOMAIN_ENUMS_MODULE.BacktestEngine),
         help="Backtest engine backend.",
     )
+    run_parser.add_argument(
+        "--allowed-directions",
+        default=_DOMAIN_ENUMS_MODULE.AllowedDirections.LONG_AND_SHORT.value,
+        choices=tuple(direction.value for direction in _DOMAIN_ENUMS_MODULE.AllowedDirections),
+        help="Allowed trade directions for strategy targets.",
+    )
     run_parser.add_argument("--fast-window", default=5, type=int)
     run_parser.add_argument("--slow-window", default=20, type=int)
     run_parser.add_argument("--quantity", default=1.0, type=float)
@@ -136,6 +142,7 @@ def _build_request(args: argparse.Namespace) -> Any:
 
     execution = replace(
         _APP_CONFIG_MODULE.build_default_execution_config(),
+        allowed_directions=_DOMAIN_ENUMS_MODULE.AllowedDirections(str(args.allowed_directions)),
         intrabar_exit_policy=_DOMAIN_ENUMS_MODULE.IntrabarExitPolicy(
             str(args.intrabar_exit_policy)
         ),

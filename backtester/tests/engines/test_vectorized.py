@@ -89,10 +89,13 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         )
         self.assertEqual(len(result.fills), 2)
         self.assertEqual(result.fills[0].price, 10.0)
+        self.assertEqual(result.fills[0].quantity, 1.0)
         self.assertEqual(result.fills[1].price, 13.0)
+        self.assertEqual(result.fills[1].quantity, 2.0)
         self.assertEqual(len(result.trades), 1)
         self.assertAlmostEqual(result.trades[0].realized_pnl, 3.0)
-        self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
+        self.assertEqual(result.equity_curve[-1].positions, {"AAPL": -1.0})
+        self.assertEqual(result.equity_curve[-1].equity, 10_008.0)
         self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
 
     def test_request_only_vectorized_run_resolves_strategy_from_registry(self) -> None:
@@ -115,7 +118,8 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         self.assertEqual(result.diagnostics["engine"], "vectorized")
         self.assertEqual(result.diagnostics["strategy_id"], "sma_crossover")
         self.assertEqual(len(result.fills), 2)
-        self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
+        self.assertEqual(result.equity_curve[-1].positions, {"AAPL": -1.0})
+        self.assertEqual(result.equity_curve[-1].equity, 10_008.0)
 
     def test_unknown_request_strategy_id_fails_clearly(self) -> None:
         bars = self._build_bars()

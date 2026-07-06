@@ -7,6 +7,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from domain.enums import AllowedDirections
 from domain.types import ExecutionArrayBundle, FeatureMatrix, ProtectiveExitSpec, SignalMatrix
 
 from strategies.conditions import ConditionRule
@@ -60,14 +61,11 @@ class BarStrategyModel:
     entry_conditions: Tuple[ConditionRule, ...]
     exit_conditions: Tuple[ConditionRule, ...]
     target_quantity: float
-    long_only: bool = True
     protective_exit: ProtectiveExitSpec = field(default_factory=ProtectiveExitSpec)
 
     def __post_init__(self) -> None:
         if not math.isfinite(float(self.target_quantity)) or float(self.target_quantity) <= 0.0:
             raise ValueError("bar strategy target_quantity must be positive and finite")
-        if not self.long_only:
-            raise ValueError("v1 bar strategy model supports long_only=True only")
         if not isinstance(self.protective_exit, ProtectiveExitSpec):
             raise ValueError("bar strategy protective_exit must be a ProtectiveExitSpec")
 
@@ -100,14 +98,27 @@ class BarStrategyModel:
             signals_by_symbol=signals_by_symbol,
         )
 
-    def build_positions(self, signals: SignalMatrix) -> ExecutionArrayBundle:
+    def build_positions(
+        self,
+        signals: SignalMatrix,
+        *,
+        allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT,
+    ) -> ExecutionArrayBundle:
+        allowed_directions = AllowedDirections(allowed_directions)
         target_by_symbol: dict[str, list[float]] = {}
 
         for symbol, raw_signals in signals.signals_by_symbol.items():
             signal_arr = np.asarray(raw_signals, dtype=np.int64)
             target = np.full(signal_arr.shape[0], np.nan, dtype=np.float64)
-            target[signal_arr > 0] = self.target_quantity
-            target[signal_arr < 0] = 0.0
+            if allowed_directions == AllowedDirections.LONG_ONLY:
+                target[signal_arr > 0] = self.target_quantity
+                target[signal_arr < 0] = 0.0
+            elif allowed_directions == AllowedDirections.SHORT_ONLY:
+                target[signal_arr > 0] = 0.0
+                target[signal_arr < 0] = -self.target_quantity
+            else:
+                target[signal_arr > 0] = self.target_quantity
+                target[signal_arr < 0] = -self.target_quantity
 
             target_series = pd.Series(target, dtype=np.float64).ffill().fillna(0.0)
             target_by_symbol[symbol] = np.asarray(target_series, dtype=np.float64).tolist()
@@ -117,8 +128,16 @@ class BarStrategyModel:
             target_quantity_by_symbol=target_by_symbol,
         )
 
-    def build_execution_targets(self, features: FeatureMatrix) -> ExecutionArrayBundle:
-        return self.build_positions(self.build_signals(features))
+    def build_execution_targets(
+        self,
+        features: FeatureMatrix,
+        *,
+        allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT,
+    ) -> ExecutionArrayBundle:
+        return self.build_positions(
+            self.build_signals(features),
+            allowed_directions=allowed_directions,
+        )
 
     def evaluate_sequential_signal(
         self,
@@ -162,10 +181,18 @@ class StrategyDefinition:
             )
         return self.bar_model
 
-    def build_execution_targets(self, features: FeatureMatrix) -> ExecutionArrayBundle:
+    def build_execution_targets(
+        self,
+        features: FeatureMatrix,
+        *,
+        allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT,
+    ) -> ExecutionArrayBundle:
         """Evaluates vectorized strategy flow into execution target arrays."""
         if self.bar_model is not None:
-            targets = self.bar_model.build_execution_targets(features)
+            targets = self.bar_model.build_execution_targets(
+                features,
+                allowed_directions=allowed_directions,
+            )
         else:
             signals = self.decision_model(features)
             targets = self.position_builder(signals)

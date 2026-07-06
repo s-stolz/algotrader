@@ -7,7 +7,13 @@ from unittest.mock import patch
 
 import cli
 import pandas as pd
-from domain.enums import BacktestEngine, IntrabarExitPolicy, OrderSide, TradeDirection
+from domain.enums import (
+    AllowedDirections,
+    BacktestEngine,
+    IntrabarExitPolicy,
+    OrderSide,
+    TradeDirection,
+)
 from domain.types import BacktestResult, Fill, PortfolioSnapshot, Trade
 
 
@@ -182,6 +188,7 @@ class TestCli(unittest.TestCase):
             request.execution.intrabar_exit_policy,
             IntrabarExitPolicy.CONSERVATIVE,
         )
+        self.assertEqual(request.execution.allowed_directions, AllowedDirections.LONG_AND_SHORT)
         self.assertIsNone(strategy)
 
         output = stdout.getvalue()
@@ -228,6 +235,42 @@ class TestCli(unittest.TestCase):
             request.execution.intrabar_exit_policy,
             IntrabarExitPolicy.TAKE_PROFIT_FIRST,
         )
+
+    def test_run_command_maps_allowed_directions(self) -> None:
+        for allowed_directions in AllowedDirections:
+            with self.subTest(allowed_directions=allowed_directions.value):
+                exit_code, request = self._run_command_and_capture_request(
+                    ["--allowed-directions", allowed_directions.value]
+                )
+
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(request.execution.allowed_directions, allowed_directions)
+
+    def test_run_command_rejects_legacy_allow_short_flag(self) -> None:
+        stderr = io.StringIO()
+        with patch(
+            "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+            side_effect=AssertionError("runner should not execute"),
+        ):
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as raised:
+                    cli.main(
+                        [
+                            "run",
+                            "--symbol",
+                            "AAPL",
+                            "--timeframe",
+                            "M1",
+                            "--start-ms",
+                            "1700000000000",
+                            "--end-ms",
+                            "1700000600000",
+                            "--allow-short",
+                        ]
+                    )
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("--allow-short", stderr.getvalue())
 
     def test_run_command_rejects_invalid_bracket_parameters_before_running(self) -> None:
         invalid_cases = (
