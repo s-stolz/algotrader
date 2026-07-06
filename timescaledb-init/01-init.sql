@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS backtest_closed_trades (
     trade_sequence INTEGER NOT NULL,
     trade_id VARCHAR(64) NOT NULL,
     symbol VARCHAR(32) NOT NULL,
+    trade_direction VARCHAR(8) NOT NULL,
     quantity DOUBLE PRECISION NOT NULL,
     entry_timestamp_ms BIGINT NOT NULL,
     entry_price DOUBLE PRECISION NOT NULL,
@@ -97,6 +98,8 @@ CREATE TABLE IF NOT EXISTS backtest_closed_trades (
     FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id) ON DELETE CASCADE,
     PRIMARY KEY (run_id, trade_sequence),
     CONSTRAINT uq_backtest_closed_trades_identity UNIQUE (run_id, trade_id),
+    CONSTRAINT backtest_closed_trades_trade_direction_check
+        CHECK (trade_direction IN ('long', 'short')),
     CONSTRAINT backtest_closed_trades_exit_reason_check
         CHECK (exit_reason IN ('signal', 'stop_loss', 'take_profit'))
 );

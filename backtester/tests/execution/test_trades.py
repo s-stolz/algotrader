@@ -1,6 +1,6 @@
 import unittest
 
-from domain.enums import ExitReason, OrderSide
+from domain.enums import ExitReason, OrderSide, TradeDirection
 from domain.types import Fill
 from execution.trades import build_trades_from_fills
 
@@ -30,6 +30,7 @@ class TestTradeLifecycle(unittest.TestCase):
 
         self.assertEqual(len(trades), 1)
         self.assertEqual(trades[0].symbol, "AAPL")
+        self.assertEqual(trades[0].trade_direction, TradeDirection.LONG)
         self.assertEqual(trades[0].entry_timestamp_ms, 1)
         self.assertEqual(trades[0].exit_timestamp_ms, 2)
         self.assertEqual(trades[0].fees, 3.0)

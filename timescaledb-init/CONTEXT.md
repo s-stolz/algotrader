@@ -21,6 +21,8 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   historical refresh.
 - `05-backtest-result-schema-v2.sql`: existing-volume migration for nullable
   backtest closed-trade protective exit prices.
+- `06-backtest-result-schema-v3.sql`: clean-row migration for required
+  backtest closed-trade direction.
 
 ## Contracts
 

@@ -12,6 +12,7 @@ from domain.enums import (
     BacktestRunStatus,
     ExitReason,
     OrderSide,
+    TradeDirection,
 )
 from domain.types import (
     BacktestFillRecord,
@@ -96,9 +97,7 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
         )
         payload = _valid_payload()
         payload["execution"] = {
-            key: value
-            for key, value in payload["execution"].items()
-            if key != "allowed_directions"
+            key: value for key, value in payload["execution"].items() if key != "allowed_directions"
         }
 
         with TestClient(create_app(service=service)) as client:
@@ -289,7 +288,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
                 status=BacktestRunStatus.SUCCEEDED,
                 started_at_ms=1_780_921_860_000,
                 completed_at_ms=1_780_922_100_000,
-                result_schema_version=2,
+                result_schema_version=3,
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240_000},
             ),
@@ -359,7 +358,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
         succeeded_body = succeeded_response.json()
         self.assertEqual(succeeded_response.status_code, 200)
         self.assertEqual(succeeded_body["completed_at_ms"], 1_780_922_100_000)
-        self.assertEqual(succeeded_body["result_schema_version"], 2)
+        self.assertEqual(succeeded_body["result_schema_version"], 3)
         self.assertEqual(succeeded_body["metrics"], {"total_return_pct": 1.25})
         self.assertEqual(
             succeeded_body["diagnostics"],
@@ -453,6 +452,7 @@ class TestBacktestExecutionLogAndDeletionRoutes(unittest.TestCase):
                 sequence=0,
                 trade_id="trade-1",
                 symbol="EURUSD",
+                trade_direction=TradeDirection.LONG,
                 quantity=1_000.0,
                 entry_timestamp_ms=1_714_525_200_000,
                 entry_price=1.0715,
@@ -504,6 +504,7 @@ class TestBacktestExecutionLogAndDeletionRoutes(unittest.TestCase):
                     "sequence": 0,
                     "trade_id": "trade-1",
                     "symbol": "EURUSD",
+                    "trade_direction": "long",
                     "quantity": 1_000.0,
                     "entry_timestamp_ms": 1_714_525_200_000,
                     "entry_price": 1.0715,
@@ -610,7 +611,7 @@ def _terminal_run_service(run_id: str) -> tuple[_FakeRunRepository, BacktestRunS
         status=BacktestRunStatus.SUCCEEDED,
         started_at_ms=1_780_921_860_000,
         completed_at_ms=1_780_922_100_000,
-        result_schema_version=2,
+        result_schema_version=3,
         metrics={"trade_count": 0},
         diagnostics={"bars": 10},
     )

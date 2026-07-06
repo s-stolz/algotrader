@@ -102,6 +102,7 @@ class BacktestClosedTradeIn(BacktestContractModel):
     trade_sequence: int
     trade_id: str
     symbol: str
+    trade_direction: Literal["long", "short"]
     quantity: float
     entry_timestamp_ms: int
     entry_price: float
@@ -142,8 +143,8 @@ class BacktestRunBase(BacktestContractModel):
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int | None) -> int | None:
-        if value is not None and value not in (1, 2):
-            raise ValueError("result_schema_version must be 1 or 2 when present")
+        if value is not None and value not in (1, 2, 3):
+            raise ValueError("result_schema_version must be 1, 2, or 3 when present")
         return value
 
 
@@ -177,8 +178,8 @@ class BacktestRunCompleteIn(BacktestContractModel):
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int) -> int:
-        if value not in (1, 2):
-            raise ValueError("result_schema_version must be 1 or 2")
+        if value not in (1, 2, 3):
+            raise ValueError("result_schema_version must be 1, 2, or 3")
         return value
 
 

@@ -15,6 +15,7 @@ from domain.enums import (
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
+    TradeDirection,
 )
 from domain.events import BarEvent, TickEvent
 from domain.types import (
@@ -87,6 +88,10 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(ExitReason.STOP_LOSS.value, "stop_loss")
         self.assertEqual(ExitReason.TAKE_PROFIT.value, "take_profit")
 
+    def test_trade_direction_values_are_explicit(self) -> None:
+        self.assertEqual(TradeDirection.LONG.value, "long")
+        self.assertEqual(TradeDirection.SHORT.value, "short")
+
     def test_intrabar_exit_policy_values_are_explicit(self) -> None:
         self.assertEqual(IntrabarExitPolicy.CONSERVATIVE.value, "conservative")
         self.assertEqual(IntrabarExitPolicy.STOP_FIRST.value, "stop_first")
@@ -144,6 +149,7 @@ class TestDomainTypes(unittest.TestCase):
         trade = Trade(
             trade_id="trade-1",
             symbol="AAPL",
+            trade_direction=TradeDirection.LONG,
             quantity=1.0,
             entry_timestamp_ms=1_700_000_060_000,
             entry_price=101.5,
@@ -295,6 +301,7 @@ class TestDomainTypes(unittest.TestCase):
             sequence=0,
             trade_id="trade-1",
             symbol="EURUSD",
+            trade_direction=TradeDirection.LONG,
             quantity=1_000.0,
             entry_timestamp_ms=1_714_522_500_000,
             entry_price=1.0715,
@@ -323,6 +330,7 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(run.status, BacktestRunStatus.QUEUED)
         self.assertEqual(run.request_snapshot.to_request(), request)
         self.assertEqual(fill.side, OrderSide.BUY)
+        self.assertEqual(trade.trade_direction, TradeDirection.LONG)
         self.assertEqual(trade.exit_reason, ExitReason.SIGNAL)
         self.assertEqual(query.engine, BacktestEngine.VECTORIZED)
 

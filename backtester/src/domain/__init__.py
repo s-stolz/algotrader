@@ -15,6 +15,7 @@ from .enums import (
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
+    TradeDirection,
 )
 from .events import BarEvent, TickEvent
 from .types import (
@@ -81,4 +82,5 @@ __all__ = [
     "TickView",
     "Trade",
     "TradeAccountingPolicy",
+    "TradeDirection",
 ]
