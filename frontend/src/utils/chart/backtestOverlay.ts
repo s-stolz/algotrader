@@ -10,10 +10,12 @@ export interface LoadedCandleRange {
   endMs: number;
 }
 
-export const ENTRY_MARKER_COLOR = '#16a34a';
-export const EXIT_MARKER_COLOR = '#dc2626';
+export const BUY_MARKER_COLOR = '#16a34a';
+export const SELL_MARKER_COLOR = '#dc2626';
 export const STOP_LOSS_LINE_COLOR = '#dc2626';
 export const TAKE_PROFIT_LINE_COLOR = '#2563eb';
+
+type TradeMarkerAction = 'buy' | 'sell';
 
 function timestampToChartTime(timestampMs: number): ChartSeriesMarker['time'] {
   return Math.floor(timestampMs / 1000) as ChartSeriesMarker['time'];
@@ -27,6 +29,25 @@ function isTimestampInRange(timestampMs: number, range: LoadedCandleRange): bool
   return timestampMs >= range.startMs && timestampMs <= range.endMs;
 }
 
+function markerForAction(
+  tradeId: string,
+  action: TradeMarkerAction,
+  kind: 'entry' | 'exit',
+  timestampMs: number,
+  price: number,
+): ChartSeriesMarker {
+  const isBuy = action === 'buy';
+
+  return {
+    id: `${tradeId}:${kind}`,
+    time: timestampToChartTime(timestampMs),
+    position: isBuy ? 'belowBar' : 'aboveBar',
+    shape: isBuy ? 'arrowUp' : 'arrowDown',
+    color: isBuy ? BUY_MARKER_COLOR : SELL_MARKER_COLOR,
+    text: `${isBuy ? 'Buy' : 'Sell'} @ ${formatTradePrice(price)}`,
+  };
+}
+
 export function buildBacktestTradeMarkers(
   trades: readonly BacktestClosedTrade[],
   range: LoadedCandleRange,
@@ -34,26 +55,27 @@ export function buildBacktestTradeMarkers(
   const markers: ChartSeriesMarker[] = [];
 
   for (const trade of trades) {
+    const entryAction = trade.trade_direction === 'long' ? 'buy' : 'sell';
+    const exitAction = trade.trade_direction === 'long' ? 'sell' : 'buy';
+
     if (isTimestampInRange(trade.entry_timestamp_ms, range)) {
-      markers.push({
-        id: `${trade.trade_id}:entry`,
-        time: timestampToChartTime(trade.entry_timestamp_ms),
-        position: 'belowBar',
-        shape: 'arrowUp',
-        color: ENTRY_MARKER_COLOR,
-        text: `Buy @ ${formatTradePrice(trade.entry_price)}`,
-      });
+      markers.push(markerForAction(
+        trade.trade_id,
+        entryAction,
+        'entry',
+        trade.entry_timestamp_ms,
+        trade.entry_price,
+      ));
     }
 
     if (isTimestampInRange(trade.exit_timestamp_ms, range)) {
-      markers.push({
-        id: `${trade.trade_id}:exit`,
-        time: timestampToChartTime(trade.exit_timestamp_ms),
-        position: 'aboveBar',
-        shape: 'arrowDown',
-        color: EXIT_MARKER_COLOR,
-        text: `Sell @ ${formatTradePrice(trade.exit_price)}`,
-      });
+      markers.push(markerForAction(
+        trade.trade_id,
+        exitAction,
+        'exit',
+        trade.exit_timestamp_ms,
+        trade.exit_price,
+      ));
     }
   }
 
