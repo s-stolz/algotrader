@@ -23,7 +23,7 @@ def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
         "completed_at": None,
         "error_code": None,
         "error_message": None,
-        "request_schema_version": 1,
+        "request_schema_version": 2,
         "request": {
             "symbols": ["EURUSD"],
             "exchange": "FX",
@@ -46,7 +46,7 @@ def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
                 "fill_timing": "next_open",
                 "price_source": "open",
                 "allow_partial_fills": False,
-                "allow_short": False,
+                "allowed_directions": "long_and_short",
                 "trade_accounting_policy": "average_cost",
                 "gap_policy": "error",
                 "intrabar_exit_policy": "take_profit_first",

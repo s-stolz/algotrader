@@ -76,7 +76,7 @@ def _request_payload(**overrides):
             "fill_timing": "next_open",
             "price_source": "open",
             "allow_partial_fills": False,
-            "allow_short": False,
+            "allowed_directions": "long_and_short",
             "trade_accounting_policy": "average_cost",
             "gap_policy": "error",
             "intrabar_exit_policy": "take_profit_first",
@@ -102,7 +102,7 @@ def _run_payload(**overrides):
         "completed_at": None,
         "error_code": None,
         "error_message": None,
-        "request_schema_version": 1,
+        "request_schema_version": 2,
         "request": _request_payload(),
         "result_schema_version": None,
         "metrics": None,
@@ -135,7 +135,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(fetched["run_id"], "run-queued-1")
         self.assertEqual(fetched["status"], "queued")
-        self.assertEqual(fetched["request_schema_version"], 1)
+        self.assertEqual(fetched["request_schema_version"], 2)
         self.assertEqual(fetched["request"], _request_payload())
         self.assertEqual(fetched["request"]["exchange"], "FX")
         self.assertEqual(
@@ -163,7 +163,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             run_id="run-minimal-queued",
             status="queued",
             submitted_at=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
-            request_schema_version=1,
+            request_schema_version=2,
             request=BacktestRequestPayload(**_request_payload()),
         )
 
@@ -1059,7 +1059,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
 
     def test_create_rejects_unknown_request_schema_version(self):
         with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(request_schema_version=2))
+            BacktestRunCreateIn(**_run_payload(request_schema_version=1))
 
     def test_result_schema_version_supports_v1_v2_and_v3(self):
         BacktestRunCreateIn(**_run_payload(result_schema_version=1))

@@ -55,7 +55,7 @@ class BacktestExecutionPayload(BacktestContractModel):
     fill_timing: Literal["next_open"]
     price_source: Literal["open", "close"]
     allow_partial_fills: bool
-    allow_short: bool
+    allowed_directions: Literal["long_only", "short_only", "long_and_short"]
     trade_accounting_policy: Literal["average_cost"]
     gap_policy: Literal["expire", "skip", "error"]
     intrabar_exit_policy: Literal[
@@ -136,8 +136,8 @@ class BacktestRunBase(BacktestContractModel):
     @field_validator("request_schema_version")
     @classmethod
     def validate_request_schema_version(cls, value: int) -> int:
-        if value != 1:
-            raise ValueError("request_schema_version must be 1")
+        if value != 2:
+            raise ValueError("request_schema_version must be 2")
         return value
 
     @field_validator("result_schema_version")
