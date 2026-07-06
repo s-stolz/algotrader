@@ -1,8 +1,11 @@
 import unittest
 
 import numpy as np
-from domain.enums import GapPolicy, OrderSide
-from execution.fills import generate_fills_from_targets
+from domain.enums import ExitReason, GapPolicy, OrderSide
+from execution.fills import (
+    generate_fills_from_targets,
+    generate_fills_from_targets_with_protective_exits,
+)
 
 
 class TestFillGeneration(unittest.TestCase):
@@ -132,6 +135,31 @@ class TestFillGeneration(unittest.TestCase):
                 target_quantity=[0.0, 1.0, 0.0],
                 commission_bps=float("inf"),
             )
+
+    def test_short_stop_loss_covers_with_planned_short_protective_prices(self) -> None:
+        result = generate_fills_from_targets_with_protective_exits(
+            symbol="AAPL",
+            timestamp_ms=[1, 2, 3],
+            open_prices=[99.0, 100.0, 101.0],
+            high_prices=[101.0, 106.0, 102.0],
+            low_prices=[98.0, 99.0, 100.0],
+            target_quantity=[-1.0, -1.0, -1.0],
+            signal_values=[-1, 0, 0],
+            stop_loss_pct=5.0,
+            take_profit_pct=10.0,
+            gap_policy=GapPolicy.SKIP,
+        )
+
+        self.assertEqual(
+            [(fill.timestamp_ms, fill.side, fill.price, fill.exit_reason) for fill in result.fills],
+            [
+                (2, OrderSide.SELL, 100.0, None),
+                (2, OrderSide.BUY, 105.0, ExitReason.STOP_LOSS),
+            ],
+        )
+        self.assertEqual(result.fills[0].stop_loss_price, 105.0)
+        self.assertEqual(result.fills[0].take_profit_price, 90.0)
+        np.testing.assert_allclose(result.executed_delta, np.array([0.0, 0.0, 0.0]))
 
 
 if __name__ == "__main__":

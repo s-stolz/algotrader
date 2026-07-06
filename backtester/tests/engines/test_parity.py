@@ -9,6 +9,7 @@ from domain.enums import (
     ExitReason,
     IntrabarExitPolicy,
     OrderSide,
+    TradeDirection,
 )
 from domain.types import (
     BacktestRequest,
@@ -944,6 +945,174 @@ class TestBacktestEngineParity(unittest.TestCase):
         self.assertEqual(event_driven.diagnostics["tail_expired_delta_count"], 0)
         self.assertEqual(event_driven.diagnostics["signal_exit_count"], 0)
 
+    def test_short_protective_exits_match_across_engines(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        cases = (
+            (
+                "stop_loss_entry_bar",
+                _build_ohlc_bars(
+                    start_ms=start_ms,
+                    minute=minute,
+                    opens=(99.0, 100.0, 100.0),
+                    highs=(101.0, 106.0, 101.0),
+                    lows=(98.0, 99.0, 99.0),
+                    closes=(100.0, 100.0, 100.0),
+                ),
+                ExecutionConfig(),
+                ExitReason.STOP_LOSS,
+                105.0,
+                1,
+                0,
+                0,
+            ),
+            (
+                "take_profit_entry_bar",
+                _build_ohlc_bars(
+                    start_ms=start_ms,
+                    minute=minute,
+                    opens=(99.0, 100.0, 100.0),
+                    highs=(101.0, 101.0, 101.0),
+                    lows=(98.0, 94.0, 99.0),
+                    closes=(100.0, 100.0, 100.0),
+                ),
+                ExecutionConfig(),
+                ExitReason.TAKE_PROFIT,
+                95.0,
+                0,
+                1,
+                0,
+            ),
+            (
+                "gap_through_stop_loss",
+                _build_ohlc_bars(
+                    start_ms=start_ms,
+                    minute=minute,
+                    opens=(99.0, 100.0, 107.0),
+                    highs=(101.0, 101.0, 108.0),
+                    lows=(98.0, 99.0, 106.0),
+                    closes=(100.0, 100.0, 107.0),
+                ),
+                ExecutionConfig(),
+                ExitReason.STOP_LOSS,
+                107.0,
+                1,
+                0,
+                0,
+            ),
+            (
+                "gap_through_take_profit",
+                _build_ohlc_bars(
+                    start_ms=start_ms,
+                    minute=minute,
+                    opens=(99.0, 100.0, 93.0),
+                    highs=(101.0, 101.0, 94.0),
+                    lows=(98.0, 99.0, 92.0),
+                    closes=(100.0, 100.0, 93.0),
+                ),
+                ExecutionConfig(),
+                ExitReason.TAKE_PROFIT,
+                93.0,
+                0,
+                1,
+                0,
+            ),
+            (
+                "ambiguous_conservative",
+                _build_ohlc_bars(
+                    start_ms=start_ms,
+                    minute=minute,
+                    opens=(99.0, 100.0, 100.0),
+                    highs=(101.0, 106.0, 101.0),
+                    lows=(98.0, 94.0, 99.0),
+                    closes=(100.0, 100.0, 100.0),
+                ),
+                ExecutionConfig(),
+                ExitReason.STOP_LOSS,
+                105.0,
+                1,
+                0,
+                1,
+            ),
+            (
+                "ambiguous_take_profit_first",
+                _build_ohlc_bars(
+                    start_ms=start_ms,
+                    minute=minute,
+                    opens=(99.0, 100.0, 100.0),
+                    highs=(101.0, 106.0, 101.0),
+                    lows=(98.0, 94.0, 99.0),
+                    closes=(100.0, 100.0, 100.0),
+                ),
+                ExecutionConfig(intrabar_exit_policy=IntrabarExitPolicy.TAKE_PROFIT_FIRST),
+                ExitReason.TAKE_PROFIT,
+                95.0,
+                0,
+                1,
+                1,
+            ),
+        )
+        strategy = _build_short_price_action_strategy(stop_loss_pct=5.0, take_profit_pct=5.0)
+
+        for (
+            name,
+            bars,
+            execution,
+            exit_reason,
+            exit_price,
+            stop_count,
+            target_count,
+            ambiguous_count,
+        ) in cases:
+            with self.subTest(name=name):
+                vectorized = run_backtest(
+                    request=_build_request_for_strategy(
+                        engine=BacktestEngine.VECTORIZED,
+                        strategy=strategy,
+                        start_ms=start_ms,
+                        end_ms=start_ms + (3 * minute),
+                        execution=execution,
+                    ),
+                    bars=bars,
+                    strategy=strategy,
+                )
+                event_driven = run_backtest(
+                    request=_build_request_for_strategy(
+                        engine=BacktestEngine.EVENT_DRIVEN,
+                        strategy=strategy,
+                        start_ms=start_ms,
+                        end_ms=start_ms + (3 * minute),
+                        execution=execution,
+                    ),
+                    bars=bars,
+                    strategy=strategy,
+                )
+
+                self._assert_public_results_match(vectorized, event_driven)
+                self.assertEqual(
+                    [
+                        (fill.side, fill.price, fill.exit_reason)
+                        for fill in event_driven.fills
+                    ],
+                    [
+                        (OrderSide.SELL, 100.0, None),
+                        (OrderSide.BUY, exit_price, exit_reason),
+                    ],
+                )
+                self.assertEqual(len(event_driven.trades), 1)
+                trade = event_driven.trades[0]
+                self.assertEqual(trade.trade_direction, TradeDirection.SHORT)
+                self.assertEqual(trade.exit_reason, exit_reason)
+                self.assertEqual(trade.stop_loss_price, 105.0)
+                self.assertEqual(trade.take_profit_price, 95.0)
+                self.assertEqual(event_driven.diagnostics["stop_loss_exit_count"], stop_count)
+                self.assertEqual(event_driven.diagnostics["take_profit_exit_count"], target_count)
+                self.assertEqual(event_driven.diagnostics["signal_exit_count"], 0)
+                self.assertEqual(
+                    event_driven.diagnostics["intrabar_ambiguous_bar_count"],
+                    ambiguous_count,
+                )
+
     def test_both_engines_reject_negative_strategy_outputs_in_long_only_mode(self) -> None:
         start_ms = 1_700_000_000_000
         minute = 60_000
@@ -1089,6 +1258,38 @@ def _build_price_action_strategy(
         decision_model=bar_model.build_signals,
         position_builder=bar_model.build_positions,
         bar_model=bar_model,
+    )
+
+
+def _build_short_price_action_strategy(
+    *,
+    stop_loss_pct: float | None = None,
+    take_profit_pct: float | None = None,
+) -> StrategyDefinition:
+    base = _build_price_action_strategy(
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+    )
+
+    def force_short_targets(bundle: ExecutionArrayBundle) -> ExecutionArrayBundle:
+        return ExecutionArrayBundle(
+            timestamp_ms=bundle.timestamp_ms,
+            target_quantity_by_symbol={
+                symbol: [
+                    -abs(float(quantity)) if float(quantity) > 0.0 else float(quantity)
+                    for quantity in quantities
+                ]
+                for symbol, quantities in bundle.target_quantity_by_symbol.items()
+            },
+        )
+
+    return StrategyDefinition(
+        strategy_id="short_price_action_fixture",
+        feature_specs=base.feature_specs,
+        decision_model=base.decision_model,
+        position_builder=base.position_builder,
+        risk_rules=(force_short_targets,),
+        bar_model=base.bar_model,
     )
 
 
