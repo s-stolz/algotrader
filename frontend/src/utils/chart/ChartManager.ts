@@ -453,6 +453,24 @@ export class ChartManager {
     );
   }
 
+  setPressedMouseMoveEnabled(enabled: boolean): boolean {
+    if (!this.chart) {
+      return false;
+    }
+
+    try {
+      this.chart.applyOptions({
+        handleScroll: {
+          pressedMouseMove: enabled,
+        },
+      });
+      return true;
+    } catch (error) {
+      console.error('Failed to update chart mouse drag scrolling:', error);
+      return false;
+    }
+  }
+
   scrollToRealTime(): void {
     if (!this.chart) return;
 

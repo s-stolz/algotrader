@@ -33,6 +33,9 @@ export interface ChartInfrastructure {
   setCandlestickProtectiveLines(segments: readonly ChartProtectiveLineSegment[]): boolean;
   setCandlestickMeasurementOverlay(model: ChartMeasurementOverlayModel): boolean;
   clearCandlestickMeasurementOverlay(): boolean;
+  coordinateToCandlestickPrice(coordinate: number): number | null;
+  coordinateToLogical(coordinate: number): number | null;
+  setMouseDragScrollEnabled(enabled: boolean): boolean;
   subscribeCrosshairMove(callback: ChartCrosshairMoveHandler): void;
   unsubscribeCrosshairMove(callback?: ChartCrosshairMoveHandler | null): void;
   subscribeVisibleLogicalRangeChange(callback: ChartVisibleRangeHandler): void;
@@ -117,6 +120,20 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
 
   clearCandlestickMeasurementOverlay(): boolean {
     return this.chartManager.clearSeriesMeasurementOverlay('ohlc');
+  }
+
+  coordinateToCandlestickPrice(coordinate: number): number | null {
+    const price = this.chartManager.series.get('ohlc')?.series.coordinateToPrice(coordinate);
+    return price === null || price === undefined ? null : Number(price);
+  }
+
+  coordinateToLogical(coordinate: number): number | null {
+    const logical = this.chartManager.chart?.timeScale().coordinateToLogical(coordinate);
+    return logical === null || logical === undefined ? null : Number(logical);
+  }
+
+  setMouseDragScrollEnabled(enabled: boolean): boolean {
+    return this.chartManager.setPressedMouseMoveEnabled(enabled);
   }
 
   subscribeCrosshairMove(callback: ChartCrosshairMoveHandler): void {

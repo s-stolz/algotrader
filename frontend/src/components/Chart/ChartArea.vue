@@ -93,6 +93,7 @@ import {
   type ChartOhlcPoint,
   type ManagedSeriesApi,
 } from "@/utils/chart";
+import { buildMeasurementOverlayModel } from "@/utils/chart/measurementOverlay";
 import {
   buildBacktestProtectiveLineSegments,
   buildBacktestTradeMarkers,
@@ -122,6 +123,17 @@ interface RenderCandlestickOptions {
   scrollToRealtime?: boolean;
 }
 
+interface MeasurementEndpoint {
+  price: number;
+  logical: number;
+}
+
+interface MeasurementDragState {
+  anchorPrice: number;
+  anchorLogical: number;
+  minMove: number;
+}
+
 interface ChartAreaData {
   candlesticksStore: CandlesticksStore;
   indicatorsStore: IndicatorsStore;
@@ -145,6 +157,8 @@ interface ChartAreaData {
   indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
   chartSession: ChartSession | null;
   backtestOverlayTarget: HTMLElement | null;
+  measurementPaneElement: HTMLElement | null;
+  activeMeasurement: MeasurementDragState | null;
 }
 
 function isOhlcLegendPoint(value: unknown): value is OhlcLegendPoint {
@@ -200,6 +214,8 @@ export default defineComponent({
       indicatorMessageHandler: null,
       chartSession: null,
       backtestOverlayTarget: null,
+      measurementPaneElement: null,
+      activeMeasurement: null,
     };
   },
 
@@ -276,6 +292,10 @@ export default defineComponent({
     "backtestOverlayStore.closedTrades"() {
       this.refreshBacktestMarkers();
     },
+
+    interactionMode() {
+      this.applyInteractionMode();
+    },
   },
 
   created(): void {
@@ -310,6 +330,8 @@ export default defineComponent({
       clearTimeout(this.wheelSettleTimer);
       this.wheelSettleTimer = null;
     }
+    this.cancelMeasurementOverlay();
+    this.setMeasurementPaneElement(null);
     const chartContainer = this.getChartContainer();
     if (chartContainer) {
       chartContainer.removeEventListener("wheel", this.onWheelPassive);
@@ -428,6 +450,7 @@ export default defineComponent({
       if (chartContainer) {
         chartContainer.addEventListener("wheel", this.onWheelPassive, { passive: true });
       }
+      this.applyInteractionMode();
       this.indicatorMessageHandler = (message) => {
         if (!message?.clientIndicatorId) return;
         this.pendingIndicatorMessages.set(message.clientIndicatorId, message);
@@ -441,12 +464,160 @@ export default defineComponent({
       return chartContainer instanceof HTMLElement ? chartContainer : null;
     },
 
+    setMeasurementPaneElement(paneElement: HTMLElement | null): void {
+      if (this.measurementPaneElement === paneElement) {
+        return;
+      }
+
+      if (this.measurementPaneElement) {
+        this.measurementPaneElement.removeEventListener(
+          "pointerdown",
+          this.onMeasurementPointerDown,
+          true,
+        );
+      }
+
+      this.measurementPaneElement = paneElement;
+
+      if (paneElement) {
+        paneElement.addEventListener("pointerdown", this.onMeasurementPointerDown, {
+          capture: true,
+        });
+      }
+    },
+
+    applyInteractionMode(): void {
+      this.chartInfrastructure.setMouseDragScrollEnabled(this.interactionMode !== 'measure');
+
+      if (this.interactionMode !== 'measure') {
+        this.cancelMeasurementOverlay();
+      }
+    },
+
+    onMeasurementPointerDown(event: PointerEvent): void {
+      if (!this.canStartMeasurement(event)) {
+        return;
+      }
+
+      const endpoint = this.resolveMeasurementEndpoint(event);
+      if (!endpoint) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      this.activeMeasurement = {
+        anchorPrice: endpoint.price,
+        anchorLogical: endpoint.logical,
+        minMove: this.currentMarketMinMove ?? 0,
+      };
+      this.addMeasurementWindowListeners();
+      this.updateMeasurementOverlay(endpoint);
+    },
+
+    onMeasurementPointerMove(event: PointerEvent): void {
+      if (!this.activeMeasurement) {
+        return;
+      }
+
+      if ((event.buttons & 1) !== 1) {
+        this.cancelMeasurementOverlay();
+        return;
+      }
+
+      const endpoint = this.resolveMeasurementEndpoint(event);
+      if (endpoint) {
+        this.updateMeasurementOverlay(endpoint);
+      }
+    },
+
+    onMeasurementPointerRelease(): void {
+      this.cancelMeasurementOverlay();
+    },
+
+    canStartMeasurement(event: PointerEvent): boolean {
+      return (
+        this.interactionMode === 'measure' &&
+        event.button === 0 &&
+        (event.buttons & 1) === 1 &&
+        this.activeMeasurement === null &&
+        this.candlesticksStore.data.length > 0 &&
+        this.ohlcSeriesRef !== null &&
+        this.measurementPaneElement !== null
+      );
+    },
+
+    resolveMeasurementEndpoint(event: PointerEvent): MeasurementEndpoint | null {
+      const paneElement = this.measurementPaneElement;
+      if (!paneElement) {
+        return null;
+      }
+
+      const paneRect = paneElement.getBoundingClientRect();
+      const x = event.clientX - paneRect.left;
+      const y = event.clientY - paneRect.top;
+      const price = this.chartInfrastructure.coordinateToCandlestickPrice(y);
+      const logical = this.chartInfrastructure.coordinateToLogical(x);
+
+      if (
+        price === null ||
+        logical === null ||
+        !Number.isFinite(price) ||
+        !Number.isFinite(logical)
+      ) {
+        return null;
+      }
+
+      return { price, logical };
+    },
+
+    updateMeasurementOverlay(endpoint: MeasurementEndpoint): void {
+      const measurement = this.activeMeasurement;
+      if (!measurement) {
+        return;
+      }
+
+      this.chartInfrastructure.setCandlestickMeasurementOverlay(
+        buildMeasurementOverlayModel({
+          anchorPrice: measurement.anchorPrice,
+          endpointPrice: endpoint.price,
+          anchorLogical: measurement.anchorLogical,
+          endpointLogical: endpoint.logical,
+          minMove: measurement.minMove,
+        }),
+      );
+    },
+
+    addMeasurementWindowListeners(): void {
+      window.addEventListener("pointermove", this.onMeasurementPointerMove);
+      window.addEventListener("pointerup", this.onMeasurementPointerRelease);
+      window.addEventListener("pointercancel", this.onMeasurementPointerRelease);
+    },
+
+    removeMeasurementWindowListeners(): void {
+      window.removeEventListener("pointermove", this.onMeasurementPointerMove);
+      window.removeEventListener("pointerup", this.onMeasurementPointerRelease);
+      window.removeEventListener("pointercancel", this.onMeasurementPointerRelease);
+    },
+
+    cancelMeasurementOverlay(): void {
+      if (!this.activeMeasurement) {
+        return;
+      }
+
+      this.activeMeasurement = null;
+      this.removeMeasurementWindowListeners();
+      this.chartInfrastructure.clearCandlestickMeasurementOverlay();
+    },
+
     getSeries() {
       return this.chartInfrastructure.getSeries();
     },
 
     async syncBacktestOverlayTarget(): Promise<void> {
       const paneHtmlElement = await this.chartInfrastructure.chartManager.getPaneHtmlElement(0);
+      this.setMeasurementPaneElement(paneHtmlElement);
       this.backtestOverlayTarget = paneHtmlElement
         ? getOrCreatePaneOverlayWrapper(paneHtmlElement)
         : null;
