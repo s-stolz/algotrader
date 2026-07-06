@@ -80,11 +80,16 @@ class TestBacktestRunPersistenceAdapter(unittest.TestCase):
         self.assertEqual(payload["completed_at"], "2026-06-08T12:30:05.123000+00:00")
         self.assertIsNone(payload["error_code"])
         self.assertIsNone(payload["error_message"])
-        self.assertEqual(payload["request_schema_version"], 1)
+        self.assertEqual(payload["request_schema_version"], 2)
         self.assertEqual(payload["request"]["symbols"], ["EURUSD"])
         self.assertEqual(payload["request"]["exchange"], "FX")
         self.assertEqual(payload["request"]["timeframe"], "M15")
         self.assertEqual(payload["request"]["engine"], "event_driven")
+        self.assertEqual(
+            payload["request"]["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+        self.assertNotIn("allow_short", payload["request"]["execution"])
         self.assertEqual(
             payload["request"]["strategy"],
             {

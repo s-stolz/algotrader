@@ -368,7 +368,6 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
 
     def test_unsupported_execution_settings_fail_clearly_in_event_driven_mode(self) -> None:
         unsupported = (
-            (ExecutionConfig(allow_short=True), "allow_short=True"),
             (ExecutionConfig(allow_partial_fills=True), "allow_partial_fills=True"),
             (ExecutionConfig(price_source=PriceSource.CLOSE), "price_source=open"),
         )

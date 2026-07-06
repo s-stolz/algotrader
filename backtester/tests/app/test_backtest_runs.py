@@ -10,6 +10,7 @@ from app.backtest_runs import (
     InvalidBacktestRequestError,
 )
 from domain.enums import (
+    AllowedDirections,
     BacktestRunStatus,
     DataGranularity,
     ExitReason,
@@ -79,7 +80,32 @@ class TestBacktestRunService(unittest.TestCase):
         self.assertEqual(submitted.status, BacktestRunStatus.QUEUED)
         self.assertEqual(submitted.submitted_at_ms, 1_780_921_805_123)
         self.assertEqual(submitted.request_snapshot.to_request(), request)
+        self.assertEqual(submitted.request_snapshot.schema_version, 2)
+        self.assertEqual(
+            submitted.request_snapshot.payload["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+        self.assertNotIn("allow_short", submitted.request_snapshot.payload["execution"])
         self.assertEqual(repository.created_runs, [submitted])
+
+    def test_submit_accepts_allowed_direction_modes_before_persistence(self) -> None:
+        for direction in AllowedDirections:
+            with self.subTest(direction=direction.value):
+                repository = _FakeRunRepository()
+                service = BacktestRunService(repository=repository)
+                request = replace(
+                    _valid_request(),
+                    execution=ExecutionConfig(allowed_directions=direction),
+                )
+
+                submitted = service.submit(request)
+
+                self.assertEqual(submitted.request_snapshot.to_request(), request)
+                self.assertEqual(
+                    submitted.request_snapshot.payload["execution"]["allowed_directions"],
+                    direction.value,
+                )
+                self.assertEqual(repository.created_runs, [submitted])
 
     def test_submit_rejects_invalid_timestamp_range_before_persistence(self) -> None:
         repository = _FakeRunRepository()
@@ -173,7 +199,6 @@ class TestBacktestRunService(unittest.TestCase):
 
     def test_submit_rejects_unsupported_execution_policies_before_persistence(self) -> None:
         invalid_execution_configs = (
-            replace(ExecutionConfig(), allow_short=True),
             replace(ExecutionConfig(), allow_partial_fills=True),
             replace(ExecutionConfig(), price_source=PriceSource.CLOSE),
         )

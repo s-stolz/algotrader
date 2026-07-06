@@ -220,14 +220,6 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         self.assertLess(with_cost.equity_curve[-1].equity, zero_cost.equity_curve[-1].equity)
         self.assertLess(with_cost.trades[0].realized_pnl, zero_cost.trades[0].realized_pnl)
 
-    def test_allow_short_is_rejected_in_m3_vectorized_baseline(self) -> None:
-        bars = self._build_bars()
-        request = self._build_request(execution=ExecutionConfig(allow_short=True))
-        strategy = build_sma_crossover_strategy(fast_window=2, slow_window=3, quantity=1.0)
-
-        with self.assertRaises(ValueError):
-            run_backtest(request=request, bars=bars, strategy=strategy)
-
     def test_allow_partial_fills_is_rejected_in_m3_vectorized_baseline(self) -> None:
         bars = self._build_bars()
         request = self._build_request(execution=ExecutionConfig(allow_partial_fills=True))

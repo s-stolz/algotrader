@@ -385,7 +385,12 @@ class TestCli(unittest.TestCase):
                 payload = client.saved_runs[0]
                 self.assertEqual(payload["run_id"], run_id)
                 self.assertEqual(payload["status"], "succeeded")
-                self.assertEqual(payload["request_schema_version"], 1)
+                self.assertEqual(payload["request_schema_version"], 2)
+                self.assertEqual(
+                    payload["request"]["execution"]["allowed_directions"],
+                    "long_and_short",
+                )
+                self.assertNotIn("allow_short", payload["request"]["execution"])
                 self.assertEqual(payload["request"]["exchange"], "NASDAQ")
                 self.assertEqual(payload["request"]["engine"], engine.value)
                 self.assertTrue(payload["request"]["persist_result"])

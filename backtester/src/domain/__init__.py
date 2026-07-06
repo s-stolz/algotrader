@@ -1,6 +1,7 @@
 """Domain package exports."""
 
 from .enums import (
+    AllowedDirections,
     BacktestEngine,
     BacktestRunStatus,
     DataGranularity,
@@ -44,6 +45,7 @@ from .types import (
 __all__ = [
     "BACKTEST_REQUEST_SCHEMA_VERSION",
     "BACKTEST_RESULT_SCHEMA_VERSION",
+    "AllowedDirections",
     "BacktestFillRecord",
     "BacktestRequest",
     "BacktestRequestSnapshot",

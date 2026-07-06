@@ -155,10 +155,6 @@ def _validate_vectorized_request(request: BacktestRequest) -> None:
             "Vectorized M3 baseline supports signal_timing=close only",
         ),
         (
-            not execution.allow_short,
-            "Vectorized M3 baseline does not support allow_short=True",
-        ),
-        (
             execution.fill_timing == FillTiming.NEXT_OPEN,
             "Vectorized M3 baseline supports fill_timing=next_open only",
         ),

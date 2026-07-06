@@ -832,10 +832,6 @@ def _validate_event_driven_request(
             "Event-driven engine supports signal_timing=close only",
         ),
         (
-            not execution.allow_short,
-            "Event-driven engine does not support allow_short=True",
-        ),
-        (
             execution.fill_timing == FillTiming.NEXT_OPEN,
             "Event-driven engine supports fill_timing=next_open only",
         ),

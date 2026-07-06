@@ -6,7 +6,13 @@ from dataclasses import replace
 from adapters.api.app import create_app
 from adapters.api.schemas import BacktestSubmissionRequestSchema
 from app.backtest_runs import BacktestRunService
-from domain.enums import BacktestEngine, BacktestRunStatus, ExitReason, OrderSide
+from domain.enums import (
+    AllowedDirections,
+    BacktestEngine,
+    BacktestRunStatus,
+    ExitReason,
+    OrderSide,
+)
 from domain.types import (
     BacktestFillRecord,
     BacktestRunQuery,
@@ -73,6 +79,58 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
         self.assertEqual(response.json(), {"run_id": "run-123", "status": "queued"})
         self.assertEqual(response.headers["location"], "/backtests/run-123")
         self.assertIn("run-123", repository.runs_by_id)
+        snapshot = repository.runs_by_id["run-123"].request_snapshot
+        self.assertEqual(snapshot.schema_version, 2)
+        self.assertEqual(
+            snapshot.payload["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+        self.assertNotIn("allow_short", snapshot.payload["execution"])
+
+    def test_submit_defaults_omitted_allowed_directions_to_long_and_short(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(
+            repository=repository,
+            new_run_id=lambda: "run-123",
+            now_ms=lambda: 1_780_921_805_123,
+        )
+        payload = _valid_payload()
+        payload["execution"] = {
+            key: value
+            for key, value in payload["execution"].items()
+            if key != "allowed_directions"
+        }
+
+        with TestClient(create_app(service=service)) as client:
+            response = client.post("/backtests", json=payload)
+
+        self.assertEqual(response.status_code, 202)
+        snapshot = repository.runs_by_id["run-123"].request_snapshot
+        self.assertEqual(
+            snapshot.payload["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+
+    def test_submit_accepts_all_allowed_direction_values(self) -> None:
+        for direction in AllowedDirections:
+            with self.subTest(direction=direction.value):
+                repository = _FakeRunRepository()
+                service = BacktestRunService(repository=repository)
+                payload = _valid_payload()
+                payload["execution"] = {
+                    **payload["execution"],
+                    "allowed_directions": direction.value,
+                }
+
+                with TestClient(create_app(service=service)) as client:
+                    response = client.post("/backtests", json=payload)
+
+                self.assertEqual(response.status_code, 202)
+                run = next(iter(repository.runs_by_id.values()))
+                self.assertEqual(
+                    run.request_snapshot.payload["execution"]["allowed_directions"],
+                    direction.value,
+                )
 
     def test_submit_rejects_deterministically_invalid_requests_before_create(self) -> None:
         invalid_payloads = (
@@ -285,7 +343,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
                 "run_id": "run-queued",
                 "status": "queued",
                 "submitted_at_ms": 1_780_921_805_123,
-                "request_schema_version": 1,
+                "request_schema_version": 2,
                 "request": _valid_payload(),
             },
         )
@@ -582,7 +640,7 @@ def _valid_payload() -> dict:
             "fill_timing": "next_open",
             "price_source": "open",
             "allow_partial_fills": False,
-            "allow_short": False,
+            "allowed_directions": "long_and_short",
             "trade_accounting_policy": "average_cost",
             "gap_policy": "skip",
             "intrabar_exit_policy": "conservative",

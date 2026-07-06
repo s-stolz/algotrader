@@ -890,7 +890,7 @@ class TestBacktestEngineParity(unittest.TestCase):
         self.assertEqual(event_driven.diagnostics["tail_expired_delta_count"], 0)
         self.assertEqual(event_driven.diagnostics["signal_exit_count"], 0)
 
-    def test_both_engines_reject_short_enabled_and_negative_strategy_outputs(self) -> None:
+    def test_both_engines_reject_negative_strategy_outputs(self) -> None:
         start_ms = 1_700_000_000_000
         minute = 60_000
         bars = _build_ohlc_bars(
@@ -901,23 +901,6 @@ class TestBacktestEngineParity(unittest.TestCase):
             lows=(98.0, 99.0, 99.0),
             closes=(100.0, 100.0, 100.0),
         )
-        strategy = _build_price_action_strategy(stop_loss_pct=5.0)
-
-        for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
-            with self.subTest(engine=engine, invalid="allow_short"):
-                with self.assertRaisesRegex(ValueError, "allow_short=True"):
-                    run_backtest(
-                        request=_build_request_for_strategy(
-                            engine=engine,
-                            strategy=strategy,
-                            start_ms=start_ms,
-                            end_ms=start_ms + (3 * minute),
-                            execution=ExecutionConfig(allow_short=True),
-                        ),
-                        bars=bars,
-                        strategy=strategy,
-                    )
-
         negative_target_strategy = _build_short_like_target_strategy()
         for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
             with self.subTest(engine=engine, invalid="negative_target"):
