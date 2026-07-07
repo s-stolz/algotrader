@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Dict, Sequence
 
 import numpy as np
+from domain.enums import TradeDirection
 from domain.types import PortfolioSnapshot, Trade
 
 
@@ -15,11 +16,13 @@ def compute_metrics(
 ) -> Dict[str, float]:
     """Compute minimal M1 metrics."""
 
+    direction_metrics = _direction_metrics(trades)
+
     if not equity_curve:
         return {
             "total_return_pct": 0.0,
             "max_drawdown_pct": 0.0,
-            "trade_count": 0.0,
+            **direction_metrics,
         }
 
     equity = np.asarray([snap.equity for snap in equity_curve], dtype=np.float64)
@@ -36,5 +39,31 @@ def compute_metrics(
     return {
         "total_return_pct": float(total_return_pct),
         "max_drawdown_pct": max_drawdown_pct,
-        "trade_count": float(len(trades)),
+        **direction_metrics,
     }
+
+
+def _direction_metrics(trades: Sequence[Trade]) -> Dict[str, float]:
+    long_trades = [trade for trade in trades if trade.trade_direction == TradeDirection.LONG]
+    short_trades = [trade for trade in trades if trade.trade_direction == TradeDirection.SHORT]
+
+    return {
+        "trade_count": float(len(trades)),
+        "long_trade_count": float(len(long_trades)),
+        "short_trade_count": float(len(short_trades)),
+        "long_win_rate_pct": _win_rate_pct(long_trades),
+        "short_win_rate_pct": _win_rate_pct(short_trades),
+        "long_realized_pnl": _realized_pnl(long_trades),
+        "short_realized_pnl": _realized_pnl(short_trades),
+    }
+
+
+def _win_rate_pct(trades: Sequence[Trade]) -> float:
+    if not trades:
+        return 0.0
+    win_count = sum(1 for trade in trades if trade.realized_pnl > 0.0)
+    return float((win_count / len(trades)) * 100.0)
+
+
+def _realized_pnl(trades: Sequence[Trade]) -> float:
+    return float(sum(float(trade.realized_pnl) for trade in trades))

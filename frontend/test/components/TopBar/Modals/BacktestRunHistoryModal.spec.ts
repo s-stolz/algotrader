@@ -120,7 +120,17 @@ describe('BacktestRunHistoryModal', () => {
       backtestRun({
         run_id: 'run-succeeded-123456',
         status: 'succeeded',
-        metrics: { total_return_pct: 1.25, trade_count: 3 },
+        metrics: {
+          total_return_pct: 1.25,
+          max_drawdown_pct: -0.5,
+          trade_count: 3,
+          long_trade_count: 2,
+          short_trade_count: 1,
+          long_win_rate_pct: 50,
+          short_win_rate_pct: 100,
+          long_realized_pnl: 12.5,
+          short_realized_pnl: 8,
+        },
       }),
       backtestRun({
         run_id: 'run-running-123456',
@@ -164,7 +174,14 @@ describe('BacktestRunHistoryModal', () => {
     expect(wrapper.text()).toContain('Submitted');
     expect(wrapper.text()).toContain('Completed');
     expect(wrapper.text()).toContain('total_return_pct 1.25');
+    expect(wrapper.text()).toContain('max_drawdown_pct -0.5');
     expect(wrapper.text()).toContain('trade_count 3');
+    expect(wrapper.text()).toContain('long_trade_count 2');
+    expect(wrapper.text()).toContain('short_trade_count 1');
+    expect(wrapper.text()).toContain('long_win_rate_pct 50');
+    expect(wrapper.text()).toContain('short_win_rate_pct 100');
+    expect(wrapper.text()).toContain('long_realized_pnl 12.5');
+    expect(wrapper.text()).toContain('short_realized_pnl 8');
     expect(wrapper.text()).toContain('Only succeeded Backtest Runs can be opened.');
     expect(wrapper.text()).toContain('Market FX:USDJPY is not available in the chart market list.');
     expect(wrapper.text()).not.toMatch(/refresh/i);
@@ -296,10 +313,10 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
     submitted_at_ms: 1_780_921_805_123,
     started_at_ms: 1_780_921_900_000,
     completed_at_ms: 1_780_922_100_000,
-    request_schema_version: 1,
+    request_schema_version: 2,
     request: requestPayload(),
-    result_schema_version: 2,
-    metrics: { total_return_pct: 1.25, trade_count: 3 },
+    result_schema_version: 3,
+    metrics: { total_return_pct: 1.25, trade_count: 3, long_trade_count: 2, short_trade_count: 1 },
     diagnostics: { execution_duration_ms: 240_000 },
     error_code: null,
     error_message: null,
@@ -330,7 +347,7 @@ function requestPayload(overrides: {
       fill_timing: 'next_open',
       price_source: 'open',
       allow_partial_fills: false,
-      allow_short: false,
+      allowed_directions: 'long_and_short',
       trade_accounting_policy: 'average_cost',
       gap_policy: 'skip',
       intrabar_exit_policy: 'conservative',

@@ -76,7 +76,7 @@ def _request_payload(**overrides):
             "fill_timing": "next_open",
             "price_source": "open",
             "allow_partial_fills": False,
-            "allow_short": False,
+            "allowed_directions": "long_and_short",
             "trade_accounting_policy": "average_cost",
             "gap_policy": "error",
             "intrabar_exit_policy": "take_profit_first",
@@ -102,7 +102,7 @@ def _run_payload(**overrides):
         "completed_at": None,
         "error_code": None,
         "error_message": None,
-        "request_schema_version": 1,
+        "request_schema_version": 2,
         "request": _request_payload(),
         "result_schema_version": None,
         "metrics": None,
@@ -135,7 +135,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(fetched["run_id"], "run-queued-1")
         self.assertEqual(fetched["status"], "queued")
-        self.assertEqual(fetched["request_schema_version"], 1)
+        self.assertEqual(fetched["request_schema_version"], 2)
         self.assertEqual(fetched["request"], _request_payload())
         self.assertEqual(fetched["request"]["exchange"], "FX")
         self.assertEqual(
@@ -163,7 +163,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             run_id="run-minimal-queued",
             status="queued",
             submitted_at=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
-            request_schema_version=1,
+            request_schema_version=2,
             request=BacktestRequestPayload(**_request_payload()),
         )
 
@@ -419,6 +419,14 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(fetched["error_code"])
         self.assertIsNone(fetched["error_message"])
 
+    def test_conditional_update_rejects_succeeded_status(self):
+        with self.assertRaises(ValidationError):
+            BacktestRunConditionalUpdateIn(
+                expected_status="running",
+                new_status="succeeded",
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+            )
+
     async def test_competing_claims_have_exactly_one_winner(self):
         await main.create_backtest_run(
             BacktestRunCreateIn(**_run_payload()),
@@ -465,7 +473,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestRunCompleteIn(
                 expected_status="running",
                 completed_at=completed_at,
-                result_schema_version=2,
+                result_schema_version=3,
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240000},
                 fills=[
@@ -495,6 +503,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         trade_sequence=0,
                         trade_id="trade-1",
                         symbol="EURUSD",
+                        trade_direction="long",
                         quantity=1000.0,
                         entry_timestamp_ms=1714525200000,
                         entry_price=1.0715,
@@ -524,7 +533,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             fetched["completed_at"].replace(tzinfo=timezone.utc),
             completed_at,
         )
-        self.assertEqual(fetched["result_schema_version"], 2)
+        self.assertEqual(fetched["result_schema_version"], 3)
         self.assertEqual(fetched["metrics"], {"total_return_pct": 1.25})
         self.assertEqual(
             fetched["diagnostics"],
@@ -552,6 +561,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "trade_sequence": 0,
                 "trade_id": "trade-1",
                 "symbol": "EURUSD",
+                "trade_direction": "long",
                 "quantity": 1000.0,
                 "entry_timestamp_ms": 1714525200000,
                 "entry_price": 1.0715,
@@ -581,7 +591,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestRunCompleteIn(
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                result_schema_version=2,
+                result_schema_version=3,
                 metrics={"trade_count": 2},
                 diagnostics={"bars": 120},
                 trades=[
@@ -589,6 +599,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         trade_sequence=0,
                         trade_id="trade-no-protection",
                         symbol="EURUSD",
+                        trade_direction="long",
                         quantity=1000.0,
                         entry_timestamp_ms=1714525200000,
                         entry_price=1.0715,
@@ -604,6 +615,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         trade_sequence=1,
                         trade_id="trade-configured-protection",
                         symbol="EURUSD",
+                        trade_direction="long",
                         quantity=1000.0,
                         entry_timestamp_ms=1714529400000,
                         entry_price=1.076,
@@ -623,11 +635,111 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         fetched_trades = await main.get_backtest_trades("run-queued-1", db=self.db)
 
         self.assertEqual(completed, {"updated": True})
-        self.assertEqual(fetched_run["result_schema_version"], 2)
+        self.assertEqual(fetched_run["result_schema_version"], 3)
         self.assertEqual(
             [(trade["stop_loss_price"], trade["take_profit_price"]) for trade in fetched_trades],
             [(None, None), (1.069, 1.081)],
         )
+
+    async def test_short_completion_readback_preserves_direction_metrics_and_fill_shape(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-short-acceptance",
+                    status="running",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+
+        metrics = {
+            "total_return_pct": -0.0046845,
+            "max_drawdown_pct": -0.0046845,
+            "trade_count": 1.0,
+            "long_trade_count": 0.0,
+            "short_trade_count": 1.0,
+            "long_win_rate_pct": 0.0,
+            "short_win_rate_pct": 0.0,
+            "long_realized_pnl": 0.0,
+            "short_realized_pnl": -0.46845,
+        }
+        completed = await main.complete_backtest_run(
+            "run-short-acceptance",
+            BacktestRunCompleteIn(
+                expected_status="running",
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                result_schema_version=3,
+                metrics=metrics,
+                diagnostics={"engine": "vectorized", "execution_duration_ms": 12},
+                fills=[
+                    BacktestFillIn(
+                        fill_sequence=0,
+                        timestamp_ms=1700000300000,
+                        symbol="AAPL",
+                        side="sell",
+                        quantity=1.0,
+                        price=9.0,
+                        fees=0.009,
+                        exit_reason=None,
+                    ),
+                    BacktestFillIn(
+                        fill_sequence=1,
+                        timestamp_ms=1700000300000,
+                        symbol="AAPL",
+                        side="buy",
+                        quantity=1.0,
+                        price=9.45,
+                        fees=0.00945,
+                        exit_reason="stop_loss",
+                    ),
+                ],
+                trades=[
+                    BacktestClosedTradeIn(
+                        trade_sequence=0,
+                        trade_id="AAPL-trade-1",
+                        symbol="AAPL",
+                        trade_direction="short",
+                        quantity=1.0,
+                        entry_timestamp_ms=1700000300000,
+                        entry_price=9.0,
+                        exit_timestamp_ms=1700000300000,
+                        exit_price=9.45,
+                        realized_pnl=-0.46845,
+                        fees=0.01845,
+                        exit_reason="stop_loss",
+                        stop_loss_price=9.45,
+                        take_profit_price=8.1,
+                    )
+                ],
+            ),
+            db=self.db,
+        )
+
+        fetched_run = await main.get_backtest_run("run-short-acceptance", db=self.db)
+        fetched_fills = await main.get_backtest_fills("run-short-acceptance", db=self.db)
+        fetched_trades = await main.get_backtest_trades("run-short-acceptance", db=self.db)
+
+        self.assertEqual(completed, {"updated": True})
+        self.assertEqual(fetched_run["request_schema_version"], 2)
+        self.assertEqual(
+            fetched_run["request"]["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+        self.assertNotIn("allow_short", fetched_run["request"]["execution"])
+        self.assertEqual(fetched_run["result_schema_version"], 3)
+        self.assertEqual(fetched_run["metrics"], metrics)
+        self.assertEqual(
+            [(fill["side"], fill["exit_reason"]) for fill in fetched_fills],
+            [("sell", None), ("buy", "stop_loss")],
+        )
+        self.assertTrue(all("trade_direction" not in fill for fill in fetched_fills))
+        self.assertEqual(fetched_trades[0]["trade_direction"], "short")
+        self.assertEqual(fetched_trades[0]["exit_reason"], "stop_loss")
+        self.assertEqual(fetched_trades[0]["fees"], 0.01845)
+        self.assertEqual(fetched_trades[0]["realized_pnl"], -0.46845)
+        self.assertEqual(fetched_trades[0]["stop_loss_price"], 9.45)
+        self.assertEqual(fetched_trades[0]["take_profit_price"], 8.1)
 
     async def test_completion_does_not_store_artifacts_for_stale_status(self):
         await main.create_backtest_run(
@@ -640,7 +752,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestRunCompleteIn(
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                result_schema_version=1,
+                result_schema_version=3,
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"bars": 25},
                 fills=[
@@ -683,7 +795,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestRunCompleteIn(
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                result_schema_version=1,
+                result_schema_version=3,
                 metrics={"trade_count": 0},
                 diagnostics={"bars": 0},
                 fills=[],
@@ -722,6 +834,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             trade_sequence=0,
             trade_id="trade-1",
             symbol="EURUSD",
+            trade_direction="long",
             quantity=1000.0,
             entry_timestamp_ms=1714525200000,
             entry_price=1.0715,
@@ -738,7 +851,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 BacktestRunCompleteIn(
                     expected_status="running",
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                    result_schema_version=1,
+                    result_schema_version=3,
                     metrics={"total_return_pct": 1.25},
                     diagnostics={"execution_duration_ms": 240000},
                     fills=[fill],
@@ -767,7 +880,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 status="succeeded",
                 started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                 completed_at=completed_at,
-                result_schema_version=2,
+                result_schema_version=3,
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240000},
                 fills=[
@@ -787,6 +900,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         "trade_sequence": 0,
                         "trade_id": "trade-1",
                         "symbol": "EURUSD",
+                        "trade_direction": "long",
                         "quantity": 1000.0,
                         "entry_timestamp_ms": 1714525200000,
                         "entry_price": 1.0715,
@@ -813,12 +927,13 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         trade = dict(trade_row._mapping)
 
         self.assertEqual(created["status"], "succeeded")
-        self.assertEqual(created["result_schema_version"], 2)
+        self.assertEqual(created["result_schema_version"], 3)
         self.assertEqual(fill["run_id"], "run-succeeded-1")
         self.assertEqual(fill["fill_sequence"], 0)
         self.assertEqual(fill["side"], "buy")
         self.assertEqual(trade["run_id"], "run-succeeded-1")
         self.assertEqual(trade["trade_sequence"], 0)
+        self.assertEqual(trade["trade_direction"], "long")
         self.assertEqual(trade["exit_reason"], "signal")
         self.assertEqual(trade["stop_loss_price"], 1.068)
         self.assertIsNone(trade["take_profit_price"])
@@ -871,6 +986,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "trade_sequence": 2,
                 "trade_id": "trade-take-profit",
                 "symbol": "EURUSD",
+                "trade_direction": "long",
                 "quantity": 1000.0,
                 "entry_timestamp_ms": 1714533000000,
                 "entry_price": 1.072,
@@ -886,6 +1002,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "trade_sequence": 0,
                 "trade_id": "trade-signal",
                 "symbol": "EURUSD",
+                "trade_direction": "long",
                 "quantity": 1000.0,
                 "entry_timestamp_ms": 1714525200000,
                 "entry_price": 1.0715,
@@ -901,6 +1018,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "trade_sequence": 1,
                 "trade_id": "trade-stop-loss",
                 "symbol": "EURUSD",
+                "trade_direction": "long",
                 "quantity": 1000.0,
                 "entry_timestamp_ms": 1714529400000,
                 "entry_price": 1.076,
@@ -920,7 +1038,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     status="succeeded",
                     started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                    result_schema_version=1,
+                    result_schema_version=3,
                     metrics={"trade_count": 3},
                     diagnostics={"bars": 100},
                     fills=fills,
@@ -946,6 +1064,10 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             [0, 1, 2],
         )
         self.assertEqual(
+            [trade["trade_direction"] for trade in fetched_trades],
+            ["long", "long", "long"],
+        )
+        self.assertEqual(
             [trade["exit_reason"] for trade in fetched_trades],
             ["signal", "stop_loss", "take_profit"],
         )
@@ -966,7 +1088,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     status="succeeded",
                     started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                    result_schema_version=1,
+                    result_schema_version=3,
                     metrics={"trade_count": 0},
                     diagnostics={"bars": 0},
                 )
@@ -991,7 +1113,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     status="succeeded",
                     started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                    result_schema_version=1,
+                    result_schema_version=3,
                     metrics={"trade_count": 1},
                     diagnostics={"bars": 10},
                     fills=[
@@ -1011,6 +1133,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                             "trade_sequence": 0,
                             "trade_id": "trade-delete",
                             "symbol": "EURUSD",
+                            "trade_direction": "long",
                             "quantity": 1000.0,
                             "entry_timestamp_ms": 1714525200000,
                             "entry_price": 1.0715,
@@ -1044,22 +1167,57 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
 
     def test_create_rejects_unknown_request_schema_version(self):
         with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(request_schema_version=2))
+            BacktestRunCreateIn(**_run_payload(request_schema_version=1))
 
-    def test_result_schema_version_supports_v1_and_v2_only(self):
-        BacktestRunCreateIn(**_run_payload(result_schema_version=1))
-        BacktestRunCreateIn(**_run_payload(result_schema_version=2))
+    def test_result_schema_version_accepts_v3_and_rejects_legacy_versions(self):
+        BacktestRunCreateIn(**_run_payload(result_schema_version=None))
+        BacktestRunCreateIn(**_run_payload(result_schema_version=3))
+        BacktestRunCompleteIn(
+            expected_status="running",
+            completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+            result_schema_version=3,
+            metrics={},
+            diagnostics={},
+        )
+
+        for legacy_version in (1, 2):
+            with self.subTest(result_schema_version=legacy_version):
+                with self.assertRaises(ValidationError):
+                    BacktestRunCreateIn(**_run_payload(result_schema_version=legacy_version))
+                with self.assertRaises(ValidationError):
+                    BacktestRunCompleteIn(
+                        expected_status="running",
+                        completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                        result_schema_version=legacy_version,
+                        metrics={},
+                        diagnostics={},
+                    )
 
         with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(result_schema_version=3))
+            BacktestRunCreateIn(**_run_payload(result_schema_version=4))
 
-        with self.assertRaises(ValidationError):
-            BacktestRunCompleteIn(
-                expected_status="running",
+    def test_succeeded_create_requires_result_schema_version_3(self):
+        BacktestRunCreateIn(
+            **_run_payload(
+                status="succeeded",
+                started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                 result_schema_version=3,
                 metrics={},
                 diagnostics={},
+            )
+        )
+
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(
+                **_run_payload(
+                    status="succeeded",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                    result_schema_version=None,
+                    metrics={},
+                    diagnostics={},
+                )
             )
 
     def test_create_rejects_incomplete_request_snapshot(self):
@@ -1081,6 +1239,29 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestRunCreateIn(**_run_payload(request=invalid_execution))
         with self.assertRaises(ValidationError):
             BacktestRunCreateIn(**_run_payload(request=unknown_field))
+
+    def test_closed_trade_direction_is_required_and_constrained(self):
+        base_trade = {
+            "trade_sequence": 0,
+            "trade_id": "trade-1",
+            "symbol": "EURUSD",
+            "quantity": 1000.0,
+            "entry_timestamp_ms": 1714525200000,
+            "entry_price": 1.0715,
+            "exit_timestamp_ms": 1714532400000,
+            "exit_price": 1.074,
+            "realized_pnl": 2.5,
+            "fees": 0.3,
+            "exit_reason": "signal",
+        }
+
+        BacktestClosedTradeIn(**{**base_trade, "trade_direction": "long"})
+        BacktestClosedTradeIn(**{**base_trade, "trade_direction": "short"})
+
+        with self.assertRaises(ValidationError):
+            BacktestClosedTradeIn(**base_trade)
+        with self.assertRaises(ValidationError):
+            BacktestClosedTradeIn(**{**base_trade, "trade_direction": "flat"})
 
     def test_schema_uses_lifecycle_columns_and_json_request_only(self):
         self.assertEqual(
@@ -1125,6 +1306,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "trade_sequence",
                 "trade_id",
                 "symbol",
+                "trade_direction",
                 "quantity",
                 "entry_timestamp_ms",
                 "entry_price",
@@ -1137,6 +1319,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "take_profit_price",
             },
         )
+        self.assertFalse(backtest_closed_trades.c.trade_direction.nullable)
 
     def test_initial_schema_includes_durable_backtest_tables(self):
         schema_path = Path(__file__).resolve().parents[2] / "timescaledb-init" / "01-init.sql"
@@ -1145,27 +1328,25 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("create table if not exists backtest_runs", sql)
         self.assertIn("create table if not exists backtest_fills", sql)
         self.assertIn("create table if not exists backtest_closed_trades", sql)
+        self.assertIn("trade_direction varchar(8) not null", sql)
+        self.assertIn("backtest_closed_trades_trade_direction_check", sql)
+        self.assertIn("trade_direction in ('long', 'short')", sql)
         self.assertIn("stop_loss_price double precision", sql)
         self.assertIn("take_profit_price double precision", sql)
-        self.assertIn("add column if not exists stop_loss_price", sql)
-        self.assertIn("add column if not exists take_profit_price", sql)
+        self.assertNotIn("add column if not exists stop_loss_price", sql)
+        self.assertNotIn("add column if not exists take_profit_price", sql)
         self.assertIn("request jsonb not null", sql)
         self.assertIn("metrics jsonb", sql)
         self.assertIn("diagnostics jsonb", sql)
         self.assertNotIn("drop table", sql)
 
-    def test_backtest_result_schema_v2_migration_adds_protective_prices(self):
-        migration_path = (
-            Path(__file__).resolve().parents[2]
-            / "timescaledb-init"
-            / "05-backtest-result-schema-v2.sql"
-        )
-        sql = migration_path.read_text(encoding="utf-8").lower()
+    def test_obsolete_backtest_result_schema_migrations_are_removed(self):
+        init_dir = Path(__file__).resolve().parents[2] / "timescaledb-init"
+        result_schema_migrations = [
+            path.name for path in init_dir.glob("*backtest-result-schema*.sql")
+        ]
 
-        self.assertIn("alter table if exists backtest_closed_trades", sql)
-        self.assertIn("add column if not exists stop_loss_price", sql)
-        self.assertIn("add column if not exists take_profit_price", sql)
-        self.assertNotIn("drop table", sql)
+        self.assertEqual(result_schema_migrations, [])
 
 
 if __name__ == "__main__":

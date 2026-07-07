@@ -111,6 +111,7 @@ backtest_closed_trades = Table(
     Column("trade_sequence", Integer, nullable=False),
     Column("trade_id", String(64), nullable=False),
     Column("symbol", String(32), nullable=False),
+    Column("trade_direction", String(8), nullable=False),
     Column("quantity", Float, nullable=False),
     Column("entry_timestamp_ms", BigInteger, nullable=False),
     Column("entry_price", Float, nullable=False),
@@ -126,6 +127,10 @@ backtest_closed_trades = Table(
     CheckConstraint(
         "exit_reason IN ('signal', 'stop_loss', 'take_profit')",
         name="backtest_closed_trades_exit_reason_check",
+    ),
+    CheckConstraint(
+        "trade_direction IN ('long', 'short')",
+        name="backtest_closed_trades_trade_direction_check",
     ),
     Index(
         "idx_backtest_closed_trades_run_order",

@@ -52,12 +52,13 @@ describe('backtester API client', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123');
   });
 
-  it('fetches result schema version 2 closed trades for a Backtest Run', async () => {
+  it('fetches result schema version 3 closed trades for a Backtest Run', async () => {
     const trades = [
       {
         sequence: 0,
         trade_id: 'trade-1',
         symbol: 'EURUSD',
+        trade_direction: 'short',
         quantity: 1_000,
         entry_timestamp_ms: 1_714_525_200_000,
         entry_price: 1.0715,
@@ -122,7 +123,7 @@ function backtestRun(overrides: Record<string, unknown> = {}) {
     submitted_at_ms: 1_780_921_805_123,
     started_at_ms: 1_780_921_900_000,
     completed_at_ms: 1_780_922_100_000,
-    request_schema_version: 1,
+    request_schema_version: 2,
     request: {
       symbols: ['EURUSD'],
       exchange: 'FX',
@@ -141,7 +142,7 @@ function backtestRun(overrides: Record<string, unknown> = {}) {
         fill_timing: 'next_open',
         price_source: 'open',
         allow_partial_fills: false,
-        allow_short: false,
+        allowed_directions: 'long_and_short',
         trade_accounting_policy: 'average_cost',
         gap_policy: 'skip',
         intrabar_exit_policy: 'conservative',
@@ -151,8 +152,8 @@ function backtestRun(overrides: Record<string, unknown> = {}) {
       persist_result: true,
       run_metadata: null,
     },
-    result_schema_version: 2,
-    metrics: { total_return_pct: 1.25, trade_count: 1 },
+    result_schema_version: 3,
+    metrics: { total_return_pct: 1.25, trade_count: 1, long_trade_count: 1, short_trade_count: 0 },
     diagnostics: { execution_duration_ms: 240_000 },
     ...overrides,
   };

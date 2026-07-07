@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -55,7 +55,7 @@ class BacktestExecutionPayload(BacktestContractModel):
     fill_timing: Literal["next_open"]
     price_source: Literal["open", "close"]
     allow_partial_fills: bool
-    allow_short: bool
+    allowed_directions: Literal["long_only", "short_only", "long_and_short"]
     trade_accounting_policy: Literal["average_cost"]
     gap_policy: Literal["expire", "skip", "error"]
     intrabar_exit_policy: Literal[
@@ -102,6 +102,7 @@ class BacktestClosedTradeIn(BacktestContractModel):
     trade_sequence: int
     trade_id: str
     symbol: str
+    trade_direction: Literal["long", "short"]
     quantity: float
     entry_timestamp_ms: int
     entry_price: float
@@ -135,16 +136,22 @@ class BacktestRunBase(BacktestContractModel):
     @field_validator("request_schema_version")
     @classmethod
     def validate_request_schema_version(cls, value: int) -> int:
-        if value != 1:
-            raise ValueError("request_schema_version must be 1")
+        if value != 2:
+            raise ValueError("request_schema_version must be 2")
         return value
 
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int | None) -> int | None:
-        if value is not None and value not in (1, 2):
-            raise ValueError("result_schema_version must be 1 or 2 when present")
+        if value is not None and value != 3:
+            raise ValueError("result_schema_version must be 3 when present")
         return value
+
+    @model_validator(mode="after")
+    def validate_success_result_schema_version(self) -> "BacktestRunBase":
+        if self.status == "succeeded" and self.result_schema_version != 3:
+            raise ValueError("succeeded backtest runs must use result_schema_version 3")
+        return self
 
 
 class BacktestRunCreateIn(BacktestRunBase):
@@ -164,6 +171,13 @@ class BacktestRunConditionalUpdateIn(BacktestContractModel):
     error_code: str | None = None
     error_message: str | None = None
 
+    @field_validator("new_status")
+    @classmethod
+    def validate_new_status(cls, value: str) -> str:
+        if value == "succeeded":
+            raise ValueError("succeeded backtest runs must use the completion endpoint")
+        return value
+
 
 class BacktestRunCompleteIn(BacktestContractModel):
     expected_status: Literal["queued", "running", "succeeded", "failed"]
@@ -177,8 +191,8 @@ class BacktestRunCompleteIn(BacktestContractModel):
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int) -> int:
-        if value not in (1, 2):
-            raise ValueError("result_schema_version must be 1 or 2")
+        if value != 3:
+            raise ValueError("result_schema_version must be 3")
         return value
 
 

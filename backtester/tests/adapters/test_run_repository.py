@@ -7,6 +7,7 @@ from domain.enums import (
     BacktestRunStatus,
     ExitReason,
     OrderSide,
+    TradeDirection,
 )
 from domain.types import (
     BacktestFillRecord,
@@ -86,7 +87,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
                     "completed_at": None,
                     "error_code": None,
                     "error_message": None,
-                    "request_schema_version": 1,
+                    "request_schema_version": 2,
                     "request": dict(run.request_snapshot.payload),
                     "result_schema_version": None,
                     "metrics": None,
@@ -108,9 +109,9 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
             "completed_at": "2026-06-08T12:35:00+00:00",
             "error_code": None,
             "error_message": None,
-            "request_schema_version": 1,
+            "request_schema_version": 2,
             "request": dict(BacktestRequestSnapshot.from_request(_request()).payload),
-            "result_schema_version": 2,
+            "result_schema_version": 3,
             "metrics": {"total_return_pct": 1.25},
             "diagnostics": {"execution_duration_ms": 240_000},
         }
@@ -125,7 +126,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
         self.assertEqual(run.started_at_ms, 1_780_921_860_000)
         self.assertEqual(run.completed_at_ms, 1_780_922_100_000)
         self.assertEqual(run.request_snapshot.to_request(), _request())
-        self.assertEqual(run.result_schema_version, 2)
+        self.assertEqual(run.result_schema_version, 3)
         self.assertEqual(run.metrics, {"total_return_pct": 1.25})
         self.assertEqual(run.diagnostics, {"execution_duration_ms": 240_000})
 
@@ -209,6 +210,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
                 "exit_price": 1.074,
                 "realized_pnl": 2.5,
                 "fees": 0.3,
+                "trade_direction": "long",
                 "exit_reason": "take_profit",
                 "stop_loss_price": 1.05,
                 "take_profit_price": 1.08,
@@ -253,6 +255,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
                     sequence=0,
                     trade_id="trade-1",
                     symbol="EURUSD",
+                    trade_direction=TradeDirection.LONG,
                     quantity=1_000.0,
                     entry_timestamp_ms=1_714_525_200_000,
                     entry_price=1.0715,
@@ -310,7 +313,7 @@ def _persisted_run(run_id: str, submitted_at: str) -> dict:
         "completed_at": None,
         "error_code": None,
         "error_message": None,
-        "request_schema_version": 1,
+        "request_schema_version": 2,
         "request": dict(BacktestRequestSnapshot.from_request(_request()).payload),
         "result_schema_version": None,
         "metrics": None,

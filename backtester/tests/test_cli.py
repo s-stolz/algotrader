@@ -7,7 +7,13 @@ from unittest.mock import patch
 
 import cli
 import pandas as pd
-from domain.enums import BacktestEngine, IntrabarExitPolicy, OrderSide
+from domain.enums import (
+    AllowedDirections,
+    BacktestEngine,
+    IntrabarExitPolicy,
+    OrderSide,
+    TradeDirection,
+)
 from domain.types import BacktestResult, Fill, PortfolioSnapshot, Trade
 
 
@@ -103,6 +109,7 @@ class TestCli(unittest.TestCase):
                     Trade(
                         trade_id="trade-1",
                         symbol=request.symbols[0],
+                        trade_direction=TradeDirection.LONG,
                         quantity=1.0,
                         entry_timestamp_ms=request.start_ms + 60_000,
                         entry_price=101.0,
@@ -181,6 +188,7 @@ class TestCli(unittest.TestCase):
             request.execution.intrabar_exit_policy,
             IntrabarExitPolicy.CONSERVATIVE,
         )
+        self.assertEqual(request.execution.allowed_directions, AllowedDirections.LONG_AND_SHORT)
         self.assertIsNone(strategy)
 
         output = stdout.getvalue()
@@ -227,6 +235,42 @@ class TestCli(unittest.TestCase):
             request.execution.intrabar_exit_policy,
             IntrabarExitPolicy.TAKE_PROFIT_FIRST,
         )
+
+    def test_run_command_maps_allowed_directions(self) -> None:
+        for allowed_directions in AllowedDirections:
+            with self.subTest(allowed_directions=allowed_directions.value):
+                exit_code, request = self._run_command_and_capture_request(
+                    ["--allowed-directions", allowed_directions.value]
+                )
+
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(request.execution.allowed_directions, allowed_directions)
+
+    def test_run_command_rejects_legacy_allow_short_flag(self) -> None:
+        stderr = io.StringIO()
+        with patch(
+            "cli._BACKTEST_RUNNER_MODULE.run_backtest_with_market_data",
+            side_effect=AssertionError("runner should not execute"),
+        ):
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as raised:
+                    cli.main(
+                        [
+                            "run",
+                            "--symbol",
+                            "AAPL",
+                            "--timeframe",
+                            "M1",
+                            "--start-ms",
+                            "1700000000000",
+                            "--end-ms",
+                            "1700000600000",
+                            "--allow-short",
+                        ]
+                    )
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("--allow-short", stderr.getvalue())
 
     def test_run_command_rejects_invalid_bracket_parameters_before_running(self) -> None:
         invalid_cases = (
@@ -385,16 +429,22 @@ class TestCli(unittest.TestCase):
                 payload = client.saved_runs[0]
                 self.assertEqual(payload["run_id"], run_id)
                 self.assertEqual(payload["status"], "succeeded")
-                self.assertEqual(payload["request_schema_version"], 1)
+                self.assertEqual(payload["request_schema_version"], 2)
+                self.assertEqual(
+                    payload["request"]["execution"]["allowed_directions"],
+                    "long_and_short",
+                )
+                self.assertNotIn("allow_short", payload["request"]["execution"])
                 self.assertEqual(payload["request"]["exchange"], "NASDAQ")
                 self.assertEqual(payload["request"]["engine"], engine.value)
                 self.assertTrue(payload["request"]["persist_result"])
-                self.assertEqual(payload["result_schema_version"], 2)
+                self.assertEqual(payload["result_schema_version"], 3)
                 self.assertEqual(payload["diagnostics"]["engine"], engine.value)
                 self.assertGreater(len(payload["fills"]), 0)
                 self.assertGreater(len(payload["trades"]), 0)
                 self.assertIsNone(payload["trades"][0]["stop_loss_price"])
                 self.assertIsNone(payload["trades"][0]["take_profit_price"])
+                self.assertEqual(payload["trades"][0]["trade_direction"], "long")
                 self.assertNotIn("equity_curve", payload)
 
                 output = stdout.getvalue()

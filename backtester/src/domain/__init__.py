@@ -1,6 +1,7 @@
 """Domain package exports."""
 
 from .enums import (
+    AllowedDirections,
     BacktestEngine,
     BacktestRunStatus,
     DataGranularity,
@@ -14,6 +15,7 @@ from .enums import (
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
+    TradeDirection,
 )
 from .events import BarEvent, TickEvent
 from .types import (
@@ -44,6 +46,7 @@ from .types import (
 __all__ = [
     "BACKTEST_REQUEST_SCHEMA_VERSION",
     "BACKTEST_RESULT_SCHEMA_VERSION",
+    "AllowedDirections",
     "BacktestFillRecord",
     "BacktestRequest",
     "BacktestRequestSnapshot",
@@ -79,4 +82,5 @@ __all__ = [
     "TickView",
     "Trade",
     "TradeAccountingPolicy",
+    "TradeDirection",
 ]

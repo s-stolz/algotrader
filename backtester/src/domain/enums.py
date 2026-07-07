@@ -3,6 +3,12 @@
 from enum import Enum
 
 
+class AllowedDirections(str, Enum):
+    LONG_ONLY = "long_only"
+    SHORT_ONLY = "short_only"
+    LONG_AND_SHORT = "long_and_short"
+
+
 class BacktestEngine(str, Enum):
     VECTORIZED = "vectorized"
     EVENT_DRIVEN = "event_driven"
@@ -48,6 +54,11 @@ class IntrabarExitPolicy(str, Enum):
 
 class TradeAccountingPolicy(str, Enum):
     AVERAGE_COST = "average_cost"
+
+
+class TradeDirection(str, Enum):
+    LONG = "long"
+    SHORT = "short"
 
 
 class OrderSide(str, Enum):

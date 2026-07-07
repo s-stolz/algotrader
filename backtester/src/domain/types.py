@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from domain.enums import (
+    AllowedDirections,
     BacktestEngine,
     BacktestRunStatus,
     DataGranularity,
@@ -18,10 +19,11 @@ from domain.enums import (
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
+    TradeDirection,
 )
 
-BACKTEST_REQUEST_SCHEMA_VERSION = 1
-BACKTEST_RESULT_SCHEMA_VERSION = 2
+BACKTEST_REQUEST_SCHEMA_VERSION = 2
+BACKTEST_RESULT_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -59,7 +61,7 @@ class ExecutionConfig:
     fill_timing: FillTiming = FillTiming.NEXT_OPEN
     price_source: PriceSource = PriceSource.OPEN
     allow_partial_fills: bool = False
-    allow_short: bool = False
+    allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT
     trade_accounting_policy: TradeAccountingPolicy = TradeAccountingPolicy.AVERAGE_COST
     gap_policy: GapPolicy = GapPolicy.SKIP
     intrabar_exit_policy: IntrabarExitPolicy = IntrabarExitPolicy.CONSERVATIVE
@@ -67,6 +69,13 @@ class ExecutionConfig:
     slippage_bps: float = 0.0
 
     def __post_init__(self) -> None:
+        try:
+            allowed_directions = AllowedDirections(self.allowed_directions)
+        except ValueError as exc:
+            valid_values = ", ".join(direction.value for direction in AllowedDirections)
+            raise ValueError(f"allowed_directions must be one of: {valid_values}") from exc
+        object.__setattr__(self, "allowed_directions", allowed_directions)
+
         try:
             intrabar_exit_policy = IntrabarExitPolicy(self.intrabar_exit_policy)
         except ValueError as exc:
@@ -154,6 +163,7 @@ class BacktestTradeRecord:
     sequence: int
     trade_id: str
     symbol: str
+    trade_direction: TradeDirection
     quantity: float
     entry_timestamp_ms: int
     entry_price: float
@@ -164,6 +174,13 @@ class BacktestTradeRecord:
     exit_reason: ExitReason
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "trade_direction",
+            TradeDirection(self.trade_direction),
+        )
 
 
 @dataclass(frozen=True)
@@ -248,6 +265,7 @@ class Fill:
 class Trade:
     trade_id: str
     symbol: str
+    trade_direction: TradeDirection
     quantity: float
     entry_timestamp_ms: int
     entry_price: float
@@ -258,6 +276,13 @@ class Trade:
     exit_reason: ExitReason = ExitReason.SIGNAL
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "trade_direction",
+            TradeDirection(self.trade_direction),
+        )
 
 
 @dataclass(frozen=True)
@@ -300,7 +325,7 @@ _EXECUTION_PAYLOAD_FIELDS = {
     "fill_timing",
     "price_source",
     "allow_partial_fills",
-    "allow_short",
+    "allowed_directions",
     "trade_accounting_policy",
     "gap_policy",
     "intrabar_exit_policy",
@@ -329,7 +354,7 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
             "fill_timing": _enum_value(execution.fill_timing),
             "price_source": _enum_value(execution.price_source),
             "allow_partial_fills": bool(execution.allow_partial_fills),
-            "allow_short": bool(execution.allow_short),
+            "allowed_directions": _enum_value(execution.allowed_directions),
             "trade_accounting_policy": _enum_value(execution.trade_accounting_policy),
             "gap_policy": _enum_value(execution.gap_policy),
             "intrabar_exit_policy": _enum_value(execution.intrabar_exit_policy),
@@ -381,7 +406,7 @@ def _backtest_request_from_payload(payload: Mapping[str, Any]) -> BacktestReques
             fill_timing=FillTiming(execution["fill_timing"]),
             price_source=PriceSource(execution["price_source"]),
             allow_partial_fills=bool(execution["allow_partial_fills"]),
-            allow_short=bool(execution["allow_short"]),
+            allowed_directions=AllowedDirections(execution["allowed_directions"]),
             trade_accounting_policy=TradeAccountingPolicy(execution["trade_accounting_policy"]),
             gap_policy=GapPolicy(execution["gap_policy"]),
             intrabar_exit_policy=IntrabarExitPolicy(execution["intrabar_exit_policy"]),

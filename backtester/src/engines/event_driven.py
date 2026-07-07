@@ -10,6 +10,7 @@ import pandas as pd
 from data.feature_stream import EventDrivenFeatureStream
 from data.normalization import normalize_bar_data
 from domain.enums import (
+    AllowedDirections,
     BacktestEngine,
     DataGranularity,
     ExitReason,
@@ -238,6 +239,7 @@ def _run_event_driven_loop(
             symbol=symbol,
             timestamp_ms=int(snapshot.timestamp_ms),
             signal=int(signal),
+            allowed_directions=request.execution.allowed_directions,
         )
 
         state.finish_bar(
@@ -412,6 +414,11 @@ def _record_fill(
         slippage_bps=slippage_bps,
     )
     fee = quantity * execution_price * (commission_bps / 10_000.0)
+    previous_position = float(state.actual_position)
+    opening_side = _opening_side_for_fill(
+        current_position=previous_position,
+        quantity_delta=quantity_delta,
+    )
     fill = Fill(
         timestamp_ms=timestamp_ms,
         symbol=symbol,
@@ -422,60 +429,103 @@ def _record_fill(
         exit_reason=exit_reason,
         stop_loss_price=_planned_stop_loss_price(
             entry_price=execution_price,
-            side=side,
+            opening_side=opening_side,
             stop_loss_pct=stop_loss_pct,
         ),
         take_profit_price=_planned_take_profit_price(
             entry_price=execution_price,
-            side=side,
+            opening_side=opening_side,
             take_profit_pct=take_profit_pct,
         ),
     )
 
-    previous_position = float(state.actual_position)
     state.fills.append(fill)
     state.executed_delta[bar_index] += quantity_delta
     state.executed_notional[bar_index] += quantity_delta * execution_price
     state.executed_fees[bar_index] += float(fee)
     state.cash_adjustment += -(quantity_delta * execution_price) - float(fee)
     state.cash = float(state.initial_capital + state.cash_adjustment)
-    state.actual_position += quantity_delta
+    state.actual_position, state.entry_price = _apply_position_fill(
+        actual_position=previous_position,
+        entry_price=state.entry_price,
+        quantity_delta=quantity_delta,
+        fill_price=float(execution_price),
+    )
     state.total_slippage_cost += quantity * abs(execution_price - raw_execution_price)
 
-    if quantity_delta > 0.0:
-        if previous_position <= 0.0 or state.entry_price is None:
-            state.entry_price = float(execution_price)
-        else:
-            state.entry_price = (
-                (state.entry_price * previous_position) + (float(execution_price) * quantity_delta)
-            ) / state.actual_position
-    elif state.actual_position <= 0.0:
-        state.actual_position = 0.0
-        state.entry_price = None
-
     return fill
+
+
+def _opening_side_for_fill(
+    *,
+    current_position: float,
+    quantity_delta: float,
+) -> OrderSide | None:
+    next_position = current_position + quantity_delta
+    if quantity_delta > 0.0 and next_position > 0.0:
+        return OrderSide.BUY
+    if quantity_delta < 0.0 and next_position < 0.0:
+        return OrderSide.SELL
+    return None
+
+
+def _apply_position_fill(
+    *,
+    actual_position: float,
+    entry_price: float | None,
+    quantity_delta: float,
+    fill_price: float,
+) -> tuple[float, float | None]:
+    if quantity_delta == 0.0:
+        return actual_position, entry_price
+
+    if actual_position == 0.0 or _same_direction(actual_position, quantity_delta):
+        previous_abs_position = abs(actual_position)
+        added_abs_quantity = abs(quantity_delta)
+        next_position = actual_position + quantity_delta
+        if previous_abs_position == 0.0 or entry_price is None:
+            return next_position, fill_price
+        next_entry_price = (
+            (entry_price * previous_abs_position) + (fill_price * added_abs_quantity)
+        ) / (previous_abs_position + added_abs_quantity)
+        return next_position, next_entry_price
+
+    next_position = actual_position + quantity_delta
+    if next_position == 0.0:
+        return 0.0, None
+    if _same_direction(actual_position, next_position):
+        return next_position, entry_price
+    return next_position, fill_price
+
+
+def _same_direction(left: float, right: float) -> bool:
+    return (left > 0.0 and right > 0.0) or (left < 0.0 and right < 0.0)
 
 
 def _planned_stop_loss_price(
     *,
     entry_price: float,
-    side: OrderSide,
+    opening_side: OrderSide | None,
     stop_loss_pct: float | None,
 ) -> float | None:
-    if side != OrderSide.BUY or stop_loss_pct is None:
+    if opening_side is None or stop_loss_pct is None:
         return None
-    return float(entry_price * (1.0 - (stop_loss_pct / 100.0)))
+    if opening_side == OrderSide.BUY:
+        return float(entry_price * (1.0 - (stop_loss_pct / 100.0)))
+    return float(entry_price * (1.0 + (stop_loss_pct / 100.0)))
 
 
 def _planned_take_profit_price(
     *,
     entry_price: float,
-    side: OrderSide,
+    opening_side: OrderSide | None,
     take_profit_pct: float | None,
 ) -> float | None:
-    if side != OrderSide.BUY or take_profit_pct is None:
+    if opening_side is None or take_profit_pct is None:
         return None
-    return float(entry_price * (1.0 + (take_profit_pct / 100.0)))
+    if opening_side == OrderSide.BUY:
+        return float(entry_price * (1.0 + (take_profit_pct / 100.0)))
+    return float(entry_price * (1.0 - (take_profit_pct / 100.0)))
 
 
 def _handle_invalid_open(
@@ -509,21 +559,30 @@ def _queue_target_delta_from_signal(
     symbol: str,
     timestamp_ms: int,
     signal: int,
+    allowed_directions: AllowedDirections,
 ) -> None:
-    if signal > 0:
-        next_raw_target = float(bar_model.target_quantity)
-    elif signal < 0:
-        next_raw_target = 0.0
-    else:
-        next_raw_target = state.raw_desired_target
+    if signal == 0:
+        return
+
+    next_raw_target = _target_quantity_for_signal(
+        signal=signal,
+        target_quantity=float(bar_model.target_quantity),
+        allowed_directions=allowed_directions,
+    )
 
     next_desired_target = _apply_single_target_transforms(
         strategy=strategy,
         symbol=symbol,
         timestamp_ms=timestamp_ms,
         target_quantity=next_raw_target,
+        allowed_directions=allowed_directions,
     )
-    target_delta = next_desired_target - state.desired_target
+    if next_desired_target == state.desired_target:
+        state.raw_desired_target = next_raw_target
+        return
+
+    effective_position = state.actual_position + _pending_total(state.pending)
+    target_delta = next_desired_target - effective_position
 
     state.raw_desired_target = next_raw_target
     state.desired_target = next_desired_target
@@ -533,12 +592,28 @@ def _queue_target_delta_from_signal(
         state.pending.clear()
 
 
+def _target_quantity_for_signal(
+    *,
+    signal: int,
+    target_quantity: float,
+    allowed_directions: AllowedDirections,
+) -> float:
+    if signal > 0:
+        if allowed_directions == AllowedDirections.SHORT_ONLY:
+            return 0.0
+        return target_quantity
+    if allowed_directions == AllowedDirections.LONG_ONLY:
+        return 0.0
+    return -target_quantity
+
+
 def _apply_single_target_transforms(
     *,
     strategy: StrategyDefinition,
     symbol: str,
     timestamp_ms: int,
     target_quantity: float,
+    allowed_directions: AllowedDirections,
 ) -> float:
     execution_targets = ExecutionArrayBundle(
         timestamp_ms=[timestamp_ms],
@@ -552,6 +627,7 @@ def _apply_single_target_transforms(
         execution_targets=transformed,
         symbol=symbol,
         expected_size=1,
+        allowed_directions=allowed_directions,
     )
     return float(values[0])
 
@@ -591,17 +667,27 @@ def _stop_loss_fill_price(
     stop_loss_pct: float,
     actual_position: float,
 ) -> float | None:
-    if actual_position <= 0.0 or entry_price is None:
+    if actual_position == 0.0 or entry_price is None:
         return None
 
-    stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
+    stop_price = _stop_loss_price(
+        entry_price=entry_price,
+        stop_loss_pct=stop_loss_pct,
+        actual_position=actual_position,
+    )
     gap_fill_price = _stop_loss_gap_fill_price(
         raw_open=raw_open,
         stop_price=stop_price,
+        actual_position=actual_position,
     )
     if gap_fill_price is not None:
         return gap_fill_price
-    if np.isfinite(low_price) and low_price <= stop_price:
+    if _stop_loss_touched(
+        high_price=None,
+        low_price=low_price,
+        stop_price=stop_price,
+        actual_position=actual_position,
+    ):
         return float(stop_price)
     return None
 
@@ -614,17 +700,27 @@ def _take_profit_fill_price(
     take_profit_pct: float,
     actual_position: float,
 ) -> float | None:
-    if actual_position <= 0.0 or entry_price is None:
+    if actual_position == 0.0 or entry_price is None:
         return None
 
-    target_price = entry_price * (1.0 + (take_profit_pct / 100.0))
+    target_price = _take_profit_price(
+        entry_price=entry_price,
+        take_profit_pct=take_profit_pct,
+        actual_position=actual_position,
+    )
     gap_fill_price = _take_profit_gap_fill_price(
         raw_open=raw_open,
         target_price=target_price,
+        actual_position=actual_position,
     )
     if gap_fill_price is not None:
         return gap_fill_price
-    if np.isfinite(high_price) and high_price >= target_price:
+    if _take_profit_touched(
+        high_price=high_price,
+        low_price=None,
+        target_price=target_price,
+        actual_position=actual_position,
+    ):
         return float(target_price)
     return None
 
@@ -648,17 +744,22 @@ def _protective_exit_fill_price(
     timestamp_ms: int,
     intrabar_exit_policy: IntrabarExitPolicy,
 ) -> _ProtectiveExitDecision | None:
-    if actual_position <= 0.0 or entry_price is None:
+    if actual_position == 0.0 or entry_price is None:
         return None
 
     stop_price: float | None = None
     target_price: float | None = None
 
     if stop_loss_pct is not None:
-        stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
+        stop_price = _stop_loss_price(
+            entry_price=entry_price,
+            stop_loss_pct=stop_loss_pct,
+            actual_position=actual_position,
+        )
         stop_gap_fill_price = _stop_loss_gap_fill_price(
             raw_open=raw_open,
             stop_price=stop_price,
+            actual_position=actual_position,
         )
         if stop_gap_fill_price is not None:
             return _ProtectiveExitDecision(
@@ -667,10 +768,15 @@ def _protective_exit_fill_price(
             )
 
     if take_profit_pct is not None:
-        target_price = entry_price * (1.0 + (take_profit_pct / 100.0))
+        target_price = _take_profit_price(
+            entry_price=entry_price,
+            take_profit_pct=take_profit_pct,
+            actual_position=actual_position,
+        )
         take_profit_gap_fill_price = _take_profit_gap_fill_price(
             raw_open=raw_open,
             target_price=target_price,
+            actual_position=actual_position,
         )
         if take_profit_gap_fill_price is not None:
             return _ProtectiveExitDecision(
@@ -678,9 +784,17 @@ def _protective_exit_fill_price(
                 exit_reason=ExitReason.TAKE_PROFIT,
             )
 
-    stop_touched = stop_price is not None and np.isfinite(low_price) and low_price <= stop_price
-    target_touched = (
-        target_price is not None and np.isfinite(high_price) and high_price >= target_price
+    stop_touched = _stop_loss_touched(
+        high_price=high_price,
+        low_price=low_price,
+        stop_price=stop_price,
+        actual_position=actual_position,
+    )
+    target_touched = _take_profit_touched(
+        high_price=high_price,
+        low_price=low_price,
+        target_price=target_price,
+        actual_position=actual_position,
     )
 
     if stop_touched and target_touched:
@@ -717,7 +831,7 @@ def _resolve_ambiguous_intrabar_exit(
 ) -> _ProtectiveExitDecision:
     if intrabar_exit_policy == IntrabarExitPolicy.ERROR:
         raise ValueError(
-            "Ambiguous intrabar protective exit for long position at "
+            "Ambiguous intrabar protective exit at "
             f"timestamp_ms {timestamp_ms}: both stop_loss and take_profit levels "
             "were touched"
         )
@@ -742,32 +856,120 @@ def _pending_exit_reason_at_open(
     stop_loss_pct: float | None,
     take_profit_pct: float | None,
 ) -> ExitReason | None:
-    if pending_total >= 0.0 or state.actual_position <= 0.0 or state.entry_price is None:
+    if not _same_direction(state.actual_position, -pending_total) or state.entry_price is None:
         return None
 
     if stop_loss_pct is not None:
-        stop_price = state.entry_price * (1.0 - (stop_loss_pct / 100.0))
-        if _stop_loss_gap_fill_price(raw_open=raw_open, stop_price=stop_price) is not None:
+        stop_price = _stop_loss_price(
+            entry_price=state.entry_price,
+            stop_loss_pct=stop_loss_pct,
+            actual_position=state.actual_position,
+        )
+        if (
+            _stop_loss_gap_fill_price(
+                raw_open=raw_open,
+                stop_price=stop_price,
+                actual_position=state.actual_position,
+            )
+            is not None
+        ):
             return ExitReason.STOP_LOSS
 
     if take_profit_pct is not None:
-        target_price = state.entry_price * (1.0 + (take_profit_pct / 100.0))
-        if _take_profit_gap_fill_price(raw_open=raw_open, target_price=target_price) is not None:
+        target_price = _take_profit_price(
+            entry_price=state.entry_price,
+            take_profit_pct=take_profit_pct,
+            actual_position=state.actual_position,
+        )
+        if (
+            _take_profit_gap_fill_price(
+                raw_open=raw_open,
+                target_price=target_price,
+                actual_position=state.actual_position,
+            )
+            is not None
+        ):
             return ExitReason.TAKE_PROFIT
 
     return None
 
 
-def _stop_loss_gap_fill_price(*, raw_open: float, stop_price: float) -> float | None:
-    if _is_valid_open(raw_open) and raw_open <= stop_price:
+def _stop_loss_price(
+    *,
+    entry_price: float,
+    stop_loss_pct: float,
+    actual_position: float,
+) -> float:
+    if actual_position > 0.0:
+        return float(entry_price * (1.0 - (stop_loss_pct / 100.0)))
+    return float(entry_price * (1.0 + (stop_loss_pct / 100.0)))
+
+
+def _take_profit_price(
+    *,
+    entry_price: float,
+    take_profit_pct: float,
+    actual_position: float,
+) -> float:
+    if actual_position > 0.0:
+        return float(entry_price * (1.0 + (take_profit_pct / 100.0)))
+    return float(entry_price * (1.0 - (take_profit_pct / 100.0)))
+
+
+def _stop_loss_gap_fill_price(
+    *,
+    raw_open: float,
+    stop_price: float,
+    actual_position: float,
+) -> float | None:
+    if actual_position > 0.0 and _is_valid_open(raw_open) and raw_open <= stop_price:
+        return raw_open
+    if actual_position < 0.0 and _is_valid_open(raw_open) and raw_open >= stop_price:
         return raw_open
     return None
 
 
-def _take_profit_gap_fill_price(*, raw_open: float, target_price: float) -> float | None:
-    if _is_valid_open(raw_open) and raw_open >= target_price:
+def _take_profit_gap_fill_price(
+    *,
+    raw_open: float,
+    target_price: float,
+    actual_position: float,
+) -> float | None:
+    if actual_position > 0.0 and _is_valid_open(raw_open) and raw_open >= target_price:
+        return raw_open
+    if actual_position < 0.0 and _is_valid_open(raw_open) and raw_open <= target_price:
         return raw_open
     return None
+
+
+def _stop_loss_touched(
+    *,
+    high_price: float | None,
+    low_price: float | None,
+    stop_price: float | None,
+    actual_position: float,
+) -> bool:
+    if stop_price is None:
+        return False
+    if actual_position > 0.0:
+        return bool(low_price is not None and np.isfinite(low_price) and low_price <= stop_price)
+    return bool(high_price is not None and np.isfinite(high_price) and high_price >= stop_price)
+
+
+def _take_profit_touched(
+    *,
+    high_price: float | None,
+    low_price: float | None,
+    target_price: float | None,
+    actual_position: float,
+) -> bool:
+    if target_price is None:
+        return False
+    if actual_position > 0.0:
+        return bool(
+            high_price is not None and np.isfinite(high_price) and high_price >= target_price
+        )
+    return bool(low_price is not None and np.isfinite(low_price) and low_price <= target_price)
 
 
 def _pending_total(pending: list[_PendingDelta]) -> float:
@@ -832,10 +1034,6 @@ def _validate_event_driven_request(
             "Event-driven engine supports signal_timing=close only",
         ),
         (
-            not execution.allow_short,
-            "Event-driven engine does not support allow_short=True",
-        ),
-        (
             execution.fill_timing == FillTiming.NEXT_OPEN,
             "Event-driven engine supports fill_timing=next_open only",
         ),
@@ -875,6 +1073,7 @@ def _extract_target_values(
     execution_targets: ExecutionArrayBundle,
     symbol: str,
     expected_size: int,
+    allowed_directions: AllowedDirections,
 ) -> np.ndarray:
     target = execution_targets.target_quantity_by_symbol.get(symbol)
     if target is None:
@@ -887,10 +1086,15 @@ def _extract_target_values(
         )
     if not np.isfinite(target_values).all():
         raise ValueError(f"Strategy produced non-finite target quantities for symbol {symbol}")
-    if np.any(target_values < 0.0):
+    if allowed_directions == AllowedDirections.LONG_ONLY and np.any(target_values < 0.0):
         raise ValueError(
-            "Event-driven engine is long-only and requires non-negative target quantities "
-            f"for symbol {symbol}"
+            "Event-driven engine allowed_directions=long_only requires non-negative "
+            f"target quantities for symbol {symbol}"
+        )
+    if allowed_directions == AllowedDirections.SHORT_ONLY and np.any(target_values > 0.0):
+        raise ValueError(
+            "Event-driven engine allowed_directions=short_only requires non-positive "
+            f"target quantities for symbol {symbol}"
         )
     return target_values
 
@@ -941,18 +1145,36 @@ def _build_diagnostics(
 
 
 def _exit_fill_count(*, fills: list[Fill], exit_reason: ExitReason) -> int:
-    return sum(
-        1 for fill in fills if fill.side == OrderSide.SELL and fill.exit_reason == exit_reason
+    return _position_reducing_fill_count(
+        fills=fills,
+        exit_reasons={exit_reason},
     )
 
 
 def _signal_exit_fill_count(fills: list[Fill]) -> int:
-    return sum(
-        1
-        for fill in fills
-        if fill.side == OrderSide.SELL
-        and (fill.exit_reason is None or fill.exit_reason == ExitReason.SIGNAL)
+    return _position_reducing_fill_count(
+        fills=fills,
+        exit_reasons={None, ExitReason.SIGNAL},
     )
+
+
+def _position_reducing_fill_count(
+    *,
+    fills: list[Fill],
+    exit_reasons: set[ExitReason | None],
+) -> int:
+    position = 0.0
+    count = 0
+    for fill in fills:
+        quantity = float(fill.quantity)
+        if quantity <= 0.0:
+            continue
+
+        signed_delta = quantity if fill.side == OrderSide.BUY else -quantity
+        if _same_direction(position, -signed_delta) and fill.exit_reason in exit_reasons:
+            count += 1
+        position += signed_delta
+    return count
 
 
 def _bar_from_row(row: Any) -> BarView:

@@ -2,6 +2,7 @@ import unittest
 from typing import Any, cast
 
 from domain.enums import (
+    AllowedDirections,
     BacktestEngine,
     BacktestRunStatus,
     DataGranularity,
@@ -14,6 +15,7 @@ from domain.enums import (
     PriceSource,
     SignalTiming,
     TradeAccountingPolicy,
+    TradeDirection,
 )
 from domain.events import BarEvent, TickEvent
 from domain.types import (
@@ -55,9 +57,27 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(request.execution.commission_bps, 0.0)
         self.assertEqual(request.execution.slippage_bps, 0.0)
         self.assertEqual(
+            request.execution.allowed_directions,
+            AllowedDirections.LONG_AND_SHORT,
+        )
+        self.assertEqual(
             request.execution.intrabar_exit_policy,
             IntrabarExitPolicy.CONSERVATIVE,
         )
+
+    def test_allowed_directions_values_are_explicit(self) -> None:
+        self.assertEqual(AllowedDirections.LONG_ONLY.value, "long_only")
+        self.assertEqual(AllowedDirections.SHORT_ONLY.value, "short_only")
+        self.assertEqual(AllowedDirections.LONG_AND_SHORT.value, "long_and_short")
+
+    def test_execution_config_coerces_allowed_directions_text(self) -> None:
+        execution = ExecutionConfig(allowed_directions=cast(Any, "short_only"))
+
+        self.assertEqual(execution.allowed_directions, AllowedDirections.SHORT_ONLY)
+
+    def test_execution_config_rejects_unknown_allowed_directions(self) -> None:
+        with self.assertRaisesRegex(ValueError, "allowed_directions"):
+            ExecutionConfig(allowed_directions=cast(Any, "flat_only"))
 
     def test_backtest_engine_values_are_explicit(self) -> None:
         self.assertEqual(BacktestEngine.VECTORIZED.value, "vectorized")
@@ -67,6 +87,10 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(ExitReason.SIGNAL.value, "signal")
         self.assertEqual(ExitReason.STOP_LOSS.value, "stop_loss")
         self.assertEqual(ExitReason.TAKE_PROFIT.value, "take_profit")
+
+    def test_trade_direction_values_are_explicit(self) -> None:
+        self.assertEqual(TradeDirection.LONG.value, "long")
+        self.assertEqual(TradeDirection.SHORT.value, "short")
 
     def test_intrabar_exit_policy_values_are_explicit(self) -> None:
         self.assertEqual(IntrabarExitPolicy.CONSERVATIVE.value, "conservative")
@@ -125,6 +149,7 @@ class TestDomainTypes(unittest.TestCase):
         trade = Trade(
             trade_id="trade-1",
             symbol="AAPL",
+            trade_direction=TradeDirection.LONG,
             quantity=1.0,
             entry_timestamp_ms=1_700_000_060_000,
             entry_price=101.5,
@@ -174,7 +199,7 @@ class TestDomainTypes(unittest.TestCase):
                 fill_timing=FillTiming.NEXT_OPEN,
                 price_source=PriceSource.OPEN,
                 allow_partial_fills=False,
-                allow_short=False,
+                allowed_directions=AllowedDirections.SHORT_ONLY,
                 trade_accounting_policy=TradeAccountingPolicy.AVERAGE_COST,
                 gap_policy=GapPolicy.ERROR,
                 intrabar_exit_policy=IntrabarExitPolicy.TAKE_PROFIT_FIRST,
@@ -194,12 +219,14 @@ class TestDomainTypes(unittest.TestCase):
         snapshot = BacktestRequestSnapshot.from_request(request)
         restored = snapshot.to_request()
 
-        self.assertEqual(snapshot.schema_version, 1)
+        self.assertEqual(snapshot.schema_version, 2)
         self.assertEqual(snapshot.payload["exchange"], "FX")
         self.assertEqual(
             snapshot.payload["strategy"]["parameters"],
             request.strategy.parameters,
         )
+        self.assertEqual(snapshot.payload["execution"]["allowed_directions"], "short_only")
+        self.assertNotIn("allow_short", snapshot.payload["execution"])
         self.assertEqual(snapshot.payload["execution"]["gap_policy"], "error")
         self.assertEqual(
             snapshot.payload["execution"]["intrabar_exit_policy"],
@@ -219,11 +246,33 @@ class TestDomainTypes(unittest.TestCase):
 
     def test_backtest_request_snapshot_rejects_incomplete_payload(self) -> None:
         snapshot = BacktestRequestSnapshot(
-            schema_version=1,
+            schema_version=2,
             payload={"symbols": ["EURUSD"]},
         )
 
         with self.assertRaisesRegex(ValueError, "missing required fields"):
+            snapshot.to_request()
+
+    def test_backtest_request_snapshot_rejects_legacy_allow_short(self) -> None:
+        request = BacktestRequest(
+            symbols=["EURUSD"],
+            exchange="FX",
+            timeframe="M1",
+            start_ms=1_714_521_600_000,
+            end_ms=1_714_608_000_000,
+            strategy=StrategyConfig(strategy_id="sma_crossover"),
+            execution=ExecutionConfig(),
+            initial_capital=10_000.0,
+        )
+        payload = dict(BacktestRequestSnapshot.from_request(request).payload)
+        payload["execution"] = {
+            **payload["execution"],
+            "allow_short": True,
+        }
+
+        snapshot = BacktestRequestSnapshot(schema_version=2, payload=payload)
+
+        with self.assertRaisesRegex(ValueError, "unknown fields: allow_short"):
             snapshot.to_request()
 
     def test_durable_run_contract_types_construct(self) -> None:
@@ -252,6 +301,7 @@ class TestDomainTypes(unittest.TestCase):
             sequence=0,
             trade_id="trade-1",
             symbol="EURUSD",
+            trade_direction=TradeDirection.LONG,
             quantity=1_000.0,
             entry_timestamp_ms=1_714_522_500_000,
             entry_price=1.0715,
@@ -280,6 +330,7 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(run.status, BacktestRunStatus.QUEUED)
         self.assertEqual(run.request_snapshot.to_request(), request)
         self.assertEqual(fill.side, OrderSide.BUY)
+        self.assertEqual(trade.trade_direction, TradeDirection.LONG)
         self.assertEqual(trade.exit_reason, ExitReason.SIGNAL)
         self.assertEqual(query.engine, BacktestEngine.VECTORIZED)
 

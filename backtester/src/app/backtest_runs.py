@@ -170,7 +170,6 @@ def _validate_execution(request: BacktestRequest) -> None:
         and execution.fill_timing == FillTiming.NEXT_OPEN
         and execution.price_source == PriceSource.OPEN
         and not execution.allow_partial_fills
-        and not execution.allow_short
         and execution.trade_accounting_policy == TradeAccountingPolicy.AVERAGE_COST
     )
     if not supported_execution:

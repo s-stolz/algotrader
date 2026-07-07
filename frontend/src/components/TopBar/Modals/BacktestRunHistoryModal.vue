@@ -153,6 +153,8 @@ interface BaseModalExpose {
 
 type StatusFilter = BacktestRunStatus | 'all';
 
+const METRIC_DISPLAY_LIMIT = 9;
+
 interface BacktestRunRow {
   metrics: string[];
   run: BacktestRun;
@@ -339,7 +341,7 @@ function formatMetrics(run: BacktestRun): string[] {
 
     metrics.push(`${key} ${formatMetricValue(value)}`);
 
-    if (metrics.length === 4) {
+    if (metrics.length === METRIC_DISPLAY_LIMIT) {
       break;
     }
   }

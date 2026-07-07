@@ -62,7 +62,7 @@ class _ProtectiveExitDecision:
     ambiguous: bool = False
 
 
-def generate_fills_from_targets(
+def generate_fills_from_targets(  # noqa: C901
     *,
     symbol: str,
     timestamp_ms: ArrayLike,
@@ -92,16 +92,22 @@ def generate_fills_from_targets(
     if ts.size == 0:
         return _empty_fill_generation_result()
 
-    previous_target = np.concatenate(([0.0], target[:-1]))
-    target_delta = target - previous_target
     state = _initialize_fill_state(target)
     pending: list[_PendingDelta] = []
+    previous_target = 0.0
+    actual_position = 0.0
 
     for dst_idx in range(1, ts.size):
         src_idx = dst_idx - 1
-        decision_delta = float(target_delta[src_idx])
-        if decision_delta != 0.0:
-            pending.append(_PendingDelta(quantity=decision_delta))
+        next_target = float(target[src_idx])
+        if next_target != previous_target:
+            effective_position = actual_position + _pending_total(pending)
+            decision_delta = next_target - effective_position
+            if decision_delta != 0.0:
+                pending.append(_PendingDelta(quantity=float(decision_delta)))
+            if _pending_total(pending) == 0.0:
+                pending.clear()
+            previous_target = next_target
 
         pending_total = _pending_total(pending)
         if pending_total == 0.0:
@@ -121,6 +127,7 @@ def generate_fills_from_targets(
                 slippage_bps=slippage_bps,
                 commission_bps=commission_bps,
             )
+            actual_position += pending_total
             continue
 
         _handle_invalid_open(
@@ -132,9 +139,14 @@ def generate_fills_from_targets(
         )
 
     # Decision on the final bar has no in-range next-open and therefore expires.
-    final_delta = float(target_delta[-1])
+    final_target = float(target[-1])
+    final_delta = 0.0
+    if final_target != previous_target:
+        final_delta = final_target - (actual_position + _pending_total(pending))
     if final_delta != 0.0:
-        pending.append(_PendingDelta(quantity=final_delta))
+        pending.append(_PendingDelta(quantity=float(final_delta)))
+        if _pending_total(pending) == 0.0:
+            pending.clear()
 
     return FillGenerationResult(
         fills=state.fills,
@@ -155,20 +167,25 @@ def generate_fills_from_targets_with_stop_loss(
     symbol: str,
     timestamp_ms: ArrayLike,
     open_prices: ArrayLike,
-    low_prices: ArrayLike,
     target_quantity: ArrayLike,
     signal_values: ArrayLike,
     stop_loss_pct: float,
+    high_prices: ArrayLike | None = None,
+    low_prices: ArrayLike | None = None,
     gap_policy: GapPolicy = GapPolicy.SKIP,
     slippage_bps: float = 0.0,
     commission_bps: float = 0.0,
 ) -> FillGenerationResult:
-    """Build fills from signal targets and a percent stop loss."""
+    """Build fills from signal targets and a percent stop loss.
+
+    Long stop checks use ``low_prices``. Short stop checks use ``high_prices``.
+    """
 
     return generate_fills_from_targets_with_protective_exits(
         symbol=symbol,
         timestamp_ms=timestamp_ms,
         open_prices=open_prices,
+        high_prices=high_prices,
         low_prices=low_prices,
         target_quantity=target_quantity,
         signal_values=signal_values,
@@ -197,7 +214,7 @@ def generate_fills_from_targets_with_protective_exits(
 ) -> FillGenerationResult:
     """Build fills from signal targets and optional protective exits.
 
-    Signal decisions at index ``t`` fill earliest on index ``t+1``. Once a long
+    Signal decisions at index ``t`` fill earliest on index ``t+1``. Once an
     entry fills, protective exits are active for that same destination bar.
     """
 
@@ -234,6 +251,7 @@ def generate_fills_from_targets_with_protective_exits(
         desired_target = _queue_signal_target_delta(
             pending=pending,
             desired_target=desired_target,
+            actual_position=actual_position,
             signal=int(signals[src_idx]),
             signal_target=float(target[src_idx]),
         )
@@ -255,6 +273,7 @@ def generate_fills_from_targets_with_protective_exits(
                     symbol=symbol,
                     timestamp_ms=int(ts[dst_idx]),
                     dst_idx=dst_idx,
+                    current_position=actual_position,
                     quantity_delta=pending_total,
                     raw_execution_price=raw_open,
                     slippage_bps=slippage_bps,
@@ -301,6 +320,7 @@ def generate_fills_from_targets_with_protective_exits(
                 symbol=symbol,
                 timestamp_ms=int(ts[dst_idx]),
                 dst_idx=dst_idx,
+                current_position=actual_position,
                 quantity_delta=-actual_position,
                 raw_execution_price=protective_exit.fill_price,
                 slippage_bps=slippage_bps,
@@ -319,6 +339,7 @@ def generate_fills_from_targets_with_protective_exits(
     desired_target = _queue_signal_target_delta(
         pending=pending,
         desired_target=desired_target,
+        actual_position=actual_position,
         signal=int(signals[-1]),
         signal_target=float(target[-1]),
     )
@@ -364,6 +385,14 @@ def _validate_fill_inputs(
     _validate_cost_input(name="commission_bps", value=commission_bps)
 
 
+def _target_requires_long_stop_prices(target: NDArray[np.float64]) -> bool:
+    return bool(np.any(target > 0.0))
+
+
+def _target_requires_short_stop_prices(target: NDArray[np.float64]) -> bool:
+    return bool(np.any(target < 0.0))
+
+
 def _prepare_protective_exit_inputs(
     *,
     timestamp_ms: ArrayLike,
@@ -398,9 +427,15 @@ def _prepare_protective_exit_inputs(
     if highs is not None and ts.size != highs.size:
         raise ValueError("timestamp and high price arrays must have equal length")
     if stop_loss_pct is not None:
-        if lows is None:
-            raise ValueError("low price array is required when stop_loss_pct is configured")
         _validate_stop_loss_pct(stop_loss_pct)
+        if _target_requires_long_stop_prices(target) and lows is None:
+            raise ValueError(
+                "low price array is required when stop_loss_pct is configured for long targets"
+            )
+        if _target_requires_short_stop_prices(target) and highs is None:
+            raise ValueError(
+                "high price array is required when stop_loss_pct is configured for short targets"
+            )
     if take_profit_pct is not None:
         if highs is None:
             raise ValueError("high price array is required when take_profit_pct is configured")
@@ -508,6 +543,7 @@ def _queue_signal_target_delta(
     *,
     pending: list[_PendingDelta],
     desired_target: float,
+    actual_position: float,
     signal: int,
     signal_target: float,
 ) -> float:
@@ -515,7 +551,11 @@ def _queue_signal_target_delta(
         return desired_target
 
     next_desired_target = signal_target
-    target_delta = next_desired_target - desired_target
+    if next_desired_target == desired_target:
+        return desired_target
+
+    effective_position = actual_position + _pending_total(pending)
+    target_delta = next_desired_target - effective_position
     if target_delta != 0.0:
         pending.append(_PendingDelta(quantity=float(target_delta)))
     if _pending_total(pending) == 0.0:
@@ -529,6 +569,7 @@ def _record_fill(
     symbol: str,
     timestamp_ms: int,
     dst_idx: int,
+    current_position: float,
     quantity_delta: float,
     raw_execution_price: float,
     slippage_bps: float,
@@ -545,6 +586,10 @@ def _record_fill(
         slippage_bps=slippage_bps,
     )
     fee = quantity * execution_price * (commission_bps / 10_000.0)
+    opening_side = _opening_side_for_fill(
+        current_position=current_position,
+        quantity_delta=quantity_delta,
+    )
     fill = Fill(
         timestamp_ms=timestamp_ms,
         symbol=symbol,
@@ -555,12 +600,12 @@ def _record_fill(
         exit_reason=exit_reason,
         stop_loss_price=_planned_stop_loss_price(
             entry_price=execution_price,
-            side=side,
+            opening_side=opening_side,
             stop_loss_pct=stop_loss_pct,
         ),
         take_profit_price=_planned_take_profit_price(
             entry_price=execution_price,
-            side=side,
+            opening_side=opening_side,
             take_profit_pct=take_profit_pct,
         ),
     )
@@ -573,26 +618,43 @@ def _record_fill(
     return fill
 
 
+def _opening_side_for_fill(
+    *,
+    current_position: float,
+    quantity_delta: float,
+) -> OrderSide | None:
+    next_position = current_position + quantity_delta
+    if quantity_delta > 0.0 and next_position > 0.0:
+        return OrderSide.BUY
+    if quantity_delta < 0.0 and next_position < 0.0:
+        return OrderSide.SELL
+    return None
+
+
 def _planned_stop_loss_price(
     *,
     entry_price: float,
-    side: OrderSide,
+    opening_side: OrderSide | None,
     stop_loss_pct: float | None,
 ) -> float | None:
-    if side != OrderSide.BUY or stop_loss_pct is None:
+    if opening_side is None or stop_loss_pct is None:
         return None
-    return float(entry_price * (1.0 - (stop_loss_pct / 100.0)))
+    if opening_side == OrderSide.BUY:
+        return float(entry_price * (1.0 - (stop_loss_pct / 100.0)))
+    return float(entry_price * (1.0 + (stop_loss_pct / 100.0)))
 
 
 def _planned_take_profit_price(
     *,
     entry_price: float,
-    side: OrderSide,
+    opening_side: OrderSide | None,
     take_profit_pct: float | None,
 ) -> float | None:
-    if side != OrderSide.BUY or take_profit_pct is None:
+    if opening_side is None or take_profit_pct is None:
         return None
-    return float(entry_price * (1.0 + (take_profit_pct / 100.0)))
+    if opening_side == OrderSide.BUY:
+        return float(entry_price * (1.0 + (take_profit_pct / 100.0)))
+    return float(entry_price * (1.0 - (take_profit_pct / 100.0)))
 
 
 def _apply_position_fill(
@@ -602,19 +664,28 @@ def _apply_position_fill(
     quantity_delta: float,
     fill_price: float,
 ) -> tuple[float, float | None]:
-    if quantity_delta > 0.0:
-        if actual_position <= 0.0 or entry_price is None:
-            return actual_position + quantity_delta, fill_price
-        new_position = actual_position + quantity_delta
-        new_entry_price = ((entry_price * actual_position) + (fill_price * quantity_delta)) / (
-            new_position
-        )
-        return new_position, new_entry_price
+    if quantity_delta == 0.0:
+        return actual_position, entry_price
 
     next_position = actual_position + quantity_delta
-    if next_position <= 0.0:
+    if actual_position == 0.0 or _same_direction(actual_position, quantity_delta):
+        previous_abs_position = abs(actual_position)
+        added_abs_quantity = abs(quantity_delta)
+        if previous_abs_position == 0.0 or entry_price is None:
+            return next_position, fill_price
+        new_entry_price = (
+            (entry_price * previous_abs_position) + (fill_price * added_abs_quantity)
+        ) / (previous_abs_position + added_abs_quantity)
+        return next_position, new_entry_price
+    if next_position == 0.0:
         return 0.0, None
-    return next_position, entry_price
+    if _same_direction(actual_position, next_position):
+        return next_position, entry_price
+    return next_position, fill_price
+
+
+def _same_direction(left: float, right: float) -> bool:
+    return (left > 0.0 and right > 0.0) or (left < 0.0 and right < 0.0)
 
 
 def _stop_loss_fill_price(
@@ -625,17 +696,27 @@ def _stop_loss_fill_price(
     stop_loss_pct: float,
     actual_position: float,
 ) -> float | None:
-    if actual_position <= 0.0 or entry_price is None:
+    if actual_position == 0.0 or entry_price is None:
         return None
 
-    stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
+    stop_price = _stop_loss_price(
+        entry_price=entry_price,
+        stop_loss_pct=stop_loss_pct,
+        actual_position=actual_position,
+    )
     gap_fill_price = _stop_loss_gap_fill_price(
         raw_open=raw_open,
         stop_price=stop_price,
+        actual_position=actual_position,
     )
     if gap_fill_price is not None:
         return gap_fill_price
-    if low_price is not None and np.isfinite(low_price) and low_price <= stop_price:
+    if _stop_loss_touched(
+        high_price=None,
+        low_price=low_price,
+        stop_price=stop_price,
+        actual_position=actual_position,
+    ):
         return float(stop_price)
     return None
 
@@ -648,17 +729,27 @@ def _take_profit_fill_price(
     take_profit_pct: float,
     actual_position: float,
 ) -> float | None:
-    if actual_position <= 0.0 or entry_price is None:
+    if actual_position == 0.0 or entry_price is None:
         return None
 
-    target_price = entry_price * (1.0 + (take_profit_pct / 100.0))
+    target_price = _take_profit_price(
+        entry_price=entry_price,
+        take_profit_pct=take_profit_pct,
+        actual_position=actual_position,
+    )
     gap_fill_price = _take_profit_gap_fill_price(
         raw_open=raw_open,
         target_price=target_price,
+        actual_position=actual_position,
     )
     if gap_fill_price is not None:
         return gap_fill_price
-    if high_price is not None and np.isfinite(high_price) and high_price >= target_price:
+    if _take_profit_touched(
+        high_price=high_price,
+        low_price=None,
+        target_price=target_price,
+        actual_position=actual_position,
+    ):
         return float(target_price)
     return None
 
@@ -675,17 +766,22 @@ def _protective_exit_fill_price(
     timestamp_ms: int,
     intrabar_exit_policy: IntrabarExitPolicy,
 ) -> _ProtectiveExitDecision | None:
-    if actual_position <= 0.0 or entry_price is None:
+    if actual_position == 0.0 or entry_price is None:
         return None
 
     stop_price: float | None = None
     target_price: float | None = None
 
     if stop_loss_pct is not None:
-        stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
+        stop_price = _stop_loss_price(
+            entry_price=entry_price,
+            stop_loss_pct=stop_loss_pct,
+            actual_position=actual_position,
+        )
         stop_gap_fill_price = _stop_loss_gap_fill_price(
             raw_open=raw_open,
             stop_price=stop_price,
+            actual_position=actual_position,
         )
         if stop_gap_fill_price is not None:
             return _ProtectiveExitDecision(
@@ -694,10 +790,15 @@ def _protective_exit_fill_price(
             )
 
     if take_profit_pct is not None:
-        target_price = entry_price * (1.0 + (take_profit_pct / 100.0))
+        target_price = _take_profit_price(
+            entry_price=entry_price,
+            take_profit_pct=take_profit_pct,
+            actual_position=actual_position,
+        )
         take_profit_gap_fill_price = _take_profit_gap_fill_price(
             raw_open=raw_open,
             target_price=target_price,
+            actual_position=actual_position,
         )
         if take_profit_gap_fill_price is not None:
             return _ProtectiveExitDecision(
@@ -705,17 +806,17 @@ def _protective_exit_fill_price(
                 exit_reason=ExitReason.TAKE_PROFIT,
             )
 
-    stop_touched = (
-        stop_price is not None
-        and low_price is not None
-        and np.isfinite(low_price)
-        and low_price <= stop_price
+    stop_touched = _stop_loss_touched(
+        high_price=high_price,
+        low_price=low_price,
+        stop_price=stop_price,
+        actual_position=actual_position,
     )
-    target_touched = (
-        target_price is not None
-        and high_price is not None
-        and np.isfinite(high_price)
-        and high_price >= target_price
+    target_touched = _take_profit_touched(
+        high_price=high_price,
+        low_price=low_price,
+        target_price=target_price,
+        actual_position=actual_position,
     )
 
     if stop_touched and target_touched:
@@ -752,7 +853,7 @@ def _resolve_ambiguous_intrabar_exit(
 ) -> _ProtectiveExitDecision:
     if intrabar_exit_policy == IntrabarExitPolicy.ERROR:
         raise ValueError(
-            "Ambiguous intrabar protective exit for long position at "
+            "Ambiguous intrabar protective exit at "
             f"timestamp_ms {timestamp_ms}: both stop_loss and take_profit levels "
             "were touched"
         )
@@ -778,32 +879,120 @@ def _pending_exit_reason_at_open(
     take_profit_pct: float | None,
     actual_position: float,
 ) -> ExitReason | None:
-    if pending_total >= 0.0 or actual_position <= 0.0 or entry_price is None:
+    if not _same_direction(actual_position, -pending_total) or entry_price is None:
         return None
 
     if stop_loss_pct is not None:
-        stop_price = entry_price * (1.0 - (stop_loss_pct / 100.0))
-        if _stop_loss_gap_fill_price(raw_open=raw_open, stop_price=stop_price) is not None:
+        stop_price = _stop_loss_price(
+            entry_price=entry_price,
+            stop_loss_pct=stop_loss_pct,
+            actual_position=actual_position,
+        )
+        if (
+            _stop_loss_gap_fill_price(
+                raw_open=raw_open,
+                stop_price=stop_price,
+                actual_position=actual_position,
+            )
+            is not None
+        ):
             return ExitReason.STOP_LOSS
 
     if take_profit_pct is not None:
-        target_price = entry_price * (1.0 + (take_profit_pct / 100.0))
-        if _take_profit_gap_fill_price(raw_open=raw_open, target_price=target_price) is not None:
+        target_price = _take_profit_price(
+            entry_price=entry_price,
+            take_profit_pct=take_profit_pct,
+            actual_position=actual_position,
+        )
+        if (
+            _take_profit_gap_fill_price(
+                raw_open=raw_open,
+                target_price=target_price,
+                actual_position=actual_position,
+            )
+            is not None
+        ):
             return ExitReason.TAKE_PROFIT
 
     return None
 
 
-def _stop_loss_gap_fill_price(*, raw_open: float, stop_price: float) -> float | None:
-    if _is_valid_open(raw_open) and raw_open <= stop_price:
+def _stop_loss_price(
+    *,
+    entry_price: float,
+    stop_loss_pct: float,
+    actual_position: float,
+) -> float:
+    if actual_position > 0.0:
+        return float(entry_price * (1.0 - (stop_loss_pct / 100.0)))
+    return float(entry_price * (1.0 + (stop_loss_pct / 100.0)))
+
+
+def _take_profit_price(
+    *,
+    entry_price: float,
+    take_profit_pct: float,
+    actual_position: float,
+) -> float:
+    if actual_position > 0.0:
+        return float(entry_price * (1.0 + (take_profit_pct / 100.0)))
+    return float(entry_price * (1.0 - (take_profit_pct / 100.0)))
+
+
+def _stop_loss_gap_fill_price(
+    *,
+    raw_open: float,
+    stop_price: float,
+    actual_position: float,
+) -> float | None:
+    if actual_position > 0.0 and _is_valid_open(raw_open) and raw_open <= stop_price:
+        return raw_open
+    if actual_position < 0.0 and _is_valid_open(raw_open) and raw_open >= stop_price:
         return raw_open
     return None
 
 
-def _take_profit_gap_fill_price(*, raw_open: float, target_price: float) -> float | None:
-    if _is_valid_open(raw_open) and raw_open >= target_price:
+def _take_profit_gap_fill_price(
+    *,
+    raw_open: float,
+    target_price: float,
+    actual_position: float,
+) -> float | None:
+    if actual_position > 0.0 and _is_valid_open(raw_open) and raw_open >= target_price:
+        return raw_open
+    if actual_position < 0.0 and _is_valid_open(raw_open) and raw_open <= target_price:
         return raw_open
     return None
+
+
+def _stop_loss_touched(
+    *,
+    high_price: float | None,
+    low_price: float | None,
+    stop_price: float | None,
+    actual_position: float,
+) -> bool:
+    if stop_price is None:
+        return False
+    if actual_position > 0.0:
+        return bool(low_price is not None and np.isfinite(low_price) and low_price <= stop_price)
+    return bool(high_price is not None and np.isfinite(high_price) and high_price >= stop_price)
+
+
+def _take_profit_touched(
+    *,
+    high_price: float | None,
+    low_price: float | None,
+    target_price: float | None,
+    actual_position: float,
+) -> bool:
+    if target_price is None:
+        return False
+    if actual_position > 0.0:
+        return bool(
+            high_price is not None and np.isfinite(high_price) and high_price >= target_price
+        )
+    return bool(low_price is not None and np.isfinite(low_price) and low_price <= target_price)
 
 
 def _handle_invalid_open(

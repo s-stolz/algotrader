@@ -8,10 +8,19 @@ import engines.event_driven as event_driven_engine
 import numpy as np
 import pandas as pd
 from app.backtest_runner import run_backtest
-from domain.enums import BacktestEngine, DataGranularity, GapPolicy, PriceSource
+from domain.enums import (
+    AllowedDirections,
+    BacktestEngine,
+    DataGranularity,
+    GapPolicy,
+    OrderSide,
+    PriceSource,
+    TradeDirection,
+)
 from domain.types import (
     BacktestRequest,
     BacktestResult,
+    ExecutionArrayBundle,
     ExecutionConfig,
     StrategyConfig,
 )
@@ -84,7 +93,8 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(result.fills[1].price, 13.0)
         self.assertEqual(len(result.trades), 1)
         self.assertAlmostEqual(result.trades[0].realized_pnl, 3.0)
-        self.assertEqual(result.equity_curve[-1].equity, 10_003.0)
+        self.assertEqual(result.equity_curve[-1].positions, {"AAPL": -1.0})
+        self.assertEqual(result.equity_curve[-1].equity, 10_008.0)
         self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
 
     def test_event_driven_engine_does_not_call_vectorized_execution_helpers(self) -> None:
@@ -311,7 +321,10 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
 
         result = run_backtest(
             request=self._build_request(
-                execution=ExecutionConfig(gap_policy=GapPolicy.SKIP),
+                execution=ExecutionConfig(
+                    allowed_directions=AllowedDirections.LONG_ONLY,
+                    gap_policy=GapPolicy.SKIP,
+                ),
                 strategy=StrategyConfig(strategy_id=strategy.strategy_id),
                 start_ms=start_ms,
                 end_ms=start_ms + (3 * minute),
@@ -354,6 +367,221 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(event_driven.fills, [])
         self.assertEqual(event_driven.diagnostics["expired_delta_count"], 1)
 
+    def test_default_long_and_short_mode_reduces_and_covers_short_targets(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = _build_always_signal_bars(
+            start_ms=start_ms,
+            minute=minute,
+            opens=[100.0, 99.0, 98.0, 97.0],
+            closes=[101.0, 100.0, 99.0, 98.0],
+        )
+        strategy = _build_timestamp_target_strategy(
+            strategy_id="event_short_reduce_cover_fixture",
+            target_by_timestamp={
+                start_ms: -2.0,
+                start_ms + minute: -1.0,
+                start_ms + (2 * minute): 0.0,
+                start_ms + (3 * minute): 0.0,
+            },
+        )
+
+        result = run_backtest(
+            request=self._build_request(
+                strategy=StrategyConfig(strategy_id=strategy.strategy_id),
+                start_ms=start_ms,
+                end_ms=start_ms + (4 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self.assertEqual(
+            [(fill.side, fill.quantity, fill.price) for fill in result.fills],
+            [
+                (OrderSide.SELL, 2.0, 99.0),
+                (OrderSide.BUY, 1.0, 98.0),
+                (OrderSide.BUY, 1.0, 97.0),
+            ],
+        )
+        self.assertEqual(result.equity_curve[1].positions, {"AAPL": -2.0})
+        self.assertEqual(result.equity_curve[2].positions, {"AAPL": -1.0})
+        self.assertEqual(result.equity_curve[3].positions, {})
+        self.assertEqual(
+            [
+                (trade.trade_direction, trade.quantity, trade.realized_pnl)
+                for trade in result.trades
+            ],
+            [
+                (TradeDirection.SHORT, 1.0, 1.0),
+                (TradeDirection.SHORT, 1.0, 2.0),
+            ],
+        )
+
+    def test_event_driven_rejects_disallowed_signed_targets_by_mode(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = _build_always_signal_bars(
+            start_ms=start_ms,
+            minute=minute,
+            opens=[100.0, 101.0],
+            closes=[101.0, 102.0],
+        )
+        cases = (
+            (AllowedDirections.LONG_ONLY, -1.0, "allowed_directions=long_only"),
+            (AllowedDirections.SHORT_ONLY, 1.0, "allowed_directions=short_only"),
+        )
+
+        for allowed_directions, target, message in cases:
+            with self.subTest(allowed_directions=allowed_directions):
+                strategy = _build_timestamp_target_strategy(
+                    strategy_id=f"event_invalid_{allowed_directions.value}_target_fixture",
+                    target_by_timestamp={
+                        start_ms: target,
+                        start_ms + minute: target,
+                    },
+                )
+
+                with self.assertRaisesRegex(ValueError, message):
+                    run_backtest(
+                        request=self._build_request(
+                            execution=ExecutionConfig(allowed_directions=allowed_directions),
+                            strategy=StrategyConfig(strategy_id=strategy.strategy_id),
+                            start_ms=start_ms,
+                            end_ms=start_ms + (2 * minute),
+                        ),
+                        bars=bars,
+                        strategy=strategy,
+                    )
+
+    def test_direct_direction_flips_execute_single_signed_delta_fills(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = _build_always_signal_bars(
+            start_ms=start_ms,
+            minute=minute,
+            opens=[100.0, 101.0, 102.0, 103.0],
+            closes=[101.0, 102.0, 103.0, 104.0],
+        )
+        strategy = _build_timestamp_target_strategy(
+            strategy_id="event_direct_flip_fixture",
+            target_by_timestamp={
+                start_ms: 1.0,
+                start_ms + minute: -1.0,
+                start_ms + (2 * minute): 1.0,
+                start_ms + (3 * minute): 1.0,
+            },
+        )
+
+        result = run_backtest(
+            request=self._build_request(
+                strategy=StrategyConfig(strategy_id=strategy.strategy_id),
+                start_ms=start_ms,
+                end_ms=start_ms + (4 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self.assertEqual(
+            [(fill.side, fill.quantity, fill.price) for fill in result.fills],
+            [
+                (OrderSide.BUY, 1.0, 101.0),
+                (OrderSide.SELL, 2.0, 102.0),
+                (OrderSide.BUY, 2.0, 103.0),
+            ],
+        )
+        self.assertEqual(result.equity_curve[1].positions, {"AAPL": 1.0})
+        self.assertEqual(result.equity_curve[2].positions, {"AAPL": -1.0})
+        self.assertEqual(result.equity_curve[3].positions, {"AAPL": 1.0})
+        self.assertEqual(
+            [
+                (trade.trade_direction, trade.quantity, trade.realized_pnl)
+                for trade in result.trades
+            ],
+            [
+                (TradeDirection.LONG, 1.0, 1.0),
+                (TradeDirection.SHORT, 1.0, -1.0),
+            ],
+        )
+
+    def test_short_entries_and_covers_apply_costs_to_cash_and_equity(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = _build_always_signal_bars(
+            start_ms=start_ms,
+            minute=minute,
+            opens=[100.0, 100.0, 100.0],
+            closes=[101.0, 101.0, 101.0],
+        )
+        strategy = _build_timestamp_target_strategy(
+            strategy_id="event_short_cost_fixture",
+            target_by_timestamp={
+                start_ms: -1.0,
+                start_ms + minute: 0.0,
+                start_ms + (2 * minute): 0.0,
+            },
+        )
+
+        result = run_backtest(
+            request=self._build_request(
+                execution=ExecutionConfig(commission_bps=20.0, slippage_bps=10.0),
+                strategy=StrategyConfig(strategy_id=strategy.strategy_id),
+                start_ms=start_ms,
+                end_ms=start_ms + (3 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self.assertEqual([fill.side for fill in result.fills], [OrderSide.SELL, OrderSide.BUY])
+        self.assertAlmostEqual(result.fills[0].price, 99.9)
+        self.assertAlmostEqual(result.fills[0].fees, 0.1998)
+        self.assertAlmostEqual(result.fills[1].price, 100.1)
+        self.assertAlmostEqual(result.fills[1].fees, 0.2002)
+        self.assertAlmostEqual(result.diagnostics["total_slippage_cost"], 0.2)
+        self.assertAlmostEqual(result.diagnostics["total_fees"], 0.4)
+        self.assertAlmostEqual(result.trades[0].realized_pnl, -0.6)
+        self.assertAlmostEqual(result.equity_curve[-1].equity, 9_999.4)
+
+    def test_gap_skip_defers_short_entry_until_next_valid_open(self) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        bars = _build_always_signal_bars(
+            start_ms=start_ms,
+            minute=minute,
+            opens=[100.0, 0.0, 98.0],
+            closes=[101.0, 101.0, 99.0],
+        )
+        strategy = _build_timestamp_target_strategy(
+            strategy_id="event_short_gap_skip_fixture",
+            target_by_timestamp={
+                start_ms: -1.0,
+                start_ms + minute: -1.0,
+                start_ms + (2 * minute): -1.0,
+            },
+        )
+
+        result = run_backtest(
+            request=self._build_request(
+                execution=ExecutionConfig(gap_policy=GapPolicy.SKIP),
+                strategy=StrategyConfig(strategy_id=strategy.strategy_id),
+                start_ms=start_ms,
+                end_ms=start_ms + (3 * minute),
+            ),
+            bars=bars,
+            strategy=strategy,
+        )
+
+        self.assertEqual(
+            [(fill.side, fill.quantity, fill.price) for fill in result.fills],
+            [(OrderSide.SELL, 1.0, 98.0)],
+        )
+        self.assertEqual(result.equity_curve[-1].positions, {"AAPL": -1.0})
+        self.assertEqual(result.diagnostics["invalid_open_count"], 1)
+        self.assertEqual(result.diagnostics["deferred_delta_count"], 1)
+        self.assertEqual(result.diagnostics["executed_deferred_count"], 1)
+
     def test_gap_error_matches_vectorized_failure(self) -> None:
         bars = self._build_gap_bars()
         execution = ExecutionConfig(gap_policy=GapPolicy.ERROR)
@@ -368,7 +596,6 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
 
     def test_unsupported_execution_settings_fail_clearly_in_event_driven_mode(self) -> None:
         unsupported = (
-            (ExecutionConfig(allow_short=True), "allow_short=True"),
             (ExecutionConfig(allow_partial_fills=True), "allow_partial_fills=True"),
             (ExecutionConfig(price_source=PriceSource.CLOSE), "price_source=open"),
         )
@@ -496,6 +723,63 @@ def _build_entry_then_exit_feature_strategy() -> StrategyDefinition:
         decision_model=bar_model.build_signals,
         position_builder=bar_model.build_positions,
         bar_model=bar_model,
+    )
+
+
+def _build_always_signal_bars(
+    *,
+    start_ms: int,
+    minute: int,
+    opens: list[float],
+    closes: list[float],
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "timestamp_ms": [start_ms + (minute * idx) for idx in range(len(opens))],
+            "symbol": ["AAPL"] * len(opens),
+            "open": opens,
+            "high": [
+                max(open_price, close_price) + 0.5 for open_price, close_price in zip(opens, closes)
+            ],
+            "low": [
+                min(open_price, close_price) - 0.5 for open_price, close_price in zip(opens, closes)
+            ],
+            "close": closes,
+            "volume": [1_000.0] * len(opens),
+        }
+    )
+
+
+def _build_timestamp_target_strategy(
+    *,
+    strategy_id: str,
+    target_by_timestamp: dict[int, float],
+) -> StrategyDefinition:
+    bar_model = BarStrategyModel(
+        entry_conditions=(ConditionRule.above("close", "open"),),
+        exit_conditions=(),
+        target_quantity=1.0,
+    )
+
+    def apply_targets(bundle: ExecutionArrayBundle) -> ExecutionArrayBundle:
+        return ExecutionArrayBundle(
+            timestamp_ms=bundle.timestamp_ms,
+            target_quantity_by_symbol={
+                symbol: [
+                    float(target_by_timestamp.get(int(timestamp_ms), 0.0))
+                    for timestamp_ms in bundle.timestamp_ms
+                ]
+                for symbol in bundle.target_quantity_by_symbol
+            },
+        )
+
+    return StrategyDefinition(
+        strategy_id=strategy_id,
+        feature_specs=("close", "open"),
+        decision_model=bar_model.build_signals,
+        position_builder=bar_model.build_positions,
+        bar_model=bar_model,
+        risk_rules=(apply_targets,),
     )
 
 

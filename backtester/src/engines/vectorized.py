@@ -7,6 +7,7 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 from domain.enums import (
+    AllowedDirections,
     BacktestEngine,
     DataGranularity,
     ExitReason,
@@ -59,12 +60,16 @@ def run_vectorized_backtest(
     normalized = _normalize_bars(bars=bars, symbol=symbol)
 
     feature_matrix = _build_feature_matrix(normalized)
-    execution_targets = strategy.build_execution_targets(feature_matrix)
+    execution_targets = strategy.build_execution_targets(
+        feature_matrix,
+        allowed_directions=request.execution.allowed_directions,
+    )
     timestamp_ms = normalized["timestamp_ms"].to_numpy(dtype="int64")
     target_values = _extract_target_values(
         execution_targets=execution_targets,
         symbol=symbol,
         expected_size=timestamp_ms.size,
+        allowed_directions=request.execution.allowed_directions,
     )
 
     open_prices = normalized["open"].to_numpy(dtype="float64")
@@ -155,10 +160,6 @@ def _validate_vectorized_request(request: BacktestRequest) -> None:
             "Vectorized M3 baseline supports signal_timing=close only",
         ),
         (
-            not execution.allow_short,
-            "Vectorized M3 baseline does not support allow_short=True",
-        ),
-        (
             execution.fill_timing == FillTiming.NEXT_OPEN,
             "Vectorized M3 baseline supports fill_timing=next_open only",
         ),
@@ -185,6 +186,7 @@ def _extract_target_values(
     execution_targets: ExecutionArrayBundle,
     symbol: str,
     expected_size: int,
+    allowed_directions: AllowedDirections,
 ) -> np.ndarray:
     target = execution_targets.target_quantity_by_symbol.get(symbol)
     if target is None:
@@ -197,10 +199,15 @@ def _extract_target_values(
         )
     if not np.isfinite(target_values).all():
         raise ValueError(f"Strategy produced non-finite target quantities for symbol {symbol}")
-    if np.any(target_values < 0.0):
+    if allowed_directions == AllowedDirections.LONG_ONLY and np.any(target_values < 0.0):
         raise ValueError(
-            "Vectorized M3 baseline is long-only and requires non-negative target quantities "
-            f"for symbol {symbol}"
+            "Vectorized engine allowed_directions=long_only requires non-negative "
+            f"target quantities for symbol {symbol}"
+        )
+    if allowed_directions == AllowedDirections.SHORT_ONLY and np.any(target_values > 0.0):
+        raise ValueError(
+            "Vectorized engine allowed_directions=short_only requires non-positive "
+            f"target quantities for symbol {symbol}"
         )
     return target_values
 
@@ -271,18 +278,40 @@ def _build_diagnostics(
 
 
 def _exit_fill_count(*, fills: list[Fill], exit_reason: ExitReason) -> int:
-    return sum(
-        1 for fill in fills if fill.side == OrderSide.SELL and fill.exit_reason == exit_reason
+    return _position_reducing_fill_count(
+        fills=fills,
+        exit_reasons={exit_reason},
     )
 
 
 def _signal_exit_fill_count(fills: list[Fill]) -> int:
-    return sum(
-        1
-        for fill in fills
-        if fill.side == OrderSide.SELL
-        and (fill.exit_reason is None or fill.exit_reason == ExitReason.SIGNAL)
+    return _position_reducing_fill_count(
+        fills=fills,
+        exit_reasons={None, ExitReason.SIGNAL},
     )
+
+
+def _position_reducing_fill_count(
+    *,
+    fills: list[Fill],
+    exit_reasons: set[ExitReason | None],
+) -> int:
+    position = 0.0
+    count = 0
+    for fill in fills:
+        quantity = float(fill.quantity)
+        if quantity <= 0.0:
+            continue
+
+        signed_delta = quantity if fill.side == OrderSide.BUY else -quantity
+        if _same_direction(position, -signed_delta) and fill.exit_reason in exit_reasons:
+            count += 1
+        position += signed_delta
+    return count
+
+
+def _same_direction(left: float, right: float) -> bool:
+    return (left > 0.0 and right > 0.0) or (left < 0.0 and right < 0.0)
 
 
 def _normalize_bars(*, bars: pd.DataFrame, symbol: str) -> pd.DataFrame:

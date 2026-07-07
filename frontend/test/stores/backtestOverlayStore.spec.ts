@@ -38,6 +38,7 @@ const closedTrades: BacktestClosedTrade[] = [
     sequence: 0,
     trade_id: 'trade-1',
     symbol: 'EURUSD',
+    trade_direction: 'long',
     quantity: 1_000,
     entry_timestamp_ms: 1_714_525_200_000,
     entry_price: 1.0715,
@@ -53,6 +54,7 @@ const closedTrades: BacktestClosedTrade[] = [
     sequence: 1,
     trade_id: 'trade-2',
     symbol: 'EURUSD',
+    trade_direction: 'short',
     quantity: 1_000,
     entry_timestamp_ms: 1_714_608_000_000,
     entry_price: 1.081,
@@ -127,10 +129,10 @@ describe('backtestOverlayStore', () => {
   });
 
   it('clears a persisted selected Backtest Run when reload finds an unsupported run', async () => {
-    localStorage.setItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN, JSON.stringify('run-old'));
+    localStorage.setItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN, JSON.stringify('run-incomplete'));
     vi.mocked(getBacktestRun).mockResolvedValue(backtestRun({
-      run_id: 'run-old',
-      result_schema_version: 1,
+      run_id: 'run-incomplete',
+      result_schema_version: null,
     }));
     useMarketsStore().all = [eurUsdMarket];
 
@@ -177,7 +179,7 @@ describe('backtestOverlayStore', () => {
       selectable: false,
       reason: 'Only succeeded Backtest Runs can be opened.',
     });
-    expect(store.getBacktestRunSelectability(backtestRun({ result_schema_version: 1 }))).toEqual({
+    expect(store.getBacktestRunSelectability(backtestRun({ result_schema_version: null }))).toEqual({
       selectable: false,
       reason: 'Backtest Run result schema is unsupported.',
     });
@@ -230,7 +232,7 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
     submitted_at_ms: 1_780_921_805_123,
     started_at_ms: 1_780_921_900_000,
     completed_at_ms: 1_780_922_100_000,
-    request_schema_version: 1,
+    request_schema_version: 2,
     request: {
       symbols: ['EURUSD'],
       exchange: 'FX',
@@ -249,7 +251,7 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
         fill_timing: 'next_open',
         price_source: 'open',
         allow_partial_fills: false,
-        allow_short: false,
+        allowed_directions: 'long_and_short',
         trade_accounting_policy: 'average_cost',
         gap_policy: 'skip',
         intrabar_exit_policy: 'conservative',
@@ -259,8 +261,8 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
       persist_result: true,
       run_metadata: null,
     },
-    result_schema_version: 2,
-    metrics: { total_return_pct: 1.25, trade_count: 1 },
+    result_schema_version: 3,
+    metrics: { total_return_pct: 1.25, trade_count: 1, long_trade_count: 1, short_trade_count: 0 },
     diagnostics: { execution_duration_ms: 240_000 },
     error_code: null,
     error_message: null,

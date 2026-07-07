@@ -6,6 +6,7 @@ import re
 from typing import Any, Literal
 
 from domain.enums import (
+    AllowedDirections,
     BacktestEngine,
     DataGranularity,
     FillTiming,
@@ -43,7 +44,7 @@ class ExecutionRequestSchema(ApiContractModel):
     fill_timing: Literal["next_open"] = "next_open"
     price_source: Literal["open", "close"] = "open"
     allow_partial_fills: bool = False
-    allow_short: bool = False
+    allowed_directions: Literal["long_only", "short_only", "long_and_short"] = "long_and_short"
     trade_accounting_policy: Literal["average_cost"] = "average_cost"
     gap_policy: Literal["expire", "skip", "error"] = "skip"
     intrabar_exit_policy: Literal[
@@ -90,7 +91,7 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
                 fill_timing=FillTiming(execution.fill_timing),
                 price_source=PriceSource(execution.price_source),
                 allow_partial_fills=execution.allow_partial_fills,
-                allow_short=execution.allow_short,
+                allowed_directions=AllowedDirections(execution.allowed_directions),
                 trade_accounting_policy=TradeAccountingPolicy(execution.trade_accounting_policy),
                 gap_policy=GapPolicy(execution.gap_policy),
                 intrabar_exit_policy=IntrabarExitPolicy(execution.intrabar_exit_policy),
@@ -135,6 +136,7 @@ class BacktestTradeResponseSchema(ApiContractModel):
     sequence: int
     trade_id: str
     symbol: str
+    trade_direction: Literal["long", "short"]
     quantity: float
     entry_timestamp_ms: int
     entry_price: float
@@ -152,6 +154,7 @@ class BacktestTradeResponseSchema(ApiContractModel):
             sequence=trade.sequence,
             trade_id=trade.trade_id,
             symbol=trade.symbol,
+            trade_direction=trade.trade_direction.value,
             quantity=trade.quantity,
             entry_timestamp_ms=trade.entry_timestamp_ms,
             entry_price=trade.entry_price,

@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pandas as pd
 from data.indicators import build_feature_frame
+from domain.enums import AllowedDirections
 from domain.types import ExecutionArrayBundle, FeatureMatrix, SignalMatrix
 from strategies.base import IndicatorFeatureRequirement, ProtectiveExitSpec, StrategyDefinition
 from strategies.conditions import ConditionRule
@@ -164,7 +165,9 @@ class TestStrategyDefinition(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "callback-only"):
             strategy.require_v1_parity_model()
 
-    def test_sma_crossover_uses_declarative_bar_model_and_preserves_targets(self) -> None:
+    def test_sma_crossover_uses_declarative_bar_model_and_defaults_to_long_and_short(
+        self,
+    ) -> None:
         strategy = build_sma_crossover_strategy(fast_window=2, slow_window=3, quantity=2.5)
 
         self.assertTrue(strategy.is_v1_parity_compatible)
@@ -220,8 +223,47 @@ class TestStrategyDefinition(unittest.TestCase):
         self.assertEqual(targets.timestamp_ms, [1, 2, 3, 4, 5])
         self.assertEqual(
             targets.target_quantity_by_symbol["AAPL"],
-            [0.0, 0.0, 2.5, 2.5, 0.0],
+            [0.0, 0.0, 2.5, 2.5, -2.5],
         )
+
+    def test_sma_crossover_maps_targets_by_allowed_direction(self) -> None:
+        strategy = build_sma_crossover_strategy(fast_window=2, slow_window=3, quantity=2.5)
+        features = FeatureMatrix(
+            timestamp_ms=[1, 2, 3, 4, 5],
+            features_by_symbol={
+                "AAPL": {
+                    "sma_fast": [1.0, 2.0, 3.0, 2.0, 1.0],
+                    "sma_slow": [2.0, 2.0, 2.0, 2.0, 2.0],
+                }
+            },
+        )
+
+        cases = (
+            (
+                AllowedDirections.LONG_ONLY,
+                [0.0, 0.0, 2.5, 2.5, 0.0],
+            ),
+            (
+                AllowedDirections.SHORT_ONLY,
+                [0.0, 0.0, 0.0, 0.0, -2.5],
+            ),
+            (
+                AllowedDirections.LONG_AND_SHORT,
+                [0.0, 0.0, 2.5, 2.5, -2.5],
+            ),
+        )
+
+        for allowed_directions, expected_targets in cases:
+            with self.subTest(allowed_directions=allowed_directions.value):
+                targets = strategy.build_execution_targets(
+                    features,
+                    allowed_directions=allowed_directions,
+                )
+
+                self.assertEqual(
+                    targets.target_quantity_by_symbol["AAPL"],
+                    expected_targets,
+                )
 
     def test_sma_crossover_accepts_optional_stop_loss_pct(self) -> None:
         strategy = build_sma_crossover_strategy(

@@ -10,11 +10,13 @@ from app.backtest_runs import (
     InvalidBacktestRequestError,
 )
 from domain.enums import (
+    AllowedDirections,
     BacktestRunStatus,
     DataGranularity,
     ExitReason,
     OrderSide,
     PriceSource,
+    TradeDirection,
 )
 from domain.types import (
     BacktestFillRecord,
@@ -79,7 +81,32 @@ class TestBacktestRunService(unittest.TestCase):
         self.assertEqual(submitted.status, BacktestRunStatus.QUEUED)
         self.assertEqual(submitted.submitted_at_ms, 1_780_921_805_123)
         self.assertEqual(submitted.request_snapshot.to_request(), request)
+        self.assertEqual(submitted.request_snapshot.schema_version, 2)
+        self.assertEqual(
+            submitted.request_snapshot.payload["execution"]["allowed_directions"],
+            "long_and_short",
+        )
+        self.assertNotIn("allow_short", submitted.request_snapshot.payload["execution"])
         self.assertEqual(repository.created_runs, [submitted])
+
+    def test_submit_accepts_allowed_direction_modes_before_persistence(self) -> None:
+        for direction in AllowedDirections:
+            with self.subTest(direction=direction.value):
+                repository = _FakeRunRepository()
+                service = BacktestRunService(repository=repository)
+                request = replace(
+                    _valid_request(),
+                    execution=ExecutionConfig(allowed_directions=direction),
+                )
+
+                submitted = service.submit(request)
+
+                self.assertEqual(submitted.request_snapshot.to_request(), request)
+                self.assertEqual(
+                    submitted.request_snapshot.payload["execution"]["allowed_directions"],
+                    direction.value,
+                )
+                self.assertEqual(repository.created_runs, [submitted])
 
     def test_submit_rejects_invalid_timestamp_range_before_persistence(self) -> None:
         repository = _FakeRunRepository()
@@ -173,7 +200,6 @@ class TestBacktestRunService(unittest.TestCase):
 
     def test_submit_rejects_unsupported_execution_policies_before_persistence(self) -> None:
         invalid_execution_configs = (
-            replace(ExecutionConfig(), allow_short=True),
             replace(ExecutionConfig(), allow_partial_fills=True),
             replace(ExecutionConfig(), price_source=PriceSource.CLOSE),
         )
@@ -217,7 +243,7 @@ class TestBacktestRunService(unittest.TestCase):
             status=BacktestRunStatus.SUCCEEDED,
             started_at_ms=1_780_921_860_000,
             completed_at_ms=1_780_922_100_000,
-            result_schema_version=2,
+            result_schema_version=3,
             metrics={"trade_count": 1},
             diagnostics={"bars": 10},
         )
@@ -250,6 +276,7 @@ class TestBacktestRunService(unittest.TestCase):
                 sequence=0,
                 trade_id="trade-1",
                 symbol="EURUSD",
+                trade_direction=TradeDirection.LONG,
                 quantity=1_000.0,
                 entry_timestamp_ms=1_714_525_200_000,
                 entry_price=1.0715,

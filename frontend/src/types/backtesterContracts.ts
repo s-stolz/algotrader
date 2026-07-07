@@ -5,7 +5,7 @@ import {
   isRecord,
 } from './contracts';
 
-export const BACKTEST_RESULT_SCHEMA_VERSION = 2 as const;
+export const BACKTEST_RESULT_SCHEMA_VERSION = 3 as const;
 
 export const BACKTEST_RUN_STATUSES = [
   'queued',
@@ -18,6 +18,8 @@ export type BacktestRunStatus = typeof BACKTEST_RUN_STATUSES[number];
 export type BacktestEngine = 'vectorized' | 'event_driven';
 export type BacktestDataGranularity = 'bar' | 'tick';
 export type BacktestExitReason = 'signal' | 'stop_loss' | 'take_profit';
+export type BacktestAllowedDirections = 'long_only' | 'short_only' | 'long_and_short';
+export type BacktestTradeDirection = 'long' | 'short';
 
 export interface BacktestStrategyPayload {
   strategy_id: string;
@@ -29,7 +31,7 @@ export interface BacktestExecutionPayload {
   fill_timing: 'next_open';
   price_source: 'open' | 'close';
   allow_partial_fills: boolean;
-  allow_short: boolean;
+  allowed_directions: BacktestAllowedDirections;
   trade_accounting_policy: 'average_cost';
   gap_policy: 'expire' | 'skip' | 'error';
   intrabar_exit_policy: 'conservative' | 'stop_first' | 'take_profit_first' | 'error';
@@ -58,9 +60,9 @@ export interface BacktestRun {
   submitted_at_ms: number;
   started_at_ms?: number | null;
   completed_at_ms?: number | null;
-  request_schema_version: 1;
+  request_schema_version: 2;
   request: BacktestRequestPayload;
-  result_schema_version?: number | null;
+  result_schema_version?: typeof BACKTEST_RESULT_SCHEMA_VERSION | null;
   metrics?: JsonObject | null;
   diagnostics?: JsonObject | null;
   error_code?: string | null;
@@ -81,6 +83,7 @@ export interface BacktestClosedTrade {
   sequence: number;
   trade_id: string;
   symbol: string;
+  trade_direction: BacktestTradeDirection;
   quantity: number;
   entry_timestamp_ms: number;
   entry_price: number;
@@ -96,6 +99,11 @@ export interface BacktestClosedTrade {
 const BACKTEST_RUN_STATUS_SET: ReadonlySet<string> = new Set(BACKTEST_RUN_STATUSES);
 const BACKTEST_ENGINE_SET: ReadonlySet<string> = new Set(['vectorized', 'event_driven']);
 const BACKTEST_DATA_GRANULARITY_SET: ReadonlySet<string> = new Set(['bar', 'tick']);
+const BACKTEST_ALLOWED_DIRECTIONS_SET: ReadonlySet<string> = new Set([
+  'long_only',
+  'short_only',
+  'long_and_short',
+]);
 const BACKTEST_PRICE_SOURCE_SET: ReadonlySet<string> = new Set(['open', 'close']);
 const BACKTEST_GAP_POLICY_SET: ReadonlySet<string> = new Set(['expire', 'skip', 'error']);
 const BACKTEST_INTRABAR_EXIT_POLICY_SET: ReadonlySet<string> = new Set([
@@ -109,6 +117,7 @@ const BACKTEST_EXIT_REASON_SET: ReadonlySet<string> = new Set([
   'stop_loss',
   'take_profit',
 ]);
+const BACKTEST_TRADE_DIRECTION_SET: ReadonlySet<string> = new Set(['long', 'short']);
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
@@ -151,6 +160,13 @@ function isOptionalNullableNumber(value: Record<string, unknown>, key: string): 
   return !(key in value) || value[key] === undefined || isNullableNumber(value[key]);
 }
 
+function isOptionalBacktestResultSchemaVersion(value: Record<string, unknown>): boolean {
+  return !('result_schema_version' in value) ||
+    value.result_schema_version === undefined ||
+    value.result_schema_version === null ||
+    value.result_schema_version === BACKTEST_RESULT_SCHEMA_VERSION;
+}
+
 function isOptionalNullableString(value: Record<string, unknown>, key: string): boolean {
   return !(key in value) || value[key] === undefined || isNullableString(value[key]);
 }
@@ -179,7 +195,9 @@ function isBacktestExecutionPayload(value: unknown): value is BacktestExecutionP
     typeof value.price_source === 'string' &&
     BACKTEST_PRICE_SOURCE_SET.has(value.price_source) &&
     typeof value.allow_partial_fills === 'boolean' &&
-    typeof value.allow_short === 'boolean' &&
+    !('allow_short' in value) &&
+    typeof value.allowed_directions === 'string' &&
+    BACKTEST_ALLOWED_DIRECTIONS_SET.has(value.allowed_directions) &&
     value.trade_accounting_policy === 'average_cost' &&
     typeof value.gap_policy === 'string' &&
     BACKTEST_GAP_POLICY_SET.has(value.gap_policy) &&
@@ -232,9 +250,9 @@ export function isBacktestRun(value: unknown): value is BacktestRun {
     value.submitted_at_ms > 0 &&
     isOptionalNullableNumber(value, 'started_at_ms') &&
     isOptionalNullableNumber(value, 'completed_at_ms') &&
-    value.request_schema_version === 1 &&
+    value.request_schema_version === 2 &&
     isBacktestRequestPayload(value.request) &&
-    isOptionalNullableNumber(value, 'result_schema_version') &&
+    isOptionalBacktestResultSchemaVersion(value) &&
     isOptionalNullableJsonObject(value, 'metrics') &&
     isOptionalNullableJsonObject(value, 'diagnostics') &&
     isOptionalNullableString(value, 'error_code') &&
@@ -256,6 +274,8 @@ export function isBacktestClosedTrade(value: unknown): value is BacktestClosedTr
     value.sequence >= 0 &&
     isNonEmptyString(value.trade_id) &&
     isNonEmptyString(value.symbol) &&
+    typeof value.trade_direction === 'string' &&
+    BACKTEST_TRADE_DIRECTION_SET.has(value.trade_direction) &&
     isFiniteNumber(value.quantity) &&
     value.quantity > 0 &&
     isFiniteNumber(value.entry_timestamp_ms) &&
