@@ -62,7 +62,7 @@ export interface BacktestRun {
   completed_at_ms?: number | null;
   request_schema_version: 2;
   request: BacktestRequestPayload;
-  result_schema_version?: number | null;
+  result_schema_version?: typeof BACKTEST_RESULT_SCHEMA_VERSION | null;
   metrics?: JsonObject | null;
   diagnostics?: JsonObject | null;
   error_code?: string | null;
@@ -160,6 +160,13 @@ function isOptionalNullableNumber(value: Record<string, unknown>, key: string): 
   return !(key in value) || value[key] === undefined || isNullableNumber(value[key]);
 }
 
+function isOptionalBacktestResultSchemaVersion(value: Record<string, unknown>): boolean {
+  return !('result_schema_version' in value) ||
+    value.result_schema_version === undefined ||
+    value.result_schema_version === null ||
+    value.result_schema_version === BACKTEST_RESULT_SCHEMA_VERSION;
+}
+
 function isOptionalNullableString(value: Record<string, unknown>, key: string): boolean {
   return !(key in value) || value[key] === undefined || isNullableString(value[key]);
 }
@@ -245,7 +252,7 @@ export function isBacktestRun(value: unknown): value is BacktestRun {
     isOptionalNullableNumber(value, 'completed_at_ms') &&
     value.request_schema_version === 2 &&
     isBacktestRequestPayload(value.request) &&
-    isOptionalNullableNumber(value, 'result_schema_version') &&
+    isOptionalBacktestResultSchemaVersion(value) &&
     isOptionalNullableJsonObject(value, 'metrics') &&
     isOptionalNullableJsonObject(value, 'diagnostics') &&
     isOptionalNullableString(value, 'error_code') &&

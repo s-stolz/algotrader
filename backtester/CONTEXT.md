@@ -142,11 +142,9 @@ Standalone Python backtesting module for historical candle simulation.
   results to conditional lifecycle updates and atomic successful completion.
   Completion payloads include metrics, diagnostics, fills, and closed trades,
   but never the equity curve.
-- Backtest result schema version 2 adds nullable `stop_loss_price` and
-  `take_profit_price` to closed trade artifacts.
-- Backtest result schema version 3 adds required closed-trade Trade Direction for
-  short-capable results. Adoption assumes local durable backtest data can be
-  cleaned before rollout instead of read through legacy compatibility logic.
+- Backtest result schema version 3 is the only accepted completed-result schema.
+  Closed trade artifacts include nullable `stop_loss_price` and
+  `take_profit_price` planned levels plus required closed-trade Trade Direction.
 - The singleton worker selects queued runs by `(submitted_at_ms, run_id)`, refreshes
   the queue after a lost conditional claim, and executes at most one claimed run
   at a time.

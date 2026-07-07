@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -143,9 +143,15 @@ class BacktestRunBase(BacktestContractModel):
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int | None) -> int | None:
-        if value is not None and value not in (1, 2, 3):
-            raise ValueError("result_schema_version must be 1, 2, or 3 when present")
+        if value is not None and value != 3:
+            raise ValueError("result_schema_version must be 3 when present")
         return value
+
+    @model_validator(mode="after")
+    def validate_success_result_schema_version(self) -> "BacktestRunBase":
+        if self.status == "succeeded" and self.result_schema_version != 3:
+            raise ValueError("succeeded backtest runs must use result_schema_version 3")
+        return self
 
 
 class BacktestRunCreateIn(BacktestRunBase):
@@ -165,6 +171,13 @@ class BacktestRunConditionalUpdateIn(BacktestContractModel):
     error_code: str | None = None
     error_message: str | None = None
 
+    @field_validator("new_status")
+    @classmethod
+    def validate_new_status(cls, value: str) -> str:
+        if value == "succeeded":
+            raise ValueError("succeeded backtest runs must use the completion endpoint")
+        return value
+
 
 class BacktestRunCompleteIn(BacktestContractModel):
     expected_status: Literal["queued", "running", "succeeded", "failed"]
@@ -178,8 +191,8 @@ class BacktestRunCompleteIn(BacktestContractModel):
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int) -> int:
-        if value not in (1, 2, 3):
-            raise ValueError("result_schema_version must be 1, 2, or 3")
+        if value != 3:
+            raise ValueError("result_schema_version must be 3")
         return value
 
 

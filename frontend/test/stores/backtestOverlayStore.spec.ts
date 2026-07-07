@@ -129,10 +129,10 @@ describe('backtestOverlayStore', () => {
   });
 
   it('clears a persisted selected Backtest Run when reload finds an unsupported run', async () => {
-    localStorage.setItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN, JSON.stringify('run-old'));
+    localStorage.setItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN, JSON.stringify('run-incomplete'));
     vi.mocked(getBacktestRun).mockResolvedValue(backtestRun({
-      run_id: 'run-old',
-      result_schema_version: 1,
+      run_id: 'run-incomplete',
+      result_schema_version: null,
     }));
     useMarketsStore().all = [eurUsdMarket];
 
@@ -179,7 +179,7 @@ describe('backtestOverlayStore', () => {
       selectable: false,
       reason: 'Only succeeded Backtest Runs can be opened.',
     });
-    expect(store.getBacktestRunSelectability(backtestRun({ result_schema_version: 1 }))).toEqual({
+    expect(store.getBacktestRunSelectability(backtestRun({ result_schema_version: null }))).toEqual({
       selectable: false,
       reason: 'Backtest Run result schema is unsupported.',
     });

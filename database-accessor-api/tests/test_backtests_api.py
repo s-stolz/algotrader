@@ -419,6 +419,14 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(fetched["error_code"])
         self.assertIsNone(fetched["error_message"])
 
+    def test_conditional_update_rejects_succeeded_status(self):
+        with self.assertRaises(ValidationError):
+            BacktestRunConditionalUpdateIn(
+                expected_status="running",
+                new_status="succeeded",
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+            )
+
     async def test_competing_claims_have_exactly_one_winner(self):
         await main.create_backtest_run(
             BacktestRunCreateIn(**_run_payload()),
@@ -744,7 +752,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestRunCompleteIn(
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                result_schema_version=1,
+                result_schema_version=3,
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"bars": 25},
                 fills=[
@@ -787,7 +795,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestRunCompleteIn(
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                result_schema_version=1,
+                result_schema_version=3,
                 metrics={"trade_count": 0},
                 diagnostics={"bars": 0},
                 fills=[],
@@ -1161,11 +1169,9 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValidationError):
             BacktestRunCreateIn(**_run_payload(request_schema_version=1))
 
-    def test_result_schema_version_supports_v1_v2_and_v3(self):
-        BacktestRunCreateIn(**_run_payload(result_schema_version=1))
-        BacktestRunCreateIn(**_run_payload(result_schema_version=2))
+    def test_result_schema_version_accepts_v3_and_rejects_legacy_versions(self):
+        BacktestRunCreateIn(**_run_payload(result_schema_version=None))
         BacktestRunCreateIn(**_run_payload(result_schema_version=3))
-
         BacktestRunCompleteIn(
             expected_status="running",
             completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
@@ -1174,8 +1180,45 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             diagnostics={},
         )
 
+        for legacy_version in (1, 2):
+            with self.subTest(result_schema_version=legacy_version):
+                with self.assertRaises(ValidationError):
+                    BacktestRunCreateIn(**_run_payload(result_schema_version=legacy_version))
+                with self.assertRaises(ValidationError):
+                    BacktestRunCompleteIn(
+                        expected_status="running",
+                        completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                        result_schema_version=legacy_version,
+                        metrics={},
+                        diagnostics={},
+                    )
+
         with self.assertRaises(ValidationError):
             BacktestRunCreateIn(**_run_payload(result_schema_version=4))
+
+    def test_succeeded_create_requires_result_schema_version_3(self):
+        BacktestRunCreateIn(
+            **_run_payload(
+                status="succeeded",
+                started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                result_schema_version=3,
+                metrics={},
+                diagnostics={},
+            )
+        )
+
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(
+                **_run_payload(
+                    status="succeeded",
+                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                    result_schema_version=None,
+                    metrics={},
+                    diagnostics={},
+                )
+            )
 
     def test_create_rejects_incomplete_request_snapshot(self):
         request = _request_payload()
@@ -1290,41 +1333,20 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("trade_direction in ('long', 'short')", sql)
         self.assertIn("stop_loss_price double precision", sql)
         self.assertIn("take_profit_price double precision", sql)
-        self.assertIn("add column if not exists stop_loss_price", sql)
-        self.assertIn("add column if not exists take_profit_price", sql)
+        self.assertNotIn("add column if not exists stop_loss_price", sql)
+        self.assertNotIn("add column if not exists take_profit_price", sql)
         self.assertIn("request jsonb not null", sql)
         self.assertIn("metrics jsonb", sql)
         self.assertIn("diagnostics jsonb", sql)
         self.assertNotIn("drop table", sql)
 
-    def test_backtest_result_schema_v2_migration_adds_protective_prices(self):
-        migration_path = (
-            Path(__file__).resolve().parents[2]
-            / "timescaledb-init"
-            / "05-backtest-result-schema-v2.sql"
-        )
-        sql = migration_path.read_text(encoding="utf-8").lower()
+    def test_obsolete_backtest_result_schema_migrations_are_removed(self):
+        init_dir = Path(__file__).resolve().parents[2] / "timescaledb-init"
+        result_schema_migrations = [
+            path.name for path in init_dir.glob("*backtest-result-schema*.sql")
+        ]
 
-        self.assertIn("alter table if exists backtest_closed_trades", sql)
-        self.assertIn("add column if not exists stop_loss_price", sql)
-        self.assertIn("add column if not exists take_profit_price", sql)
-        self.assertNotIn("drop table", sql)
-
-    def test_backtest_result_schema_v3_migration_adds_required_trade_direction(self):
-        migration_path = (
-            Path(__file__).resolve().parents[2]
-            / "timescaledb-init"
-            / "06-backtest-result-schema-v3.sql"
-        )
-        sql = migration_path.read_text(encoding="utf-8").lower()
-
-        self.assertIn("alter table if exists backtest_closed_trades", sql)
-        self.assertIn("add column if not exists trade_direction varchar(8)", sql)
-        self.assertIn("set not null", sql)
-        self.assertIn("backtest_closed_trades_trade_direction_check", sql)
-        self.assertIn("trade_direction in ('long', 'short')", sql)
-        self.assertNotIn("update backtest_closed_trades", sql)
-        self.assertNotIn("drop table", sql)
+        self.assertEqual(result_schema_migrations, [])
 
 
 if __name__ == "__main__":

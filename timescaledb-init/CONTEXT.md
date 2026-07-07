@@ -19,10 +19,6 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   aggregates, and aggregate policies.
 - `04-retune-cagg-and-index.sql`: continuous aggregate policy retuning and
   historical refresh.
-- `05-backtest-result-schema-v2.sql`: existing-volume migration for nullable
-  backtest closed-trade protective exit prices.
-- `06-backtest-result-schema-v3.sql`: clean-row migration for required
-  backtest closed-trade direction.
 
 ## Contracts
 
@@ -37,19 +33,13 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   deterministic ordering and cascade when the parent run is deleted.
 - `backtest_closed_trades` includes explicit trade direction plus nullable
   planned protective exit prices for stop-loss and take-profit overlays. Result
-  schema version 3 requires trade direction. The adoption path may delete old
-  local backtest runs rather than reading legacy result artifacts.
+  schema version 3 is the only accepted completed-result schema.
 - `backtest_closed_trades.trade_direction` is required and constrained to
   `long` or `short`.
-- Request schema version 2 and result schema version 3 adoption require schema
-  migration only; existing local durable backtest rows may be deleted instead of
-  rewritten.
-- The trade-direction schema migration may assume `backtest_closed_trades` is
-  empty when adding the required constrained column.
+- Request schema version 2 is current for request JSON; result schema version 3
+  is current for completed result artifacts.
 - Fresh database initialization creates the complete durable backtest schema
   without a separate destructive reset script.
-- Existing database volumes created before result schema version 2 need the
-  idempotent `05-backtest-result-schema-v2.sql` migration applied manually.
 
 ## Change Triggers
 

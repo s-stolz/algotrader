@@ -167,20 +167,25 @@ def generate_fills_from_targets_with_stop_loss(
     symbol: str,
     timestamp_ms: ArrayLike,
     open_prices: ArrayLike,
-    low_prices: ArrayLike,
     target_quantity: ArrayLike,
     signal_values: ArrayLike,
     stop_loss_pct: float,
+    high_prices: ArrayLike | None = None,
+    low_prices: ArrayLike | None = None,
     gap_policy: GapPolicy = GapPolicy.SKIP,
     slippage_bps: float = 0.0,
     commission_bps: float = 0.0,
 ) -> FillGenerationResult:
-    """Build fills from signal targets and a percent stop loss."""
+    """Build fills from signal targets and a percent stop loss.
+
+    Long stop checks use ``low_prices``. Short stop checks use ``high_prices``.
+    """
 
     return generate_fills_from_targets_with_protective_exits(
         symbol=symbol,
         timestamp_ms=timestamp_ms,
         open_prices=open_prices,
+        high_prices=high_prices,
         low_prices=low_prices,
         target_quantity=target_quantity,
         signal_values=signal_values,
@@ -380,6 +385,14 @@ def _validate_fill_inputs(
     _validate_cost_input(name="commission_bps", value=commission_bps)
 
 
+def _target_requires_long_stop_prices(target: NDArray[np.float64]) -> bool:
+    return bool(np.any(target > 0.0))
+
+
+def _target_requires_short_stop_prices(target: NDArray[np.float64]) -> bool:
+    return bool(np.any(target < 0.0))
+
+
 def _prepare_protective_exit_inputs(
     *,
     timestamp_ms: ArrayLike,
@@ -414,9 +427,15 @@ def _prepare_protective_exit_inputs(
     if highs is not None and ts.size != highs.size:
         raise ValueError("timestamp and high price arrays must have equal length")
     if stop_loss_pct is not None:
-        if lows is None:
-            raise ValueError("low price array is required when stop_loss_pct is configured")
         _validate_stop_loss_pct(stop_loss_pct)
+        if _target_requires_long_stop_prices(target) and lows is None:
+            raise ValueError(
+                "low price array is required when stop_loss_pct is configured for long targets"
+            )
+        if _target_requires_short_stop_prices(target) and highs is None:
+            raise ValueError(
+                "high price array is required when stop_loss_pct is configured for short targets"
+            )
     if take_profit_pct is not None:
         if highs is None:
             raise ValueError("high price array is required when take_profit_pct is configured")

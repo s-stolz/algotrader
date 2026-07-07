@@ -108,9 +108,8 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   single-chart overlay.
 - Backtest Run history shows all lifecycle states, but only `succeeded` runs are
   selectable for chart overlays.
-- Backtest Run chart overlays require result schema version 2 closed-trade
-  fields for planned protective exit lines. Short-capable overlays require
-  result schema version 3 closed-trade direction.
+- Backtest Run chart overlays require result schema version 3 closed trades,
+  including planned protective exit levels and explicit trade direction.
 - Runtime validation for frontend-facing HTTP and WebSocket payloads.
 
 ## Key Modules

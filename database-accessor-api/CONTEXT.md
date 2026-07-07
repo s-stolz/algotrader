@@ -39,12 +39,12 @@ stored in TimescaleDB.
   schema version 2 replaces legacy `allow_short` with Allowed Directions.
   Lifecycle status and timestamps are normalized columns; result metrics and
   diagnostics are nullable versioned JSON documents.
-- Request schema version 2 adoption requires schema support only; existing local
-  durable backtest rows may be deleted instead of rewritten.
-- Backtest result schema version 2 closed trades include nullable planned
-  protective exit prices. Result schema version 3 adds required closed-trade
-  trade direction. Existing local durable backtest rows may be deleted during
-  adoption rather than read through legacy compatibility logic.
+- Request schema version 2 is current for request JSON; existing local durable
+  backtest rows may be deleted instead of rewritten.
+- Result schema version 3 is the only accepted completed-result schema. Closed
+  trades include nullable planned protective exit prices and required
+  closed-trade direction. Existing local durable backtest rows may be deleted
+  during adoption rather than read through legacy compatibility logic.
 - Stored backtest closed-trade `trade_direction` is required and limited to
   `long` or `short`.
 - Run listing filters status and submission dates through lifecycle columns and

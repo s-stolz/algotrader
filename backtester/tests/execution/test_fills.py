@@ -5,6 +5,7 @@ from domain.enums import ExitReason, GapPolicy, OrderSide
 from execution.fills import (
     generate_fills_from_targets,
     generate_fills_from_targets_with_protective_exits,
+    generate_fills_from_targets_with_stop_loss,
 )
 
 
@@ -111,6 +112,7 @@ class TestFillGeneration(unittest.TestCase):
             symbol="AAPL",
             timestamp_ms=[1, 2, 3, 4],
             open_prices=[100.0, 0.0, 99.0, 98.0],
+            high_prices=[101.0, 0.0, 100.0, 99.0],
             low_prices=[99.0, 0.0, 98.0, 97.0],
             target_quantity=[-1.0, -1.0, 0.0, 0.0],
             signal_values=[-1, -1, 1, 0],
@@ -201,6 +203,54 @@ class TestFillGeneration(unittest.TestCase):
         )
         self.assertEqual(result.fills[0].stop_loss_price, 105.0)
         self.assertEqual(result.fills[0].take_profit_price, 90.0)
+        np.testing.assert_allclose(result.executed_delta, np.array([0.0, 0.0, 0.0]))
+
+    def test_stop_loss_wrapper_long_exit_uses_low_prices(self) -> None:
+        result = generate_fills_from_targets_with_stop_loss(
+            symbol="AAPL",
+            timestamp_ms=[1, 2, 3],
+            open_prices=[99.0, 100.0, 101.0],
+            low_prices=[98.0, 94.0, 100.0],
+            target_quantity=[1.0, 1.0, 1.0],
+            signal_values=[1, 0, 0],
+            stop_loss_pct=5.0,
+            gap_policy=GapPolicy.SKIP,
+        )
+
+        fill_summary = [
+            (fill.timestamp_ms, fill.side, fill.price, fill.exit_reason) for fill in result.fills
+        ]
+        self.assertEqual(
+            fill_summary,
+            [
+                (2, OrderSide.BUY, 100.0, None),
+                (2, OrderSide.SELL, 95.0, ExitReason.STOP_LOSS),
+            ],
+        )
+        np.testing.assert_allclose(result.executed_delta, np.array([0.0, 0.0, 0.0]))
+
+    def test_stop_loss_wrapper_short_cover_uses_high_prices(self) -> None:
+        result = generate_fills_from_targets_with_stop_loss(
+            symbol="AAPL",
+            timestamp_ms=[1, 2, 3],
+            open_prices=[99.0, 100.0, 101.0],
+            high_prices=[101.0, 106.0, 102.0],
+            target_quantity=[-1.0, -1.0, -1.0],
+            signal_values=[-1, 0, 0],
+            stop_loss_pct=5.0,
+            gap_policy=GapPolicy.SKIP,
+        )
+
+        fill_summary = [
+            (fill.timestamp_ms, fill.side, fill.price, fill.exit_reason) for fill in result.fills
+        ]
+        self.assertEqual(
+            fill_summary,
+            [
+                (2, OrderSide.SELL, 100.0, None),
+                (2, OrderSide.BUY, 105.0, ExitReason.STOP_LOSS),
+            ],
+        )
         np.testing.assert_allclose(result.executed_delta, np.array([0.0, 0.0, 0.0]))
 
 

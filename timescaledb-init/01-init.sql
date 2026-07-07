@@ -111,7 +111,3 @@ CREATE INDEX IF NOT EXISTS idx_backtest_closed_trades_run_order
         exit_timestamp_ms,
         trade_sequence
     );
-
-ALTER TABLE IF EXISTS backtest_closed_trades
-    ADD COLUMN IF NOT EXISTS stop_loss_price DOUBLE PRECISION,
-    ADD COLUMN IF NOT EXISTS take_profit_price DOUBLE PRECISION;

@@ -51,17 +51,6 @@ describe('backtester contract validators', () => {
     })).toBe(true);
 
     expect(isBacktestRun({
-      run_id: 'run-old-schema',
-      status: 'succeeded',
-      submitted_at_ms: 1_780_921_805_123,
-      request_schema_version: 2,
-      request: backtestRequest(),
-      result_schema_version: 1,
-      metrics: {},
-      diagnostics: {},
-    })).toBe(true);
-
-    expect(isBacktestRun({
       run_id: 'run-missing-null-fields',
       status: 'queued',
       submitted_at_ms: 1_780_921_805_123,
@@ -91,7 +80,15 @@ describe('backtester contract validators', () => {
       submitted_at_ms: 1_780_921_805_123,
       request_schema_version: 2,
       request: backtestRequest(),
-      result_schema_version: '2',
+      result_schema_version: '3',
+    })).toBe(false);
+    expect(isBacktestRun({
+      run_id: 'run-123',
+      status: 'succeeded',
+      submitted_at_ms: 1_780_921_805_123,
+      request_schema_version: 2,
+      request: backtestRequest(),
+      result_schema_version: 4,
     })).toBe(false);
   });
 
