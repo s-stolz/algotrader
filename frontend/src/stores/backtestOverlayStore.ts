@@ -44,19 +44,19 @@ function unavailable(reason: string): BacktestRunSelectability {
 
 export function getBacktestRunSelectability(run: BacktestRun): BacktestRunSelectability {
   if (run.status !== 'succeeded') {
-    return unavailable('Only succeeded Backtest Runs can be opened.');
+    return unavailable('Only succeeded Backtests can be opened.');
   }
 
   if (run.result_schema_version !== BACKTEST_RESULT_SCHEMA_VERSION) {
-    return unavailable('Backtest Run result schema is unsupported.');
+    return unavailable('Backtest result schema is unsupported.');
   }
 
   if (run.request.symbols.length === 0) {
-    return unavailable('Backtest Run has no symbol.');
+    return unavailable('Backtest has no symbol.');
   }
 
   if (run.request.symbols.length > 1) {
-    return unavailable('Backtest Run has multiple symbols.');
+    return unavailable('Backtest has multiple symbols.');
   }
 
   return SELECTABLE;
@@ -169,7 +169,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     } catch (err) {
       error.value = err instanceof Error
         ? err.message
-        : 'Failed to select Backtest Run.';
+        : 'Failed to select Backtest.';
       throw err;
     } finally {
       isLoading.value = false;
@@ -199,7 +199,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
       clearOverlay();
       error.value = err instanceof Error
         ? err.message
-        : 'Failed to reload selected Backtest Run.';
+        : 'Failed to reload selected Backtest.';
       return unavailable(error.value);
     } finally {
       isLoading.value = false;

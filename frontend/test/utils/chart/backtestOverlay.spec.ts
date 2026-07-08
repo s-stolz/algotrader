@@ -34,6 +34,11 @@ const closedTrade = (overrides: Partial<BacktestClosedTrade> = {}): BacktestClos
 });
 
 describe('backtest chart overlay utilities', () => {
+  it('uses the configured buy and sell colors for trade markers', () => {
+    expect(BUY_MARKER_COLOR).toBe('#00E676');
+    expect(SELL_MARKER_COLOR).toBe('#FF5252');
+  });
+
   it('accepts persisted short result contracts and renders entry and cover actions', () => {
     const run = {
       run_id: 'run-short-acceptance',
@@ -186,6 +191,23 @@ describe('backtest chart overlay utilities', () => {
         color: BUY_MARKER_COLOR,
         text: 'Buy @ 96.5',
       },
+    ]);
+  });
+
+  it('formats marker prices with precision derived from symbol min move', () => {
+    const markers = buildBacktestTradeMarkers([
+      closedTrade({
+        entry_price: 101.2,
+        exit_price: 104.5,
+      }),
+    ], {
+      startMs: 0,
+      endMs: 900_000,
+    }, 0.01);
+
+    expect(markers.map((marker) => marker.text)).toEqual([
+      'Buy @ 101.20',
+      'Sell @ 104.50',
     ]);
   });
 

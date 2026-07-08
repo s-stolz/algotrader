@@ -860,14 +860,14 @@ describe('ChartArea', () => {
         time: 300,
         position: 'belowBar',
         shape: 'arrowUp',
-        text: 'Buy @ 101.25',
+        text: 'Buy @ 101.2500',
       }),
       expect.objectContaining({
         id: 'exit-only:exit',
         time: 600,
         position: 'aboveBar',
         shape: 'arrowDown',
-        text: 'Sell @ 104.5',
+        text: 'Sell @ 104.5000',
       }),
     ]);
     const markersJson = JSON.stringify(
@@ -949,7 +949,7 @@ describe('ChartArea', () => {
       expect.objectContaining({
         id: 'range-extension:entry',
         time: 60,
-        text: 'Buy @ 99',
+        text: 'Buy @ 99.0000',
       }),
     ]);
     expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
@@ -989,12 +989,12 @@ describe('ChartArea', () => {
       expect.objectContaining({
         id: 'range-extension:entry',
         time: 60,
-        text: 'Buy @ 99',
+        text: 'Buy @ 99.0000',
       }),
       expect.objectContaining({
         id: 'range-extension:exit',
         time: 900,
-        text: 'Sell @ 105',
+        text: 'Sell @ 105.0000',
       }),
     ]);
     expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([

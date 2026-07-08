@@ -4,14 +4,15 @@ import type {
   ChartProtectiveLineSegment,
   ChartSeriesMarker,
 } from './ChartManager';
+import { measurementPricePrecision } from './measurementOverlay';
 
 export interface LoadedCandleRange {
   startMs: number;
   endMs: number;
 }
 
-export const BUY_MARKER_COLOR = '#16a34a';
-export const SELL_MARKER_COLOR = '#dc2626';
+export const BUY_MARKER_COLOR = '#00E676';
+export const SELL_MARKER_COLOR = '#FF5252';
 export const STOP_LOSS_LINE_COLOR = '#dc2626';
 export const TAKE_PROFIT_LINE_COLOR = '#2563eb';
 
@@ -21,8 +22,16 @@ function timestampToChartTime(timestampMs: number): ChartSeriesMarker['time'] {
   return Math.floor(timestampMs / 1000) as ChartSeriesMarker['time'];
 }
 
-function formatTradePrice(price: number): string {
-  return String(price);
+function formatTradePrice(price: number, minMove: number | null | undefined): string {
+  if (!Number.isFinite(price)) {
+    return String(price);
+  }
+
+  if (typeof minMove !== 'number' || !Number.isFinite(minMove) || minMove <= 0) {
+    return String(price);
+  }
+
+  return price.toFixed(measurementPricePrecision(minMove));
 }
 
 function isTimestampInRange(timestampMs: number, range: LoadedCandleRange): boolean {
@@ -35,6 +44,7 @@ function markerForAction(
   kind: 'entry' | 'exit',
   timestampMs: number,
   price: number,
+  minMove?: number | null,
 ): ChartSeriesMarker {
   const isBuy = action === 'buy';
 
@@ -44,13 +54,14 @@ function markerForAction(
     position: isBuy ? 'belowBar' : 'aboveBar',
     shape: isBuy ? 'arrowUp' : 'arrowDown',
     color: isBuy ? BUY_MARKER_COLOR : SELL_MARKER_COLOR,
-    text: `${isBuy ? 'Buy' : 'Sell'} @ ${formatTradePrice(price)}`,
+    text: `${isBuy ? 'Buy' : 'Sell'} @ ${formatTradePrice(price, minMove)}`,
   };
 }
 
 export function buildBacktestTradeMarkers(
   trades: readonly BacktestClosedTrade[],
   range: LoadedCandleRange,
+  minMove?: number | null,
 ): ChartSeriesMarker[] {
   const markers: ChartSeriesMarker[] = [];
 
@@ -65,6 +76,7 @@ export function buildBacktestTradeMarkers(
         'entry',
         trade.entry_timestamp_ms,
         trade.entry_price,
+        minMove,
       ));
     }
 
@@ -75,6 +87,7 @@ export function buildBacktestTradeMarkers(
         'exit',
         trade.exit_timestamp_ms,
         trade.exit_price,
+        minMove,
       ));
     }
   }

@@ -35,10 +35,17 @@ const eurUsdMarket: Market = {
 
 const BaseModalStub = defineComponent({
   name: 'BaseModal',
-  setup(_, { expose, slots }) {
+  props: {
+    title: {
+      type: String,
+      default: '',
+    },
+  },
+  setup(props, { expose, slots }) {
     expose({ close: () => undefined });
 
     return () => h('section', { class: 'base-modal' }, [
+      h('h2', props.title),
       slots.default?.(),
       slots.footer?.(),
     ]);
@@ -94,6 +101,39 @@ const NInputStub = defineComponent({
         emit('update:value', (event.target as HTMLInputElement).value);
       },
     }, slots.default?.());
+  },
+});
+
+const NSelectStub = defineComponent({
+  name: 'NSelect',
+  props: {
+    value: {
+      type: String,
+      default: null,
+    },
+    options: {
+      type: Array,
+      default: () => [],
+    },
+    inputProps: {
+      type: Object,
+      default: () => ({}),
+    },
+  },
+  emits: ['update:value'],
+  setup(props, { attrs, emit }) {
+    return () => h('select', {
+      ...attrs,
+      ...props.inputProps,
+      value: props.value,
+      onChange: (event: Event) => {
+        emit('update:value', (event.target as HTMLSelectElement).value);
+      },
+    }, props.options.map((option) => {
+      const selectOption = option as { label: string; value: string };
+
+      return h('option', { value: selectOption.value }, selectOption.label);
+    }));
   },
 });
 
@@ -162,6 +202,7 @@ describe('BacktestRunHistoryModal', () => {
     await flushPromises();
 
     expect(listBacktestRuns).toHaveBeenCalledOnce();
+    expect(wrapper.find('h2').text()).toBe('Backtests');
     expect(wrapper.findAll('.backtest-run-row')).toHaveLength(5);
     expect(wrapper.text()).toContain('succeeded');
     expect(wrapper.text()).toContain('running');
@@ -182,7 +223,7 @@ describe('BacktestRunHistoryModal', () => {
     expect(wrapper.text()).toContain('short_win_rate_pct 100');
     expect(wrapper.text()).toContain('long_realized_pnl 12.5');
     expect(wrapper.text()).toContain('short_realized_pnl 8');
-    expect(wrapper.text()).toContain('Only succeeded Backtest Runs can be opened.');
+    expect(wrapper.text()).toContain('Only succeeded Backtests can be opened.');
     expect(wrapper.text()).toContain('Market FX:USDJPY is not available in the chart market list.');
     expect(wrapper.text()).not.toMatch(/refresh/i);
     expect(wrapper.text()).not.toMatch(/run-(succeeded|running|failed|missing-market|queued)/);
@@ -194,12 +235,12 @@ describe('BacktestRunHistoryModal', () => {
     expect(wrapper.text()).toContain('GBPUSD');
 
     await wrapper.find('#backtest-run-search-input').setValue('');
-    await wrapper.find('[data-testid="backtest-run-status-filter"]').setValue('queued');
+    await setStatusFilter(wrapper, 'queued');
     expect(wrapper.findAll('.backtest-run-row')).toHaveLength(1);
     expect(wrapper.text()).toContain('mean_reversion');
     expect(wrapper.text()).toContain('AUDUSD');
 
-    await wrapper.find('[data-testid="backtest-run-status-filter"]').setValue('all');
+    await setStatusFilter(wrapper, 'all');
     await wrapper.find('[data-testid="backtest-run-row-run-running-123456"]').trigger('click');
     expect(fetchBacktestClosedTrades).not.toHaveBeenCalled();
 
@@ -292,6 +333,7 @@ function mountModal() {
         NIcon: true,
         NInput: NInputStub,
         NScrollbar: { template: '<div><slot /></div>' },
+        NSelect: NSelectStub,
         SearchOutline: true,
         TrashOutline: true,
         'base-modal': BaseModalStub,
@@ -299,11 +341,22 @@ function mountModal() {
         'n-icon': true,
         'n-input': NInputStub,
         'n-scrollbar': { template: '<div><slot /></div>' },
+        'n-select': NSelectStub,
         'search-outline': true,
         'trash-outline': true,
       },
     },
   });
+}
+
+async function setStatusFilter(wrapper: ReturnType<typeof mountModal>, value: string): Promise<void> {
+  const filter = wrapper.find('[data-testid="backtest-run-status-filter"]');
+  const vueComponent = (filter.element as Element & {
+    __vueParentComponent?: { emit: (event: string, value: string) => void };
+  }).__vueParentComponent;
+
+  vueComponent?.emit('update:value', value);
+  await wrapper.vm.$nextTick();
 }
 
 function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {

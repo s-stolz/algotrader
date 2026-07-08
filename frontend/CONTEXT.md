@@ -14,9 +14,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   Mobile touch gestures are outside the initial Measurement Overlay behavior.
   Measure mode uses a crosshair-style cursor over the candlestick pane. Chart
   Interaction Mode controls belong above the chart with the other chart controls
-  and use circular icon-only buttons with hover tooltips: `HandRightOutline` for
-  Pan and `ExpandOutline` for Measure. Pan is selected by default, and the active
-  mode has a visible selected state. Changing modes cancels any active
+  and use circular icon-only buttons: `HandRightOutline` for Pan and
+  `ExpandOutline` for Measure. Pan is selected by default, and the active mode
+  uses the same turquoise border and icon color as the other top-bar buttons use
+  on hover, without filling the button. Changing modes cancels any active
   Measurement Overlay. Changing market, timeframe, or chart session does not
   change the selected Chart Interaction Mode. Chart Interaction Mode is not
   persisted across page refreshes. Measure can be selected without loaded Candle

@@ -15,7 +15,10 @@ const NButtonStub = defineComponent({
     return () => h('button', {
       ...attrs,
       onClick: () => emit('click'),
-    }, slots.default?.());
+    }, [
+      slots.icon?.(),
+      slots.default?.(),
+    ]);
   },
 });
 
@@ -24,7 +27,7 @@ describe('TheTopBar', () => {
     setActivePinia(createPinia());
   });
 
-  it('opens Backtest Run history from the chart header', async () => {
+  it('opens Backtests from the chart header', async () => {
     useCurrentMarketStore().setMarket({
       symbol_id: 1,
       symbol: 'EURUSD',
@@ -38,14 +41,19 @@ describe('TheTopBar', () => {
       global: {
         stubs: {
           NButton: NButtonStub,
+          NIcon: true,
           TimeframeDropdown: true,
           TopBarModals: true,
           'n-button': NButtonStub,
+          'n-icon': true,
           'timeframe-dropdown': true,
           'top-bar-modals': true,
         },
       },
     });
+
+    expect(wrapper.find('[data-testid="open-backtest-runs"]').text()).toBe('Backtests');
+    expect(wrapper.find('[data-testid="open-backtest-runs"] n-icon-stub').exists()).toBe(false);
 
     await wrapper.find('[data-testid="open-backtest-runs"]').trigger('click');
 

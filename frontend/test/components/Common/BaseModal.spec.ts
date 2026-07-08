@@ -56,4 +56,32 @@ describe('BaseModal', () => {
     expect(modalStore.activeModal).toBeNull();
     expect(wrapper.find('.modal-backdrop').exists()).toBe(false);
   });
+
+  it('does not render footer spacing without footer content', () => {
+    const modalStore = useModalStore();
+    modalStore.openModal('indicatorSearch');
+
+    const wrapper = mount(BaseModal, {
+      props: {
+        modalId: 'indicatorSearch',
+        title: 'Indicator',
+      },
+      slots: {
+        default: '<p>Modal body</p>',
+      },
+      global: {
+        stubs: {
+          NButton: NButtonStub,
+          NIcon: true,
+          CloseCircleOutline: true,
+          'n-button': NButtonStub,
+          'n-icon': true,
+          'close-circle-outline': true,
+        },
+      },
+    });
+
+    expect(wrapper.find('.modal-footer').exists()).toBe(false);
+    expect(wrapper.findAll('.separator')).toHaveLength(1);
+  });
 });

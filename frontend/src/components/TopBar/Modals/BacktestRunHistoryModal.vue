@@ -1,5 +1,5 @@
 <template>
-  <BaseModal ref="baseModal" :modalId="'backtestRuns'" :title="'Backtest Runs'">
+  <BaseModal ref="baseModal" :modalId="'backtestRuns'" :title="'Backtests'">
     <div class="backtest-run-history">
       <div class="history-filters">
         <n-input
@@ -18,27 +18,20 @@
           </template>
         </n-input>
 
-        <select
-          v-model="statusFilter"
+        <n-select
+          v-model:value="statusFilter"
           data-testid="backtest-run-status-filter"
           class="status-filter"
-          aria-label="Filter Backtest Runs by status"
-        >
-          <option value="all">All statuses</option>
-          <option
-            v-for="status in backtestRunStatuses"
-            :key="status"
-            :value="status"
-          >
-            {{ status }}
-          </option>
-        </select>
+          :input-props="{ 'aria-label': 'Filter Backtests by status' }"
+          :options="statusFilterOptions"
+          round
+        />
       </div>
 
       <p v-if="loadError" class="modal-error">{{ loadError }}</p>
       <p v-if="deleteError" class="modal-error">{{ deleteError }}</p>
       <p v-if="overlayStore.error" class="modal-error">{{ overlayStore.error }}</p>
-      <p v-if="isLoading" class="modal-state">Loading Backtest Runs...</p>
+      <p v-if="isLoading" class="modal-state">Loading Backtests...</p>
 
       <n-scrollbar class="run-history-scrollbar" style="max-height: 420px">
         <table class="run-table">
@@ -98,7 +91,7 @@
                     size="small"
                     class="delete-run-button"
                     :data-testid="`backtest-run-delete-${run.run_id}`"
-                    aria-label="Delete Backtest Run"
+                    aria-label="Delete Backtest"
                     :title="deleteRunTitle(run)"
                     :disabled="!canDeleteRun(run) || isDeletingRun(run.run_id)"
                     @click.stop="onDeleteRun(run)"
@@ -114,20 +107,17 @@
         </table>
 
         <p v-if="!isLoading && filteredRunRows.length === 0" class="modal-state">
-          No Backtest Runs match the filters.
+          No Backtests match the filters.
         </p>
       </n-scrollbar>
     </div>
-
-    <template #footer>
-      <n-button @click="closeModal" class="button-close">Close</n-button>
-    </template>
   </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { NButton, NIcon, NInput, NScrollbar } from 'naive-ui';
+import type { SelectOption } from 'naive-ui';
+import { NButton, NIcon, NInput, NScrollbar, NSelect } from 'naive-ui';
 
 import { deleteBacktestRun, listBacktestRuns } from '@/api/backtesterClient';
 import BaseModal from '@/components/Common/BaseModal.vue';
@@ -171,6 +161,10 @@ const textFilter = ref('');
 const statusFilter = ref<StatusFilter>('all');
 const overlayStore = useBacktestOverlayStore();
 const backtestRunStatuses = BACKTEST_RUN_STATUSES;
+const statusFilterOptions: SelectOption[] = [
+  { label: 'All statuses', value: 'all' },
+  ...backtestRunStatuses.map((status) => ({ label: status, value: status })),
+];
 
 const filteredRunRows = computed<BacktestRunRow[]>(() => runs.value
   .filter((run) => matchesStatusFilter(run) && matchesTextFilter(run))
@@ -194,7 +188,7 @@ async function loadRuns(): Promise<void> {
     runs.value = [];
     loadError.value = error instanceof Error
       ? error.message
-      : 'Failed to fetch Backtest Runs.';
+      : 'Failed to fetch Backtests.';
   } finally {
     isLoading.value = false;
   }
@@ -231,10 +225,10 @@ function canDeleteRun(run: BacktestRun): boolean {
 
 function deleteRunTitle(run: BacktestRun): string {
   if (canDeleteRun(run)) {
-    return 'Delete Backtest Run and all trades and fills';
+    return 'Delete Backtest and all trades and fills';
   }
 
-  return 'Only succeeded or failed Backtest Runs can be deleted';
+  return 'Only succeeded or failed Backtests can be deleted';
 }
 
 function isDeletingRun(runId: string): boolean {
@@ -281,7 +275,7 @@ async function onDeleteRun(run: BacktestRun): Promise<void> {
   }
 
   const confirmed = window.confirm(
-    'Delete this Backtest Run and all trades and fills? This cannot be undone.',
+    'Delete this Backtest and all trades and fills? This cannot be undone.',
   );
 
   if (!confirmed) {
@@ -301,7 +295,7 @@ async function onDeleteRun(run: BacktestRun): Promise<void> {
   } catch (error) {
     deleteError.value = error instanceof Error
       ? error.message
-      : 'Failed to delete Backtest Run.';
+      : 'Failed to delete Backtest.';
   } finally {
     setRunDeleting(run.run_id, false);
   }
@@ -384,12 +378,7 @@ onMounted(() => {
 }
 
 .status-filter {
-  height: 34px;
-  border: 1px solid #3d4658;
-  border-radius: 17px;
-  background: #171b26;
-  color: #ffffffd1;
-  padding: 0 12px;
+  width: 100%;
 }
 
 .run-table {

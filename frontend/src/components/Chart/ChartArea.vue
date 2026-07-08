@@ -775,7 +775,9 @@ export default defineComponent({
       }
 
       const trades = this.backtestOverlayStore.getClosedTradesForRange(range.startMs, range.endMs);
-      this.chartInfrastructure.setCandlestickMarkers(buildBacktestTradeMarkers(trades, range));
+      this.chartInfrastructure.setCandlestickMarkers(
+        buildBacktestTradeMarkers(trades, range, this.currentMarketMinMove),
+      );
       this.chartInfrastructure.setCandlestickProtectiveLines(
         buildBacktestProtectiveLineSegments(trades),
       );

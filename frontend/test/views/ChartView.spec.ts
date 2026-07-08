@@ -43,16 +43,6 @@ const NButtonStub = defineComponent({
   },
 });
 
-const NTooltipStub = defineComponent({
-  name: 'NTooltip',
-  setup(_, { slots }) {
-    return () => h('span', [
-      slots.trigger?.(),
-      slots.default?.(),
-    ]);
-  },
-});
-
 const ChartAreaModeStub = defineComponent({
   name: 'ChartArea',
   props: {
@@ -112,17 +102,14 @@ describe('ChartView startup', () => {
           ChartArea: ChartAreaModeStub,
           NButton: NButtonStub,
           NIcon: { template: '<span><slot /></span>' },
-          NTooltip: NTooltipStub,
-          Tooltip: NTooltipStub,
           TimeframeDropdown: true,
           TopBarModals: true,
-          ExpandOutline: true,
           HandRightOutline: true,
           ListOutline: true,
+          ResizeOutline: true,
           'chart-area': ChartAreaModeStub,
           'n-button': NButtonStub,
           'n-icon': { template: '<span><slot /></span>' },
-          'n-tooltip': NTooltipStub,
           'timeframe-dropdown': true,
           'top-bar-modals': true,
         },
@@ -136,12 +123,14 @@ describe('ChartView startup', () => {
     expect(measureButton.exists()).toBe(true);
     expect(panButton.text()).toBe('');
     expect(measureButton.text()).toBe('');
-    expect(wrapper.find('[data-testid="chart-interaction-mode-pan-tooltip"]').text()).toBe('Pan');
-    expect(wrapper.find('[data-testid="chart-interaction-mode-measure-tooltip"]').text()).toBe(
-      'Measure',
+    expect(wrapper.find('[data-testid="chart-interaction-mode-pan-tooltip"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chart-interaction-mode-measure-tooltip"]').exists()).toBe(
+      false,
     );
     expect(panButton.attributes('aria-pressed')).toBe('true');
     expect(measureButton.attributes('aria-pressed')).toBe('false');
+    expect(panButton.classes()).toContain('chart-interaction-mode-button--active');
+    expect(measureButton.classes()).not.toContain('chart-interaction-mode-button--active');
     expect(wrapper.find('[data-testid="chart-area-mode"]').attributes('data-interaction-mode')).toBe(
       'pan',
     );
@@ -150,6 +139,8 @@ describe('ChartView startup', () => {
 
     expect(panButton.attributes('aria-pressed')).toBe('false');
     expect(measureButton.attributes('aria-pressed')).toBe('true');
+    expect(panButton.classes()).not.toContain('chart-interaction-mode-button--active');
+    expect(measureButton.classes()).toContain('chart-interaction-mode-button--active');
     expect(wrapper.find('[data-testid="chart-area-mode"]').attributes('data-interaction-mode')).toBe(
       'measure',
     );
@@ -174,17 +165,14 @@ describe('ChartView startup', () => {
           ChartArea: ChartAreaModeStub,
           NButton: NButtonStub,
           NIcon: { template: '<span><slot /></span>' },
-          NTooltip: NTooltipStub,
-          Tooltip: NTooltipStub,
           TimeframeDropdown: true,
           TopBarModals: true,
-          ExpandOutline: true,
           HandRightOutline: true,
           ListOutline: true,
+          ResizeOutline: true,
           'chart-area': ChartAreaModeStub,
           'n-button': NButtonStub,
           'n-icon': { template: '<span><slot /></span>' },
-          'n-tooltip': NTooltipStub,
           'timeframe-dropdown': true,
           'top-bar-modals': true,
         },

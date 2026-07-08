@@ -8,56 +8,51 @@
 
     <n-button round @click="modalStore.openModal('indicatorSearch')">Indicator</n-button>
     <n-button round data-testid="open-backtest-runs" @click="modalStore.openModal('backtestRuns')">
-      <template #icon>
-        <n-icon>
-          <ListOutline />
-        </n-icon>
-      </template>
-      Backtest Runs
+      Backtests
     </n-button>
 
     <div class="chart-interaction-controls" role="group" aria-label="Chart interaction mode">
-      <n-tooltip trigger="hover">
-        <template #trigger>
-          <n-button
-            circle
-            class="chart-interaction-mode-button"
-            :class="{
-              'chart-interaction-mode-button--active': isChartInteractionModeSelected('pan'),
-            }"
-            data-testid="chart-interaction-mode-pan"
-            aria-label="Pan mode"
-            :aria-pressed="isChartInteractionModeSelected('pan')"
-            @click="selectChartInteractionMode('pan')"
+      <n-button
+        circle
+        class="chart-interaction-mode-button"
+        :class="{
+          'chart-interaction-mode-button--active': isChartInteractionModeSelected('pan'),
+        }"
+        data-testid="chart-interaction-mode-pan"
+        aria-label="Pan mode"
+        :aria-pressed="isChartInteractionModeSelected('pan')"
+        @click="selectChartInteractionMode('pan')"
+      >
+        <template #icon>
+          <n-icon
+            size="20"
+            :color="chartInteractionModeIconColor('pan')"
           >
-            <n-icon size="20">
-              <HandRightOutline />
-            </n-icon>
-          </n-button>
+            <HandRightOutline />
+          </n-icon>
         </template>
-        <span data-testid="chart-interaction-mode-pan-tooltip">Pan</span>
-      </n-tooltip>
+      </n-button>
 
-      <n-tooltip trigger="hover">
-        <template #trigger>
-          <n-button
-            circle
-            class="chart-interaction-mode-button"
-            :class="{
-              'chart-interaction-mode-button--active': isChartInteractionModeSelected('measure'),
-            }"
-            data-testid="chart-interaction-mode-measure"
-            aria-label="Measure mode"
-            :aria-pressed="isChartInteractionModeSelected('measure')"
-            @click="selectChartInteractionMode('measure')"
+      <n-button
+        circle
+        class="chart-interaction-mode-button"
+        :class="{
+          'chart-interaction-mode-button--active': isChartInteractionModeSelected('measure'),
+        }"
+        data-testid="chart-interaction-mode-measure"
+        aria-label="Measure mode"
+        :aria-pressed="isChartInteractionModeSelected('measure')"
+        @click="selectChartInteractionMode('measure')"
+      >
+        <template #icon>
+          <n-icon
+            size="20"
+            :color="chartInteractionModeIconColor('measure')"
           >
-            <n-icon size="20">
-              <ExpandOutline />
-            </n-icon>
-          </n-button>
+            <ResizeOutline />
+          </n-icon>
         </template>
-        <span data-testid="chart-interaction-mode-measure-tooltip">Measure</span>
-      </n-tooltip>
+      </n-button>
     </div>
 
     <TopBarModals />
@@ -66,7 +61,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { NButton, NIcon, NTooltip } from 'naive-ui';
+import { NButton, NIcon } from 'naive-ui';
 
 import {
   DEFAULT_CHART_INTERACTION_MODE,
@@ -74,7 +69,7 @@ import {
 } from '@/components/Chart/chartInteractionMode';
 import TimeframeDropdown from '@/components/TopBar/TimeframeDropdown.vue';
 import TopBarModals from '@/components/TopBar/Modals/TopBarModals.vue';
-import { ExpandOutline, HandRightOutline, ListOutline } from '@/icons';
+import { HandRightOutline, ResizeOutline } from '@/icons';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useModalStore } from '@/stores/modalStore';
 
@@ -95,9 +90,14 @@ const emit = defineEmits<{
 const currentMarketStore = useCurrentMarketStore();
 const modalStore = useModalStore();
 const currentSymbol = computed(() => currentMarketStore.symbol);
+const selectedChartInteractionModeColor = '#7fe7c4';
 
 function isChartInteractionModeSelected(mode: ChartInteractionMode): boolean {
   return props.chartInteractionMode === mode;
+}
+
+function chartInteractionModeIconColor(mode: ChartInteractionMode): string | undefined {
+  return isChartInteractionModeSelected(mode) ? selectedChartInteractionModeColor : undefined;
 }
 
 function selectChartInteractionMode(mode: ChartInteractionMode): void {
@@ -120,24 +120,11 @@ function selectChartInteractionMode(mode: ChartInteractionMode): void {
   margin-left: auto;
 }
 
-.chart-interaction-mode-button {
-  width: 34px;
-  height: 34px;
-  color: #cbd5e1;
-  background: rgba(19, 23, 34, 0.35);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+.chart-interaction-mode-button--active :deep(.n-button__state-border) {
+  border: var(--n-border-hover);
 }
 
-.chart-interaction-mode-button:hover,
-.chart-interaction-mode-button:focus-visible {
-  color: #f8fafc;
-  border-color: rgba(148, 163, 184, 0.75);
-}
-
-.chart-interaction-mode-button--active {
-  color: #ffffff;
-  background: #36363661;
-  border-color: #dadee2;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+.chart-interaction-mode-button--active :deep(.n-button__content) {
+  color: #7fe7c4;
 }
 </style>

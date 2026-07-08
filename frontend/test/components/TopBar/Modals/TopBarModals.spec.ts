@@ -172,7 +172,7 @@ describe('TopBarModals', () => {
     expect(updateCurrentMarket).toHaveBeenCalledWith(market);
   });
 
-  it('refetches Backtest Runs when the history modal is closed and reopened', async () => {
+  it('refetches Backtests when the history modal is closed and reopened', async () => {
     const modalStore = useModalStore();
     const wrapper = mount(TopBarModals, {
       global: {

@@ -22,10 +22,10 @@
       </div>
       <template v-if="$slots.footer">
         <hr class="separator" />
+        <footer class="modal-footer">
+          <slot name="footer"></slot>
+        </footer>
       </template>
-      <footer class="modal-footer">
-        <slot name="footer"></slot>
-      </footer>
     </div>
   </div>
 </template>
