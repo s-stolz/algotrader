@@ -364,13 +364,11 @@ def baseline_existing_database(psql: Psql, migrations: list[Migration]) -> bool:
         )
         for migration in baseline_migrations
     )
-    psql.run(
-        f"""
+    psql.run(f"""
 INSERT INTO schema_migrations (version, name, checksum_sha256)
 VALUES
 {values};
-"""
-    )
+""")
     print(f"Baselined {len(baseline_migrations)} existing migrations.", flush=True)
     return True
 
@@ -378,8 +376,7 @@ VALUES
 def apply_migration(psql: Psql, migration: Migration) -> None:
     print(f"Applying V{migration.version:03d}__{migration.name}.sql", flush=True)
     if migration.is_transactional:
-        psql.run(
-            f"""
+        psql.run(f"""
 BEGIN;
 \\i {migration.container_path}
 INSERT INTO schema_migrations (version, name, checksum_sha256)
@@ -389,12 +386,10 @@ VALUES (
     {sql_literal(migration.checksum)}
 );
 COMMIT;
-"""
-        )
+""")
         return
 
-    psql.run(
-        f"""
+    psql.run(f"""
 \\i {migration.container_path}
 INSERT INTO schema_migrations (version, name, checksum_sha256)
 VALUES (
@@ -402,8 +397,7 @@ VALUES (
     {sql_literal(migration.name)},
     {sql_literal(migration.checksum)}
 );
-"""
-    )
+""")
 
 
 def apply_pending(

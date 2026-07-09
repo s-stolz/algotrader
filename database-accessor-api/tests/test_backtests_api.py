@@ -1329,14 +1329,6 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             / "V001__base_schema.sql"
         )
         sql = schema_path.read_text(encoding="utf-8").lower()
-        legacy_upgrade_path = (
-            Path(__file__).resolve().parents[2]
-            / "timescaledb-init"
-            / "migrations"
-            / "V005__upgrade_legacy_closed_trades.sql"
-        )
-        legacy_upgrade_sql = legacy_upgrade_path.read_text(encoding="utf-8").lower()
-
         self.assertIn("create table if not exists backtest_runs", sql)
         self.assertIn("create table if not exists backtest_fills", sql)
         self.assertIn("create table if not exists backtest_closed_trades", sql)
@@ -1345,10 +1337,6 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("trade_direction in ('long', 'short')", sql)
         self.assertIn("stop_loss_price double precision", sql)
         self.assertIn("take_profit_price double precision", sql)
-        self.assertIn("add column if not exists stop_loss_price", legacy_upgrade_sql)
-        self.assertIn("add column if not exists take_profit_price", legacy_upgrade_sql)
-        self.assertIn("cannot safely infer trade_direction", legacy_upgrade_sql)
-        self.assertIn("alter column trade_direction set not null", legacy_upgrade_sql)
         self.assertIn("request jsonb not null", sql)
         self.assertIn("metrics jsonb", sql)
         self.assertIn("diagnostics jsonb", sql)

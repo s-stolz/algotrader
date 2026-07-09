@@ -49,6 +49,8 @@ make migrate-db
 - Frontend quality gate: `make test frontend`
 - Full repository verification gate: `make verify`
 - Python-only verification gate: `make verify-python`
+- Timescale migration integration tests (running local stack):
+  `RUN_MIGRATION_INTEGRATION_TESTS=1 .venv/bin/python -m unittest scripts.tests.test_migrations_integration`
 
 Prefer `make` targets. Inspect `Makefile` only when debugging a target itself.
 

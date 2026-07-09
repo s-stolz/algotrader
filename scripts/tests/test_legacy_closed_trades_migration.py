@@ -1,7 +1,6 @@
 import unittest
 from pathlib import Path
 
-
 LEGACY_UPGRADE_PATH = (
     Path(__file__).resolve().parents[2]
     / "timescaledb-init"
@@ -10,8 +9,8 @@ LEGACY_UPGRADE_PATH = (
 )
 
 
-class BaseSchemaMigrationTests(unittest.TestCase):
-    def test_upgrades_supported_legacy_closed_trade_shapes(self):
+class LegacyClosedTradesMigrationTests(unittest.TestCase):
+    def test_defines_supported_upgrade_and_rejection_paths(self):
         sql = LEGACY_UPGRADE_PATH.read_text(encoding="utf-8").lower()
 
         self.assertIn("add column if not exists stop_loss_price", sql)
