@@ -1,7 +1,7 @@
 # TimescaleDB Init Context
 
-SQL bootstrap and ledgered migration files for the `finance_data` TimescaleDB
-database.
+Image-owned SQL bootstrap and ledgered migration files for the configured
+TimescaleDB database.
 
 ## Owned Interfaces
 
@@ -14,8 +14,8 @@ database.
 
 ## Key Files
 
-- `00-create-database.sql`: bootstrap-only database creation for fresh Docker
-  volumes.
+- `Dockerfile`: TimescaleDB image with validated bootstrap tooling and migration
+  files installed under `/docker-entrypoint-initdb.d`.
 - `01-run-migrations.sh`: bootstrap-only migration application for fresh Docker
   volumes.
 - `migrations/V001__base_schema.sql`: extension, market/candle tables, and
@@ -27,6 +27,8 @@ database.
   retuning and historical refresh.
 - `migrations/V005__upgrade_legacy_closed_trades.sql`: explicit upgrade or
   rejection for supported pre-ledger closed-trade table shapes.
+- `migrations/V006__audit_closed_trades_schema.sql`: complete structural audit
+  of the closed-trade table after the legacy upgrade.
 
 ## Contracts
 
@@ -48,6 +50,11 @@ database.
   is current for completed result artifacts.
 - Fresh database initialization creates the complete durable backtest schema
   without a separate destructive reset script.
+- The TimescaleDB image entrypoint creates the database named by generated
+  `POSTGRES_DB` before it runs `01-run-migrations.sh`; bootstrap SQL does not
+  hard-code or separately create a database.
+- The TimescaleDB container receives non-secret shared configuration separately
+  from its database password secret file.
 - Runtime migrations use strict `VNNN__description.sql` filenames and are applied
   once, in order, with checksums recorded in `schema_migrations`.
 - Existing databases that match the historical schema may baseline `V001`-`V002`
@@ -55,8 +62,9 @@ database.
   policy/compression and historical-refresh effects cannot all be inferred
   reliably from catalog state.
 - Compatible legacy closed-trade tables are upgraded by `V005`; populated
-  directionless or structurally unsupported tables fail with explicit recovery
-  guidance instead of being marked current.
+  directionless tables fail there. `V006` audits the complete resulting column,
+  key, relationship, and enum-check shape so structurally unsupported databases
+  fail with recovery guidance instead of being marked current.
 - Concurrent runners are excluded by a session-scoped PostgreSQL advisory lock,
   which PostgreSQL releases automatically if the runner disconnects or dies.
 - Migration rollback is modeled as a later forward migration, not a down script.

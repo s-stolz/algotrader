@@ -1,23 +1,26 @@
 import unittest
 from pathlib import Path
 
-LEGACY_UPGRADE_PATH = (
+SCHEMA_AUDIT_PATH = (
     Path(__file__).resolve().parents[2]
     / "timescaledb-init"
     / "migrations"
-    / "V005__upgrade_legacy_closed_trades.sql"
+    / "V006__audit_closed_trades_schema.sql"
 )
 
 
-class LegacyClosedTradesMigrationTests(unittest.TestCase):
-    def test_defines_supported_upgrade_and_rejection_paths(self):
-        sql = LEGACY_UPGRADE_PATH.read_text(encoding="utf-8").lower()
+class ClosedTradesSchemaAuditTests(unittest.TestCase):
+    def test_audits_columns_keys_relationships_and_enum_checks(self):
+        sql = SCHEMA_AUDIT_PATH.read_text(encoding="utf-8").lower()
 
-        self.assertIn("add column if not exists stop_loss_price", sql)
-        self.assertIn("add column if not exists take_profit_price", sql)
-        self.assertIn("cannot safely infer trade_direction", sql)
-        self.assertIn("alter column trade_direction set not null", sql)
-        self.assertIn("unsupported legacy backtest_closed_trades table shape", sql)
+        self.assertIn("expected_columns", sql)
+        self.assertIn("constraints.contype = 'p'", sql)
+        self.assertIn("constraints.contype = 'u'", sql)
+        self.assertIn("constraints.contype = 'f'", sql)
+        self.assertIn("constraints.confdeltype = 'c'", sql)
+        self.assertIn("exit_reason", sql)
+        self.assertIn("trade_direction", sql)
+        self.assertIn("unsupported backtest_closed_trades schema", sql)
 
 
 if __name__ == "__main__":

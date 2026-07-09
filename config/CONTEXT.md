@@ -29,6 +29,9 @@ Centralized non-secret topology plus generated runtime environment files.
 - Run `make validate-config` or `python scripts/generate_env.py --validate` to
   check required secret values.
 - Docker Compose uses `config/.env.shared` plus service-specific secret env files.
+- TimescaleDB topology generates both application-facing `TIMESCALEDB_DB` /
+  `TIMESCALEDB_USER` values and image-facing `POSTGRES_DB` / `POSTGRES_USER`
+  aliases. The password remains only in `config/.env.secrets.db`.
 - Backtester topology generates API host/port/logging values and
   `BACKTESTER_WORKER_POLL_INTERVAL_SECONDS`; the default poll interval is one
   second.

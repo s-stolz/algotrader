@@ -59,5 +59,49 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         )
 
 
+class TimescaleRuntimeConfigurationTests(unittest.TestCase):
+    def test_tracked_database_topology_generates_postgres_image_environment(self) -> None:
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        topology["infrastructure"]["timescaledb"]["user"] = "market_writer"
+        topology["infrastructure"]["timescaledb"]["database"] = "market_history"
+
+        shared_env, db_secrets_env, _, _ = generate_env.build_env(
+            topology,
+            {"TIMESCALEDB_PASSWORD": "local-password"},
+        )
+
+        self.assertEqual(shared_env["TIMESCALEDB_USER"], "market_writer")
+        self.assertEqual(shared_env["TIMESCALEDB_DB"], "market_history")
+        self.assertEqual(shared_env["POSTGRES_USER"], "market_writer")
+        self.assertEqual(shared_env["POSTGRES_DB"], "market_history")
+        self.assertNotIn("POSTGRES_PASSWORD", shared_env)
+        self.assertEqual(db_secrets_env["POSTGRES_PASSWORD"], "local-password")
+
+    def test_compose_uses_generated_environment_with_self_contained_database_image(
+        self,
+    ) -> None:
+        compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+
+        timescaledb = compose["services"]["timescaledb"]
+
+        self.assertEqual(
+            timescaledb["build"],
+            {
+                "context": ".",
+                "dockerfile": "timescaledb-init/Dockerfile",
+            },
+        )
+        self.assertEqual(timescaledb["image"], "algotrader-timescaledb")
+        self.assertEqual(
+            timescaledb["env_file"],
+            ["./config/.env.shared", "./config/.env.secrets.db"],
+        )
+        self.assertNotIn("environment", timescaledb)
+        self.assertNotIn(
+            "./timescaledb-init:/docker-entrypoint-initdb.d",
+            timescaledb["volumes"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

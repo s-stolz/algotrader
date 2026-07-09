@@ -102,16 +102,17 @@ services:
 
   timescaledb:
     container_name: timescaledb
-    image: timescale/timescaledb:latest-pg17
+    build:
+      context: .
+      dockerfile: timescaledb-init/Dockerfile
+    image: algotrader-timescaledb
     env_file:
+      - ./config/.env.shared
       - ./config/.env.secrets.db
-    environment:
-      POSTGRES_USER: ${TIMESCALEDB_USER:-postgres}
     ports:
       - ${TIMESCALEDB_PUBLISHED_PORT:-5432}:5432
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
-      - ./timescaledb-init:/docker-entrypoint-initdb.d
     command:
       [
         "postgres",

@@ -228,6 +228,8 @@ def build_env(
         "TIMESCALEDB_USER": stringify(timescaledb_user),
         "TIMESCALEDB_DB": stringify(timescaledb_db),
         "TIMESCALEDB_ECHO": stringify(timescaledb_echo),
+        "POSTGRES_USER": stringify(timescaledb_user),
+        "POSTGRES_DB": stringify(timescaledb_db),
         "VITE_PROXY_DATA_ACCESSOR_TARGET": f"http://{db_api_host}:{db_api_port}",
         "VITE_PROXY_BACKTESTER_TARGET": f"http://{backtester_host}:{backtester_port}",
         "VITE_PROXY_INDICATOR_TARGET": f"http://{indicator_host}:{indicator_port}",

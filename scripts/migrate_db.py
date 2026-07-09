@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
+import os
 import re
 import subprocess
+import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,14 +31,11 @@ class Migration:
     name: str
     path: Path
     checksum: str
-
-    @property
-    def container_path(self) -> str:
-        return f"{CONTAINER_MIGRATIONS_DIR}/{self.path.name}"
+    sql: str
 
     @property
     def is_transactional(self) -> bool:
-        return not self.path.read_text(encoding="utf-8").startswith(NON_TRANSACTIONAL_MARKER)
+        return not self.sql.startswith(NON_TRANSACTIONAL_MARKER)
 
 
 @dataclass
@@ -58,11 +59,19 @@ def read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def load_migrations() -> list[Migration]:
+def require_config(values: Mapping[str, str], *keys: str) -> str:
+    for key in keys:
+        if value := values.get(key):
+            return value
+    raise SystemExit(f"Missing database configuration: expected {' or '.join(keys)}.")
+
+
+def load_migrations(migrations_dir: Path | None = None) -> list[Migration]:
+    migrations_dir = MIGRATIONS_DIR if migrations_dir is None else migrations_dir
     migrations: list[Migration] = []
     seen_versions: set[int] = set()
 
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+    for path in sorted(migrations_dir.glob("*.sql")):
         match = MIGRATION_PATTERN.match(path.name)
         if not match:
             raise SystemExit(
@@ -75,18 +84,20 @@ def load_migrations() -> list[Migration]:
             raise SystemExit(f"Duplicate migration version: V{version:03d}")
         seen_versions.add(version)
 
-        checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        content = path.read_bytes()
+        checksum = hashlib.sha256(content).hexdigest()
         migrations.append(
             Migration(
                 version=version,
                 name=match.group("name"),
                 path=path,
                 checksum=checksum,
+                sql=content.decode("utf-8"),
             ),
         )
 
     if not migrations:
-        raise SystemExit(f"No migrations found in {MIGRATIONS_DIR}")
+        raise SystemExit(f"No migrations found in {migrations_dir}")
 
     expected_versions = list(range(1, len(migrations) + 1))
     actual_versions = [migration.version for migration in migrations]
@@ -104,27 +115,36 @@ def sql_literal(value: str) -> str:
 
 
 class Psql:
-    def __init__(self, db_name: str, db_user: str) -> None:
+    def __init__(self, db_name: str, db_user: str, *, in_container: bool = False) -> None:
         self.db_name = db_name
         self.db_user = db_user
+        self.in_container = in_container
 
     def command(self, *, capture: bool = False) -> list[str]:
-        command = [
-            "docker",
-            "compose",
-            "--env-file",
-            "config/.env.shared",
-            "exec",
-            "-T",
-            "timescaledb",
-            "psql",
-            "--username",
-            self.db_user,
-            "--dbname",
-            self.db_name,
-            "--set",
-            "ON_ERROR_STOP=1",
-        ]
+        command = (
+            []
+            if self.in_container
+            else [
+                "docker",
+                "compose",
+                "--env-file",
+                "config/.env.shared",
+                "exec",
+                "-T",
+                "timescaledb",
+            ]
+        )
+        command.extend(
+            [
+                "psql",
+                "--username",
+                self.db_user,
+                "--dbname",
+                self.db_name,
+                "--set",
+                "ON_ERROR_STOP=1",
+            ]
+        )
         if capture:
             command.extend(["--tuples-only", "--no-align"])
         return command
@@ -358,10 +378,7 @@ def baseline_existing_database(psql: Psql, migrations: list[Migration]) -> bool:
         migration for migration in migrations if migration.version <= LEGACY_BASELINE_MAX_VERSION
     ]
     values = ",\n".join(
-        (
-            f"({migration.version}, {sql_literal(migration.name)}, "
-            f"{sql_literal(migration.checksum)})"
-        )
+        (f"({migration.version}, {sql_literal(migration.name)}, {sql_literal(migration.checksum)})")
         for migration in baseline_migrations
     )
     psql.run(f"""
@@ -378,7 +395,7 @@ def apply_migration(psql: Psql, migration: Migration) -> None:
     if migration.is_transactional:
         psql.run(f"""
 BEGIN;
-\\i {migration.container_path}
+{migration.sql}
 INSERT INTO schema_migrations (version, name, checksum_sha256)
 VALUES (
     {migration.version},
@@ -390,7 +407,7 @@ COMMIT;
         return
 
     psql.run(f"""
-\\i {migration.container_path}
+{migration.sql}
 INSERT INTO schema_migrations (version, name, checksum_sha256)
 VALUES (
     {migration.version},
@@ -419,15 +436,7 @@ def apply_pending(
     print(f"Applied {len(pending)} migration(s).", flush=True)
 
 
-def main() -> int:
-    migrations = load_migrations()
-    shared_env = read_env_file(SHARED_ENV_PATH)
-    read_env_file(DB_SECRETS_ENV_PATH)
-
-    db_name = shared_env.get("TIMESCALEDB_DB") or "finance_data"
-    db_user = shared_env.get("TIMESCALEDB_USER") or "postgres"
-    psql = Psql(db_name=db_name, db_user=db_user)
-
+def run_migrations(psql: Psql, migrations: list[Migration]) -> None:
     create_ledger(psql)
     lock = acquire_lock(psql)
     try:
@@ -442,8 +451,33 @@ def main() -> int:
     finally:
         release_lock(lock)
 
+
+def main(
+    argv: Sequence[str] = (),
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--in-container", action="store_true")
+    parser.add_argument("--migrations-dir", type=Path, default=MIGRATIONS_DIR)
+    args = parser.parse_args(argv)
+
+    environ = os.environ if environ is None else environ
+    migrations = load_migrations(args.migrations_dir)
+    if args.in_container:
+        db_name = require_config(environ, "TIMESCALEDB_DB", "POSTGRES_DB")
+        db_user = require_config(environ, "TIMESCALEDB_USER", "POSTGRES_USER")
+    else:
+        shared_env = read_env_file(SHARED_ENV_PATH)
+        read_env_file(DB_SECRETS_ENV_PATH)
+        db_name = require_config(shared_env, "TIMESCALEDB_DB")
+        db_user = require_config(shared_env, "TIMESCALEDB_USER")
+
+    psql = Psql(db_name=db_name, db_user=db_user, in_container=args.in_container)
+    run_migrations(psql, migrations)
+
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

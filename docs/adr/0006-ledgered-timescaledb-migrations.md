@@ -15,19 +15,27 @@ changes have already been applied.
 
 Use forward-only, ledgered TimescaleDB migrations under
 `timescaledb-init/migrations/` with strict `VNNN__description.sql` filenames.
+Build a self-contained TimescaleDB image that copies the migration assets into
+the image-owned initialization directory. For a fresh volume, use the upstream
+PostgreSQL entrypoint contract: generated `POSTGRES_DB` and `POSTGRES_USER`
+values select and create the configured database before the bootstrap migration
+runner executes. Keep `POSTGRES_PASSWORD` in the database-only secret env file.
 `make migrate-db` will run a Python migration runner through the existing
 generated configuration and execute SQL inside the `timescaledb` Docker
 container. Applied migrations are recorded with checksums in `schema_migrations`;
-already-applied checksum drift, missing files, gaps, and duplicate versions fail
-the run. Existing databases that match the historical schema may conservatively
+the runner executes the same loaded migration content used to calculate each
+recorded checksum. Already-applied checksum drift, missing files, gaps, and
+duplicate versions fail the run. Existing databases that match the historical
+schema may conservatively
 baseline `V001`-`V002`; `V003` and `V004` are always replayed because their
 policy/compression and historical-refresh effects cannot all be inferred from
 catalog state. No version after `V002` is included in this legacy baseline.
 
 ## Consequences
 
-- Fresh Docker volumes still bootstrap from `timescaledb-init/`, but ongoing
-  schema changes are tracked by the migration ledger.
+- Fresh Docker volumes bootstrap from the configured database name through the
+  self-contained TimescaleDB image; ongoing schema changes are tracked by the
+  migration ledger.
 - Migration files are transactional per file where PostgreSQL allows it and stop
   the run on first failure.
 - Rollbacks are not modeled; reversions use later forward migrations.
@@ -35,8 +43,9 @@ catalog state. No version after `V002` is included in this legacy baseline.
   from applying schema changes at the same time and is released automatically if
   the runner's PostgreSQL session ends unexpectedly.
 - `V005` upgrades compatible empty legacy closed-trade tables and rejects
-  populated directionless or structurally unsupported tables with recovery
-  guidance instead of recording a silently incomplete schema.
+  populated directionless tables. Because ledgered migrations remain immutable,
+  `V006` performs the complete structural audit and rejects unsupported tables
+  with recovery guidance instead of recording the database as current.
 
 ## References
 
