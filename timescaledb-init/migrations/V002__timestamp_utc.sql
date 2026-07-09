@@ -1,13 +1,8 @@
--- Idempotent migration for existing deployments:
--- - add markets.timezone
--- - migrate candles.timestamp (timestamp) -> candles.timestamp_utc (timestamptz)
-
 ALTER TABLE IF EXISTS markets
 ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'UTC';
 
 DO $$
 BEGIN
-    -- If the legacy column exists, migrate data and switch PK.
     IF EXISTS (
         SELECT 1
         FROM information_schema.columns
@@ -16,7 +11,6 @@ BEGIN
     ) THEN
         ALTER TABLE candles ADD COLUMN IF NOT EXISTS timestamp_utc TIMESTAMPTZ;
 
-        -- Legacy timestamps are treated as UTC.
         UPDATE candles
         SET timestamp_utc = "timestamp" AT TIME ZONE 'UTC'
         WHERE timestamp_utc IS NULL;

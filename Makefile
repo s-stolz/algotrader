@@ -14,7 +14,7 @@ ifneq ($(strip $(TEST_BACKEND_FROM_GOAL)),)
 TEST_BACKEND := $(TEST_BACKEND_FROM_GOAL)
 endif
 
-.PHONY: ensure-pyyaml config validate-config smoke-backtester up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine frontend
+.PHONY: ensure-pyyaml config validate-config smoke-backtester migrate-db up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine frontend
 
 ifeq ($(DETACH),1)
 UP_FLAGS += -d
@@ -40,6 +40,9 @@ smoke-backtester: config
 		[ -x .venv/bin/python ] && py_bin=".venv/bin/python"; \
 		set -a; . ../config/.env.shared; set +a; \
 		PYTHONPATH=src $$py_bin smoke.py)
+
+migrate-db: config
+	$(PYTHON) scripts/migrate_db.py
 
 up: config
 	$(COMPOSE) up $(UP_FLAGS)

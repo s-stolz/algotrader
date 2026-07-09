@@ -13,12 +13,20 @@ Run commands from the repository root unless noted.
 - View logs: `make logs`
 - View containers: `make ps`
 - Exercise asynchronous backtester success/failure paths: `make smoke-backtester`
+- Apply pending TimescaleDB migrations to a running stack: `make migrate-db`
 
 Direct Compose path:
 
 ```sh
 make config
 docker compose --env-file config/.env.shared up --build
+```
+
+Database migration path:
+
+```sh
+make up-detached
+make migrate-db
 ```
 
 ## Python Environments

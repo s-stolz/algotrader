@@ -1,6 +1,7 @@
 # TimescaleDB Init Context
 
-SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
+SQL bootstrap and ledgered migration files for the `finance_data` TimescaleDB
+database.
 
 ## Owned Interfaces
 
@@ -8,17 +9,24 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
 - Raw Candle storage in `candles` with `timestamp_utc`.
 - Continuous aggregate views and refresh policies for higher Timeframes.
 - Idempotent SQL bootstrap and retune behavior for local databases.
+- Forward-only TimescaleDB migrations recorded in `schema_migrations`.
 - Durable backtest lifecycle, request/result JSONB, fill, and trade tables.
 
 ## Key Files
 
-- `01-init.sql`: database, extension, market/candle tables, and durable backtest
-  lifecycle/result tables.
-- `02-migrate-timestamps.sql`: timestamp migration support.
-- `03-optimize-candles.sql`: hypertable setup, compression, indexes, continuous
-  aggregates, and aggregate policies.
-- `04-retune-cagg-and-index.sql`: continuous aggregate policy retuning and
-  historical refresh.
+- `00-create-database.sql`: bootstrap-only database creation for fresh Docker
+  volumes.
+- `01-run-migrations.sh`: bootstrap-only migration application for fresh Docker
+  volumes.
+- `migrations/V001__base_schema.sql`: extension, market/candle tables, and
+  durable backtest lifecycle/result tables.
+- `migrations/V002__timestamp_utc.sql`: timestamp migration support.
+- `migrations/V003__optimize_candles.sql`: hypertable setup, compression,
+  indexes, continuous aggregates, and aggregate policies.
+- `migrations/V004__retune_cagg_and_index.sql`: continuous aggregate policy
+  retuning and historical refresh.
+- `migrations/V005__upgrade_legacy_closed_trades.sql`: explicit upgrade or
+  rejection for supported pre-ledger closed-trade table shapes.
 
 ## Contracts
 
@@ -40,14 +48,28 @@ SQL bootstrap and migration files for the `finance_data` TimescaleDB database.
   is current for completed result artifacts.
 - Fresh database initialization creates the complete durable backtest schema
   without a separate destructive reset script.
+- Runtime migrations use strict `VNNN__description.sql` filenames and are applied
+  once, in order, with checksums recorded in `schema_migrations`.
+- Existing databases that match the historical schema may baseline `V001`-`V002`
+  into `schema_migrations`. `V003` and `V004` are always replayed because their
+  policy/compression and historical-refresh effects cannot all be inferred
+  reliably from catalog state.
+- Compatible legacy closed-trade tables are upgraded by `V005`; populated
+  directionless or structurally unsupported tables fail with explicit recovery
+  guidance instead of being marked current.
+- Concurrent runners are excluded by a session-scoped PostgreSQL advisory lock,
+  which PostgreSQL releases automatically if the runner disconnects or dies.
+- Migration rollback is modeled as a later forward migration, not a down script.
 
 ## Change Triggers
 
 - If adding Timeframe support, update this directory, `database-accessor-api`,
   `libs/db_accessor_client`, frontend Timeframe options, and relevant service
   contexts.
-- Keep SQL idempotent where possible because init and retune scripts may be run
-  against existing local databases.
+- Keep migration SQL transactional where possible. Changes after a migration is
+  applied must be added as a later `VNNN` file instead of editing the applied
+  migration.
+- If bootstrap or migration runner behavior changes, update ADR-0006.
 - If Market or Candle storage shape changes, update root `CONTEXT.md` and
   `docs/agent/CONTRACT-CHANGES.md` if the cross-service interface changes.
 

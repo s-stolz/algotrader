@@ -1,6 +1,3 @@
--- Performance-focused TimescaleDB migration for candle reads.
--- Idempotent and safe to rerun.
-
 DO $$
 BEGIN
     IF EXISTS (
@@ -26,11 +23,8 @@ SET (
     timescaledb.compress_segmentby = 'symbol_id',
     timescaledb.compress_orderby = 'timestamp_utc DESC'
 );
-
 SELECT add_compression_policy('candles', INTERVAL '7 days', if_not_exists => TRUE);
 
--- Optimize latest-M1 history reads:
--- query shape is symbol filter + timestamp DESC + limit, while selecting OHLCV.
 CREATE INDEX IF NOT EXISTS idx_candles_symbol_ts_desc_cover
 ON candles (symbol_id, timestamp_utc DESC)
 INCLUDE (open, high, low, close, volume);

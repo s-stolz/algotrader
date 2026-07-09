@@ -41,4 +41,4 @@ per-run sequence values. PostgreSQL/TimescaleDB is the durable source of truth.
 - `database-accessor-api/CONTEXT.md`
 - `timescaledb-init/CONTEXT.md`
 - `libs/CONTEXT.md`
-- `timescaledb-init/01-init.sql`
+- `timescaledb-init/migrations/V001__base_schema.sql`

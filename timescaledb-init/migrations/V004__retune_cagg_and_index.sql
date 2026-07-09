@@ -1,7 +1,6 @@
--- Retune existing databases after introducing broader cagg windows
--- and add an index optimized for latest-M1 reads.
---
--- Safe to run multiple times.
+-- migrate-db: no-transaction
+-- This migration refreshes historical continuous aggregates and can take time
+-- on databases with large candle history.
 
 CREATE INDEX IF NOT EXISTS idx_candles_symbol_ts_desc_cover
 ON candles (symbol_id, timestamp_utc DESC)
@@ -94,8 +93,6 @@ SELECT add_continuous_aggregate_policy(
     if_not_exists => TRUE
 );
 
--- One-time backfill of historical range into continuous aggregates.
--- If history is very large this can take time.
 DO $$
 DECLARE
     min_ts TIMESTAMPTZ;

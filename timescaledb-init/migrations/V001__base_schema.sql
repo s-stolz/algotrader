@@ -1,15 +1,5 @@
--- Create the database
-CREATE DATABASE finance_data;
-
--- Connect to the newly created database
-\c finance_data;
-
--- Create the extension
 CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 
--- Adjust user privileges as necessary
-
--- Create markets table
 CREATE TABLE IF NOT EXISTS markets (
     symbol_id SERIAL PRIMARY KEY,
     symbol VARCHAR(10) NOT NULL,
@@ -19,7 +9,6 @@ CREATE TABLE IF NOT EXISTS markets (
     timezone VARCHAR(64) NOT NULL DEFAULT 'UTC'
 );
 
--- Create candles table
 CREATE TABLE IF NOT EXISTS candles (
     symbol_id INTEGER NOT NULL,
     timestamp_utc TIMESTAMPTZ NOT NULL,
@@ -32,7 +21,6 @@ CREATE TABLE IF NOT EXISTS candles (
     PRIMARY KEY (symbol_id, timestamp_utc)
 );
 
--- Create durable backtest lifecycle and result tables.
 CREATE TABLE IF NOT EXISTS backtest_runs (
     run_id VARCHAR(36) PRIMARY KEY,
     status VARCHAR(16) NOT NULL,
