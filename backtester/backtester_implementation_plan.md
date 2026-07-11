@@ -12,22 +12,22 @@ Ralph artifacts rather than by extending this document directly.
 Agents should read this only when historical sequencing or deferred scope is
 needed for a backtester task.
 
-- M0-M7, including M5A and M5B, are implemented baseline work and should
+- M0-M7 and M8A, including M5A and M5B, are implemented baseline work and should
   not be redone. M6/M7 were delivered together and expanded by
-  `backtester-durable-async-runs`.
+  `backtester-durable-async-runs`; M8A was delivered by
+  `backtester-short-trades`.
 - The Ralph PRD `backtester-bar-engine-parity` covered single-symbol, bar-mode
   vectorized/event-driven parity: request-level engine selection, mandatory strategy
   resolution, declarative SMA crossover support, event-driven bar execution, shared
   fill/accounting semantics, CLI engine selection, and parity/no-lookahead coverage.
 - The bracket-exit campaign added stop-loss, take-profit, and deterministic
   ambiguous-bar handling to the supported shared bar semantics.
-- M8-M10B are not implemented. They remain future PRD candidates for research
-  ergonomics and sweeps, bar-mode short support, richer order realism, tick
-  support, multi-symbol runs, and multi-timeframe parallelism.
-- Short support is a good independent candidate before full M9 order realism:
-  current domain fields already expose `allow_short` and `PositionSide.SHORT`,
-  but request validation, both engines, strategy targets, sizing, protective
-  exits, and trade accounting are still explicitly long-only.
+- M8 and M9-M10B are not implemented. They remain future PRD candidates for
+  research ergonomics and sweeps, richer order realism, tick support,
+  multi-symbol runs, and multi-timeframe parallelism.
+- M8A added explicit Allowed Directions, signed targets, symmetric long/short
+  execution, short protective exits, direction-aware trade accounting and
+  metrics, and durable direction fields across both bar engines.
 
 ## Delivery Rules
 
@@ -48,8 +48,9 @@ needed for a backtester task.
 Current automated coverage includes:
 
 - Backtester domain, strategy, data preparation, execution, engine parity,
-  bracket exits, persistence adapters, public API routes, worker lifecycle,
-  process isolation, CLI behavior, configuration, and smoke-runner tests.
+  long/short execution, bracket exits, direction-aware trade accounting,
+  persistence adapters, public API routes, worker lifecycle, process isolation,
+  CLI behavior, configuration, and smoke-runner tests.
 - Database-accessor tests for durable JSON mapping, filters, compare-and-set
   claiming, transactional completion and rollback, execution-log ordering, and
   cascade deletion.
@@ -63,8 +64,7 @@ database-accessor-api, and shared database accessor client suites.
 
 ## Milestone Status Snapshot
 
-Last audited against the current working tree with `make test backtester`
-passing 200 tests.
+Current implementation snapshot:
 
 | Milestone | Status | Current implementation note |
 | --- | --- | --- |
@@ -79,8 +79,8 @@ passing 200 tests.
 | M6 Durable Persistence Foundation | Implemented | Durable run schema, JSON request/result snapshots, normalized fills/trades, accessor routes, shared clients, and CLI persistence are present. |
 | M7 Durable Asynchronous API and Worker | Implemented | FastAPI lifecycle API, singleton worker, FIFO claiming, child execution, terminal failure handling, and smoke coverage are present. |
 | M8 Research Ergonomics | Not implemented | No experiment/sweep use case, sweep CLI/API workflow, stable sweep artifacts, custom-strategy docs, or second example strategy are present. |
-| M8A Bar-Mode Short Support | Not implemented | Domain placeholders exist, but validation rejects `allow_short`, both engines reject negative targets, v1 bar strategies are long-only, sizing clamps short-like targets to zero, protective exits only model long stops/targets, and trade accounting rejects SELL without an open long. |
-| M9 Richer Event-Driven Bar Execution | Not implemented | Current API and engines reject partial fills; no limit/stop order, latency, spread/liquidity, queue-position, or optional richer realism mode exists. Short support should be handled first as M8A unless the PRD deliberately combines it with broader order realism. |
+| M8A Bar-Mode Short Support | Implemented | Allowed Directions and signed targets support long-only, short-only, and long/short bar runs in both engines, including flips, short protective exits, direction-aware trades and metrics, CLI/API persistence, and parity coverage. |
+| M9 Richer Event-Driven Bar Execution | Not implemented | Current API and engines reject partial fills; no limit/stop order, latency, spread/liquidity, queue-position, or optional richer realism mode exists. |
 | M10A Vectorized Tick Replay | Not implemented | Tick enum/view placeholders exist, but the runner and vectorized engine reject `data_granularity=tick`; no tick replay exists. |
 | M10B Event-Driven Tick Simulation | Not implemented | Tick event placeholders exist, but the event-driven engine rejects tick requests; no sequential tick loop exists. |
 
@@ -712,47 +712,40 @@ Improve day-to-day usability for strategy research.
 
 ## M8A: Bar-Mode Short Support
 
-Status: Not implemented.
+Status: Implemented.
 
-Ralph source: future PRD candidate for enabling symmetric long/short bar-mode
-backtests before broader M9 order realism.
+Ralph source: `backtester-short-trades`.
 
-Current gap: short-facing domain fields exist (`ExecutionConfig.allow_short`,
-`PositionSide.SHORT`, signed target quantities), but the runnable implementation
-is still long-only:
+Delivered capabilities:
 
-- `app/backtest_runs.py` rejects `allow_short=True` during durable submission
-  validation.
-- `engines/vectorized.py` and `engines/event_driven.py` reject
-  `allow_short=True` and negative target quantities.
-- `strategies/base.py` requires `BarStrategyModel.long_only=True` and maps exit
-  signals to flat exposure, not short exposure.
-- `execution/sizing.py` maps only positive targets to fixed size and maps zero
-  or negative targets to flat.
-- `execution/fills.py` and the event-driven protective-exit path only compute
-  long stop-loss/take-profit levels.
-- `execution/trades.py` raises on `SELL` without an open long and computes PnL
-  only for long round trips.
-- Existing parity tests intentionally assert that both engines reject
-  `allow_short=True` and negative strategy outputs.
+- `ExecutionConfig.allowed_directions` explicitly supports `long_only`,
+  `short_only`, and `long_and_short`.
+- Signed targets, sizing, fills, portfolio quantities, reductions, covers, and
+  direction flips are supported by both bar engines.
+- The direction-neutral SMA crossover strategy maps its signals according to
+  Allowed Directions and is exposed consistently through the CLI.
+- Long and short protective exits share deterministic gap-through and ambiguous
+  intrabar behavior.
+- Closed trades persist explicit direction and planned protective prices;
+  metrics report long/short counts, win rates, and realized PnL.
+- Engine parity and API/CLI coverage exercise all three modes; end-to-end
+  persistence coverage exercises short-trade artifacts.
 
 ### Goal
 
 Support deterministic single-symbol bar-mode short trades in both vectorized and
-event-driven engines while preserving the existing long-only baseline when
-`allow_short=False`.
+event-driven engines while retaining explicit direction constraints.
 
 ### In Scope
 
 - signed target quantity semantics:
   - positive target = long exposure
   - zero target = flat
-  - negative target = short exposure only when `allow_short=True`
-- strategy contract extension for a v1 declarative long/short bar strategy, or a
-  new example strategy that emits negative targets through an explicit parameter
+  - negative target = short exposure when Allowed Directions permits it
+- direction-neutral declarative strategy semantics interpreted according to the
+  run's Allowed Directions
 - sizing transforms that preserve target sign while applying fixed absolute size
-- risk/validation rule that rejects negative targets when `allow_short=False`
-  and permits them when `allow_short=True`
+- validation that rejects targets outside the configured Allowed Directions
 - vectorized fill generation for long opens/closes, short opens/covers, and
   direct flips through flat accounting
 - event-driven sequential runtime parity for the same signed-target semantics
@@ -765,9 +758,8 @@ event-driven engines while preserving the existing long-only baseline when
   - short stop above entry and target below entry
   - deterministic ambiguous-bar handling through the existing
     `intrabar_exit_policy`
-- persistence/API schema compatibility using existing fill side and closed-trade
-  fields; add a trade-side field only if result consumers need to distinguish
-  long and short trades without inferring from fill sequence
+- persistence/API schemas with explicit closed-trade direction so consumers do
+  not infer trade direction from fill sequence
 
 ### Out of Scope
 
@@ -779,22 +771,22 @@ event-driven engines while preserving the existing long-only baseline when
 
 ### Deliverables
 
-- `allow_short=True` accepted for supported single-symbol bar-mode requests
-- one reproducible short-capable strategy fixture or example
+- all three Allowed Directions modes accepted for supported single-symbol
+  bar-mode requests
+- one reproducible direction-neutral strategy example
 - vectorized/event-driven parity for long-only, short-only, and flip scenarios
 - closed trades and metrics include short realized PnL correctly
 
 ### Executable Path
 
 - run a short-capable strategy in vectorized and event-driven bar mode with
-  `allow_short=True` and receive matching fills, trades, equity curve, metrics,
-  and diagnostics.
+  `allowed_directions=long_and_short` and receive matching fills, trades, equity
+  curve, metrics, and diagnostics.
 
 ### Test Coverage
 
-- request-validation tests for `allow_short=True` acceptance in supported bar
-  mode and continued rejection of negative targets when `allow_short=False`
-- unit tests for signed fixed sizing and long-only risk behavior
+- request-validation tests for all Allowed Directions modes
+- unit tests for signed fixed sizing and direction validation
 - fill-generation tests for open short, cover short, long-to-short flip,
   short-to-long flip, invalid-open gap policies, fees, and slippage
 - trade-accounting tests for short round trips, partial covers if supported by
@@ -803,14 +795,13 @@ event-driven engines while preserving the existing long-only baseline when
   ambiguous OHLC bars
 - parity tests covering long-only regression, short-only, flip, costs, gap
   policy, no-lookahead, and bracket exits
-- persistence/API tests for short fills/trades if a trade-side result field is
-  added
+- persistence/API tests for explicit closed-trade direction
 
 ### Acceptance Criteria
 
-- `allow_short=False` preserves current long-only behavior and rejection tests.
-- `allow_short=True` allows negative targets only in the supported single-symbol
-  bar-mode slice.
+- `long_only`, `short_only`, and `long_and_short` constrain targets explicitly.
+- Negative targets are supported only when the configured Allowed Directions
+  permits short trades in the single-symbol bar-mode slice.
 - Vectorized and event-driven engines produce matching public results for the
   agreed short-support parity matrix.
 - Short protective exits are deterministic and documented in backtester context.
@@ -830,9 +821,9 @@ Ralph source: future PRD candidate for richer order realism.
 
 Current gap: the current API and both engines still reject `allow_partial_fills`,
 and there is no richer order request, partial-fill, latency, spread/liquidity,
-queue-position, or optional realism mode. Short support is tracked separately in
-M8A because it can be delivered against the existing next-open bar execution
-contract without introducing richer order simulation.
+queue-position, or optional realism mode. M8A established short support against
+the existing next-open bar execution contract without introducing richer order
+simulation.
 
 ### Goal
 

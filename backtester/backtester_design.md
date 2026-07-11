@@ -219,7 +219,7 @@ Current v1 types:
   - `fill_timing`
   - `price_source`
   - `allow_partial_fills`
-  - `allow_short`
+  - `allowed_directions`
   - `trade_accounting_policy`
   - `gap_policy`
   - `intrabar_exit_policy`
@@ -284,8 +284,8 @@ Current parity strategy contract:
 - Explicit strategy overrides remain internal/test hooks and must agree with the
   request strategy id.
 - Declarative bar strategies define typed feature requirements, reusable conditions,
-  target/sizing rules, and long-only constraints once so both engines can interpret
-  the same strategy definition.
+  target/sizing rules, and direction-neutral signal semantics once so both engines
+  can interpret the same strategy definition under the run's Allowed Directions.
 - Event-driven mode currently requires v1 parity-compatible declarative bar
   strategies and rejects callback-only strategies. The public `StrategyInput`,
   `StrategyState`, `TradingIntent`, `ExecutionTarget`, and `OrderRequest`
@@ -378,7 +378,6 @@ Current bar-mode non-goals:
 - callback strategy migration
 - tick simulation
 - partial fills
-- short support
 - richer order realism such as limit/stop orders, latency, spread/liquidity, or queue position
 - broad OHLCV data-health auditing
 
@@ -407,8 +406,8 @@ Current bar-mode non-goals:
 
 ## Protective Exit Policy
 
-- Declarative long strategies may configure percentage stop-loss and take-profit
-  exits through `ProtectiveExitSpec`.
+- Declarative strategies may configure percentage stop-loss and take-profit exits
+  through `ProtectiveExitSpec`; short levels mirror long levels around entry.
 - Protective exits are active on the entry fill bar.
 - Gap-through exits fill at the bar open; intrabar touches fill at the configured
   stop or target price.
