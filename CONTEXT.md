@@ -24,6 +24,88 @@ to a chart UI, and supports standalone backtesting.
 - **Backtest Run**: one durable execution of a backtest request. Avoid
   **Strategy Run** for this concept because a strategy can also exist outside a
   completed historical backtest.
+- **Cancel Backtest Run**: an irreversible command that stops an unstarted or
+  executing Backtest Run. An executing run is `cancelling` after acceptance and
+  becomes `cancelled` once its execution has ended; it cannot produce a normal
+  result after cancellation is accepted.
+- **Backtest Batch**: a durable user-submitted collection of related Backtest
+  Runs that preserves why those runs belong together. Membership is immutable
+  and nonempty, and is fully materialized when the batch is accepted: the batch
+  and all resolved member requests are created atomically, each run belongs to at
+  most one batch, and rerunning creates new history rather than changing the
+  original batch.
+- **Backtest Batch Member**: a Backtest Run belonging to one Backtest Batch,
+  identified within that batch by its deterministic Parameter Sweep expansion
+  ordinal and immutable resolved request. Standalone Backtest Runs are not batch
+  members.
+- **Backtest Batch Lifecycle**: the durable control state of a Backtest Batch.
+  Its states are `queued`, `running`, `pausing`, `paused`, `cancelling`,
+  `completed`, and `cancelled`. Lifecycle is distinct from member outcomes: a
+  completed batch may contain any mixture of succeeded, failed, and individually
+  cancelled Backtest Runs. The `cancelled` batch state is reserved for a Cancel
+  Batch command, not inferred from member outcomes. `running` means member
+  scheduling is enabled, even when no member is executing at that instant.
+- **Backtest Batch Outcome**: derived counts of member Backtest Run outcomes,
+  including queued, running, cancelling, succeeded, failed, and cancelled members. A
+  Backtest Batch does not fail as a unit when individual members fail. Its fixed
+  total is the immutable membership count; settled progress is the fraction of
+  succeeded, failed, and cancelled members, while executed count includes only
+  succeeded and failed members.
+- **Backtest Batch Lifecycle Revision**: a monotonic version that orders accepted
+  batch commands and automatic lifecycle transitions. Concurrent changes follow
+  durable commit order, and a retried command retains its original identity
+  rather than creating a second transition.
+- **Backtest Batch Lifecycle Event**: an append-only historical record of an
+  accepted batch command or automatic lifecycle transition, ordered by Backtest
+  Batch Lifecycle Revision. It preserves when and why the control state changed
+  without treating transient worker details as domain history.
+- **Pause Batch**: a reversible command that makes unstarted batch members
+  ineligible to run without interrupting an active member. A batch is `pausing`
+  while active work drains and `paused` once none is active.
+- **Resume Batch**: a command that retracts a pending or completed Pause Batch
+  and makes remaining queued members eligible to run again.
+- **Cancel Batch**: an irreversible command whose durable acceptance makes every
+  nonterminal member ineligible to start or complete normally. Queued members
+  and force-terminated active members become cancelled; already terminal member
+  results are preserved. The batch is `cancelling` until every member is
+  terminal and is then `cancelled`.
+- **Delete Backtest Batch**: permanent removal of a completed or cancelled
+  Backtest Batch together with all its member runs, results, and lifecycle
+  history. Deletion is distinct from cancellation and is unavailable while work
+  remains active.
+- **Parameter Sweep**: a Backtest Batch whose runs are generated from combinations
+  of selected backtest configuration values, such as strategy parameters,
+  Markets, and Timeframes. Independently invalid dimension values reject its
+  definition; candidates that violate the strategy's cross-parameter validation
+  are explicitly reported and excluded before immutable membership is created.
+- **Strategy Version**: the developer-assigned, monotonically increasing integer
+  paired with a registered strategy identifier and used as the sole declared
+  identity of its public parameter contract and behavior. Developers must bump it
+  when either changes. A Backtest Run resolves the exact pair and cannot silently
+  substitute another version; the version does not identify the complete runtime
+  or keep retired strategy code executable.
+- **Strategy Parameter Schema**: the public parameter names, types, defaults, and
+  independent constraints derived from a registered strategy builder's annotated
+  signature. The type itself defines inherent values such as Boolean `true` and
+  `false`; explicit choices are reserved for genuinely restricted non-Boolean
+  parameters.
+- **Strategy Parameter Validation**: validation of one complete resolved strategy
+  parameter set. The framework enforces the Strategy Parameter Schema, then an
+  optional validator owned by that registered strategy enforces relationships
+  between its parameters; standalone runs and Parameter Sweeps use the same path.
+- **Strategy Metadata Snapshot**: the immutable copy of a registered strategy's
+  identity and public parameter schema captured when a Backtest Batch is accepted,
+  so historical configuration remains understandable after registry changes.
+- **Backtest Workspace**: the user-facing area for creating and monitoring
+  Backtest Runs and Backtest Batches, inspecting their results, and comparing
+  selected runs.
+- **Backtest Equity Curve**: the time-ordered history of a Backtest Run's
+  simulated account equity, used to inspect and compare performance and drawdown
+  over time.
+- **Equity Replay Fingerprint**: the durable identity of the ordered executable
+  Candle timestamps and closing prices used to mark a Backtest Run's persisted
+  Fills. Equity replay is exact only when current Candle storage has the same
+  fingerprint; replay does not reevaluate strategy signals or indicators.
 - **Backtest Fill**: one simulated execution event inside a Backtest Run.
 - **Backtest Closed Trade**: one completed simulated round-trip position inside a
   Backtest Run, with trade direction, entry, exit, realized PnL, fees, exit
