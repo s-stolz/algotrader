@@ -1,12 +1,14 @@
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
-import { useModalStore } from '@/stores/modalStore';
 
 import TheTopBar from '@/components/TopBar/TheTopBar.vue';
+
+const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 
 const NButtonStub = defineComponent({
   name: 'NButton',
@@ -25,6 +27,7 @@ const NButtonStub = defineComponent({
 describe('TheTopBar', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    routerMock.push.mockReset();
   });
 
   it('opens Backtests from the chart header', async () => {
@@ -57,6 +60,6 @@ describe('TheTopBar', () => {
 
     await wrapper.find('[data-testid="open-backtest-runs"]').trigger('click');
 
-    expect(useModalStore().activeModal).toBe('backtestRuns');
+    expect(routerMock.push).toHaveBeenCalledWith('/backtests');
   });
 });

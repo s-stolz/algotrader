@@ -7,7 +7,7 @@
     <TimeframeDropdown />
 
     <n-button round @click="modalStore.openModal('indicatorSearch')">Indicator</n-button>
-    <n-button round data-testid="open-backtest-runs" @click="modalStore.openModal('backtestRuns')">
+    <n-button round data-testid="open-backtest-runs" @click="router.push('/backtests')">
       Backtests
     </n-button>
 
@@ -62,6 +62,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
+import { useRouter } from 'vue-router';
 
 import {
   DEFAULT_CHART_INTERACTION_MODE,
@@ -89,6 +90,7 @@ const emit = defineEmits<{
 
 const currentMarketStore = useCurrentMarketStore();
 const modalStore = useModalStore();
+const router = useRouter();
 const currentSymbol = computed(() => currentMarketStore.symbol);
 const selectedChartInteractionModeColor = '#7fe7c4';
 

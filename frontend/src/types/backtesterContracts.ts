@@ -23,6 +23,7 @@ export type BacktestTradeDirection = 'long' | 'short';
 
 export interface BacktestStrategyPayload {
   strategy_id: string;
+  strategy_version?: number;
   parameters: Record<string, JsonValue>;
 }
 
@@ -62,7 +63,7 @@ export interface BacktestRun {
   completed_at_ms?: number | null;
   request_schema_version: 2;
   request: BacktestRequestPayload;
-  result_schema_version?: typeof BACKTEST_RESULT_SCHEMA_VERSION | null;
+  result_schema_version?: 1 | 2 | typeof BACKTEST_RESULT_SCHEMA_VERSION | null;
   metrics?: JsonObject | null;
   diagnostics?: JsonObject | null;
   error_code?: string | null;
@@ -164,6 +165,8 @@ function isOptionalBacktestResultSchemaVersion(value: Record<string, unknown>): 
   return !('result_schema_version' in value) ||
     value.result_schema_version === undefined ||
     value.result_schema_version === null ||
+    value.result_schema_version === 1 ||
+    value.result_schema_version === 2 ||
     value.result_schema_version === BACKTEST_RESULT_SCHEMA_VERSION;
 }
 
@@ -182,6 +185,9 @@ function isBacktestStrategyPayload(value: unknown): value is BacktestStrategyPay
   return (
     isRecord(value) &&
     isNonEmptyString(value.strategy_id) &&
+    (!('strategy_version' in value) || (
+      Number.isInteger(value.strategy_version) && (value.strategy_version as number) > 0
+    )) &&
     isRecord(value.parameters) &&
     Object.values(value.parameters).every(isJsonValue)
   );

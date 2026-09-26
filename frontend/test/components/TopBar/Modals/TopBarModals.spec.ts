@@ -172,7 +172,7 @@ describe('TopBarModals', () => {
     expect(updateCurrentMarket).toHaveBeenCalledWith(market);
   });
 
-  it('refetches Backtests when the history modal is closed and reopened', async () => {
+  it('does not mount the retired Backtest history modal', async () => {
     const modalStore = useModalStore();
     const wrapper = mount(TopBarModals, {
       global: {
@@ -208,7 +208,7 @@ describe('TopBarModals', () => {
     modalStore.openModal('backtestRuns');
     await flushPromises();
 
-    expect(listBacktestRuns).toHaveBeenCalledOnce();
+    expect(listBacktestRuns).not.toHaveBeenCalled();
 
     modalStore.closeModal();
     await flushPromises();
@@ -218,7 +218,7 @@ describe('TopBarModals', () => {
     modalStore.openModal('backtestRuns');
     await flushPromises();
 
-    expect(listBacktestRuns).toHaveBeenCalledTimes(2);
+    expect(listBacktestRuns).not.toHaveBeenCalled();
   });
 });
 

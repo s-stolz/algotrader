@@ -1,7 +1,11 @@
 <template>
   <n-config-provider :theme="darkTheme">
     <main>
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <keep-alive>
+          <component :is="Component" />
+        </keep-alive>
+      </router-view>
     </main>
   </n-config-provider>
 </template>

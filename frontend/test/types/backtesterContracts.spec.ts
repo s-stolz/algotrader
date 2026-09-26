@@ -51,6 +51,16 @@ describe('backtester contract validators', () => {
     })).toBe(true);
 
     expect(isBacktestRun({
+      run_id: 'legacy-result',
+      status: 'succeeded',
+      submitted_at_ms: 1_780_921_805_123,
+      request_schema_version: 2,
+      request: backtestRequest(),
+      result_schema_version: 2,
+      metrics: { total_return_pct: 1.25 },
+    })).toBe(true);
+
+    expect(isBacktestRun({
       run_id: 'run-missing-null-fields',
       status: 'queued',
       submitted_at_ms: 1_780_921_805_123,
@@ -157,6 +167,25 @@ describe('backtester contract validators', () => {
       exit_reason: 'manual',
       stop_loss_price: null,
       take_profit_price: null,
+    })).toBe(false);
+  });
+
+  it('accepts recorded Strategy Version without fabricating it for older requests', () => {
+    const request = backtestRequest();
+    const base = {
+      run_id: 'versioned',
+      status: 'queued',
+      submitted_at_ms: 1_780_921_805_123,
+      request_schema_version: 2,
+    };
+    expect(isBacktestRun({ ...base, request })).toBe(true);
+    expect(isBacktestRun({
+      ...base,
+      request: { ...request, strategy: { ...request.strategy, strategy_version: 4 } },
+    })).toBe(true);
+    expect(isBacktestRun({
+      ...base,
+      request: { ...request, strategy: { ...request.strategy, strategy_version: '4' } },
     })).toBe(false);
   });
 

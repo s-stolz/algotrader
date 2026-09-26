@@ -44,19 +44,19 @@ function unavailable(reason: string): BacktestRunSelectability {
 
 export function getBacktestRunSelectability(run: BacktestRun): BacktestRunSelectability {
   if (run.status !== 'succeeded') {
-    return unavailable('Only succeeded Backtests can be opened.');
+    return unavailable('Only succeeded Backtest Runs can be opened.');
   }
 
   if (run.result_schema_version !== BACKTEST_RESULT_SCHEMA_VERSION) {
-    return unavailable('Backtest result schema is unsupported.');
+    return unavailable('Backtest Run result schema is unsupported.');
   }
 
   if (run.request.symbols.length === 0) {
-    return unavailable('Backtest has no symbol.');
+    return unavailable('Backtest Run has no symbol.');
   }
 
   if (run.request.symbols.length > 1) {
-    return unavailable('Backtest has multiple symbols.');
+    return unavailable('Backtest Run has multiple symbols.');
   }
 
   return SELECTABLE;

@@ -91,23 +91,30 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   semi-transparent fill and one-pixel solid border with color encoded by price
   direction. It coexists with chart crosshair and OHLC legend updates.
 - Backtest overlays expose a compact candlestick-pane panel showing the applied
-  run context and a remove action; run selection remains in the Backtest Run
-  history modal.
-- Backtest Run history modal loads runs when opened, supports lightweight
-  client-side status/text filtering, and does not include a dedicated refresh
-  control in v1.
-- Backtest Run history can delete terminal `succeeded` or `failed` runs through
-  the public backtester API; deletion removes the run and its execution logs from
-  storage, while queued/running deletion is left to future cancellation behavior.
-- Opening the Backtest Run history modal fetches the latest run list from the
-  backtester API; closing and reopening refetches.
-- Backtest Run selection requires the run's market to still exist in the
-  frontend market list; missing markets leave the current chart unchanged and
-  surface an error instead of creating an incomplete chart market.
+  run context and a remove action; saved run selection is in the Workspace.
+- The chart toolbar opens the full-screen Backtest Workspace. The chart route is
+  kept alive, and the Workspace store retains its selected run and a place for
+  the later creation draft when navigating between them.
+- Workspace history reads saved standalone runs from the public backtester API
+  on entry and at five-second intervals while active. It provides search and
+  status, type, Market, Strategy, and Timeframe filters, sortable history
+  columns, and a manual refresh. Failed reads report unknown lifecycle state
+  without replacing previously loaded records with an empty history.
+- The current-backtest table shows the selected saved request and metrics.
+  Saved Return retains its first-recorded-equity baseline; maximum drawdown is
+  displayed as a positive magnitude and PnL as signed account units. Missing
+  results and zero-trade values remain distinct. Ending equity is not inferred
+  from saved Return.
+- Workspace history can delete terminal `succeeded` or `failed` standalone
+  runs through the public backtester API; queued/running deletion remains
+  unavailable until cancellation behavior is delivered.
+- Backtest Run selection requires the run's Market to still exist in the
+  frontend Market list; missing Markets leave the current chart unchanged and
+  show an explanation in the Workspace.
 - Backtest Run chart selection supports single-symbol runs only; runs with zero
   or multiple symbols remain visible in history but are not selectable for the
   single-chart overlay.
-- Backtest Run history shows all lifecycle states, but only `succeeded` runs are
+- Workspace history shows all lifecycle states, but only `succeeded` runs are
   selectable for chart overlays.
 - Backtest Run chart overlays require result schema version 3 closed trades,
   including planned protective exit levels and explicit trade direction.
