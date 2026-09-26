@@ -97,6 +97,17 @@ export interface BacktestClosedTrade {
   take_profit_price: number | null;
 }
 
+export interface BacktestFill {
+  sequence: number;
+  timestamp_ms: number;
+  symbol: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  price: number;
+  fees: number;
+  exit_reason: BacktestExitReason | null;
+}
+
 const BACKTEST_RUN_STATUS_SET: ReadonlySet<string> = new Set(BACKTEST_RUN_STATUSES);
 const BACKTEST_ENGINE_SET: ReadonlySet<string> = new Set(['vectorized', 'event_driven']);
 const BACKTEST_DATA_GRANULARITY_SET: ReadonlySet<string> = new Set(['bar', 'tick']);
@@ -302,5 +313,24 @@ export function isBacktestClosedTrade(value: unknown): value is BacktestClosedTr
 }
 
 export function isBacktestClosedTradeArray(value: unknown): value is BacktestClosedTrade[] {
-  return Array.isArray(value) && value.every(isBacktestClosedTrade);
+  return Array.isArray(value) && value.every(isBacktestClosedTrade) &&
+    value.every((trade, index) => index === 0 || trade.sequence > value[index - 1].sequence);
+}
+
+export function isBacktestFill(value: unknown): value is BacktestFill {
+  if (!isRecord(value)) return false;
+  return Number.isInteger(value.sequence) && (value.sequence as number) >= 0 &&
+    isFiniteNumber(value.timestamp_ms) && value.timestamp_ms > 0 &&
+    isNonEmptyString(value.symbol) &&
+    (value.side === 'buy' || value.side === 'sell') &&
+    isFiniteNumber(value.quantity) && value.quantity > 0 &&
+    isFiniteNumber(value.price) &&
+    isFiniteNumber(value.fees) &&
+    (value.exit_reason === null ||
+      (typeof value.exit_reason === 'string' && BACKTEST_EXIT_REASON_SET.has(value.exit_reason)));
+}
+
+export function isBacktestFillArray(value: unknown): value is BacktestFill[] {
+  return Array.isArray(value) && value.every(isBacktestFill) &&
+    value.every((fill, index) => index === 0 || fill.sequence > value[index - 1].sequence);
 }

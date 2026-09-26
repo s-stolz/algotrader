@@ -4,11 +4,11 @@ import { NSelect } from 'naive-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  deleteBacktestRun, fetchBacktestClosedTrades, getBacktestRun, listBacktestRuns,
+  deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestFills, getBacktestRun, listBacktestRuns,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import type { BacktestRun } from '@/types/backtesterContracts';
+import type { BacktestClosedTrade, BacktestFill, BacktestRun } from '@/types/backtesterContracts';
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
@@ -16,6 +16,7 @@ vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
   deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
+  fetchBacktestFills: vi.fn(),
   getBacktestRun: vi.fn(),
   listBacktestRuns: vi.fn(),
 }));
@@ -74,6 +75,24 @@ function mountWorkspace() {
   });
 }
 
+function trade(sequence: number, direction: 'long' | 'short',
+  reason: 'signal' | 'stop_loss' | 'take_profit'): BacktestClosedTrade {
+  return {
+    sequence, trade_id: `trade-${sequence}`, symbol: 'EURUSD', trade_direction: direction,
+    quantity: 1000, entry_timestamp_ms: 1_714_525_200_000,
+    entry_price: 1.0715, exit_timestamp_ms: 1_714_532_400_000,
+    exit_price: 1.074, realized_pnl: direction === 'long' ? 2.5 : -3,
+    fees: 0.3, exit_reason: reason,
+    stop_loss_price: direction === 'short' ? 1.08 : null,
+    take_profit_price: 1.065,
+  };
+}
+
+function fill(sequence: number, side: 'buy' | 'sell'): BacktestFill {
+  return { sequence, timestamp_ms: 1_714_525_200_000, symbol: 'EURUSD',
+    side, quantity: 2000, price: 1.074, fees: 0.3, exit_reason: null };
+}
+
 let pinia: Pinia;
 describe('production Backtest Workspace', () => {
   beforeEach(() => {
@@ -85,8 +104,10 @@ describe('production Backtest Workspace', () => {
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
+    vi.mocked(fetchBacktestFills).mockReset();
     vi.mocked(deleteBacktestRun).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
+    vi.mocked(fetchBacktestFills).mockResolvedValue([]);
     useMarketsStore().all = [{
       symbol_id: 1, symbol: 'EURUSD', exchange: 'FX', market_type: 'Forex',
       min_move: 0.00001, timezone: 'UTC',
@@ -123,6 +144,128 @@ describe('production Backtest Workspace', () => {
     expect(current.text()).toContain('10000');
     expect(current.text()).not.toContain('Ending equity');
     expect(wrapper.text()).toContain('Saved request and execution settings');
+    wrapper.unmount();
+  });
+
+  it('opens the accessible execution drawer without changing selection and filters distinct trades and fills', async () => {
+    const first = run('first', { request: { ...run('x').request, run_metadata: { name: 'First run' } } });
+    const second = run('second');
+    vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
+    vi.mocked(getBacktestRun).mockResolvedValue(first);
+    vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([
+      trade(0, 'long', 'take_profit'), trade(1, 'short', 'stop_loss'),
+    ]);
+    vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'buy'), fill(1, 'sell')]);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-run-first"]').trigger('click');
+    await flushPromises();
+
+    const icon = wrapper.find('[data-testid="workspace-current-backtest"] [data-testid="workspace-log-first"]');
+    expect(icon.attributes('aria-label')).toBe('View execution log for First run');
+    expect(icon.attributes('title')).toBeUndefined();
+    await icon.trigger('click');
+    await flushPromises();
+    expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('first');
+    expect(fetchBacktestFills).toHaveBeenCalledWith('first');
+    expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
+    expect(document.body.textContent).toContain('Closed Trades (2)');
+    expect(document.body.textContent).toContain('Fills (2)');
+    expect(document.body.textContent).toContain('2024-05-01T01:00:00.000Z');
+    expect(document.body.textContent).toContain('-3');
+    expect(document.body.textContent).toContain('1.08');
+
+    const direction = document.body.querySelector<HTMLSelectElement>('[data-testid="execution-direction"]')!;
+    direction.value = 'short';
+    direction.dispatchEvent(new Event('change', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(document.body.querySelectorAll('[data-testid="execution-trades-table"] tbody tr')).toHaveLength(1);
+    expect(document.body.textContent).toContain('stop loss');
+    const reason = document.body.querySelector<HTMLSelectElement>('[data-testid="execution-exit-reason"]')!;
+    reason.value = 'signal';
+    reason.dispatchEvent(new Event('change', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(document.body.textContent).toContain('No Closed Trades match these filters.');
+
+    document.body.querySelector<HTMLButtonElement>('[data-testid="execution-fills-tab"]')!.click();
+    await wrapper.vm.$nextTick();
+    expect(document.body.querySelectorAll('[data-testid="execution-fills-table"] tbody tr')).toHaveLength(2);
+    expect(document.body.textContent).toContain('sell');
+    const fillSearch = document.body.querySelector<HTMLInputElement>('[data-testid="execution-search"]')!;
+    fillSearch.value = 'sell';
+    fillSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(document.body.querySelectorAll('[data-testid="execution-fills-table"] tbody tr')).toHaveLength(1);
+    expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
+    document.body.querySelector<HTMLButtonElement>('.n-drawer-header__close')!.click();
+    await wrapper.vm.$nextTick();
+    expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('First run');
+    wrapper.unmount();
+  });
+
+  it('distinguishes no executions, no matches, unavailable logs, and runs without completed logs', async () => {
+    const success = run('success');
+    const failed = run('failed', { status: 'failed', metrics: null });
+    vi.mocked(listBacktestRuns).mockResolvedValue([success, failed]);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="workspace-log-success"]').trigger('click');
+    await flushPromises();
+    expect(document.body.textContent).toContain('This successful run has no executions.');
+
+    await wrapper.find('[data-testid="workspace-log-failed"]').trigger('click');
+    await flushPromises();
+    expect(document.body.textContent).toContain('failed run has no completed execution log');
+    expect(fetchBacktestFills).toHaveBeenCalledTimes(1);
+
+    vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([trade(0, 'long', 'signal')]);
+    vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'buy')]);
+    await wrapper.find('[data-testid="workspace-log-success"]').trigger('click');
+    await flushPromises();
+    const search = document.body.querySelector<HTMLInputElement>('[data-testid="execution-search"]')!;
+    search.value = 'unmatched';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(document.body.textContent).toContain('No Closed Trades match these filters.');
+
+    vi.mocked(fetchBacktestClosedTrades).mockRejectedValue(new Error('Storage unavailable'));
+    await wrapper.find('[data-testid="workspace-log-failed"]').trigger('click');
+    await wrapper.find('[data-testid="workspace-log-success"]').trigger('click');
+    await flushPromises();
+    expect(document.body.textContent).toContain('Execution log unavailable. Storage unavailable');
+    wrapper.unmount();
+  });
+
+  it('ignores execution-log responses from a previous run or a closed drawer', async () => {
+    const first = run('first');
+    const second = run('second');
+    vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
+    let resolveFirst!: (trades: BacktestClosedTrade[]) => void;
+    vi.mocked(fetchBacktestClosedTrades).mockImplementation((id) => id === 'first'
+      ? new Promise((resolve) => { resolveFirst = resolve; })
+      : Promise.resolve([trade(2, 'short', 'stop_loss')]));
+    vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'sell')]);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+
+    const firstIcon = wrapper.find('[data-testid="workspace-log-first"]');
+    expect(firstIcon.element.tagName).toBe('BUTTON');
+    await firstIcon.trigger('keydown', { key: 'Enter' });
+    expect(useBacktestWorkspaceStore().selectedRunId).toBeNull();
+    await wrapper.find('[data-testid="workspace-log-first"]').trigger('click');
+    await wrapper.find('[data-testid="workspace-log-second"]').trigger('click');
+    await flushPromises();
+    resolveFirst([trade(0, 'long', 'signal')]);
+    await flushPromises();
+    expect(document.body.textContent).toContain('Execution log · second');
+    expect(document.body.textContent).toContain('short');
+    expect(document.body.textContent).not.toContain('long');
+
+    document.body.querySelector<HTMLButtonElement>('.n-drawer-header__close')!.click();
+    await wrapper.vm.$nextTick();
+    expect(document.body.querySelector('[data-testid="execution-log-drawer"]')).toBeNull();
     wrapper.unmount();
   });
 

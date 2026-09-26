@@ -108,6 +108,11 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Workspace history can delete terminal `succeeded` or `failed` standalone
   runs through the public backtester API; queued/running deletion remains
   unavailable until cancellation behavior is delivered.
+- Workspace run cells open a per-run execution-log drawer through the public
+  backtester `/trades` and `/fills` resources. Closed Trades and Fills retain
+  their stored sequence and separate direction/side semantics. Log reads occur
+  on demand and cannot change the selected run or saved metrics; stale reads
+  after switching or closing the drawer are ignored.
 - Backtest Run selection requires the run's Market to still exist in the
   frontend Market list; missing Markets leave the current chart unchanged and
   show an explanation in the Workspace.

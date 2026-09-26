@@ -3,10 +3,19 @@ import { describe, expect, it } from 'vitest';
 import {
   BACKTEST_RESULT_SCHEMA_VERSION,
   isBacktestClosedTrade,
+  isBacktestFill,
   isBacktestRun,
 } from '@/types/backtesterContracts';
 
 describe('backtester contract validators', () => {
+  it('validates Fill side independently of Trade Direction', () => {
+    const fill = { sequence: 2, timestamp_ms: 1_714_525_200_000, symbol: 'EURUSD',
+      side: 'sell', quantity: 2000, price: 1.074, fees: 0.3, exit_reason: null };
+    expect(isBacktestFill(fill)).toBe(true);
+    expect(isBacktestFill({ ...fill, side: 'short' })).toBe(false);
+    expect(isBacktestFill({ ...fill, timestamp_ms: '2024-05-03' })).toBe(false);
+    expect(isBacktestFill({ ...fill, fees: Number.POSITIVE_INFINITY })).toBe(false);
+  });
   it('validates public Backtest Run history payloads', () => {
     expect(isBacktestRun({
       run_id: 'run-queued',

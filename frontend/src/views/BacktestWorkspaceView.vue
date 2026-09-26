@@ -128,16 +128,24 @@
         </details>
       </template>
     </section>
+    <ExecutionLogDrawer
+      v-if="logRun"
+      :run="logRun"
+      :show="logRun !== null"
+      @close="logRun = null"
+    />
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
-import { NButton, NDataTable, NInput, NSelect, NTag } from 'naive-ui';
+import { NButton, NDataTable, NIcon, NInput, NSelect, NTag, NTooltip } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
+import { DocumentTextOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
 
 import { deleteBacktestRun, getBacktestRun, listBacktestRuns } from '@/api/backtesterClient';
+import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
@@ -171,6 +179,7 @@ const strategyFilter = ref('all');
 const timeframeFilter = ref('all');
 const selectedRunId = computed(() => workspaceStore.selectedRunId);
 const selectedRun = computed(() => workspaceStore.selectedRun);
+const logRun = ref<BacktestRun | null>(null);
 const chartReason = computed(() => selectedRun.value
   ? overlayStore.getBacktestRunSelectability(selectedRun.value).reason : null);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -247,6 +256,9 @@ async function readRuns(): Promise<void> {
     if (generation !== readGeneration || !isActive) return;
     runs.value = latest;
     readError.value = null;
+    if (logRun.value) {
+      logRun.value = latest.find((run) => run.run_id === logRun.value?.run_id) ?? null;
+    }
     const selected = latest.find((run) => run.run_id === selectedRunId.value);
     if (selected) {
       workspaceStore.selectRun(selected);
@@ -308,6 +320,25 @@ function cell(value: string, explanation?: string) {
   return h('span', { title: explanation ?? value, class: 'ellipsis-cell' }, value);
 }
 
+function runCell(run: BacktestRun) {
+  return h('span', { class: 'run-cell' }, [
+    h(NTooltip, null, {
+      trigger: () => h(NButton, {
+        text: true, size: 'small',
+        'data-testid': `workspace-log-${run.run_id}`,
+        'aria-label': `View execution log for ${runName(run)}`,
+        onKeydown: (event: KeyboardEvent) => { event.stopPropagation(); },
+        onClick: (event: MouseEvent) => {
+          event.stopPropagation();
+          logRun.value = run;
+        },
+      }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(DocumentTextOutline) }) }),
+      default: () => 'View execution log',
+    }),
+    cell(runName(run)),
+  ]);
+}
+
 function historyColumn(title: string, key: HistorySortKey,
   render: (run: BacktestRun) => ReturnType<typeof h>): DataTableColumns<BacktestRun>[number] {
   return {
@@ -317,7 +348,7 @@ function historyColumn(title: string, key: HistorySortKey,
 }
 
 const historyColumns: DataTableColumns<BacktestRun> = [
-  historyColumn('Name', 'name', (run) => cell(runName(run))),
+  historyColumn('Name', 'name', runCell),
   historyColumn('Type', 'type', () => cell('Standalone')),
   historyColumn('Strategy / version', 'strategy', (run) => cell(
     `${run.request.strategy.strategy_id} · ${strategyVersion(run)}`,
@@ -355,7 +386,7 @@ function metricCell(run: BacktestRun, key: string, explanation: string,
   return cell(display, explanation);
 }
 const detailColumns: DataTableColumns<BacktestRun> = [
-  { title: 'Run', key: 'name', render: (run) => cell(runName(run)) },
+  { title: 'Run', key: 'name', fixed: 'left', render: runCell },
   { title: 'Status', key: 'status', render: (run) => cell(run.status) },
   { title: 'Strategy / version', key: 'strategy', render: (run) => cell(
     `${run.request.strategy.strategy_id} · ${strategyVersion(run)}`,
@@ -398,6 +429,7 @@ async function deleteRun(run: BacktestRun): Promise<void> {
   try {
     await deleteBacktestRun(run.run_id);
     runs.value = runs.value?.filter((candidate) => candidate.run_id !== run.run_id) ?? null;
+    if (logRun.value?.run_id === run.run_id) logRun.value = null;
     if (selectedRunId.value === run.run_id) {
       workspaceStore.clearSelection();
       ++detailSequence;
@@ -441,6 +473,7 @@ function stopPolling(): void {
   isLoading.value = false;
   isRefreshing.value = false;
   ++detailSequence;
+  logRun.value = null;
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
 }
@@ -472,6 +505,7 @@ onUnmounted(stopPolling);
 .request-details dd { margin: 0; overflow-wrap: anywhere; }
 .run-error, .chart-reason { color: #ffb4b4; }
 .ellipsis-cell { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-cell { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
 @media (max-width: 900px) {
   .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-header { align-items: flex-start; flex-direction: column; }

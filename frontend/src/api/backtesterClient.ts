@@ -1,8 +1,10 @@
 import {
   type BacktestClosedTrade,
+  type BacktestFill,
   type BacktestRun,
   type BacktestRunListQuery,
   isBacktestClosedTradeArray,
+  isBacktestFillArray,
   isBacktestRun,
   isBacktestRunArray,
 } from '@/types/backtesterContracts';
@@ -67,6 +69,19 @@ export async function fetchBacktestClosedTrades(
 
   if (!isBacktestClosedTradeArray(payload)) {
     throw new Error('Invalid backtest closed trades response');
+  }
+
+  return payload;
+}
+
+export async function fetchBacktestFills(runId: string): Promise<BacktestFill[]> {
+  const payload = await parseJsonResponse(
+    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}/fills`),
+    'Failed to fetch backtest fills',
+  );
+
+  if (!isBacktestFillArray(payload)) {
+    throw new Error('Invalid backtest fills response');
   }
 
   return payload;

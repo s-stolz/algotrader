@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   deleteBacktestRun,
   fetchBacktestClosedTrades,
+  fetchBacktestFills,
   getBacktestRun,
   listBacktestRuns,
 } from '@/api/backtesterClient';
@@ -75,6 +76,28 @@ describe('backtester API client', () => {
 
     await expect(fetchBacktestClosedTrades('run-123')).resolves.toEqual(trades);
     expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123/trades');
+  });
+
+  it('fetches ordered Fills through the public backtester resource', async () => {
+    const fills = [
+      { sequence: 0, timestamp_ms: 1_714_525_200_000, symbol: 'EURUSD', side: 'buy',
+        quantity: 1000, price: 1.0715, fees: 0.15, exit_reason: null },
+      { sequence: 1, timestamp_ms: 1_714_532_400_000, symbol: 'EURUSD', side: 'sell',
+        quantity: 2000, price: 1.074, fees: 0.3, exit_reason: 'signal' },
+    ];
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(fills));
+
+    await expect(fetchBacktestFills('run/123')).resolves.toEqual(fills);
+    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run%2F123/fills');
+  });
+
+  it('rejects malformed or unordered execution logs', async () => {
+    const fill = { sequence: 1, timestamp_ms: 1_714_525_200_000, symbol: 'EURUSD',
+      side: 'sell', quantity: 2000, price: 1.074, fees: 0.3, exit_reason: null };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse([{ ...fill, side: 'short' }]));
+    await expect(fetchBacktestFills('run')).rejects.toThrow('Invalid backtest fills response');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse([fill, { ...fill, sequence: 0 }]));
+    await expect(fetchBacktestFills('run')).rejects.toThrow('Invalid backtest fills response');
   });
 
   it('deletes one Backtest Run through the public backtester proxy', async () => {
