@@ -215,6 +215,7 @@ def _supervise_execution(
     parent, child = context.Pipe(duplex=False)
     process = context.Process(target=_execute_child, args=(child, execute_fn, snapshot))
     outcome = None
+    received = False
     try:
         process.start()
         child.close()
@@ -230,16 +231,16 @@ def _supervise_execution(
                         "Backtest execution child exit could not be confirmed"
                     )
                 return CompactBacktestCancelled()
-            if parent.poll(0.2):
+            if not received and parent.poll(0.2):
                 try:
                     outcome = parent.recv()
                 except EOFError:
                     pass
-                break
+                received = True
+            if received:
+                process.join(timeout=0.2)
             if not process.is_alive():
                 break
-        while process.is_alive():
-            process.join(timeout=0.2)
         process.join()
         if process.exitcode == 0 and isinstance(
             outcome, (CompactBacktestResult, CompactBacktestFailure)

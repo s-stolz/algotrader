@@ -6,13 +6,17 @@ import time
 import unittest
 from dataclasses import replace
 from multiprocessing import active_children
+from threading import Event
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from app.backtest_child import (
     ChildExitUnconfirmedError,
+    CompactBacktestCancelled,
     CompactBacktestFailure,
     CompactBacktestResult,
     ProcessBacktestChildExecutor,
+    _supervise_execution,
     execute_backtest_child,
 )
 from domain.enums import BacktestEngine
@@ -40,6 +44,32 @@ class _FailingHistoricalAdapter:
 
 
 class TestBacktestChildExecution(unittest.TestCase):
+    def test_cancellation_after_result_still_stops_a_child_waiting_to_exit(self) -> None:
+        cancellation = Event()
+        parent, child, process = MagicMock(), MagicMock(), MagicMock()
+        outcome = CompactBacktestFailure("backtest_failed", "Backtest execution failed")
+
+        def receive():
+            cancellation.set()
+            return outcome
+
+        parent.poll.return_value = True
+        parent.recv.side_effect = receive
+        process.is_alive.side_effect = [True, False, False]
+        process.exitcode = 0
+        context = MagicMock()
+        context.Pipe.return_value = (parent, child)
+        context.Process.return_value = process
+        with patch("app.backtest_child.get_context", return_value=context):
+            result = _supervise_execution(
+                _return_process_identity,
+                BacktestRequestSnapshot.from_request(_request()),
+                cancellation,
+            )
+        self.assertIsInstance(result, CompactBacktestCancelled)
+        process.terminate.assert_called_once()
+        process.join.assert_called()
+
     def test_unavailable_exact_version_fails_before_loading_candles(self) -> None:
         for strategy_id, version in (
             ("sma_crossover", None),
