@@ -178,7 +178,9 @@ class BacktestWorker:
         """Process one successfully claimed run, or report that the queue is idle."""
 
         while True:
-            queued_runs = self._repository.list(BacktestRunQuery(status=BacktestRunStatus.QUEUED))
+            queued_runs = self._repository.list(
+                BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
+            )
             if not queued_runs:
                 return False
 
@@ -286,7 +288,9 @@ class BacktestWorker:
     def reconcile_running_runs(self) -> None:
         """Fail runs left running by a previously interrupted singleton worker."""
 
-        running_runs = self._repository.list(BacktestRunQuery(status=BacktestRunStatus.RUNNING))
+        running_runs = self._repository.list(
+            BacktestRunQuery(status=BacktestRunStatus.RUNNING, membership="standalone")
+        )
         for run in running_runs:
             try:
                 reconciled = self._lifecycle.conditional_update(

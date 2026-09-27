@@ -99,6 +99,58 @@ COMMIT;
         )
         self.assertEqual(row.stdout.strip(), "legacy-success:NULL")
 
+    def test_v008_preserves_legacy_run_and_guards_accepted_membership(self) -> None:
+        migration = (migrate_db.MIGRATIONS_DIR / "V008__immutable_backtest_batches.sql").read_text()
+        self._run_psql(f"""
+ALTER TABLE "{self.schema}".backtest_runs ADD COLUMN request JSONB;
+ALTER TABLE "{self.schema}".backtest_runs ADD COLUMN request_schema_version INTEGER;
+INSERT INTO "{self.schema}".backtest_runs (run_id, request) VALUES ('legacy', '{{}}');
+SET search_path TO "{self.schema}";
+{migration}
+""")
+        legacy = self._run_psql(
+            f"SELECT COALESCE(batch_id, 'standalone') FROM \"{self.schema}\".backtest_runs "
+            "WHERE run_id = 'legacy';"
+        )
+        self.assertEqual(legacy.stdout.strip(), "standalone")
+        self._run_psql(f"""
+SET search_path TO "{self.schema}";
+INSERT INTO backtest_batches (
+    batch_id, submission_id, accepted_at, lifecycle_revision,
+    definition_schema_version, accepted_definition, strategy_metadata,
+    raw_count, member_count, excluded_count
+) VALUES ('batch-1', 'submission-1', now(), 0, 1, '{{}}', '{{}}', 1, 1, 0);
+INSERT INTO backtest_runs (run_id, request, request_schema_version, batch_id, member_ordinal)
+VALUES (
+    'member-1', '{{"symbols":["EURUSD"],"strategy":{{"strategy_version":1}}}}',
+    3, 'batch-1', 0
+);
+INSERT INTO backtest_batch_events (batch_id, revision, event_type, status, occurred_at)
+VALUES ('batch-1', 0, 'accepted', 'queued', now());
+""")
+        rejected_insert = self._run_psql(
+            f"""
+SET search_path TO "{self.schema}";
+INSERT INTO backtest_runs (run_id, request, request_schema_version, batch_id, member_ordinal)
+VALUES (
+    'late-member', '{{"symbols":["EURUSD"],"strategy":{{"strategy_version":1}}}}',
+    3, 'batch-1', 1
+);
+""",
+            check=False,
+        )
+        self.assertNotEqual(rejected_insert.returncode, 0)
+        self.assertIn("membership is immutable", rejected_insert.stderr)
+        rejected_delete = self._run_psql(
+            f"""
+DELETE FROM "{self.schema}".backtest_runs WHERE run_id = 'member-1';
+""",
+            check=False,
+        )
+        self.assertNotEqual(rejected_delete.returncode, 0)
+        retained = self._run_psql(f'SELECT COUNT(*) FROM "{self.schema}".backtest_runs;')
+        self.assertEqual(retained.stdout.strip(), "2")
+
     def _column_state(self) -> str:
         completed = self._run_psql(f"""
 SELECT column_name || ':' || is_nullable

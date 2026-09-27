@@ -1,6 +1,6 @@
 <template>
   <n-drawer :show="show" :width="isSweep && preview ? 'min(1100px, 100vw)' : 'min(540px, 100vw)'" @update:show="emit('update:show', $event)">
-    <n-drawer-content :title="isSweep ? 'Preview Parameter Sweep' : 'Create standalone Backtest'" closable>
+    <n-drawer-content :title="isSweep ? 'Review Parameter Sweep' : 'Create standalone Backtest'" closable>
       <p v-if="catalogError" role="alert">Strategy catalog unavailable. {{ catalogError }}</p>
       <n-button v-if="catalogError" @click="loadCatalog">Retry catalog</n-button>
       <template v-if="draft && catalog.length">
@@ -272,6 +272,13 @@
           data-testid="creation-submit"
           @click="submit"
         >Create Backtest</n-button>
+        <n-button
+          v-else-if="isSweep && sweepAcceptanceEnabled"
+          :disabled="submitting || previewPending || !preview || !!previewError"
+          :loading="submitting"
+          data-testid="sweep-submit"
+          @click="submitSweep"
+        >Accept Batch</n-button>
         <span v-else-if="isSweep">Parameter Sweep submission becomes available with batch execution.</span>
       </template>
     </n-drawer-content>
@@ -283,7 +290,7 @@ import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { NButton, NCheckbox, NDataTable, NDrawer, NDrawerContent, NInput, NInputNumber, NSelect } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
-  previewParameterSweep, submitBacktestRun } from '@/api/backtesterClient';
+  previewParameterSweep, submitBacktestBatch, submitBacktestRun } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { BacktestRequestPayload, StrategyCatalogEntry, StrategyParameterSchema,
@@ -297,7 +304,9 @@ type DraftRequest = Omit<BacktestRequestPayload, 'strategy' | 'run_metadata'> & 
 };
 
 defineProps<{ show: boolean }>();
-const emit = defineEmits<{ 'update:show': [show: boolean]; submitted: [runId: string] }>();
+const emit = defineEmits<{
+  'update:show': [show: boolean]; submitted: [runId: string]; 'submitted-batch': [batchId: string];
+}>();
 const store = useBacktestWorkspaceStore();
 const markets = useMarketsStore();
 const draft = ref<DraftRequest>((store.creationDraft as DraftRequest | null) ?? initialDraft());
@@ -314,6 +323,8 @@ const preview = shallowRef<SweepPreview | null>(null);
 const previewPending = ref(false);
 const previewError = ref<string | null>(null);
 const sweepLimit = ref<number | null>(null);
+const sweepAcceptanceEnabled = ref(false);
+let submissionId = globalThis.crypto.randomUUID();
 const previewFilter = ref<'all' | 'ready' | 'excluded'>('all');
 const previewFilterOptions: SelectOption[] = [
   { label: 'All', value: 'all' }, { label: 'Ready', value: 'ready' },
@@ -369,11 +380,13 @@ watch(isSweep, (enabled) => {
   if (!enabled) return;
   void fetchSweepCapabilities().then((capabilities) => {
     sweepLimit.value = capabilities.max_sweep_candidate_count;
+    sweepAcceptanceEnabled.value = capabilities.batch_acceptance_enabled;
   }).catch(() => { sweepLimit.value = null; });
 }, { immediate: true });
 
 watch([draft, sweep, catalog, () => markets.all], () => {
   previewRevision += 1;
+  submissionId = globalThis.crypto.randomUUID();
   if (previewTimer) clearTimeout(previewTimer);
   preview.value = null;
   previewPending.value = false;
@@ -689,6 +702,35 @@ async function submit(): Promise<void> {
       }
     } else {
       submitError.value = error instanceof Error ? error.message : 'Submission failed.';
+    }
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function submitSweep(): Promise<void> {
+  if (!preview.value || previewPending.value || previewError.value || submitting.value) return;
+  submitting.value = true;
+  submitError.value = null;
+  try {
+    const request = buildSweepRequest();
+    const batchId = await submitBacktestBatch(request, submissionId);
+    emit('submitted-batch', batchId);
+    emit('update:show', false);
+  } catch (error) {
+    if (error instanceof BacktestSubmissionError) {
+      submitError.value = error.message;
+      if (error.code === 'strategy_version_unavailable') await loadCatalog();
+    } else {
+      submitError.value = error instanceof Error ? error.message : 'Batch submission failed.';
+    }
+    const revision = ++previewRevision;
+    preview.value = null;
+    previewPending.value = true;
+    try {
+      await refreshPreview(buildSweepRequest(), revision);
+    } catch {
+      previewPending.value = false;
     }
   } finally {
     submitting.value = false;

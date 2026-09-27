@@ -157,6 +157,12 @@ to a chart UI, and supports standalone backtesting.
   do not infer long or short trades from fill order. Run history filters request
   attributes from that JSON document and returns matches by `submitted_at DESC`,
   then `run_id ASC`.
+- Accepted Backtest Batches use a versioned normalized sweep definition, immutable
+  Strategy Metadata Snapshot, fixed candidate/member/excluded counts, and
+  contiguous zero-based member ordinals. A batch and all resolved member request
+  snapshots commit atomically under a unique client submission identity. Existing
+  standalone runs retain null batch identity. Batch members are excluded from the
+  standalone worker claim path until batch scheduling is delivered.
 - New successful single-Market bar-mode runs atomically store an Equity Replay
   descriptor with metrics, diagnostics, Fills, and Closed Trades. The descriptor
   fingerprints executable Candle timestamps and closes; legacy successes retain

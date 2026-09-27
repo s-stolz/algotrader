@@ -51,6 +51,16 @@ stored in TimescaleDB.
   symbol, timeframe, strategy, and engine through immutable request JSON. Symbol
   matching uses collection membership. Results use `submitted_at DESC`, then
   `run_id ASC`, with no persistence-layer limit or queue-selection policy.
+- Primitive `/backtest-batches` create/list/detail/member/event routes store one
+  accepted batch with all members and an initial revision-zero event in one
+  transaction. Same-submission-ID retries compare the normalized accepted
+  definition and return the existing batch; a different definition conflicts.
+  Member reads are ordinal ordered. Run reads may filter standalone or batch
+  membership without changing unfiltered results.
+- The standalone create route rejects batch identity, direct member deletion
+  conflicts, and a standalone queued-to-running compare-and-set excludes batch
+  members. SQL constraints and triggers protect immutable request/membership,
+  unique ordinals, and accepted batch membership after transaction commit.
 - Backtest fills and closed trades are normalized child rows with caller-supplied
   sequence values and cascade deletion.
 - Backtest closed trades carry explicit trade direction plus nullable

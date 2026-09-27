@@ -196,6 +196,8 @@ class BacktestRunService:
 
     def delete(self, run_id: str) -> None:
         run = self.get(run_id)
+        if run.batch_id is not None:
+            raise BacktestRunConflictError("Batch members cannot be deleted individually")
         if run.status not in (BacktestRunStatus.SUCCEEDED, BacktestRunStatus.FAILED):
             raise BacktestRunConflictError("Only terminal backtest runs can be deleted")
         try:

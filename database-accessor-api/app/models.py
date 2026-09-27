@@ -45,6 +45,23 @@ candles = Table(
 
 json_document = JSON().with_variant(JSONB(), "postgresql")
 
+backtest_batches = Table(
+    "backtest_batches",
+    metadata,
+    Column("batch_id", String(36), primary_key=True),
+    Column("submission_id", String(36), nullable=False, unique=True),
+    Column("status", String(16), nullable=False),
+    Column("accepted_at", TIMESTAMP(timezone=True), nullable=False),
+    Column("lifecycle_revision", Integer, nullable=False),
+    Column("definition_schema_version", Integer, nullable=False),
+    Column("accepted_definition", json_document, nullable=False),
+    Column("strategy_metadata", json_document, nullable=False),
+    Column("raw_count", Integer, nullable=False),
+    Column("member_count", Integer, nullable=False),
+    Column("excluded_count", Integer, nullable=False),
+    CheckConstraint("raw_count = member_count + excluded_count", name="batch_counts_check"),
+)
+
 backtest_runs = Table(
     "backtest_runs",
     metadata,
@@ -61,12 +78,32 @@ backtest_runs = Table(
     Column("metrics", json_document, nullable=True),
     Column("diagnostics", json_document, nullable=True),
     Column("replay_descriptor", json_document, nullable=True),
+    Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=True),
+    Column("member_ordinal", Integer, nullable=True),
     CheckConstraint(
         "status IN ('queued', 'running', 'succeeded', 'failed')",
         name="backtest_runs_status_check",
     ),
     Index("idx_backtest_runs_submitted_at", "submitted_at", "run_id"),
     Index("idx_backtest_runs_status_submitted_at", "status", "submitted_at", "run_id"),
+    Index("uq_backtest_batch_ordinal", "batch_id", "member_ordinal", unique=True),
+    CheckConstraint(
+        "(batch_id IS NULL AND member_ordinal IS NULL) OR "
+        "(batch_id IS NOT NULL AND member_ordinal >= 0)",
+        name="backtest_member_identity_check",
+    ),
+)
+
+backtest_batch_events = Table(
+    "backtest_batch_events",
+    metadata,
+    Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=False),
+    Column("revision", Integer, nullable=False),
+    Column("event_type", String(32), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("occurred_at", TIMESTAMP(timezone=True), nullable=False),
+    Column("reason", Text, nullable=True),
+    PrimaryKeyConstraint("batch_id", "revision"),
 )
 
 backtest_fills = Table(

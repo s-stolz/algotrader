@@ -149,6 +149,15 @@ class SweepPreviewRequestSchema(ApiContractModel):
         )
 
 
+class BatchAcceptanceRequestSchema(SweepPreviewRequestSchema):
+    submission_id: str = Field(min_length=1, max_length=36)
+
+    def to_definition(self) -> SweepDefinition:
+        return SweepPreviewRequestSchema.model_validate(
+            self.model_dump(exclude={"submission_id"})
+        ).to_definition()
+
+
 class StoredStrategyRequestSchema(ApiContractModel):
     strategy_id: str
     strategy_version: StrictInt | None = Field(default=None, gt=0)
@@ -226,6 +235,8 @@ class BacktestTradeResponseSchema(ApiContractModel):
 
 class BacktestRunResponseSchema(ApiContractModel):
     run_id: str
+    batch_id: str | None = None
+    member_ordinal: int | None = None
     status: Literal["queued", "running", "succeeded", "failed"]
     submitted_at_ms: int
     started_at_ms: int | None = None
@@ -246,6 +257,8 @@ class BacktestRunResponseSchema(ApiContractModel):
             "submitted_at_ms": run.submitted_at_ms,
             "request_schema_version": run.request_snapshot.schema_version,
             "request": dict(run.request_snapshot.payload),
+            "batch_id": run.batch_id,
+            "member_ordinal": run.member_ordinal,
         }
 
         if run.status.value in {"running", "succeeded", "failed"}:

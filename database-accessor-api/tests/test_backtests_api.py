@@ -23,6 +23,7 @@ from app.models import (  # noqa: E402
     metadata,
 )
 from app.schemas import (  # noqa: E402
+    BacktestBatchCreateIn,
     BacktestClosedTradeIn,
     BacktestFillIn,
     BacktestRequestPayload,
@@ -140,6 +141,150 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     @property
     def db(self) -> AsyncSession:
         return cast(AsyncSession, self.session)
+
+    def _batch_payload(self, **overrides):
+        request = _request_payload()
+        request["strategy"]["strategy_version"] = 1
+        payload = {
+            "batch_id": "batch-1",
+            "submission_id": "submission-1",
+            "accepted_at": datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
+            "definition_schema_version": 1,
+            "accepted_definition": {"schema_version": 1, "selections": {"markets": [1]}},
+            "strategy_metadata": {"strategy_id": "sma_crossover", "strategy_version": 1},
+            "raw_count": 2,
+            "member_count": 1,
+            "excluded_count": 1,
+            "members": [
+                {
+                    "run_id": "member-1",
+                    "member_ordinal": 0,
+                    "request_schema_version": 3,
+                    "request": request,
+                }
+            ],
+        }
+        payload.update(overrides)
+        return payload
+
+    async def test_batch_acceptance_retry_and_ordered_inspection(self):
+        payload = self._batch_payload()
+        first = await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        retried = await main.create_backtest_batch(
+            BacktestBatchCreateIn(**{**payload, "batch_id": "discarded-id"}), db=self.db
+        )
+        assert first is not None and retried is not None
+        self.assertEqual(first["batch_id"], retried["batch_id"])
+        self.assertEqual(first["status"], "queued")
+        self.assertEqual(first["lifecycle_revision"], 0)
+        members = await main.list_backtest_batch_members("batch-1", db=self.db)
+        self.assertEqual(
+            [(run["run_id"], run["member_ordinal"]) for run in members], [("member-1", 0)]
+        )
+        self.assertEqual(members[0]["request"], payload["members"][0]["request"])
+        events = await main.list_backtest_batch_events("batch-1", db=self.db)
+        self.assertEqual(
+            [(event["revision"], event["event_type"]) for event in events], [(0, "accepted")]
+        )
+        self.assertEqual(len(await main.list_backtest_runs(db=self.db)), 1)
+        self.assertEqual(len(await main.list_backtest_runs(membership="standalone", db=self.db)), 0)
+
+    async def test_batch_retry_after_concurrent_identity_winner(self):
+        from app import crud
+
+        winner = self._batch_payload()
+        retry = self._batch_payload(batch_id="discarded-id")
+
+        class ConcurrentWinnerSession:
+            def __init__(self, session):
+                self.session = session
+                self.raced = False
+
+            async def execute(self, statement, params=None):
+                if (
+                    getattr(getattr(statement, "table", None), "name", None) == "backtest_batches"
+                    and not self.raced
+                ):
+                    self.raced = True
+                    await crud.create_backtest_batch(
+                        self.session, BacktestBatchCreateIn(**winner).model_dump()
+                    )
+                    raise IntegrityError(
+                        "INSERT backtest_batches", {}, Exception("duplicate submission_id")
+                    )
+                return await self.session.execute(statement, params)
+
+            async def commit(self):
+                await self.session.commit()
+
+            async def rollback(self):
+                await self.session.rollback()
+
+        racing_session = ConcurrentWinnerSession(self.session)
+        accepted = await crud.create_backtest_batch(
+            cast(AsyncSession, racing_session), BacktestBatchCreateIn(**retry).model_dump()
+        )
+        assert accepted is not None
+        self.assertTrue(racing_session.raced)
+        self.assertEqual(accepted["batch_id"], winner["batch_id"])
+        self.assertEqual(len(await main.list_backtest_batches(db=self.db)), 1)
+        self.assertEqual(len(await main.list_backtest_batch_members("batch-1", db=self.db)), 1)
+        self.assertEqual(len(await main.list_backtest_batch_events("batch-1", db=self.db)), 1)
+
+    async def test_batch_identity_conflict_and_rollback(self):
+        from app import crud
+        from fastapi import HTTPException
+
+        payload = self._batch_payload()
+        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        changed = self._batch_payload(batch_id="batch-2", accepted_definition={"changed": True})
+        with self.assertRaises(HTTPException) as conflict:
+            await main.create_backtest_batch(BacktestBatchCreateIn(**changed), db=self.db)
+        self.assertEqual(conflict.exception.status_code, 409)
+        self.assertEqual(len(await main.list_backtest_batches(db=self.db)), 1)
+
+        invalid = self._batch_payload(batch_id="batch-3", submission_id="submission-3")
+        invalid["members"][0]["run_id"] = "member-1"
+        with self.assertRaises(IntegrityError):
+            await crud.create_backtest_batch(self.db, BacktestBatchCreateIn(**invalid).model_dump())
+        self.assertIsNone(await crud.get_backtest_batch(self.db, "batch-3"))
+
+    async def test_batch_member_cannot_be_individually_deleted(self):
+        from fastapi import HTTPException
+
+        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        with self.assertRaises(HTTPException) as conflict:
+            await main.delete_backtest_run("member-1", db=self.db)
+        self.assertEqual(conflict.exception.status_code, 409)
+        self.assertIsNotNone(await main.get_backtest_run("member-1", db=self.db))
+
+    async def test_standalone_claim_cannot_consume_batch_member(self):
+        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        result = await main.conditional_update_backtest_run(
+            "member-1",
+            BacktestRunConditionalUpdateIn(
+                expected_status="queued",
+                new_status="running",
+                started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+            ),
+            db=self.db,
+        )
+        self.assertEqual(result, {"updated": False})
+        self.assertEqual((await main.get_backtest_run("member-1", db=self.db))["status"], "queued")
+
+    def test_member_cannot_be_created_through_standalone_route(self):
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(**_run_payload(batch_id="batch-1", member_ordinal=0))
+
+    def test_batch_rejects_unresolved_or_multi_market_member(self):
+        payload = self._batch_payload()
+        payload["members"][0]["request"]["symbols"] = ["EURUSD", "USDJPY"]
+        with self.assertRaises(ValidationError):
+            BacktestBatchCreateIn(**payload)
+        payload = self._batch_payload()
+        payload["members"][0]["request"]["strategy"].pop("strategy_version")
+        with self.assertRaises(ValidationError):
+            BacktestBatchCreateIn(**payload)
 
     async def test_create_queued_run_and_get_preserves_complete_request(self):
         created = await main.create_backtest_run(
@@ -1363,6 +1508,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "metrics",
                 "diagnostics",
                 "replay_descriptor",
+                "batch_id",
+                "member_ordinal",
             },
         )
         self.assertNotIn("symbol", backtest_runs.c)

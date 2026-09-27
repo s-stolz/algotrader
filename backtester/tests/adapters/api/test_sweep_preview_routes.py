@@ -59,7 +59,8 @@ class TestSweepPreviewRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         preview = response.json()
         self.assertEqual(
-            self.client.get("/backtests/capabilities").json(), {"max_sweep_candidate_count": 200}
+            self.client.get("/backtests/capabilities").json(),
+            {"max_sweep_candidate_count": 200, "batch_acceptance_enabled": False},
         )
         self.assertEqual(preview["raw_count"], 144)
         self.assertEqual(preview["ready_count"], 96)

@@ -50,7 +50,7 @@ export function displayWinRate(run: BacktestRun, direction: 'long' | 'short'): s
   return rate === null ? '—' : `${Number(rate.toFixed(2))}%`;
 }
 
-function timeframeDuration(value: string): number | null {
+export function timeframeDuration(value: string): number | null {
   const match = /^(M|H|D|W)(\d+)$/.exec(value.toUpperCase());
   if (!match) return null;
   const unit = { M: 1, H: 60, D: 1440, W: 10080 }[match[1] as 'M' | 'H' | 'D' | 'W'];

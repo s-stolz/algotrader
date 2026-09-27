@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+from typing import Any, Literal
+
+from app.backtest_batches import BacktestBatchService
 from app.backtest_runs import (
     BacktestCandleUnavailableError,
     BacktestRunConflictError,
@@ -29,9 +33,10 @@ from adapters.api.schemas import (
     BacktestSubmissionRequestSchema,
     BacktestSubmissionResponseSchema,
     BacktestTradeResponseSchema,
+    BatchAcceptanceRequestSchema,
     SweepPreviewRequestSchema,
 )
-from adapters.persistence import DatabaseAccessorBacktestRunRepository
+from adapters.persistence import DatabaseAccessorBacktestRunRepository, _run_record_from_response
 
 router = APIRouter(prefix="/backtests", tags=["backtests"])
 
@@ -51,11 +56,116 @@ def get_sweep_preview_service() -> SweepPreviewService:
     )
 
 
+def get_backtest_batch_service() -> BacktestBatchService:
+    return BacktestBatchService(
+        preview=get_sweep_preview_service(), client_factory=DatabaseAccessorClient
+    )
+
+
 @router.get("/capabilities")
 def get_backtest_capabilities(
     service: SweepPreviewService = Depends(get_sweep_preview_service),
-) -> dict[str, int]:
-    return {"max_sweep_candidate_count": service.max_candidate_count}
+) -> dict[str, int | bool]:
+    return {
+        "max_sweep_candidate_count": service.max_candidate_count,
+        "batch_acceptance_enabled": os.getenv("BACKTESTER_BATCH_ACCEPTANCE_ENABLED") == "1",
+    }
+
+
+@router.post("/batches", status_code=status.HTTP_202_ACCEPTED)
+def accept_batch(
+    request: BatchAcceptanceRequestSchema,
+    response: Response,
+    service: BacktestBatchService = Depends(get_backtest_batch_service),
+) -> dict[str, object]:
+    if os.getenv("BACKTESTER_BATCH_ACCEPTANCE_ENABLED") != "1":
+        raise HTTPException(status_code=404, detail="Batch launch is not released")
+    try:
+        batch = service.accept(request.submission_id, request.to_definition())
+    except StrategyVersionUnavailableError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "strategy_version_unavailable",
+                "fields": [],
+                "message": "Strategy version is unavailable",
+            },
+        ) from exc
+    except (InvalidStrategyParameterError, InvalidParameterCombinationError) as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": exc.code, "fields": exc.fields, "message": str(exc)}
+        ) from exc
+    except (InvalidBacktestRequestError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_sweep_definition", "fields": [], "message": str(exc)},
+        ) from exc
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code == 409:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "submission_id_conflict",
+                    "fields": [],
+                    "message": "Submission identity conflicts",
+                },
+            ) from exc
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+    response.headers["Location"] = f"/backtests/batches/{batch['batch_id']}"
+    return {"batch_id": str(batch["batch_id"]), "status": str(batch["status"])}
+
+
+@router.get("/batches")
+def list_batches(
+    service: BacktestBatchService = Depends(get_backtest_batch_service),
+) -> list[dict[str, Any]]:
+    try:
+        return service.list()
+    except DatabaseAccessorClientError as exc:
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+
+
+@router.get("/batches/{batch_id}")
+def get_batch(
+    batch_id: str, service: BacktestBatchService = Depends(get_backtest_batch_service)
+) -> dict[str, Any]:
+    try:
+        return service.get(batch_id)
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+
+
+@router.get(
+    "/batches/{batch_id}/members",
+    response_model=list[BacktestRunResponseSchema],
+    response_model_exclude_none=True,
+)
+def get_batch_members(
+    batch_id: str, service: BacktestBatchService = Depends(get_backtest_batch_service)
+) -> list[BacktestRunResponseSchema]:
+    try:
+        return [
+            BacktestRunResponseSchema.from_domain(_run_record_from_response(member))
+            for member in service.members(batch_id)
+        ]
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+
+
+@router.get("/batches/{batch_id}/events")
+def get_batch_events(
+    batch_id: str, service: BacktestBatchService = Depends(get_backtest_batch_service)
+) -> list[dict[str, Any]]:
+    try:
+        return service.events(batch_id)
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
 
 
 @router.post("/sweeps/preview")
@@ -159,6 +269,8 @@ def list_backtests(
     engine: BacktestEngine | None = None,
     submitted_from_ms: int | None = None,
     submitted_to_ms: int | None = None,
+    membership: Literal["standalone", "batch"] | None = None,
+    batch_id: str | None = None,
     service: BacktestRunService = Depends(get_backtest_run_service),
 ) -> list[BacktestRunResponseSchema]:
     query = BacktestRunQuery(
@@ -169,6 +281,8 @@ def list_backtests(
         engine=engine,
         submitted_from_ms=submitted_from_ms,
         submitted_to_ms=submitted_to_ms,
+        membership=membership,
+        batch_id=batch_id,
     )
     try:
         return [BacktestRunResponseSchema.from_domain(run) for run in service.list(query)]
@@ -289,7 +403,7 @@ def delete_backtest(
     except BacktestRunConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Only terminal backtest runs can be deleted",
+            detail=str(exc),
         ) from exc
     except BacktestRunPersistenceError as exc:
         raise HTTPException(

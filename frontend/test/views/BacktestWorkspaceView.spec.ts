@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
-  fetchBacktestFills, getBacktestRun, listBacktestRuns,
+  fetchBacktestFills, getBacktestBatch, getBacktestRun, listBacktestBatchEvents,
+  listBacktestBatchMembers, listBacktestBatches, listBacktestRuns,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import type { BacktestClosedTrade, BacktestFill, BacktestRun } from '@/types/backtesterContracts';
+import type { BacktestBatch, BacktestClosedTrade, BacktestFill, BacktestRun } from '@/types/backtesterContracts';
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
@@ -20,6 +21,10 @@ vi.mock('@/api/backtesterClient', () => ({
   fetchBacktestEquityCurve: vi.fn(),
   fetchBacktestFills: vi.fn(),
   getBacktestRun: vi.fn(),
+  getBacktestBatch: vi.fn(),
+  listBacktestBatchEvents: vi.fn(),
+  listBacktestBatchMembers: vi.fn(),
+  listBacktestBatches: vi.fn(),
   listBacktestRuns: vi.fn(),
 }));
 
@@ -71,9 +76,10 @@ function run(id: string, overrides: Partial<BacktestRun> = {}): BacktestRun {
   };
 }
 
-function mountWorkspace() {
+function mountWorkspace(includeBatchDetail = false) {
   return mount(BacktestWorkspaceView, {
-    global: { plugins: [pinia], stubs: { EquityReplayCharts: true } },
+    global: { plugins: [pinia], stubs: { EquityReplayCharts: true,
+      BacktestBatches: !includeBatchDetail } },
   });
 }
 
@@ -103,6 +109,10 @@ describe('production Backtest Workspace', () => {
     localStorage.clear();
     routerMock.push.mockReset();
     vi.mocked(listBacktestRuns).mockReset();
+    vi.mocked(listBacktestBatches).mockReset().mockResolvedValue([]);
+    vi.mocked(getBacktestBatch).mockReset();
+    vi.mocked(listBacktestBatchMembers).mockReset();
+    vi.mocked(listBacktestBatchEvents).mockReset();
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
@@ -342,6 +352,66 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
+  it('filters batches and standalone runs in one history without member rows', async () => {
+    const standalone = run('standalone');
+    const memberRun = run('member-0', { batch_id: 'batch-1', member_ordinal: 0,
+      status: 'failed', metrics: null });
+    const batch = {
+      batch_id: 'batch-1', submission_id: 'submit-1', status: 'completed',
+      accepted_at_ms: 1_780_000_000_000, lifecycle_revision: 1,
+      definition_schema_version: 1,
+      accepted_definition: { schema_version: 1,
+        shared_request: { start_ms: 1_714_521_600_000, end_ms: 1_714_608_000_000 },
+        normalized_selections: { markets: [{ symbol_id: 2, symbol: 'GBPUSD', exchange: 'FX' }],
+          timeframes: ['H1'], parameters: {}, allowed_directions: ['long_and_short'] } },
+      strategy_metadata: { strategy_id: 'breakout', strategy_version: 1,
+        display_name: 'Breakout', parameters: [] },
+      raw_count: 2, member_count: 1, excluded_count: 1,
+      total_count: 1, settled_count: 1, executed_count: 1,
+      outcome_counts: { queued: 0, running: 0, cancelling: 0, succeeded: 0,
+        failed: 1, cancelled: 0 },
+    } as BacktestBatch;
+    vi.mocked(listBacktestRuns).mockResolvedValue([standalone, memberRun]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([batch]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(batch);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue([memberRun]);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([{ batch_id: 'batch-1', revision: 0,
+      event_type: 'accepted', status: 'queued', occurred_at: '2026-09-26T00:00:00Z',
+      reason: null }]);
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    const history = () => wrapper.find('[data-testid="workspace-history"]');
+    expect(history().findAll('tbody tr')).toHaveLength(2);
+    expect(history().find('[data-testid="workspace-run-member-0"]').exists()).toBe(false);
+    expect(history().find('[data-testid="workspace-batch-batch-1"]').text()).toContain('1 / 1');
+    await history().find('[data-testid="workspace-batch-batch-1"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="workspace-batch-members"]').text()).toContain('member-0');
+    expect(listBacktestBatchMembers).toHaveBeenCalledWith('batch-1');
+
+    await wrapper.find('[data-testid="workspace-search"] input').setValue('submit-1');
+    expect(history().find('[data-testid="workspace-batch-batch-1"]').exists()).toBe(true);
+    expect(history().find('[data-testid="workspace-run-standalone"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="workspace-search"] input').setValue('');
+
+    for (const [index, value] of [[0, 'completed'], [1, 'batch'], [2, 'FX:GBPUSD'],
+      [3, 'breakout'], [4, 'H1'], [5, 'with_failed']] as const) {
+      wrapper.findAllComponents(NSelect)[index].vm.$emit('update:value', value);
+      await wrapper.vm.$nextTick();
+      expect(history().find('[data-testid="workspace-batch-batch-1"]').exists()).toBe(true);
+      expect(history().find('[data-testid="workspace-run-standalone"]').exists()).toBe(false);
+      wrapper.findAllComponents(NSelect)[index].vm.$emit('update:value', 'all');
+      await wrapper.vm.$nextTick();
+    }
+    const timeframeHeader = wrapper.findAll('th').find((header) => header.text().includes('Timeframe'));
+    const orderedRows = () => history().findAll('tbody tr').map((row) => row.attributes('data-testid'));
+    await timeframeHeader?.trigger('click');
+    expect(orderedRows()).toEqual(['workspace-batch-batch-1', 'workspace-run-standalone']);
+    await timeframeHeader?.trigger('click');
+    expect(orderedRows()).toEqual(['workspace-run-standalone', 'workspace-batch-batch-1']);
+    wrapper.unmount();
+  });
+
   it('sorts history dates in both directions with deterministic rows', async () => {
     const older = run('older');
     const newer = run('newer', {
@@ -382,7 +452,7 @@ describe('production Backtest Workspace', () => {
     await wrapper.find('[data-testid="workspace-delete-success"]').trigger('click');
     await flushPromises();
     expect(deleteBacktestRun).toHaveBeenCalledWith('success');
-    expect(wrapper.text()).toContain('No saved Backtest Runs.');
+    expect(wrapper.text()).toContain('No saved Backtest Runs or Batches.');
     expect(wrapper.text()).not.toContain('current lifecycle status is unknown');
     wrapper.unmount();
   });

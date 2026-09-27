@@ -3,7 +3,7 @@
     <header class="workspace-header">
       <div>
         <h1>Backtest Workspace</h1>
-        <p>Saved standalone Backtest Runs</p>
+        <p>Saved standalone Backtest Runs and accepted Batches</p>
       </div>
       <div class="header-actions">
         <n-button type="primary" data-testid="workspace-create" @click="creationOpen = true">
@@ -18,7 +18,11 @@
       </div>
     </header>
 
-    <BacktestCreationDrawer v-model:show="creationOpen" @submitted="createdRun" />
+    <BacktestCreationDrawer
+      v-model:show="creationOpen"
+      @submitted="createdRun"
+      @submitted-batch="loadRuns()"
+    />
 
     <section aria-label="Saved Backtest Runs">
       <div class="filters">
@@ -26,8 +30,8 @@
           v-model:value="search"
           data-testid="workspace-search"
           clearable
-          placeholder="Search saved runs"
-          aria-label="Search saved runs"
+          placeholder="Search saved runs and batches"
+          aria-label="Search saved runs and batches"
         />
         <n-select
           v-model:value="statusFilter"
@@ -59,6 +63,12 @@
           aria-label="Filter by Timeframe"
           :options="timeframeOptions"
         />
+        <n-select
+          v-model:value="failedFilter"
+          data-testid="workspace-failed-filter"
+          aria-label="Filter by failed runs"
+          :options="failedOptions"
+        />
       </div>
 
       <p v-if="isLoading" role="status">Loading saved runs…</p>
@@ -66,24 +76,25 @@
         Run history unavailable; current lifecycle status is unknown. {{ readError }}
       </p>
       <p v-if="deleteError" role="alert">{{ deleteError }}</p>
-      <p v-if="runs !== null && runs.length === 0 && !readError" role="status">
-        No saved Backtest Runs.
+      <p v-if="runs !== null && batches !== null && historyRows.length === 0 && !readError" role="status">
+        No saved Backtest Runs or Batches.
       </p>
-      <p v-else-if="runs !== null && filteredRuns.length === 0 && !readError" role="status">
-        No Backtest Runs match these filters.
+      <p v-else-if="runs !== null && batches !== null && filteredHistory.length === 0 && !readError" role="status">
+        No Backtest Runs or Batches match these filters.
       </p>
 
       <n-data-table
-        v-if="runs !== null"
+        v-if="runs !== null && batches !== null"
         data-testid="workspace-history"
         :columns="historyColumns"
-        :data="filteredRuns"
+        :data="filteredHistory"
         :row-key="rowKey"
         :row-props="historyRowProps"
         :pagination="{ pageSize: 15 }"
         :bordered="false"
         size="small"
       />
+      <BacktestBatches :batch-id="selectedBatchId" @select-run="selectRun" />
     </section>
 
     <section class="current-backtest" aria-label="Current Backtest">
@@ -109,7 +120,7 @@
           data-testid="workspace-current-backtest"
           :columns="detailColumns"
           :data="[selectedRun]"
-          :row-key="rowKey"
+          :row-key="(run: BacktestRun) => run.run_id"
           :bordered="false"
           :scroll-x="1860"
           size="small"
@@ -157,25 +168,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
+import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import { NButton, NDataTable, NIcon, NInput, NSelect, NTag, NTooltip } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { DocumentTextOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
 
-import { deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestRuns } from '@/api/backtesterClient';
+import { deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestRuns } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
+import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import { BACKTEST_RUN_STATUSES, type BacktestRun, type EquityReplayResponse } from '@/types/backtesterContracts';
+import { BACKTEST_BATCH_STATUSES, BACKTEST_RUN_STATUSES, type BacktestBatch, type BacktestRun, type EquityReplayResponse } from '@/types/backtesterContracts';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
 import EquityReplayCharts from './EquityReplayCharts.vue';
 
 import {
-  compareHistoryRuns, displayWinRate, equityUnavailableReason, formatMagnitude, formatSigned,
+  displayWinRate, equityUnavailableReason, formatMagnitude, formatSigned,
   formatUtcDate, runMarket,
-  runName, savedMetric, strategyVersion, type HistorySortKey,
+  runName, savedMetric, strategyVersion, timeframeDuration, type HistorySortKey,
 } from './backtestWorkspaceRuns';
 
 defineOptions({ name: 'BacktestWorkspaceView' });
@@ -186,6 +198,8 @@ const workspaceStore = useBacktestWorkspaceStore();
 const overlayStore = useBacktestOverlayStore();
 const marketsStore = useMarketsStore();
 const runs = ref<BacktestRun[] | null>(null);
+const batches = shallowRef<BacktestBatch[] | null>(null);
+type HistoryEntry = { kind: 'run'; run: BacktestRun } | { kind: 'batch'; batch: BacktestBatch };
 const isLoading = ref(false);
 const isRefreshing = ref(false);
 const readError = ref<string | null>(null);
@@ -200,12 +214,14 @@ const curveReason = computed(() => equityUnavailableReason(curve.value?.reason))
 const endingEquity = computed(() => curve.value?.availability === 'exact'
   ? curve.value.equity_curve.at(-1)?.equity ?? null : null);
 const creationOpen = ref(false);
+const selectedBatchId = ref<string | null>(null);
 const search = ref('');
 const statusFilter = ref('all');
 const typeFilter = ref('all');
 const marketFilter = ref('all');
 const strategyFilter = ref('all');
 const timeframeFilter = ref('all');
+const failedFilter = ref('all');
 const selectedRunId = computed(() => workspaceStore.selectedRunId);
 const selectedRun = computed(() => workspaceStore.selectedRun);
 const logRun = ref<BacktestRun | null>(null);
@@ -221,38 +237,71 @@ let isActive = false;
 
 const statusOptions: SelectOption[] = [
   { label: 'All statuses', value: 'all' },
-  ...BACKTEST_RUN_STATUSES.map((status) => ({ label: status, value: status })),
+  ...[...new Set([...BACKTEST_RUN_STATUSES, ...BACKTEST_BATCH_STATUSES])]
+    .map((status) => ({ label: status, value: status })),
 ];
 const typeOptions: SelectOption[] = [
   { label: 'All types', value: 'all' },
   { label: 'Standalone', value: 'standalone' },
+  { label: 'Parameter Sweep', value: 'batch' },
+];
+const failedOptions: SelectOption[] = [
+  { label: 'All outcomes', value: 'all' },
+  { label: 'With failed runs', value: 'with_failed' },
 ];
 function optionsFrom(values: string[], allLabel: string): SelectOption[] {
   return [{ label: allLabel, value: 'all' }, ...[...new Set(values)].sort().map(
     (value) => ({ label: value, value }),
   )];
 }
-const marketOptions = computed(() => optionsFrom(
-  (runs.value ?? []).map(runMarket), 'All Markets',
-));
+function batchMarkets(batch: BacktestBatch): string[] {
+  return batch.accepted_definition.normalized_selections.markets.map(
+    (market) => `${market.exchange}:${market.symbol}`,
+  );
+}
+function batchTimeframes(batch: BacktestBatch): string[] {
+  return batch.accepted_definition.normalized_selections.timeframes;
+}
+const marketOptions = computed(() => optionsFrom([
+  ...(runs.value ?? []).map(runMarket), ...(batches.value ?? []).flatMap(batchMarkets),
+], 'All Markets'));
 const strategyOptions = computed(() => optionsFrom(
-  (runs.value ?? []).map((run) => run.request.strategy.strategy_id), 'All Strategies',
+  [...(runs.value ?? []).map((run) => run.request.strategy.strategy_id),
+    ...(batches.value ?? []).map((batch) => batch.strategy_metadata.strategy_id)], 'All Strategies',
 ));
-const timeframeOptions = computed(() => optionsFrom(
-  (runs.value ?? []).map((run) => run.request.timeframe), 'All Timeframes',
-));
+const timeframeOptions = computed(() => optionsFrom([
+  ...(runs.value ?? []).map((run) => run.request.timeframe),
+  ...(batches.value ?? []).flatMap(batchTimeframes),
+], 'All Timeframes'));
 
-const filteredRuns = computed(() => (runs.value ?? []).filter((run) => {
+const historyRows = computed<HistoryEntry[]>(() => [
+  ...(runs.value ?? []).filter((run) => !run.batch_id).map((run) => ({ kind: 'run' as const, run })),
+  ...(batches.value ?? []).map((batch) => ({ kind: 'batch' as const, batch })),
+]);
+const filteredHistory = computed(() => historyRows.value.filter((entry) => {
   const query = search.value.trim().toLowerCase();
-  return (statusFilter.value === 'all' || run.status === statusFilter.value) &&
-    (typeFilter.value === 'all' || typeFilter.value === 'standalone') &&
-    (marketFilter.value === 'all' || runMarket(run) === marketFilter.value) &&
-    (strategyFilter.value === 'all' || run.request.strategy.strategy_id === strategyFilter.value) &&
-    (timeframeFilter.value === 'all' || run.request.timeframe === timeframeFilter.value) &&
-    (!query || [
-      runName(run), run.run_id, run.status, runMarket(run),
-      run.request.timeframe, run.request.strategy.strategy_id,
-    ].some((value) => value.toLowerCase().includes(query)));
+  if (entry.kind === 'run') {
+    const run = entry.run;
+    return (statusFilter.value === 'all' || run.status === statusFilter.value) &&
+      (typeFilter.value === 'all' || typeFilter.value === 'standalone') &&
+      (failedFilter.value === 'all' || run.status === 'failed') &&
+      (marketFilter.value === 'all' || runMarket(run) === marketFilter.value) &&
+      (strategyFilter.value === 'all' || run.request.strategy.strategy_id === strategyFilter.value) &&
+      (timeframeFilter.value === 'all' || run.request.timeframe === timeframeFilter.value) &&
+      (!query || [runName(run), run.run_id, run.status, runMarket(run),
+        run.request.timeframe, run.request.strategy.strategy_id]
+        .some((value) => value.toLowerCase().includes(query)));
+  }
+  const batch = entry.batch;
+  return (statusFilter.value === 'all' || batch.status === statusFilter.value) &&
+    (typeFilter.value === 'all' || typeFilter.value === 'batch') &&
+    (failedFilter.value === 'all' || batch.outcome_counts.failed > 0) &&
+    (marketFilter.value === 'all' || batchMarkets(batch).includes(marketFilter.value)) &&
+    (strategyFilter.value === 'all' || batch.strategy_metadata.strategy_id === strategyFilter.value) &&
+    (timeframeFilter.value === 'all' || batchTimeframes(batch).includes(timeframeFilter.value)) &&
+    (!query || [batch.batch_id, batch.submission_id, batch.status,
+      batch.strategy_metadata.strategy_id, ...batchMarkets(batch), ...batchTimeframes(batch)]
+      .some((value) => value.toLowerCase().includes(query)));
 }));
 
 function errorMessage(error: unknown): string {
@@ -301,9 +350,12 @@ async function readRuns(): Promise<void> {
   isLoading.value = runs.value === null;
   isRefreshing.value = runs.value !== null;
   try {
-    const latest = await listBacktestRuns();
+    const [latest, latestBatches] = await Promise.all([
+      listBacktestRuns({ membership: 'standalone' }), listBacktestBatches(),
+    ]);
     if (generation !== readGeneration || !isActive) return;
     runs.value = latest;
+    batches.value = latestBatches;
     readError.value = null;
     if (logRun.value) {
       logRun.value = latest.find((run) => run.run_id === logRun.value?.run_id) ?? null;
@@ -312,6 +364,8 @@ async function readRuns(): Promise<void> {
     if (selected) {
       workspaceStore.selectRun(selected);
       void loadSelected(selected.run_id);
+    } else if (selectedRun.value?.batch_id && selectedRunId.value) {
+      void loadSelected(selectedRunId.value);
     } else if (selectedRunId.value) {
       workspaceStore.clearSelection();
       ++detailSequence;
@@ -362,20 +416,29 @@ async function createdRun(runId: string): Promise<void> {
   await loadRuns();
 }
 
-function rowKey(run: BacktestRun): string {
-  return run.run_id;
+function rowKey(entry: HistoryEntry): string {
+  return entry.kind === 'run' ? entry.run.run_id : entry.batch.batch_id;
 }
 
-function historyRowProps(run: BacktestRun): Record<string, unknown> {
+function historyRowProps(entry: HistoryEntry): Record<string, unknown> {
+  const isRun = entry.kind === 'run';
+  const select = () => {
+    if (entry.kind === 'run') {
+      selectedBatchId.value = null;
+      selectRun(entry.run);
+    } else {
+      selectedBatchId.value = entry.batch.batch_id;
+    }
+  };
   return {
-    'data-testid': `workspace-run-${run.run_id}`,
-    'aria-selected': selectedRunId.value === run.run_id,
+    'data-testid': isRun ? `workspace-run-${entry.run.run_id}` : `workspace-batch-${entry.batch.batch_id}`,
+    'aria-selected': isRun ? selectedRunId.value === entry.run.run_id : selectedBatchId.value === entry.batch.batch_id,
     tabindex: 0,
-    onClick: () => selectRun(run),
+    onClick: select,
     onKeydown: (event: KeyboardEvent) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        selectRun(run);
+        select();
       }
     },
   };
@@ -404,41 +467,88 @@ function runCell(run: BacktestRun) {
   ]);
 }
 
-function historyColumn(title: string, key: HistorySortKey,
-  render: (run: BacktestRun) => ReturnType<typeof h>): DataTableColumns<BacktestRun>[number] {
+function entrySortValue(entry: HistoryEntry, key: HistorySortKey | 'progress'): string | number {
+  if (entry.kind === 'run') {
+    const run = entry.run;
+    const values: Record<HistorySortKey | 'progress', string | number> = {
+      name: runName(run), type: 'Standalone',
+      strategy: `${run.request.strategy.strategy_id} ${strategyVersion(run)}`,
+      market: runMarket(run), timeframe: timeframeDuration(run.request.timeframe) ?? run.request.timeframe,
+      start: run.request.start_ms, end: run.request.end_ms, status: run.status,
+      duration: run.request.end_ms - run.request.start_ms, submitted: run.submitted_at_ms,
+      progress: run.status === 'succeeded' || run.status === 'failed' ? 1 : 0,
+    };
+    return values[key];
+  }
+  const batch = entry.batch;
+  const shared = batch.accepted_definition.shared_request;
+  const durations = batchTimeframes(batch).map(timeframeDuration).filter((value) => value !== null);
+  const values: Record<HistorySortKey | 'progress', string | number> = {
+    name: batch.batch_id, type: 'Parameter Sweep',
+    strategy: `${batch.strategy_metadata.strategy_id} v${batch.strategy_metadata.strategy_version}`,
+    market: batchMarkets(batch).join(', '),
+    timeframe: durations.length ? Math.min(...durations) : batchTimeframes(batch).join(', '),
+    start: Number(shared.start_ms ?? 0), end: Number(shared.end_ms ?? 0), status: batch.status,
+    duration: Number(shared.end_ms ?? 0) - Number(shared.start_ms ?? 0),
+    submitted: batch.accepted_at_ms,
+    progress: batch.total_count ? batch.settled_count / batch.total_count : 0,
+  };
+  return values[key];
+}
+function compareHistoryEntries(left: HistoryEntry, right: HistoryEntry,
+  key: HistorySortKey | 'progress'): number {
+  const a = entrySortValue(left, key);
+  const b = entrySortValue(right, key);
+  const result = typeof a === 'number' && typeof b === 'number' ? a - b
+    : String(a).localeCompare(String(b), undefined, { numeric: true });
+  return result || String(entrySortValue(left, 'name')).localeCompare(
+    String(entrySortValue(right, 'name')), undefined, { numeric: true },
+  ) || rowKey(left).localeCompare(rowKey(right), undefined, { numeric: true });
+}
+function historyColumn(title: string, key: HistorySortKey | 'progress',
+  render: (entry: HistoryEntry) => ReturnType<typeof h>): DataTableColumns<HistoryEntry>[number] {
   return {
-    title, key, sorter: (left, right) => compareHistoryRuns(left, right, key),
+    title, key, sorter: (left, right) => compareHistoryEntries(left, right, key),
     ellipsis: { tooltip: true }, render,
   };
 }
 
-const historyColumns: DataTableColumns<BacktestRun> = [
-  historyColumn('Name', 'name', runCell),
-  historyColumn('Type', 'type', () => cell('Standalone')),
-  historyColumn('Strategy / version', 'strategy', (run) => cell(
-    `${run.request.strategy.strategy_id} · ${strategyVersion(run)}`,
+const historyColumns: DataTableColumns<HistoryEntry> = [
+  historyColumn('Name', 'name', (entry) => entry.kind === 'run'
+    ? runCell(entry.run) : cell(entry.batch.batch_id)),
+  historyColumn('Type', 'type', (entry) => cell(entry.kind === 'run' ? 'Standalone' : 'Parameter Sweep')),
+  historyColumn('Strategy / version', 'strategy', (entry) => cell(entry.kind === 'run'
+    ? `${entry.run.request.strategy.strategy_id} · ${strategyVersion(entry.run)}`
+    : `${entry.batch.strategy_metadata.strategy_id} · v${entry.batch.strategy_metadata.strategy_version}`,
   )),
-  historyColumn('Market', 'market', (run) => cell(runMarket(run))),
-  historyColumn('Timeframe', 'timeframe', (run) => cell(run.request.timeframe)),
-  historyColumn('Start date', 'start', (run) => cell(formatUtcDate(run.request.start_ms))),
-  historyColumn('End date', 'end', (run) => cell(formatUtcDate(run.request.end_ms))),
-  historyColumn('Status', 'status', (run) => h(NTag, {
-    size: 'small', type: run.status === 'succeeded' ? 'success'
-      : run.status === 'failed' ? 'error' : 'info',
-  }, { default: () => run.status })),
+  historyColumn('Market', 'market', (entry) => cell(entry.kind === 'run'
+    ? runMarket(entry.run) : batchMarkets(entry.batch).join(', '))),
+  historyColumn('Timeframe', 'timeframe', (entry) => cell(entry.kind === 'run'
+    ? entry.run.request.timeframe : batchTimeframes(entry.batch).join(', '))),
+  historyColumn('Start date', 'start', (entry) => cell(formatUtcDate(entry.kind === 'run'
+    ? entry.run.request.start_ms : Number(entry.batch.accepted_definition.shared_request.start_ms)))),
+  historyColumn('End date', 'end', (entry) => cell(formatUtcDate(entry.kind === 'run'
+    ? entry.run.request.end_ms : Number(entry.batch.accepted_definition.shared_request.end_ms)))),
+  historyColumn('Status', 'status', (entry) => {
+    const status = entry.kind === 'run' ? entry.run.status : entry.batch.status;
+    return h(NTag, { size: 'small', type: status === 'succeeded' || status === 'completed'
+      ? 'success' : status === 'failed' ? 'error' : 'info' }, { default: () => status });
+  }),
+  historyColumn('Settled', 'progress', (entry) => cell(entry.kind === 'run'
+    ? '—' : `${entry.batch.settled_count} / ${entry.batch.total_count}`)),
   {
-    title: 'Delete', key: 'delete', render: (run) => h(NButton, {
+    title: 'Delete', key: 'delete', render: (entry) => entry.kind === 'run' ? h(NButton, {
       text: true,
       size: 'small',
-      'data-testid': `workspace-delete-${run.run_id}`,
-      disabled: (run.status !== 'succeeded' && run.status !== 'failed') ||
-        deletingRunIds.value.has(run.run_id),
+      'data-testid': `workspace-delete-${entry.run.run_id}`,
+      disabled: (entry.run.status !== 'succeeded' && entry.run.status !== 'failed') ||
+        deletingRunIds.value.has(entry.run.run_id),
       title: 'Delete terminal Backtest Run and its saved results, Fills, and Closed Trades',
       onClick: (event: MouseEvent) => {
         event.stopPropagation();
-        void deleteRun(run);
+        void deleteRun(entry.run);
       },
-    }, { default: () => 'Delete' }),
+    }, { default: () => 'Delete' }) : cell('—'),
   },
 ];
 

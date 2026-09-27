@@ -137,6 +137,8 @@ class EquityReplayDescriptor(BacktestContractModel):
 
 class BacktestRunBase(BacktestContractModel):
     run_id: str
+    batch_id: str | None = None
+    member_ordinal: int | None = None
     status: Literal["queued", "running", "succeeded", "failed"]
     submitted_at: datetime
     started_at: datetime | None = None
@@ -179,6 +181,12 @@ class BacktestRunBase(BacktestContractModel):
 
 
 class BacktestRunCreateIn(BacktestRunBase):
+    @model_validator(mode="after")
+    def prohibit_member_creation(self) -> "BacktestRunCreateIn":
+        if self.batch_id is not None or self.member_ordinal is not None:
+            raise ValueError("Batch members can only be created with the batch")
+        return self
+
     @model_validator(mode="after")
     def validate_new_success_descriptor(self) -> "BacktestRunCreateIn":
         if self.status == "succeeded" and self.replay_descriptor is None:
@@ -235,3 +243,74 @@ class BacktestRunCompleteIn(BacktestContractModel):
 
 class BacktestRunMutationOut(BacktestContractModel):
     updated: bool
+
+
+class BacktestBatchMemberIn(BacktestContractModel):
+    run_id: str
+    member_ordinal: int = Field(ge=0)
+    request_schema_version: Literal[3]
+    request: BacktestRequestPayload
+
+
+class BacktestBatchCreateIn(BacktestContractModel):
+    batch_id: str
+    submission_id: str
+    accepted_at: datetime
+    definition_schema_version: Literal[1]
+    accepted_definition: dict[str, Any]
+    strategy_metadata: dict[str, Any]
+    raw_count: int = Field(gt=0)
+    member_count: int = Field(gt=0)
+    excluded_count: int = Field(ge=0)
+    members: list[BacktestBatchMemberIn] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_members(self) -> "BacktestBatchCreateIn":
+        if (
+            self.member_count != len(self.members)
+            or self.raw_count != self.member_count + self.excluded_count
+        ):
+            raise ValueError("Batch counts do not match membership")
+        if sorted(member.member_ordinal for member in self.members) != list(
+            range(self.member_count)
+        ):
+            raise ValueError("Batch ordinals must be contiguous")
+        if len({member.run_id for member in self.members}) != self.member_count:
+            raise ValueError("Batch member run IDs must be unique")
+        if any(
+            len(member.request.symbols) != 1
+            or not member.request.symbols[0]
+            or not member.request.timeframe
+            or not member.request.exchange
+            or member.request.strategy.strategy_version is None
+            for member in self.members
+        ):
+            raise ValueError(
+                "Batch members require one resolved Market, Timeframe, and Strategy Version"
+            )
+        return self
+
+
+class BacktestBatchOut(BacktestContractModel):
+    batch_id: str
+    submission_id: str
+    status: Literal[
+        "queued", "running", "pausing", "paused", "cancelling", "completed", "cancelled"
+    ]
+    accepted_at: datetime
+    lifecycle_revision: int
+    definition_schema_version: Literal[1]
+    accepted_definition: dict[str, Any]
+    strategy_metadata: dict[str, Any]
+    raw_count: int
+    member_count: int
+    excluded_count: int
+
+
+class BacktestBatchEventOut(BacktestContractModel):
+    batch_id: str
+    revision: int
+    event_type: str
+    status: str
+    occurred_at: datetime
+    reason: str | None = None

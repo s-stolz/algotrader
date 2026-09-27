@@ -344,6 +344,8 @@ def _run_query_params(query: BacktestRunQuery) -> dict[str, Any]:
         "timeframe": query.timeframe,
         "strategy": query.strategy_id,
         "engine": (_enum_or_text_value(query.engine) if query.engine is not None else None),
+        "membership": query.membership,
+        "batch_id": query.batch_id,
         "submitted_from": (
             _epoch_ms_to_utc_text(query.submitted_from_ms)
             if query.submitted_from_ms is not None
@@ -386,6 +388,10 @@ def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
         metrics=_optional_mapping(response.get("metrics")),
         diagnostics=_optional_mapping(response.get("diagnostics")),
         replay_descriptor=_optional_mapping(response.get("replay_descriptor")),
+        batch_id=_optional_text(response.get("batch_id")),
+        member_ordinal=(
+            int(response["member_ordinal"]) if response.get("member_ordinal") is not None else None
+        ),
     )
 
 

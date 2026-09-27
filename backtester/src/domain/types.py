@@ -151,6 +151,8 @@ class BacktestRunRecord:
     metrics: Optional[Mapping[str, Any]] = None
     diagnostics: Optional[Mapping[str, Any]] = None
     replay_descriptor: Optional[Mapping[str, Any]] = None
+    batch_id: Optional[str] = None
+    member_ordinal: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -201,6 +203,8 @@ class BacktestRunQuery:
     engine: Optional[BacktestEngine] = None
     submitted_from_ms: Optional[int] = None
     submitted_to_ms: Optional[int] = None
+    membership: Optional[str] = None
+    batch_id: Optional[str] = None
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,7 @@ contexts and tests to inspect.
 | Durable backtest run persistence | `backtester`, `database-accessor-api`, `timescaledb-init` | `backtester`, `frontend`, `libs/db_accessor_client` | Root `CONTEXT.md`, `backtester/CONTEXT.md`, `frontend/CONTEXT.md`, `database-accessor-api/CONTEXT.md`, `timescaledb-init/CONTEXT.md`, `libs/CONTEXT.md`, ADR-0005 | Backtester, database accessor, shared client tests, frontend contract tests, and Python verification |
 | Strategy catalog and exact-version standalone submission | `backtester` registry and public API | `backtester` worker, `frontend`, `database-accessor-api` request JSON | Root `CONTEXT.md`, `backtester/CONTEXT.md`, `frontend/CONTEXT.md`, `database-accessor-api/CONTEXT.md`, `timescaledb-init/CONTEXT.md`, `libs/CONTEXT.md` | Registry, run service, route, worker, accessor, frontend creation and contract tests |
 | Stateless Parameter Sweep preview | `backtester` application and public API | `frontend` creation drawer; future batch acceptance | `backtester/CONTEXT.md`, `frontend/CONTEXT.md`, `config/CONTEXT.md` for the raw limit | Backtester preview route and frontend draft/review tests; Python and frontend gates |
+| Immutable Backtest Batch acceptance and membership | `backtester`, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, standalone worker | Root `CONTEXT.md`, all producer/consumer area contexts, ADR-0005/0006 | Backtester and accessor acceptance tests, shared client and frontend tests, live migration integration |
 
 ## Update Rule
 

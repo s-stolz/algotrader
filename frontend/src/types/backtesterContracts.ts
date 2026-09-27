@@ -165,6 +165,8 @@ function isSweepMarket(value: unknown): value is SweepPreviewCandidate['market']
 
 export interface BacktestRun {
   run_id: string;
+  batch_id?: string;
+  member_ordinal?: number;
   status: BacktestRunStatus;
   submitted_at_ms: number;
   started_at_ms?: number | null;
@@ -287,6 +289,93 @@ export interface BacktestRunListQuery {
   engine?: BacktestEngine | null;
   submittedFromMs?: number | null;
   submittedToMs?: number | null;
+  membership?: 'standalone' | 'batch' | null;
+  batchId?: string | null;
+}
+
+export const BACKTEST_BATCH_STATUSES = [
+  'queued', 'running', 'pausing', 'paused', 'cancelling', 'completed', 'cancelled',
+] as const;
+export type BacktestBatchStatus = typeof BACKTEST_BATCH_STATUSES[number];
+
+export interface BacktestBatch {
+  batch_id: string;
+  submission_id: string;
+  status: BacktestBatchStatus;
+  accepted_at_ms: number;
+  lifecycle_revision: number;
+  definition_schema_version: 1;
+  accepted_definition: {
+    schema_version: 1;
+    shared_request: JsonObject;
+    normalized_selections: SweepPreview['normalized_selections'];
+  };
+  strategy_metadata: StrategyCatalogEntry;
+  raw_count: number;
+  member_count: number;
+  excluded_count: number;
+  total_count: number;
+  settled_count: number;
+  executed_count: number;
+  outcome_counts: Record<BacktestRunStatus | 'cancelling' | 'cancelled', number>;
+}
+
+export interface BacktestBatchEvent {
+  batch_id: string;
+  revision: number;
+  event_type: string;
+  status: BacktestBatchStatus;
+  occurred_at: string;
+  reason: string | null;
+}
+
+export function isBacktestBatch(value: unknown): value is BacktestBatch {
+  if (!isRecord(value) || !isRecord(value.accepted_definition)) return false;
+  const definition = value.accepted_definition;
+  return isNonEmptyString(value.batch_id) && isNonEmptyString(value.submission_id) &&
+    typeof value.status === 'string' && BACKTEST_BATCH_STATUSES.includes(value.status as BacktestBatchStatus) &&
+    Number.isInteger(value.accepted_at_ms) && (value.accepted_at_ms as number) > 0 &&
+    Number.isInteger(value.lifecycle_revision) && (value.lifecycle_revision as number) >= 0 &&
+    value.definition_schema_version === 1 && definition.schema_version === 1 &&
+    isJsonObject(definition.shared_request) && isRecord(definition.normalized_selections) &&
+    Array.isArray(definition.normalized_selections.markets) &&
+    definition.normalized_selections.markets.every(isSweepMarket) &&
+    Array.isArray(definition.normalized_selections.timeframes) &&
+    definition.normalized_selections.timeframes.every(isNonEmptyString) &&
+    isRecord(definition.normalized_selections.parameters) &&
+    Object.values(definition.normalized_selections.parameters).every(isJsonObject) &&
+    Array.isArray(definition.normalized_selections.allowed_directions) &&
+    definition.normalized_selections.allowed_directions.every((direction: unknown) =>
+      typeof direction === 'string' && BACKTEST_ALLOWED_DIRECTIONS_SET.has(direction)) &&
+    isStrategyCatalog([value.strategy_metadata]) &&
+    Number.isInteger(value.raw_count) && Number.isInteger(value.member_count) &&
+    Number.isInteger(value.excluded_count) && (value.member_count as number) > 0 &&
+    value.raw_count === (value.member_count as number) + (value.excluded_count as number) &&
+    value.total_count === value.member_count && Number.isInteger(value.settled_count) &&
+    Number.isInteger(value.executed_count) && isRecord(value.outcome_counts) &&
+    ['queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled'].every((status) =>
+      Number.isInteger((value.outcome_counts as Record<string, unknown>)[status]) &&
+      ((value.outcome_counts as Record<string, number>)[status] ?? -1) >= 0) &&
+    Object.values(value.outcome_counts).reduce((sum: number, count: unknown) =>
+      sum + (typeof count === 'number' ? count : 0), 0) === value.total_count &&
+    value.settled_count === (value.outcome_counts.succeeded as number) +
+      (value.outcome_counts.failed as number) + (value.outcome_counts.cancelled as number) &&
+    value.executed_count === (value.outcome_counts.succeeded as number) +
+      (value.outcome_counts.failed as number);
+}
+
+export function isBacktestBatchArray(value: unknown): value is BacktestBatch[] {
+  return Array.isArray(value) && value.every(isBacktestBatch);
+}
+
+export function isBacktestBatchEventArray(value: unknown): value is BacktestBatchEvent[] {
+  return Array.isArray(value) && value.every((event: unknown) => isRecord(event) &&
+    isNonEmptyString(event.batch_id) && Number.isInteger(event.revision) &&
+    (event.revision as number) >= 0 && isNonEmptyString(event.event_type) &&
+    typeof event.status === 'string' &&
+    BACKTEST_BATCH_STATUSES.includes(event.status as BacktestBatchStatus) &&
+    isNonEmptyString(event.occurred_at) &&
+    (event.reason === null || typeof event.reason === 'string'));
 }
 
 export interface BacktestClosedTrade {
@@ -470,6 +559,11 @@ export function isBacktestRun(value: unknown): value is BacktestRun {
 
   return (
     isNonEmptyString(value.run_id) &&
+    (!('batch_id' in value) || value.batch_id === null || isNonEmptyString(value.batch_id)) &&
+    (!('member_ordinal' in value) || value.member_ordinal === null ||
+      (Number.isInteger(value.member_ordinal) && (value.member_ordinal as number) >= 0)) &&
+    ((value.batch_id == null && value.member_ordinal == null) ||
+      (isNonEmptyString(value.batch_id) && Number.isInteger(value.member_ordinal))) &&
     typeof value.status === 'string' &&
     BACKTEST_RUN_STATUS_SET.has(value.status) &&
     isFiniteNumber(value.submitted_at_ms) &&

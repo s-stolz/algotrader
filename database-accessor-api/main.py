@@ -6,6 +6,9 @@ from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_l
 from app import crud, market_cache
 from app.database import get_db
 from app.schemas import (
+    BacktestBatchCreateIn,
+    BacktestBatchEventOut,
+    BacktestBatchOut,
     BacktestClosedTradeOut,
     BacktestFillOut,
     BacktestRunCompleteIn,
@@ -104,6 +107,8 @@ async def list_backtest_runs(
     engine: Literal["vectorized", "event_driven"] | None = None,
     submitted_from: datetime | None = None,
     submitted_to: datetime | None = None,
+    membership: Literal["standalone", "batch"] | None = None,
+    batch_id: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     return await crud.list_backtest_runs(
@@ -115,7 +120,44 @@ async def list_backtest_runs(
         engine=engine,
         submitted_from=submitted_from,
         submitted_to=submitted_to,
+        membership=membership,
+        batch_id=batch_id,
     )
+
+
+@app.post("/backtest-batches", response_model=BacktestBatchOut, status_code=201)
+async def create_backtest_batch(batch: BacktestBatchCreateIn, db: AsyncSession = Depends(get_db)):
+    try:
+        return await crud.create_backtest_batch(db, batch.model_dump())
+    except crud.BatchSubmissionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/backtest-batches", response_model=list[BacktestBatchOut])
+async def list_backtest_batches(db: AsyncSession = Depends(get_db)):
+    return await crud.list_backtest_batches(db)
+
+
+@app.get("/backtest-batches/{batch_id}", response_model=BacktestBatchOut)
+async def get_backtest_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
+    batch = await crud.get_backtest_batch(db, batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return batch
+
+
+@app.get("/backtest-batches/{batch_id}/members", response_model=list[BacktestRunOut])
+async def list_backtest_batch_members(batch_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest_batch(db, batch_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return await crud.list_backtest_batch_members(db, batch_id)
+
+
+@app.get("/backtest-batches/{batch_id}/events", response_model=list[BacktestBatchEventOut])
+async def list_backtest_batch_events(batch_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest_batch(db, batch_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return await crud.list_backtest_batch_events(db, batch_id)
 
 
 @app.get("/backtests/{run_id}", response_model=BacktestRunOut)
@@ -145,6 +187,9 @@ async def delete_backtest_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
+    run = await crud.get_backtest_run(db, run_id)
+    if run is not None and run["batch_id"] is not None:
+        raise HTTPException(status_code=409, detail="Batch members cannot be deleted individually")
     deleted = await crud.delete_backtest_run(db, run_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Backtest run not found")

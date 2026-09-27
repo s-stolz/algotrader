@@ -3,7 +3,7 @@ import { createPinia, setActivePinia, type Pinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  fetchBacktestClosedTrades, fetchBacktestFills, getBacktestRun, listBacktestRuns,
+  fetchBacktestClosedTrades, fetchBacktestFills, getBacktestRun, listBacktestBatches, listBacktestRuns,
 } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
@@ -17,6 +17,7 @@ vi.mock('@/api/backtesterClient', () => ({
   fetchBacktestClosedTrades: vi.fn(),
   fetchBacktestFills: vi.fn(),
   getBacktestRun: vi.fn(),
+  listBacktestBatches: vi.fn(),
   listBacktestRuns: vi.fn(),
 }));
 
@@ -65,6 +66,7 @@ beforeEach(() => {
   vi.mocked(fetchBacktestFills).mockReset();
   vi.mocked(getBacktestRun).mockReset();
   vi.mocked(listBacktestRuns).mockReset();
+  vi.mocked(listBacktestBatches).mockReset().mockResolvedValue([]);
   useMarketsStore().all = [{
     symbol_id: 1, symbol: 'EURUSD', exchange: 'FX', market_type: 'Forex',
     min_move: 0.00001, timezone: 'UTC',

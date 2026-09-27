@@ -89,6 +89,8 @@ Standalone Python backtesting module for historical candle simulation.
 - `src/app/sweeps.py`: stateless Parameter Sweep expansion through the standalone
   validation path, with authoritative Market resolution and complete bounded
   Ready/Excluded preview rows.
+- `src/app/backtest_batches.py`: authoritative sweep acceptance, saved batch
+  projection, derived outcome counts, and immutable member/event inspection.
 - `src/app/backtest_worker.py`: singleton FIFO polling, conditional claiming,
   child-process execution, and successful completion persistence.
 - `src/domain/`: runtime dataclasses, enums, and event types.
@@ -140,7 +142,8 @@ Standalone Python backtesting module for historical candle simulation.
   data or invoking an engine, persists a queued immutable request, and returns
   `202 Accepted` with `Location: /backtests/{run_id}`.
 - `GET /backtests/capabilities` publishes `max_sweep_candidate_count`, default
-  1,000. `POST /backtests/sweeps/preview` accepts shared run settings plus
+  1,000, and the temporary `batch_acceptance_enabled` gate.
+  `POST /backtests/sweeps/preview` accepts shared run settings plus
   explicit Market IDs, Timeframes, parameter axes, and Allowed Directions. It
   deduplicates typed values, limits the raw product before cross-validation,
   returns every Ready/Excluded candidate and normalized selections, and writes
@@ -157,7 +160,18 @@ Standalone Python backtesting module for historical candle simulation.
   collections in storage-provided sequence order. Existing runs with no artifacts
   return empty lists; missing runs return not found.
 - `DELETE /backtests/{run_id}` permits only `succeeded` and `failed` runs.
-  Queued and running runs return a conflict because deletion is not cancellation.
+  Queued, running, and all batch-member runs return a conflict.
+- `POST /backtests/batches` revalidates the complete sweep against current
+  strategy metadata, Markets, and raw-candidate limit. It is available only in
+  controlled settings with `BACKTESTER_BATCH_ACCEPTANCE_ENABLED=1` until batch
+  execution is delivered. `GET /backtests/batches`, `/{batch_id}`,
+  `/{batch_id}/members`, and `/{batch_id}/events` expose immutable accepted
+  configuration, ordered membership, initial revision/event, and derived counts.
+- Run list/detail responses include nullable `batch_id` and `member_ordinal`;
+  run list accepts `membership=standalone|batch` and optional `batch_id`, while
+  the unfiltered read still returns every run. The existing FIFO worker selects
+  only standalone runs, and its queued-to-running compare-and-set cannot claim a
+  batch member.
 - `GET /health` reports API process readiness for the local stack healthcheck.
 - `BacktestRunLifecyclePersistenceAdapter` maps domain status enums and completed
   results to conditional lifecycle updates and atomic successful completion.

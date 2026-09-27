@@ -44,8 +44,8 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   including empty and multiline strings. It automatically calls the stateless
   `/backtests/sweeps/preview` route after valid edits, ignores superseded
   responses, and reviews all bounded candidates with local paging, status
-  filtering, and deterministic sorting. Sweep submission remains unavailable
-  until batch acceptance ships; preview creates no saved history.
+  filtering, and deterministic sorting. Sweep submission remains gated until
+  batch execution ships; preview creates no saved history.
 - Runtime run readers accept request schema versions 2 and 3. Version 2 has no
   declared Strategy Version; history labels it unavailable instead of assigning
   current code. Version 3 includes resolved parameter defaults.
@@ -110,11 +110,21 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - The chart toolbar opens the full-screen Backtest Workspace. The chart route is
   kept alive, and the Workspace store retains its selected run and editable
   creation draft when navigating between them.
-- Workspace history reads saved standalone runs from the public backtester API
-  on entry and at five-second intervals while active. It provides search and
-  status, type, Market, Strategy, and Timeframe filters, sortable history
-  columns, and a manual refresh. Failed reads report unknown lifecycle state
-  without replacing previously loaded records with an empty history.
+- Workspace history reads saved standalone runs and accepted Batches from the
+  public backtester API on entry and at five-second intervals while active.
+  One sortable table provides search and status, type, Market, Strategy,
+  Timeframe, and With failed runs filters, plus manual refresh. Failed reads
+  report unknown lifecycle state without replacing previously loaded records
+  with an empty history.
+- Workspace history presents accepted Batches beside standalone summaries in
+  that table.
+  Opening a Batch reads its saved definition, Strategy Metadata Snapshot,
+  revision/events, and actual ordinal-ordered member runs; members do not appear
+  again as top-level standalone rows. Missing member metrics remain absent.
+- Sweep submission appears only when the backend advertises controlled batch
+  acceptance. The drawer retains one client submission identity across retries
+  of an unchanged draft and requires a fresh successful preview after rejection;
+  it never automatically resubmits.
 - The current-backtest table shows the selected saved request and metrics.
   Saved Return retains its first-recorded-equity baseline; maximum drawdown is
   displayed as a positive magnitude and PnL as signed account units. Missing

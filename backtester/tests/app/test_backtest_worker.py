@@ -122,7 +122,10 @@ class TestBacktestWorker(unittest.TestCase):
         processed = worker.run_once()
 
         self.assertTrue(processed)
-        self.assertEqual(repository.queries, [BacktestRunQuery(status=BacktestRunStatus.QUEUED)])
+        self.assertEqual(
+            repository.queries,
+            [BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")],
+        )
         self.assertEqual(executor.snapshots, [selected.request_snapshot])
         self.assertEqual(
             lifecycle.claims,
@@ -323,8 +326,8 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertEqual(
             repository.queries[:2],
             [
-                BacktestRunQuery(status=BacktestRunStatus.RUNNING),
-                BacktestRunQuery(status=BacktestRunStatus.QUEUED),
+                BacktestRunQuery(status=BacktestRunStatus.RUNNING, membership="standalone"),
+                BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone"),
             ],
         )
         self.assertEqual(

@@ -343,6 +343,8 @@ class TestBacktestStatusRoute(unittest.TestCase):
                 "engine",
                 "submitted_from_ms",
                 "submitted_to_ms",
+                "membership",
+                "batch_id",
             },
         )
 

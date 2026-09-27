@@ -41,6 +41,9 @@ Shared Python packages used by multiple services.
 - Synchronous and asynchronous `list_backtest_runs` methods pass optional
   lifecycle, immutable-request, and submission-date filters without pagination
   or queue-selection behavior.
+- Both clients pass batch create/list/detail, ordered member/event reads, and
+  membership filters through unchanged. The accessor owns atomic storage; the
+  backtester owns acceptance and lifecycle policy.
 - Conditional run updates and successful completion return whether the accessor
   atomically matched the caller-provided expected status.
 - Execution-log methods pass ordered normalized fill/trade records through

@@ -257,6 +257,43 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
         self.assertEqual(runs, [response_payload])
 
+    def test_batch_acceptance_and_inspection_routes(self) -> None:
+        payload = {"batch_id": "batch-1", "submission_id": "submit-1", "members": []}
+        batch = {"batch_id": "batch-1", "status": "queued"}
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            paths.append(f"{request.method} {request.url.path}")
+            if request.method == "POST":
+                self.assertEqual(json.loads(request.content.decode()), payload)
+                return httpx.Response(201, json=batch)
+            if request.url.path.endswith("/members") or request.url.path.endswith("/events"):
+                return httpx.Response(200, json=[])
+            if request.url.path.endswith("/batch-1"):
+                return httpx.Response(200, json=batch)
+            return httpx.Response(200, json=[batch])
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            self.assertEqual(client.create_backtest_batch(payload), batch)
+            self.assertEqual(client.list_backtest_batches(), [batch])
+            self.assertEqual(client.get_backtest_batch("batch-1"), batch)
+            self.assertEqual(client.list_backtest_batch_members("batch-1"), [])
+            self.assertEqual(client.list_backtest_batch_events("batch-1"), [])
+        finally:
+            client.close()
+        self.assertEqual(
+            paths,
+            [
+                "POST /backtest-batches",
+                "GET /backtest-batches",
+                "GET /backtest-batches/batch-1",
+                "GET /backtest-batches/batch-1/members",
+                "GET /backtest-batches/batch-1/events",
+            ],
+        )
+
     def test_conditional_update_backtest_run_patches_expected_status(self) -> None:
         payload = {
             "expected_status": "queued",

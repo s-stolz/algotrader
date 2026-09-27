@@ -182,6 +182,21 @@ class DatabaseAccessorClient(_BaseClient):
     def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/backtests", json=run)
 
+    def create_backtest_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/backtest-batches", json=batch)
+
+    def list_backtest_batches(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/backtest-batches")
+
+    def get_backtest_batch(self, batch_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/backtest-batches/{batch_id}")
+
+    def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtest-batches/{batch_id}/members")
+
+    def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtest-batches/{batch_id}/events")
+
     def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/backtests/{run_id}")
 
@@ -201,6 +216,8 @@ class DatabaseAccessorClient(_BaseClient):
         engine: str | None = None,
         submitted_from: str | None = None,
         submitted_to: str | None = None,
+        membership: str | None = None,
+        batch_id: str | None = None,
     ) -> list[dict[str, Any]]:
         params = _build_params(
             status=status,
@@ -210,6 +227,8 @@ class DatabaseAccessorClient(_BaseClient):
             engine=engine,
             submitted_from=submitted_from,
             submitted_to=submitted_to,
+            membership=membership,
+            batch_id=batch_id,
         )
         return self._request("GET", "/backtests", params=params)
 
@@ -379,6 +398,21 @@ class AsyncDatabaseAccessorClient(_BaseClient):
     async def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/backtests", json=run)
 
+    async def create_backtest_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/backtest-batches", json=batch)
+
+    async def list_backtest_batches(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/backtest-batches")
+
+    async def get_backtest_batch(self, batch_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/backtest-batches/{batch_id}")
+
+    async def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtest-batches/{batch_id}/members")
+
+    async def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtest-batches/{batch_id}/events")
+
     async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/backtests/{run_id}")
 
@@ -398,6 +432,8 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         engine: str | None = None,
         submitted_from: str | None = None,
         submitted_to: str | None = None,
+        membership: str | None = None,
+        batch_id: str | None = None,
     ) -> list[dict[str, Any]]:
         params = _build_params(
             status=status,
@@ -407,6 +443,8 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             engine=engine,
             submitted_from=submitted_from,
             submitted_to=submitted_to,
+            membership=membership,
+            batch_id=batch_id,
         )
         return await self._request("GET", "/backtests", params=params)
 

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
-  previewParameterSweep, submitBacktestRun,
+  previewParameterSweep, submitBacktestBatch, submitBacktestRun,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
@@ -16,6 +16,7 @@ vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/api/backtesterClient')>(),
   fetchStrategyCatalog: vi.fn(),
   submitBacktestRun: vi.fn(),
+  submitBacktestBatch: vi.fn(),
   previewParameterSweep: vi.fn(),
   fetchSweepCapabilities: vi.fn(),
 }));
@@ -51,8 +52,11 @@ describe('standalone creation drawer', () => {
     vi.mocked(fetchStrategyCatalog).mockReset();
     vi.mocked(fetchStrategyCatalog).mockResolvedValue(catalog);
     vi.mocked(submitBacktestRun).mockReset();
+    vi.mocked(submitBacktestBatch).mockReset();
     vi.mocked(fetchSweepCapabilities).mockReset();
-    vi.mocked(fetchSweepCapabilities).mockResolvedValue({ max_sweep_candidate_count: 1000 });
+    vi.mocked(fetchSweepCapabilities).mockResolvedValue({
+      max_sweep_candidate_count: 1000, batch_acceptance_enabled: false,
+    });
   });
 
   afterEach(() => {
@@ -214,13 +218,44 @@ describe('Parameter Sweep creation review', () => {
     vi.mocked(fetchStrategyCatalog).mockResolvedValue(sweepCatalog);
     vi.mocked(previewParameterSweep).mockReset();
     vi.mocked(fetchSweepCapabilities).mockReset();
-    vi.mocked(fetchSweepCapabilities).mockResolvedValue({ max_sweep_candidate_count: 1000 });
+    vi.mocked(fetchSweepCapabilities).mockResolvedValue({
+      max_sweep_candidate_count: 1000, batch_acceptance_enabled: false,
+    });
     vi.mocked(submitBacktestRun).mockReset();
+    vi.mocked(submitBacktestBatch).mockReset();
   });
 
   afterEach(() => {
     document.body.innerHTML = '';
     vi.useRealTimers();
+  });
+
+  it('uses one submission identity for a reviewed batch retry', async () => {
+    vi.mocked(fetchSweepCapabilities).mockResolvedValue({
+      max_sweep_candidate_count: 1000, batch_acceptance_enabled: true,
+    });
+    vi.mocked(previewParameterSweep).mockImplementation(async (request) => previewFor(request, 2));
+    vi.mocked(submitBacktestBatch)
+      .mockRejectedValueOnce(new Error('Connection lost'))
+      .mockResolvedValueOnce('batch-1');
+    const wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
+    });
+    await advancePreview();
+    const submit = document.querySelector('[data-testid="sweep-submit"]') as HTMLElement;
+    expect(submit).not.toBeNull();
+    submit.click();
+    await flushPromises();
+    expect(submitBacktestBatch).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain('Connection lost');
+    await advancePreview();
+    submit.click();
+    await flushPromises();
+    expect(submitBacktestBatch).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(submitBacktestBatch).mock.calls[0][1]).toBe(
+      vi.mocked(submitBacktestBatch).mock.calls[1][1]);
+    expect(wrapper.emitted('submitted-batch')?.[0]).toEqual(['batch-1']);
+    wrapper.unmount();
   });
 
   it('keeps parameter input modes and sends independent range inputs', async () => {

@@ -29,6 +29,8 @@ TimescaleDB database.
   rejection for supported pre-ledger closed-trade table shapes.
 - `migrations/V006__audit_closed_trades_schema.sql`: complete structural audit
   of the closed-trade table after the legacy upgrade.
+- `migrations/V008__immutable_backtest_batches.sql`: accepted batch, ordered
+  member identity, initial event storage, and immutable membership guards.
 
 ## Contracts
 
@@ -41,6 +43,10 @@ TimescaleDB database.
   versions, immutable request JSONB, and nullable metrics/diagnostics JSONB.
 - `V007` adds nullable `backtest_runs.replay_descriptor` without changing prior
   successful rows or backfilling historical data.
+- `V008` adds nullable `batch_id`/`member_ordinal` to runs, preserving legacy
+  standalone rows, and creates batch/event tables. Unique identity and ordinal
+  constraints plus triggers reject member replacement, late insertion, and
+  individual deletion.
 - `backtest_fills` and `backtest_closed_trades` use per-run sequence keys for
   deterministic ordering and cascade when the parent run is deleted.
 - `backtest_closed_trades` includes explicit trade direction plus nullable
