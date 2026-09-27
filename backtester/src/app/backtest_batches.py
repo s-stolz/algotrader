@@ -89,12 +89,27 @@ class BacktestBatchService:
             lambda client: self._batch_with_outcomes(client, client.create_backtest_batch(payload))
         )
 
-    def list(self) -> list[dict[str, Any]]:
-        return self._with_client(
+    def list(
+        self,
+        *,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        strategy: str | None = None,
+        with_failed_members: bool | None = None,
+    ) -> list[dict[str, Any]]:
+        batches = self._with_client(
             lambda client: [
                 self._batch_with_outcomes(client, batch) for batch in client.list_backtest_batches()
             ]
         )
+        return [
+            batch
+            for batch in batches
+            if (symbol is None or symbol in batch["markets"])
+            and (timeframe is None or timeframe in batch["timeframes"])
+            and (strategy is None or strategy == batch["strategy_id"])
+            and (with_failed_members is None or batch["has_failed_members"] == with_failed_members)
+        ]
 
     def get(self, batch_id: str) -> dict[str, Any]:
         return self._with_client(
@@ -105,7 +120,12 @@ class BacktestBatchService:
         return self._with_client(lambda client: client.list_backtest_batch_members(batch_id))
 
     def events(self, batch_id: str) -> list[dict[str, Any]]:
-        return self._with_client(lambda client: client.list_backtest_batch_events(batch_id))
+        return self._with_client(
+            lambda client: [
+                {**event, "occurred_at_ms": _timestamp_ms(event["occurred_at"])}
+                for event in client.list_backtest_batch_events(batch_id)
+            ]
+        )
 
     @staticmethod
     def _batch_with_outcomes(client: BatchClient, batch: Mapping[str, Any]) -> dict[str, Any]:
@@ -131,6 +151,39 @@ def _project_batch(batch: Mapping[str, Any], members: list[dict[str, Any]]) -> d
     value["settled_count"] = counts["succeeded"] + counts["failed"] + counts["cancelled"]
     value["executed_count"] = counts["succeeded"] + counts["failed"]
     value["total_count"] = value["member_count"]
+    value["has_failed_members"] = counts["failed"] > 0
+    value["markets"] = list(
+        dict.fromkeys(symbol for member in members for symbol in member["request"]["symbols"])
+    )
+    value["exchanges"] = list(
+        dict.fromkeys(
+            member["request"]["exchange"]
+            for member in members
+            if member["request"]["exchange"] is not None
+        )
+    )
+    value["market_contexts"] = [
+        {"symbol": symbol, "exchange": exchange}
+        for exchange, symbol in dict.fromkeys(
+            (member["request"]["exchange"], symbol)
+            for member in members
+            for symbol in member["request"]["symbols"]
+        )
+    ]
+    value["timeframes"] = list(dict.fromkeys(member["request"]["timeframe"] for member in members))
+    value["strategy_id"] = value["strategy_metadata"]["strategy_id"]
+    value["strategy_version"] = value["strategy_metadata"]["strategy_version"]
+    value["active_member_ordinal"] = next(
+        (member["member_ordinal"] for member in members if member["status"] == "running"),
+        None,
+    )
+    value["next_member_ordinal"] = next(
+        (member["member_ordinal"] for member in members if member["status"] == "queued"),
+        None,
+    )
+    for field in ("started_at", "completed_at"):
+        value[f"{field}_ms"] = _timestamp_ms(value[field]) if value.get(field) is not None else None
+        value.pop(field, None)
     accepted_at = value.pop("accepted_at")
     if isinstance(accepted_at, datetime):
         value["accepted_at_ms"] = int(accepted_at.timestamp() * 1000)
@@ -139,3 +192,9 @@ def _project_batch(batch: Mapping[str, Any], members: list[dict[str, Any]]) -> d
             datetime.fromisoformat(str(accepted_at).replace("Z", "+00:00")).timestamp() * 1000
         )
     return value
+
+
+def _timestamp_ms(value: Any) -> int:
+    if isinstance(value, datetime):
+        return int(value.timestamp() * 1000)
+    return int(datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp() * 1000)

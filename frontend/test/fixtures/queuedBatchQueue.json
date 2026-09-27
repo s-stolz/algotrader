@@ -1,0 +1,40 @@
+{
+  "snapshot_at_ms": 50000,
+  "active_run": {
+    "run_id": "active",
+    "started_at_ms": 10000,
+    "batch_id": null,
+    "member_ordinal": null
+  },
+  "last_heartbeat_ms": 45000,
+  "availability": "healthy",
+  "stale_after_ms": 30000,
+  "operational_faults": [],
+  "queued": [
+    {
+      "entry_type": "standalone",
+      "run_id": "queued-a",
+      "batch_id": null,
+      "submitted_at_ms": 11000,
+      "estimated_position": 1,
+      "next_member_ordinal": null,
+      "outcome_counts": null
+    },
+    {
+      "entry_type": "batch",
+      "run_id": null,
+      "batch_id": "batch-b",
+      "submitted_at_ms": 12000,
+      "estimated_position": 2,
+      "next_member_ordinal": 0,
+      "outcome_counts": {
+        "queued": 2,
+        "running": 0,
+        "cancelling": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "cancelled": 0
+      }
+    }
+  ]
+}

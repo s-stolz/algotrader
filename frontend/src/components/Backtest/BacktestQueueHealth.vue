@@ -28,21 +28,32 @@
       <p v-if="snapshot.active_run" data-testid="workspace-queue-active">
         {{ isUnknown ? 'Last known active run' : 'Active run' }}:
         {{ snapshot.active_run.run_id }} · active for {{ elapsed(snapshot.active_run.started_at_ms) }}
+        <span v-if="snapshot.active_run.batch_id">
+          · Batch {{ snapshot.active_run.batch_id }} member #{{ (snapshot.active_run.member_ordinal ?? 0) + 1 }}
+        </span>
       </p>
       <p v-else data-testid="workspace-queue-no-active">
         {{ isUnknown ? 'Last known active run: none' : 'No active run.' }}
       </p>
       <p v-if="snapshot.queued.length === 0" data-testid="workspace-queue-empty">
-        {{ isUnknown ? 'Last known queue had no waiting standalone runs.' : 'No waiting standalone runs.' }}
+        {{ isUnknown ? 'Last known queue had no waiting work.' : 'No waiting work.' }}
       </p>
-      <ol v-else aria-label="Waiting standalone runs">
+      <ol v-else aria-label="Waiting backtests">
         <li
           v-for="entry in snapshot.queued"
-          :key="entry.run_id"
-          :data-testid="`workspace-queue-run-${entry.run_id}`"
+          :key="entry.entry_type === 'batch' ? `batch:${entry.batch_id}` : `run:${entry.run_id}`"
+          :data-testid="entry.entry_type === 'batch' ?
+            `workspace-queue-batch-${entry.batch_id}` : `workspace-queue-run-${entry.run_id}`"
         >
-          {{ entry.run_id }} · estimated position {{ entry.estimated_position }} ·
+          {{ entry.entry_type === 'batch' ? `Batch ${entry.batch_id}` : entry.run_id }}
+          · estimated position {{ entry.estimated_position }} ·
           waiting {{ elapsed(entry.submitted_at_ms) }}
+          <template v-if="entry.entry_type === 'batch'">
+            · next member #{{ (entry.next_member_ordinal ?? 0) + 1 }}
+            · {{ entry.outcome_counts?.succeeded ?? 0 }} succeeded,
+            {{ entry.outcome_counts?.failed ?? 0 }} failed,
+            {{ entry.outcome_counts?.cancelled ?? 0 }} cancelled
+          </template>
         </li>
       </ol>
     </template>

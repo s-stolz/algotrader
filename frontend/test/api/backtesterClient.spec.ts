@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BACKTEST_BATCH_STATUSES, type BacktestRequestPayload } from '@/types/backtesterContracts';
+import queuedBatchQueue from '../fixtures/queuedBatchQueue.json';
 
 import {
   BacktestSubmissionError,
@@ -12,6 +13,7 @@ import {
   fetchBacktestFills,
   fetchBacktestQueue,
   getBacktestRun,
+  listBacktestBatchEvents,
   listBacktestRuns,
   submitBacktestBatch,
   submitBacktestRun,
@@ -165,11 +167,17 @@ describe('backtester API client', () => {
   it('reads one validated queue snapshot without treating invalid data as an empty queue', async () => {
     const snapshot = {
       snapshot_at_ms: 1_780_922_100_000,
-      active_run: { run_id: 'active', started_at_ms: 1_780_922_000_000 },
+      active_run: { run_id: 'active', started_at_ms: 1_780_922_000_000,
+        batch_id: null, member_ordinal: null },
       last_heartbeat_ms: 1_780_922_099_000,
       availability: 'healthy', stale_after_ms: 30_000, operational_faults: [],
-      queued: [{ run_id: 'waiting', submitted_at_ms: 1_780_921_805_123,
-        estimated_position: 1 }],
+      queued: [{ entry_type: 'standalone', run_id: 'waiting', batch_id: null,
+        submitted_at_ms: 1_780_921_805_123, estimated_position: 1,
+        next_member_ordinal: null, outcome_counts: null },
+      { entry_type: 'batch', run_id: null, batch_id: 'batch-waiting',
+        submitted_at_ms: 1_780_921_806_123, estimated_position: 2,
+        next_member_ordinal: 1, outcome_counts: { queued: 1, running: 0,
+          cancelling: 0, succeeded: 1, failed: 0, cancelled: 0 } }],
     };
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(snapshot))
@@ -179,6 +187,26 @@ describe('backtester API client', () => {
     await expect(fetchBacktestQueue()).resolves.toEqual(snapshot);
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/queue');
     await expect(fetchBacktestQueue()).rejects.toThrow('Invalid Backtest queue response');
+  });
+
+  it('accepts the same queued-batch response emitted by the public backtester route', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(queuedBatchQueue));
+    await expect(fetchBacktestQueue()).resolves.toEqual(queuedBatchQueue);
+  });
+
+  it('reads automatic batch events with their recorded prior state', async () => {
+    const events = [{ batch_id: 'batch-1', revision: 0, event_type: 'accepted',
+      prior_status: null, status: 'queued', occurred_at_ms: 1_780_000_000_000,
+      trigger_run_id: null, reason: null },
+    { batch_id: 'batch-1', revision: 1, event_type: 'started',
+      prior_status: 'queued', status: 'running', occurred_at_ms: 1_780_000_001_000,
+      trigger_run_id: 'member-0', reason: null }];
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(events))
+      .mockResolvedValueOnce(jsonResponse([events[0], { ...events[1], prior_status: undefined }]));
+    await expect(listBacktestBatchEvents('batch-1')).resolves.toEqual(events);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/batches/batch-1/events');
+    await expect(listBacktestBatchEvents('batch-1')).rejects.toThrow('Invalid Backtest Batch events response');
   });
 
   it('fetches one Backtest Run by run id through the public backtester proxy', async () => {

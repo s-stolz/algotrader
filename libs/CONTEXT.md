@@ -75,3 +75,6 @@ Shared Python packages used by multiple services.
 - Shared sync/async accessor clients expose primitive execution queue-state
   reads and worker heartbeat writes. The backtester owns availability and
   advisory position projections for frontend consumers.
+- Queue-state reads now include durable standalone and batch entries in turn
+  order, each batch's next member ordinal and outcome counts, and active member
+  identity. The existing client methods and transport paths remain unchanged.

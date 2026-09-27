@@ -56,6 +56,7 @@ class BatchClient:
                 "batch_id": batch_id,
                 "revision": 0,
                 "event_type": "accepted",
+                "prior_status": None,
                 "status": "queued",
                 "occurred_at": "2026-09-26T00:00:00+00:00",
                 "reason": None,
@@ -91,7 +92,7 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.client.close()
 
-    def test_gate_blocks_public_launch_by_default(self) -> None:
+    def test_public_launch_is_released_by_default(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             response = self.client.post(
                 "/backtests/batches",
@@ -100,8 +101,8 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
                     "submission_id": "submit-1",
                 },
             )
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(self.client_store.batches, {})
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(len(self.client_store.batches), 1)
 
     def test_accept_retry_and_inspect_actual_members(self) -> None:
         with patch.dict("os.environ", {"BACKTESTER_BATCH_ACCEPTANCE_ENABLED": "1"}):
@@ -135,8 +136,46 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
         self.assertEqual({run["batch_id"] for run in members}, {batch_id})
         self.assertEqual(len(self.client.get("/backtests/batches").json()), 1)
         self.assertEqual(
+            len(self.client.get("/backtests/batches", params={"symbol": "EURUSD"}).json()), 1
+        )
+        self.assertEqual(
+            self.client.get("/backtests/batches", params={"symbol": "MISSING"}).json(), []
+        )
+        self.assertEqual(
+            self.client.get("/backtests/batches", params={"with_failed_members": "true"}).json(), []
+        )
+        self.client_store.members[batch_id][0]["status"] = "failed"
+        failed = self.client.get(
+            "/backtests/batches", params={"with_failed_members": "true"}
+        ).json()
+        self.assertEqual([batch["batch_id"] for batch in failed], [batch_id])
+        self.assertEqual(failed[0]["has_failed_members"], True)
+        self.assertEqual(
             self.client.get(f"/backtests/batches/{batch_id}/events").json()[0]["revision"], 0
         )
+        self.assertIsNone(
+            self.client.get(f"/backtests/batches/{batch_id}/events").json()[0]["prior_status"]
+        )
+        with patch.object(
+            self.client_store,
+            "list_backtest_batch_events",
+            return_value=[
+                {
+                    "batch_id": batch_id,
+                    "revision": 1,
+                    "event_type": "started",
+                    "prior_status": "queued",
+                    "status": "running",
+                    "occurred_at": "2026-09-26T00:00:01+00:00",
+                    "trigger_run_id": "member-0",
+                    "reason": None,
+                },
+            ],
+        ):
+            event = self.client.get(f"/backtests/batches/{batch_id}/events").json()[0]
+        self.assertEqual((event["prior_status"], event["status"]), ("queued", "running"))
+        self.assertEqual(event["trigger_run_id"], "member-0")
+        self.assertEqual(event["occurred_at_ms"], 1790380801000)
 
     def test_rejection_creates_no_batch_and_identity_conflict(self) -> None:
         with patch.dict("os.environ", {"BACKTESTER_BATCH_ACCEPTANCE_ENABLED": "1"}):

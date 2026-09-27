@@ -37,6 +37,8 @@ class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
 
     def get_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
 
+    def get_backtest_queue_state(self) -> Mapping[str, Any]: ...
+
     def list_backtest_runs(self, **query: Any) -> Sequence[Mapping[str, Any]]: ...
 
     def get_backtest_fills(self, run_id: str) -> Sequence[Mapping[str, Any]]: ...
@@ -96,6 +98,18 @@ class DatabaseAccessorBacktestRunRepository:
                 return None
             raise
         return _run_record_from_response(response)
+
+    def next_queued(self) -> BacktestRunRecord | None:
+        if self._client is not None:
+            state = self._client.get_backtest_queue_state()
+        else:
+            client_cls = _import_database_accessor_client()
+            with client_cls() as client:
+                state = client.get_backtest_queue_state()
+        entries = state["queued_entries"]
+        if not entries:
+            return None
+        return self.get(str(entries[0]["run_id"]))
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         responses = self._list_runs(_run_query_params(query))

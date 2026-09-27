@@ -7,6 +7,7 @@ from app.models import (
     backtest_closed_trades,
     backtest_execution_slot,
     backtest_fills,
+    backtest_queue_turns,
     backtest_runs,
     candles,
     markets,
@@ -516,9 +517,13 @@ async def insert_backtest_run(session, run_data: dict):
     fills = stored_run.pop("fills", [])
     trades = stored_run.pop("trades", [])
     try:
+        if stored_run["status"] == "queued":
+            await session.execute(select(backtest_execution_slot.c.slot_id).with_for_update())
         stmt = insert(backtest_runs).values(**stored_run).returning(backtest_runs)
         result = await session.execute(stmt)
         row = result.fetchone()
+        if stored_run["status"] == "queued":
+            await session.execute(insert(backtest_queue_turns).values(run_id=stored_run["run_id"]))
         if fills:
             fill_values = [{"run_id": stored_run["run_id"], **fill} for fill in fills]
             await session.execute(insert(backtest_fills).values(fill_values))
@@ -588,6 +593,7 @@ async def create_backtest_batch(session, payload: dict):
         return existing
     data.update(status="queued", lifecycle_revision=0)
     try:
+        await session.execute(select(backtest_execution_slot.c.slot_id).with_for_update())
         await session.execute(insert(backtest_batches).values(**data))
         await session.execute(
             insert(backtest_runs).values(
@@ -610,10 +616,12 @@ async def create_backtest_batch(session, payload: dict):
                 batch_id=data["batch_id"],
                 revision=0,
                 event_type="accepted",
+                prior_status=None,
                 status="queued",
                 occurred_at=data["accepted_at"],
             )
         )
+        await session.execute(insert(backtest_queue_turns).values(batch_id=data["batch_id"]))
         await session.commit()
         return await get_backtest_batch(session, data["batch_id"])
     except IntegrityError as exc:

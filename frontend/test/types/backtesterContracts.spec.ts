@@ -2,12 +2,27 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BACKTEST_RESULT_SCHEMA_VERSION,
+  isBacktestBatchEventArray,
   isBacktestClosedTrade,
   isBacktestFill,
   isBacktestRun,
 } from '@/types/backtesterContracts';
 
 describe('backtester contract validators', () => {
+  it('requires ordered batch lifecycle events with timestamps and trigger identity', () => {
+    const accepted = { batch_id: 'batch-1', revision: 0, event_type: 'accepted',
+      prior_status: null, status: 'queued', occurred_at_ms: 1_780_000_000_000,
+      trigger_run_id: null, reason: null };
+    const started = { ...accepted, revision: 1, event_type: 'started',
+      prior_status: 'queued', status: 'running', occurred_at_ms: 1_780_000_001_000,
+      trigger_run_id: 'member-0' };
+    expect(isBacktestBatchEventArray([accepted, started])).toBe(true);
+    expect(isBacktestBatchEventArray([started, accepted])).toBe(false);
+    expect(isBacktestBatchEventArray([accepted, { ...started, revision: 0 }])).toBe(false);
+    expect(isBacktestBatchEventArray([{ ...accepted, occurred_at_ms: 'yesterday' }])).toBe(false);
+    expect(isBacktestBatchEventArray([accepted, { ...started, prior_status: 'unknown' }])).toBe(false);
+    expect(isBacktestBatchEventArray([accepted, { ...started, prior_status: undefined }])).toBe(false);
+  });
   it('validates Fill side independently of Trade Direction', () => {
     const fill = { sequence: 2, timestamp_ms: 1_714_525_200_000, symbol: 'EURUSD',
       side: 'sell', quantity: 2000, price: 1.074, fees: 0.3, exit_reason: null };

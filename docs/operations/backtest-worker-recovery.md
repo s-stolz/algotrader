@@ -1,18 +1,18 @@
 # Backtest worker upgrade and recovery
 
-The worker executes one standalone Backtest Run at a time. The database execution
-slot is held from the queued-to-running claim through confirmed child and
-descendant exit, reaping, and committed terminal storage. The slot does not
-expire automatically. A held or faulted slot is an operational stop, not
-permission to start another worker or rewrite history.
+The worker executes one standalone or batch-member Backtest Run at a time. The
+database execution slot is held from the queued-to-running claim through
+confirmed child and descendant exit, reaping, and committed terminal storage.
+The slot does not expire automatically. A held or faulted slot is an operational
+stop, not permission to start another worker or rewrite history.
 
 ## Monitor queue and worker health
 
 `GET /backtests/queue` on the backtester API returns one snapshot: database
-snapshot time, the active run and its durable start time, ordered standalone
-queued submissions with advisory positions, the last matching worker heartbeat,
-worker availability, and operational fault codes. Times are UTC epoch
-milliseconds. A queue-read failure is HTTP 503, which means **unknown**, not an
+snapshot time, the active run and its durable start time, ordered standalone and
+batch turns with advisory positions and next-member ordinals, the last matching
+worker heartbeat, worker availability, and operational fault codes. Times are
+UTC epoch milliseconds. A queue-read failure is HTTP 503, which means **unknown**, not an
 empty queue. `GET /backtests/queue/health` is an operator probe: HTTP 200 means
 the worker heartbeat is fresh and no fault is visible; HTTP 503 carries
 `detail.availability` of `stale`, `unavailable`, `faulted`, or `unknown`. The
@@ -55,12 +55,16 @@ sessions, or keep the slot held.
    the new worker. Verify its child processes and descendants have exited. Stop
    the old API before swapping accessor code so no legacy lifecycle writer can
    race the migration.
-2. Run `make migrate-db` against the existing database, then deploy the new
-   database accessor API, shared client, and backtester worker. Do not delete
+2. Run `make migrate-db` against the existing database, including V011 before
+   releasing batch submission. Then deploy the new database accessor API,
+   shared client, and backtester worker. Do not delete
    `backtest_runs`, Fills, Closed Trades, or queued requests.
 3. Start one new worker. With the slot free, startup reconciliation marks any
    interrupted `running` runs `failed` with `worker_interrupted` once. It leaves
-   `queued` runs unchanged, then resumes FIFO claims. Confirm these states via
+   `queued` runs unchanged, then resumes durable turns. Running batch members
+   are reconciled with their batch in the same transaction; a batch with
+   remaining queued members rejoins the tail and a fully settled batch completes.
+   Confirm these states via
    the public `GET /backtests` and Workspace refresh.
 
 ## Recover a held or faulted slot

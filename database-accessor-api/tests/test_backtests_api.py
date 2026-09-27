@@ -198,6 +198,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [(event["revision"], event["event_type"]) for event in events], [(0, "accepted")]
         )
+        self.assertIsNone(events[0]["prior_status"])
         self.assertEqual(len(await main.list_backtest_runs(db=self.db)), 1)
         self.assertEqual(len(await main.list_backtest_runs(membership="standalone", db=self.db)), 0)
 
@@ -284,7 +285,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"updated": False})
         self.assertEqual((await main.get_backtest_run("member-1", db=self.db))["status"], "queued")
 
-    async def test_owned_standalone_claim_skips_older_batch_members(self):
+    async def test_global_claim_selects_older_batch_before_standalone(self):
         await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
         await main.create_backtest_run(
             BacktestRunCreateIn(
@@ -296,7 +297,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             db=self.db,
         )
         _seed_execution_slot(self.session)
-        for run_id, expected in (("member-1", False), ("standalone", True)):
+        for run_id, expected in (("standalone", False), ("member-1", True)):
             result = await main.claim_backtest_execution(
                 BacktestExecutionClaimIn(
                     run_id=run_id,
@@ -306,10 +307,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 db=self.db,
             )
             self.assertEqual(result, {"updated": expected})
-        self.assertEqual((await main.get_backtest_run("member-1", db=self.db))["status"], "queued")
-        self.assertEqual(
-            (await main.get_backtest_execution_slot(db=self.db))["run_id"], "standalone"
-        )
+        self.assertEqual((await main.get_backtest_run("member-1", db=self.db))["status"], "running")
+        self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], "member-1")
 
     def test_member_cannot_be_created_through_standalone_route(self):
         with self.assertRaises(ValidationError):

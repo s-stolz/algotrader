@@ -38,12 +38,18 @@ class ApiContractModel(BaseModel):
 class QueueActiveRunSchema(ApiContractModel):
     run_id: str
     started_at_ms: int
+    batch_id: str | None = None
+    member_ordinal: int | None = None
 
 
 class QueueEntrySchema(ApiContractModel):
-    run_id: str
+    entry_type: Literal["standalone", "batch"]
+    run_id: str | None
+    batch_id: str | None = None
     submitted_at_ms: int
     estimated_position: int
+    next_member_ordinal: int | None = None
+    outcome_counts: dict[str, int] | None = None
 
 
 class QueueFaultSchema(ApiContractModel):

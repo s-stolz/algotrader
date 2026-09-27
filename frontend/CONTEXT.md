@@ -36,6 +36,16 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   treats unreachable or invalid reads as unknown while retaining the timestamp
   of the last good snapshot; availability and advisory standalone queue
   positions are telemetry, not durable lifecycle or an ETA.
+- Queue entries identify either one standalone Run or one eligible Batch. The
+  Workspace shows an active Batch member ordinal, the next queued member ordinal,
+  batch outcome counts, and advisory position from the public snapshot. Batch
+  detail refreshes saved counts, active/next ordinals, first-started/terminal
+  timestamps, and ordered lifecycle events with nullable prior status, new
+  status, and triggering Run IDs. A completed
+  Batch can include failed members while successful member results remain usable.
+- Batch history Market, Timeframe, Strategy, and failed-member filters use saved
+  actual-member context and outcome fields, not the sweep's broader selections
+  that may contain excluded candidates.
 - Frontend development proxy exposes the public backtester API under
   `/api/backtester`.
 - The Workspace creation drawer reads the live `/backtests/strategies` catalog,

@@ -17,14 +17,25 @@ export const BACKTEST_RUN_STATUSES = [
 export type BacktestRunStatus = typeof BACKTEST_RUN_STATUSES[number];
 export type BacktestWorkerAvailability = 'healthy' | 'stale' | 'unavailable' | 'faulted';
 
+export interface BacktestQueueEntry {
+  entry_type: 'standalone' | 'batch';
+  run_id: string | null;
+  batch_id: string | null;
+  submitted_at_ms: number;
+  estimated_position: number;
+  next_member_ordinal: number | null;
+  outcome_counts: BacktestBatch['outcome_counts'] | null;
+}
+
 export interface BacktestQueueSnapshot {
   snapshot_at_ms: number;
-  active_run: { run_id: string; started_at_ms: number } | null;
+  active_run: { run_id: string; started_at_ms: number; batch_id: string | null;
+    member_ordinal: number | null } | null;
   last_heartbeat_ms: number | null;
   availability: BacktestWorkerAvailability;
   stale_after_ms: number;
   operational_faults: { code: string; message: string }[];
-  queued: { run_id: string; submitted_at_ms: number; estimated_position: number }[];
+  queued: BacktestQueueEntry[];
 }
 
 export function isBacktestQueueSnapshot(value: unknown): value is BacktestQueueSnapshot {
@@ -38,19 +49,34 @@ export function isBacktestQueueSnapshot(value: unknown): value is BacktestQueueS
       !Array.isArray(value.queued)) return false;
   if (value.active_run !== null && (!isRecord(value.active_run) ||
       !isNonEmptyString(value.active_run.run_id) ||
-      !isEpochMs(value.active_run.started_at_ms))) return false;
-  const runIds = new Set<string>();
-  if (isRecord(value.active_run)) runIds.add(value.active_run.run_id as string);
+      !isEpochMs(value.active_run.started_at_ms) ||
+      (value.active_run.batch_id !== null && !isNonEmptyString(value.active_run.batch_id)) ||
+      (value.active_run.member_ordinal !== null && !isOrdinal(value.active_run.member_ordinal)) ||
+      (value.active_run.batch_id === null) !== (value.active_run.member_ordinal === null))) return false;
+  const identities = new Set<string>();
+  if (isRecord(value.active_run)) identities.add(value.active_run.batch_id === null
+    ? `run:${value.active_run.run_id}` : `batch:${value.active_run.batch_id}`);
   return value.queued.every((entry: unknown, index: number) => {
-    if (!isRecord(entry) || !isNonEmptyString(entry.run_id) ||
-        !isEpochMs(entry.submitted_at_ms) || entry.estimated_position !== index + 1 ||
-        runIds.has(entry.run_id)) return false;
-    runIds.add(entry.run_id);
+    if (!isRecord(entry) || !isEpochMs(entry.submitted_at_ms) ||
+        entry.estimated_position !== index + 1) return false;
+    const isStandalone = entry.entry_type === 'standalone' &&
+      isNonEmptyString(entry.run_id) && entry.batch_id === null &&
+      entry.next_member_ordinal === null && entry.outcome_counts === null;
+    const isBatch = entry.entry_type === 'batch' && entry.run_id === null &&
+      isNonEmptyString(entry.batch_id) && isOrdinal(entry.next_member_ordinal) &&
+      isBatchOutcomeCounts(entry.outcome_counts);
+    if (!isStandalone && !isBatch) return false;
+    const identity = isStandalone ? `run:${entry.run_id}` : `batch:${entry.batch_id}`;
+    if (identities.has(identity)) return false;
+    identities.add(identity);
     return true;
   });
 }
 
 function isEpochMs(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+function isOrdinal(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
 }
 export type BacktestEngine = 'vectorized' | 'event_driven';
@@ -341,6 +367,10 @@ export interface BacktestBatch {
   submission_id: string;
   status: BacktestBatchStatus;
   accepted_at_ms: number;
+  started_at_ms: number | null;
+  completed_at_ms: number | null;
+  active_member_ordinal: number | null;
+  next_member_ordinal: number | null;
   lifecycle_revision: number;
   definition_schema_version: 1;
   accepted_definition: {
@@ -356,15 +386,30 @@ export interface BacktestBatch {
   settled_count: number;
   executed_count: number;
   outcome_counts: Record<BacktestRunStatus | 'cancelling' | 'cancelled', number>;
+  has_failed_members: boolean;
+  markets: string[];
+  exchanges: string[];
+  market_contexts: { symbol: string; exchange: string | null }[];
+  timeframes: string[];
+  strategy_id: string;
+  strategy_version: number;
 }
 
 export interface BacktestBatchEvent {
   batch_id: string;
   revision: number;
   event_type: string;
+  prior_status: BacktestBatchStatus | null;
   status: BacktestBatchStatus;
-  occurred_at: string;
+  occurred_at_ms: number;
+  trigger_run_id: string | null;
   reason: string | null;
+}
+
+function isBatchOutcomeCounts(value: unknown): value is BacktestBatch['outcome_counts'] {
+  return isRecord(value) &&
+    ['queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled'].every((status) =>
+      Number.isSafeInteger(value[status]) && (value[status] as number) >= 0);
 }
 
 export function isBacktestBatch(value: unknown): value is BacktestBatch {
@@ -373,6 +418,10 @@ export function isBacktestBatch(value: unknown): value is BacktestBatch {
   return isNonEmptyString(value.batch_id) && isNonEmptyString(value.submission_id) &&
     typeof value.status === 'string' && BACKTEST_BATCH_STATUSES.includes(value.status as BacktestBatchStatus) &&
     Number.isInteger(value.accepted_at_ms) && (value.accepted_at_ms as number) > 0 &&
+    (value.started_at_ms === null || isEpochMs(value.started_at_ms)) &&
+    (value.completed_at_ms === null || isEpochMs(value.completed_at_ms)) &&
+    (value.active_member_ordinal === null || isOrdinal(value.active_member_ordinal)) &&
+    (value.next_member_ordinal === null || isOrdinal(value.next_member_ordinal)) &&
     Number.isInteger(value.lifecycle_revision) && (value.lifecycle_revision as number) >= 0 &&
     value.definition_schema_version === 1 && definition.schema_version === 1 &&
     isJsonObject(definition.shared_request) && isRecord(definition.normalized_selections) &&
@@ -390,16 +439,26 @@ export function isBacktestBatch(value: unknown): value is BacktestBatch {
     Number.isInteger(value.excluded_count) && (value.member_count as number) > 0 &&
     value.raw_count === (value.member_count as number) + (value.excluded_count as number) &&
     value.total_count === value.member_count && Number.isInteger(value.settled_count) &&
-    Number.isInteger(value.executed_count) && isRecord(value.outcome_counts) &&
-    ['queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled'].every((status) =>
-      Number.isInteger((value.outcome_counts as Record<string, unknown>)[status]) &&
-      ((value.outcome_counts as Record<string, number>)[status] ?? -1) >= 0) &&
+    Number.isInteger(value.executed_count) && isBatchOutcomeCounts(value.outcome_counts) &&
     Object.values(value.outcome_counts).reduce((sum: number, count: unknown) =>
       sum + (typeof count === 'number' ? count : 0), 0) === value.total_count &&
     value.settled_count === (value.outcome_counts.succeeded as number) +
       (value.outcome_counts.failed as number) + (value.outcome_counts.cancelled as number) &&
     value.executed_count === (value.outcome_counts.succeeded as number) +
-      (value.outcome_counts.failed as number);
+      (value.outcome_counts.failed as number) &&
+    value.has_failed_members === ((value.outcome_counts.failed as number) > 0) &&
+    Array.isArray(value.markets) && value.markets.every(isNonEmptyString) &&
+    Array.isArray(value.exchanges) && value.exchanges.every(isNonEmptyString) &&
+    Array.isArray(value.market_contexts) && value.market_contexts.length > 0 &&
+    value.market_contexts.every((market: unknown) => isRecord(market) &&
+      isNonEmptyString(market.symbol) &&
+      (market.exchange === null || isNonEmptyString(market.exchange))) &&
+    Array.isArray(value.timeframes) && value.timeframes.length > 0 &&
+    value.timeframes.every(isNonEmptyString) &&
+    isNonEmptyString(value.strategy_id) &&
+    Number.isSafeInteger(value.strategy_version) && (value.strategy_version as number) > 0 &&
+    value.strategy_id === (value.strategy_metadata as StrategyCatalogEntry).strategy_id &&
+    value.strategy_version === (value.strategy_metadata as StrategyCatalogEntry).strategy_version;
 }
 
 export function isBacktestBatchArray(value: unknown): value is BacktestBatch[] {
@@ -407,13 +466,17 @@ export function isBacktestBatchArray(value: unknown): value is BacktestBatch[] {
 }
 
 export function isBacktestBatchEventArray(value: unknown): value is BacktestBatchEvent[] {
-  return Array.isArray(value) && value.every((event: unknown) => isRecord(event) &&
+  return Array.isArray(value) && value.every((event: unknown, index: number) => isRecord(event) &&
     isNonEmptyString(event.batch_id) && Number.isInteger(event.revision) &&
     (event.revision as number) >= 0 && isNonEmptyString(event.event_type) &&
+    (event.prior_status === null || (typeof event.prior_status === 'string' &&
+      BACKTEST_BATCH_STATUSES.includes(event.prior_status as BacktestBatchStatus))) &&
     typeof event.status === 'string' &&
     BACKTEST_BATCH_STATUSES.includes(event.status as BacktestBatchStatus) &&
-    isNonEmptyString(event.occurred_at) &&
-    (event.reason === null || typeof event.reason === 'string'));
+    isEpochMs(event.occurred_at_ms) &&
+    (event.trigger_run_id === null || isNonEmptyString(event.trigger_run_id)) &&
+    (event.reason === null || typeof event.reason === 'string') &&
+    (index === 0 || (event.revision as number) > value[index - 1].revision));
 }
 
 export interface BacktestClosedTrade {

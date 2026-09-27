@@ -333,6 +333,7 @@ class BacktestQueueStateOut(BacktestContractModel):
     active_run: dict[str, Any] | None
     heartbeats: list[BacktestWorkerHeartbeatOut]
     queued_runs: list[dict[str, Any]]
+    queued_entries: list[dict[str, Any]]
 
 
 class BacktestBatchMemberIn(BacktestContractModel):
@@ -388,6 +389,8 @@ class BacktestBatchOut(BacktestContractModel):
         "queued", "running", "pausing", "paused", "cancelling", "completed", "cancelled"
     ]
     accepted_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     lifecycle_revision: int
     definition_schema_version: Literal[1]
     accepted_definition: dict[str, Any]
@@ -401,6 +404,8 @@ class BacktestBatchEventOut(BacktestContractModel):
     batch_id: str
     revision: int
     event_type: str
+    prior_status: str | None = None
     status: str
     occurred_at: datetime
     reason: str | None = None
+    trigger_run_id: str | None = None

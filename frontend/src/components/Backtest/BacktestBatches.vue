@@ -5,8 +5,20 @@
       <p>{{ selectedBatch.status }} · {{ selectedBatch.member_count }} fixed members ·
         {{ selectedBatch.raw_count }} raw candidates · {{ selectedBatch.excluded_count }} excluded ·
         revision {{ selectedBatch.lifecycle_revision }}</p>
-      <p v-if="members">{{ settledCount }} / {{ selectedBatch.member_count }} settled ·
-        {{ executedCount }} executed · {{ outcomeLabel }}</p>
+      <p>{{ selectedBatch.settled_count }} / {{ selectedBatch.total_count }} settled ·
+        {{ selectedBatch.executed_count }} executed · {{ outcomeLabel }}</p>
+      <p v-if="selectedBatch.outcome_counts.failed > 0" role="status">
+        {{ selectedBatch.outcome_counts.failed }} member failure{{ selectedBatch.outcome_counts.failed === 1 ? '' : 's' }}.
+        Successful member results remain available.
+      </p>
+      <p v-if="selectedBatch.active_member_ordinal !== null">
+        Active member #{{ selectedBatch.active_member_ordinal + 1 }}.
+      </p>
+      <p v-if="selectedBatch.next_member_ordinal !== null">
+        Next member #{{ selectedBatch.next_member_ordinal + 1 }}.
+      </p>
+      <p>First started: {{ formatTimestamp(selectedBatch.started_at_ms) }} ·
+        Terminal: {{ formatTimestamp(selectedBatch.completed_at_ms) }}</p>
       <p v-if="detailError" role="alert">Batch detail unavailable. {{ detailError }}</p>
       <details>
         <summary>Accepted sweep settings and Strategy Metadata Snapshot</summary>
@@ -27,7 +39,10 @@
       <details v-if="events">
         <summary>Lifecycle events ({{ events.length }})</summary>
         <ol><li v-for="event in events" :key="event.revision">
-          {{ event.revision }} · {{ event.event_type }} · {{ event.status }} · {{ event.occurred_at }}
+          {{ event.revision }} · {{ event.event_type }} ·
+          {{ event.prior_status ?? (event.revision === 0 ? 'initial' : 'unknown') }} → {{ event.status }} ·
+          {{ formatTimestamp(event.occurred_at_ms) }}
+          <span v-if="event.trigger_run_id"> · run {{ event.trigger_run_id }}</span>
         </li></ol>
       </details>
     </section>
@@ -52,15 +67,14 @@ const detailError = ref<string | null>(null);
 let detailRevision = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
 
-const settledCount = computed(() => members.value?.filter((run) =>
-  ['succeeded', 'failed', 'cancelled'].includes(run.status)).length ?? 0);
-const executedCount = computed(() => members.value?.filter((run) =>
-  ['succeeded', 'failed'].includes(run.status)).length ?? 0);
-const outcomeLabel = computed(() => {
-  const counts = new Map<string, number>();
-  for (const run of members.value ?? []) counts.set(run.status, (counts.get(run.status) ?? 0) + 1);
-  return [...counts.entries()].map(([status, count]) => `${status}: ${count}`).join(' · ');
-});
+const outcomeLabel = computed(() => selectedBatch.value ?
+  Object.entries(selectedBatch.value.outcome_counts)
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => `${status}: ${count}`).join(' · ') : '');
+
+function formatTimestamp(timestamp: number | null): string {
+  return timestamp === null ? '—' : new Date(timestamp).toISOString();
+}
 
 const memberColumns: DataTableColumns<BacktestRun> = [
   { title: '#', key: 'ordinal', render: (run) => String((run.member_ordinal ?? 0) + 1) },
@@ -72,6 +86,7 @@ const memberColumns: DataTableColumns<BacktestRun> = [
   { title: 'Allowed Directions', key: 'directions', render: (run) =>
     run.request.execution.allowed_directions },
   { title: 'Status', key: 'status', render: (run) => run.status },
+  { title: 'Failure', key: 'failure', render: (run) => run.error_message ?? '—' },
   { title: 'Return (%)', key: 'return', render: (run) =>
     typeof run.metrics?.total_return_pct === 'number' ?
       String(run.metrics.total_return_pct) : '—' },

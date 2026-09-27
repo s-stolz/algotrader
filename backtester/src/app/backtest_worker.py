@@ -14,7 +14,6 @@ from domain.enums import BacktestRunStatus
 from domain.types import (
     BacktestRequestSnapshot,
     BacktestResult,
-    BacktestRunQuery,
     BacktestRunRecord,
 )
 
@@ -34,7 +33,7 @@ _MAX_ERROR_MESSAGE_LENGTH = 500
 
 
 class QueuedRunRepository(Protocol):
-    def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]: ...
+    def next_queued(self) -> BacktestRunRecord | None: ...
 
 
 class RunLifecyclePersistence(Protocol):
@@ -152,16 +151,11 @@ class BacktestWorker:
         """Process one successfully claimed run, or report that the queue is idle."""
 
         while True:
-            queued_runs = self._repository.list(
-                BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
-            )
-            if not queued_runs:
+            selected = self._repository.next_queued()
+            if selected is None:
                 return False
-
-            selected = min(
-                queued_runs,
-                key=lambda run: (run.submitted_at_ms, run.run_id),
-            )
+            if selected.status != BacktestRunStatus.QUEUED:
+                continue
             owner_token = str(uuid4())
             claimed = self._lifecycle.claim_execution(
                 run_id=selected.run_id,

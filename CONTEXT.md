@@ -162,7 +162,12 @@ to a chart UI, and supports standalone backtesting.
   contiguous zero-based member ordinals. A batch and all resolved member request
   snapshots commit atomically under a unique client submission identity. Existing
   standalone runs retain null batch identity. Batch members are excluded from the
-  standalone worker claim path until batch scheduling is delivered.
+  standalone claim path. The global queue has one durable turn per standalone
+  run or eligible batch. A batch turn claims the lowest queued ordinal and
+  rejoins the tail after settlement if work remains. The single slot, turn
+  consumption, member outcome, and automatic batch transition commit atomically.
+  Revisioned batch events retain prior and new status for automatic transitions;
+  accepted revision-zero and legacy events have a null prior status.
 - New successful single-Market bar-mode runs atomically store an Equity Replay
   descriptor with metrics, diagnostics, Fills, and Closed Trades. The descriptor
   fingerprints executable Candle timestamps and closes; legacy successes retain
@@ -171,15 +176,17 @@ to a chart UI, and supports standalone backtesting.
 - Frontend and other non-storage consumers read durable backtest run history,
   fills, and trades through the public backtester API. `database-accessor-api`
   remains the primitive persistence API behind the backtester boundary.
-- Standalone worker execution uses one durable database slot. A claim atomically
-  occupies it and moves the oldest queued run to `running`; fenced terminal
+- Backtest execution uses one durable database slot. A claim atomically
+  occupies it and moves the next queued standalone run or batch member to `running`; fenced terminal
   persistence releases it only after child exit is confirmed. An interrupted
   run becomes `failed` with `worker_interrupted` after verified worker shutdown;
   queued history remains queued. Operational slot faults are separate from
   durable run outcomes.
-- The backtester-owned queue snapshot projects the durable slot and standalone
+- The backtester-owned queue snapshot projects the durable slot and global
   queue with independent worker heartbeat telemetry. Its advisory positions and
   availability never change run lifecycle or release a held slot.
+  Public queued batch entries identify the batch and expose a null Run ID; the
+  worker-facing queue state retains the next member Run ID for claims.
 
 ## Change Guidance
 

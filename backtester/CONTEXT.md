@@ -93,7 +93,7 @@ Standalone Python backtesting module for historical candle simulation.
   Ready/Excluded preview rows.
 - `src/app/backtest_batches.py`: authoritative sweep acceptance, saved batch
   projection, derived outcome counts, and immutable member/event inspection.
-- `src/app/backtest_worker.py`: singleton FIFO polling, conditional claiming,
+- `src/app/backtest_worker.py`: singleton durable-turn polling, conditional claiming,
   fenced terminal persistence, and restart reconciliation.
 - `src/app/backtest_queue.py`: read-only public queue projection from accessor
   primitives, including owner-matched heartbeat freshness and advisory positions.
@@ -149,7 +149,7 @@ Standalone Python backtesting module for historical candle simulation.
   data or invoking an engine, persists a queued immutable request, and returns
   `202 Accepted` with `Location: /backtests/{run_id}`.
 - `GET /backtests/capabilities` publishes `max_sweep_candidate_count`, default
-  1,000, and the temporary `batch_acceptance_enabled` gate.
+  1,000, and `batch_acceptance_enabled=true` for released batch launch.
   `POST /backtests/sweeps/preview` accepts shared run settings plus
   explicit Market IDs, Timeframes, parameter axes, and Allowed Directions. It
   deduplicates typed values, limits the raw product before cross-validation,
@@ -169,20 +169,24 @@ Standalone Python backtesting module for historical candle simulation.
 - `DELETE /backtests/{run_id}` permits only `succeeded` and `failed` runs.
   Queued, running, and all batch-member runs return a conflict.
 - `POST /backtests/batches` revalidates the complete sweep against current
-  strategy metadata, Markets, and raw-candidate limit. It is available only in
-  controlled settings with `BACKTESTER_BATCH_ACCEPTANCE_ENABLED=1` until batch
-  execution is delivered. `GET /backtests/batches`, `/{batch_id}`,
-  `/{batch_id}/members`, and `/{batch_id}/events` expose immutable accepted
-  configuration, ordered membership, initial revision/event, and derived counts.
+  strategy metadata, Markets, and raw-candidate limit. `GET /backtests/batches`,
+  `/{batch_id}`, `/{batch_id}/members`, and `/{batch_id}/events` expose immutable
+  accepted configuration, ordered membership, revision-ordered automatic events,
+  each event's nullable prior status and new status, lifecycle timestamps,
+  actual-member Market/Timeframe/Strategy context, and
+  derived outcome counts. Batch lists accept Market, Timeframe, Strategy, and
+  failed-member filters.
 - Run list/detail responses include nullable `batch_id` and `member_ordinal`;
   run list accepts `membership=standalone|batch` and optional `batch_id`, while
-  the unfiltered read still returns every run. The existing FIFO worker selects
-  only standalone runs, and its queued-to-running compare-and-set cannot claim a
-  batch member.
+  the unfiltered read still returns every run. The worker claims either a
+  standalone or the lowest queued ordinal of the next eligible batch.
 - `GET /health` reports API process readiness for the local stack healthcheck.
 - `GET /backtests/queue` reports one snapshot with epoch-millisecond snapshot,
   active-start, queued-submission and heartbeat times, current worker
-  availability, operational faults, and estimated standalone positions.
+  availability, operational faults, and one advisory position per durable
+  standalone or batch turn, including the batch's next member and counts.
+  Public batch queue entries have a null `run_id`; the accessor retains the next
+  member Run ID in its worker-facing queue state for claims.
   `GET /backtests/queue/health` returns 503 when the worker is stale, absent,
   faulted, or the primitive read fails; API `/health` remains process readiness.
 - The worker writes an independent heartbeat every five seconds by default,
@@ -196,8 +200,9 @@ Standalone Python backtesting module for historical candle simulation.
 - New completed results use schema version 3; older versions remain readable.
   Closed trade artifacts include nullable `stop_loss_price` and
   `take_profit_price` planned levels plus required closed-trade Trade Direction.
-- The worker selects queued runs by `(submitted_at_ms, run_id)`, refreshes after a
-  lost claim, and uses the accessor's durable execution slot. A second worker
+- The worker follows durable global turn order, refreshes after a lost claim,
+  and uses the accessor's durable execution slot. Batch settlement appends a new
+  turn if queued members remain; a standalone turn is consumed. A second worker
   cannot create another slot. The child is polled and reaped; descendants must
   exit before terminal persistence releases capacity.
 - Once the durable slot exists, worker results commit only through owner-token

@@ -118,6 +118,15 @@ class _InMemoryBacktestRunClient:
     def get_backtest_run(self, run_id: str) -> dict:
         return deepcopy(self._runs[run_id])
 
+    def get_backtest_queue_state(self) -> dict:
+        return {
+            "queued_entries": [
+                {"run_id": run_id}
+                for run_id, run in self._runs.items()
+                if run["status"] == "queued"
+            ]
+        }
+
     def list_backtest_runs(self, **query) -> list[dict]:
         _ = query
         return [deepcopy(run) for run in self._runs.values()]

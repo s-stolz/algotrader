@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 from adapters.api.app import create_app
 from app.backtest_queue import BacktestQueueService
@@ -42,6 +44,31 @@ def _state():
             {"run_id": "queued-a", "submitted_at": 11_000},
             {"run_id": "queued-b", "submitted_at": 12_000},
         ],
+        "queued_entries": [
+            {
+                "entry_type": "standalone",
+                "run_id": "queued-a",
+                "batch_id": None,
+                "submitted_at": 11_000,
+                "next_member_ordinal": None,
+                "outcome_counts": None,
+            },
+            {
+                "entry_type": "batch",
+                "run_id": "queued-b",
+                "batch_id": "batch-b",
+                "submitted_at": 12_000,
+                "next_member_ordinal": 0,
+                "outcome_counts": {
+                    "queued": 2,
+                    "running": 0,
+                    "cancelling": 0,
+                    "succeeded": 0,
+                    "failed": 0,
+                    "cancelled": 0,
+                },
+            },
+        ],
     }
 
 
@@ -50,9 +77,13 @@ class BacktestQueueTests(unittest.TestCase):
         state = _state()
         snapshot = BacktestQueueService(_QueueReader(state)).snapshot()
         self.assertEqual(snapshot["availability"], "healthy")
-        self.assertEqual(snapshot["active_run"], {"run_id": "active", "started_at_ms": 10_000})
+        self.assertEqual(snapshot["active_run"]["run_id"], "active")
+        self.assertEqual(snapshot["active_run"]["started_at_ms"], 10_000)
         self.assertEqual(snapshot["last_heartbeat_ms"], 45_000)
         self.assertEqual([entry["estimated_position"] for entry in snapshot["queued"]], [1, 2])
+        self.assertEqual(snapshot["queued"][1]["batch_id"], "batch-b")
+        self.assertIsNone(snapshot["queued"][1]["run_id"])
+        self.assertEqual(state["queued_entries"][1]["run_id"], "queued-b")
         self.assertEqual(state, _state())
 
     def test_stale_or_absent_owner_is_not_hidden_by_an_idle_competitor(self):
@@ -93,6 +124,10 @@ class BacktestQueueTests(unittest.TestCase):
             response = client.get("/backtests/queue")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["queued"][0]["run_id"], "queued-a")
+            fixture = (
+                Path(__file__).resolve().parents[3] / "frontend/test/fixtures/queuedBatchQueue.json"
+            )
+            self.assertEqual(response.json(), json.loads(fixture.read_text(encoding="utf-8")))
             self.assertEqual(client.get("/backtests/queue/health").status_code, 200)
             state = reader.state
             assert isinstance(state, dict)

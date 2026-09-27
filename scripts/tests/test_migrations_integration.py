@@ -150,6 +150,15 @@ DELETE FROM "{self.schema}".backtest_runs WHERE run_id = 'member-1';
         self.assertNotEqual(rejected_delete.returncode, 0)
         retained = self._run_psql(f'SELECT COUNT(*) FROM "{self.schema}".backtest_runs;')
         self.assertEqual(retained.stdout.strip(), "2")
+        prior_state_migration = (
+            migrate_db.MIGRATIONS_DIR / "V012__backtest_batch_event_prior_status.sql"
+        ).read_text()
+        self._run_psql(f'SET search_path TO "{self.schema}";\n{prior_state_migration}')
+        accepted = self._run_psql(
+            f"SELECT event_type || ':' || status || ':' || COALESCE(prior_status, 'NULL') "
+            f"FROM \"{self.schema}\".backtest_batch_events WHERE batch_id = 'batch-1';"
+        )
+        self.assertEqual(accepted.stdout.strip(), "accepted:queued:NULL")
 
     def _column_state(self) -> str:
         completed = self._run_psql(f"""

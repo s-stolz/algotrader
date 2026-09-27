@@ -10,10 +10,13 @@ vi.mock('@/api/backtesterClient', () => ({ fetchBacktestQueue: vi.fn() }));
 const NOW = 1_780_922_100_000;
 const healthySnapshot: BacktestQueueSnapshot = {
   snapshot_at_ms: NOW,
-  active_run: { run_id: 'long-run', started_at_ms: NOW - 120_000 },
+  active_run: { run_id: 'long-run', started_at_ms: NOW - 120_000,
+    batch_id: null, member_ordinal: null },
   last_heartbeat_ms: NOW - 1000,
   availability: 'healthy', stale_after_ms: 30_000, operational_faults: [],
-  queued: [{ run_id: 'waiting', submitted_at_ms: NOW - 60_000, estimated_position: 1 }],
+  queued: [{ entry_type: 'standalone', run_id: 'waiting', batch_id: null,
+    submitted_at_ms: NOW - 60_000, estimated_position: 1,
+    next_member_ordinal: null, outcome_counts: null }],
 };
 
 describe('Backtest queue health', () => {
@@ -44,6 +47,29 @@ describe('Backtest queue health', () => {
     vi.advanceTimersByTime(5000);
     await flushPromises();
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows batch turns, active ordinal, advisory position, and outcome counts on refresh', async () => {
+    vi.mocked(fetchBacktestQueue).mockResolvedValueOnce({ ...healthySnapshot,
+      active_run: { run_id: 'member-0', batch_id: 'active-batch', member_ordinal: 0,
+        started_at_ms: NOW - 120_000 },
+      queued: [{ entry_type: 'batch', run_id: null, batch_id: 'waiting-batch',
+        submitted_at_ms: NOW - 60_000, estimated_position: 1, next_member_ordinal: 2,
+        outcome_counts: { queued: 1, running: 0, cancelling: 0, succeeded: 1,
+          failed: 1, cancelled: 0 } }],
+    });
+    const wrapper = mount(BacktestQueueHealth);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="workspace-queue-active"]').text())
+      .toContain('Batch active-batch member #1');
+    expect(wrapper.find('[data-testid="workspace-queue-batch-waiting-batch"]').text())
+      .toContain('estimated position 1 · waiting 1m 0s');
+    expect(wrapper.find('[data-testid="workspace-queue-batch-waiting-batch"]').text())
+      .toContain('next member #3 · 1 succeeded, 1 failed');
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists()).toBe(true);
+    wrapper.unmount();
   });
 
   it('shows absent, stale, and faulted worker signals without changing queue history', async () => {

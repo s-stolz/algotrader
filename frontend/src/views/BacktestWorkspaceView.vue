@@ -259,19 +259,18 @@ function optionsFrom(values: string[], allLabel: string): SelectOption[] {
   )];
 }
 function batchMarkets(batch: BacktestBatch): string[] {
-  return batch.accepted_definition.normalized_selections.markets.map(
-    (market) => `${market.exchange}:${market.symbol}`,
-  );
+  return batch.market_contexts.map((market) =>
+    market.exchange ? `${market.exchange}:${market.symbol}` : market.symbol);
 }
 function batchTimeframes(batch: BacktestBatch): string[] {
-  return batch.accepted_definition.normalized_selections.timeframes;
+  return batch.timeframes;
 }
 const marketOptions = computed(() => optionsFrom([
   ...(runs.value ?? []).map(runMarket), ...(batches.value ?? []).flatMap(batchMarkets),
 ], 'All Markets'));
 const strategyOptions = computed(() => optionsFrom(
   [...(runs.value ?? []).map((run) => run.request.strategy.strategy_id),
-    ...(batches.value ?? []).map((batch) => batch.strategy_metadata.strategy_id)], 'All Strategies',
+    ...(batches.value ?? []).map((batch) => batch.strategy_id)], 'All Strategies',
 ));
 const timeframeOptions = computed(() => optionsFrom([
   ...(runs.value ?? []).map((run) => run.request.timeframe),
@@ -299,12 +298,12 @@ const filteredHistory = computed(() => historyRows.value.filter((entry) => {
   const batch = entry.batch;
   return (statusFilter.value === 'all' || batch.status === statusFilter.value) &&
     (typeFilter.value === 'all' || typeFilter.value === 'batch') &&
-    (failedFilter.value === 'all' || batch.outcome_counts.failed > 0) &&
+    (failedFilter.value === 'all' || batch.has_failed_members) &&
     (marketFilter.value === 'all' || batchMarkets(batch).includes(marketFilter.value)) &&
-    (strategyFilter.value === 'all' || batch.strategy_metadata.strategy_id === strategyFilter.value) &&
+    (strategyFilter.value === 'all' || batch.strategy_id === strategyFilter.value) &&
     (timeframeFilter.value === 'all' || batchTimeframes(batch).includes(timeframeFilter.value)) &&
     (!query || [batch.batch_id, batch.submission_id, batch.status,
-      batch.strategy_metadata.strategy_id, ...batchMarkets(batch), ...batchTimeframes(batch)]
+      batch.strategy_id, ...batchMarkets(batch), ...batchTimeframes(batch)]
       .some((value) => value.toLowerCase().includes(query)));
 }));
 
@@ -495,7 +494,7 @@ function entrySortValue(entry: HistoryEntry, key: HistorySortKey | 'progress'): 
   const durations = batchTimeframes(batch).map(timeframeDuration).filter((value) => value !== null);
   const values: Record<HistorySortKey | 'progress', string | number> = {
     name: batch.batch_id, type: 'Parameter Sweep',
-    strategy: `${batch.strategy_metadata.strategy_id} v${batch.strategy_metadata.strategy_version}`,
+    strategy: `${batch.strategy_id} v${batch.strategy_version}`,
     market: batchMarkets(batch).join(', '),
     timeframe: durations.length ? Math.min(...durations) : batchTimeframes(batch).join(', '),
     start: Number(shared.start_ms ?? 0), end: Number(shared.end_ms ?? 0), status: batch.status,
@@ -529,7 +528,7 @@ const historyColumns: DataTableColumns<HistoryEntry> = [
   historyColumn('Type', 'type', (entry) => cell(entry.kind === 'run' ? 'Standalone' : 'Parameter Sweep')),
   historyColumn('Strategy / version', 'strategy', (entry) => cell(entry.kind === 'run'
     ? `${entry.run.request.strategy.strategy_id} · ${strategyVersion(entry.run)}`
-    : `${entry.batch.strategy_metadata.strategy_id} · v${entry.batch.strategy_metadata.strategy_version}`,
+    : `${entry.batch.strategy_id} · v${entry.batch.strategy_version}`,
   )),
   historyColumn('Market', 'market', (entry) => cell(entry.kind === 'run'
     ? runMarket(entry.run) : batchMarkets(entry.batch).join(', '))),
@@ -545,7 +544,9 @@ const historyColumns: DataTableColumns<HistoryEntry> = [
       ? 'success' : status === 'failed' ? 'error' : 'info' }, { default: () => status });
   }),
   historyColumn('Settled', 'progress', (entry) => cell(entry.kind === 'run'
-    ? '—' : `${entry.batch.settled_count} / ${entry.batch.total_count}`)),
+    ? '—' : `${entry.batch.settled_count} / ${entry.batch.total_count}` +
+      (entry.batch.has_failed_members ?
+        ` · ${entry.batch.outcome_counts.failed} failed` : ''))),
   {
     title: 'Delete', key: 'delete', render: (entry) => entry.kind === 'run' ? h(NButton, {
       text: true,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any, Literal
 
 from app.backtest_batches import BacktestBatchService
@@ -104,7 +103,7 @@ def get_backtest_capabilities(
 ) -> dict[str, int | bool]:
     return {
         "max_sweep_candidate_count": service.max_candidate_count,
-        "batch_acceptance_enabled": os.getenv("BACKTESTER_BATCH_ACCEPTANCE_ENABLED") == "1",
+        "batch_acceptance_enabled": True,
     }
 
 
@@ -114,8 +113,6 @@ def accept_batch(
     response: Response,
     service: BacktestBatchService = Depends(get_backtest_batch_service),
 ) -> dict[str, object]:
-    if os.getenv("BACKTESTER_BATCH_ACCEPTANCE_ENABLED") != "1":
-        raise HTTPException(status_code=404, detail="Batch launch is not released")
     try:
         batch = service.accept(request.submission_id, request.to_definition())
     except StrategyVersionUnavailableError as exc:
@@ -153,10 +150,19 @@ def accept_batch(
 
 @router.get("/batches")
 def list_batches(
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    strategy: str | None = None,
+    with_failed_members: bool | None = None,
     service: BacktestBatchService = Depends(get_backtest_batch_service),
 ) -> list[dict[str, Any]]:
     try:
-        return service.list()
+        return service.list(
+            symbol=symbol,
+            timeframe=timeframe,
+            strategy=strategy,
+            with_failed_members=with_failed_members,
+        )
     except DatabaseAccessorClientError as exc:
         raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
 

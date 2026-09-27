@@ -37,6 +37,11 @@ TimescaleDB database.
   guard against legacy claims without slot ownership.
 - `migrations/V010__backtest_worker_heartbeat.sql`: per-process heartbeat and
   last operational fault telemetry, separate from durable run history.
+- `migrations/V011__backtest_batch_turns.sql`: durable global queue turns and
+  automatic batch timing/event fields.
+- `migrations/V012__backtest_batch_event_prior_status.sql`: nullable prior status
+  for revisioned batch events; existing history remains intact and unknown prior
+  states remain null.
 
 ## Contracts
 
@@ -53,6 +58,10 @@ TimescaleDB database.
 - `backtest_worker_heartbeats` stores transient process freshness and fault
   signals. It does not own the slot, affect run state, or represent durable
   history; an active snapshot matches its heartbeat to the slot owner token.
+- `backtest_queue_turns` holds one ordered entry per queued standalone run or
+  eligible batch. Claim consumes the head under the slot lock; settlement or
+  restart reconciliation appends a remaining batch at the tail. Migration seeds
+  preexisting queued work in submission-time/identity order.
 - `V007` adds nullable `backtest_runs.replay_descriptor` without changing prior
   successful rows or backfilling historical data.
 - `V008` adds nullable `batch_id`/`member_ordinal` to runs, preserving legacy

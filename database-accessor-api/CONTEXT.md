@@ -7,7 +7,7 @@ stored in TimescaleDB.
 
 - Primitive `GET /backtest-execution/queue-state` and
   `POST /backtest-execution/heartbeat` expose database-clock worker telemetry,
-  durable slot identity, and ordered standalone queued records to the backtester.
+  durable slot identity, and ordered standalone/batch turns to the backtester.
   The accessor does not decide availability or persist advisory positions.
 
 - Market read/write shape and Market identity fields.
@@ -79,9 +79,15 @@ stored in TimescaleDB.
   for fills and trades; terminal-state policy remains in the backtester.
 - Backtester code owns lifecycle transitions, queue selection, and scheduling.
   This service accepts caller-owned run identity and state as persistence data.
-- The execution slot is a single database row. Accessor claim checks the oldest
-  queued standalone run and free slot in one transaction; settlement requires the matching
-  owner token and commits terminal state, artifacts, and slot release together.
+- The execution slot is a single database row. Accessor claim locks that row,
+  verifies the earliest durable turn, batch eligibility, and lowest queued
+  member ordinal, and atomically claims one run. Settlement requires the matching
+  owner token and commits terminal state, artifacts, batch reconciliation/events,
+  next turn, and slot release together. Batch creation and standalone submission
+  serialize turn insertion through the same slot row; existing queued work was
+  seeded in submission-time/identity order by V011.
+  Automatic event rows record the locked batch's prior status and new status;
+  accepted revision-zero and pre-V012 events have a null prior status.
   Successful settlement requires a validated Equity Replay descriptor; failed
   settlement rejects replay metadata and other result artifacts.
   Faults remain separate from durable run history. Reconciliation is conditional

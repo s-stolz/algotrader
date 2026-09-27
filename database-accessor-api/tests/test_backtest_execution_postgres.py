@@ -12,7 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 import asyncpg
-from app import backtest_execution
+from app import backtest_execution, crud
 from sqlalchemy import text
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -78,6 +78,14 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
         )
         await self.db.execute(
             (ROOT / "timescaledb-init/migrations/V010__backtest_worker_heartbeat.sql").read_text()
+        )
+        await self.db.execute(
+            (ROOT / "timescaledb-init/migrations/V011__backtest_batch_turns.sql").read_text()
+        )
+        await self.db.execute(
+            (
+                ROOT / "timescaledb-init/migrations/V012__backtest_batch_event_prior_status.sql"
+            ).read_text()
         )
 
     async def test_heartbeat_and_queue_read_leave_durable_lifecycle_untouched(self) -> None:
@@ -386,6 +394,260 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
             await self.db.fetchval("SELECT status FROM backtest_runs WHERE run_id='second'"),
             "queued",
         )
+
+    async def test_batches_and_standalone_runs_take_durable_turns_through_restart(self) -> None:
+        await self._migrate()
+        engine = create_async_engine(
+            URL.create(
+                "postgresql+asyncpg",
+                username=self.connection_options["user"],
+                password=self.connection_options["password"],
+                host=self.connection_options["host"],
+                port=self.connection_options["port"],
+                database=self.connection_options["database"],
+            )
+        )
+        accepted_at = datetime.fromisoformat("2026-06-08T12:30:00+00:00")
+
+        async def operate(operation):
+            async with engine.connect() as connection:
+                await connection.execute(text(f'SET search_path TO "{self.schema}"'))
+                await connection.commit()
+                async with AsyncSession(bind=connection) as session:
+                    return await operation(session)
+
+        async def add_standalone(session, run_id):
+            return await crud.insert_backtest_run(
+                session,
+                {
+                    "run_id": run_id,
+                    "status": "queued",
+                    "submitted_at": accepted_at,
+                    "request_schema_version": 2,
+                    "request": {},
+                },
+            )
+
+        async def add_batch(session, batch_id, size):
+            return await crud.create_backtest_batch(
+                session,
+                {
+                    "batch_id": batch_id,
+                    "submission_id": f"submission-{batch_id}",
+                    "accepted_at": accepted_at,
+                    "definition_schema_version": 1,
+                    "accepted_definition": {},
+                    "strategy_metadata": {},
+                    "raw_count": size,
+                    "member_count": size,
+                    "excluded_count": 0,
+                    "members": [
+                        {
+                            "run_id": f"{batch_id}-{ordinal}",
+                            "member_ordinal": ordinal,
+                            "request_schema_version": 3,
+                            "request": {"symbols": ["EURUSD"], "strategy": {"strategy_version": 1}},
+                        }
+                        for ordinal in range(size)
+                    ],
+                },
+            )
+
+        async def turn(session, run_id, terminal, token):
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session,
+                    run_id=run_id,
+                    owner_token=token,
+                    started_at=accepted_at,
+                )
+            )
+            self.assertFalse(
+                await backtest_execution.claim(
+                    session,
+                    run_id="other",
+                    owner_token="other",
+                    started_at=accepted_at,
+                )
+            )
+            return await backtest_execution.settle(
+                session,
+                run_id=run_id,
+                owner_token=token,
+                terminal=terminal,
+            )
+
+        success = {
+            "status": "succeeded",
+            "completed_at": accepted_at,
+            "result_schema_version": 3,
+            "metrics": {"trade_count": 1},
+            "diagnostics": {},
+            "replay_descriptor": {"fingerprint_digest": "saved"},
+            "fills": [
+                {
+                    "fill_sequence": 0,
+                    "timestamp_ms": 1,
+                    "symbol": "EURUSD",
+                    "side": "buy",
+                    "quantity": 1.0,
+                    "price": 1.0,
+                    "fees": 0.0,
+                }
+            ],
+        }
+        failure = {
+            "status": "failed",
+            "completed_at": accepted_at,
+            "error_code": "backtest_failed",
+            "error_message": "Backtest failed",
+        }
+        try:
+            await operate(lambda session: add_standalone(session, "standalone-1"))
+            await operate(lambda session: add_batch(session, "batch-a", 2))
+            await operate(lambda session: add_standalone(session, "standalone-2"))
+            await operate(lambda session: add_batch(session, "batch-b", 3))
+            self.assertEqual(
+                [
+                    entry["run_id"]
+                    for entry in (await operate(backtest_execution.read_queue_state))[
+                        "queued_entries"
+                    ]
+                ],
+                ["standalone-1", "batch-a-0", "standalone-2", "batch-b-0"],
+            )
+            self.assertTrue(
+                await operate(lambda session: turn(session, "standalone-1", success, "owner-1"))
+            )
+            self.assertTrue(
+                await operate(lambda session: turn(session, "batch-a-0", success, "owner-2"))
+            )
+            await operate(lambda session: add_standalone(session, "standalone-3"))
+            self.assertEqual(
+                [
+                    entry["run_id"]
+                    for entry in (await operate(backtest_execution.read_queue_state))[
+                        "queued_entries"
+                    ]
+                ],
+                ["standalone-2", "batch-b-0", "batch-a-1", "standalone-3"],
+            )
+            self.assertTrue(
+                await operate(lambda session: turn(session, "standalone-2", failure, "owner-3"))
+            )
+            self.assertTrue(
+                await operate(lambda session: turn(session, "batch-b-0", success, "owner-4"))
+            )
+            self.assertTrue(
+                await operate(lambda session: turn(session, "batch-a-1", failure, "owner-5"))
+            )
+            self.assertEqual(
+                await self.db.fetchval(
+                    "SELECT status FROM backtest_batches WHERE batch_id='batch-a'"
+                ),
+                "completed",
+            )
+            self.assertEqual(
+                await self.db.fetchval(
+                    "SELECT count(*) FROM backtest_fills WHERE run_id='batch-a-0'"
+                ),
+                1,
+            )
+            self.assertEqual(
+                await self.db.fetchval(
+                    "SELECT replay_descriptor->>'fingerprint_digest' FROM backtest_runs "
+                    "WHERE run_id='batch-a-0'"
+                ),
+                "saved",
+            )
+            self.assertTrue(
+                await self.db.fetchval(
+                    "SELECT replay_descriptor IS NULL FROM backtest_runs WHERE run_id='batch-a-1'"
+                )
+            )
+            self.assertEqual(
+                await self.db.fetchval(
+                    "SELECT lifecycle_revision FROM backtest_batches WHERE batch_id='batch-a'"
+                ),
+                2,
+            )
+            self.assertEqual(
+                await self.db.fetchval(
+                    "SELECT count(*) FROM backtest_batch_events WHERE batch_id='batch-a'"
+                ),
+                3,
+            )
+            events = await self.db.fetch(
+                "SELECT revision, event_type, prior_status, status, trigger_run_id "
+                "FROM backtest_batch_events WHERE batch_id='batch-a' ORDER BY revision"
+            )
+            self.assertEqual(
+                [tuple(event.values()) for event in events],
+                [
+                    (0, "accepted", None, "queued", None),
+                    (1, "started", "queued", "running", "batch-a-0"),
+                    (2, "completed", "running", "completed", "batch-a-1"),
+                ],
+            )
+            self.assertTrue(
+                await operate(lambda session: turn(session, "standalone-3", success, "owner-6"))
+            )
+            self.assertTrue(
+                await operate(
+                    lambda session: backtest_execution.claim(
+                        session,
+                        run_id="batch-b-1",
+                        owner_token="interrupted",
+                        started_at=accepted_at,
+                    )
+                )
+            )
+            await self.db.execute(
+                "UPDATE backtest_execution_slot SET owner_token=NULL, run_id=NULL WHERE slot_id=1"
+            )
+            self.assertEqual(
+                await operate(
+                    lambda session: backtest_execution.reconcile(
+                        session,
+                        completed_at=accepted_at,
+                        error_code="worker_interrupted",
+                        error_message="Worker interrupted",
+                    )
+                ),
+                1,
+            )
+            self.assertEqual(
+                await operate(
+                    lambda session: backtest_execution.reconcile(
+                        session,
+                        completed_at=accepted_at,
+                        error_code="worker_interrupted",
+                        error_message="Worker interrupted",
+                    )
+                ),
+                0,
+            )
+            self.assertEqual(
+                [
+                    entry["run_id"]
+                    for entry in (await operate(backtest_execution.read_queue_state))[
+                        "queued_entries"
+                    ]
+                ],
+                ["batch-b-2"],
+            )
+            self.assertTrue(
+                await operate(lambda session: turn(session, "batch-b-2", success, "owner-7"))
+            )
+            self.assertEqual(
+                await self.db.fetchval(
+                    "SELECT status FROM backtest_batches WHERE batch_id='batch-b'"
+                ),
+                "completed",
+            )
+            self.assertEqual(await self.db.fetchval("SELECT count(*) FROM backtest_queue_turns"), 0)
+        finally:
+            await engine.dispose()
 
 
 async def _claim_from_worker_process(schema: str, token: str) -> None:

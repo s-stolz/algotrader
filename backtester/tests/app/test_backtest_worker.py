@@ -44,6 +44,12 @@ class _FakeRunRepository:
             return []
         return self._batches.pop(0)
 
+    def next_queued(self) -> BacktestRunRecord | None:
+        queued = self.list(
+            BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
+        )
+        return min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
+
 
 class _StatusFilteringRunRepository:
     def __init__(self, runs: list[BacktestRunRecord]) -> None:
@@ -53,6 +59,12 @@ class _StatusFilteringRunRepository:
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         self.queries.append(query)
         return [run for run in self._runs if run.status is query.status]
+
+    def next_queued(self) -> BacktestRunRecord | None:
+        queued = self.list(
+            BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
+        )
+        return min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
 
 
 class _FakeLifecycle:
@@ -202,6 +214,45 @@ class _UnconfirmedExitExecutor:
 
 
 class TestBacktestWorker(unittest.TestCase):
+    def test_uses_durable_turn_order_for_batch_and_standalone_requests(self) -> None:
+        standalone = _queued_run("standalone", submitted_at_ms=1)
+        member = replace(
+            _queued_run("member", submitted_at_ms=0), batch_id="batch", member_ordinal=0
+        )
+
+        class TurnRepository:
+            def __init__(self):
+                self.turns = [standalone, member]
+
+            def next_queued(self):
+                return self.turns.pop(0) if self.turns else None
+
+        class TurnLifecycle(_FakeLifecycle):
+            def __init__(self):
+                super().__init__([True, True])
+                self.turns = ["standalone", "member"]
+
+            def claim_execution(self, *, run_id, owner_token, started_at_ms):
+                if run_id != self.turns.pop(0):
+                    return False
+                return super().claim_execution(
+                    run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+                )
+
+        lifecycle = TurnLifecycle()
+        executor = _FakeChildExecutor(_compact_result())
+        worker = BacktestWorker(
+            repository=TurnRepository(),
+            lifecycle=lifecycle,
+            child_executor=executor,
+            now_ms=lambda: 42,
+        )
+        self.assertTrue(worker.run_once())
+        self.assertTrue(worker.run_once())
+        self.assertFalse(worker.run_once())
+        self.assertEqual([claim["run_id"] for claim in lifecycle.claims], ["standalone", "member"])
+        self.assertEqual(executor.snapshots, [standalone.request_snapshot, member.request_snapshot])
+
     def test_heartbeat_continues_during_idle_polling_and_long_child(self) -> None:
         idle_heartbeats: list[dict] = []
         idle = BacktestWorker(

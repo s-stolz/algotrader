@@ -53,6 +53,8 @@ backtest_batches = Table(
     Column("submission_id", String(36), nullable=False, unique=True),
     Column("status", String(16), nullable=False),
     Column("accepted_at", TIMESTAMP(timezone=True), nullable=False),
+    Column("started_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("completed_at", TIMESTAMP(timezone=True), nullable=True),
     Column("lifecycle_revision", Integer, nullable=False),
     Column("definition_schema_version", Integer, nullable=False),
     Column("accepted_definition", json_document, nullable=False),
@@ -101,9 +103,11 @@ backtest_batch_events = Table(
     Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=False),
     Column("revision", Integer, nullable=False),
     Column("event_type", String(32), nullable=False),
+    Column("prior_status", String(16), nullable=True),
     Column("status", String(16), nullable=False),
     Column("occurred_at", TIMESTAMP(timezone=True), nullable=False),
     Column("reason", Text, nullable=True),
+    Column("trigger_run_id", String(36), nullable=True),
     PrimaryKeyConstraint("batch_id", "revision"),
 )
 
@@ -121,6 +125,24 @@ backtest_execution_slot = Table(
         "(owner_token IS NULL) = (run_id IS NULL)",
         name="backtest_execution_slot_owner_pair_check",
     ),
+)
+
+backtest_queue_turns = Table(
+    "backtest_queue_turns",
+    metadata,
+    Column(
+        "turn_id",
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    ),
+    Column("run_id", String(36), ForeignKey("backtest_runs.run_id"), nullable=True),
+    Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=True),
+    CheckConstraint(
+        "(run_id IS NULL) <> (batch_id IS NULL)", name="backtest_queue_turn_identity_check"
+    ),
+    Index("uq_backtest_queue_standalone", "run_id", unique=True),
+    Index("uq_backtest_queue_batch", "batch_id", unique=True),
 )
 
 backtest_worker_heartbeats = Table(

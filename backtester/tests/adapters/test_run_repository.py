@@ -30,6 +30,10 @@ class _FakeRunClient:
         self.fills_by_run_id: dict[str, list[dict]] = {}
         self.trades_by_run_id: dict[str, list[dict]] = {}
         self.deleted_run_ids: list[str] = []
+        self.queue_entries: list[dict] = []
+
+    def get_backtest_queue_state(self) -> dict:
+        return {"queued_entries": self.queue_entries}
 
     def create_backtest_run(self, run: dict) -> dict:
         self.created_payloads.append(run)
