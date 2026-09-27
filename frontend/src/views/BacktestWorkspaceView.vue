@@ -364,6 +364,7 @@ let readGeneration = 0;
 let activeHistoryRead: Promise<void> | null = null;
 let refreshAfterCurrentRead = false;
 let detailSequence = 0;
+let pendingDetailId: string | null = null;
 let analysisSequence = 0;
 const analysisTokens = new Map<string, number>();
 let isActive = false;
@@ -448,6 +449,8 @@ function errorMessage(error: unknown): string {
 }
 
 async function loadSelected(runId: string, background = false): Promise<void> {
+  if (background && pendingDetailId === runId) return;
+  pendingDetailId = runId;
   const sequence = ++detailSequence;
   detailLoading.value = !background;
   try {
@@ -463,7 +466,10 @@ async function loadSelected(runId: string, background = false): Promise<void> {
       detailError.value = errorMessage(error);
     }
   } finally {
-    if (sequence === detailSequence) detailLoading.value = false;
+    if (sequence === detailSequence) {
+      detailLoading.value = false;
+      pendingDetailId = null;
+    }
   }
 }
 
@@ -1068,6 +1074,7 @@ function stopPolling(): void {
   isLoading.value = false;
   isRefreshing.value = false;
   ++detailSequence;
+  pendingDetailId = null;
   analysisTokens.clear();
   logRun.value = null;
   if (pollTimer) clearInterval(pollTimer);

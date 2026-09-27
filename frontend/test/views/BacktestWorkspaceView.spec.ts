@@ -651,6 +651,10 @@ describe('production Backtest Workspace', () => {
     vi.advanceTimersByTime(5000);
     await flushPromises();
     expect(wrapper.text()).not.toContain('Loading selected Backtest');
+    const reads = vi.mocked(getBacktestRun).mock.calls.length;
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(getBacktestRun).toHaveBeenCalledTimes(reads);
     wrapper.unmount();
   });
 
