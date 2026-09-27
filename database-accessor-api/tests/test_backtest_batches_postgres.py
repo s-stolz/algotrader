@@ -417,6 +417,22 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
                 "idle-run",
             )
 
+    async def test_first_claim_after_idle_pause_records_actual_start(self) -> None:
+        now = datetime(2026, 9, 27, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            await crud.create_backtest_batch(session, self._payload("resumed", "first-run"))
+            await self._control(session, batch_id="resumed", command="pause", command_id="pause")
+            await self._control(session, batch_id="resumed", command="resume", command_id="resume")
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session, run_id="first-run", owner_token="owner", started_at=now
+                )
+            )
+            saved = await self._batch(session, "resumed")
+            self.assertEqual(saved["started_at"], now)
+
     async def test_retract_draining_pause_then_final_member_completion_wins(self) -> None:
         now = datetime(2026, 9, 26, tzinfo=timezone.utc)
         async with self.sessions() as session:

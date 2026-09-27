@@ -227,12 +227,12 @@ async def claim(session, *, run_id: str, owner_token: str, started_at) -> bool:
         else:
             batch = (
                 await session.execute(
-                    select(backtest_batches.c.status)
+                    select(backtest_batches.c.status, backtest_batches.c.started_at)
                     .where(backtest_batches.c.batch_id == turn["batch_id"])
                     .with_for_update()
                 )
-            ).scalar_one()
-            if batch not in {"queued", "running"}:
+            ).one()
+            if batch.status not in {"queued", "running"}:
                 await session.rollback()
                 return False
             selected_run_id = (
@@ -265,7 +265,7 @@ async def claim(session, *, run_id: str, owner_token: str, started_at) -> bool:
         await session.execute(
             delete(backtest_queue_turns).where(backtest_queue_turns.c.turn_id == turn["turn_id"])
         )
-        if turn["batch_id"] is not None and batch == "queued":
+        if turn["batch_id"] is not None and batch.started_at is None:
             await _transition_batch(
                 session,
                 turn["batch_id"],
