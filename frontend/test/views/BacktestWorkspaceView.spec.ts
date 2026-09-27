@@ -196,6 +196,24 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
+  it('opens Create from this without changing the saved run or selection', async () => {
+    const saved = run('source');
+    const original = structuredClone(saved);
+    vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-run-source"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-create-from-source"]').trigger('click');
+    await flushPromises();
+    expect(useBacktestWorkspaceStore().reuseSource).toMatchObject({ kind: 'run', id: 'source',
+      strategyVersion: null });
+    expect(useBacktestWorkspaceStore().creationDraft?.strategy.strategy_id).toBe('sma');
+    expect(useBacktestWorkspaceStore().selectedRunId).toBe('source');
+    expect(saved).toEqual(original);
+    wrapper.unmount();
+  });
+
   it('opens the accessible execution drawer without changing selection and filters distinct trades and fills', async () => {
     const first = run('first', { request: { ...run('x').request, run_metadata: { name: 'First run' } } });
     const second = run('second');

@@ -232,6 +232,7 @@ import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import { BACKTEST_BATCH_STATUSES, BACKTEST_RUN_STATUSES, type BacktestBatch, type BacktestRun, type EquityReplayResponse } from '@/types/backtesterContracts';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
+import { reuseBatch, reuseStandalone } from './backtestReuse';
 import EquityReplayCharts from './EquityReplayCharts.vue';
 import { COLUMN_PRESETS, compareRuns, differingSettings,
   type ComparisonSortKey, type ReplaySeries } from './backtestComparison';
@@ -547,6 +548,12 @@ function selectRun(run: BacktestRun): void {
   void loadSelected(run.run_id);
 }
 
+function createFrom(entry: HistoryEntry): void {
+  workspaceStore.createFromSaved(entry.kind === 'run'
+    ? reuseStandalone(entry.run) : reuseBatch(entry.batch));
+  creationOpen.value = true;
+}
+
 async function createdRun(runId: string): Promise<void> {
   void queueHealth.value?.refresh();
   try {
@@ -691,6 +698,12 @@ const historyColumns: DataTableColumns<HistoryEntry> = [
     ? '—' : `${entry.batch.settled_count} / ${entry.batch.total_count}` +
       (entry.batch.has_failed_members ?
         ` · ${entry.batch.outcome_counts.failed} failed` : ''))),
+  { title: 'Create', key: 'create', render: (entry) => h(NButton, {
+    text: true, size: 'small',
+    'data-testid': `workspace-create-from-${rowKey(entry)}`,
+    'aria-label': `Create from this ${entry.kind === 'run' ? 'run' : 'batch'} ${rowKey(entry)}`,
+    onClick: (event: MouseEvent) => { event.stopPropagation(); createFrom(entry); },
+  }, { default: () => 'Create from this' }) },
   {
     title: 'Cancel', key: 'cancel', render: (entry) => entry.kind === 'run' ? h(NButton, {
       text: true, size: 'small',

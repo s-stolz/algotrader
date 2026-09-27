@@ -4,6 +4,33 @@
       <p v-if="catalogError" role="alert">Strategy catalog unavailable. {{ catalogError }}</p>
       <n-button v-if="catalogError" @click="loadCatalog">Retry catalog</n-button>
       <template v-if="draft && catalog.length">
+        <p v-if="store.reuseSource" data-testid="reuse-source">
+          Editing a new {{ store.reuseSource.kind === 'run' ? 'Backtest' : 'Parameter Sweep' }}
+          from saved {{ store.reuseSource.kind }} {{ store.reuseSource.id }}. The saved history stays unchanged.
+        </p>
+        <p
+          v-if="store.reuseSource && !selectedStrategy &&
+            draft.strategy.strategy_id === store.reuseSource.strategyId"
+          role="alert"
+          data-testid="reuse-removed-strategy"
+        >
+          Strategy {{ store.reuseSource.strategyId }} is no longer registered. This saved record
+          remains inspectable. Choose a current strategy to create new work.
+        </p>
+        <p
+          v-if="store.reuseSource && selectedStrategy && strategyNeedsReview"
+          role="alert"
+          data-testid="reuse-version-review"
+        >
+          Saved {{ store.reuseSource.strategyId }} version
+          {{ store.reuseSource.strategyVersion ?? 'unavailable (legacy request)' }};
+          current version {{ selectedStrategy.strategy_version }}. Review parameter changes and
+          invalid values before submitting. This is a new experiment, not an exact reproduction.
+          <n-button size="small" data-testid="reuse-use-current" @click="useCurrentVersion">
+            Use current version
+          </n-button>
+        </p>
+        <p v-for="change in parameterChanges" :key="change" role="status">{{ change }}</p>
         <div class="creation-fields">
           <label>Run type
             <n-select
@@ -22,7 +49,7 @@
             />
           </label>
           <p
-            v-if="selectedStrategy && selectedStrategy.strategy_version !== draft.strategy.strategy_version"
+            v-if="!store.reuseSource && selectedStrategy && strategyNeedsReview"
             role="alert"
           >
             Strategy version changed. Review the current schema before submitting.
@@ -71,10 +98,10 @@
               <n-select
                 v-if="parameter.choices || parameter.type === 'bool'"
                 multiple
-                :value="sweepParameter(parameter).choiceIndexes"
+                :value="selectedChoiceIndexes(parameter)"
                 :options="parameterOptions(parameter)"
                 :data-testid="`sweep-values-${parameter.name}`"
-                @update:value="sweepParameter(parameter).choiceIndexes = $event"
+                @update:value="setSweepChoices(parameter, $event)"
               />
               <div v-else-if="parameter.type === 'str'" class="string-values">
                 <div v-for="(value, index) in stringValues(parameter)" :key="index" class="string-value">
@@ -162,6 +189,10 @@
             />
           </label>
           <small v-if="!marketOptions.length" role="alert">Market options unavailable.</small>
+          <small v-if="missingMarkets.length" role="alert" data-testid="reuse-missing-market">
+            Saved Market{{ missingMarkets.length === 1 ? '' : 's' }}
+            {{ missingMarkets.join(', ') }} unavailable. Remove or replace before preview/submission.
+          </small>
           <small v-if="fieldErrors.market" role="alert">{{ fieldErrors.market }}</small>
           <label v-if="!isSweep">Timeframe
             <n-select
@@ -267,14 +298,16 @@
       <template #footer>
         <n-button
           v-if="draft && catalog.length && !isSweep"
-          :disabled="submitting || !marketOptions.length || !!catalogError"
+          :disabled="submitting || !marketOptions.length || !!catalogError || !selectedStrategy ||
+            strategyNeedsReview"
           :loading="submitting"
           data-testid="creation-submit"
           @click="submit"
         >Create Backtest</n-button>
         <n-button
           v-else-if="isSweep && sweepAcceptanceEnabled"
-          :disabled="submitting || previewPending || !preview || !!previewError"
+          :disabled="submitting || previewPending || !preview || !!previewError ||
+            strategyNeedsReview || parameterIssues.length > 0 || missingMarkets.length > 0"
           :loading="submitting"
           data-testid="sweep-submit"
           @click="submitSweep"
@@ -297,6 +330,7 @@ import type { BacktestRequestPayload, StrategyCatalogEntry, StrategyParameterSch
   SweepDraftState, SweepParameterDraft, SweepPreview, SweepPreviewCandidate,
   SweepPreviewRequest, SweepParameterAxis } from '@/types/backtesterContracts';
 import { TIMEFRAME_CODES } from '@/types/contracts';
+import type { ReuseSource } from './backtestReuse';
 
 type DraftRequest = Omit<BacktestRequestPayload, 'strategy' | 'run_metadata'> & {
   strategy: { strategy_id: string; strategy_version?: number; parameters: Record<string, null | boolean | number | string> };
@@ -339,6 +373,80 @@ let previewTimer: ReturnType<typeof setTimeout> | undefined;
 const selectedStrategy = computed(() => catalog.value.find(
   (entry) => entry.strategy_id === draft.value.strategy.strategy_id,
 ));
+const strategyNeedsReview = computed(() => !selectedStrategy.value ||
+  selectedStrategy.value.strategy_version !== draft.value.strategy.strategy_version);
+const missingMarkets = computed(() => isSweep.value
+  ? sweep.value.marketIds.filter((id) => !markets.all.some((market) => market.symbol_id === id))
+    .map((id) => `ID ${id}`)
+  : draft.value.symbols.length && marketValue.value === undefined
+    ? [`${draft.value.exchange ?? ''}:${draft.value.symbols.join(', ')}`] : []);
+const parameterIssues = computed(() => {
+  const selected = selectedStrategy.value;
+  if (!selected) return [];
+  return selected.parameters.flatMap((parameter) => {
+    const axis = isSweep.value ? sweep.value.parameters[parameter.name] : undefined;
+    if (axis && axis.mode !== 'constant') {
+      if (axis.mode === 'range') return parameterModeOptions(parameter).some((mode) =>
+        mode.value === 'range') ? [] : [`${parameter.name}: range is unavailable`];
+      return (axis.selectedChoiceValues ?? []).flatMap((value) => {
+        const issue = parameterIssue(parameter, value);
+        return issue ? [`${parameter.name}: ${issue}`] : [];
+      });
+    }
+    const value = draft.value.strategy.parameters[parameter.name];
+    const issue = parameterIssue(parameter, value);
+    return issue ? [`${parameter.name}: ${issue}`] : [];
+  });
+});
+const parameterChanges = computed(() => {
+  const source = store.reuseSource as ReuseSource | null;
+  if (!source || !selectedStrategy.value) return [];
+  const old = source.historicalMetadata;
+  const oldNames = old?.parameters.map((parameter) => parameter.name) ??
+    Object.keys(draft.value.strategy.parameters);
+  const newNames = selectedStrategy.value.parameters.map((parameter) => parameter.name);
+  const changes = [
+    ...newNames.filter((name) => !oldNames.includes(name)).map((name) => `New parameter: ${name}`),
+    ...oldNames.filter((name) => !newNames.includes(name)).map((name) => `Removed parameter: ${name}`),
+    ...parameterIssues.value.map((issue) => `Invalid copied value: ${issue}`),
+  ];
+  if (old) for (const parameter of selectedStrategy.value.parameters) {
+    const previous = old.parameters.find((item) => item.name === parameter.name);
+    if (previous && !sameParameterSchema(previous, parameter)) {
+      let described = false;
+      if (JSON.stringify(previous.default) !== JSON.stringify(parameter.default)) {
+        changes.push(`${parameter.name} default changed: ${JSON.stringify(previous.default)} → ` +
+          JSON.stringify(parameter.default));
+        described = true;
+      }
+      if (JSON.stringify(previous.choices) !== JSON.stringify(parameter.choices)) {
+        changes.push(`${parameter.name} choices changed: ${JSON.stringify(previous.choices ?? [])} → ` +
+          JSON.stringify(parameter.choices ?? []));
+        described = true;
+      }
+      if (previous.type !== parameter.type) {
+        changes.push(`${parameter.name} type changed: ${previous.type} → ${parameter.type}`);
+        described = true;
+      }
+      if (!described) changes.push(`Changed parameter contract: ${parameter.name}`);
+    }
+  }
+  if (!old && strategyNeedsReview.value) for (const parameter of selectedStrategy.value.parameters) {
+    const saved = draft.value.strategy.parameters[parameter.name];
+    if (saved !== undefined && 'default' in parameter &&
+      JSON.stringify(saved) !== JSON.stringify(parameter.default)) {
+      changes.push(`${parameter.name}: saved value ${JSON.stringify(saved)}; ` +
+        `current default ${JSON.stringify(parameter.default)}.`);
+    }
+  }
+  return changes;
+});
+
+function sameParameterSchema(left: StrategyParameterSchema, right: StrategyParameterSchema): boolean {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].every((key) => JSON.stringify(left[key as keyof StrategyParameterSchema]) ===
+    JSON.stringify(right[key as keyof StrategyParameterSchema]));
+}
 const strategyOptions = computed<SelectOption[]>(() => catalog.value.map((entry) => ({
   label: `${entry.display_name} · v${entry.strategy_version}`, value: entry.strategy_id,
 })));
@@ -375,6 +483,21 @@ watch(draft, (value) => {
 watch(sweep, (value) => {
   store.creationSweepDraft = JSON.parse(JSON.stringify(value)) as SweepDraftState;
 }, { deep: true, immediate: true });
+
+watch(() => store.reuseRevision, () => {
+  draft.value = store.creationDraft
+    ? JSON.parse(JSON.stringify(store.creationDraft)) as DraftRequest : initialDraft();
+  sweep.value = store.creationSweepDraft
+    ? JSON.parse(JSON.stringify(store.creationSweepDraft)) as SweepDraftState : {
+    isSweep: false, marketIds: [], timeframes: [], allowedDirections: [], parameters: {},
+  };
+  fieldErrors.value = {};
+  submitError.value = null;
+  submissionId = globalThis.crypto.randomUUID();
+  if (!draft.value.symbols.length && !store.reuseSource && markets.all.length) {
+    selectMarket(markets.all[0].symbol_id);
+  }
+});
 
 watch(isSweep, (enabled) => {
   if (!enabled) return;
@@ -454,6 +577,39 @@ function stringValues(parameter: StrategyParameterSchema): string[] {
   return input.stringValues ??= input.valuesText === '' ? [] : input.valuesText.split('\n');
 }
 
+function selectedChoiceIndexes(parameter: StrategyParameterSchema): number[] {
+  const input = sweepParameter(parameter);
+  if (!input.selectedChoiceValues) return input.choiceIndexes;
+  return input.selectedChoiceValues.map((value) => choiceValues(parameter).findIndex(
+    (choice) => choice === value)).filter((index) => index >= 0);
+}
+
+function setSweepChoices(parameter: StrategyParameterSchema, indexes: number[]): void {
+  const input = sweepParameter(parameter);
+  input.choiceIndexes = indexes;
+  input.selectedChoiceValues = indexes.map((index) => choiceValues(parameter)[index]);
+}
+
+function parameterIssue(parameter: StrategyParameterSchema, value: unknown): string | null {
+  if (value === undefined) return parameter.required ? 'This parameter is required.' : null;
+  if (value === null) return parameter.nullable ? null : 'null is unavailable';
+  const correctType = parameter.type === 'bool' ? typeof value === 'boolean' :
+    parameter.type === 'str' ? typeof value === 'string' :
+      typeof value === 'number' && Number.isFinite(value) &&
+      (parameter.type !== 'int' || Number.isInteger(value));
+  if (!correctType) return `expected ${parameter.type}`;
+  if (parameter.choices && !parameter.choices.includes(value as number | string)) {
+    return `${JSON.stringify(value)} is not a current choice`;
+  }
+  if (typeof value === 'number') {
+    if (parameter.minimum !== undefined && (parameter.exclusive_minimum
+      ? value <= parameter.minimum : value < parameter.minimum)) return 'below current minimum';
+    if (parameter.maximum !== undefined && (parameter.exclusive_maximum
+      ? value >= parameter.maximum : value > parameter.maximum)) return 'above current maximum';
+  }
+  return null;
+}
+
 function parameterModeOptions(parameter: StrategyParameterSchema): SelectOption[] {
   const modes: SelectOption[] = [
     { label: 'Constant', value: 'constant' }, { label: 'Values', value: 'values' },
@@ -486,6 +642,7 @@ function buildSweepRequest(): SweepPreviewRequest {
       !sweep.value.allowedDirections.length) {
     throw new Error('Select at least one Market, Timeframe, and Allowed Directions value.');
   }
+  if (missingMarkets.value.length) throw new Error('Replace unavailable saved Markets.');
   if (draft.value.start_ms <= 0 || draft.value.end_ms <= draft.value.start_ms ||
       !Number.isFinite(draft.value.initial_capital) || draft.value.initial_capital <= 0) {
     throw new Error('Enter valid dates and initial capital.');
@@ -509,7 +666,8 @@ function buildSweepRequest(): SweepPreviewRequest {
     } else {
       let values: Array<null | boolean | number | string>;
       if (parameter.choices || parameter.type === 'bool') {
-        values = input.choiceIndexes.map((index) => choiceValues(parameter)[index]);
+        values = (input.selectedChoiceValues ?? input.choiceIndexes.map(
+          (index) => choiceValues(parameter)[index])) as Array<null | boolean | number | string>;
       } else if (parameter.type === 'str') {
         values = [...stringValues(parameter)];
       } else {
@@ -595,7 +753,8 @@ function useCurrentVersion(): void {
   const selected = selectedStrategy.value;
   if (!selected) return;
   const retained = Object.fromEntries(selected.parameters.filter((parameter) =>
-    Object.hasOwn(draft.value.strategy.parameters, parameter.name))
+    Object.hasOwn(draft.value.strategy.parameters, parameter.name) &&
+    !store.reuseSource?.defaultedParameters.includes(parameter.name))
     .map((parameter) => [parameter.name, draft.value.strategy.parameters[parameter.name]]));
   draft.value.strategy = {
     strategy_id: selected.strategy_id, strategy_version: selected.strategy_version,
@@ -677,11 +836,8 @@ async function submit(): Promise<void> {
     fieldErrors.value.capital = 'Initial capital must be greater than zero.';
   }
   for (const parameter of selectedStrategy.value?.parameters ?? []) {
-    if (parameter.required && !Object.hasOwn(draft.value.strategy.parameters, parameter.name)) {
-      fieldErrors.value[parameter.name] = 'This parameter is required.';
-    } else if (draft.value.strategy.parameters[parameter.name] === null && !parameter.nullable) {
-      fieldErrors.value[parameter.name] = 'This parameter cannot be null.';
-    }
+    const issue = parameterIssue(parameter, draft.value.strategy.parameters[parameter.name]);
+    if (issue) fieldErrors.value[parameter.name] = issue;
   }
   if (selectedStrategy.value?.strategy_version !== draft.value.strategy.strategy_version) {
     submitError.value = 'Review the current strategy version before submitting.';
@@ -738,11 +894,13 @@ async function submitSweep(): Promise<void> {
 }
 
 onMounted(() => {
-  if (markets.all.length && !draft.value.symbols.length) {
+  if (!store.reuseSource && markets.all.length && !draft.value.symbols.length) {
     selectMarket(markets.all[0].symbol_id);
   } else if (!markets.all.length) {
     void markets.fetch().then(() => {
-      if (!draft.value.symbols.length && markets.all.length) selectMarket(markets.all[0].symbol_id);
+      if (!store.reuseSource && !draft.value.symbols.length && markets.all.length) {
+        selectMarket(markets.all[0].symbol_id);
+      }
     }).catch(() => { fieldErrors.value.market = 'Market options unavailable.'; });
   }
   void loadCatalog();

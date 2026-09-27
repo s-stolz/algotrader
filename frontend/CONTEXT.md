@@ -141,6 +141,14 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   Opening a Batch reads its saved definition, Strategy Metadata Snapshot,
   revision/events, and actual ordinal-ordered member runs; members do not appear
   again as top-level standalone rows. Missing member metrics remain absent.
+- History offers Create from this for standalone runs and Batches. It copies the
+  immutable standalone request or the Batch's accepted definition into the
+  existing editable drawer, retaining ordered Market/Timeframe/direction choices
+  and numeric range inputs. The drawer keeps the draft across chart navigation,
+  refreshes current metadata and preview, requires explicit review when the
+  Strategy Version changed, and blocks unavailable saved Markets or parameters
+  until corrected. Submission uses fresh run or batch identity; saved history is
+  untouched and no source link is persisted.
 - Sweep submission appears only when the backend advertises controlled batch
   acceptance. The drawer retains one client submission identity across retries
   of an unchanged draft and requires a fresh successful preview after rejection;

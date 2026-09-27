@@ -131,6 +131,7 @@ export interface SweepParameterDraft {
   valuesText: string;
   stringValues?: string[];
   choiceIndexes: number[];
+  selectedChoiceValues?: JsonValue[];
   includeNull: boolean;
   rangeStart: number | null;
   rangeStop: number | null;

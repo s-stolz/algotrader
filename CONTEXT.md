@@ -105,6 +105,9 @@ to a chart UI, and supports standalone backtesting.
 - **Backtest Workspace**: the user-facing area for creating and monitoring
   Backtest Runs and Backtest Batches, inspecting their results, and comparing
   selected runs.
+- **Create from this**: opens an editable current-catalog creation draft from a
+  saved standalone request or an accepted Batch definition. A submitted draft
+  receives a new identity and does not change or link to its source history.
 - **Backtest Equity Curve**: the time-ordered history of a Backtest Run's
   simulated account equity, used to inspect and compare performance and drawdown
   over time.
