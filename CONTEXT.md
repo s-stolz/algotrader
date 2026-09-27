@@ -177,6 +177,9 @@ to a chart UI, and supports standalone backtesting.
   run becomes `failed` with `worker_interrupted` after verified worker shutdown;
   queued history remains queued. Operational slot faults are separate from
   durable run outcomes.
+- The backtester-owned queue snapshot projects the durable slot and standalone
+  queue with independent worker heartbeat telemetry. Its advisory positions and
+  availability never change run lifecycle or release a held slot.
 
 ## Change Guidance
 

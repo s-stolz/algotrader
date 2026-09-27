@@ -3,6 +3,7 @@ import {
   type BacktestClosedTrade,
   type BacktestFill,
   type BacktestRun,
+  type BacktestQueueSnapshot,
   type BacktestBatch,
   type BacktestBatchStatus,
   type BacktestBatchEvent,
@@ -12,6 +13,7 @@ import {
   isBacktestFillArray,
   isBacktestRun,
   isBacktestRunArray,
+  isBacktestQueueSnapshot,
   isBacktestBatch,
   isBacktestBatchArray,
   isBacktestBatchEventArray,
@@ -27,6 +29,14 @@ import {
 import { parseJsonResponse, withQuery } from './http';
 
 const BACKTESTS_BASE_URL = '/api/backtester/backtests';
+
+export async function fetchBacktestQueue(): Promise<BacktestQueueSnapshot> {
+  const payload = await parseJsonResponse(
+    await fetch(`${BACKTESTS_BASE_URL}/queue`), 'Failed to fetch Backtest queue',
+  );
+  if (!isBacktestQueueSnapshot(payload)) throw new Error('Invalid Backtest queue response');
+  return payload;
+}
 
 export class BacktestSubmissionError extends Error {
   constructor(public readonly code: string, public readonly fields: string[], message: string) {

@@ -199,6 +199,15 @@ class BacktestRunPersistenceAdapter:
             return client.create_backtest_run(run)
 
 
+class DatabaseAccessorQueueStateReader:
+    """Primitive queue read used by the backtester-owned projection."""
+
+    def get_backtest_queue_state(self) -> Mapping[str, Any]:
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            return client.get_backtest_queue_state()
+
+
 class BacktestRunLifecyclePersistenceAdapter:
     """Maps canonical domain results to primitive durable lifecycle operations."""
 
@@ -207,6 +216,24 @@ class BacktestRunLifecyclePersistenceAdapter:
 
     def execution_slot(self) -> Mapping[str, Any]:
         return self._call("get_backtest_execution_slot")
+
+    def record_worker_heartbeat(
+        self,
+        *,
+        worker_id: str,
+        owner_token: str | None,
+        fault_code: str | None = None,
+        fault_message: str | None = None,
+    ) -> None:
+        self._call(
+            "record_backtest_worker_heartbeat",
+            {
+                "worker_id": worker_id,
+                "owner_token": owner_token,
+                "fault_code": fault_code,
+                "fault_message": fault_message,
+            },
+        )
 
     def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
         return bool(

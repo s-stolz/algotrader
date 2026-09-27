@@ -9,7 +9,7 @@
         <n-button type="primary" data-testid="workspace-create" @click="creationOpen = true">
           Create Backtest
         </n-button>
-        <n-button data-testid="workspace-refresh" :loading="isRefreshing" @click="loadRuns()">
+        <n-button data-testid="workspace-refresh" :loading="isRefreshing" @click="refreshWorkspace">
           Refresh
         </n-button>
         <n-button data-testid="workspace-chart-return" @click="router.push('/')">
@@ -21,8 +21,10 @@
     <BacktestCreationDrawer
       v-model:show="creationOpen"
       @submitted="createdRun"
-      @submitted-batch="loadRuns()"
+      @submitted-batch="refreshWorkspace"
     />
+
+    <BacktestQueueHealth ref="queueHealth" />
 
     <section aria-label="Saved Backtest Runs">
       <div class="filters">
@@ -177,6 +179,7 @@ import { useRouter } from 'vue-router';
 import { deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestRuns } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
+import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
@@ -197,6 +200,7 @@ const router = useRouter();
 const workspaceStore = useBacktestWorkspaceStore();
 const overlayStore = useBacktestOverlayStore();
 const marketsStore = useMarketsStore();
+const queueHealth = ref<InstanceType<typeof BacktestQueueHealth> | null>(null);
 const runs = ref<BacktestRun[] | null>(null);
 const batches = shallowRef<BacktestBatch[] | null>(null);
 type HistoryEntry = { kind: 'run'; run: BacktestRun } | { kind: 'batch'; batch: BacktestBatch };
@@ -397,6 +401,11 @@ function loadRuns(shouldQueue = true): Promise<void> {
   return activeHistoryRead;
 }
 
+function refreshWorkspace(): void {
+  void loadRuns();
+  void queueHealth.value?.refresh();
+}
+
 function selectRun(run: BacktestRun): void {
   ++curveSequence;
   curve.value = null;
@@ -407,6 +416,7 @@ function selectRun(run: BacktestRun): void {
 }
 
 async function createdRun(runId: string): Promise<void> {
+  void queueHealth.value?.refresh();
   try {
     workspaceStore.selectRun(await getBacktestRun(runId));
     detailError.value = null;
@@ -612,6 +622,7 @@ async function deleteRun(run: BacktestRun): Promise<void> {
       curve.value = null;
     }
     if (overlayStore.selectedRunId === run.run_id) overlayStore.clearOverlay();
+    void queueHealth.value?.refresh();
     await loadRuns();
   } catch (error) {
     deleteError.value = errorMessage(error);

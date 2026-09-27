@@ -32,6 +32,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   epoch seconds.
 - Backtest run history and execution-log visualization consumed through the
   public backtester API, not direct database-accessor storage routes.
+- The Workspace polls the public `/backtests/queue` snapshot while open. It
+  treats unreachable or invalid reads as unknown while retaining the timestamp
+  of the last good snapshot; availability and advisory standalone queue
+  positions are telemetry, not durable lifecycle or an ETA.
 - Frontend development proxy exposes the public backtester API under
   `/api/backtester`.
 - The Workspace creation drawer reads the live `/backtests/strategies` catalog,

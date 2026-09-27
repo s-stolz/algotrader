@@ -15,6 +15,44 @@ export const BACKTEST_RUN_STATUSES = [
 ] as const;
 
 export type BacktestRunStatus = typeof BACKTEST_RUN_STATUSES[number];
+export type BacktestWorkerAvailability = 'healthy' | 'stale' | 'unavailable' | 'faulted';
+
+export interface BacktestQueueSnapshot {
+  snapshot_at_ms: number;
+  active_run: { run_id: string; started_at_ms: number } | null;
+  last_heartbeat_ms: number | null;
+  availability: BacktestWorkerAvailability;
+  stale_after_ms: number;
+  operational_faults: { code: string; message: string }[];
+  queued: { run_id: string; submitted_at_ms: number; estimated_position: number }[];
+}
+
+export function isBacktestQueueSnapshot(value: unknown): value is BacktestQueueSnapshot {
+  if (!isRecord(value) || !isEpochMs(value.snapshot_at_ms) ||
+      !isEpochMs(value.stale_after_ms) || value.stale_after_ms === 0 ||
+      (value.last_heartbeat_ms !== null && !isEpochMs(value.last_heartbeat_ms)) ||
+      !['healthy', 'stale', 'unavailable', 'faulted'].includes(String(value.availability)) ||
+      !Array.isArray(value.operational_faults) || !value.operational_faults.every(
+        (fault: unknown) => isRecord(fault) && isNonEmptyString(fault.code) &&
+          isNonEmptyString(fault.message)) ||
+      !Array.isArray(value.queued)) return false;
+  if (value.active_run !== null && (!isRecord(value.active_run) ||
+      !isNonEmptyString(value.active_run.run_id) ||
+      !isEpochMs(value.active_run.started_at_ms))) return false;
+  const runIds = new Set<string>();
+  if (isRecord(value.active_run)) runIds.add(value.active_run.run_id as string);
+  return value.queued.every((entry: unknown, index: number) => {
+    if (!isRecord(entry) || !isNonEmptyString(entry.run_id) ||
+        !isEpochMs(entry.submitted_at_ms) || entry.estimated_position !== index + 1 ||
+        runIds.has(entry.run_id)) return false;
+    runIds.add(entry.run_id);
+    return true;
+  });
+}
+
+function isEpochMs(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
 export type BacktestEngine = 'vectorized' | 'event_driven';
 export type BacktestDataGranularity = 'bar' | 'tick';
 export type BacktestExitReason = 'signal' | 'stop_loss' | 'take_profit';

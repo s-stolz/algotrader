@@ -72,3 +72,6 @@ Shared Python packages used by multiple services.
 - Backtest run reads and completion payloads pass the nullable Equity Replay
   descriptor through unchanged. The accessor client owns transport, while the
   backtester owns fingerprinting, replay, and public availability semantics.
+- Shared sync/async accessor clients expose primitive execution queue-state
+  reads and worker heartbeat writes. The backtester owns availability and
+  advisory position projections for frontend consumers.

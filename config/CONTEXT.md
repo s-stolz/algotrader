@@ -35,7 +35,10 @@ Centralized non-secret topology plus generated runtime environment files.
 - Backtester topology generates API host/port/logging values,
   `BACKTESTER_WORKER_POLL_INTERVAL_SECONDS`, and
   `BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT`; the defaults are one second and 1,000
-  raw candidates respectively.
+  raw candidates respectively. It also generates
+  `BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS` (default five seconds) and
+  `BACKTESTER_WORKER_STALE_AFTER_SECONDS` (default 30 seconds); the latter must
+  exceed the former.
 - Frontend proxy targets are generated from service topology as
   `VITE_PROXY_DATA_ACCESSOR_TARGET`, `VITE_PROXY_BACKTESTER_TARGET`, and
   `VITE_PROXY_INDICATOR_TARGET`.

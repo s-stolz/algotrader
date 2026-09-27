@@ -123,6 +123,17 @@ backtest_execution_slot = Table(
     ),
 )
 
+backtest_worker_heartbeats = Table(
+    "backtest_worker_heartbeats",
+    metadata,
+    Column("worker_id", String(36), primary_key=True),
+    Column("owner_token", String(36), nullable=True),
+    Column("heartbeat_at", TIMESTAMP(timezone=True), nullable=False),
+    Column("fault_code", String(64), nullable=True),
+    Column("fault_message", Text, nullable=True),
+    Index("idx_backtest_worker_heartbeats_recent", "heartbeat_at"),
+)
+
 backtest_fills = Table(
     "backtest_fills",
     metadata,

@@ -167,6 +167,12 @@ def build_env(
         topology,
         "backtester.worker_poll_interval_seconds",
     )
+    backtester_worker_heartbeat_interval = required(
+        topology, "backtester.worker_heartbeat_interval_seconds",
+    )
+    backtester_worker_stale_after = required(
+        topology, "backtester.worker_stale_after_seconds",
+    )
     backtester_max_sweep_candidate_count = required(
         topology,
         "backtester.max_sweep_candidate_count",
@@ -205,6 +211,8 @@ def build_env(
         "BACKTESTER_LOG_LEVEL": stringify(backtester_log_level),
         "BACKTESTER_LOG_FORMAT": stringify(backtester_log_format),
         "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS": stringify(backtester_worker_poll_interval),
+        "BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS": stringify(backtester_worker_heartbeat_interval),
+        "BACKTESTER_WORKER_STALE_AFTER_SECONDS": stringify(backtester_worker_stale_after),
         "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT": stringify(backtester_max_sweep_candidate_count),
         "BROKER_SERVICE_HOST": stringify(broker_host),
         "BROKER_SERVICE_PORT": stringify(broker_port),

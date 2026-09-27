@@ -6,6 +6,29 @@ descendant exit, reaping, and committed terminal storage. The slot does not
 expire automatically. A held or faulted slot is an operational stop, not
 permission to start another worker or rewrite history.
 
+## Monitor queue and worker health
+
+`GET /backtests/queue` on the backtester API returns one snapshot: database
+snapshot time, the active run and its durable start time, ordered standalone
+queued submissions with advisory positions, the last matching worker heartbeat,
+worker availability, and operational fault codes. Times are UTC epoch
+milliseconds. A queue-read failure is HTTP 503, which means **unknown**, not an
+empty queue. `GET /backtests/queue/health` is an operator probe: HTTP 200 means
+the worker heartbeat is fresh and no fault is visible; HTTP 503 carries
+`detail.availability` of `stale`, `unavailable`, `faulted`, or `unknown`. The
+ordinary `/health` endpoint checks only the API process.
+
+The worker emits a heartbeat from a separate thread while idle and during long
+child work. Configure `backtester.worker_heartbeat_interval_seconds` (default
+5) and `backtester.worker_stale_after_seconds` (default 30) in
+`config/topology.yaml`, then regenerate the shared environment. Set
+`BACKTESTER_LOG_FORMAT=json` to emit structured `worker_id`, `run_id`, and
+`fault_code` fields. Watch for `heartbeat_absent`, `heartbeat_stale`,
+`lost_ownership`, `child_exit_unconfirmed`, `terminal_persistence_failed`,
+and `reconciliation_failed`. A stale heartbeat alone never changes run status,
+cancels a child, or releases capacity. Check the slot and worker process tree
+before restarting under the single-owner safeguard below.
+
 ## Execution environment
 
 Run the asynchronous worker on Linux (including the supplied Compose service).

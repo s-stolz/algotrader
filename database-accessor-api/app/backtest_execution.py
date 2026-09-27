@@ -7,8 +7,10 @@ from app.models import (
     backtest_execution_slot,
     backtest_fills,
     backtest_runs,
+    backtest_worker_heartbeats,
 )
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 async def read_slot(session) -> dict:
@@ -20,6 +22,90 @@ async def read_slot(session) -> dict:
     )
     row = (await session.execute(slot_query)).mappings().one()
     return dict(row)
+
+
+async def record_heartbeat(
+    session,
+    *,
+    worker_id: str,
+    owner_token: str | None,
+    fault_code: str | None,
+    fault_message: str | None,
+) -> dict:
+    # The database clock is authoritative; a worker cannot claim freshness with its own clock.
+    statement = pg_insert(backtest_worker_heartbeats).values(
+        worker_id=worker_id,
+        owner_token=owner_token,
+        heartbeat_at=func.now(),
+        fault_code=fault_code,
+        fault_message=fault_message,
+    )
+    statement = statement.on_conflict_do_update(
+        index_elements=[backtest_worker_heartbeats.c.worker_id],
+        set_={
+            "owner_token": statement.excluded.owner_token,
+            "heartbeat_at": func.now(),
+            "fault_code": statement.excluded.fault_code,
+            "fault_message": statement.excluded.fault_message,
+        },
+    ).returning(backtest_worker_heartbeats)
+    row = (await session.execute(statement)).mappings().one()
+    await session.commit()
+    return dict(row)
+
+
+async def read_queue_state(session) -> dict:
+    snapshot_at = (await session.execute(select(func.now()))).scalar_one()
+    slot = await read_slot(session)
+    active = None
+    if slot["run_id"] is not None:
+        active_row = (
+            (
+                await session.execute(
+                    select(backtest_runs.c.run_id, backtest_runs.c.started_at).where(
+                        backtest_runs.c.run_id == slot["run_id"]
+                    )
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        active = dict(active_row) if active_row else None
+    heartbeat_query = select(backtest_worker_heartbeats)
+    if slot["owner_token"] is not None:
+        heartbeat_query = heartbeat_query.where(
+            backtest_worker_heartbeats.c.owner_token == slot["owner_token"]
+        )
+    heartbeats = (
+        (
+            await session.execute(
+                heartbeat_query.order_by(backtest_worker_heartbeats.c.heartbeat_at.desc()).limit(1)
+            )
+        )
+        .mappings()
+        .all()
+    )
+    queued = (
+        (
+            await session.execute(
+                select(
+                    backtest_runs.c.run_id,
+                    backtest_runs.c.submitted_at,
+                )
+                .where(backtest_runs.c.status == "queued", backtest_runs.c.batch_id.is_(None))
+                .order_by(backtest_runs.c.submitted_at, backtest_runs.c.run_id)
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return {
+        "snapshot_at": snapshot_at,
+        "slot": slot,
+        "active_run": active,
+        "heartbeats": [dict(row) for row in heartbeats],
+        "queued_runs": [dict(row) for row in queued],
+    }
 
 
 async def claim(session, *, run_id: str, owner_token: str, started_at) -> bool:

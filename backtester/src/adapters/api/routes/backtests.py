@@ -6,6 +6,7 @@ import os
 from typing import Any, Literal
 
 from app.backtest_batches import BacktestBatchService
+from app.backtest_queue import BacktestQueueService
 from app.backtest_runs import (
     BacktestCandleUnavailableError,
     BacktestRunConflictError,
@@ -29,6 +30,7 @@ from strategies.registry import (
 
 from adapters.api.schemas import (
     BacktestFillResponseSchema,
+    BacktestQueueSnapshotSchema,
     BacktestRunResponseSchema,
     BacktestSubmissionRequestSchema,
     BacktestSubmissionResponseSchema,
@@ -36,13 +38,47 @@ from adapters.api.schemas import (
     BatchAcceptanceRequestSchema,
     SweepPreviewRequestSchema,
 )
-from adapters.persistence import DatabaseAccessorBacktestRunRepository, _run_record_from_response
+from adapters.persistence import (
+    DatabaseAccessorBacktestRunRepository,
+    DatabaseAccessorQueueStateReader,
+    _run_record_from_response,
+)
 
 router = APIRouter(prefix="/backtests", tags=["backtests"])
 
 
 def get_backtest_run_service() -> BacktestRunService:
     return BacktestRunService(repository=DatabaseAccessorBacktestRunRepository())
+
+
+def get_backtest_queue_service() -> BacktestQueueService:
+    return BacktestQueueService(
+        DatabaseAccessorQueueStateReader(),
+        stale_after_seconds=BacktesterConfig.from_env().worker_stale_after_seconds,
+    )
+
+
+@router.get("/queue", response_model=BacktestQueueSnapshotSchema)
+def get_backtest_queue(
+    service: BacktestQueueService = Depends(get_backtest_queue_service),
+) -> dict[str, Any]:
+    try:
+        return service.snapshot()
+    except (DatabaseAccessorClientError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=503, detail="Backtest queue snapshot unavailable") from exc
+
+
+@router.get("/queue/health")
+def get_backtest_queue_health(
+    service: BacktestQueueService = Depends(get_backtest_queue_service),
+) -> dict[str, str]:
+    try:
+        availability = service.snapshot()["availability"]
+    except (DatabaseAccessorClientError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=503, detail={"availability": "unknown"}) from exc
+    if availability != "healthy":
+        raise HTTPException(status_code=503, detail={"availability": availability})
+    return {"availability": availability}
 
 
 def get_sweep_preview_service() -> SweepPreviewService:

@@ -35,6 +35,32 @@ class ApiContractModel(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
+class QueueActiveRunSchema(ApiContractModel):
+    run_id: str
+    started_at_ms: int
+
+
+class QueueEntrySchema(ApiContractModel):
+    run_id: str
+    submitted_at_ms: int
+    estimated_position: int
+
+
+class QueueFaultSchema(ApiContractModel):
+    code: str
+    message: str
+
+
+class BacktestQueueSnapshotSchema(ApiContractModel):
+    snapshot_at_ms: int
+    active_run: QueueActiveRunSchema | None
+    last_heartbeat_ms: int | None
+    availability: Literal["healthy", "stale", "unavailable", "faulted"]
+    stale_after_ms: int
+    operational_faults: list[QueueFaultSchema]
+    queued: list[QueueEntrySchema]
+
+
 class StrategyRequestSchema(ApiContractModel):
     strategy_id: str
     strategy_version: StrictInt = Field(gt=0)

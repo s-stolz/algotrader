@@ -17,11 +17,14 @@ from app.schemas import (
     BacktestExecutionSettleIn,
     BacktestExecutionSlotOut,
     BacktestFillOut,
+    BacktestQueueStateOut,
     BacktestRunCompleteIn,
     BacktestRunConditionalUpdateIn,
     BacktestRunCreateIn,
     BacktestRunMutationOut,
     BacktestRunOut,
+    BacktestWorkerHeartbeatIn,
+    BacktestWorkerHeartbeatOut,
     CandleBatchIn,
     MarketIn,
 )
@@ -107,6 +110,18 @@ async def create_backtest_run(
 @app.get("/backtest-execution/slot", response_model=BacktestExecutionSlotOut)
 async def get_backtest_execution_slot(db: AsyncSession = Depends(get_db)):
     return await backtest_execution.read_slot(db)
+
+
+@app.get("/backtest-execution/queue-state", response_model=BacktestQueueStateOut)
+async def get_backtest_queue_state(db: AsyncSession = Depends(get_db)):
+    return await backtest_execution.read_queue_state(db)
+
+
+@app.post("/backtest-execution/heartbeat", response_model=BacktestWorkerHeartbeatOut)
+async def record_backtest_worker_heartbeat(
+    heartbeat: BacktestWorkerHeartbeatIn, db: AsyncSession = Depends(get_db)
+):
+    return await backtest_execution.record_heartbeat(db, **heartbeat.model_dump())
 
 
 @app.post("/backtest-execution/claim", response_model=BacktestRunMutationOut)

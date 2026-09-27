@@ -255,6 +255,12 @@ class DatabaseAccessorClient(_BaseClient):
     def get_backtest_execution_slot(self) -> dict[str, Any]:
         return self._request("GET", "/backtest-execution/slot")
 
+    def get_backtest_queue_state(self) -> dict[str, Any]:
+        return self._request("GET", "/backtest-execution/queue-state")
+
+    def record_backtest_worker_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/backtest-execution/heartbeat", json=heartbeat)
+
     def claim_backtest_execution(self, claim: dict[str, Any]) -> bool:
         return _mutation_updated(self._request("POST", "/backtest-execution/claim", json=claim))
 
@@ -488,6 +494,12 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def get_backtest_execution_slot(self) -> dict[str, Any]:
         return await self._request("GET", "/backtest-execution/slot")
+
+    async def get_backtest_queue_state(self) -> dict[str, Any]:
+        return await self._request("GET", "/backtest-execution/queue-state")
+
+    async def record_backtest_worker_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/backtest-execution/heartbeat", json=heartbeat)
 
     async def claim_backtest_execution(self, claim: dict[str, Any]) -> bool:
         return _mutation_updated(

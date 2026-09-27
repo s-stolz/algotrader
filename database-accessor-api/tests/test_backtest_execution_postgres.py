@@ -76,6 +76,112 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
         await self.db.execute(
             (ROOT / "timescaledb-init/migrations/V009__backtest_execution_slot.sql").read_text()
         )
+        await self.db.execute(
+            (ROOT / "timescaledb-init/migrations/V010__backtest_worker_heartbeat.sql").read_text()
+        )
+
+    async def test_heartbeat_and_queue_read_leave_durable_lifecycle_untouched(self) -> None:
+        await self._insert_run("first", "queued", "2026-06-08T12:30:00Z")
+        await self._insert_run("second", "queued", "2026-06-08T12:31:00Z")
+        await self._migrate()
+        engine = create_async_engine(
+            URL.create(
+                "postgresql+asyncpg",
+                username=self.connection_options["user"],
+                password=self.connection_options["password"],
+                host=self.connection_options["host"],
+                port=self.connection_options["port"],
+                database=self.connection_options["database"],
+            )
+        )
+        try:
+            async with engine.connect() as connection:
+                await connection.execute(text(f'SET search_path TO "{self.schema}"'))
+                await connection.commit()
+                async with AsyncSession(bind=connection) as session:
+                    first = await backtest_execution.record_heartbeat(
+                        session,
+                        worker_id="worker-a",
+                        owner_token=None,
+                        fault_code=None,
+                        fault_message=None,
+                    )
+                    state = await backtest_execution.read_queue_state(session)
+                    self.assertEqual(first["worker_id"], "worker-a")
+                    self.assertEqual(
+                        [run["run_id"] for run in state["queued_runs"]], ["first", "second"]
+                    )
+                    self.assertIsNone(state["active_run"])
+                    self.assertEqual(state["heartbeats"][0]["worker_id"], "worker-a")
+                    await backtest_execution.record_heartbeat(
+                        session,
+                        worker_id="worker-a",
+                        owner_token=None,
+                        fault_code="reconciliation_failed",
+                        fault_message="Operator restart required",
+                    )
+                    faulted = await backtest_execution.read_queue_state(session)
+                    self.assertEqual(
+                        faulted["heartbeats"][0]["fault_code"], "reconciliation_failed"
+                    )
+            self.assertEqual(
+                await self.db.fetchval("SELECT count(*) FROM backtest_worker_heartbeats"), 1
+            )
+            self.assertEqual(
+                await self.db.fetchval("SELECT count(*) FROM backtest_runs WHERE status='queued'"),
+                2,
+            )
+            self.assertIsNone(
+                await self.db.fetchval("SELECT owner_token FROM backtest_execution_slot")
+            )
+        finally:
+            await engine.dispose()
+
+    async def test_active_owner_heartbeat_survives_more_than_32_newer_idle_rows(self) -> None:
+        await self._insert_run("active", "running", "2026-06-08T12:30:00Z")
+        await self._migrate()
+        await self.db.execute("""UPDATE backtest_runs SET started_at=now() - interval '1 minute'
+               WHERE run_id='active'""")
+        await self.db.execute(
+            """UPDATE backtest_execution_slot SET owner_token='active-owner', run_id='active'
+               WHERE slot_id=1"""
+        )
+        await self.db.execute("""INSERT INTO backtest_worker_heartbeats
+               (worker_id, owner_token, heartbeat_at)
+               VALUES ('active-worker', 'active-owner', now() - interval '1 second')""")
+        await self.db.executemany(
+            """INSERT INTO backtest_worker_heartbeats
+               (worker_id, owner_token, heartbeat_at) VALUES ($1, NULL, now())""",
+            [(f"idle-{index}",) for index in range(40)],
+        )
+        engine = create_async_engine(
+            URL.create(
+                "postgresql+asyncpg",
+                username=self.connection_options["user"],
+                password=self.connection_options["password"],
+                host=self.connection_options["host"],
+                port=self.connection_options["port"],
+                database=self.connection_options["database"],
+            )
+        )
+        try:
+            async with engine.connect() as connection:
+                await connection.execute(text(f'SET search_path TO "{self.schema}"'))
+                await connection.commit()
+                async with AsyncSession(bind=connection) as session:
+                    state = await backtest_execution.read_queue_state(session)
+            self.assertEqual(state["active_run"]["run_id"], "active")
+            self.assertEqual([beat["worker_id"] for beat in state["heartbeats"]], ["active-worker"])
+            self.assertEqual(
+                await self.db.fetchval("SELECT owner_token FROM backtest_execution_slot"),
+                "active-owner",
+            )
+            self.assertEqual(
+                await self.db.fetchval("SELECT status FROM backtest_runs WHERE run_id='active'"),
+                "running",
+            )
+        finally:
+            await engine.dispose()
 
     async def test_migration_preserves_history_and_rejects_legacy_claim(self) -> None:
         await self._insert_run("queued", "queued", "2026-06-08T12:30:00Z")

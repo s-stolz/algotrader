@@ -8,6 +8,7 @@ import unittest
 from dataclasses import replace
 from multiprocessing import active_children
 from pathlib import Path
+from threading import Event, Thread
 from unittest.mock import patch
 
 import app.backtest_child as child_module
@@ -201,6 +202,57 @@ class _UnconfirmedExitExecutor:
 
 
 class TestBacktestWorker(unittest.TestCase):
+    def test_heartbeat_continues_during_idle_polling_and_long_child(self) -> None:
+        idle_heartbeats: list[dict] = []
+        idle = BacktestWorker(
+            repository=_FakeRunRepository([[]]),
+            lifecycle=_FakeLifecycle([]),
+            heartbeat_publisher=lambda **fields: idle_heartbeats.append(fields),
+            heartbeat_interval_seconds=0.01,
+            sleep=lambda _: time.sleep(0.005),
+        )
+        idle_thread = Thread(
+            target=lambda: idle.run_forever(stop_requested=lambda: len(idle_heartbeats) >= 3)
+        )
+        idle_thread.start()
+        idle_thread.join(timeout=2)
+        self.assertFalse(idle_thread.is_alive())
+        self.assertGreaterEqual(len(idle_heartbeats), 3)
+        self.assertTrue(all(beat["owner_token"] is None for beat in idle_heartbeats))
+
+        child_started = Event()
+        child_release = Event()
+        finished = Event()
+        active_heartbeats: list[dict] = []
+
+        class LongChild:
+            def execute(self, snapshot):
+                child_started.set()
+                if not child_release.wait(2):
+                    raise AssertionError("child was not released")
+                return _compact_result()
+
+        active = BacktestWorker(
+            repository=_FakeRunRepository([[_queued_run("long", submitted_at_ms=1)], []]),
+            lifecycle=_FakeLifecycle([True]),
+            child_executor=LongChild(),
+            heartbeat_publisher=lambda **fields: active_heartbeats.append(fields),
+            heartbeat_interval_seconds=0.01,
+            sleep=lambda _: time.sleep(0.005),
+        )
+        active_thread = Thread(target=lambda: active.run_forever(stop_requested=finished.is_set))
+        active_thread.start()
+        self.assertTrue(child_started.wait(2))
+        deadline = time.monotonic() + 2
+        while len([beat for beat in active_heartbeats if beat["owner_token"]]) < 2:
+            if time.monotonic() > deadline:
+                self.fail("heartbeat stopped while child was executing")
+            time.sleep(0.005)
+        child_release.set()
+        finished.set()
+        active_thread.join(timeout=2)
+        self.assertFalse(active_thread.is_alive())
+
     def test_default_poll_interval_is_one_second(self) -> None:
         self.assertEqual(BacktesterConfig().worker_poll_interval_seconds, 1.0)
 
@@ -641,6 +693,23 @@ class TestBacktestWorker(unittest.TestCase):
             "completion persistence unavailable",
             "\n".join(captured.output),
         )
+
+    def test_terminal_persistence_fault_is_published_before_worker_exit(self) -> None:
+        heartbeats: list[dict] = []
+        worker = BacktestWorker(
+            repository=_FakeRunRepository([[_queued_run("run-fault", submitted_at_ms=100)]]),
+            lifecycle=_FakeLifecycle(
+                [True], completion_results=[RuntimeError("storage unavailable")]
+            ),
+            child_executor=_FakeChildExecutor(_compact_result()),
+            heartbeat_publisher=lambda **fields: heartbeats.append(fields),
+            heartbeat_interval_seconds=0.01,
+        )
+        with self.assertLogs("app.backtest_worker", level="ERROR"):
+            with self.assertRaisesRegex(RuntimeError, "storage unavailable"):
+                worker.run_forever()
+        self.assertEqual(heartbeats[-1]["fault_code"], "terminal_persistence_failed")
+        self.assertIsNotNone(heartbeats[-1]["owner_token"])
 
     def test_failed_run_is_not_automatically_executed_again(self) -> None:
         selected = _queued_run("run-no-retry", submitted_at_ms=100)

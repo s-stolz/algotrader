@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+from threading import Event, Lock, Thread
 from time import sleep as default_sleep
 from typing import Any, Callable, Mapping, Protocol
 from uuid import uuid4
@@ -97,6 +98,17 @@ class BacktestChildExecutor(Protocol):
     ) -> CompactBacktestResult | CompactBacktestFailure: ...
 
 
+class WorkerHeartbeatPublisher(Protocol):
+    def __call__(
+        self,
+        *,
+        worker_id: str,
+        owner_token: str | None,
+        fault_code: str | None = None,
+        fault_message: str | None = None,
+    ) -> None: ...
+
+
 class ExecutionOperationalError(RuntimeError):
     def __init__(self, code: str, run_id: str | None, message: str) -> None:
         self.code = code
@@ -116,6 +128,8 @@ class BacktestWorker:
         poll_interval_seconds: float = 1.0,
         now_ms: Callable[[], int] | None = None,
         sleep: Callable[[float], None] = default_sleep,
+        heartbeat_publisher: WorkerHeartbeatPublisher | None = None,
+        heartbeat_interval_seconds: float = 5.0,
     ) -> None:
         if not math.isfinite(poll_interval_seconds) or poll_interval_seconds <= 0:
             raise ValueError("poll_interval_seconds must be positive and finite")
@@ -125,6 +139,14 @@ class BacktestWorker:
         self._poll_interval_seconds = float(poll_interval_seconds)
         self._now_ms = now_ms or _utc_now_ms
         self._sleep = sleep
+        if not math.isfinite(heartbeat_interval_seconds) or heartbeat_interval_seconds <= 0:
+            raise ValueError("heartbeat_interval_seconds must be positive and finite")
+        self._heartbeat_publisher = heartbeat_publisher
+        self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._worker_id = str(uuid4())
+        self._owner_lock = Lock()
+        self._owner_token: str | None = None
+        self._operational_fault_code: str | None = None
 
     def run_once(self) -> bool:
         """Process one successfully claimed run, or report that the queue is idle."""
@@ -158,6 +180,7 @@ class BacktestWorker:
                     return False
                 continue
 
+            self._set_owner_token(owner_token)
             return self._execute_claimed(selected, owner_token)
 
     def _execute_claimed(self, selected: BacktestRunRecord, owner_token: str) -> bool:
@@ -181,6 +204,7 @@ class BacktestWorker:
                     error_message="Backtest child process failed",
                 ),
             )
+            self._set_owner_token(None)
             return True
 
         if isinstance(outcome, CompactBacktestFailure):
@@ -190,6 +214,7 @@ class BacktestWorker:
                 extra={"run_id": selected.run_id, "error_code": error_code},
             )
             self._persist_failure(run_id=selected.run_id, owner_token=owner_token, failure=outcome)
+            self._set_owner_token(None)
             return True
 
         compact_result = outcome
@@ -229,6 +254,7 @@ class BacktestWorker:
                 selected.run_id,
                 f"Backtest run completion was not persisted: {selected.run_id}",
             )
+        self._set_owner_token(None)
         return True
 
     def _persist_failure(
@@ -275,6 +301,15 @@ class BacktestWorker:
             )
 
     def _record_fault(self, run_id: str, owner_token: str, code: str, message: str) -> None:
+        self._operational_fault_code = code
+        _LOGGER.error(
+            "Backtest execution fault",
+            extra={
+                "run_id": run_id,
+                "fault_code": code,
+                "worker_id": self._worker_id,
+            },
+        )
         try:
             self._lifecycle.record_execution_fault(
                 run_id=run_id, owner_token=owner_token, code=code, message=message
@@ -287,11 +322,75 @@ class BacktestWorker:
         *,
         stop_requested: Callable[[], bool] | None = None,
     ) -> None:
-        self.reconcile_running_runs()
-        should_stop = stop_requested or (lambda: False)
-        while not should_stop():
-            if not self.run_once():
-                self._sleep(self._poll_interval_seconds)
+        heartbeat_stop = Event()
+        heartbeat_thread = None
+        if self._heartbeat_publisher is not None:
+            heartbeat_thread = Thread(
+                target=self._heartbeat_loop,
+                args=(heartbeat_stop,),
+                daemon=True,
+                name="backtest-worker-heartbeat",
+            )
+            heartbeat_thread.start()
+        try:
+            self.reconcile_running_runs()
+            should_stop = stop_requested or (lambda: False)
+            while not should_stop():
+                if not self.run_once():
+                    self._sleep(self._poll_interval_seconds)
+        except ExecutionOperationalError as exc:
+            _LOGGER.error(
+                "Backtest worker operational fault",
+                extra={
+                    "run_id": exc.run_id,
+                    "fault_code": exc.code,
+                    "worker_id": self._worker_id,
+                },
+            )
+            heartbeat_stop.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join()
+            self._publish_heartbeat(exc.code, str(exc))
+            raise
+        except Exception:
+            heartbeat_stop.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join()
+            self._publish_heartbeat(
+                self._operational_fault_code or "worker_unavailable",
+                "Backtest worker stopped after an operational error",
+            )
+            raise
+        finally:
+            heartbeat_stop.set()
+            if heartbeat_thread is not None and heartbeat_thread.is_alive():
+                heartbeat_thread.join()
+
+    def _set_owner_token(self, owner_token: str | None) -> None:
+        with self._owner_lock:
+            self._owner_token = owner_token
+
+    def _publish_heartbeat(
+        self, fault_code: str | None = None, fault_message: str | None = None
+    ) -> None:
+        if self._heartbeat_publisher is None:
+            return
+        with self._owner_lock:
+            owner_token = self._owner_token
+        try:
+            self._heartbeat_publisher(
+                worker_id=self._worker_id,
+                owner_token=owner_token,
+                fault_code=fault_code,
+                fault_message=fault_message,
+            )
+        except Exception:
+            _LOGGER.exception("Backtest worker heartbeat could not be persisted")
+
+    def _heartbeat_loop(self, stop: Event) -> None:
+        self._publish_heartbeat()
+        while not stop.wait(self._heartbeat_interval_seconds):
+            self._publish_heartbeat()
 
     def reconcile_running_runs(self) -> None:
         """Reconcile only after storage confirms the execution slot is free."""

@@ -95,6 +95,8 @@ Standalone Python backtesting module for historical candle simulation.
   projection, derived outcome counts, and immutable member/event inspection.
 - `src/app/backtest_worker.py`: singleton FIFO polling, conditional claiming,
   fenced terminal persistence, and restart reconciliation.
+- `src/app/backtest_queue.py`: read-only public queue projection from accessor
+  primitives, including owner-matched heartbeat freshness and advisory positions.
 - `src/domain/`: runtime dataclasses, enums, and event types.
 - `src/data/`: market data loading, normalization, indicators, feature streams,
   and warmup trimming.
@@ -178,6 +180,15 @@ Standalone Python backtesting module for historical candle simulation.
   only standalone runs, and its queued-to-running compare-and-set cannot claim a
   batch member.
 - `GET /health` reports API process readiness for the local stack healthcheck.
+- `GET /backtests/queue` reports one snapshot with epoch-millisecond snapshot,
+  active-start, queued-submission and heartbeat times, current worker
+  availability, operational faults, and estimated standalone positions.
+  `GET /backtests/queue/health` returns 503 when the worker is stale, absent,
+  faulted, or the primitive read fails; API `/health` remains process readiness.
+- The worker writes an independent heartbeat every five seconds by default,
+  including while supervising a child. The default stale threshold is 30
+  seconds. The heartbeat is telemetry; an unmatched live worker cannot mask a
+  stale held-slot owner, and no heartbeat changes lifecycle or capacity.
 - `BacktestRunLifecyclePersistenceAdapter` maps domain status enums and completed
   results to conditional lifecycle updates and atomic successful completion.
   Completion payloads include metrics, diagnostics, fills, closed trades, and

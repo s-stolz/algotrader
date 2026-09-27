@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -29,10 +30,13 @@ WorkerFactory = Callable[[BacktesterConfig], WorkerRuntime]
 
 
 def build_worker(config: BacktesterConfig) -> BacktestWorker:
+    lifecycle = BacktestRunLifecyclePersistenceAdapter()
     return BacktestWorker(
         repository=DatabaseAccessorBacktestRunRepository(),
-        lifecycle=BacktestRunLifecyclePersistenceAdapter(),
+        lifecycle=lifecycle,
         poll_interval_seconds=config.worker_poll_interval_seconds,
+        heartbeat_interval_seconds=config.worker_heartbeat_interval_seconds,
+        heartbeat_publisher=lifecycle.record_worker_heartbeat,
     )
 
 
@@ -45,13 +49,29 @@ def _configure_logging() -> None:
     level = os.getenv("BACKTESTER_LOG_LEVEL", "INFO").upper()
     log_format = os.getenv("BACKTESTER_LOG_FORMAT", "pretty").lower()
     if log_format == "json":
-        format_string = (
-            '{"timestamp":"%(asctime)s","level":"%(levelname)s",'
-            '"logger":"%(name)s","message":"%(message)s"}'
-        )
+        logging.basicConfig(level=level, format="%(message)s")
+        logging.getLogger().handlers[0].setFormatter(_JsonLogFormatter())
     else:
-        format_string = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-    logging.basicConfig(level=level, format=format_string)
+        logging.basicConfig(
+            level=level, format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+        )
+
+
+class _JsonLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        event = {
+            "timestamp": self.formatTime(record),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        for key in ("run_id", "worker_id", "fault_code", "error_code", "count"):
+            value = getattr(record, key, None)
+            if value is not None:
+                event[key] = value
+        if record.exc_info:
+            event["exception"] = self.formatException(record.exc_info)
+        return json.dumps(event, separators=(",", ":"))
 
 
 if __name__ == "__main__":

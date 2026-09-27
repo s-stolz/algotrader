@@ -10,6 +10,7 @@ import {
   fetchBacktestClosedTrades,
   fetchBacktestEquityCurve,
   fetchBacktestFills,
+  fetchBacktestQueue,
   getBacktestRun,
   listBacktestRuns,
   submitBacktestBatch,
@@ -159,6 +160,25 @@ describe('backtester API client', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/backtester/backtests?status=succeeded&symbol=EURUSD&timeframe=M15&strategy=sma_crossover&engine=event_driven&submitted_from_ms=1780921800000&submitted_to_ms=1780922100000',
     );
+  });
+
+  it('reads one validated queue snapshot without treating invalid data as an empty queue', async () => {
+    const snapshot = {
+      snapshot_at_ms: 1_780_922_100_000,
+      active_run: { run_id: 'active', started_at_ms: 1_780_922_000_000 },
+      last_heartbeat_ms: 1_780_922_099_000,
+      availability: 'healthy', stale_after_ms: 30_000, operational_faults: [],
+      queued: [{ run_id: 'waiting', submitted_at_ms: 1_780_921_805_123,
+        estimated_position: 1 }],
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(snapshot))
+      .mockResolvedValueOnce(jsonResponse({ ...snapshot, queued: [
+        { ...snapshot.queued[0], estimated_position: 0 },
+      ] }));
+    await expect(fetchBacktestQueue()).resolves.toEqual(snapshot);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/queue');
+    await expect(fetchBacktestQueue()).rejects.toThrow('Invalid Backtest queue response');
   });
 
   it('fetches one Backtest Run by run id through the public backtester proxy', async () => {

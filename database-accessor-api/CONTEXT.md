@@ -5,6 +5,11 @@ stored in TimescaleDB.
 
 ## Owned Interfaces
 
+- Primitive `GET /backtest-execution/queue-state` and
+  `POST /backtest-execution/heartbeat` expose database-clock worker telemetry,
+  durable slot identity, and ordered standalone queued records to the backtester.
+  The accessor does not decide availability or persist advisory positions.
+
 - Market read/write shape and Market identity fields.
 - Candle read/write HTTP routes and query parameters.
 - Timeframe query semantics for raw M1 reads, continuous aggregates, and fallback

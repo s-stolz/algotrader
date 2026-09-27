@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
-  fetchBacktestFills, getBacktestBatch, getBacktestRun, listBacktestBatchEvents,
+  fetchBacktestFills, fetchBacktestQueue, getBacktestBatch, getBacktestRun, listBacktestBatchEvents,
   listBacktestBatchMembers, listBacktestBatches, listBacktestRuns,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
@@ -20,6 +20,7 @@ vi.mock('@/api/backtesterClient', () => ({
   fetchBacktestClosedTrades: vi.fn(),
   fetchBacktestEquityCurve: vi.fn(),
   fetchBacktestFills: vi.fn(),
+  fetchBacktestQueue: vi.fn(),
   getBacktestRun: vi.fn(),
   getBacktestBatch: vi.fn(),
   listBacktestBatchEvents: vi.fn(),
@@ -122,6 +123,10 @@ describe('production Backtest Workspace', () => {
       source_point_count: 0, returned_point_count: 0, sampled: false, equity_curve: [],
     });
     vi.mocked(fetchBacktestFills).mockReset();
+    vi.mocked(fetchBacktestQueue).mockReset().mockResolvedValue({
+      snapshot_at_ms: Date.now(), active_run: null, last_heartbeat_ms: Date.now(),
+      availability: 'healthy', stale_after_ms: 30_000, operational_faults: [], queued: [],
+    });
     vi.mocked(deleteBacktestRun).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
     vi.mocked(fetchBacktestFills).mockResolvedValue([]);
@@ -446,12 +451,14 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     await wrapper.find('[data-testid="workspace-refresh"]').trigger('click');
     await flushPromises();
+    expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('current lifecycle status is unknown');
     expect(wrapper.find('[data-testid="workspace-run-success"]').exists()).toBe(true);
 
     await wrapper.find('[data-testid="workspace-delete-success"]').trigger('click');
     await flushPromises();
     expect(deleteBacktestRun).toHaveBeenCalledWith('success');
+    expect(fetchBacktestQueue).toHaveBeenCalledTimes(3);
     expect(wrapper.text()).toContain('No saved Backtest Runs or Batches.');
     expect(wrapper.text()).not.toContain('current lifecycle status is unknown');
     wrapper.unmount();

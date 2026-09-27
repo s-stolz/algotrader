@@ -365,6 +365,27 @@ class DatabaseAccessorClientTests(unittest.TestCase):
              "/backtest-execution/fault"],
         )
 
+    def test_worker_telemetry_uses_primitive_storage_routes(self) -> None:
+        calls: list[tuple[str, str, dict | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content) if request.content else None
+            calls.append((request.method, request.url.path, body))
+            return httpx.Response(200, json={"snapshot_at": "2026-06-08T12:00:00Z"})
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            self.assertIn("snapshot_at", client.get_backtest_queue_state())
+            client.record_backtest_worker_heartbeat({"worker_id": "worker-1", "owner_token": None})
+        finally:
+            client.close()
+        self.assertEqual(calls, [
+            ("GET", "/backtest-execution/queue-state", None),
+            ("POST", "/backtest-execution/heartbeat",
+             {"worker_id": "worker-1", "owner_token": None}),
+        ])
+
     def test_get_execution_logs_and_delete_backtest_run(self) -> None:
         fill = _fill_payload()
         trade = _trade_payload()

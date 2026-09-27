@@ -312,6 +312,29 @@ class BacktestExecutionReconcileOut(BacktestContractModel):
     reconciled: int | None
 
 
+class BacktestWorkerHeartbeatIn(BacktestContractModel):
+    worker_id: str
+    owner_token: str | None = None
+    fault_code: str | None = None
+    fault_message: str | None = None
+
+
+class BacktestWorkerHeartbeatOut(BacktestContractModel):
+    worker_id: str
+    owner_token: str | None
+    heartbeat_at: datetime
+    fault_code: str | None
+    fault_message: str | None
+
+
+class BacktestQueueStateOut(BacktestContractModel):
+    snapshot_at: datetime
+    slot: BacktestExecutionSlotOut
+    active_run: dict[str, Any] | None
+    heartbeats: list[BacktestWorkerHeartbeatOut]
+    queued_runs: list[dict[str, Any]]
+
+
 class BacktestBatchMemberIn(BacktestContractModel):
     run_id: str
     member_ordinal: int = Field(ge=0)

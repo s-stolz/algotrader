@@ -35,6 +35,8 @@ TimescaleDB database.
   member identity, initial event storage, and immutable membership guards.
 - `migrations/V009__backtest_execution_slot.sql`: durable single-slot owner and
   guard against legacy claims without slot ownership.
+- `migrations/V010__backtest_worker_heartbeat.sql`: per-process heartbeat and
+  last operational fault telemetry, separate from durable run history.
 
 ## Contracts
 
@@ -48,6 +50,9 @@ TimescaleDB database.
 - `backtest_execution_slot` retains one owner token and run identity until a
   fenced terminal transaction releases it. The row is never timed out or
   automatically stolen; operator recovery requires verified child exit.
+- `backtest_worker_heartbeats` stores transient process freshness and fault
+  signals. It does not own the slot, affect run state, or represent durable
+  history; an active snapshot matches its heartbeat to the slot owner token.
 - `V007` adds nullable `backtest_runs.replay_descriptor` without changing prior
   successful rows or backfilling historical data.
 - `V008` adds nullable `batch_id`/`member_ordinal` to runs, preserving legacy
