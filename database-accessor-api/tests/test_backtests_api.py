@@ -43,6 +43,7 @@ from app.schemas import (  # noqa: E402
     BacktestRunCompleteIn,
     BacktestRunConditionalUpdateIn,
     BacktestRunCreateIn,
+    BacktestRunOut,
     EquityReplayDescriptor,
 )
 
@@ -159,6 +160,16 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     @property
     def db(self) -> AsyncSession:
         return cast(AsyncSession, self.session)
+
+    async def test_serialized_legacy_run_keeps_strategy_version_absent(self):
+        await main.create_backtest_run(BacktestRunCreateIn(**_run_payload()), db=self.db)
+        detail = await main.get_backtest_run("run-queued-1", db=self.db)
+        history = await main.list_backtest_runs(db=self.db)
+
+        for stored in (detail, history[0]):
+            run = BacktestRunOut.model_validate(stored).model_dump(mode="json")
+            self.assertEqual(run["request_schema_version"], 2)
+            self.assertNotIn("strategy_version", run["request"]["strategy"])
 
     def _batch_payload(self, **overrides):
         request = _request_payload()

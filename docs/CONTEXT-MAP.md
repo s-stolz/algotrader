@@ -20,6 +20,7 @@ every file by default.
 | markets, candles storage, TimescaleDB, continuous aggregates | `database-accessor-api/CONTEXT.md`, `timescaledb-init/CONTEXT.md` |
 | indicators, live indicator stream, historical indicator response | `indicator-api/CONTEXT.md`, `libs/CONTEXT.md` |
 | backtesting, strategy, fills, portfolio, metrics | `backtester/CONTEXT.md`, `libs/CONTEXT.md` |
+| Backtest Workspace acceptance, upgrade, worker cutover, recovery | `docs/operations/backtest-workspace-v1-acceptance.md`, `docs/operations/backtest-worker-recovery.md`, then `backtester/CONTEXT.md` |
 | shared Python clients or indicator engine | `libs/CONTEXT.md` |
 | topology, env generation, Docker compose ports | `config/CONTEXT.md`, `docker-compose.yml`, `scripts/generate_env.py` |
 | schema bootstrap, hypertables, aggregate policies | `timescaledb-init/CONTEXT.md` |

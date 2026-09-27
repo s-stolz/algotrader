@@ -42,7 +42,10 @@ stored in TimescaleDB.
   continuous aggregates or direct `time_bucket` fallback.
 - Backtest request attributes live only in versioned `request` JSON. New schema
   version 3 adds exact Strategy Version and resolved parameters; version 2
-  remains readable without assigning a current version. Both use Allowed Directions.
+  remains readable without assigning a current version. The accessor omits
+  `strategy_version` from serialized version-2 responses when the stored request
+  has no version; sending a synthesized `null` would break strict historical
+  readers. Both use Allowed Directions.
   Lifecycle status and timestamps are normalized columns; result metrics,
   diagnostics, and Equity Replay descriptor are nullable JSON documents.
 - New request JSON uses schema version 3. The accessor preserves historical

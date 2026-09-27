@@ -1,7 +1,16 @@
 from datetime import datetime
 from typing import Any, List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    StrictInt,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -49,6 +58,13 @@ class BacktestStrategyPayload(BacktestContractModel):
     strategy_id: str
     strategy_version: StrictInt | None = Field(default=None, gt=0)
     parameters: dict[str, Any]
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload: dict[str, Any] = handler(self)
+        if self.strategy_version is None:
+            payload.pop("strategy_version", None)
+        return payload
 
 
 class BacktestExecutionPayload(BacktestContractModel):
