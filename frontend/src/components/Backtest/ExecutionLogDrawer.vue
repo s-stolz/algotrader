@@ -1,5 +1,5 @@
 <template>
-  <n-drawer :show="show" placement="right" :width="drawerWidth" @update:show="close">
+  <n-drawer class="backtest-drawer" :show="show" placement="right" :width="drawerWidth" @update:show="close">
     <n-drawer-content :title="`Execution log · ${runName(run)}`" closable>
       <div class="log-content" data-testid="execution-log-drawer">
         <p class="run-identity">{{ run.run_id }}</p>

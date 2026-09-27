@@ -2,7 +2,7 @@
   <section v-if="batchId" aria-label="Backtest Batch" class="batch-history">
     <p v-if="detailError" role="alert">Batch detail unavailable. {{ detailError }}</p>
     <section v-if="selectedBatch" aria-label="Accepted Batch" class="batch-detail">
-      <h3>Accepted Batch {{ selectedBatch.batch_id }}</h3>
+      <h3>Parameter Sweep <small>{{ selectedBatch.batch_id.slice(0, 8) }}</small></h3>
       <p>{{ selectedBatch.status }} · {{ selectedBatch.member_count }} fixed members ·
         {{ selectedBatch.raw_count }} raw candidates · {{ selectedBatch.excluded_count }} excluded ·
         revision {{ selectedBatch.lifecycle_revision }}</p>
@@ -10,24 +10,24 @@
         v-if="selectedBatch.status === 'queued' || selectedBatch.status === 'running' ||
         selectedBatch.status === 'pausing' || selectedBatch.status === 'paused'"
       >
-        <button
+        <n-button
           v-if="selectedBatch.status === 'queued' || selectedBatch.status === 'running'"
-          type="button"
+          size="small"
           :disabled="controlPending"
           @click="control('pause')"
-        >Pause Batch</button>
-        <button
+        >Pause Batch</n-button>
+        <n-button
           v-else
-          type="button"
+          size="small"
           :disabled="controlPending"
           @click="control('resume')"
-        >Resume Batch</button>
-        <button
-          type="button"
+        >Resume Batch</n-button>
+        <n-button
+          size="small"
           :disabled="controlPending"
           data-testid="workspace-cancel-batch"
           @click="control('cancel')"
-        >Cancel Batch</button>
+        >Cancel Batch</n-button>
       </div>
       <p v-if="selectedBatch.status === 'pausing'" role="status">
         Pausing after the active member finishes.
@@ -76,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+import { NButton } from 'naive-ui';
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   controlBacktestBatch, getBacktestBatch,
@@ -196,7 +197,13 @@ onUnmounted(stop);
 </script>
 
 <style scoped>
-.batch-history { margin-top: 24px; }
-.batch-detail { margin-top: 16px; }
+.batch-history { margin-bottom: 20px; }
+.batch-detail { padding: 20px 24px; background: #1a222c; border: 1px solid #303b46; border-radius: 10px; }
+h3 { margin: 0 0 12px; font-size: 16px; }
+h3 small { margin-left: 8px; color: #8b9eae; font-weight: 400; }
+p { color: #a6b5c3; font-size: 12px; margin: 8px 0; }
+.n-button { margin: 8px 8px 8px 0; }
+details { margin-top: 14px; color: #94aabb; font-size: 12px; }
+summary { cursor: pointer; }
 pre { max-height: 300px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>

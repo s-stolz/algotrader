@@ -1,5 +1,5 @@
 <template>
-  <n-drawer :show="show" :width="isSweep && preview ? 'min(1100px, 100vw)' : 'min(540px, 100vw)'" @update:show="emit('update:show', $event)">
+  <n-drawer class="backtest-drawer" :show="show" :width="isSweep && preview ? 'min(1100px, 100vw)' : 'min(540px, 100vw)'" @update:show="emit('update:show', $event)">
     <n-drawer-content :title="isSweep ? 'Review Parameter Sweep' : 'Create standalone Backtest'" closable>
       <p v-if="catalogError" role="alert">Strategy catalog unavailable. {{ catalogError }}</p>
       <n-button v-if="catalogError" @click="loadCatalog">Retry catalog</n-button>
@@ -210,19 +210,25 @@
             />
           </label>
           <label>Start date (UTC)
-            <input
+            <n-date-picker
               type="date"
-              :value="dateValue(draft.start_ms)"
+              value-format="yyyy-MM-dd"
+              :formatted-value="dateValue(draft.start_ms)"
+              :clearable="false"
+              :input-readonly="true"
               data-testid="creation-start"
-              @input="setDate('start_ms', $event)"
+              @update:formatted-value="setDate('start_ms', $event)"
             />
           </label>
           <label>End date (UTC)
-            <input
+            <n-date-picker
               type="date"
-              :value="dateValue(draft.end_ms)"
+              value-format="yyyy-MM-dd"
+              :formatted-value="dateValue(draft.end_ms)"
+              :clearable="false"
+              :input-readonly="true"
               data-testid="creation-end"
-              @input="setDate('end_ms', $event)"
+              @update:formatted-value="setDate('end_ms', $event)"
             />
           </label>
           <small v-if="fieldErrors.dates" role="alert">{{ fieldErrors.dates }}</small>
@@ -320,7 +326,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { NButton, NCheckbox, NDataTable, NDrawer, NDrawerContent, NInput, NInputNumber, NSelect } from 'naive-ui';
+import { NButton, NDatePicker, NCheckbox, NDataTable, NDrawer, NDrawerContent, NInput, NInputNumber, NSelect } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
   previewParameterSweep, submitBacktestBatch, submitBacktestRun } from '@/api/backtesterClient';
@@ -817,8 +823,7 @@ function dateValue(timestamp: number): string {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString().slice(0, 10) : '';
 }
 
-function setDate(field: 'start_ms' | 'end_ms', event: Event): void {
-  const value = (event.target as HTMLInputElement).value;
+function setDate(field: 'start_ms' | 'end_ms', value: string | null): void {
   draft.value[field] = value ? Date.parse(`${value}T00:00:00Z`) : 0;
   delete fieldErrors.value.dates;
 }
@@ -914,8 +919,12 @@ onMounted(() => {
 .creation-fields [role='alert'] { color: #ffb4b4; }
 .creation-fields details { display: grid; padding-top: 8px; }
 .creation-fields details label { margin-top: 12px; }
-.creation-fields input[type='date'] { color: inherit; background: #232934; border: 1px solid #555; border-radius: 4px; padding: 8px; }
+.creation-fields :deep(.n-date-picker) { width: 100%; }
 .string-values { display: grid; gap: 8px; }
 .string-value { display: flex; gap: 8px; align-items: start; }
 .string-value .n-input { flex: 1; }
+</style>
+
+<style>
+.backtest-drawer, .backtest-drawer * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 </style>

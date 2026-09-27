@@ -1,19 +1,22 @@
 <template>
+  <n-config-provider :theme-overrides="{ common: { fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' } }">
   <main class="workspace">
     <header class="workspace-header">
       <div>
-        <h1>Backtest Workspace</h1>
-        <p>Saved standalone Backtest Runs and accepted Batches</p>
+        <div class="eyebrow">RESEARCH / BACKTESTS</div>
+        <h1>{{ page === 'history' ? 'Backtest Workspace' : analysisTitle }}</h1>
+        <p>{{ page === 'history' ? 'Build experiments. Review results. Refine your strategy.' : analysisSubtitle }}</p>
       </div>
       <div class="header-actions">
-        <n-button type="primary" data-testid="workspace-create" @click="creationOpen = true">
-          Create Backtest
+        <n-button v-if="page === 'analysis'" data-testid="workspace-history-return" @click="backToHistory">
+          <template #icon><n-icon :component="ArrowBackOutline" /></template>All backtests
         </n-button>
         <n-button data-testid="workspace-refresh" :loading="isRefreshing" @click="refreshWorkspace">
-          Refresh
+          <template #icon><n-icon :component="RefreshOutline" /></template>Refresh
         </n-button>
-        <n-button data-testid="workspace-chart-return" @click="router.push('/')">
-          Return to chart
+        <n-button data-testid="workspace-chart-return" @click="router.push('/')">Return to chart</n-button>
+        <n-button type="primary" data-testid="workspace-create" @click="creationOpen = true">
+          <template #icon><n-icon :component="AddOutline" /></template>Create Backtest
         </n-button>
       </div>
     </header>
@@ -21,12 +24,29 @@
     <BacktestCreationDrawer
       v-model:show="creationOpen"
       @submitted="createdRun"
-      @submitted-batch="refreshWorkspace"
+      @submitted-batch="createdBatch"
     />
 
     <BacktestQueueHealth ref="queueHealth" />
+      <p v-if="readError" role="alert">
+        Run history unavailable; current lifecycle status is unknown. {{ readError }}
+      </p>
+      <p v-if="deleteError" role="alert">{{ deleteError }}</p>
+      <p v-if="selectionNotice" role="status">{{ selectionNotice }}</p>
+      <p v-if="cancelError" role="alert">{{ cancelError }}</p>
 
-    <section aria-label="Saved Backtest Runs">
+    <section v-show="page === 'history'" class="history-page" aria-label="Saved Backtest Runs">
+      <div class="workspace-summary">
+        <div><span>Saved experiments</span><strong>{{ historyRows.length }}</strong></div>
+        <div><span>In progress</span><strong>{{ activeHistoryCount }}</strong></div>
+        <div><span>Completed</span><strong>{{ completedHistoryCount }}</strong></div>
+        <div><span>With failed runs</span><strong class="failure-count">{{ failedHistoryCount }}</strong></div>
+      </div>
+      <div class="table-panel">
+      <div class="section-heading history-heading">
+        <div><h2>Experiment history</h2><p>Open a backtest to explore its configuration and performance.</p></div>
+        <n-tag :bordered="false" size="small">{{ filteredHistory.length }} experiments</n-tag>
+      </div>
       <div class="filters">
         <n-input
           v-model:value="search"
@@ -74,12 +94,7 @@
       </div>
 
       <p v-if="isLoading" role="status">Loading saved runs…</p>
-      <p v-if="readError" role="alert">
-        Run history unavailable; current lifecycle status is unknown. {{ readError }}
-      </p>
-      <p v-if="deleteError" role="alert">{{ deleteError }}</p>
-      <p v-if="selectionNotice" role="status">{{ selectionNotice }}</p>
-      <p v-if="cancelError" role="alert">{{ cancelError }}</p>
+
       <p v-if="runs !== null && batches !== null && historyRows.length === 0 && !readError" role="status">
         No saved Backtest Runs or Batches.
       </p>
@@ -94,16 +109,26 @@
         :data="filteredHistory"
         :row-key="rowKey"
         :row-props="historyRowProps"
-        :pagination="{ pageSize: 15 }"
+        :pagination="historyPagination"
+        :scroll-x="1470"
+        :max-height="540"
         :bordered="false"
-        size="small"
+        size="medium"
+        striped
       />
-      <BacktestBatches :batch-id="selectedBatchId" @members="receiveMembers" @cancelled="refreshWorkspace" />
+      </div>
     </section>
 
-    <section class="current-backtest" aria-label="Current Backtest">
+    <section v-show="page === 'analysis'" class="current-backtest" aria-label="Current Backtest">
+      <BacktestBatches :batch-id="selectedBatchId" @members="receiveMembers" @cancelled="refreshWorkspace" />
+      <div class="table-panel">
+      <div class="analysis-context" v-if="selectedRun && !selectedBatchId">
+        <span>{{ runMarket(selectedRun) }}</span><span>{{ selectedRun.request.timeframe }}</span>
+        <span>{{ formatUtcDate(selectedRun.request.start_ms) }} — {{ formatUtcDate(selectedRun.request.end_ms) }} UTC</span>
+        <n-tag size="small" :type="selectedRun.status === 'succeeded' ? 'success' : selectedRun.status === 'failed' ? 'error' : 'info'" :bordered="false">{{ selectedRun.status }}</n-tag>
+      </div>
       <div class="section-heading">
-        <h2>Current Backtest</h2>
+        <div><h2>Run analysis</h2><p>Compare saved metrics and inspect exact performance over time.</p></div>
         <n-button
           v-if="selectedRun"
           data-testid="workspace-open-chart"
@@ -125,7 +150,6 @@
             aria-label="Filter current runs"
           />
           <div class="column-chooser">
-            <span>Columns</span>
             <n-button
               v-for="preset in presetNames"
               :key="preset"
@@ -135,16 +159,20 @@
             >
               {{ preset }}
             </n-button>
-            <details><summary>Choose columns</summary>
-              <label v-for="column in optionalColumns" :key="column.key">
-                <input
-                  type="checkbox"
+            <n-popover trigger="click" placement="bottom-end" scrollable :style="{ maxHeight: '340px' }">
+              <template #trigger><n-button size="small">
+                <template #icon><n-icon :component="OptionsOutline" /></template>Columns
+              </n-button></template>
+              <div class="column-options">
+                <n-checkbox
+v-for="column in optionalColumns"
+:key="column.key"
                   :checked="visibleColumns.includes(column.key)"
                   :data-testid="`comparison-column-${column.key}`"
-                  @change="toggleColumn(column.key)"
-                />{{ column.title }}
-              </label>
-            </details>
+                  @update:checked="toggleColumn(column.key)"
+>{{ column.title }}</n-checkbox>
+              </div>
+            </n-popover>
           </div>
         </div>
         <n-data-table
@@ -207,6 +235,7 @@
           </dl>
         </details>
       </template>
+      </div>
     </section>
     <ExecutionLogDrawer
       v-if="logRun"
@@ -215,13 +244,14 @@
       @close="logRun = null"
     />
   </main>
+  </n-config-provider>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef } from 'vue';
-import { NButton, NDataTable, NIcon, NInput, NSelect, NTag, NTooltip } from 'naive-ui';
+import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { NButton, NCheckbox, NConfigProvider, NDataTable, NIcon, NInput, NPopover, NSelect, NTag, NTooltip } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
-import { DocumentTextOutline } from '@vicons/ionicons5';
+import { DocumentTextOutline, ArrowBackOutline, AddOutline, RefreshOutline, OptionsOutline, CopyOutline, TrashOutline, StopCircleOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
 
 import { cancelBacktestRun, deleteBacktestBatch, deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestBatchMembers, listBacktestRuns } from '@/api/backtesterClient';
@@ -298,6 +328,24 @@ const chartSeries = computed<ReplaySeries[]>(() => selectedComparisonRuns.value.
     points: curve.equity_curve }] : [];
 }));
 const creationOpen = ref(false);
+const page = ref<'history' | 'analysis'>('history');
+const historyPagination = ref({ page: 1, pageSize: 15, onChange: (page: number) => {
+  historyPagination.value.page = page;
+} });
+const analysisTitle = computed(() => selectedBatchId.value
+  ? `${batches.value?.find((batch) => batch.batch_id === selectedBatchId.value)?.strategy_metadata.display_name ?? 'Parameter Sweep'} analysis`
+  : selectedRun.value ? `${selectedRun.value.request.strategy.strategy_id.replaceAll('_', ' ')} analysis` : 'Backtest analysis');
+const analysisSubtitle = computed(() => selectedBatchId.value
+  ? `Parameter Sweep · ${batchMembers.value.length} runs · ${selectedBatchId.value}`
+  : selectedRun.value ? `Standalone run · ${selectedRun.value.run_id}` : 'Loading saved backtest');
+function backToHistory(): void {
+  page.value = 'history';
+  void router.push('/backtests');
+}
+function showAnalysis(kind: 'run' | 'batch', id: string): void {
+  page.value = 'analysis';
+  void router.push(`/backtests/${kind}/${encodeURIComponent(id)}`);
+}
 const selectedBatchId = ref<string | null>(null);
 const search = ref('');
 const statusFilter = ref('all');
@@ -362,6 +410,13 @@ const historyRows = computed<HistoryEntry[]>(() => [
   ...(runs.value ?? []).filter((run) => !run.batch_id).map((run) => ({ kind: 'run' as const, run })),
   ...(batches.value ?? []).map((batch) => ({ kind: 'batch' as const, batch })),
 ]);
+const activeHistoryCount = computed(() => historyRows.value.filter((entry) =>
+  entry.kind === 'run' ? ['queued', 'running', 'cancelling'].includes(entry.run.status)
+    : !['completed', 'cancelled'].includes(entry.batch.status)).length);
+const completedHistoryCount = computed(() => historyRows.value.filter((entry) =>
+  entry.kind === 'run' ? entry.run.status === 'succeeded' : entry.batch.status === 'completed').length);
+const failedHistoryCount = computed(() => historyRows.value.filter((entry) =>
+  entry.kind === 'run' ? entry.run.status === 'failed' : entry.batch.has_failed_members).length);
 const filteredHistory = computed(() => historyRows.value.filter((entry) => {
   const query = search.value.trim().toLowerCase();
   if (entry.kind === 'run') {
@@ -577,12 +632,23 @@ function createFrom(entry: HistoryEntry): void {
   creationOpen.value = true;
 }
 
+async function createdBatch(batchId: string): Promise<void> {
+  selectedBatchId.value = batchId;
+  batchMembers.value = [];
+  workspaceStore.clearSelection();
+  ++detailSequence;
+  setComparison([]);
+  showAnalysis('batch', batchId);
+  await refreshWorkspace();
+}
+
 async function createdRun(runId: string): Promise<void> {
   void queueHealth.value?.refresh();
   try {
     selectedBatchId.value = null;
     batchMembers.value = [];
     selectRun(await getBacktestRun(runId));
+    showAnalysis('run', runId);
     detailError.value = null;
   } catch (error) {
     detailError.value = errorMessage(error);
@@ -598,6 +664,7 @@ function historyRowProps(entry: HistoryEntry): Record<string, unknown> {
   const isRun = entry.kind === 'run';
   const select = () => {
     selectionNotice.value = null;
+    showAnalysis(entry.kind, rowKey(entry));
     if (entry.kind === 'run') {
       selectedBatchId.value = null;
       batchMembers.value = [];
@@ -645,7 +712,9 @@ function runCell(run: BacktestRun) {
       }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(DocumentTextOutline) }) }),
       default: () => 'View execution log',
     }),
-    cell(comparisonRunLabel(run), run.run_id),
+    h('span', { class: 'run-identity' }, [cell(runName(run) === run.run_id
+      ? `${run.request.strategy.strategy_id.replaceAll('_', ' ')}${run.member_ordinal == null ? '' : ` #${run.member_ordinal + 1}`}`
+      : comparisonRunLabel(run), run.run_id), h('small', run.run_id.slice(0, 8))]),
   ]);
 }
 
@@ -690,7 +759,8 @@ function compareHistoryEntries(left: HistoryEntry, right: HistoryEntry,
 function historyColumn(title: string, key: HistorySortKey | 'progress',
   render: (entry: HistoryEntry) => ReturnType<typeof h>): DataTableColumns<HistoryEntry>[number] {
   return {
-    title, key, sorter: (left, right) => compareHistoryEntries(left, right, key),
+    title, key, width: ({ name: 235, type: 145, strategy: 190, market: 175, timeframe: 110, start: 125, end: 125, status: 120, progress: 125 } as Record<string, number>)[key] ?? 120,
+    fixed: key === 'name' ? 'left' : undefined, sorter: (left, right) => compareHistoryEntries(left, right, key),
     ellipsis: { tooltip: true }, render,
   };
 }
@@ -722,48 +792,28 @@ const historyColumns: DataTableColumns<HistoryEntry> = [
     ? '—' : `${entry.batch.settled_count} / ${entry.batch.total_count}` +
       (entry.batch.has_failed_members ?
         ` · ${entry.batch.outcome_counts.failed} failed` : ''))),
-  { title: 'Create', key: 'create', render: (entry) => h(NButton, {
-    text: true, size: 'small',
-    'data-testid': `workspace-create-from-${rowKey(entry)}`,
-    'aria-label': `Create from this ${entry.kind === 'run' ? 'run' : 'batch'} ${rowKey(entry)}`,
-    onClick: (event: MouseEvent) => { event.stopPropagation(); createFrom(entry); },
-  }, { default: () => 'Create from this' }) },
-  {
-    title: 'Cancel', key: 'cancel', render: (entry) => entry.kind === 'run' ? h(NButton, {
-      text: true, size: 'small',
-      'data-testid': `workspace-cancel-${entry.run.run_id}`,
-      disabled: !['queued', 'running'].includes(entry.run.status) ||
-        cancellingRunIds.value.has(entry.run.run_id),
-      title: 'Cancel this Backtest Run',
-      onClick: (event: MouseEvent) => {
-        event.stopPropagation();
-        void cancelRun(entry.run);
-      },
-    }, { default: () => 'Cancel' }) : cell('—'),
-  },
-  {
-    title: 'Delete', key: 'delete', render: (entry) => entry.kind === 'run' ? h(NButton, {
-      text: true,
-      size: 'small',
-      'data-testid': `workspace-delete-${entry.run.run_id}`,
-      disabled: !['succeeded', 'failed', 'cancelled'].includes(entry.run.status) ||
-        deletingRunIds.value.has(entry.run.run_id),
-      title: 'Delete terminal Backtest Run and its saved results, Fills, and Closed Trades',
-      onClick: (event: MouseEvent) => {
-        event.stopPropagation();
-        void deleteRun(entry.run);
-      },
-    }, { default: () => 'Delete' }) : h(NButton, {
-      text: true, size: 'small',
-      'data-testid': `workspace-delete-batch-${entry.batch.batch_id}`,
-      disabled: !['completed', 'cancelled'].includes(entry.batch.status) ||
-        deletingBatchIds.value.has(entry.batch.batch_id),
-      title: 'Delete this terminal Batch, all members and their saved artifacts',
-      onClick: (event: MouseEvent) => {
-        event.stopPropagation();
-        void deleteBatch(entry.batch);
-      },
-    }, { default: () => 'Delete' }),
+  { title: 'Actions', key: 'actions', width: 125, fixed: 'right', render: (entry) =>
+    h('div', { class: 'row-actions', onKeydown: (event: KeyboardEvent) => event.stopPropagation() }, [
+      h(NButton, { quaternary: true, circle: true, size: 'small',
+        'data-testid': `workspace-create-from-${rowKey(entry)}`,
+        'aria-label': `Create from this ${entry.kind} ${rowKey(entry)}`, title: 'Create from this',
+        onClick: (event: MouseEvent) => { event.stopPropagation(); createFrom(entry); },
+      }, { icon: () => h(NIcon, { component: CopyOutline }) }),
+      ...(entry.kind === 'run' ? [h(NButton, { quaternary: true, circle: true, size: 'small',
+        'data-testid': `workspace-cancel-${entry.run.run_id}`, 'aria-label': 'Cancel run', title: 'Cancel run',
+        disabled: !['queued', 'running'].includes(entry.run.status) || cancellingRunIds.value.has(entry.run.run_id),
+        onClick: (event: MouseEvent) => { event.stopPropagation(); void cancelRun(entry.run); },
+      }, { icon: () => h(NIcon, { component: StopCircleOutline }) })] : []),
+      h(NButton, { quaternary: true, circle: true, size: 'small', type: 'error',
+        'data-testid': entry.kind === 'run' ? `workspace-delete-${entry.run.run_id}` : `workspace-delete-batch-${entry.batch.batch_id}`,
+        'aria-label': `Delete ${entry.kind}`, title: `Delete ${entry.kind}`,
+        disabled: entry.kind === 'run' ? !['succeeded', 'failed', 'cancelled'].includes(entry.run.status) || deletingRunIds.value.has(entry.run.run_id)
+          : !['completed', 'cancelled'].includes(entry.batch.status) || deletingBatchIds.value.has(entry.batch.batch_id),
+        onClick: (event: MouseEvent) => { event.stopPropagation();
+          if (entry.kind === 'run') void deleteRun(entry.run); else void deleteBatch(entry.batch);
+        },
+      }, { icon: () => h(NIcon, { component: TrashOutline }) }),
+    ]),
   },
 ];
 
@@ -1024,6 +1074,37 @@ function stopPolling(): void {
   pollTimer = null;
 }
 
+watch(() => router.currentRoute?.value.params, async (params) => {
+  if (!params) return;
+  if (!params.id) { page.value = 'history'; return; }
+  const id = String(params.id);
+  page.value = 'analysis';
+  if (params.kind === 'batch') {
+    if (selectedBatchId.value === id) return;
+    selectedBatchId.value = id;
+    batchMembers.value = [];
+    workspaceStore.clearSelection();
+    ++detailSequence;
+    setComparison([]);
+  } else if (params.kind === 'run' && (selectedBatchId.value || selectedRunId.value !== id)) {
+    selectedBatchId.value = null;
+    batchMembers.value = [];
+    workspaceStore.clearSelection();
+    setComparison([]);
+    const sequence = ++detailSequence;
+    detailLoading.value = true;
+    try {
+      const run = await getBacktestRun(id);
+      if (sequence !== detailSequence) return;
+      selectRun(run);
+    } catch (error) {
+      if (sequence === detailSequence) detailError.value = errorMessage(error);
+    } finally {
+      if (sequence === detailSequence) detailLoading.value = false;
+    }
+  }
+}, { immediate: true });
+
 onMounted(startPolling);
 onActivated(startPolling);
 onDeactivated(stopPolling);
@@ -1031,38 +1112,46 @@ onUnmounted(stopPolling);
 </script>
 
 <style scoped>
-.workspace { min-height: calc(100vh - 20px); }
-.workspace-header, .section-heading {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-}
-.workspace-header { margin-bottom: 24px; }
-.workspace-header h1 { margin: 0; font-size: 24px; }
-.workspace-header p { margin: 4px 0; color: #aeb8c8; }
-.header-actions { display: flex; gap: 8px; }
-.filters {
-  display: grid; grid-template-columns: minmax(220px, 2fr) repeat(5, minmax(120px, 1fr));
-  gap: 8px; margin-bottom: 12px;
-}
-.current-backtest { margin-top: 32px; }
-.section-heading h2 { font-size: 18px; }
-.comparison-controls { display: flex; align-items: flex-start; gap: 16px; margin: 12px 0; }
-.comparison-controls .n-input { max-width: 260px; }
+.workspace { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: calc(100vh - 40px); max-width: 1800px; margin: 0 auto; padding: 24px 30px 48px; color: #dce4ed; }
+.workspace :deep(*) { font-family: inherit; }
+.workspace-header, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.workspace-header { margin-bottom: 28px; }
+.eyebrow { font-size: 11px; letter-spacing: .16em; color: #79c9b2; font-weight: 600; margin-bottom: 8px; }
+.workspace-header h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.7px; text-transform: capitalize; }
+.workspace-header p, .section-heading p { margin: 6px 0 0; color: #8f9dab; font-size: 13px; overflow-wrap: anywhere; }
+.header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.workspace-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 24px 0; }
+.workspace-summary > div { padding: 18px 22px; border: 1px solid #2b3541; border-radius: 10px; background: #1b222c; }
+.workspace-summary span { display: block; color: #96a5b4; font-size: 12px; }
+.workspace-summary strong { display: block; margin-top: 8px; font-size: 27px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.failure-count { color: #e7ae7b; }
+.table-panel { border: 1px solid #2b3541; border-radius: 12px; background: #1a2029; padding: 22px; overflow: hidden; }
+.section-heading h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.history-heading { margin-bottom: 22px; }
+.filters { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(6, minmax(110px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.current-backtest { margin-top: 24px; }
+.analysis-context { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: #9aafbf; font-size: 12px; margin-bottom: 22px; }
+.comparison-controls { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 22px 0 16px; }
+.comparison-controls .n-input { max-width: 270px; }
 .column-chooser { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.column-chooser details { position: relative; }
-.column-chooser summary { cursor: pointer; }
-.column-chooser details[open] { display: grid; max-height: 280px; overflow: auto;
-  padding: 8px; border: 1px solid #536274; background: #192330; z-index: 2; }
-.column-chooser label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.curve-status { padding-left: 20px; }
-.request-details { margin-top: 16px; }
-.curve-inspection { width: 100%; margin-top: 20px; }
-.request-details dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; }
-.request-details dt { color: #aeb8c8; }
+.column-options { display: grid; gap: 10px; padding: 6px; }
+.curve-status { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0; font-size: 12px; color: #9aafbf; }
+.request-details { margin-top: 24px; padding: 16px; border: 1px solid #303c49; border-radius: 8px; background: #171e27; }
+.request-details summary { cursor: pointer; color: #b7c8d6; }
+.curve-inspection { width: 100%; margin-top: 24px; }
+.request-details dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; font-size: 12px; }
+.request-details dt { color: #8f9dab; }
 .request-details dd { margin: 0; overflow-wrap: anywhere; }
-.run-error, .chart-reason { color: #ffb4b4; }
-.run-cell { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
-@media (max-width: 900px) {
-  .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .workspace-header { align-items: flex-start; flex-direction: column; }
-}
+.run-error, .chart-reason { color: #f1b1a8; padding: 12px 16px; border-radius: 6px; background: #35272b; }
+:deep(.run-cell) { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; }
+:deep(.run-identity) { min-width: 0; font-weight: 500; }
+:deep(.run-identity small) { display: block; color: #8190a0; font-size: 10px; font-family: monospace; margin-top: 3px; }
+:deep(.row-actions) { display: flex; gap: 4px; }
+:deep(.n-data-table) { font-variant-numeric: tabular-nums; }
+:deep(.n-data-table-th) { font-size: 11px; color: #91a4b6; letter-spacing: .025em; }
+:deep(.n-data-table-tr) { cursor: pointer; }
+:deep(.n-data-table-tr[aria-selected='true'] td) { background: #203a39; }
+:deep(.n-data-table-tr:focus-visible) { outline: 2px solid #63d2b0; outline-offset: -2px; }
+@media (max-width: 1200px) { .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); } .workspace-header { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 700px) { .workspace { padding: 16px 6px 32px; } .workspace-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; } .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-panel { padding: 14px; } .section-heading { align-items: flex-start; } }
 </style>

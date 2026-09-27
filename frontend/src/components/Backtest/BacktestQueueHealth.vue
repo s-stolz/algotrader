@@ -1,11 +1,17 @@
 <template>
   <section class="queue-health" aria-label="Backtest queue" data-testid="workspace-queue">
-    <h2>Queue and worker</h2>
+    <div class="queue-summary">
+      <span class="health-dot" :class="{ healthy: !isUnknown && snapshot?.availability === 'healthy' }" />
+      <h2>Queue and worker</h2>
+      <span class="queue-summary-state">{{ isUnknown ? 'Status unknown' : snapshot?.availability ?? 'Connecting' }}</span>
+      <span v-if="snapshot" class="queue-summary-count">{{ snapshot.active_run ? '1 active run' : 'Idle' }} · {{ snapshot.queued.length }} waiting</span>
+    </div>
     <p v-if="!snapshot && !readError" role="status">Loading queue health…</p>
     <p v-if="isUnknown" role="alert" data-testid="workspace-queue-unknown">
       Queue and worker status unknown{{ readError ? `: ${readError}` : '; latest snapshot is old' }}.
     </p>
-    <template v-if="snapshot">
+    <details v-if="snapshot" class="queue-details">
+      <summary>Activity details</summary>
       <p
         v-if="!isUnknown"
         :role="snapshot.availability === 'healthy' ? 'status' : 'alert'"
@@ -56,7 +62,7 @@
           </template>
         </li>
       </ol>
-    </template>
+    </details>
   </section>
 </template>
 
@@ -133,9 +139,17 @@ onUnmounted(stop);
 </script>
 
 <style scoped>
-.queue-health { margin-bottom: 24px; }
-.queue-health h2 { font-size: 18px; }
-.queue-health p { margin: 8px 0; }
-.telemetry-note { color: #aeb8c8; }
-.faults { color: #ffb4b4; }
+.queue-health { border: 1px solid #303b46; border-radius: 10px; background: #18212a; padding: 13px 18px; font-variant-numeric: tabular-nums; position: relative; }
+.queue-summary { display: flex; align-items: center; gap: 10px; padding-right: 110px; }
+.queue-summary h2 { font-size: 13px; font-weight: 500; margin: 0; }
+.health-dot { width: 7px; height: 7px; border-radius: 50%; background: #e5ac73; }
+.health-dot.healthy { background: #68ceab; }
+.queue-summary-state { text-transform: capitalize; color: #8facbe; font-size: 12px; }
+.queue-summary-count { margin-left: auto; color: #a3b2bf; font-size: 12px; }
+.queue-details summary { position: absolute; right: 18px; top: 14px; color: #92a8b8; font-size: 12px; cursor: pointer; }
+.queue-details[open] { padding-top: 12px; border-top: 1px solid #2d3a46; margin-top: 12px; }
+.queue-health p, .queue-health li { margin: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
+.telemetry-note { color: #8798a8; }
+.faults, [role='alert'] { color: #ffb4b4; }
+@media (max-width: 700px) { .queue-summary { flex-wrap: wrap; } .queue-summary-count { margin-left: 0; } }
 </style>

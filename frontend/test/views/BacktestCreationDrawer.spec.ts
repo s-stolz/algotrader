@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import { NDataTable, NInput, NInputNumber, NSelect } from 'naive-ui';
+import { NDatePicker, NDataTable, NInput, NInputNumber, NSelect } from 'naive-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -62,6 +62,19 @@ describe('standalone creation drawer', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+  });
+
+  it('uses Naive calendars and converts selected dates to UTC midnight', async () => {
+    const wrapper = openDrawer();
+    await flushPromises();
+    const pickers = wrapper.findAllComponents(NDatePicker);
+    expect(pickers).toHaveLength(2);
+    pickers[0].vm.$emit('update:formatted-value', '2026-03-29');
+    pickers[1].vm.$emit('update:formatted-value', '2026-10-25');
+    await wrapper.vm.$nextTick();
+    expect(useBacktestWorkspaceStore().creationDraft?.start_ms).toBe(Date.UTC(2026, 2, 29));
+    expect(useBacktestWorkspaceStore().creationDraft?.end_ms).toBe(Date.UTC(2026, 9, 25));
+    wrapper.unmount();
   });
 
   it('renders catalog types and submits a retained exact-version draft', async () => {

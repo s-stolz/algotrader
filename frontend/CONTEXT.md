@@ -250,3 +250,12 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   from the final exact point; saved Return keeps its first-recorded-equity
   baseline and request Initial capital remains separate. The UI distinguishes
   sampled curves, specific unavailable reasons, and temporary read errors.
+
+- Workspace history and current-backtest analysis occupy separate page surfaces
+  at `/backtests` and `/backtests/:kind/:id` in the existing memory router. The
+  kept-alive workspace retains history filters, pagination, comparison selection,
+  and drafts while moving between those pages or the chart.
+- Creation dates use Naive UI calendars with formatted calendar dates converted
+  explicitly to UTC midnight. Background polling retains settled replay curves,
+  chart instances, execution-log tabs and filters; it never supersedes a pending
+  automatic queue or batch read. Explicit refresh may supersede stale reads.

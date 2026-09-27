@@ -202,6 +202,25 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
+  it('opens a separate analysis page and restores history filters on return', async () => {
+    const saved = run('navigation');
+    vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+    vi.mocked(getBacktestRun).mockResolvedValue(saved);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    expect(wrapper.get('[aria-label="Current Backtest"]').attributes('style')).toContain('display: none');
+    await wrapper.get('[data-testid="workspace-search"] input').setValue('navigation');
+    await wrapper.get('[data-testid="workspace-run-navigation"]').trigger('click');
+    await flushPromises();
+    expect(routerMock.push).toHaveBeenCalledWith('/backtests/run/navigation');
+    expect(wrapper.get('[aria-label="Saved Backtest Runs"]').attributes('style')).toContain('display: none');
+    expect(wrapper.get('[aria-label="Current Backtest"]').attributes('style') ?? '').not.toContain('display: none');
+    await wrapper.get('[data-testid="workspace-history-return"]').trigger('click');
+    expect(wrapper.get('[aria-label="Saved Backtest Runs"]').attributes('style') ?? '').not.toContain('display: none');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="workspace-search"] input').element.value).toBe('navigation');
+    wrapper.unmount();
+  });
+
   it('opens Create from this without changing the saved run or selection', async () => {
     const saved = run('source');
     const original = structuredClone(saved);
@@ -1103,7 +1122,7 @@ describe('production Backtest Workspace', () => {
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('-1.25%');
     expect(wrapper.text()).toContain('Backtest Run result schema is unsupported.');
     expect(wrapper.find('[data-testid="workspace-open-chart"]').attributes('disabled')).toBeDefined();
-    expect(routerMock.push).not.toHaveBeenCalled();
+    expect(routerMock.push).not.toHaveBeenCalledWith('/');
     wrapper.unmount();
   });
 });
