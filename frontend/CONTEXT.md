@@ -199,6 +199,11 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   or running. `cancelling` remains unsettled and explains that execution cleanup
   is pending; `cancelled` appears only after verified active exit and settlement
   or immediate queued cancellation. Command refreshes history and queue state.
+- Workspace batch detail offers Cancel Batch from queued, running, pausing, and
+  paused states. Its command identity survives retry after a lost response.
+  The detail refresh shows cancellation acceptance, preserved member outcomes,
+  and an unsettled cancelling state until active cleanup commits; queue health
+  continues to show any held slot or operational fault.
 - Backtest Run chart overlays require result schema version 3 closed trades,
   including planned protective exit levels and explicit trade direction.
 - Runtime validation for frontend-facing HTTP and WebSocket payloads.

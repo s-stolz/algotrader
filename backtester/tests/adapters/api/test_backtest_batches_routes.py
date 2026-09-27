@@ -69,13 +69,25 @@ class BatchClient:
         batch = self.get_backtest_batch(batch_id)
         if batch["status"] == "completed":
             raise DatabaseAccessorClientError("terminal", status_code=409)
-        batch["status"] = "paused" if command == "pause" else "running"
+        if command == "cancel":
+            batch["status"] = "cancelled"
+            batch["cancel_requested_at"] = "2026-09-26T00:00:01+00:00"
+            batch["cancellation_source"] = "user"
+            batch["cancellation_reason"] = "user_requested"
+            batch["completed_at"] = "2026-09-26T00:00:01+00:00"
+            for member in self.members[batch_id]:
+                member["status"] = "cancelled"
+        else:
+            batch["status"] = "paused" if command == "pause" else "running"
         batch["lifecycle_revision"] += 1
-        return {
+        result = {
             "batch_id": batch_id,
             "status": batch["status"],
             "lifecycle_revision": batch["lifecycle_revision"],
         }
+        if command == "cancel":
+            result["command_id"] = command_id
+        return result
 
 
 class BatchAcceptanceRouteTests(unittest.TestCase):
@@ -147,6 +159,29 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
             ).status_code,
             409,
         )
+
+    def test_cancel_public_command_exposes_identity_and_durable_batch_detail(self) -> None:
+        created = self.client.post(
+            "/backtests/batches", json={**_definition(), "submission_id": "cancel-submit"}
+        )
+        batch_id = created.json()["batch_id"]
+        response = self.client.post(
+            f"/backtests/batches/{batch_id}/cancel", json={"command_id": "cancel-one"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "batch_id": batch_id,
+                "command_id": "cancel-one",
+                "status": "cancelled",
+                "lifecycle_revision": 1,
+            },
+        )
+        detail = self.client.get(f"/backtests/batches/{batch_id}").json()
+        self.assertEqual(detail["status"], "cancelled")
+        self.assertEqual(detail["cancel_requested_at_ms"], detail["completed_at_ms"])
+        self.assertEqual(detail["outcome_counts"]["cancelled"], detail["member_count"])
 
     def test_accept_retry_and_inspect_actual_members(self) -> None:
         with patch.dict("os.environ", {"BACKTESTER_BATCH_ACCEPTANCE_ENABLED": "1"}):

@@ -21,11 +21,24 @@
           :disabled="controlPending"
           @click="control('resume')"
         >Resume Batch</button>
+        <button
+          type="button"
+          :disabled="controlPending"
+          data-testid="workspace-cancel-batch"
+          @click="control('cancel')"
+        >Cancel Batch</button>
       </div>
       <p v-if="selectedBatch.status === 'pausing'" role="status">
         Pausing after the active member finishes.
       </p>
       <p v-if="selectedBatch.status === 'paused'" role="status">Batch paused.</p>
+      <p v-if="selectedBatch.status === 'cancelling'" role="status">
+        Cancelling Batch: active execution is being stopped; capacity remains held until cleanup commits.
+      </p>
+      <p v-if="selectedBatch.status === 'cancelled'" role="status">Batch cancelled.</p>
+      <p v-if="selectedBatch.cancel_requested_at_ms">Cancellation accepted:
+        {{ formatTimestamp(selectedBatch.cancel_requested_at_ms) }}.
+      </p>
       <p v-if="controlError" role="alert">{{ controlError }}</p>
       <p>{{ selectedBatch.settled_count }} / {{ selectedBatch.total_count }} settled ·
         {{ selectedBatch.executed_count }} executed · {{ outcomeLabel }}</p>
@@ -70,7 +83,7 @@ import {
 } from '@/api/backtesterClient';
 import type { BacktestBatch, BacktestBatchEvent, BacktestRun } from '@/types/backtesterContracts';
 
-const emit = defineEmits<{ members: [batchId: string, runs: BacktestRun[]] }>();
+const emit = defineEmits<{ members: [batchId: string, runs: BacktestRun[]]; cancelled: [] }>();
 const props = defineProps<{ batchId: string | null }>();
 const selectedBatch = ref<BacktestBatch | null>(null);
 const members = ref<BacktestRun[] | null>(null);
@@ -78,7 +91,7 @@ const events = ref<BacktestBatchEvent[] | null>(null);
 const detailError = ref<string | null>(null);
 const controlError = ref<string | null>(null);
 const controlPending = ref(false);
-type BatchCommand = 'pause' | 'resume';
+type BatchCommand = 'pause' | 'resume' | 'cancel';
 const commandIds: Partial<Record<BatchCommand, string>> = {};
 let detailRevision = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -100,7 +113,7 @@ async function loadDetail(batchId: string): Promise<void> {
       getBacktestBatch(batchId), listBacktestBatchMembers(batchId), listBacktestBatchEvents(batchId),
     ]);
     if (revision !== detailRevision) return;
-    for (const command of ['pause', 'resume'] as const) {
+    for (const command of ['pause', 'resume', 'cancel'] as const) {
       const pending = commandIds[command];
       if (pending && loadedEvents.some((event) => event.command_id === pending)) {
         delete commandIds[command];
@@ -130,7 +143,9 @@ async function control(command: BatchCommand): Promise<void> {
     if (props.batchId === batchId) {
       delete commandIds.pause;
       delete commandIds.resume;
+      delete commandIds.cancel;
       await loadDetail(batchId);
+      if (command === 'cancel') emit('cancelled');
     }
   } catch (error) {
     if (props.batchId === batchId) {
@@ -154,6 +169,7 @@ watch(() => props.batchId, (batchId) => {
   controlError.value = null;
   delete commandIds.pause;
   delete commandIds.resume;
+  delete commandIds.cancel;
   if (batchId) void loadDetail(batchId);
 });
 onUnmounted(() => {

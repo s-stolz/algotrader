@@ -17,7 +17,7 @@ os.environ.setdefault("TIMESCALEDB_PORT", "5432")
 os.environ.setdefault("TIMESCALEDB_DB", "test")
 
 import main  # noqa: E402
-from app import crud  # noqa: E402
+from app import backtest_execution, crud  # noqa: E402
 from app.models import (  # noqa: E402
     backtest_closed_trades,
     backtest_execution_slot,
@@ -26,6 +26,8 @@ from app.models import (  # noqa: E402
     metadata,
 )
 from app.schemas import (  # noqa: E402
+    BacktestBatchCommandIn,
+    BacktestBatchControlPolicyIn,
     BacktestBatchCreateIn,
     BacktestClosedTradeIn,
     BacktestExecutionClaimIn,
@@ -178,6 +180,243 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         }
         payload.update(overrides)
         return payload
+
+    async def _cancel_batch(self, command_id: str):
+        return await main.control_backtest_batch(
+            "batch-1",
+            "cancel",
+            BacktestBatchCommandIn(
+                command_id=command_id,
+                policy=BacktestBatchControlPolicyIn(
+                    **{
+                        "accepted_statuses": ["queued", "running", "pausing", "paused"],
+                        "effective_statuses": ["cancelling", "cancelled"],
+                        "active_status": "cancelling",
+                        "idle_status": "cancelled",
+                        "queue_action": "remove",
+                    }
+                ),
+            ),
+            db=self.db,
+        )
+
+    async def test_cancel_batch_from_queued_is_atomic_and_identity_stable(self):
+        from fastapi import HTTPException
+
+        payload = self._batch_payload()
+        payload.update(raw_count=2, member_count=2, excluded_count=0)
+        payload["members"].append(
+            {**payload["members"][0], "run_id": "member-2", "member_ordinal": 1}
+        )
+        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        _seed_execution_slot(self.session)
+        accepted = await self._cancel_batch("cancel-1")
+        self.assertEqual(
+            accepted,
+            {
+                "batch_id": "batch-1",
+                "command_id": "cancel-1",
+                "status": "cancelled",
+                "lifecycle_revision": 1,
+            },
+        )
+        batch = await main.get_backtest_batch("batch-1", db=self.db)
+        assert batch is not None
+        self.assertEqual(batch["completed_at"], batch["cancel_requested_at"])
+        self.assertEqual(batch["cancellation_source"], "user")
+        members = await main.list_backtest_batch_members("batch-1", db=self.db)
+        self.assertEqual([member["status"] for member in members], ["cancelled", "cancelled"])
+        self.assertEqual({member["cancellation_source"] for member in members}, {"batch"})
+        self.assertEqual((await main.get_backtest_queue_state(db=self.db))["queued_entries"], [])
+        self.assertEqual(await self._cancel_batch("cancel-1"), accepted)
+        self.assertEqual((await self._cancel_batch("cancel-2"))["lifecycle_revision"], 1)
+        events = await main.list_backtest_batch_events("batch-1", db=self.db)
+        self.assertEqual(
+            [(event["revision"], event["event_type"], event["command_id"]) for event in events],
+            [(0, "accepted", None), (1, "cancel", "cancel-1")],
+        )
+        with self.assertRaises(HTTPException) as missing:
+            await main.control_backtest_batch(
+                "missing",
+                "cancel",
+                BacktestBatchCommandIn(
+                    command_id="missing",
+                    policy=BacktestBatchControlPolicyIn(
+                        **{
+                            "accepted_statuses": ["queued"],
+                            "effective_statuses": ["cancelled"],
+                            "active_status": "cancelling",
+                            "idle_status": "cancelled",
+                            "queue_action": "remove",
+                        }
+                    ),
+                ),
+                db=self.db,
+            )
+        self.assertEqual(missing.exception.status_code, 404)
+
+    async def test_cancel_batch_keeps_prior_success_and_active_slot_until_settlement(self):
+        payload = self._batch_payload()
+        payload.update(raw_count=3, member_count=3, excluded_count=0)
+        payload["members"].extend(
+            [
+                {
+                    **payload["members"][0],
+                    "run_id": f"member-{ordinal}",
+                    "member_ordinal": ordinal - 1,
+                }
+                for ordinal in (2, 3)
+            ]
+        )
+        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        _seed_execution_slot(self.session)
+        at = datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc)
+        self.assertTrue(
+            await backtest_execution.claim(
+                self.db, run_id="member-1", owner_token="owner-1", started_at=at
+            )
+        )
+        self.assertTrue(
+            await backtest_execution.settle(
+                self.db,
+                run_id="member-1",
+                owner_token="owner-1",
+                terminal={
+                    "status": "succeeded",
+                    "completed_at": at,
+                    "result_schema_version": 3,
+                    "metrics": {"total_return_pct": 2.5},
+                    "diagnostics": {"source": "prior-success"},
+                    "replay_descriptor": _replay_descriptor().model_dump(),
+                },
+            )
+        )
+        self.assertTrue(
+            await backtest_execution.claim(
+                self.db, run_id="member-2", owner_token="owner-2", started_at=at
+            )
+        )
+        accepted = await self._cancel_batch("cancel-running")
+        self.assertEqual(accepted["status"], "cancelling")
+        batch = await main.get_backtest_batch("batch-1", db=self.db)
+        assert batch is not None
+        self.assertIsNone(batch["completed_at"])
+        self.assertIsNotNone(batch["cancel_requested_at"])
+        members = await main.list_backtest_batch_members("batch-1", db=self.db)
+        self.assertEqual(
+            [run["status"] for run in members], ["succeeded", "cancelling", "cancelled"]
+        )
+        self.assertEqual(members[0]["metrics"], {"total_return_pct": 2.5})
+        self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], "member-2")
+        self.assertEqual((await main.get_backtest_queue_state(db=self.db))["queued_entries"], [])
+        self.assertFalse(
+            await backtest_execution.settle(
+                self.db,
+                run_id="member-2",
+                owner_token="owner-2",
+                terminal={
+                    "status": "succeeded",
+                    "completed_at": at,
+                    "result_schema_version": 3,
+                    "metrics": {"total_return_pct": 99},
+                },
+            )
+        )
+        self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], "member-2")
+        self.assertTrue(
+            await backtest_execution.settle(
+                self.db,
+                run_id="member-2",
+                owner_token="owner-2",
+                terminal={"status": "cancelled", "completed_at": at},
+            )
+        )
+        batch = await main.get_backtest_batch("batch-1", db=self.db)
+        assert batch is not None
+        self.assertEqual(batch["status"], "cancelled")
+        self.assertIsNotNone(batch["completed_at"])
+        self.assertEqual((await self._cancel_batch("cancel-running"))["status"], "cancelling")
+        self.assertEqual(
+            (await main.get_backtest_run("member-1", db=self.db))["metrics"],
+            {"total_return_pct": 2.5},
+        )
+
+    async def test_cancel_pausing_batch_dominates_later_resume_and_normal_result(self):
+        from fastapi import HTTPException
+
+        payload = self._batch_payload()
+        payload.update(raw_count=2, member_count=2, excluded_count=0)
+        payload["members"].append(
+            {**payload["members"][0], "run_id": "member-2", "member_ordinal": 1}
+        )
+        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        _seed_execution_slot(self.session)
+        at = datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc)
+        self.assertTrue(
+            await backtest_execution.claim(
+                self.db, run_id="member-1", owner_token="owner", started_at=at
+            )
+        )
+        pause = await main.control_backtest_batch(
+            "batch-1",
+            "pause",
+            BacktestBatchCommandIn(
+                command_id="pause",
+                policy=BacktestBatchControlPolicyIn(
+                    accepted_statuses=["queued", "running"],
+                    effective_statuses=["pausing", "paused"],
+                    active_status="pausing",
+                    idle_status="paused",
+                    queue_action="remove",
+                ),
+            ),
+            db=self.db,
+        )
+        self.assertEqual(pause["status"], "pausing")
+        accepted = await self._cancel_batch("cancel")
+        self.assertEqual(accepted["status"], "cancelling")
+        with self.assertRaises(HTTPException) as conflict:
+            await main.control_backtest_batch(
+                "batch-1",
+                "resume",
+                BacktestBatchCommandIn(
+                    command_id="resume",
+                    policy=BacktestBatchControlPolicyIn(
+                        accepted_statuses=["pausing", "paused"],
+                        effective_statuses=["queued", "running"],
+                        active_status="running",
+                        idle_status="running",
+                        queue_action="append",
+                    ),
+                ),
+                db=self.db,
+            )
+        self.assertEqual(conflict.exception.status_code, 409)
+        self.assertFalse(
+            await backtest_execution.settle(
+                self.db,
+                run_id="member-1",
+                owner_token="owner",
+                terminal={
+                    "status": "failed",
+                    "completed_at": at,
+                    "error_code": "late",
+                    "error_message": "late",
+                },
+            )
+        )
+        self.assertTrue(
+            await backtest_execution.settle(
+                self.db,
+                run_id="member-1",
+                owner_token="owner",
+                terminal={"status": "cancelled", "completed_at": at},
+            )
+        )
+        self.assertEqual(
+            (await main.get_backtest_batch("batch-1", db=self.db))["status"], "cancelled"
+        )
+        self.assertEqual((await self._cancel_batch("cancel")), accepted)
 
     async def test_batch_acceptance_retry_and_ordered_inspection(self):
         payload = self._batch_payload()

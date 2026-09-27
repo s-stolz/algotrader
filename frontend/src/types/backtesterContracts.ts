@@ -375,6 +375,9 @@ export interface BacktestBatch {
   accepted_at_ms: number;
   started_at_ms: number | null;
   completed_at_ms: number | null;
+  cancel_requested_at_ms?: number | null;
+  cancellation_source?: string | null;
+  cancellation_reason?: string | null;
   active_member_ordinal: number | null;
   next_member_ordinal: number | null;
   lifecycle_revision: number;
@@ -427,6 +430,18 @@ export function isBacktestBatch(value: unknown): value is BacktestBatch {
     Number.isInteger(value.accepted_at_ms) && (value.accepted_at_ms as number) > 0 &&
     (value.started_at_ms === null || isEpochMs(value.started_at_ms)) &&
     (value.completed_at_ms === null || isEpochMs(value.completed_at_ms)) &&
+    (value.cancel_requested_at_ms === undefined || value.cancel_requested_at_ms === null ||
+      isEpochMs(value.cancel_requested_at_ms)) &&
+    (value.cancellation_source === undefined || value.cancellation_source === null ||
+      isNonEmptyString(value.cancellation_source)) &&
+    (value.cancellation_reason === undefined || value.cancellation_reason === null ||
+      isNonEmptyString(value.cancellation_reason)) &&
+    (!['cancelling', 'cancelled'].includes(value.status) ||
+      (isEpochMs(value.cancel_requested_at_ms) &&
+        isNonEmptyString(value.cancellation_source) &&
+        isNonEmptyString(value.cancellation_reason))) &&
+    (value.status !== 'cancelling' || value.completed_at_ms === null) &&
+    (value.status !== 'cancelled' || isEpochMs(value.completed_at_ms)) &&
     (value.active_member_ordinal === null || isOrdinal(value.active_member_ordinal)) &&
     (value.next_member_ordinal === null || isOrdinal(value.next_member_ordinal)) &&
     Number.isInteger(value.lifecycle_revision) && (value.lifecycle_revision as number) >= 0 &&

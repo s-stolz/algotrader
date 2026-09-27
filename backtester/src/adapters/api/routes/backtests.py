@@ -218,7 +218,7 @@ class BatchCommandRequest(BaseModel):
 @router.post("/batches/{batch_id}/{command}")
 def control_batch(
     batch_id: str,
-    command: Literal["pause", "resume"],
+    command: Literal["pause", "resume", "cancel"],
     request: BatchCommandRequest,
     service: BacktestBatchService = Depends(get_backtest_batch_service),
 ) -> dict[str, Any]:

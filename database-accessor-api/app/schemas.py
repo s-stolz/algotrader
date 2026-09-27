@@ -420,6 +420,9 @@ class BacktestBatchOut(BacktestContractModel):
     accepted_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    cancel_requested_at: datetime | None = None
+    cancellation_source: str | None = None
+    cancellation_reason: str | None = None
     lifecycle_revision: int
     definition_schema_version: Literal[1]
     accepted_definition: dict[str, Any]
@@ -463,3 +466,4 @@ class BacktestBatchCommandOut(BacktestContractModel):
     batch_id: str
     status: str
     lifecycle_revision: int
+    command_id: str | None = None

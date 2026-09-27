@@ -37,6 +37,14 @@ to a forced kill when necessary, and reaps all descendants before a fenced
 keeps the slot held and appears in the queue health surface. Do not infer
 cancellation completion from elapsed time or a stale heartbeat.
 
+`POST /backtests/batches/{batch_id}/cancel` atomically blocks new claims,
+cancels queued members, and requests cancellation of any active member. A batch
+with active work remains `cancelling` and retains the slot until that member and
+its descendants have exited and fenced settlement commits. Prior succeeded or
+failed members and their artifacts remain. If cleanup or persistence faults,
+inspect queue health and recover the held slot using the procedure below; do not
+present the aggregate as `cancelled` before its active member is terminal.
+
 ## Execution environment
 
 Run the asynchronous worker on Linux (including the supplied Compose service).

@@ -38,6 +38,13 @@ BATCH_CONTROL_POLICY: dict[str, dict[str, Any]] = {
         "idle_status": "running",
         "queue_action": "append",
     },
+    "cancel": {
+        "accepted_statuses": ["queued", "running", "pausing", "paused"],
+        "effective_statuses": ["cancelling", "cancelled"],
+        "active_status": "cancelling",
+        "idle_status": "cancelled",
+        "queue_action": "remove",
+    },
 }
 
 
@@ -219,7 +226,7 @@ def _project_batch(batch: Mapping[str, Any], members: list[dict[str, Any]]) -> d
         (member["member_ordinal"] for member in members if member["status"] == "queued"),
         None,
     )
-    for field in ("started_at", "completed_at"):
+    for field in ("started_at", "completed_at", "cancel_requested_at"):
         value[f"{field}_ms"] = _timestamp_ms(value[field]) if value.get(field) is not None else None
         value.pop(field, None)
     accepted_at = value.pop("accepted_at")

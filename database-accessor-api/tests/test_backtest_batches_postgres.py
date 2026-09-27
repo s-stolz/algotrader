@@ -83,6 +83,13 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
                 "idle_status": "running",
                 "queue_action": "append",
             },
+            "cancel": {
+                "accepted_statuses": ["queued", "running", "pausing", "paused"],
+                "effective_statuses": ["cancelling", "cancelled"],
+                "active_status": "cancelling",
+                "idle_status": "cancelled",
+                "queue_action": "remove",
+            },
         }[command]
         result = await backtest_execution.control_batch(
             session, batch_id=batch_id, command=command, command_id=command_id, policy=policy
@@ -526,7 +533,203 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
         os.getenv("BACKTESTER_TEST_PYTHON"),
         "set BACKTESTER_TEST_PYTHON to run the public mixed-preview acceptance flow",
     )
+    async def test_cancel_paused_partly_successful_batch_preserves_result(self) -> None:
+        now = datetime(2026, 9, 26, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            payload = self._payload("batch-partial", "first")
+            payload["raw_count"] = payload["member_count"] = 2
+            payload["members"].append(
+                {**payload["members"][0], "run_id": "second", "member_ordinal": 1}
+            )
+            await crud.create_backtest_batch(session, payload)
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session, run_id="first", owner_token="first-owner", started_at=now
+                )
+            )
+            self.assertTrue(
+                await backtest_execution.settle(
+                    session,
+                    run_id="first",
+                    owner_token="first-owner",
+                    terminal={
+                        "status": "succeeded",
+                        "completed_at": now,
+                        "result_schema_version": 3,
+                        "metrics": {"total_return_pct": 2.5},
+                        "diagnostics": {},
+                        "replay_descriptor": {"schema_version": 1},
+                    },
+                )
+            )
+            self.assertEqual(
+                (
+                    await self._control(
+                        session, batch_id="batch-partial", command="pause", command_id="pause"
+                    )
+                )["status"],
+                "paused",
+            )
+            accepted = await self._control(
+                session, batch_id="batch-partial", command="cancel", command_id="cancel"
+            )
+            self.assertEqual((accepted["status"], accepted["command_id"]), ("cancelled", "cancel"))
+            batch = await self._batch(session, "batch-partial")
+            self.assertEqual(batch["cancel_requested_at"], batch["completed_at"])
+            self.assertEqual(batch["cancellation_source"], "user")
+            members = await crud.list_backtest_batch_members(session, "batch-partial")
+            self.assertEqual([member["status"] for member in members], ["succeeded", "cancelled"])
+            self.assertEqual(members[0]["metrics"], {"total_return_pct": 2.5})
+            self.assertEqual(members[1]["cancellation_source"], "batch")
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"], []
+            )
+            self.assertEqual(
+                await self._control(
+                    session, batch_id="batch-partial", command="cancel", command_id="cancel"
+                ),
+                accepted,
+            )
+            events = await crud.list_backtest_batch_events(session, "batch-partial")
+            self.assertEqual(
+                [event["event_type"] for event in events],
+                ["accepted", "started", "pause", "cancel"],
+            )
+
+    async def test_cancel_claim_race_and_restart_never_retries_member(self) -> None:
+        now = datetime(2026, 9, 26, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            await crud.create_backtest_batch(session, self._payload("batch-race", "only"))
+
+        async def claim():
+            async with self.sessions() as session:
+                return await backtest_execution.claim(
+                    session, run_id="only", owner_token="owner", started_at=now
+                )
+
+        async def cancel():
+            async with self.sessions() as session:
+                return await self._control(
+                    session, batch_id="batch-race", command="cancel", command_id="cancel-race"
+                )
+
+        claimed, accepted = await asyncio.wait_for(asyncio.gather(claim(), cancel()), timeout=20)
+        async with self.sessions() as session:
+            self.assertEqual(accepted["status"], "cancelling" if claimed else "cancelled")
+            self.assertEqual(
+                (await self._batch(session, "batch-race"))["status"], accepted["status"]
+            )
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"], []
+            )
+            if claimed:
+                self.assertEqual((await backtest_execution.read_slot(session))["run_id"], "only")
+                self.assertFalse(
+                    await backtest_execution.settle(
+                        session,
+                        run_id="only",
+                        owner_token="owner",
+                        terminal={
+                            "status": "failed",
+                            "completed_at": now,
+                            "error_code": "late_result",
+                            "error_message": "late",
+                        },
+                    )
+                )
+                await session.execute(text("""UPDATE backtest_execution_slot
+                    SET run_id=NULL, owner_token=NULL WHERE slot_id=1"""))
+                await session.commit()
+                self.assertEqual(
+                    await backtest_execution.reconcile(
+                        session,
+                        completed_at=now,
+                        error_code="worker_interrupted",
+                        error_message="Interrupted",
+                    ),
+                    1,
+                )
+                self.assertEqual(
+                    await backtest_execution.reconcile(
+                        session,
+                        completed_at=now,
+                        error_code="worker_interrupted",
+                        error_message="Interrupted",
+                    ),
+                    0,
+                )
+            self.assertEqual((await self._batch(session, "batch-race"))["status"], "cancelled")
+            self.assertEqual(
+                (await crud.list_backtest_batch_members(session, "batch-race"))[0]["status"],
+                "cancelled",
+            )
+            self.assertFalse(
+                await backtest_execution.claim(
+                    session, run_id="only", owner_token="retry", started_at=now
+                )
+            )
+            events = await crud.list_backtest_batch_events(session, "batch-race")
+            self.assertEqual([event["event_type"] for event in events].count("cancel"), 1)
+
+    async def test_concurrent_same_id_cancel_has_one_event_and_one_receipt(self) -> None:
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            await crud.create_backtest_batch(session, self._payload("batch-retry", "only"))
+
+        async def cancel():
+            async with self.sessions() as session:
+                return await self._control(
+                    session, batch_id="batch-retry", command="cancel", command_id="same-id"
+                )
+
+        first, second = await asyncio.wait_for(asyncio.gather(cancel(), cancel()), timeout=20)
+        self.assertEqual(first, second)
+        self.assertEqual((first["status"], first["lifecycle_revision"]), ("cancelled", 1))
+        async with self.sessions() as session:
+            events = await crud.list_backtest_batch_events(session, "batch-retry")
+            self.assertEqual([event["event_type"] for event in events], ["accepted", "cancel"])
+            receipts = await session.scalar(text("SELECT COUNT(*) FROM backtest_batch_commands"))
+            self.assertEqual(receipts, 1)
+
+    async def test_cancel_receipt_failure_rolls_back_members_and_event(self) -> None:
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            await crud.create_backtest_batch(session, self._payload("batch-rollback", "only"))
+            await session.execute(text("""CREATE FUNCTION reject_cancel_receipt() RETURNS trigger
+                LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject receipt'; END $$"""))
+            await session.execute(text("""CREATE TRIGGER reject_cancel_receipt
+                BEFORE INSERT ON backtest_batch_commands FOR EACH ROW
+                WHEN (NEW.command = 'cancel') EXECUTE FUNCTION reject_cancel_receipt()"""))
+            await session.commit()
+            with self.assertRaises(Exception) as rejected:
+                await self._control(
+                    session, batch_id="batch-rollback", command="cancel", command_id="reject"
+                )
+            self.assertIn("reject receipt", str(rejected.exception))
+            batch = await self._batch(session, "batch-rollback")
+            self.assertEqual((batch["status"], batch["lifecycle_revision"]), ("queued", 0))
+            self.assertIsNone(batch["cancel_requested_at"])
+            self.assertEqual(
+                (await crud.list_backtest_batch_members(session, "batch-rollback"))[0]["status"],
+                "queued",
+            )
+            self.assertEqual(
+                len(await crud.list_backtest_batch_events(session, "batch-rollback")), 1
+            )
+            self.assertEqual(
+                len((await backtest_execution.read_queue_state(session))["queued_entries"]), 1
+            )
+
     async def test_mixed_preview_retry_and_fresh_workspace_read(self) -> None:
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
         database = make_url(os.environ["BACKTEST_BATCH_TEST_DATABASE_URL"])
         os.environ.update(
             TIMESCALEDB_USER=database.username or "",
@@ -590,6 +793,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(observed["batch_count"], 1)
             self.assertEqual(observed["member_count"], 2)
             self.assertEqual(observed["event_revisions"], [0])
+            self.assertEqual(observed["pause_status"], "paused")
+            self.assertEqual(observed["cancel_status"], "cancelled")
+            self.assertEqual(observed["cancel_retry"], observed["cancel_response"])
+            self.assertEqual(observed["cancelled_member_count"], 2)
+            self.assertEqual(observed["cancel_events"], ["accepted", "pause", "cancel"])
             print(
                 f"persisted mixed preview: batch={observed['first_batch_id']} "
                 f"members={observed['member_ids']} ordinals={observed['ordinals']}"
@@ -651,6 +859,19 @@ with TestClient(app()) as workspace:
     members = workspace.get(f'/backtests/batches/{first_batch_id}/members').json()
     events = workspace.get(f'/backtests/batches/{first_batch_id}/events').json()
     assert all(isinstance(value, list) for value in (batches, members, events))
+    pause = workspace.post(f'/backtests/batches/{first_batch_id}/pause',
+                           json={'command_id': str(uuid4())})
+    assert pause.status_code == 200, pause.text
+    cancel_id = str(uuid4())
+    cancel = workspace.post(f'/backtests/batches/{first_batch_id}/cancel',
+                            json={'command_id': cancel_id})
+    retry = workspace.post(f'/backtests/batches/{first_batch_id}/cancel',
+                           json={'command_id': cancel_id})
+    assert cancel.status_code == retry.status_code == 200, (cancel.text, retry.text)
+    assert cancel.json()['command_id'] == cancel_id
+    cancelled_detail = workspace.get(f'/backtests/batches/{first_batch_id}').json()
+    cancelled_members = workspace.get(f'/backtests/batches/{first_batch_id}/members').json()
+    cancelled_events = workspace.get(f'/backtests/batches/{first_batch_id}/events').json()
     print(json.dumps({
         'raw': preview['raw_count'], 'ready': preview['ready_count'],
         'excluded': preview['excluded_count'],
@@ -662,5 +883,10 @@ with TestClient(app()) as workspace:
         'requests_match_preview': [member['request'] for member in members]
             == [row['request'] for row in ready],
         'event_revisions': [event['revision'] for event in events],
+        'pause_status': pause.json()['status'], 'cancel_status': cancelled_detail['status'],
+        'cancel_response': cancel.json(), 'cancel_retry': retry.json(),
+        'cancelled_member_count': sum(member['status'] == 'cancelled'
+                                      for member in cancelled_members),
+        'cancel_events': [event['event_type'] for event in cancelled_events],
     }))
 """

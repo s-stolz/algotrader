@@ -47,6 +47,8 @@ TimescaleDB database.
   no-op Pause/Resume retries.
 - `migrations/V014__backtest_run_cancellation.sql`: forward-only run cancellation
   states and normalized request time, source, and reason; earlier history stays intact.
+- `migrations/V015__backtest_batch_cancellation.sql`: batch-level cancellation
+  acceptance time and provenance, and durable Cancel Batch command receipts.
 
 ## Contracts
 
@@ -69,6 +71,8 @@ TimescaleDB database.
   eligible batch. Claim consumes the head under the slot lock; settlement or
   restart reconciliation appends a remaining batch at the tail. Migration seeds
   preexisting queued work in submission-time/identity order.
+- `V015` records nullable batch cancellation acceptance time, source, and reason
+  without changing prior batch history, and permits `cancel` command receipts.
 - `V007` adds nullable `backtest_runs.replay_descriptor` without changing prior
   successful rows or backfilling historical data.
 - `V008` adds nullable `batch_id`/`member_ordinal` to runs, preserving legacy

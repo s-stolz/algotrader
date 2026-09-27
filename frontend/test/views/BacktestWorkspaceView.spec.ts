@@ -4,7 +4,7 @@ import { NDataTable, NSelect } from 'naive-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  cancelBacktestRun, deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
+  cancelBacktestRun, controlBacktestBatch, deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
   fetchBacktestFills, fetchBacktestQueue, getBacktestBatch, getBacktestRun, listBacktestBatchEvents,
   listBacktestBatchMembers, listBacktestBatches, listBacktestRuns,
 } from '@/api/backtesterClient';
@@ -17,6 +17,7 @@ const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
   cancelBacktestRun: vi.fn(),
+  controlBacktestBatch: vi.fn(),
   deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   fetchBacktestEquityCurve: vi.fn(),
@@ -139,6 +140,7 @@ describe('production Backtest Workspace', () => {
     vi.mocked(listBacktestBatchEvents).mockReset();
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(cancelBacktestRun).mockReset();
+    vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
     vi.mocked(fetchBacktestEquityCurve).mockReset();
@@ -718,6 +720,36 @@ describe('production Backtest Workspace', () => {
     expect(wrapper.find('[data-testid="workspace-cancel-member-1"]').attributes('disabled'))
       .toBeUndefined();
     expect(wrapper.find('[data-testid="workspace-batch-members"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('refreshes combined history and queue health after cancelling an entire Batch', async () => {
+    const queued = { ...batch('whole-batch', 2), status: 'queued' as const,
+      completed_at_ms: null, settled_count: 0, executed_count: 0,
+      outcome_counts: { queued: 2, running: 0, cancelling: 0, succeeded: 0,
+        failed: 0, cancelled: 0 } };
+    const cancelled = { ...queued, status: 'cancelled' as const,
+      completed_at_ms: 1_780_922_100_000, settled_count: 2,
+      cancel_requested_at_ms: 1_780_922_100_000,
+      outcome_counts: { queued: 0, running: 0, cancelling: 0, succeeded: 0,
+        failed: 0, cancelled: 2 } };
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValueOnce([queued]).mockResolvedValue([cancelled]);
+    vi.mocked(getBacktestBatch).mockResolvedValueOnce(queued).mockResolvedValue(cancelled);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(controlBacktestBatch).mockResolvedValue({ batch_id: 'whole-batch',
+      command_id: 'cancel-command', status: 'cancelled', lifecycle_revision: 2 });
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-batch-whole-batch"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-cancel-batch"]').trigger('click');
+    await flushPromises();
+    expect(controlBacktestBatch).toHaveBeenCalledWith('whole-batch', 'cancel', expect.any(String));
+    expect(listBacktestBatches).toHaveBeenCalledTimes(2);
+    expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="workspace-batch-whole-batch"]').text()).toContain('cancelled');
     wrapper.unmount();
   });
 

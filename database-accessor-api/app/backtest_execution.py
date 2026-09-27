@@ -347,11 +347,61 @@ def _control_target(policy: Mapping[str, Any], status: str, active: bool) -> str
     return policy["active_status"] if active else policy["idle_status"]
 
 
+def _command_result(
+    batch_id: str, command: str, command_id: str, status: str, revision: int
+) -> dict:
+    result = {"batch_id": batch_id, "status": status, "lifecycle_revision": revision}
+    if command == "cancel":
+        result["command_id"] = command_id
+    return result
+
+
+async def _apply_batch_cancellation(
+    session, batch_id: str, command: str, prior_status: str, next_status: str, occurred_at
+) -> None:
+    if command != "cancel" or next_status == prior_status:
+        return
+    await session.execute(
+        update(backtest_runs)
+        .where(backtest_runs.c.batch_id == batch_id, backtest_runs.c.status == "queued")
+        .values(
+            status="cancelled",
+            cancel_requested_at=occurred_at,
+            cancellation_source="batch",
+            cancellation_reason="batch_cancel_requested",
+            completed_at=occurred_at,
+        )
+    )
+    await session.execute(
+        update(backtest_runs)
+        .where(backtest_runs.c.batch_id == batch_id, backtest_runs.c.status == "running")
+        .values(
+            status="cancelling",
+            cancel_requested_at=occurred_at,
+            cancellation_source="batch",
+            cancellation_reason="batch_cancel_requested",
+        )
+    )
+
+
+def _command_timestamps(command: str, next_status: str, occurred_at) -> dict:
+    if command != "cancel":
+        return {}
+    timestamps = {
+        "cancel_requested_at": occurred_at,
+        "cancellation_source": "user",
+        "cancellation_reason": "user_requested",
+    }
+    if next_status == "cancelled":
+        timestamps["completed_at"] = occurred_at
+    return timestamps
+
+
 async def control_batch(
     session, *, batch_id: str, command: str, command_id: str, policy: Mapping[str, Any]
 ) -> dict | None:
     """Serialize a control command with claims and settlement at the slot boundary."""
-    if command not in {"pause", "resume"}:
+    if command not in {"pause", "resume", "cancel"}:
         raise ValueError("Unknown batch command")
     try:
         slot = (
@@ -387,11 +437,9 @@ async def control_batch(
             await session.rollback()
             if prior.command != command:
                 raise BatchCommandConflictError("Command identity belongs to another action")
-            return {
-                "batch_id": batch_id,
-                "status": prior.status,
-                "lifecycle_revision": prior.lifecycle_revision,
-            }
+            return _command_result(
+                batch_id, command, command_id, prior.status, prior.lifecycle_revision
+            )
         active = await _active_member_matches(session, slot.run_id, batch_id)
         next_status = _control_target(policy, batch.status, active)
         if next_status is None:
@@ -406,9 +454,19 @@ async def control_batch(
         elif next_status != batch.status and not active:
             await session.execute(insert(backtest_queue_turns).values(batch_id=batch_id))
         occurred_at = (await session.execute(select(func.now()))).scalar_one()
+        await _apply_batch_cancellation(
+            session, batch_id, command, batch.status, next_status, occurred_at
+        )
         if next_status != batch.status:
             await _transition_batch(
-                session, batch_id, next_status, command, occurred_at, None, command_id=command_id
+                session,
+                batch_id,
+                next_status,
+                command,
+                occurred_at,
+                None,
+                command_id=command_id,
+                **_command_timestamps(command, next_status, occurred_at),
             )
         await session.execute(
             insert(backtest_batch_commands).values(
@@ -421,11 +479,7 @@ async def control_batch(
             )
         )
         await session.commit()
-        return {
-            "batch_id": batch_id,
-            "status": next_status,
-            "lifecycle_revision": revision,
-        }
+        return _command_result(batch_id, command, command_id, next_status, revision)
     except Exception:
         await session.rollback()
         raise

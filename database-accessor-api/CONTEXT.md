@@ -103,6 +103,13 @@ stored in TimescaleDB.
   A command receipt also preserves no-op command identity without incrementing
   revision or appending an event. Accepted revision-zero and pre-V012 events have
   a null prior status.
+  Cancel Batch uses the same slot and batch locks. It removes the batch turn,
+  cancels queued members, marks active work cancelling, and records acceptance
+  time/provenance and one revisioned command event in a single transaction.
+  An idle batch becomes cancelled in that transaction. An active batch remains
+  cancelling with its slot held until verified child exit and fenced settlement
+  or startup reconciliation. Prior terminal rows and artifacts are untouched;
+  command receipts make same-ID retries stable across later settlement.
   Successful settlement requires a validated Equity Replay descriptor; failed
   settlement rejects replay metadata and other result artifacts.
   Faults remain separate from durable run history. Reconciliation is conditional

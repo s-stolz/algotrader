@@ -137,8 +137,9 @@ export async function listBacktestBatchEvents(batchId: string): Promise<Backtest
 }
 
 export async function controlBacktestBatch(
-  batchId: string, command: 'pause' | 'resume', commandId: string,
-): Promise<{ batch_id: string; status: BacktestBatchStatus; lifecycle_revision: number }> {
+  batchId: string, command: 'pause' | 'resume' | 'cancel', commandId: string,
+): Promise<{ batch_id: string; status: BacktestBatchStatus; lifecycle_revision: number;
+  command_id?: string }> {
   const payload = await parseJsonResponse(
     await fetch(`${BACKTESTS_BASE_URL}/batches/${encodeURIComponent(batchId)}/${command}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -150,10 +151,12 @@ export async function controlBacktestBatch(
       !('status' in payload) || typeof payload.status !== 'string' ||
       !BACKTEST_BATCH_STATUSES.includes(payload.status as BacktestBatchStatus) ||
       !('lifecycle_revision' in payload) ||
-      !Number.isInteger(payload.lifecycle_revision)) {
+      !Number.isInteger(payload.lifecycle_revision) ||
+      (command === 'cancel' && (!('command_id' in payload) || payload.command_id !== commandId))) {
     throw new Error('Invalid Backtest Batch command response');
   }
-  return payload as { batch_id: string; status: BacktestBatchStatus; lifecycle_revision: number };
+  return payload as { batch_id: string; status: BacktestBatchStatus; lifecycle_revision: number;
+    command_id?: string };
 }
 
 export async function previewParameterSweep(request: SweepPreviewRequest): Promise<SweepPreview> {

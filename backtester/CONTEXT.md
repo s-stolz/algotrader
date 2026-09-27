@@ -188,6 +188,13 @@ Standalone Python backtesting module for historical candle simulation.
   and restores fair eligibility. The backtester supplies legal/effective state
   policy to the accessor primitive, which applies it under a transaction lock.
   Reused command IDs return their original result.
+- `POST /backtests/batches/{batch_id}/cancel` accepts queued, running, pausing,
+  and paused batches. It returns command identity, accepted status, and revision;
+  repeated identities retain their original result. Batch detail exposes
+  cancellation acceptance time and provenance. Queued members cancel at
+  acceptance, active work uses the existing supervised Cancel Run cleanup, and
+  prior terminal results remain. A cancelling batch is unsettled until the
+  active child exits and fenced persistence completes.
 - Run list/detail responses include nullable `batch_id` and `member_ordinal`;
   run list accepts `membership=standalone|batch` and optional `batch_id`, while
   the unfiltered read still returns every run. The worker claims either a

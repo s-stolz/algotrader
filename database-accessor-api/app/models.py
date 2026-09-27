@@ -55,6 +55,9 @@ backtest_batches = Table(
     Column("accepted_at", TIMESTAMP(timezone=True), nullable=False),
     Column("started_at", TIMESTAMP(timezone=True), nullable=True),
     Column("completed_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("cancel_requested_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("cancellation_source", String(32), nullable=True),
+    Column("cancellation_reason", Text, nullable=True),
     Column("lifecycle_revision", Integer, nullable=False),
     Column("definition_schema_version", Integer, nullable=False),
     Column("accepted_definition", json_document, nullable=False),
@@ -63,6 +66,13 @@ backtest_batches = Table(
     Column("member_count", Integer, nullable=False),
     Column("excluded_count", Integer, nullable=False),
     CheckConstraint("raw_count = member_count + excluded_count", name="batch_counts_check"),
+    CheckConstraint(
+        "(cancel_requested_at IS NULL AND cancellation_source IS NULL "
+        "AND cancellation_reason IS NULL) OR "
+        "(cancel_requested_at IS NOT NULL AND cancellation_source IS NOT NULL "
+        "AND cancellation_reason IS NOT NULL)",
+        name="backtest_batch_cancellation_check",
+    ),
 )
 
 backtest_runs = Table(
@@ -139,7 +149,9 @@ backtest_batch_commands = Table(
     Column("lifecycle_revision", Integer, nullable=False),
     Column("occurred_at", TIMESTAMP(timezone=True), nullable=False),
     PrimaryKeyConstraint("batch_id", "command_id"),
-    CheckConstraint("command IN ('pause', 'resume')", name="backtest_batch_command_type_check"),
+    CheckConstraint(
+        "command IN ('pause', 'resume', 'cancel')", name="backtest_batch_command_type_check"
+    ),
 )
 
 backtest_execution_slot = Table(

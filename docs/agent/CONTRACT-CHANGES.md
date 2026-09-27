@@ -28,6 +28,7 @@ contexts and tests to inspect.
 | Global Backtest Batch turns and automatic lifecycle | `backtester` worker, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client` | Root and producer/consumer contexts, worker recovery guide | Real storage claim/settlement/restart and migration tests, public projections, frontend polling |
 | Individual Backtest Run cancellation | `backtester` worker, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client` | Root and producer/consumer contexts, worker recovery guide | Storage races, child-tree exit, restart reconciliation, public API and Workspace tests |
 | Pause and Resume Batch commands | `backtester`, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, batch worker | Root and producer/consumer contexts | Public command tests, live claim/settlement/restart races, frontend control tests, migration gate |
+| Cancel Batch command and lifecycle | `backtester`, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, batch worker | Root and producer/consumer contexts, worker recovery guide | Public command tests, live claim/settlement/restart and rollback races, frontend control tests, migration gate |
 
 ## Update Rule
 

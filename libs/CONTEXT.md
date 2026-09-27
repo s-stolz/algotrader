@@ -55,6 +55,8 @@ Shared Python packages used by multiple services.
   backtester owns acceptance and lifecycle policy.
 - Both clients pass Pause/Resume batch commands with caller-generated command
   identity through to the accessor and return the durable status/revision result.
+- Both clients also pass Cancel Batch with the caller-generated command identity
+  and return its accepted status, revision, and command identity unchanged.
 - Execution-log methods pass ordered normalized fill/trade records through
   unchanged, including current result schema version 3 closed-trade direction
   and planned protective exit prices; deletion accepts the

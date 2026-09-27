@@ -64,6 +64,21 @@ describe('backtester API client', () => {
       expect.objectContaining({ method: 'POST', body: '{"command_id":"command-1"}' }));
   });
 
+  it('accepts Cancel Batch only with the matching command identity', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ batch_id: 'batch-1', command_id: 'cancel-1',
+        status: 'cancelling', lifecycle_revision: 4 }))
+      .mockResolvedValueOnce(jsonResponse({ batch_id: 'batch-1', command_id: 'other',
+        status: 'cancelled', lifecycle_revision: 5 }));
+    await expect(controlBacktestBatch('batch-1', 'cancel', 'cancel-1')).resolves.toEqual({
+      batch_id: 'batch-1', command_id: 'cancel-1', status: 'cancelling', lifecycle_revision: 4,
+    });
+    await expect(controlBacktestBatch('batch-1', 'cancel', 'cancel-1'))
+      .rejects.toThrow('Invalid Backtest Batch command response');
+    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/batches/batch-1/cancel',
+      expect.objectContaining({ method: 'POST', body: '{"command_id":"cancel-1"}' }));
+  });
+
   it('validates live strategy metadata and accepted submission responses', async () => {
     const catalog = [{
       strategy_id: 'sma_crossover', strategy_version: 1, display_name: 'SMA crossover',

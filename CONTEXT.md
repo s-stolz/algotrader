@@ -194,6 +194,12 @@ to a chart UI, and supports standalone backtesting.
   slot. The acceptance timestamp, source, and reason remain durable. Individual
   member acceptance advances its batch lifecycle revision and appends a member
   command event even when the batch control state is unchanged.
+- Cancel Batch accepts a command identity from queued, running, pausing, or
+  paused. One slot-serialized transaction removes its turn, cancels queued
+  members, marks active work cancelling, and records batch acceptance time and
+  provenance. Earlier terminal artifacts remain; the batch becomes cancelled
+  only after all members settle. Retried command identities return their original
+  status and revision without another event.
 - The backtester-owned queue snapshot projects the durable slot and global
   queue with independent worker heartbeat telemetry. Its advisory positions and
   availability never change run lifecycle or release a held slot.

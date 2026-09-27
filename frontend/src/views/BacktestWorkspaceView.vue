@@ -97,7 +97,7 @@
         :bordered="false"
         size="small"
       />
-      <BacktestBatches :batch-id="selectedBatchId" @members="receiveMembers" />
+      <BacktestBatches :batch-id="selectedBatchId" @members="receiveMembers" @cancelled="refreshWorkspace" />
     </section>
 
     <section class="current-backtest" aria-label="Current Backtest">

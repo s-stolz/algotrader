@@ -177,6 +177,24 @@ VALUES ('batch-1', 'pause-1', 'pause', 'paused', 1, now());
             check=False,
         )
         self.assertNotEqual(duplicate.returncode, 0)
+        cancellation_migration = (
+            migrate_db.MIGRATIONS_DIR / "V015__backtest_batch_cancellation.sql"
+        ).read_text()
+        self._run_psql(f'SET search_path TO "{self.schema}";\n{cancellation_migration}')
+        self._run_psql(f"""SET search_path TO "{self.schema}";
+UPDATE backtest_batches
+   SET cancel_requested_at=now(), cancellation_source='user',
+       cancellation_reason='user_requested'
+ WHERE batch_id='batch-1';
+INSERT INTO backtest_batch_commands
+    (batch_id, command_id, command, status, lifecycle_revision, occurred_at)
+VALUES ('batch-1', 'cancel-1', 'cancel', 'cancelled', 2, now());
+""")
+        receipt = self._run_psql(
+            f"SELECT command || ':' || status FROM \"{self.schema}\".backtest_batch_commands "
+            "WHERE command_id='cancel-1';"
+        )
+        self.assertEqual(receipt.stdout.strip(), "cancel:cancelled")
 
     def _column_state(self) -> str:
         completed = self._run_psql(f"""

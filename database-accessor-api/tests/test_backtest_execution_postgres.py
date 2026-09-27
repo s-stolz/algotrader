@@ -92,6 +92,9 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
         await self.db.execute(
             (ROOT / "timescaledb-init/migrations/V014__backtest_run_cancellation.sql").read_text()
         )
+        await self.db.execute(
+            (ROOT / "timescaledb-init/migrations/V015__backtest_batch_cancellation.sql").read_text()
+        )
 
     async def test_cancel_and_completion_are_serialized_at_the_slot(self) -> None:
         await self._insert_run("active", "queued", "2026-06-08T12:30:00Z")

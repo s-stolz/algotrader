@@ -242,7 +242,7 @@ async def list_backtest_batch_events(batch_id: str, db: AsyncSession = Depends(g
 @app.post("/backtest-batches/{batch_id}/{command}", response_model=BacktestBatchCommandOut)
 async def control_backtest_batch(
     batch_id: str,
-    command: Literal["pause", "resume"],
+    command: Literal["pause", "resume", "cancel"],
     request: BacktestBatchCommandIn,
     db: AsyncSession = Depends(get_db),
 ):

@@ -90,6 +90,42 @@ describe('accepted batch inspection', () => {
     wrapper.unmount();
   });
 
+  it('cancels an executing batch and keeps its active member visibly unsettled', async () => {
+    const running = { ...batch, status: 'running' as const, active_member_ordinal: 0,
+      outcome_counts: { ...batch.outcome_counts, queued: 1, running: 1 } };
+    const cancelling = { ...running, status: 'cancelling' as const,
+      cancel_requested_at_ms: batch.accepted_at_ms + 1, cancellation_source: 'user',
+      cancellation_reason: 'user_requested', lifecycle_revision: 2,
+      next_member_ordinal: null,
+      outcome_counts: { ...batch.outcome_counts, queued: 0, running: 0, cancelling: 1, cancelled: 1 },
+      settled_count: 1 };
+    vi.mocked(getBacktestBatch).mockResolvedValueOnce(running).mockResolvedValue(cancelling);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValueOnce([
+      { ...member(0), status: 'running' }, member(1),
+    ]).mockResolvedValue([
+      { ...member(0), status: 'cancelling', cancel_requested_at_ms: batch.accepted_at_ms + 1,
+        cancellation_source: 'batch', cancellation_reason: 'batch_cancel_requested' },
+      { ...member(1), status: 'cancelled', cancel_requested_at_ms: batch.accepted_at_ms + 1,
+        completed_at_ms: batch.accepted_at_ms + 1,
+        cancellation_source: 'batch', cancellation_reason: 'batch_cancel_requested' },
+    ]);
+    vi.mocked(controlBacktestBatch).mockImplementation(async (_id, _command, commandId) => ({
+      batch_id: 'batch-1', command_id: commandId, status: 'cancelling', lifecycle_revision: 2,
+    }));
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-cancel-batch"]').trigger('click');
+    await flushPromises();
+    expect(controlBacktestBatch).toHaveBeenCalledWith('batch-1', 'cancel', expect.any(String));
+    expect(wrapper.text()).toContain('1 / 2 settled');
+    expect(wrapper.text()).toContain('0 executed');
+    expect(wrapper.text()).toContain('capacity remains held until cleanup commits');
+    expect(wrapper.text()).toContain('Cancellation accepted:');
+    expect(wrapper.find('[data-testid="workspace-cancel-batch"]').exists()).toBe(false);
+    expect(wrapper.emitted('cancelled')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
   it('shows draining state and retries a failed command with the same identity', async () => {
     const draining = { ...batch, status: 'pausing' as const, lifecycle_revision: 2,
       active_member_ordinal: 0 };
