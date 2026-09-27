@@ -267,6 +267,7 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
         self.assertEqual((event["prior_status"], event["status"]), ("queued", "running"))
         self.assertEqual(event["trigger_run_id"], "member-0")
         self.assertEqual(event["occurred_at_ms"], 1790380801000)
+        self.assertNotIn("occurred_at", event)
 
     def test_rejection_creates_no_batch_and_identity_conflict(self) -> None:
         with patch.dict("os.environ", {"BACKTESTER_BATCH_ACCEPTANCE_ENABLED": "1"}):

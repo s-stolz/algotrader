@@ -151,7 +151,10 @@ class BacktestBatchService:
     def events(self, batch_id: str) -> list[dict[str, Any]]:
         return self._with_client(
             lambda client: [
-                {**event, "occurred_at_ms": _timestamp_ms(event["occurred_at"])}
+                {
+                    **{key: value for key, value in event.items() if key != "occurred_at"},
+                    "occurred_at_ms": _timestamp_ms(event["occurred_at"]),
+                }
                 for event in client.list_backtest_batch_events(batch_id)
             ]
         )
