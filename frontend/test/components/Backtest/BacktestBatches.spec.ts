@@ -1,12 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers,
+  controlBacktestBatch, getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers,
 } from '@/api/backtesterClient';
 import { isBacktestBatch, type BacktestBatch, type BacktestRun } from '@/types/backtesterContracts';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
+  controlBacktestBatch: vi.fn(),
   getBacktestBatch: vi.fn(), listBacktestBatchEvents: vi.fn(),
   listBacktestBatchMembers: vi.fn(),
 }));
@@ -57,11 +58,82 @@ describe('accepted batch inspection', () => {
   });
 
   beforeEach(() => {
+    vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(getBacktestBatch).mockReset().mockResolvedValue(batch);
     vi.mocked(listBacktestBatchMembers).mockReset().mockResolvedValue([member(0), member(1)]);
     vi.mocked(listBacktestBatchEvents).mockReset().mockResolvedValue([{ batch_id: 'batch-1',
       revision: 0, event_type: 'accepted', status: 'queued',
       prior_status: null, occurred_at_ms: batch.accepted_at_ms, trigger_run_id: null, reason: null }]);
+  });
+
+  it('offers legal pause and resume controls and refreshes after command acceptance', async () => {
+    vi.mocked(controlBacktestBatch).mockResolvedValueOnce({ batch_id: 'batch-1',
+      status: 'paused', lifecycle_revision: 1 });
+    vi.mocked(getBacktestBatch).mockResolvedValueOnce(batch)
+      .mockResolvedValue({ ...batch, status: 'paused', lifecycle_revision: 1 });
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    await wrapper.get('button').trigger('click');
+    await flushPromises();
+    expect(controlBacktestBatch).toHaveBeenCalledWith('batch-1', 'pause', expect.any(String));
+    expect(wrapper.text()).toContain('Batch paused.');
+    expect(wrapper.get('button').text()).toBe('Resume Batch');
+    expect(wrapper.text()).not.toContain('0%');
+    wrapper.unmount();
+  });
+
+  it('shows draining state and retries a failed command with the same identity', async () => {
+    const draining = { ...batch, status: 'pausing' as const, lifecycle_revision: 2,
+      active_member_ordinal: 0 };
+    vi.mocked(getBacktestBatch).mockResolvedValue(draining);
+    vi.mocked(controlBacktestBatch).mockRejectedValueOnce(new Error('Connection lost'))
+      .mockResolvedValueOnce({ batch_id: 'batch-1', status: 'running', lifecycle_revision: 3 });
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Pausing after the active member finishes.');
+    expect(wrapper.get('button').text()).toBe('Resume Batch');
+    expect(wrapper.get('p[role="status"]').text()).not.toContain('%');
+    await wrapper.get('button').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('Connection lost');
+    await wrapper.get('button').trigger('click');
+    await flushPromises();
+    const calls = vi.mocked(controlBacktestBatch).mock.calls;
+    expect(calls[0][2]).toBe(calls[1][2]);
+    wrapper.unmount();
+  });
+
+  it('uses a new Pause identity after a lost response, observed pause, and Resume', async () => {
+    vi.mocked(getBacktestBatch).mockResolvedValueOnce(batch)
+      .mockResolvedValueOnce({ ...batch, status: 'paused', lifecycle_revision: 1 })
+      .mockResolvedValueOnce({ ...batch, status: 'running', lifecycle_revision: 2 })
+      .mockResolvedValue({ ...batch, status: 'paused', lifecycle_revision: 3 });
+    vi.mocked(controlBacktestBatch)
+      .mockRejectedValueOnce(new Error('Pause response lost'))
+      .mockResolvedValueOnce({ batch_id: 'batch-1', status: 'running', lifecycle_revision: 2 })
+      .mockResolvedValueOnce({ batch_id: 'batch-1', status: 'paused', lifecycle_revision: 3 });
+
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    await wrapper.get('button').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('button').text()).toBe('Resume Batch');
+    expect(wrapper.text()).toContain('revision 1');
+
+    await wrapper.get('button').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('button').text()).toBe('Pause Batch');
+    expect(wrapper.text()).toContain('revision 2');
+
+    await wrapper.get('button').trigger('click');
+    await flushPromises();
+    const calls = vi.mocked(controlBacktestBatch).mock.calls;
+    expect(calls.map(([,, identity]) => identity)).toHaveLength(3);
+    expect(calls.map(([, command]) => command)).toEqual(['pause', 'resume', 'pause']);
+    expect(calls[2][2]).not.toBe(calls[0][2]);
+    expect(wrapper.text()).toContain('revision 3');
+    expect(wrapper.text()).toContain('Batch paused.');
+    wrapper.unmount();
   });
 
   it('shows one batch summary, saved definition, and actual ordered Ready members after reload', async () => {

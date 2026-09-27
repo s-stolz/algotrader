@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any, Mapping
+
 from app.models import (
+    backtest_batch_commands,
     backtest_batch_events,
     backtest_batches,
     backtest_closed_trades,
@@ -285,7 +288,8 @@ async def _transition_batch(
     status: str,
     event_type: str,
     occurred_at,
-    trigger_run_id: str,
+    trigger_run_id: str | None,
+    command_id: str | None = None,
     **timestamps,
 ) -> None:
     current = (
@@ -310,8 +314,150 @@ async def _transition_batch(
             status=status,
             occurred_at=occurred_at,
             trigger_run_id=trigger_run_id,
+            command_id=command_id,
         )
     )
+
+
+class BatchCommandConflictError(ValueError):
+    pass
+
+
+async def _active_member_matches(session, run_id: str | None, batch_id: str) -> bool:
+    if run_id is None:
+        return False
+    return (
+        await session.execute(
+            select(backtest_runs.c.run_id).where(
+                backtest_runs.c.run_id == run_id,
+                backtest_runs.c.batch_id == batch_id,
+                backtest_runs.c.status == "running",
+            )
+        )
+    ).first() is not None
+
+
+def _control_target(policy: Mapping[str, Any], status: str, active: bool) -> str | None:
+    if status in policy["effective_statuses"]:
+        return None
+    if status not in policy["accepted_statuses"]:
+        raise BatchCommandConflictError("Batch is no longer controllable")
+    return policy["active_status"] if active else policy["idle_status"]
+
+
+async def control_batch(
+    session, *, batch_id: str, command: str, command_id: str, policy: Mapping[str, Any]
+) -> dict | None:
+    """Serialize a control command with claims and settlement at the slot boundary."""
+    if command not in {"pause", "resume"}:
+        raise ValueError("Unknown batch command")
+    try:
+        slot = (
+            await session.execute(
+                select(backtest_execution_slot.c.run_id)
+                .where(backtest_execution_slot.c.slot_id == 1)
+                .with_for_update()
+            )
+        ).one()
+        batch = (
+            await session.execute(
+                select(backtest_batches.c.status, backtest_batches.c.lifecycle_revision)
+                .where(backtest_batches.c.batch_id == batch_id)
+                .with_for_update()
+            )
+        ).one_or_none()
+        if batch is None:
+            await session.rollback()
+            return None
+        prior = (
+            await session.execute(
+                select(
+                    backtest_batch_commands.c.command,
+                    backtest_batch_commands.c.status,
+                    backtest_batch_commands.c.lifecycle_revision,
+                ).where(
+                    backtest_batch_commands.c.batch_id == batch_id,
+                    backtest_batch_commands.c.command_id == command_id,
+                )
+            )
+        ).one_or_none()
+        if prior is not None:
+            await session.rollback()
+            if prior.command != command:
+                raise BatchCommandConflictError("Command identity belongs to another action")
+            return {
+                "batch_id": batch_id,
+                "status": prior.status,
+                "lifecycle_revision": prior.lifecycle_revision,
+            }
+        active = await _active_member_matches(session, slot.run_id, batch_id)
+        next_status = _control_target(policy, batch.status, active)
+        if next_status is None:
+            next_status = batch.status
+            revision = batch.lifecycle_revision
+        else:
+            revision = batch.lifecycle_revision + 1
+        if next_status != batch.status and policy["queue_action"] == "remove":
+            await session.execute(
+                delete(backtest_queue_turns).where(backtest_queue_turns.c.batch_id == batch_id)
+            )
+        elif next_status != batch.status and not active:
+            await session.execute(insert(backtest_queue_turns).values(batch_id=batch_id))
+        occurred_at = (await session.execute(select(func.now()))).scalar_one()
+        if next_status != batch.status:
+            await _transition_batch(
+                session, batch_id, next_status, command, occurred_at, None, command_id=command_id
+            )
+        await session.execute(
+            insert(backtest_batch_commands).values(
+                batch_id=batch_id,
+                command_id=command_id,
+                command=command,
+                status=next_status,
+                lifecycle_revision=revision,
+                occurred_at=occurred_at,
+            )
+        )
+        await session.commit()
+        return {
+            "batch_id": batch_id,
+            "status": next_status,
+            "lifecycle_revision": revision,
+        }
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def _advance_batch_after_member(session, batch_id: str, run_id: str, completed_at) -> None:
+    batch = (
+        await session.execute(
+            select(backtest_batches.c.status)
+            .where(backtest_batches.c.batch_id == batch_id)
+            .with_for_update()
+        )
+    ).one()
+    remaining = (
+        await session.execute(
+            select(backtest_runs.c.run_id)
+            .where(backtest_runs.c.batch_id == batch_id, backtest_runs.c.status == "queued")
+            .limit(1)
+        )
+    ).first()
+    if remaining is None:
+        await _transition_batch(
+            session,
+            batch_id,
+            "completed",
+            "completed",
+            completed_at,
+            run_id,
+            completed_at=completed_at,
+        )
+    elif batch.status == "pausing":
+        await _transition_batch(session, batch_id, "paused", "paused", completed_at, run_id)
+    elif batch.status in {"queued", "running"}:
+        await session.execute(insert(backtest_queue_turns).values(batch_id=batch_id))
 
 
 async def settle(session, *, run_id: str, owner_token: str, terminal: dict) -> bool:
@@ -371,28 +517,7 @@ async def settle(session, *, run_id: str, owner_token: str, terminal: dict) -> b
                 )
             )
         if batch_id is not None:
-            remaining = (
-                await session.execute(
-                    select(backtest_runs.c.run_id)
-                    .where(
-                        backtest_runs.c.batch_id == batch_id,
-                        backtest_runs.c.status == "queued",
-                    )
-                    .limit(1)
-                )
-            ).first()
-            if remaining is not None:
-                await session.execute(insert(backtest_queue_turns).values(batch_id=batch_id))
-            else:
-                await _transition_batch(
-                    session,
-                    batch_id,
-                    "completed",
-                    "completed",
-                    data["completed_at"],
-                    run_id,
-                    completed_at=data["completed_at"],
-                )
+            await _advance_batch_after_member(session, batch_id, run_id, data["completed_at"])
         await session.execute(
             update(backtest_execution_slot)
             .where(backtest_execution_slot.c.slot_id == 1)
@@ -443,28 +568,7 @@ async def reconcile(session, *, completed_at, error_code: str, error_message: st
             if run["batch_id"] is None:
                 continue
             batch_id = run["batch_id"]
-            remaining = (
-                await session.execute(
-                    select(backtest_runs.c.run_id)
-                    .where(
-                        backtest_runs.c.batch_id == batch_id,
-                        backtest_runs.c.status == "queued",
-                    )
-                    .limit(1)
-                )
-            ).first()
-            if remaining is not None:
-                await session.execute(insert(backtest_queue_turns).values(batch_id=batch_id))
-            else:
-                await _transition_batch(
-                    session,
-                    batch_id,
-                    "completed",
-                    "completed",
-                    completed_at,
-                    run["run_id"],
-                    completed_at=completed_at,
-                )
+            await _advance_batch_after_member(session, batch_id, run["run_id"], completed_at)
         await session.commit()
     except Exception:
         await session.rollback()

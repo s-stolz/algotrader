@@ -404,6 +404,7 @@ export interface BacktestBatchEvent {
   occurred_at_ms: number;
   trigger_run_id: string | null;
   reason: string | null;
+  command_id?: string | null;
 }
 
 function isBatchOutcomeCounts(value: unknown): value is BacktestBatch['outcome_counts'] {
@@ -476,6 +477,8 @@ export function isBacktestBatchEventArray(value: unknown): value is BacktestBatc
     isEpochMs(event.occurred_at_ms) &&
     (event.trigger_run_id === null || isNonEmptyString(event.trigger_run_id)) &&
     (event.reason === null || typeof event.reason === 'string') &&
+    (!('command_id' in event) || event.command_id === null ||
+      isNonEmptyString(event.command_id)) &&
     (index === 0 || (event.revision as number) > value[index - 1].revision));
 }
 

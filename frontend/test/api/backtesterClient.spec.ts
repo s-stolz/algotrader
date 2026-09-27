@@ -4,6 +4,7 @@ import queuedBatchQueue from '../fixtures/queuedBatchQueue.json';
 
 import {
   BacktestSubmissionError,
+  controlBacktestBatch,
   deleteBacktestRun,
   fetchStrategyCatalog,
   fetchSweepCapabilities,
@@ -29,6 +30,17 @@ const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
 describe('backtester API client', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('posts stable batch command identity and validates the revision', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({
+      batch_id: 'batch-1', status: 'pausing', lifecycle_revision: 2,
+    }));
+    await expect(controlBacktestBatch('batch-1', 'pause', 'command-1')).resolves.toEqual({
+      batch_id: 'batch-1', status: 'pausing', lifecycle_revision: 2,
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/batches/batch-1/pause',
+      expect.objectContaining({ method: 'POST', body: '{"command_id":"command-1"}' }));
   });
 
   it('validates live strategy metadata and accepted submission responses', async () => {

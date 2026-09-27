@@ -409,3 +409,28 @@ class BacktestBatchEventOut(BacktestContractModel):
     occurred_at: datetime
     reason: str | None = None
     trigger_run_id: str | None = None
+    command_id: str | None = None
+
+
+BatchControlStatus = Literal[
+    "queued", "running", "pausing", "paused", "cancelling", "completed", "cancelled"
+]
+
+
+class BacktestBatchControlPolicyIn(BacktestContractModel):
+    accepted_statuses: list[BatchControlStatus] = Field(min_length=1)
+    effective_statuses: list[BatchControlStatus] = Field(min_length=1)
+    active_status: BatchControlStatus
+    idle_status: BatchControlStatus
+    queue_action: Literal["remove", "append"]
+
+
+class BacktestBatchCommandIn(BacktestContractModel):
+    command_id: str = Field(min_length=1, max_length=36)
+    policy: BacktestBatchControlPolicyIn
+
+
+class BacktestBatchCommandOut(BacktestContractModel):
+    batch_id: str
+    status: str
+    lifecycle_revision: int

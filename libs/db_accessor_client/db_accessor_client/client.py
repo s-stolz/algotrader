@@ -197,6 +197,15 @@ class DatabaseAccessorClient(_BaseClient):
     def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/backtest-batches/{batch_id}/events")
 
+    def control_backtest_batch(
+        self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/backtest-batches/{batch_id}/{command}",
+            json={"command_id": command_id, "policy": policy},
+        )
+
     def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/backtests/{run_id}")
 
@@ -436,6 +445,15 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]:
         return await self._request("GET", f"/backtest-batches/{batch_id}/events")
+
+    async def control_backtest_batch(
+        self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/backtest-batches/{batch_id}/{command}",
+            json={"command_id": command_id, "policy": policy},
+        )
 
     async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/backtests/{run_id}")

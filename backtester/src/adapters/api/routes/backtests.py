@@ -20,6 +20,7 @@ from db_accessor_client import DatabaseAccessorClient, DatabaseAccessorClientErr
 from domain.enums import BacktestEngine, BacktestRunStatus
 from domain.types import BacktestRunQuery
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, Field
 from strategies.registry import (
     InvalidParameterCombinationError,
     InvalidStrategyParameterError,
@@ -207,6 +208,25 @@ def get_batch_events(
     except DatabaseAccessorClientError as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+
+
+class BatchCommandRequest(BaseModel):
+    command_id: str = Field(min_length=1, max_length=36)
+
+
+@router.post("/batches/{batch_id}/{command}")
+def control_batch(
+    batch_id: str,
+    command: Literal["pause", "resume"],
+    request: BatchCommandRequest,
+    service: BacktestBatchService = Depends(get_backtest_batch_service),
+) -> dict[str, Any]:
+    try:
+        return service.control(batch_id, command, request.command_id)
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code in {404, 409}:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
         raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
 
 

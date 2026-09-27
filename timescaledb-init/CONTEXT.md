@@ -42,6 +42,9 @@ TimescaleDB database.
 - `migrations/V012__backtest_batch_event_prior_status.sql`: nullable prior status
   for revisioned batch events; existing history remains intact and unknown prior
   states remain null.
+- `migrations/V013__backtest_batch_commands.sql`: nullable command identity on
+  batch events with a per-batch uniqueness guard and durable receipts for
+  no-op Pause/Resume retries.
 
 ## Contracts
 

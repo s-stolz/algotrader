@@ -6,6 +6,8 @@ from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_l
 from app import backtest_execution, crud, market_cache
 from app.database import get_db
 from app.schemas import (
+    BacktestBatchCommandIn,
+    BacktestBatchCommandOut,
     BacktestBatchCreateIn,
     BacktestBatchEventOut,
     BacktestBatchOut,
@@ -219,6 +221,28 @@ async def list_backtest_batch_events(batch_id: str, db: AsyncSession = Depends(g
     if await crud.get_backtest_batch(db, batch_id) is None:
         raise HTTPException(status_code=404, detail="Backtest batch not found")
     return await crud.list_backtest_batch_events(db, batch_id)
+
+
+@app.post("/backtest-batches/{batch_id}/{command}", response_model=BacktestBatchCommandOut)
+async def control_backtest_batch(
+    batch_id: str,
+    command: Literal["pause", "resume"],
+    request: BacktestBatchCommandIn,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await backtest_execution.control_batch(
+            db,
+            batch_id=batch_id,
+            command=command,
+            command_id=request.command_id,
+            policy=request.policy.model_dump(),
+        )
+    except backtest_execution.BatchCommandConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return result
 
 
 @app.get("/backtests/{run_id}", response_model=BacktestRunOut)

@@ -159,6 +159,24 @@ DELETE FROM "{self.schema}".backtest_runs WHERE run_id = 'member-1';
             f"FROM \"{self.schema}\".backtest_batch_events WHERE batch_id = 'batch-1';"
         )
         self.assertEqual(accepted.stdout.strip(), "accepted:queued:NULL")
+        command_migration = (
+            migrate_db.MIGRATIONS_DIR / "V013__backtest_batch_commands.sql"
+        ).read_text()
+        self._run_psql(f'SET search_path TO "{self.schema}";\n{command_migration}')
+        self._run_psql(f"""SET search_path TO "{self.schema}";
+INSERT INTO backtest_batch_commands
+    (batch_id, command_id, command, status, lifecycle_revision, occurred_at)
+VALUES ('batch-1', 'pause-1', 'pause', 'paused', 1, now());
+""")
+        duplicate = self._run_psql(
+            f"""SET search_path TO "{self.schema}";
+INSERT INTO backtest_batch_commands
+    (batch_id, command_id, command, status, lifecycle_revision, occurred_at)
+VALUES ('batch-1', 'pause-1', 'pause', 'paused', 1, now());
+""",
+            check=False,
+        )
+        self.assertNotEqual(duplicate.returncode, 0)
 
     def _column_state(self) -> str:
         completed = self._run_psql(f"""
@@ -187,13 +205,11 @@ ORDER BY column_name;
 
     def test_rejects_populated_directionless_table_and_rolls_back(self) -> None:
         self._run_psql(f"INSERT INTO \"{self.schema}\".backtest_runs VALUES ('legacy');")
-        self._run_psql(
-            f"""
+        self._run_psql(f"""
 INSERT INTO "{self.schema}".backtest_closed_trades VALUES (
     'legacy', 1, 'trade-1', 'EURUSD', 1.0, 1, 1.0, 2, 2.0, 1.0, 0.0, 'signal'
 );
-"""
-        )
+""")
 
         completed = self._apply_v005_and_v006()
 

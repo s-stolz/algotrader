@@ -25,6 +25,7 @@ contexts and tests to inspect.
 | Immutable Backtest Batch acceptance and membership | `backtester`, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, standalone worker | Root `CONTEXT.md`, all producer/consumer area contexts, ADR-0005/0006 | Backtester and accessor acceptance tests, shared client and frontend tests, live migration integration |
 | Backtest queue and worker telemetry | `backtester` worker and public API, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, local monitoring | Root `CONTEXT.md`, producer/consumer contexts, `config/CONTEXT.md`, worker recovery guide | Worker heartbeat and API projection tests, shared client and frontend polling tests, live migration and stack demo |
 | Global Backtest Batch turns and automatic lifecycle | `backtester` worker, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client` | Root and producer/consumer contexts, worker recovery guide | Real storage claim/settlement/restart and migration tests, public projections, frontend polling |
+| Pause and Resume Batch commands | `backtester`, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, batch worker | Root and producer/consumer contexts | Public command tests, live claim/settlement/restart races, frontend control tests, migration gate |
 
 ## Update Rule
 

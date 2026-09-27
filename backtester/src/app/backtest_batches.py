@@ -18,6 +18,27 @@ class BatchClient(Protocol):
     def get_backtest_batch(self, batch_id: str) -> Mapping[str, Any]: ...
     def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]: ...
     def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]: ...
+    def control_backtest_batch(
+        self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
+    ) -> Mapping[str, Any]: ...
+
+
+BATCH_CONTROL_POLICY: dict[str, dict[str, Any]] = {
+    "pause": {
+        "accepted_statuses": ["queued", "running"],
+        "effective_statuses": ["pausing", "paused"],
+        "active_status": "pausing",
+        "idle_status": "paused",
+        "queue_action": "remove",
+    },
+    "resume": {
+        "accepted_statuses": ["pausing", "paused"],
+        "effective_statuses": ["queued", "running"],
+        "active_status": "running",
+        "idle_status": "running",
+        "queue_action": "append",
+    },
+}
 
 
 class BacktestBatchService:
@@ -125,6 +146,19 @@ class BacktestBatchService:
                 {**event, "occurred_at_ms": _timestamp_ms(event["occurred_at"])}
                 for event in client.list_backtest_batch_events(batch_id)
             ]
+        )
+
+    def control(self, batch_id: str, command: str, command_id: str) -> dict[str, Any]:
+        if command not in BATCH_CONTROL_POLICY:
+            raise ValueError("Unknown batch command")
+        if not command_id or len(command_id) > 36:
+            raise ValueError("Invalid command identity")
+        return self._with_client(
+            lambda client: dict(
+                client.control_backtest_batch(
+                    batch_id, command, command_id, BATCH_CONTROL_POLICY[command]
+                )
+            )
         )
 
     @staticmethod

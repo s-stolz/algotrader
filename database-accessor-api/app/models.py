@@ -108,7 +108,22 @@ backtest_batch_events = Table(
     Column("occurred_at", TIMESTAMP(timezone=True), nullable=False),
     Column("reason", Text, nullable=True),
     Column("trigger_run_id", String(36), nullable=True),
+    Column("command_id", String(36), nullable=True),
     PrimaryKeyConstraint("batch_id", "revision"),
+    Index("uq_backtest_batch_command", "batch_id", "command_id", unique=True),
+)
+
+backtest_batch_commands = Table(
+    "backtest_batch_commands",
+    metadata,
+    Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=False),
+    Column("command_id", String(36), nullable=False),
+    Column("command", String(16), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("lifecycle_revision", Integer, nullable=False),
+    Column("occurred_at", TIMESTAMP(timezone=True), nullable=False),
+    PrimaryKeyConstraint("batch_id", "command_id"),
+    CheckConstraint("command IN ('pause', 'resume')", name="backtest_batch_command_type_check"),
 )
 
 backtest_execution_slot = Table(

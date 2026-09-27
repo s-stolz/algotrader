@@ -63,6 +63,20 @@ class BatchClient:
             }
         ]
 
+    def control_backtest_batch(
+        self, batch_id: str, command: str, command_id: str, policy: dict
+    ) -> dict:
+        batch = self.get_backtest_batch(batch_id)
+        if batch["status"] == "completed":
+            raise DatabaseAccessorClientError("terminal", status_code=409)
+        batch["status"] = "paused" if command == "pause" else "running"
+        batch["lifecycle_revision"] += 1
+        return {
+            "batch_id": batch_id,
+            "status": batch["status"],
+            "lifecycle_revision": batch["lifecycle_revision"],
+        }
+
 
 class BatchAcceptanceRouteTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -103,6 +117,36 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 202)
         self.assertEqual(len(self.client_store.batches), 1)
+
+    def test_pause_resume_public_commands_and_conflict(self) -> None:
+        created = self.client.post(
+            "/backtests/batches", json={**_definition(), "submission_id": "control-submit"}
+        )
+        batch_id = created.json()["batch_id"]
+        paused = self.client.post(
+            f"/backtests/batches/{batch_id}/pause", json={"command_id": "pause-one"}
+        )
+        self.assertEqual((paused.status_code, paused.json()["status"]), (200, "paused"))
+        self.assertEqual(
+            self.client.get(f"/backtests/batches/{batch_id}").json()["status"], "paused"
+        )
+        resumed = self.client.post(
+            f"/backtests/batches/{batch_id}/resume", json={"command_id": "resume-one"}
+        )
+        self.assertEqual((resumed.status_code, resumed.json()["status"]), (200, "running"))
+        self.assertEqual(
+            self.client.post(
+                f"/backtests/batches/{batch_id}/pause", json={"command_id": ""}
+            ).status_code,
+            422,
+        )
+        self.client_store.get_backtest_batch(batch_id)["status"] = "completed"
+        self.assertEqual(
+            self.client.post(
+                f"/backtests/batches/{batch_id}/pause", json={"command_id": "pause-two"}
+            ).status_code,
+            409,
+        )
 
     def test_accept_retry_and_inspect_actual_members(self) -> None:
         with patch.dict("os.environ", {"BACKTESTER_BATCH_ACCEPTANCE_ENABLED": "1"}):

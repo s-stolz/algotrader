@@ -136,6 +136,26 @@ export async function listBacktestBatchEvents(batchId: string): Promise<Backtest
   return payload;
 }
 
+export async function controlBacktestBatch(
+  batchId: string, command: 'pause' | 'resume', commandId: string,
+): Promise<{ batch_id: string; status: BacktestBatchStatus; lifecycle_revision: number }> {
+  const payload = await parseJsonResponse(
+    await fetch(`${BACKTESTS_BASE_URL}/batches/${encodeURIComponent(batchId)}/${command}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command_id: commandId }),
+    }), `Failed to ${command} Backtest Batch`,
+  );
+  if (typeof payload !== 'object' || payload === null ||
+      !('batch_id' in payload) || payload.batch_id !== batchId ||
+      !('status' in payload) || typeof payload.status !== 'string' ||
+      !BACKTEST_BATCH_STATUSES.includes(payload.status as BacktestBatchStatus) ||
+      !('lifecycle_revision' in payload) ||
+      !Number.isInteger(payload.lifecycle_revision)) {
+    throw new Error('Invalid Backtest Batch command response');
+  }
+  return payload as { batch_id: string; status: BacktestBatchStatus; lifecycle_revision: number };
+}
+
 export async function previewParameterSweep(request: SweepPreviewRequest): Promise<SweepPreview> {
   const response = await fetch(`${BACKTESTS_BASE_URL}/sweeps/preview`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),

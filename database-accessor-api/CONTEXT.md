@@ -87,7 +87,14 @@ stored in TimescaleDB.
   serialize turn insertion through the same slot row; existing queued work was
   seeded in submission-time/identity order by V011.
   Automatic event rows record the locked batch's prior status and new status;
-  accepted revision-zero and pre-V012 events have a null prior status.
+  pause/resume command rows also retain the unique client command identity.
+  Control transactions take the execution-slot lock before the batch lock, remove
+  turns on Pause, and append eligible turns at the tail on Resume or settlement.
+  The backtester passes legal/effective transition policy; the accessor applies
+  that plan against the locked current state.
+  A command receipt also preserves no-op command identity without incrementing
+  revision or appending an event. Accepted revision-zero and pre-V012 events have
+  a null prior status.
   Successful settlement requires a validated Equity Replay descriptor; failed
   settlement rejects replay metadata and other result artifacts.
   Faults remain separate from durable run history. Reconciliation is conditional

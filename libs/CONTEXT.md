@@ -50,6 +50,8 @@ Shared Python packages used by multiple services.
 - Both clients pass batch create/list/detail, ordered member/event reads, and
   membership filters through unchanged. The accessor owns atomic storage; the
   backtester owns acceptance and lifecycle policy.
+- Both clients pass Pause/Resume batch commands with caller-generated command
+  identity through to the accessor and return the durable status/revision result.
 - Execution-log methods pass ordered normalized fill/trade records through
   unchanged, including current result schema version 3 closed-trade direction
   and planned protective exit prices; deletion accepts the

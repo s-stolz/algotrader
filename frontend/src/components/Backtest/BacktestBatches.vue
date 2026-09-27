@@ -5,6 +5,28 @@
       <p>{{ selectedBatch.status }} · {{ selectedBatch.member_count }} fixed members ·
         {{ selectedBatch.raw_count }} raw candidates · {{ selectedBatch.excluded_count }} excluded ·
         revision {{ selectedBatch.lifecycle_revision }}</p>
+      <div
+        v-if="selectedBatch.status === 'queued' || selectedBatch.status === 'running' ||
+        selectedBatch.status === 'pausing' || selectedBatch.status === 'paused'"
+      >
+        <button
+          v-if="selectedBatch.status === 'queued' || selectedBatch.status === 'running'"
+          type="button"
+          :disabled="controlPending"
+          @click="control('pause')"
+        >Pause Batch</button>
+        <button
+          v-else
+          type="button"
+          :disabled="controlPending"
+          @click="control('resume')"
+        >Resume Batch</button>
+      </div>
+      <p v-if="selectedBatch.status === 'pausing'" role="status">
+        Pausing after the active member finishes.
+      </p>
+      <p v-if="selectedBatch.status === 'paused'" role="status">Batch paused.</p>
+      <p v-if="controlError" role="alert">{{ controlError }}</p>
       <p>{{ selectedBatch.settled_count }} / {{ selectedBatch.total_count }} settled ·
         {{ selectedBatch.executed_count }} executed · {{ outcomeLabel }}</p>
       <p v-if="selectedBatch.outcome_counts.failed > 0" role="status">
@@ -43,6 +65,7 @@
           {{ event.prior_status ?? (event.revision === 0 ? 'initial' : 'unknown') }} → {{ event.status }} ·
           {{ formatTimestamp(event.occurred_at_ms) }}
           <span v-if="event.trigger_run_id"> · run {{ event.trigger_run_id }}</span>
+          <span v-if="event.command_id"> · command {{ event.command_id }}</span>
         </li></ol>
       </details>
     </section>
@@ -54,7 +77,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { NDataTable } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import {
-  getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers,
+  controlBacktestBatch, getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers,
 } from '@/api/backtesterClient';
 import type { BacktestBatch, BacktestBatchEvent, BacktestRun } from '@/types/backtesterContracts';
 
@@ -64,6 +87,10 @@ const selectedBatch = ref<BacktestBatch | null>(null);
 const members = ref<BacktestRun[] | null>(null);
 const events = ref<BacktestBatchEvent[] | null>(null);
 const detailError = ref<string | null>(null);
+const controlError = ref<string | null>(null);
+const controlPending = ref(false);
+type BatchCommand = 'pause' | 'resume';
+const commandIds: Partial<Record<BatchCommand, { id: string; startingRevision: number }>> = {};
 let detailRevision = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -111,6 +138,13 @@ async function loadDetail(batchId: string): Promise<void> {
       getBacktestBatch(batchId), listBacktestBatchMembers(batchId), listBacktestBatchEvents(batchId),
     ]);
     if (revision !== detailRevision) return;
+    for (const command of ['pause', 'resume'] as const) {
+      const pending = commandIds[command];
+      if (pending && batch.lifecycle_revision > pending.startingRevision) {
+        delete commandIds[command];
+        controlError.value = null;
+      }
+    }
     selectedBatch.value = batch;
     members.value = loadedMembers;
     events.value = loadedEvents;
@@ -118,6 +152,32 @@ async function loadDetail(batchId: string): Promise<void> {
     if (revision === detailRevision) {
       detailError.value = error instanceof Error ? error.message : 'Read failed';
     }
+  }
+}
+
+async function control(command: BatchCommand): Promise<void> {
+  const batchId = props.batchId;
+  if (!batchId || controlPending.value) return;
+  controlPending.value = true;
+  controlError.value = null;
+  const pending = commandIds[command] ?? {
+    id: crypto.randomUUID(), startingRevision: selectedBatch.value?.lifecycle_revision ?? 0,
+  };
+  commandIds[command] = pending;
+  try {
+    await controlBacktestBatch(batchId, command, pending.id);
+    if (props.batchId === batchId) {
+      delete commandIds.pause;
+      delete commandIds.resume;
+      await loadDetail(batchId);
+    }
+  } catch (error) {
+    if (props.batchId === batchId) {
+      controlError.value = error instanceof Error ? error.message : 'Batch command failed';
+      await loadDetail(batchId);
+    }
+  } finally {
+    controlPending.value = false;
   }
 }
 
@@ -130,6 +190,9 @@ watch(() => props.batchId, (batchId) => {
   selectedBatch.value = null;
   members.value = null;
   events.value = null;
+  controlError.value = null;
+  delete commandIds.pause;
+  delete commandIds.resume;
   if (batchId) void loadDetail(batchId);
 });
 onUnmounted(() => {

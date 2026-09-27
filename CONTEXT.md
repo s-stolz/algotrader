@@ -63,7 +63,9 @@ to a chart UI, and supports standalone backtesting.
   ineligible to run without interrupting an active member. A batch is `pausing`
   while active work drains and `paused` once none is active.
 - **Resume Batch**: a command that retracts a pending or completed Pause Batch
-  and makes remaining queued members eligible to run again.
+  and makes remaining queued members eligible to run again. Its next durable
+  turn joins the queue tail after active work settles; repeated command IDs
+  return their original revision and result.
 - **Cancel Batch**: an irreversible command whose durable acceptance makes every
   nonterminal member ineligible to start or complete normally. Queued members
   and force-terminated active members become cancelled; already terminal member

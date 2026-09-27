@@ -176,6 +176,12 @@ Standalone Python backtesting module for historical candle simulation.
   actual-member Market/Timeframe/Strategy context, and
   derived outcome counts. Batch lists accept Market, Timeframe, Strategy, and
   failed-member filters.
+- `POST /backtests/batches/{batch_id}/pause` and `/resume` accept a client
+  `command_id` and return batch identity, accepted status, and lifecycle revision.
+  Pause blocks later claims while active work drains; Resume retracts that pause
+  and restores fair eligibility. The backtester supplies legal/effective state
+  policy to the accessor primitive, which applies it under a transaction lock.
+  Reused command IDs return their original result.
 - Run list/detail responses include nullable `batch_id` and `member_ordinal`;
   run list accepts `membership=standalone|batch` and optional `batch_id`, while
   the unfiltered read still returns every run. The worker claims either a

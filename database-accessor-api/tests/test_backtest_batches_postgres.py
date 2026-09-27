@@ -13,7 +13,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import uvicorn
-from app import crud
+from app import backtest_execution, crud
 from app.models import backtest_batch_events, backtest_batches, backtest_runs, metadata
 from sqlalchemy import func, select, text
 from sqlalchemy.engine import make_url
@@ -66,6 +66,34 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
                 }
             ],
         }
+
+    async def _control(self, session, *, batch_id: str, command: str, command_id: str) -> dict:
+        policy = {
+            "pause": {
+                "accepted_statuses": ["queued", "running"],
+                "effective_statuses": ["pausing", "paused"],
+                "active_status": "pausing",
+                "idle_status": "paused",
+                "queue_action": "remove",
+            },
+            "resume": {
+                "accepted_statuses": ["pausing", "paused"],
+                "effective_statuses": ["queued", "running"],
+                "active_status": "running",
+                "idle_status": "running",
+                "queue_action": "append",
+            },
+        }[command]
+        result = await backtest_execution.control_batch(
+            session, batch_id=batch_id, command=command, command_id=command_id, policy=policy
+        )
+        assert result is not None
+        return result
+
+    async def _batch(self, session, batch_id: str) -> dict:
+        result = await crud.get_backtest_batch(session, batch_id)
+        assert result is not None
+        return result
 
     async def test_simultaneous_same_id_transactions_return_one_complete_batch(self) -> None:
         barrier = asyncio.Barrier(2)
@@ -121,6 +149,304 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
                 await crud.create_backtest_batch(
                     session, self._payload("batch-conflict", "run-conflict", definition="changed")
                 )
+
+    async def test_pause_drains_active_work_and_resume_rejoins_behind_waiter(self) -> None:
+        now = datetime(2026, 9, 26, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            payload = self._payload("batch-pause", "member-0")
+            payload["raw_count"] = payload["member_count"] = 2
+            payload["members"].append(
+                {**payload["members"][0], "run_id": "member-1", "member_ordinal": 1}
+            )
+            await crud.create_backtest_batch(session, payload)
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session, run_id="member-0", owner_token="owner-0", started_at=now
+                )
+            )
+            pause = await self._control(
+                session, batch_id="batch-pause", command="pause", command_id="pause-1"
+            )
+            self.assertEqual((pause["status"], pause["lifecycle_revision"]), ("pausing", 2))
+            self.assertEqual(
+                await self._control(
+                    session, batch_id="batch-pause", command="pause", command_id="pause-1"
+                ),
+                pause,
+            )
+            self.assertFalse(
+                await backtest_execution.claim(
+                    session, run_id="member-1", owner_token="owner-1", started_at=now
+                )
+            )
+            self.assertTrue(
+                await backtest_execution.settle(
+                    session,
+                    run_id="member-0",
+                    owner_token="owner-0",
+                    terminal={
+                        "status": "succeeded",
+                        "completed_at": now,
+                        "result_schema_version": 3,
+                        "metrics": {"total_return_pct": 2.5},
+                        "diagnostics": {"source": "draining-test"},
+                        "replay_descriptor": {
+                            "schema_version": 1,
+                            "fingerprint_algorithm": "sha256-ts-close-v1",
+                            "fingerprint_digest": "0" * 64,
+                            "source_point_count": 1,
+                            "first_timestamp_ms": 1714525200000,
+                            "last_timestamp_ms": 1714525200000,
+                        },
+                    },
+                )
+            )
+            saved_member = await crud.get_backtest_run(session, "member-0")
+            assert saved_member is not None
+            self.assertEqual(saved_member["status"], "succeeded")
+            self.assertEqual(saved_member["metrics"], {"total_return_pct": 2.5})
+            self.assertEqual(saved_member["replay_descriptor"]["source_point_count"], 1)
+            batch = await self._batch(session, "batch-pause")
+            self.assertEqual((batch["status"], batch["lifecycle_revision"]), ("paused", 3))
+            state = await backtest_execution.read_queue_state(session)
+            self.assertEqual(state["queued_entries"], [])
+            await session.execute(
+                text("""INSERT INTO backtest_runs
+                (run_id, status, submitted_at, request_schema_version, request)
+                VALUES ('waiter', 'queued', :now, 2, '{}'::jsonb)"""),
+                {"now": now},
+            )
+            await session.execute(
+                text("INSERT INTO backtest_queue_turns (run_id) VALUES ('waiter')")
+            )
+            await session.commit()
+            with self.assertRaises(backtest_execution.BatchCommandConflictError):
+                await self._control(
+                    session, batch_id="batch-pause", command="resume", command_id="pause-1"
+                )
+            resumed = await self._control(
+                session, batch_id="batch-pause", command="resume", command_id="resume-1"
+            )
+            self.assertEqual((resumed["status"], resumed["lifecycle_revision"]), ("running", 4))
+            state = await backtest_execution.read_queue_state(session)
+            self.assertEqual(
+                [entry["run_id"] for entry in state["queued_entries"]], ["waiter", "member-1"]
+            )
+            self.assertFalse(
+                await backtest_execution.claim(
+                    session, run_id="member-1", owner_token="owner-1", started_at=now
+                )
+            )
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session, run_id="waiter", owner_token="waiter-owner", started_at=now
+                )
+            )
+            self.assertTrue(
+                await backtest_execution.settle(
+                    session,
+                    run_id="waiter",
+                    owner_token="waiter-owner",
+                    terminal={
+                        "status": "failed",
+                        "completed_at": now,
+                        "error_code": "test_failure",
+                        "error_message": "Expected",
+                    },
+                )
+            )
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session, run_id="member-1", owner_token="owner-1", started_at=now
+                )
+            )
+            self.assertTrue(
+                await backtest_execution.settle(
+                    session,
+                    run_id="member-1",
+                    owner_token="owner-1",
+                    terminal={
+                        "status": "failed",
+                        "completed_at": now,
+                        "error_code": "test_failure",
+                        "error_message": "Expected",
+                    },
+                )
+            )
+            batch = await self._batch(session, "batch-pause")
+            self.assertEqual(batch["status"], "completed")
+            events = await crud.list_backtest_batch_events(session, "batch-pause")
+            self.assertEqual(
+                [
+                    (event["revision"], event["prior_status"], event["status"], event["command_id"])
+                    for event in events
+                ],
+                [
+                    (0, None, "queued", None),
+                    (1, "queued", "running", None),
+                    (2, "running", "pausing", "pause-1"),
+                    (3, "pausing", "paused", None),
+                    (4, "paused", "running", "resume-1"),
+                    (5, "running", "completed", None),
+                ],
+            )
+
+    async def test_idle_pause_resume_and_restart_preserve_eligibility(self) -> None:
+        now = datetime(2026, 9, 26, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            await crud.create_backtest_batch(session, self._payload("batch-idle", "idle-run"))
+            pause = await self._control(
+                session, batch_id="batch-idle", command="pause", command_id="pause-idle"
+            )
+            self.assertEqual(pause["status"], "paused")
+            no_op = await self._control(
+                session, batch_id="batch-idle", command="pause", command_id="pause-again"
+            )
+            self.assertEqual(no_op, pause)
+        async with self.sessions() as session:
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"], []
+            )
+            self.assertEqual(
+                await backtest_execution.reconcile(
+                    session,
+                    completed_at=now,
+                    error_code="worker_interrupted",
+                    error_message="Interrupted",
+                ),
+                0,
+            )
+            self.assertEqual((await self._batch(session, "batch-idle"))["status"], "paused")
+            await self._control(
+                session, batch_id="batch-idle", command="resume", command_id="resume-idle"
+            )
+            self.assertEqual(
+                await self._control(
+                    session, batch_id="batch-idle", command="pause", command_id="pause-again"
+                ),
+                pause,
+            )
+            self.assertEqual(len(await crud.list_backtest_batch_events(session, "batch-idle")), 3)
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"][0]["run_id"],
+                "idle-run",
+            )
+
+    async def test_retract_draining_pause_then_final_member_completion_wins(self) -> None:
+        now = datetime(2026, 9, 26, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            payload = self._payload("batch-retract", "first-member")
+            payload["raw_count"] = payload["member_count"] = 2
+            payload["members"].append(
+                {**payload["members"][0], "run_id": "last-member", "member_ordinal": 1}
+            )
+            await crud.create_backtest_batch(session, payload)
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session, run_id="first-member", owner_token="first-owner", started_at=now
+                )
+            )
+            await self._control(
+                session, batch_id="batch-retract", command="pause", command_id="first-pause"
+            )
+            resumed = await self._control(
+                session, batch_id="batch-retract", command="resume", command_id="retract"
+            )
+            self.assertEqual(resumed["status"], "running")
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"], []
+            )
+            self.assertTrue(
+                await backtest_execution.settle(
+                    session,
+                    run_id="first-member",
+                    owner_token="first-owner",
+                    terminal={
+                        "status": "failed",
+                        "completed_at": now,
+                        "error_code": "test_failure",
+                        "error_message": "Expected",
+                    },
+                )
+            )
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"][0]["run_id"],
+                "last-member",
+            )
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session, run_id="last-member", owner_token="last-owner", started_at=now
+                )
+            )
+            final_pause = await self._control(
+                session, batch_id="batch-retract", command="pause", command_id="final-pause"
+            )
+            self.assertEqual(final_pause["status"], "pausing")
+            self.assertTrue(
+                await backtest_execution.settle(
+                    session,
+                    run_id="last-member",
+                    owner_token="last-owner",
+                    terminal={
+                        "status": "failed",
+                        "completed_at": now,
+                        "error_code": "test_failure",
+                        "error_message": "Expected",
+                    },
+                )
+            )
+            self.assertEqual((await self._batch(session, "batch-retract"))["status"], "completed")
+            self.assertEqual(
+                await self._control(
+                    session, batch_id="batch-retract", command="pause", command_id="final-pause"
+                ),
+                final_pause,
+            )
+            with self.assertRaises(backtest_execution.BatchCommandConflictError):
+                await self._control(
+                    session,
+                    batch_id="batch-retract",
+                    command="resume",
+                    command_id="after-completion",
+                )
+
+    async def test_claim_and_pause_race_respects_the_committed_pause(self) -> None:
+        now = datetime(2026, 9, 26, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            await crud.create_backtest_batch(session, self._payload("batch-race", "race-run"))
+
+        async def claim():
+            async with self.sessions() as session:
+                return await backtest_execution.claim(
+                    session, run_id="race-run", owner_token="race-owner", started_at=now
+                )
+
+        async def pause():
+            async with self.sessions() as session:
+                return await self._control(
+                    session, batch_id="batch-race", command="pause", command_id="race-pause"
+                )
+
+        claimed, paused = await asyncio.wait_for(asyncio.gather(claim(), pause()), timeout=10)
+        async with self.sessions() as session:
+            self.assertEqual(paused["status"], "pausing" if claimed else "paused")
+            self.assertEqual((await self._batch(session, "batch-race"))["status"], paused["status"])
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"], []
+            )
+            self.assertFalse(
+                await backtest_execution.claim(
+                    session, run_id="race-run", owner_token="late-owner", started_at=now
+                )
+            )
 
     @unittest.skipUnless(
         os.getenv("BACKTESTER_TEST_PYTHON"),

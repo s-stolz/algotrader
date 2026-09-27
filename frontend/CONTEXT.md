@@ -46,6 +46,12 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Batch history Market, Timeframe, Strategy, and failed-member filters use saved
   actual-member context and outcome fields, not the sweep's broader selections
   that may contain excluded candidates.
+- Batch detail offers Pause when queued/running and Resume when pausing/paused.
+  The control request keeps its command identity across a failed retry and
+  retires that identity when a newer lifecycle revision is observed or an
+  opposite command succeeds. It refreshes saved status, revision, members, and
+  events after acceptance.
+  Pausing is shown as active work draining, without a percentage estimate.
 - Frontend development proxy exposes the public backtester API under
   `/api/backtester`.
 - The Workspace creation drawer reads the live `/backtests/strategies` catalog,
