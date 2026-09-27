@@ -10,6 +10,9 @@ from app.backtest_runs import (
     BacktestRunService,
     InvalidBacktestRequestError,
 )
+from app.config import BacktesterConfig
+from app.sweeps import SweepPreviewService
+from db_accessor_client import DatabaseAccessorClient, DatabaseAccessorClientError
 from domain.enums import BacktestEngine, BacktestRunStatus
 from domain.types import BacktestRunQuery
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -26,6 +29,7 @@ from adapters.api.schemas import (
     BacktestSubmissionRequestSchema,
     BacktestSubmissionResponseSchema,
     BacktestTradeResponseSchema,
+    SweepPreviewRequestSchema,
 )
 from adapters.persistence import DatabaseAccessorBacktestRunRepository
 
@@ -34,6 +38,67 @@ router = APIRouter(prefix="/backtests", tags=["backtests"])
 
 def get_backtest_run_service() -> BacktestRunService:
     return BacktestRunService(repository=DatabaseAccessorBacktestRunRepository())
+
+
+def get_sweep_preview_service() -> SweepPreviewService:
+    def markets() -> list[dict[str, object]]:
+        with DatabaseAccessorClient() as client:
+            return client.get_markets()
+
+    return SweepPreviewService(
+        markets=markets,
+        max_candidate_count=BacktesterConfig.from_env().max_sweep_candidate_count,
+    )
+
+
+@router.get("/capabilities")
+def get_backtest_capabilities(
+    service: SweepPreviewService = Depends(get_sweep_preview_service),
+) -> dict[str, int]:
+    return {"max_sweep_candidate_count": service.max_candidate_count}
+
+
+@router.post("/sweeps/preview")
+def preview_sweep(
+    request: SweepPreviewRequestSchema,
+    service: SweepPreviewService = Depends(get_sweep_preview_service),
+) -> dict[str, object]:
+    try:
+        return service.expand(request.to_definition())
+    except DatabaseAccessorClientError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "market_catalog_unavailable",
+                "message": "Market catalog unavailable",
+            },
+        ) from exc
+    except StrategyVersionUnavailableError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "strategy_version_unavailable",
+                "message": "Strategy version is unavailable",
+            },
+        ) from exc
+    except (InvalidParameterCombinationError, InvalidStrategyParameterError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": exc.code,
+                "fields": exc.fields,
+                "message": str(exc),
+            },
+        ) from exc
+    except (InvalidBacktestRequestError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_sweep_definition",
+                "fields": [],
+                "message": str(exc),
+            },
+        ) from exc
 
 
 @router.post(

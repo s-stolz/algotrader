@@ -86,6 +86,9 @@ Standalone Python backtesting module for historical candle simulation.
 - `src/app/backtest_runner.py`: orchestration for one backtest run.
 - `src/app/backtest_runs.py`: deterministic asynchronous submission validation,
   durable run retrieval/history, execution-log reads, and terminal-only deletion.
+- `src/app/sweeps.py`: stateless Parameter Sweep expansion through the standalone
+  validation path, with authoritative Market resolution and complete bounded
+  Ready/Excluded preview rows.
 - `src/app/backtest_worker.py`: singleton FIFO polling, conditional claiming,
   child-process execution, and successful completion persistence.
 - `src/domain/`: runtime dataclasses, enums, and event types.
@@ -136,6 +139,13 @@ Standalone Python backtesting module for historical candle simulation.
 - `POST /backtests` validates deterministic request rules without loading market
   data or invoking an engine, persists a queued immutable request, and returns
   `202 Accepted` with `Location: /backtests/{run_id}`.
+- `GET /backtests/capabilities` publishes `max_sweep_candidate_count`, default
+  1,000. `POST /backtests/sweeps/preview` accepts shared run settings plus
+  explicit Market IDs, Timeframes, parameter axes, and Allowed Directions. It
+  deduplicates typed values, limits the raw product before cross-validation,
+  returns every Ready/Excluded candidate and normalized selections, and writes
+  no history. Ready rows include resolved requests and contiguous prospective
+  member ordinals; candidate ordinals retain positions in the full grid.
 - `GET /backtests/{run_id}` returns epoch-millisecond lifecycle timestamps and
   state-specific fields: no artifacts while queued/running, metrics and
   diagnostics when succeeded, and bounded sanitized errors when failed.

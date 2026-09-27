@@ -5,6 +5,8 @@ import {
   BacktestSubmissionError,
   deleteBacktestRun,
   fetchStrategyCatalog,
+  fetchSweepCapabilities,
+  previewParameterSweep,
   fetchBacktestClosedTrades,
   fetchBacktestEquityCurve,
   fetchBacktestFills,
@@ -69,6 +71,34 @@ describe('backtester API client', () => {
     await expect(submitBacktestRun(backtestRun().request as BacktestRequestPayload)).rejects.toMatchObject({
       code: 'invalid_parameter_combination', fields: ['fast_window', 'slow_window'],
     } satisfies Partial<BacktestSubmissionError>);
+  });
+
+  it('validates a complete bounded sweep preview and current capability', async () => {
+    const { symbols: _symbols, timeframe: _timeframe, exchange: _exchange,
+      strategy: _strategy, ...shared } = backtestRun().request;
+    const request = { ...shared,
+      strategy: { strategy_id: 'sma_crossover', strategy_version: 1 },
+      markets: [1], timeframes: ['M1'],
+      parameter_axes: { fast_window: { mode: 'constant', value: 5 } },
+      allowed_directions: ['long_and_short'] } as Parameters<typeof previewParameterSweep>[0];
+    const candidate = { candidate_ordinal: 0,
+      market: { symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' }, timeframe: 'M1',
+      parameters: { fast_window: 5 }, allowed_directions: 'long_and_short',
+      status: 'ready', member_ordinal: 0, request: backtestRun().request };
+    const preview = { max_sweep_candidate_count: 1000, raw_count: 1, ready_count: 1,
+      excluded_count: 0, normalized_selections: { markets: [candidate.market],
+        timeframes: ['M1'], parameters: { fast_window: { mode: 'constant', values: [5] } },
+        allowed_directions: ['long_and_short'] }, candidates: [candidate] };
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ max_sweep_candidate_count: 1000 }))
+      .mockResolvedValueOnce(jsonResponse(preview))
+      .mockResolvedValueOnce(jsonResponse({ ...preview, raw_count: 2 }));
+
+    await expect(fetchSweepCapabilities()).resolves.toEqual({ max_sweep_candidate_count: 1000 });
+    await expect(previewParameterSweep(request)).resolves.toEqual(preview);
+    await expect(previewParameterSweep(request)).rejects.toThrow('Invalid sweep preview response');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/backtester/backtests/sweeps/preview',
+      expect.objectContaining({ method: 'POST' }));
   });
 
   it('lists Backtest Runs through the public backtester proxy', async () => {

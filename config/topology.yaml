@@ -69,6 +69,7 @@ ingestion:
 
 backtester:
   worker_poll_interval_seconds: 1.0
+  max_sweep_candidate_count: 1000
 
 broker:
   redis_stream_db: 0

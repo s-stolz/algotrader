@@ -167,6 +167,10 @@ def build_env(
         topology,
         "backtester.worker_poll_interval_seconds",
     )
+    backtester_max_sweep_candidate_count = required(
+        topology,
+        "backtester.max_sweep_candidate_count",
+    )
 
     broker_redis_stream_db = required(topology, "broker.redis_stream_db")
     broker_tick_queue_size = required(topology, "broker.tick_queue_size")
@@ -201,6 +205,7 @@ def build_env(
         "BACKTESTER_LOG_LEVEL": stringify(backtester_log_level),
         "BACKTESTER_LOG_FORMAT": stringify(backtester_log_format),
         "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS": stringify(backtester_worker_poll_interval),
+        "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT": stringify(backtester_max_sweep_candidate_count),
         "BROKER_SERVICE_HOST": stringify(broker_host),
         "BROKER_SERVICE_PORT": stringify(broker_port),
         "BROKER_SERVICE_PUBLISHED_PORT": stringify(broker_published_port),

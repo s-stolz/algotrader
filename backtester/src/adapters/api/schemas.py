@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
+from app.sweeps import SweepDefinition
 from domain.enums import (
     AllowedDirections,
     BacktestEngine,
@@ -38,6 +39,11 @@ class StrategyRequestSchema(ApiContractModel):
     strategy_id: str
     strategy_version: StrictInt = Field(gt=0)
     parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class SweepStrategyRequestSchema(ApiContractModel):
+    strategy_id: str
+    strategy_version: StrictInt = Field(gt=0)
 
 
 class ExecutionRequestSchema(ApiContractModel):
@@ -102,6 +108,44 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
             ),
             persist_result=self.persist_result,
             run_metadata=(dict(self.run_metadata) if self.run_metadata is not None else None),
+        )
+
+
+class SweepPreviewRequestSchema(ApiContractModel):
+    markets: list[StrictInt] = Field(min_length=1)
+    timeframes: list[str] = Field(min_length=1)
+    start_ms: StrictInt
+    end_ms: StrictInt
+    engine: Literal["vectorized", "event_driven"] = "vectorized"
+    data_granularity: Literal["bar", "tick"] = "bar"
+    initial_capital: float = Field(default=10_000.0, gt=0.0)
+    strategy: SweepStrategyRequestSchema
+    execution: ExecutionRequestSchema = Field(default_factory=ExecutionRequestSchema)
+    persist_result: bool = False
+    run_metadata: dict[str, Any] | None = None
+    parameter_axes: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    allowed_directions: list[Literal["long_only", "short_only", "long_and_short"]] = Field(
+        min_length=1
+    )
+
+    def to_definition(self) -> SweepDefinition:
+        shared_fields = self.model_dump(
+            exclude={
+                "markets",
+                "timeframes",
+                "parameter_axes",
+                "allowed_directions",
+            }
+        )
+        shared_fields["symbols"] = ["_sweep_"]
+        shared_fields["timeframe"] = "M1"
+        shared = BacktestSubmissionRequestSchema.model_validate(shared_fields).to_domain()
+        return SweepDefinition(
+            shared_request=shared,
+            market_ids=tuple(self.markets),
+            timeframes=tuple(self.timeframes),
+            parameters=self.parameter_axes,
+            allowed_directions=tuple(self.allowed_directions),
         )
 
 

@@ -1,10 +1,18 @@
 <template>
-  <n-drawer :show="show" width="min(540px, 100vw)" @update:show="emit('update:show', $event)">
-    <n-drawer-content title="Create standalone Backtest" closable>
+  <n-drawer :show="show" :width="isSweep && preview ? 'min(1100px, 100vw)' : 'min(540px, 100vw)'" @update:show="emit('update:show', $event)">
+    <n-drawer-content :title="isSweep ? 'Preview Parameter Sweep' : 'Create standalone Backtest'" closable>
       <p v-if="catalogError" role="alert">Strategy catalog unavailable. {{ catalogError }}</p>
       <n-button v-if="catalogError" @click="loadCatalog">Retry catalog</n-button>
       <template v-if="draft && catalog.length">
         <div class="creation-fields">
+          <label>Run type
+            <n-select
+              :value="isSweep ? 'sweep' : 'standalone'"
+              :options="runTypeOptions"
+              data-testid="creation-run-type"
+              @update:value="setRunType"
+            />
+          </label>
           <label>Strategy
             <n-select
               :value="draft.strategy.strategy_id"
@@ -26,7 +34,15 @@
               <span v-if="parameter.required"> *</span>
             </label>
             <n-select
-              v-if="parameter.choices || parameter.type === 'bool'"
+              v-if="isSweep"
+              :value="sweepParameter(parameter).mode"
+              :options="parameterModeOptions(parameter)"
+              :data-testid="`sweep-mode-${parameter.name}`"
+              @update:value="sweepParameter(parameter).mode = $event"
+            />
+            <n-select
+              v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
+                (parameter.choices || parameter.type === 'bool')"
               :id="`parameter-${parameter.name}`"
               :value="selectValue(parameter)"
               :options="parameterOptions(parameter)"
@@ -34,7 +50,8 @@
               @update:value="setChoice(parameter, $event)"
             />
             <n-input-number
-              v-else-if="parameter.type === 'int' || parameter.type === 'float'"
+              v-else-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
+                (parameter.type === 'int' || parameter.type === 'float')"
               :id="`parameter-${parameter.name}`"
               :value="numberValue(parameter.name)"
               :min="parameter.minimum"
@@ -44,14 +61,73 @@
               @update:value="setParameter(parameter.name, $event)"
             />
             <n-input
-              v-else
+              v-else-if="!isSweep || sweepParameter(parameter).mode === 'constant'"
               :id="`parameter-${parameter.name}`"
               :value="stringValue(parameter.name)"
               :data-testid="`creation-param-${parameter.name}`"
               @update:value="setParameter(parameter.name, $event)"
             />
+            <template v-else-if="sweepParameter(parameter).mode === 'values'">
+              <n-select
+                v-if="parameter.choices || parameter.type === 'bool'"
+                multiple
+                :value="sweepParameter(parameter).choiceIndexes"
+                :options="parameterOptions(parameter)"
+                :data-testid="`sweep-values-${parameter.name}`"
+                @update:value="sweepParameter(parameter).choiceIndexes = $event"
+              />
+              <div v-else-if="parameter.type === 'str'" class="string-values">
+                <div v-for="(value, index) in stringValues(parameter)" :key="index" class="string-value">
+                  <n-input
+                    type="textarea"
+                    :value="value"
+                    :aria-label="`${parameter.display_name || parameter.name} value ${index + 1}`"
+                    :data-testid="`sweep-string-${parameter.name}-${index}`"
+                    @update:value="stringValues(parameter)[index] = $event"
+                  />
+                  <n-button
+                    size="small"
+                    :data-testid="`sweep-remove-${parameter.name}-${index}`"
+                    @click="stringValues(parameter).splice(index, 1)"
+                  >Remove value</n-button>
+                </div>
+                <n-button
+                  size="small"
+                  :data-testid="`sweep-add-${parameter.name}`"
+                  @click="stringValues(parameter).push('')"
+                >Add string value</n-button>
+                <small>Each field is one exact string. An empty field is an empty string.</small>
+              </div>
+              <n-input
+                v-else
+                type="textarea"
+                :value="sweepParameter(parameter).valuesText"
+                placeholder="One numeric value per line"
+                :data-testid="`sweep-values-${parameter.name}`"
+                @update:value="sweepParameter(parameter).valuesText = $event"
+              />
+              <n-checkbox
+                v-if="parameter.nullable && !parameter.choices && parameter.type !== 'bool'"
+                v-model:checked="sweepParameter(parameter).includeNull"
+              >Include null</n-checkbox>
+            </template>
+            <div v-else-if="sweepParameter(parameter).mode === 'range'" class="range-inputs">
+              <label>Start<n-input-number
+                v-model:value="sweepParameter(parameter).rangeStart"
+                :precision="parameter.type === 'int' ? 0 : undefined"
+              /></label>
+              <label>Stop<n-input-number
+                v-model:value="sweepParameter(parameter).rangeStop"
+                :precision="parameter.type === 'int' ? 0 : undefined"
+              /></label>
+              <label>Step<n-input-number
+                v-model:value="sweepParameter(parameter).rangeStep"
+                :precision="parameter.type === 'int' ? 0 : undefined"
+              /></label>
+            </div>
             <n-button
-              v-if="parameter.nullable && !parameter.choices && parameter.type !== 'bool'"
+              v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
+                parameter.nullable && !parameter.choices && parameter.type !== 'bool'"
               size="tiny"
               @click="setParameter(parameter.name, null)"
             >Set null</n-button>
@@ -69,7 +145,7 @@
             <small v-if="parameter.description">{{ parameter.description }}</small>
             <small v-if="fieldErrors[parameter.name]" role="alert">{{ fieldErrors[parameter.name] }}</small>
           </template>
-          <label>Market
+          <label v-if="!isSweep">Market
             <n-select
               :value="marketValue"
               :options="marketOptions"
@@ -77,13 +153,29 @@
               @update:value="selectMarket"
             />
           </label>
+          <label v-else>Markets
+            <n-select
+              v-model:value="sweep.marketIds"
+              multiple
+              :options="marketOptions"
+              data-testid="sweep-markets"
+            />
+          </label>
           <small v-if="!marketOptions.length" role="alert">Market options unavailable.</small>
           <small v-if="fieldErrors.market" role="alert">{{ fieldErrors.market }}</small>
-          <label>Timeframe
+          <label v-if="!isSweep">Timeframe
             <n-select
               v-model:value="draft.timeframe"
               :options="timeframeOptions"
               data-testid="creation-timeframe"
+            />
+          </label>
+          <label v-else>Timeframes
+            <n-select
+              v-model:value="sweep.timeframes"
+              multiple
+              :options="timeframeOptions"
+              data-testid="sweep-timeframes"
             />
           </label>
           <label>Start date (UTC)
@@ -113,11 +205,19 @@
           <small v-if="fieldErrors.capital" role="alert">{{ fieldErrors.capital }}</small>
           <details>
             <summary>Execution settings</summary>
-            <label>Allowed Directions
+            <label v-if="!isSweep">Allowed Directions
               <n-select
                 v-model:value="draft.execution.allowed_directions"
                 :options="directionOptions"
                 data-testid="creation-directions"
+              />
+            </label>
+            <label v-else>Allowed Directions
+              <n-select
+                v-model:value="sweep.allowedDirections"
+                multiple
+                :options="directionOptions"
+                data-testid="sweep-directions"
               />
             </label>
             <label>Engine
@@ -138,28 +238,57 @@
           </details>
         </div>
         <p v-if="submitError" role="alert">{{ submitError }}</p>
+        <template v-if="isSweep">
+          <p v-if="sweepLimit">Current raw candidate limit: {{ sweepLimit }}.</p>
+          <p v-if="previewError" role="alert">{{ previewError }}</p>
+          <p v-if="previewPending" role="status">Refreshing preview…</p>
+          <section v-if="preview" class="preview-review" data-testid="sweep-review">
+            <p>{{ preview.raw_count }} raw candidates · {{ preview.ready_count }} Ready ·
+              {{ preview.excluded_count }} Excluded. Limit: {{ preview.max_sweep_candidate_count }}.</p>
+            <p>Candidate # preserves the full grid order. Ready member # is contiguous after exclusions.
+              Sorting and filtering only change this review table.</p>
+            <label>Status
+              <n-select
+                v-model:value="previewFilter"
+                :options="previewFilterOptions"
+                data-testid="sweep-filter"
+              />
+            </label>
+            <n-data-table
+              :columns="previewColumns"
+              :data="filteredCandidates"
+              :pagination="{ pageSize: 20 }"
+              :bordered="false"
+              data-testid="sweep-candidates"
+            />
+          </section>
+        </template>
       </template>
       <template #footer>
         <n-button
-          v-if="draft && catalog.length"
+          v-if="draft && catalog.length && !isSweep"
           :disabled="submitting || !marketOptions.length || !!catalogError"
           :loading="submitting"
           data-testid="creation-submit"
           @click="submit"
         >Create Backtest</n-button>
+        <span v-else-if="isSweep">Parameter Sweep submission becomes available with batch execution.</span>
       </template>
     </n-drawer-content>
   </n-drawer>
-</template>
+              </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from 'vue';
-import { NButton, NDrawer, NDrawerContent, NInput, NInputNumber, NSelect } from 'naive-ui';
-import type { SelectOption } from 'naive-ui';
-import { BacktestSubmissionError, fetchStrategyCatalog, submitBacktestRun } from '@/api/backtesterClient';
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { NButton, NCheckbox, NDataTable, NDrawer, NDrawerContent, NInput, NInputNumber, NSelect } from 'naive-ui';
+import type { DataTableColumns, SelectOption } from 'naive-ui';
+import { BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
+  previewParameterSweep, submitBacktestRun } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import type { BacktestRequestPayload, StrategyCatalogEntry, StrategyParameterSchema } from '@/types/backtesterContracts';
+import type { BacktestRequestPayload, StrategyCatalogEntry, StrategyParameterSchema,
+  SweepDraftState, SweepParameterDraft, SweepPreview, SweepPreviewCandidate,
+  SweepPreviewRequest, SweepParameterAxis } from '@/types/backtesterContracts';
 import { TIMEFRAME_CODES } from '@/types/contracts';
 
 type DraftRequest = Omit<BacktestRequestPayload, 'strategy' | 'run_metadata'> & {
@@ -172,11 +301,30 @@ const emit = defineEmits<{ 'update:show': [show: boolean]; submitted: [runId: st
 const store = useBacktestWorkspaceStore();
 const markets = useMarketsStore();
 const draft = ref<DraftRequest>((store.creationDraft as DraftRequest | null) ?? initialDraft());
+const sweep = ref<SweepDraftState>(store.creationSweepDraft ?? {
+  isSweep: false, marketIds: [], timeframes: [], allowedDirections: [], parameters: {},
+});
+const isSweep = computed(() => sweep.value.isSweep);
 const catalog = shallowRef<StrategyCatalogEntry[]>([]);
 const catalogError = ref<string | null>(null);
 const submitError = ref<string | null>(null);
 const fieldErrors = ref<Record<string, string>>({});
 const submitting = ref(false);
+const preview = shallowRef<SweepPreview | null>(null);
+const previewPending = ref(false);
+const previewError = ref<string | null>(null);
+const sweepLimit = ref<number | null>(null);
+const previewFilter = ref<'all' | 'ready' | 'excluded'>('all');
+const previewFilterOptions: SelectOption[] = [
+  { label: 'All', value: 'all' }, { label: 'Ready', value: 'ready' },
+  { label: 'Excluded', value: 'excluded' },
+];
+const runTypeOptions: SelectOption[] = [
+  { label: 'Standalone Backtest', value: 'standalone' },
+  { label: 'Parameter Sweep', value: 'sweep' },
+];
+let previewRevision = 0;
+let previewTimer: ReturnType<typeof setTimeout> | undefined;
 const selectedStrategy = computed(() => catalog.value.find(
   (entry) => entry.strategy_id === draft.value.strategy.strategy_id,
 ));
@@ -213,6 +361,184 @@ const exitOptions: SelectOption[] = [
 watch(draft, (value) => {
   store.creationDraft = JSON.parse(JSON.stringify(value)) as BacktestRequestPayload;
 }, { deep: true, immediate: true });
+watch(sweep, (value) => {
+  store.creationSweepDraft = JSON.parse(JSON.stringify(value)) as SweepDraftState;
+}, { deep: true, immediate: true });
+
+watch(isSweep, (enabled) => {
+  if (!enabled) return;
+  void fetchSweepCapabilities().then((capabilities) => {
+    sweepLimit.value = capabilities.max_sweep_candidate_count;
+  }).catch(() => { sweepLimit.value = null; });
+}, { immediate: true });
+
+watch([draft, sweep, catalog, () => markets.all], () => {
+  previewRevision += 1;
+  if (previewTimer) clearTimeout(previewTimer);
+  preview.value = null;
+  previewPending.value = false;
+  previewError.value = null;
+  if (!isSweep.value || !selectedStrategy.value) return;
+  let request: SweepPreviewRequest;
+  try {
+    request = buildSweepRequest();
+  } catch (error) {
+    previewError.value = error instanceof Error ? error.message : 'Complete the sweep inputs.';
+    return;
+  }
+  const revision = previewRevision;
+  previewPending.value = true;
+  previewTimer = setTimeout(() => { void refreshPreview(request, revision); }, 150);
+}, { deep: true });
+
+onUnmounted(() => {
+  previewRevision += 1;
+  if (previewTimer) clearTimeout(previewTimer);
+});
+
+const filteredCandidates = computed(() => preview.value?.candidates.filter((row) =>
+  previewFilter.value === 'all' || row.status === previewFilter.value) ?? []);
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+function compareRows(a: SweepPreviewCandidate, b: SweepPreviewCandidate,
+  select: (row: SweepPreviewCandidate) => unknown): number {
+  const left = select(a);
+  const right = select(b);
+  const compared = typeof left === 'number' && typeof right === 'number' ? left - right :
+    collator.compare(String(left ?? ''), String(right ?? ''));
+  return compared || a.candidate_ordinal - b.candidate_ordinal;
+}
+const previewColumns = computed<DataTableColumns<SweepPreviewCandidate>>(() => [
+  { title: 'Candidate #', key: 'candidate_ordinal', sorter: (a, b) =>
+    a.candidate_ordinal - b.candidate_ordinal, render: (row) => String(row.candidate_ordinal + 1) },
+  { title: 'Market', key: 'market', sorter: (a, b) => compareRows(a, b, (row) =>
+    `${row.market.symbol} ${row.market.exchange}`), render: (row) =>
+    `${row.market.symbol} · ${row.market.exchange}` },
+  { title: 'Timeframe', key: 'timeframe', sorter: (a, b) => compareRows(a, b, (row) =>
+    TIMEFRAME_CODES.indexOf(row.timeframe as typeof TIMEFRAME_CODES[number])),
+  },
+  ...(selectedStrategy.value?.parameters ?? []).map((parameter) => ({
+    title: parameter.display_name || parameter.name, key: `param-${parameter.name}`,
+    sorter: (a: SweepPreviewCandidate, b: SweepPreviewCandidate) => compareRows(a, b,
+      (row) => row.parameters[parameter.name]),
+    render: (row: SweepPreviewCandidate) => String(row.parameters[parameter.name]),
+  })),
+  { title: 'Allowed Directions', key: 'allowed_directions', sorter: (a, b) =>
+    compareRows(a, b, (row) => row.allowed_directions) },
+  { title: 'State', key: 'status', sorter: (a, b) => compareRows(a, b, (row) => row.status),
+    render: (row) => row.status === 'ready' ? `Ready · member #${(row.member_ordinal ?? 0) + 1}` :
+      `Excluded · ${row.issues?.map((issue) => issue.message).join('; ') ?? ''}` },
+]);
+
+function sweepParameter(parameter: StrategyParameterSchema): SweepParameterDraft {
+  return sweep.value.parameters[parameter.name] ??= {
+    mode: 'constant', valuesText: '', stringValues: [], choiceIndexes: [], includeNull: false,
+    rangeStart: null, rangeStop: null, rangeStep: null,
+  };
+}
+
+function stringValues(parameter: StrategyParameterSchema): string[] {
+  const input = sweepParameter(parameter);
+  return input.stringValues ??= input.valuesText === '' ? [] : input.valuesText.split('\n');
+}
+
+function parameterModeOptions(parameter: StrategyParameterSchema): SelectOption[] {
+  const modes: SelectOption[] = [
+    { label: 'Constant', value: 'constant' }, { label: 'Values', value: 'values' },
+  ];
+  if ((parameter.type === 'int' || parameter.type === 'float') && !parameter.choices) {
+    modes.push({ label: 'Range', value: 'range' });
+  }
+  return modes;
+}
+
+function setRunType(value: string): void {
+  sweep.value.isSweep = value === 'sweep';
+  if (sweep.value.isSweep) {
+    if (!sweep.value.marketIds.length && marketValue.value !== undefined) {
+      sweep.value.marketIds = [marketValue.value];
+    }
+    if (!sweep.value.timeframes.length) sweep.value.timeframes = [draft.value.timeframe];
+    if (!sweep.value.allowedDirections.length) {
+      sweep.value.allowedDirections = [draft.value.execution.allowed_directions];
+    }
+  }
+}
+
+function buildSweepRequest(): SweepPreviewRequest {
+  const selected = selectedStrategy.value;
+  if (!selected || selected.strategy_version !== draft.value.strategy.strategy_version) {
+    throw new Error('Review the current Strategy Version.');
+  }
+  if (!sweep.value.marketIds.length || !sweep.value.timeframes.length ||
+      !sweep.value.allowedDirections.length) {
+    throw new Error('Select at least one Market, Timeframe, and Allowed Directions value.');
+  }
+  if (draft.value.start_ms <= 0 || draft.value.end_ms <= draft.value.start_ms ||
+      !Number.isFinite(draft.value.initial_capital) || draft.value.initial_capital <= 0) {
+    throw new Error('Enter valid dates and initial capital.');
+  }
+  const parameter_axes: Record<string, SweepParameterAxis> = {};
+  for (const parameter of selected.parameters) {
+    const input = sweepParameter(parameter);
+    if (input.mode === 'constant') {
+      const value = draft.value.strategy.parameters[parameter.name];
+      if (value === undefined) {
+        if (parameter.required) throw new Error(`${parameter.name} is required.`);
+        continue;
+      }
+      parameter_axes[parameter.name] = { mode: 'constant', value };
+    } else if (input.mode === 'range') {
+      if (input.rangeStart === null || input.rangeStop === null || input.rangeStep === null) {
+        throw new Error(`Enter Start, Stop, and Step for ${parameter.name}.`);
+      }
+      parameter_axes[parameter.name] = { mode: 'range', start: input.rangeStart,
+        stop: input.rangeStop, step: input.rangeStep };
+    } else {
+      let values: Array<null | boolean | number | string>;
+      if (parameter.choices || parameter.type === 'bool') {
+        values = input.choiceIndexes.map((index) => choiceValues(parameter)[index]);
+      } else if (parameter.type === 'str') {
+        values = [...stringValues(parameter)];
+      } else {
+        values = input.valuesText === '' ? [] : input.valuesText.split('\n').map((line) => {
+          if (!line.trim()) throw new Error(`Enter numeric values for ${parameter.name}.`);
+          const value: unknown = JSON.parse(line);
+          if (typeof value !== 'number' || !Number.isFinite(value)) {
+            throw new Error(`Enter numeric values for ${parameter.name}.`);
+          }
+          return value;
+        });
+      }
+      if (input.includeNull) values.push(null);
+      if (!values.length || values.some((value) => value === undefined)) {
+        throw new Error(`Select at least one value for ${parameter.name}.`);
+      }
+      parameter_axes[parameter.name] = { mode: 'values', values };
+    }
+  }
+  const { symbols: _symbols, timeframe: _timeframe, exchange: _exchange, ...shared } = draft.value;
+  return { ...shared, strategy: { strategy_id: selected.strategy_id,
+    strategy_version: selected.strategy_version },
+    markets: sweep.value.marketIds, timeframes: sweep.value.timeframes,
+    parameter_axes, allowed_directions: sweep.value.allowedDirections };
+}
+
+async function refreshPreview(request: SweepPreviewRequest, revision: number): Promise<void> {
+  try {
+    const result = await previewParameterSweep(request);
+    if (revision !== previewRevision) return;
+    preview.value = result;
+    sweepLimit.value = result.max_sweep_candidate_count;
+  } catch (error) {
+    if (revision !== previewRevision) return;
+    previewError.value = error instanceof Error ? error.message : 'Sweep preview failed.';
+    if (error instanceof BacktestSubmissionError && error.code === 'strategy_version_unavailable') {
+      await loadCatalog();
+    }
+  } finally {
+    if (revision === previewRevision) previewPending.value = false;
+  }
+}
 
 function initialDraft(): DraftRequest {
   const end = new Date();
@@ -389,4 +715,7 @@ onMounted(() => {
 .creation-fields details { display: grid; padding-top: 8px; }
 .creation-fields details label { margin-top: 12px; }
 .creation-fields input[type='date'] { color: inherit; background: #232934; border: 1px solid #555; border-radius: 4px; padding: 8px; }
+.string-values { display: grid; gap: 8px; }
+.string-value { display: flex; gap: 8px; align-items: start; }
+.string-value .n-input { flex: 1; }
 </style>

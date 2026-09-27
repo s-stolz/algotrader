@@ -50,6 +50,7 @@
 
 ## Required backtester keys
 - `backtester.worker_poll_interval_seconds` (positive float, default topology value `1.0`)
+- `backtester.max_sweep_candidate_count` (positive integer, default topology value `1000`)
 
 ## Secrets
 Secrets are not stored in `config/topology.yaml`. Put them in `config/.env.secrets.local`.

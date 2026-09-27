@@ -23,6 +23,7 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(shared_env["BACKTESTER_LOG_LEVEL"], "INFO")
         self.assertEqual(shared_env["BACKTESTER_LOG_FORMAT"], "pretty")
         self.assertEqual(shared_env["BACKTESTER_WORKER_POLL_INTERVAL_SECONDS"], "1.0")
+        self.assertEqual(shared_env["BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT"], "1000")
         self.assertEqual(
             shared_env["VITE_PROXY_BACKTESTER_TARGET"],
             "http://backtester-api:8020",

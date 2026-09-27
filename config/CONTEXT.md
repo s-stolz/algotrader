@@ -32,9 +32,10 @@ Centralized non-secret topology plus generated runtime environment files.
 - TimescaleDB topology generates both application-facing `TIMESCALEDB_DB` /
   `TIMESCALEDB_USER` values and image-facing `POSTGRES_DB` / `POSTGRES_USER`
   aliases. The password remains only in `config/.env.secrets.db`.
-- Backtester topology generates API host/port/logging values and
-  `BACKTESTER_WORKER_POLL_INTERVAL_SECONDS`; the default poll interval is one
-  second.
+- Backtester topology generates API host/port/logging values,
+  `BACKTESTER_WORKER_POLL_INTERVAL_SECONDS`, and
+  `BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT`; the defaults are one second and 1,000
+  raw candidates respectively.
 - Frontend proxy targets are generated from service topology as
   `VITE_PROXY_DATA_ACCESSOR_TARGET`, `VITE_PROXY_BACKTESTER_TARGET`, and
   `VITE_PROXY_INDICATOR_TARGET`.

@@ -39,6 +39,13 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   exact strategy/version pair to `POST /backtests` and preserves its draft across
   chart navigation. A stale version refreshes metadata for explicit review,
   without substitution or automatic resubmission.
+- The creation drawer also builds Parameter Sweep drafts with independent numeric
+  Constant/Values/Range controls and one editable field per exact string value,
+  including empty and multiline strings. It automatically calls the stateless
+  `/backtests/sweeps/preview` route after valid edits, ignores superseded
+  responses, and reviews all bounded candidates with local paging, status
+  filtering, and deterministic sorting. Sweep submission remains unavailable
+  until batch acceptance ships; preview creates no saved history.
 - Runtime run readers accept request schema versions 2 and 3. Version 2 has no
   declared Strategy Version; history labels it unavailable instead of assigning
   current code. Version 3 includes resolved parameter defaults.

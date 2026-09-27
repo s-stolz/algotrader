@@ -12,6 +12,9 @@ import {
   isStrategyCatalog,
   type BacktestRequestPayload,
   type StrategyCatalogEntry,
+  type SweepPreview,
+  type SweepPreviewRequest,
+  isSweepPreview,
 } from '@/types/backtesterContracts';
 
 import { parseJsonResponse, withQuery } from './http';
@@ -29,6 +32,41 @@ export async function fetchStrategyCatalog(): Promise<StrategyCatalogEntry[]> {
     await fetch(`${BACKTESTS_BASE_URL}/strategies`), 'Failed to fetch strategy catalog',
   );
   if (!isStrategyCatalog(payload)) throw new Error('Invalid strategy catalog response');
+  return payload;
+}
+
+export async function fetchSweepCapabilities(): Promise<{ max_sweep_candidate_count: number }> {
+  const payload = await parseJsonResponse(
+    await fetch(`${BACKTESTS_BASE_URL}/capabilities`), 'Failed to fetch sweep capabilities',
+  );
+  if (typeof payload !== 'object' || payload === null ||
+      !('max_sweep_candidate_count' in payload) ||
+      !Number.isInteger(payload.max_sweep_candidate_count) ||
+      (payload.max_sweep_candidate_count as number) <= 0) {
+    throw new Error('Invalid sweep capabilities response');
+  }
+  return payload as { max_sweep_candidate_count: number };
+}
+
+export async function previewParameterSweep(request: SweepPreviewRequest): Promise<SweepPreview> {
+  const response = await fetch(`${BACKTESTS_BASE_URL}/sweeps/preview`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  });
+  const payload: unknown = await response.json();
+  if (!response.ok) {
+    if (typeof payload === 'object' && payload !== null && 'detail' in payload &&
+        typeof payload.detail === 'object' && payload.detail !== null &&
+        'code' in payload.detail && typeof payload.detail.code === 'string') {
+      const detail = payload.detail;
+      const code = detail.code as string;
+      throw new BacktestSubmissionError(code,
+        'fields' in detail && Array.isArray(detail.fields) ?
+          detail.fields.filter((field): field is string => typeof field === 'string') : [],
+        'message' in detail && typeof detail.message === 'string' ? detail.message : code);
+    }
+    throw new Error(`Sweep preview failed: ${response.statusText || response.status}`);
+  }
+  if (!isSweepPreview(payload)) throw new Error('Invalid sweep preview response');
   return payload;
 }
 

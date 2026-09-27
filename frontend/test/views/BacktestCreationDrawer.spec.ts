@@ -1,19 +1,23 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import { NSelect } from 'naive-ui';
+import { NDataTable, NInput, NInputNumber, NSelect } from 'naive-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  BacktestSubmissionError, fetchStrategyCatalog, submitBacktestRun,
+  BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
+  previewParameterSweep, submitBacktestRun,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
+import type { SweepPreview, SweepPreviewCandidate, SweepPreviewRequest } from '@/types/backtesterContracts';
 import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 
 vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/api/backtesterClient')>(),
   fetchStrategyCatalog: vi.fn(),
   submitBacktestRun: vi.fn(),
+  previewParameterSweep: vi.fn(),
+  fetchSweepCapabilities: vi.fn(),
 }));
 
 const catalog = [{
@@ -47,6 +51,8 @@ describe('standalone creation drawer', () => {
     vi.mocked(fetchStrategyCatalog).mockReset();
     vi.mocked(fetchStrategyCatalog).mockResolvedValue(catalog);
     vi.mocked(submitBacktestRun).mockReset();
+    vi.mocked(fetchSweepCapabilities).mockReset();
+    vi.mocked(fetchSweepCapabilities).mockResolvedValue({ max_sweep_candidate_count: 1000 });
   });
 
   afterEach(() => {
@@ -152,6 +158,238 @@ describe('standalone creation drawer', () => {
     await flushPromises();
 
     expect(document.body.textContent).toContain('This parameter is required.');
+    expect(submitBacktestRun).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+});
+
+const sweepCatalog = [{
+  strategy_id: 'sma_crossover', strategy_version: 1, display_name: 'SMA crossover',
+  parameters: [{ name: 'fast_window', type: 'int' as const, required: false, nullable: false,
+    default: 5 }],
+}];
+
+function previewFor(request: SweepPreviewRequest, count: number): SweepPreview {
+  const market = { symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' };
+  return {
+    max_sweep_candidate_count: 1000,
+    normalized_selections: { markets: [market], timeframes: ['M1'],
+      parameters: { fast_window: { mode: 'constant', values: [5] } },
+      allowed_directions: ['long_and_short'] },
+    raw_count: count, ready_count: count, excluded_count: 0,
+    candidates: Array.from({ length: count }, (_, candidate_ordinal) => ({
+      candidate_ordinal, market, timeframe: 'M1', parameters: { fast_window: 5 },
+      allowed_directions: 'long_and_short', status: 'ready', member_ordinal: candidate_ordinal,
+      request: { ...request, symbols: ['EURUSD'], exchange: 'FX', timeframe: 'M1',
+        strategy: { ...request.strategy, parameters: { fast_window: 5 } } },
+    })),
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+async function advancePreview() {
+  await vi.advanceTimersByTimeAsync(170);
+  await flushPromises();
+}
+
+describe('Parameter Sweep creation review', () => {
+  let pinia: ReturnType<typeof createPinia>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    pinia = createPinia();
+    setActivePinia(pinia);
+    useMarketsStore().all = [{ symbol_id: 1, symbol: 'EURUSD', exchange: 'FX',
+      market_type: 'Forex', min_move: 0.00001, timezone: 'UTC' }];
+    useBacktestWorkspaceStore().creationSweepDraft = {
+      isSweep: true, marketIds: [1], timeframes: ['M1'],
+      allowedDirections: ['long_and_short'], parameters: {},
+    };
+    vi.mocked(fetchStrategyCatalog).mockReset();
+    vi.mocked(fetchStrategyCatalog).mockResolvedValue(sweepCatalog);
+    vi.mocked(previewParameterSweep).mockReset();
+    vi.mocked(fetchSweepCapabilities).mockReset();
+    vi.mocked(fetchSweepCapabilities).mockResolvedValue({ max_sweep_candidate_count: 1000 });
+    vi.mocked(submitBacktestRun).mockReset();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.useRealTimers();
+  });
+
+  it('keeps parameter input modes and sends independent range inputs', async () => {
+    vi.mocked(previewParameterSweep).mockImplementation(async (request) => previewFor(request, 2));
+    const wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
+    });
+    await flushPromises();
+    const mode = wrapper.findAllComponents(NSelect).find((select) =>
+      select.attributes('data-testid') === 'sweep-mode-fast_window');
+    mode!.vm.$emit('update:value', 'range');
+    await flushPromises();
+    const inputs = wrapper.findAllComponents(NInputNumber);
+    const range = inputs.filter((input) => input.attributes('data-testid') === undefined);
+    range[0].vm.$emit('update:value', 1);
+    range[1].vm.$emit('update:value', 3);
+    range[2].vm.$emit('update:value', 1);
+    await advancePreview();
+    expect(document.body.textContent).toContain('Current raw candidate limit: 1000');
+    expect(previewParameterSweep).toHaveBeenCalledWith(expect.objectContaining({
+      markets: [1], timeframes: ['M1'], parameter_axes: {
+        fast_window: { mode: 'range', start: 1, stop: 3, step: 1 },
+      },
+    }));
+    expect(document.body.textContent).toContain('2 raw candidates');
+    expect(submitBacktestRun).not.toHaveBeenCalled();
+    mode!.vm.$emit('update:value', 'constant');
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="creation-param-fast_window"]')).not.toBeNull();
+    expect(useBacktestWorkspaceStore().creationSweepDraft?.parameters.fast_window.rangeStop).toBe(3);
+    wrapper.unmount();
+  });
+
+  it('previews exact string values including empty, multiline, and whitespace strings', async () => {
+    vi.mocked(fetchStrategyCatalog).mockResolvedValue([{
+      ...sweepCatalog[0], parameters: [{ name: 'label', type: 'str', required: false,
+        nullable: false, default: 'default' }],
+    }]);
+    vi.mocked(previewParameterSweep).mockImplementation(async (request) => previewFor(request, 1));
+    const wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
+    });
+    await flushPromises();
+    const mode = wrapper.findAllComponents(NSelect).find((select) =>
+      select.attributes('data-testid') === 'sweep-mode-label');
+    mode!.vm.$emit('update:value', 'values');
+    await advancePreview();
+    expect(document.body.textContent).toContain('Select at least one value for label.');
+
+    (document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement).click();
+    await advancePreview();
+    expect(vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes.label).toEqual({
+      mode: 'values', values: [''],
+    });
+
+    (document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement).click();
+    await flushPromises();
+    const multiline = wrapper.findAllComponents(NInput).find((input) =>
+      input.attributes('data-testid') === 'sweep-string-label-1');
+    multiline!.vm.$emit('update:value', 'first\nsecond');
+    (document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement).click();
+    await flushPromises();
+    const whitespace = wrapper.findAllComponents(NInput).find((input) =>
+      input.attributes('data-testid') === 'sweep-string-label-2');
+    whitespace!.vm.$emit('update:value', ' ');
+    await advancePreview();
+    expect(vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes.label).toEqual({
+      mode: 'values', values: ['', 'first\nsecond', ' '],
+    });
+    expect(useBacktestWorkspaceStore().creationSweepDraft?.parameters.label.stringValues)
+      .toEqual(['', 'first\nsecond', ' ']);
+
+    (document.querySelector('[data-testid="sweep-remove-label-0"]') as HTMLElement).click();
+    await advancePreview();
+    expect(vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes.label).toEqual({
+      mode: 'values', values: ['first\nsecond', ' '],
+    });
+    wrapper.unmount();
+  });
+
+  it('ignores an old preview after a newer draft revision succeeds', async () => {
+    const first = deferred<SweepPreview>();
+    const second = deferred<SweepPreview>();
+    vi.mocked(previewParameterSweep).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
+    });
+    await flushPromises();
+    await advancePreview();
+    expect(previewParameterSweep).toHaveBeenCalledTimes(1);
+    const capital = wrapper.findAllComponents(NInputNumber).find((input) =>
+      input.attributes('data-testid') === 'creation-capital');
+    capital!.vm.$emit('update:value', 20_000);
+    await advancePreview();
+    expect(previewParameterSweep).toHaveBeenCalledTimes(2);
+    const newRequest = vi.mocked(previewParameterSweep).mock.calls[1][0];
+    second.resolve(previewFor(newRequest, 2));
+    await flushPromises();
+    first.resolve(previewFor(vi.mocked(previewParameterSweep).mock.calls[0][0], 1));
+    await flushPromises();
+    expect(document.body.textContent).toContain('2 raw candidates');
+    expect(document.body.textContent).not.toContain('1 raw candidates');
+    wrapper.unmount();
+  });
+
+  it('reviews all candidates with local paging, filtering, and ordinal sort ties', async () => {
+    vi.mocked(previewParameterSweep).mockImplementation(async (request) => {
+      const result = previewFor(request, 22);
+      result.candidates[1] = { ...result.candidates[1], status: 'excluded',
+        issues: [{ code: 'invalid_parameter_combination', fields: ['fast_window'],
+          message: 'Excluded combination' }] };
+      delete result.candidates[1].request;
+      delete result.candidates[1].member_ordinal;
+      for (let index = 2; index < result.candidates.length; index += 1) {
+        result.candidates[index].member_ordinal = index - 1;
+      }
+      result.ready_count = 21;
+      result.excluded_count = 1;
+      return result;
+    });
+    const wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
+    });
+    await flushPromises();
+    await advancePreview();
+    const table = wrapper.findComponent(NDataTable);
+    const rows = table.props('data') as SweepPreviewCandidate[];
+    expect(rows).toHaveLength(22);
+    expect(table.props('pagination')).toEqual({ pageSize: 20 });
+    const columns = table.props('columns') as Array<{ title: string; sorter?: (a: unknown, b: unknown) => number }>;
+    expect(columns.map((column) => column.title)).toEqual([
+      'Candidate #', 'Market', 'Timeframe', 'fast_window', 'Allowed Directions', 'State',
+    ]);
+    expect(columns[3]!.sorter!(rows[0]!, rows[2]!)).toBeLessThan(0);
+    const filter = wrapper.findAllComponents(NSelect).find((select) =>
+      select.attributes('data-testid') === 'sweep-filter');
+    filter!.vm.$emit('update:value', 'excluded');
+    await flushPromises();
+    const excludedRows = table.props('data') as SweepPreviewCandidate[];
+    expect(excludedRows).toHaveLength(1);
+    expect(excludedRows[0]!.issues?.[0]?.message).toBe('Excluded combination');
+    filter!.vm.$emit('update:value', 'ready');
+    await flushPromises();
+    expect(table.props('data')).toHaveLength(21);
+    wrapper.unmount();
+  });
+
+  it('refreshes changed catalog metadata without submitting or accepting stale preview', async () => {
+    vi.mocked(fetchStrategyCatalog).mockResolvedValueOnce(sweepCatalog).mockResolvedValueOnce([{
+      ...sweepCatalog[0], strategy_version: 2,
+    }]);
+    vi.mocked(previewParameterSweep).mockRejectedValueOnce(new BacktestSubmissionError(
+      'strategy_version_unavailable', [], 'Strategy version is unavailable',
+    )).mockImplementation(async (request) => previewFor(request, 1));
+    const wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
+    });
+    await flushPromises();
+    await advancePreview();
+    expect(fetchStrategyCatalog).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain('Strategy version changed');
+    expect(document.body.querySelector('[data-testid="sweep-review"]')).toBeNull();
+    expect(previewParameterSweep).toHaveBeenCalledTimes(1);
+    const button = [...document.body.querySelectorAll('button')].find((item) =>
+      item.textContent?.includes('Use current version'));
+    button!.click();
+    await advancePreview();
+    expect(previewParameterSweep).toHaveBeenCalledTimes(2);
+    expect(document.body.querySelector('[data-testid="sweep-review"]')).not.toBeNull();
     expect(submitBacktestRun).not.toHaveBeenCalled();
     wrapper.unmount();
   });

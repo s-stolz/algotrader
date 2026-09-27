@@ -25,6 +25,14 @@ class TestBacktesterConfig(unittest.TestCase):
             config = BacktesterConfig.from_env()
 
         self.assertEqual(config.worker_poll_interval_seconds, 1.0)
+        self.assertEqual(config.max_sweep_candidate_count, 1000)
+
+    def test_sweep_limit_is_configurable_and_positive(self) -> None:
+        with patch.dict(os.environ, {"BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT": "25"}, clear=True):
+            config = BacktesterConfig.from_env()
+        self.assertEqual(config.max_sweep_candidate_count, 25)
+        with self.assertRaises(ValueError):
+            BacktesterConfig(max_sweep_candidate_count=0)
 
 
 if __name__ == "__main__":
