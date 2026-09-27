@@ -68,7 +68,7 @@ async def read_queue_state(session) -> dict:
         .where(backtest_execution_slot.c.slot_id == 1)
         .with_for_update(read=True)
     )
-    snapshot_at = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+    snapshot_at = (await session.execute(select(func.now()))).scalar_one()
     slot = await read_slot(session)
     active = None
     if slot["run_id"] is not None:
