@@ -13,10 +13,7 @@ Run commands from the repository root unless noted.
 - View logs: `make logs`
 - View containers: `make ps`
 - Exercise asynchronous backtester success/failure paths: `make smoke-backtester`
-- Apply pending TimescaleDB migrations to a running stack: `make migrate-db`.
-  Verified historical V001–V003 blank-line checksum variants are supported
-  automatically, preserving original ledger entries. Other checksum drift
-  still stops the runner; do not edit the ledger to bypass it.
+- Apply pending TimescaleDB migrations to a running stack: `make migrate-db`
 
 Direct Compose path:
 

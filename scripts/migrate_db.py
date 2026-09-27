@@ -23,28 +23,6 @@ NON_TRANSACTIONAL_MARKER = "-- migrate-db: no-transaction"
 LEGACY_BASELINE_MAX_VERSION = 2
 MIGRATION_ADVISORY_LOCK_ID = 824_973_244_147_976_327
 LOCK_QUERY_COMPLETE_MARKER = "migration-lock-query-complete"
-# Verified blank-line-only historical variants; both file identities are pinned
-# so accepting an old ledger never permits further edits to an applied migration.
-HISTORICAL_CHECKSUM_PAIRS = {
-    (
-        1,
-        "base_schema",
-        "907ee0f534b3b2e415f7cd3775183f7241bb85a83cc914f9cc9ffb67a979242c",
-        "5a75e005f1fe2ef5f3e2b62af4e2624fdbdc38f7b6f4900cf4876ab91c6089e4",
-    ),
-    (
-        2,
-        "timestamp_utc",
-        "7a02c742604bd77de1b0b1c7d666953f037ffec73b57567477b451ace9c4900d",
-        "dd6c50b5a3ab899923b506b05bc3095d603de569b254b7d7f43033865be9ce52",
-    ),
-    (
-        3,
-        "optimize_candles",
-        "7392a3c62135e07c4926253b7116e4fb349b35600ecc6ff6d7ae5028b0a4ffe6",
-        "ccb5d6e0baee9759b720f1e10b41a0a1639f7458d90bd17eb3605b7784149b69",
-    ),
-}
 
 
 @dataclass(frozen=True)
@@ -296,11 +274,7 @@ def ensure_no_checksum_drift(
                 f"Migration V{version:03d} was applied as {applied_name!r}, "
                 f"but the file is now named {migration.name!r}."
             )
-        historical_pair = (version, migration.name, migration.checksum, applied_checksum)
-        if (
-            migration.checksum != applied_checksum
-            and historical_pair not in HISTORICAL_CHECKSUM_PAIRS
-        ):
+        if migration.checksum != applied_checksum:
             raise SystemExit(
                 f"Checksum drift detected for V{version:03d}__{migration.name}. "
                 "Add a new migration instead of editing an applied migration."

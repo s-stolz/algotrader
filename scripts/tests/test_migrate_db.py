@@ -6,7 +6,6 @@ import subprocess
 import tempfile
 import unittest
 from contextlib import ExitStack
-from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -75,13 +74,7 @@ class MigrationLoadingTests(unittest.TestCase):
             )
 
 
-class HistoricalMigrationChecksumTests(unittest.TestCase):
-    historical_checksums = (
-        "5a75e005f1fe2ef5f3e2b62af4e2624fdbdc38f7b6f4900cf4876ab91c6089e4",
-        "dd6c50b5a3ab899923b506b05bc3095d603de569b254b7d7f43033865be9ce52",
-        "ccb5d6e0baee9759b720f1e10b41a0a1639f7458d90bd17eb3605b7784149b69",
-    )
-
+class MigrationChecksumTests(unittest.TestCase):
     def run_with_ledger(self, migrations, checksums):
         ledger = "\n".join(
             f"{item.version}|{item.name}|{checksum}"
@@ -94,48 +87,25 @@ class HistoricalMigrationChecksumTests(unittest.TestCase):
             migrate_db.run_migrations(psql, migrations)
         return psql
 
-    def test_known_blank_line_variants_upgrade_without_rewriting_history(self):
+    def test_matching_checksums_apply_only_pending_migrations(self):
         migrations = migrate_db.load_migrations()[:4]
-        for historical in (False, True):
-            with self.subTest(historical=historical):
-                checksums = (
-                    self.historical_checksums
-                    if historical
-                    else tuple(item.checksum for item in migrations[:3])
-                )
-                psql = self.run_with_ledger(migrations, checksums)
-                mutations = [sql for sql, _ in psql.calls if "INSERT INTO schema_migrations" in sql]
-                self.assertEqual(len(mutations), 1)
-                self.assertIn(migrations[3].sql, mutations[0])
-                self.assertNotIn("UPDATE schema_migrations", "\n".join(mutations))
+        psql = self.run_with_ledger(migrations, [item.checksum for item in migrations[:3]])
+        mutations = [sql for sql, _ in psql.calls if "INSERT INTO schema_migrations" in sql]
+        self.assertEqual(len(mutations), 1)
+        self.assertIn(migrations[3].sql, mutations[0])
+        self.assertNotIn("UPDATE schema_migrations", "\n".join(sql for sql, _ in psql.calls))
 
-    def test_historical_checksums_are_reproducible_from_only_blank_line_changes(self):
-        for item, expected in zip(migrate_db.load_migrations(), self.historical_checksums):
-            original = item.sql + "\n"
-            if item.version == 3:
-                original = original.replace(
-                    "SELECT add_compression_policy", "\nSELECT add_compression_policy", 1
-                )
-            self.assertEqual(hashlib.sha256(original.encode()).hexdigest(), expected)
-
-    def test_unknown_checksum_or_changed_file_still_blocks_upgrade(self):
-        originals = migrate_db.load_migrations()[:4]
-        for index in range(3):
-            for change in ("ledger", "sql", "whitespace", "name"):
-                with self.subTest(version=index + 1, change=change):
-                    migrations = list(originals)
-                    checksums = list(self.historical_checksums)
-                    item = migrations[index]
-                    if change == "ledger":
-                        checksums[index] = "0" * 64
-                    elif change == "name":
-                        migrations[index] = replace(item, name="renamed")
-                    else:
-                        sql = item.sql + ("SELECT 42;\n" if change == "sql" else "\n\n")
-                        migrations[index] = replace(
-                            item, sql=sql, checksum=hashlib.sha256(sql.encode()).hexdigest()
-                        )
-                    with self.assertRaises(SystemExit):
+    def test_any_applied_content_difference_blocks_upgrade(self):
+        migrations = migrate_db.load_migrations()
+        for index, item in enumerate(migrations):
+            for difference in ("trailing_blank", "sql"):
+                with self.subTest(version=item.version, difference=difference):
+                    applied_sql = item.sql + "\n"
+                    if difference == "sql":
+                        applied_sql = item.sql + "SELECT 42;\n"
+                    checksums = [entry.checksum for entry in migrations]
+                    checksums[index] = hashlib.sha256(applied_sql.encode()).hexdigest()
+                    with self.assertRaisesRegex(SystemExit, "Checksum drift detected"):
                         self.run_with_ledger(migrations, checksums)
 
 

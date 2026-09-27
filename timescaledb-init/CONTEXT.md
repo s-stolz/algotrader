@@ -105,11 +105,6 @@ TimescaleDB database.
   from its database password secret file.
 - Runtime migrations use strict `VNNN__description.sql` filenames and are applied
   once, in order, with checksums recorded in `schema_migrations`.
-- The runner recognizes three verified historical blank-line variants of
-  V001–V003 through exact version/name/current-checksum/historical-checksum
-  pairs. Original ledger entries remain unchanged; new databases record the
-  tracked files' checksums. Unknown drift, including further whitespace changes,
-  still fails. `make migrate-db` handles these variants without recovery files.
 - Existing databases that match the historical schema may baseline `V001`-`V002`
   into `schema_migrations`. `V003` and `V004` are always replayed because their
   policy/compression and historical-refresh effects cannot all be inferred
