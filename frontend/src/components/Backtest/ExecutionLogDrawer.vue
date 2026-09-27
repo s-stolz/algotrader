@@ -129,7 +129,8 @@ const direction = ref('all');
 const exitReason = ref('all');
 let generation = 0;
 
-watch(() => [props.run.run_id, props.run.status, props.run.result_schema_version, props.show], () => {
+watch([() => props.run.run_id, () => props.run.status,
+  () => props.run.result_schema_version, () => props.show], () => {
   const current = ++generation;
   trades.value = null;
   fills.value = null;

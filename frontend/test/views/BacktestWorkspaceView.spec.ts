@@ -665,6 +665,40 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
+  it('preserves member logs and standalone log filters across history polls', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const saved = run('standalone');
+    const member = run('member', { batch_id: 'logs', member_ordinal: 0 });
+    const accepted = batch('logs', 1);
+    vi.mocked(listBacktestRuns).mockImplementation(async () => [structuredClone(saved)]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue([member]);
+    vi.mocked(getBacktestRun).mockResolvedValue(member);
+    vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'sell')]);
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-log-standalone"]').trigger('click');
+    await flushPromises();
+    document.body.querySelector<HTMLButtonElement>('[data-testid="execution-fills-tab"]')!.click();
+    await wrapper.vm.$nextTick();
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="execution-fills-table"]')).not.toBeNull();
+    expect(fetchBacktestFills).toHaveBeenCalledTimes(1);
+    document.body.querySelector<HTMLButtonElement>('.n-drawer-header__close')!.click();
+    await wrapper.vm.$nextTick();
+    await wrapper.find('[data-testid="workspace-batch-logs"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-log-member"]').trigger('click');
+    await flushPromises();
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(document.body.textContent).toContain('Execution log · member');
+    wrapper.unmount();
+  });
+
   it('sorts history dates in both directions with deterministic rows', async () => {
     const older = run('older');
     const newer = run('newer', {

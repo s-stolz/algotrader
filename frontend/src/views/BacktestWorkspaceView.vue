@@ -477,6 +477,9 @@ function receiveMembers(batchId: string, members: BacktestRun[]): void {
   if (batchId !== selectedBatchId.value) return;
   const changed = JSON.stringify(batchMembers.value) !== JSON.stringify(members);
   if (changed) batchMembers.value = members;
+  if (logRun.value?.batch_id === batchId) {
+    logRun.value = members.find((run) => run.run_id === logRun.value?.run_id) ?? null;
+  }
   const eligible = selectedComparisonIds.value.filter((id) =>
     members.some((run) => run.run_id === id && run.status === 'succeeded'));
   setComparison(eligible);
@@ -496,7 +499,7 @@ async function readRuns(): Promise<void> {
     runs.value = latest;
     batches.value = latestBatches;
     readError.value = null;
-    if (logRun.value) {
+    if (logRun.value && !logRun.value.batch_id) {
       logRun.value = latest.find((run) => run.run_id === logRun.value?.run_id) ?? null;
     }
     if ((overlayStore.selectedRun?.batch_id &&
