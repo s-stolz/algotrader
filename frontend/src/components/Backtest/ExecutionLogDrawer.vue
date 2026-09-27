@@ -18,24 +18,26 @@
             </p>
             <template v-else>
               <div class="tabs" role="tablist" aria-label="Execution records">
-                <button
-                  type="button"
+                <n-button
+                  secondary
                   role="tab"
                   data-testid="execution-trades-tab"
                   :aria-selected="tab === 'trades'"
+                  :type="tab === 'trades' ? 'primary' : 'default'"
                   @click="tab = 'trades'"
                 >
                   Closed Trades ({{ trades.length }})
-                </button>
-                <button
-                  type="button"
+                </n-button>
+                <n-button
+                  secondary
                   role="tab"
                   data-testid="execution-fills-tab"
                   :aria-selected="tab === 'fills'"
+                  :type="tab === 'fills' ? 'primary' : 'default'"
                   @click="tab = 'fills'"
                 >
                   Fills ({{ fills.length }})
-                </button>
+                </n-button>
               </div>
               <div class="log-filters">
                 <label>
@@ -108,13 +110,13 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { NDrawer, NDrawerContent } from 'naive-ui';
+import { NButton, NDrawer, NDrawerContent } from 'naive-ui';
 
 import { fetchBacktestClosedTrades, fetchBacktestFills } from '@/api/backtesterClient';
 import {
   BACKTEST_RESULT_SCHEMA_VERSION, type BacktestClosedTrade, type BacktestFill, type BacktestRun,
 } from '@/types/backtesterContracts';
-import { runName } from '@/views/backtestWorkspaceRuns';
+import { formatSigned, runName } from '@/views/backtestWorkspaceRuns';
 
 const props = defineProps<{ run: BacktestRun; show: boolean }>();
 const emit = defineEmits<{ close: [] }>();
@@ -178,20 +180,21 @@ const activeRecords = computed(() => tab.value === 'trades' ? filteredTrades.val
 const activeTotal = computed(() => tab.value === 'trades' ? trades.value?.length : fills.value?.length);
 
 function utc(timestampMs: number): string { return new Date(timestampMs).toISOString(); }
-function signed(value: number): string { return `${value > 0 ? '+' : ''}${value}`; }
+function signed(value: number): string { return formatSigned(value); }
 function reasonLabel(reason: string): string { return reason.replaceAll('_', ' '); }
 function close(): void { emit('close'); }
 </script>
 
 <style scoped>
-.run-identity { color: #aeb8c8; overflow-wrap: anywhere; }
-.tabs, .log-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
-.tabs button { padding: 8px 12px; cursor: pointer; }
-.tabs button[aria-selected="true"] { border-color: #57d5d0; color: #57d5d0; }
-.log-filters label { display: flex; flex-direction: column; gap: 4px; }
-.log-filters input, .log-filters select { min-width: 150px; padding: 6px; }
-.table-scroll { max-height: min(60vh, 560px); overflow: auto; }
-table { border-collapse: collapse; min-width: 100%; white-space: nowrap; }
-th, td { padding: 8px 12px; border-bottom: 1px solid #4b5261; text-align: left; }
-th { position: sticky; top: 0; background: #252b36; }
+.run-identity { color: #8d9fae; overflow-wrap: anywhere; font-size: 12px; }
+.tabs, .log-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+.log-filters label { display: flex; flex-direction: column; gap: 7px; color: #9bafbe; font-size: 12px; }
+.log-filters input, .log-filters select { min-width: 150px; padding: 8px 10px; color: #dce4ed; background: #202a35; border: 1px solid #3b4856; border-radius: 5px; }
+.log-filters input:focus, .log-filters select:focus { outline: 1px solid #63caaa; }
+.table-scroll { max-height: min(60vh, 560px); overflow: auto; border: 1px solid #34414d; border-radius: 8px; }
+table { border-collapse: separate; border-spacing: 0; min-width: 100%; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { padding: 12px 16px; border-bottom: 1px solid #303c49; text-align: left; }
+th { position: sticky; top: 0; background: #222d39; color: #9bb0c0; font-size: 11px; font-weight: 500; }
+tbody tr:nth-child(even) { background: #1e2731; }
+tbody tr:hover { background: #263941; }
 </style>

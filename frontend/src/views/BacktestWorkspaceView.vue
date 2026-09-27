@@ -204,7 +204,7 @@ v-for="column in optionalColumns"
               <template v-else-if="analysis[id]?.error">Exact Equity Replay read failed: {{ analysis[id]?.error }}. Saved metrics remain available.</template>
               <template v-else-if="analysis[id]?.curve?.availability === 'unavailable'">Exact Equity Replay unavailable: {{ equityUnavailableReason(analysis[id]?.curve?.reason) }}. Saved metrics remain available.</template>
               <template v-else-if="analysis[id]?.curve?.availability === 'exact'">
-                Ending equity: {{ analysis[id]?.curve?.equity_curve.at(-1)?.equity }}
+                Ending equity: {{ formatSigned(analysis[id]?.curve?.equity_curve.at(-1)?.equity).replace(/^\+/, '') }}
                 <span v-if="analysis[id]?.curve?.sampled"> · Showing {{ analysis[id]?.curve?.returned_point_count }} of {{ analysis[id]?.curve?.source_point_count }} exact points (sampled).</span>
               </template>
             </li>
@@ -829,7 +829,8 @@ function metricCell(run: BacktestRun, key: string, explanation: string,
   const display = positiveMagnitude
     ? formatMagnitude(value, suffix)
     : formatSigned(value, suffix);
-  return cell(display, explanation);
+  return h('span', { class: value == null || positiveMagnitude ? undefined
+    : value < 0 ? 'negative-metric' : value > 0 ? 'positive-metric' : undefined }, cell(display, explanation));
 }
 function countCell(run: BacktestRun, key: string, explanation: string) {
   return cell(run.status === 'succeeded' ? savedMetric(run, key)?.toString() ?? '—' : '—',
@@ -874,7 +875,7 @@ const optionalColumns = computed<ComparisonColumn[]>(() => [
       'Positive magnitude of the saved largest peak-to-trough recorded equity loss, in percent.', '%', true) },
   { title: 'Ending equity', key: 'ending', width: 155, render: (run) => cell(
     run.status === 'succeeded' && analysis.value[run.run_id]?.curve?.availability === 'exact'
-      ? String(analysis.value[run.run_id]?.curve?.equity_curve.at(-1)?.equity ?? '—') : '—',
+      ? formatSigned(analysis.value[run.run_id]?.curve?.equity_curve.at(-1)?.equity).replace(/^\+/, '') : '—',
     'Final point of exact Equity Replay, in account units. Unavailable replay leaves this missing.') },
   { title: 'Trades', key: 'trades', width: 115, render: (run) => countCell(run,
     'trade_count', 'Saved count of Closed Trades. Zero is different from a missing result.') },
@@ -1154,6 +1155,9 @@ onUnmounted(stopPolling);
 :deep(.run-identity) { min-width: 0; font-weight: 500; }
 :deep(.run-identity small) { display: block; color: #8190a0; font-size: 10px; font-family: monospace; margin-top: 3px; }
 :deep(.row-actions) { display: flex; gap: 4px; }
+:deep(.negative-metric) { color: #f0aaa2; }
+:deep(.positive-metric) { color: #7dd5b4; }
+:deep(input[type="checkbox"]) { accent-color: #63caaa; }
 :deep(.n-data-table) { font-variant-numeric: tabular-nums; }
 :deep(.n-data-table-th) { font-size: 11px; color: #91a4b6; letter-spacing: .025em; }
 :deep(.n-data-table-tr) { cursor: pointer; }

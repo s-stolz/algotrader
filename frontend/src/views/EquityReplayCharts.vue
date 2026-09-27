@@ -52,7 +52,8 @@ function render(): void {
   for (const run of props.series) {
     let series = rendered.get(run.runId);
     if (!series) {
-      const options = { color: seriesColor(run), lineWidth: 2 as const, title: run.name };
+      const options = { color: seriesColor(run), lineWidth: 2 as const, title: run.name,
+        priceLineVisible: false, lastValueVisible: false };
       series = { equity: equityChart.addSeries(LineSeries, options),
         drawdown: drawdownChart.addSeries(LineSeries, options), points: [] };
       rendered.set(run.runId, series);
@@ -75,7 +76,11 @@ function render(): void {
 
 function createCharts(): void {
   if (!equityContainer.value || !drawdownContainer.value) return;
-  const options = { layout: { background: { color: '#121923' }, textColor: '#c9d3dc' },
+  const options = { layout: { background: { color: '#161e28' }, textColor: '#93a5b5',
+    fontFamily: 'Inter, -apple-system, sans-serif', fontSize: 11 },
+    grid: { vertLines: { color: '#26313d' }, horzLines: { color: '#26313d' } },
+    rightPriceScale: { borderColor: '#34414e' },
+    timeScale: { borderColor: '#34414e', timeVisible: true, secondsVisible: false },
     width: equityContainer.value.clientWidth, height: 250 };
   equityChart = createChart(equityContainer.value, options);
   drawdownChart = createChart(drawdownContainer.value, { ...options,
@@ -104,7 +109,7 @@ onUnmounted(() => {
 <style scoped>
 .replay-charts { width: 100%; display: grid; gap: 20px; margin-top: 24px; }
 .series-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0; padding-left: 20px; }
-.replay-charts section { min-width: 0; width: 100%; }
+.replay-charts section { min-width: 0; width: 100%; border: 1px solid #303c49; border-radius: 8px; padding: 16px; box-sizing: border-box; background: #161e28; }
 .replay-charts h3 { font-size: 15px; margin: 0 0 8px; }
 .chart { width: 100%; min-height: 250px; }
 </style>
