@@ -8,7 +8,9 @@ stored in TimescaleDB.
 - Primitive `GET /backtest-execution/queue-state` and
   `POST /backtest-execution/heartbeat` expose database-clock worker telemetry,
   durable slot identity, and ordered standalone/batch turns to the backtester.
-  The accessor does not decide availability or persist advisory positions.
+  The accessor does not decide availability or persist advisory positions. Queue
+  reads share the execution-slot lock until their read transaction closes, so
+  active ownership and waiting turns come from one stable lifecycle state.
 
 - Market read/write shape and Market identity fields.
 - Candle read/write HTTP routes and query parameters.

@@ -61,7 +61,14 @@ async def record_heartbeat(
 
 
 async def read_queue_state(session) -> dict:
-    snapshot_at = (await session.execute(select(func.now()))).scalar_one()
+    # All lifecycle mutations take the exclusive slot lock. Share it until the
+    # reader's transaction closes so active ownership and turns cannot disagree.
+    await session.execute(
+        select(backtest_execution_slot.c.slot_id)
+        .where(backtest_execution_slot.c.slot_id == 1)
+        .with_for_update(read=True)
+    )
+    snapshot_at = (await session.execute(select(func.clock_timestamp()))).scalar_one()
     slot = await read_slot(session)
     active = None
     if slot["run_id"] is not None:

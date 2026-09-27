@@ -433,6 +433,66 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             saved = await self._batch(session, "resumed")
             self.assertEqual(saved["started_at"], now)
 
+    async def test_queue_snapshot_excludes_concurrent_batch_settlement(self) -> None:
+        now = datetime(2026, 9, 27, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            payload = self._payload("snapshot", "active")
+            payload["raw_count"] = payload["member_count"] = 2
+            payload["members"].append(
+                {**payload["members"][0], "run_id": "next", "member_ordinal": 1}
+            )
+            await crud.create_backtest_batch(session, payload)
+            await backtest_execution.claim(
+                session, run_id="active", owner_token="owner", started_at=now
+            )
+
+        slot_read = asyncio.Event()
+        finish_read = asyncio.Event()
+
+        class PausedReader:
+            def __init__(self, session):
+                self.session = session
+
+            async def execute(self, statement):
+                result = await self.session.execute(statement)
+                if "fault_message" in str(statement) and "SELECT" in str(statement):
+                    slot_read.set()
+                    await finish_read.wait()
+                return result
+
+        async def read():
+            async with self.sessions() as session:
+                return await backtest_execution.read_queue_state(PausedReader(session))
+
+        async def settle():
+            async with self.sessions() as session:
+                return await backtest_execution.settle(
+                    session,
+                    run_id="active",
+                    owner_token="owner",
+                    terminal={
+                        "status": "failed",
+                        "completed_at": now,
+                        "error_code": "test_failure",
+                        "error_message": "Test failure",
+                    },
+                )
+
+        reading = asyncio.create_task(read())
+        await asyncio.wait_for(slot_read.wait(), timeout=5)
+        settling = asyncio.create_task(settle())
+        try:
+            done, _ = await asyncio.wait({settling}, timeout=0.2)
+            self.assertFalse(done, "Settlement must wait for the queue snapshot to finish")
+        finally:
+            finish_read.set()
+            snapshot, settled = await asyncio.wait_for(asyncio.gather(reading, settling), timeout=5)
+        self.assertTrue(settled)
+        self.assertEqual(snapshot["active_run"]["run_id"], "active")
+        self.assertEqual(snapshot["queued_entries"], [])
+
     async def test_retract_draining_pause_then_final_member_completion_wins(self) -> None:
         now = datetime(2026, 9, 26, tzinfo=timezone.utc)
         async with self.sessions() as session:
