@@ -42,6 +42,7 @@
       <p>First started: {{ formatTimestamp(selectedBatch.started_at_ms) }} ·
         Terminal: {{ formatTimestamp(selectedBatch.completed_at_ms) }}</p>
       <p v-if="detailError" role="alert">Batch detail unavailable. {{ detailError }}</p>
+      <p v-if="cancelError" role="alert">{{ cancelError }}</p>
       <details>
         <summary>Accepted sweep settings and Strategy Metadata Snapshot</summary>
         <pre>{{ JSON.stringify(selectedBatch.accepted_definition, null, 2) }}</pre>
@@ -73,24 +74,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { NDataTable } from 'naive-ui';
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue';
+import { NButton, NDataTable } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import {
-  controlBacktestBatch, getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers,
+  cancelBacktestRun, controlBacktestBatch, getBacktestBatch,
+  listBacktestBatchEvents, listBacktestBatchMembers,
 } from '@/api/backtesterClient';
 import type { BacktestBatch, BacktestBatchEvent, BacktestRun } from '@/types/backtesterContracts';
 
-const emit = defineEmits<{ 'select-run': [run: BacktestRun] }>();
+const emit = defineEmits<{ 'select-run': [run: BacktestRun]; cancelled: [] }>();
 const props = defineProps<{ batchId: string | null }>();
 const selectedBatch = ref<BacktestBatch | null>(null);
 const members = ref<BacktestRun[] | null>(null);
 const events = ref<BacktestBatchEvent[] | null>(null);
 const detailError = ref<string | null>(null);
+const cancelError = ref<string | null>(null);
+const cancellingRunIds = ref<ReadonlySet<string>>(new Set());
 const controlError = ref<string | null>(null);
 const controlPending = ref(false);
 type BatchCommand = 'pause' | 'resume';
-const commandIds: Partial<Record<BatchCommand, { id: string; startingRevision: number }>> = {};
+const commandIds: Partial<Record<BatchCommand, string>> = {};
 let detailRevision = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -112,7 +116,17 @@ const memberColumns: DataTableColumns<BacktestRun> = [
     JSON.stringify(run.request.strategy.parameters) },
   { title: 'Allowed Directions', key: 'directions', render: (run) =>
     run.request.execution.allowed_directions },
-  { title: 'Status', key: 'status', render: (run) => run.status },
+  { title: 'Status', key: 'status', render: (run) => run.status === 'cancelling'
+    ? 'cancelling · stopping execution' : run.status },
+  { title: 'Cancel', key: 'cancel', render: (run) => h(NButton, {
+    text: true, size: 'small',
+    'data-testid': `workspace-cancel-${run.run_id}`,
+    disabled: !['queued', 'running'].includes(run.status) || cancellingRunIds.value.has(run.run_id),
+    onClick: (event: MouseEvent) => {
+      event.stopPropagation();
+      void cancelMember(run);
+    },
+  }, { default: () => 'Cancel' }) },
   { title: 'Failure', key: 'failure', render: (run) => run.error_message ?? '—' },
   { title: 'Return (%)', key: 'return', render: (run) =>
     typeof run.metrics?.total_return_pct === 'number' ?
@@ -130,6 +144,24 @@ function memberRowProps(run: BacktestRun): Record<string, unknown> {
     } };
 }
 
+async function cancelMember(run: BacktestRun): Promise<void> {
+  if (!['queued', 'running'].includes(run.status) || cancellingRunIds.value.has(run.run_id)) return;
+  cancellingRunIds.value = new Set([...cancellingRunIds.value, run.run_id]);
+  cancelError.value = null;
+  try {
+    await cancelBacktestRun(run.run_id);
+    if (props.batchId) await loadDetail(props.batchId);
+    emit('cancelled');
+  } catch (error) {
+    cancelError.value = error instanceof Error ? error.message : 'Cancellation failed';
+    if (props.batchId) await loadDetail(props.batchId);
+  } finally {
+    const pending = new Set(cancellingRunIds.value);
+    pending.delete(run.run_id);
+    cancellingRunIds.value = pending;
+  }
+}
+
 async function loadDetail(batchId: string): Promise<void> {
   const revision = ++detailRevision;
   detailError.value = null;
@@ -140,7 +172,7 @@ async function loadDetail(batchId: string): Promise<void> {
     if (revision !== detailRevision) return;
     for (const command of ['pause', 'resume'] as const) {
       const pending = commandIds[command];
-      if (pending && batch.lifecycle_revision > pending.startingRevision) {
+      if (pending && loadedEvents.some((event) => event.command_id === pending)) {
         delete commandIds[command];
         controlError.value = null;
       }
@@ -160,12 +192,10 @@ async function control(command: BatchCommand): Promise<void> {
   if (!batchId || controlPending.value) return;
   controlPending.value = true;
   controlError.value = null;
-  const pending = commandIds[command] ?? {
-    id: crypto.randomUUID(), startingRevision: selectedBatch.value?.lifecycle_revision ?? 0,
-  };
+  const pending = commandIds[command] ?? crypto.randomUUID();
   commandIds[command] = pending;
   try {
-    await controlBacktestBatch(batchId, command, pending.id);
+    await controlBacktestBatch(batchId, command, pending);
     if (props.batchId === batchId) {
       delete commandIds.pause;
       delete commandIds.resume;

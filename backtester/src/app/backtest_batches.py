@@ -208,7 +208,11 @@ def _project_batch(batch: Mapping[str, Any], members: list[dict[str, Any]]) -> d
     value["strategy_id"] = value["strategy_metadata"]["strategy_id"]
     value["strategy_version"] = value["strategy_metadata"]["strategy_version"]
     value["active_member_ordinal"] = next(
-        (member["member_ordinal"] for member in members if member["status"] == "running"),
+        (
+            member["member_ordinal"]
+            for member in members
+            if member["status"] in {"running", "cancelling"}
+        ),
         None,
     )
     value["next_member_ordinal"] = next(

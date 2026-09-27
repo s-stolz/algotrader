@@ -45,6 +45,8 @@ TimescaleDB database.
 - `migrations/V013__backtest_batch_commands.sql`: nullable command identity on
   batch events with a per-batch uniqueness guard and durable receipts for
   no-op Pause/Resume retries.
+- `migrations/V014__backtest_run_cancellation.sql`: forward-only run cancellation
+  states and normalized request time, source, and reason; earlier history stays intact.
 
 ## Contracts
 
@@ -55,6 +57,8 @@ TimescaleDB database.
   unavailable or not useful for the requested range.
 - `backtest_runs` stores normalized lifecycle fields, request/result schema
   versions, immutable request JSONB, and nullable metrics/diagnostics JSONB.
+  Accepted cancellation uses `cancelling` or `cancelled` plus normalized
+  `cancel_requested_at`, `cancellation_source`, and `cancellation_reason`.
 - `backtest_execution_slot` retains one owner token and run identity until a
   fenced terminal transaction releases it. The row is never timed out or
   automatically stolen; operator recovery requires verified child exit.

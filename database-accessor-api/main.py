@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
@@ -147,6 +147,20 @@ async def settle_backtest_execution(
     }
 
 
+@app.post("/backtests/{run_id}/cancel", response_model=BacktestRunOut)
+async def cancel_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    outcome = await backtest_execution.cancel_run(
+        db, run_id=run_id, requested_at=datetime.now(timezone.utc)
+    )
+    if outcome == "not_found":
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    if outcome == "conflict":
+        raise HTTPException(status_code=409, detail="Terminal backtest run cannot be cancelled")
+    if outcome == "ownership_unconfirmed":
+        raise HTTPException(status_code=503, detail="Execution ownership cannot be confirmed")
+    return await crud.get_backtest_run(db, run_id)
+
+
 @app.post("/backtest-execution/reconcile", response_model=BacktestExecutionReconcileOut)
 async def reconcile_backtest_execution(
     reconciliation: BacktestExecutionReconcileIn, db: AsyncSession = Depends(get_db)
@@ -163,7 +177,9 @@ async def record_backtest_execution_fault(
 
 @app.get("/backtests", response_model=list[BacktestRunOut])
 async def list_backtest_runs(
-    status: Literal["queued", "running", "succeeded", "failed"] | None = None,
+    status: (
+        Literal["queued", "running", "cancelling", "succeeded", "failed", "cancelled"] | None
+    ) = None,
     symbol: str | None = None,
     timeframe: str | None = None,
     strategy: str | None = None,

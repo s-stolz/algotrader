@@ -47,6 +47,9 @@ Shared Python packages used by multiple services.
 - Sync and async execution methods expose slot inspection, oldest-queued claim,
   token-fenced terminal settlement, conditional startup reconciliation, and
   operational fault recording as primitive storage operations.
+- Sync and async `cancel_backtest_run` methods pass the serialized cancellation
+  response through unchanged. The backtester owns the public command policy;
+  the accessor enforces state and slot ordering.
 - Both clients pass batch create/list/detail, ordered member/event reads, and
   membership filters through unchanged. The accessor owns atomic storage; the
   backtester owns acceptance and lifecycle policy.

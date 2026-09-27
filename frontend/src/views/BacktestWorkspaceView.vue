@@ -78,6 +78,7 @@
         Run history unavailable; current lifecycle status is unknown. {{ readError }}
       </p>
       <p v-if="deleteError" role="alert">{{ deleteError }}</p>
+      <p v-if="cancelError" role="alert">{{ cancelError }}</p>
       <p v-if="runs !== null && batches !== null && historyRows.length === 0 && !readError" role="status">
         No saved Backtest Runs or Batches.
       </p>
@@ -96,7 +97,7 @@
         :bordered="false"
         size="small"
       />
-      <BacktestBatches :batch-id="selectedBatchId" @select-run="selectRun" />
+      <BacktestBatches :batch-id="selectedBatchId" @select-run="selectRun" @cancelled="refreshWorkspace" />
     </section>
 
     <section class="current-backtest" aria-label="Current Backtest">
@@ -176,7 +177,7 @@ import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { DocumentTextOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
 
-import { deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestRuns } from '@/api/backtesterClient';
+import { cancelBacktestRun, deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestRuns } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
@@ -209,6 +210,8 @@ const isRefreshing = ref(false);
 const readError = ref<string | null>(null);
 const detailError = ref<string | null>(null);
 const deleteError = ref<string | null>(null);
+const cancelError = ref<string | null>(null);
+const cancellingRunIds = ref<ReadonlySet<string>>(new Set());
 const deletingRunIds = ref<ReadonlySet<string>>(new Set());
 const detailLoading = ref(false);
 const curve = ref<EquityReplayResponse | null>(null);
@@ -400,9 +403,9 @@ function loadRuns(shouldQueue = true): Promise<void> {
   return activeHistoryRead;
 }
 
-function refreshWorkspace(): void {
-  void loadRuns();
+function refreshWorkspace(): Promise<void> {
   void queueHealth.value?.refresh();
+  return loadRuns();
 }
 
 function selectRun(run: BacktestRun): void {
@@ -485,7 +488,7 @@ function entrySortValue(entry: HistoryEntry, key: HistorySortKey | 'progress'): 
       market: runMarket(run), timeframe: timeframeDuration(run.request.timeframe) ?? run.request.timeframe,
       start: run.request.start_ms, end: run.request.end_ms, status: run.status,
       duration: run.request.end_ms - run.request.start_ms, submitted: run.submitted_at_ms,
-      progress: run.status === 'succeeded' || run.status === 'failed' ? 1 : 0,
+      progress: ['succeeded', 'failed', 'cancelled'].includes(run.status) ? 1 : 0,
     };
     return values[key];
   }
@@ -541,12 +544,27 @@ const historyColumns: DataTableColumns<HistoryEntry> = [
   historyColumn('Status', 'status', (entry) => {
     const status = entry.kind === 'run' ? entry.run.status : entry.batch.status;
     return h(NTag, { size: 'small', type: status === 'succeeded' || status === 'completed'
-      ? 'success' : status === 'failed' ? 'error' : 'info' }, { default: () => status });
+      ? 'success' : status === 'failed' ? 'error' : 'info',
+    title: status === 'cancelling' ? 'Execution is being stopped; capacity stays held until exit is confirmed.' : undefined },
+    { default: () => status });
   }),
   historyColumn('Settled', 'progress', (entry) => cell(entry.kind === 'run'
     ? '—' : `${entry.batch.settled_count} / ${entry.batch.total_count}` +
       (entry.batch.has_failed_members ?
         ` · ${entry.batch.outcome_counts.failed} failed` : ''))),
+  {
+    title: 'Cancel', key: 'cancel', render: (entry) => entry.kind === 'run' ? h(NButton, {
+      text: true, size: 'small',
+      'data-testid': `workspace-cancel-${entry.run.run_id}`,
+      disabled: !['queued', 'running'].includes(entry.run.status) ||
+        cancellingRunIds.value.has(entry.run.run_id),
+      title: 'Cancel this Backtest Run',
+      onClick: (event: MouseEvent) => {
+        event.stopPropagation();
+        void cancelRun(entry.run);
+      },
+    }, { default: () => 'Cancel' }) : cell('—'),
+  },
   {
     title: 'Delete', key: 'delete', render: (entry) => entry.kind === 'run' ? h(NButton, {
       text: true,
@@ -604,6 +622,23 @@ const detailColumns: DataTableColumns<BacktestRun> = [
 
 function formatTimestamp(timestamp: number | null | undefined): string {
   return timestamp == null ? '—' : new Date(timestamp).toISOString();
+}
+
+async function cancelRun(run: BacktestRun): Promise<void> {
+  if (!['queued', 'running'].includes(run.status) || cancellingRunIds.value.has(run.run_id)) return;
+  cancellingRunIds.value = new Set([...cancellingRunIds.value, run.run_id]);
+  cancelError.value = null;
+  try {
+    await cancelBacktestRun(run.run_id);
+    await refreshWorkspace();
+  } catch (error) {
+    cancelError.value = errorMessage(error);
+    await refreshWorkspace();
+  } finally {
+    const pending = new Set(cancellingRunIds.value);
+    pending.delete(run.run_id);
+    cancellingRunIds.value = pending;
+  }
 }
 
 async function deleteRun(run: BacktestRun): Promise<void> {

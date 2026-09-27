@@ -118,6 +118,9 @@ class _InMemoryBacktestRunClient:
     def get_backtest_run(self, run_id: str) -> dict:
         return deepcopy(self._runs[run_id])
 
+    def cancel_backtest_run(self, run_id: str) -> dict:
+        raise NotImplementedError
+
     def get_backtest_queue_state(self) -> dict:
         return {
             "queued_entries": [

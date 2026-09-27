@@ -73,6 +73,9 @@ backtest_runs = Table(
     Column("submitted_at", TIMESTAMP(timezone=True), nullable=False),
     Column("started_at", TIMESTAMP(timezone=True), nullable=True),
     Column("completed_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("cancel_requested_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("cancellation_source", String(32), nullable=True),
+    Column("cancellation_reason", Text, nullable=True),
     Column("error_code", String(64), nullable=True),
     Column("error_message", Text, nullable=True),
     Column("request_schema_version", Integer, nullable=False),
@@ -84,8 +87,21 @@ backtest_runs = Table(
     Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=True),
     Column("member_ordinal", Integer, nullable=True),
     CheckConstraint(
-        "status IN ('queued', 'running', 'succeeded', 'failed')",
+        "status IN ('queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled')",
         name="backtest_runs_status_check",
+    ),
+    CheckConstraint(
+        "(cancel_requested_at IS NULL AND cancellation_source IS NULL "
+        "AND cancellation_reason IS NULL) "
+        "OR (cancel_requested_at IS NOT NULL AND cancellation_source IS NOT NULL "
+        "AND cancellation_reason IS NOT NULL)",
+        name="backtest_run_cancellation_check",
+    ),
+    CheckConstraint(
+        "(status NOT IN ('cancelling', 'cancelled') OR cancel_requested_at IS NOT NULL) "
+        "AND (status <> 'cancelling' OR completed_at IS NULL) "
+        "AND (status <> 'cancelled' OR completed_at IS NOT NULL)",
+        name="backtest_run_cancel_status_check",
     ),
     Index("idx_backtest_runs_submitted_at", "submitted_at", "run_id"),
     Index("idx_backtest_runs_status_submitted_at", "status", "submitted_at", "run_id"),

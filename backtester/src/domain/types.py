@@ -3,7 +3,7 @@
 import math
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 from domain.enums import (
     AllowedDirections,
@@ -145,6 +145,9 @@ class BacktestRunRecord:
     request_snapshot: BacktestRequestSnapshot
     started_at_ms: Optional[int] = None
     completed_at_ms: Optional[int] = None
+    cancel_requested_at_ms: Optional[int] = None
+    cancellation_source: Optional[str] = None
+    cancellation_reason: Optional[str] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     result_schema_version: Optional[int] = None
@@ -153,6 +156,12 @@ class BacktestRunRecord:
     replay_descriptor: Optional[Mapping[str, Any]] = None
     batch_id: Optional[str] = None
     member_ordinal: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class BacktestRunCancellation:
+    outcome: Literal["accepted", "not_found", "conflict"]
+    run: BacktestRunRecord | None = None
 
 
 @dataclass(frozen=True)

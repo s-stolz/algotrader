@@ -19,6 +19,7 @@ from domain.enums import (
 from domain.types import (
     BacktestFillRecord,
     BacktestRequestSnapshot,
+    BacktestRunCancellation,
     BacktestRunQuery,
     BacktestRunRecord,
     BacktestTradeRecord,
@@ -41,6 +42,29 @@ class _FakeRunRepository:
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
         return self.runs_by_id.get(run_id)
+
+    def cancel(self, run_id: str) -> BacktestRunCancellation:
+        run = self.runs_by_id.get(run_id)
+        if run is None:
+            return BacktestRunCancellation("not_found")
+        if run.status in {BacktestRunStatus.SUCCEEDED, BacktestRunStatus.FAILED}:
+            return BacktestRunCancellation("conflict")
+        if run.status in {BacktestRunStatus.CANCELLING, BacktestRunStatus.CANCELLED}:
+            return BacktestRunCancellation("accepted", run)
+        cancelled = replace(
+            run,
+            status=(
+                BacktestRunStatus.CANCELLED
+                if run.status == BacktestRunStatus.QUEUED
+                else BacktestRunStatus.CANCELLING
+            ),
+            completed_at_ms=42 if run.status == BacktestRunStatus.QUEUED else None,
+            cancel_requested_at_ms=42,
+            cancellation_source="user",
+            cancellation_reason="user_requested",
+        )
+        self.runs_by_id[run_id] = cancelled
+        return BacktestRunCancellation("accepted", cancelled)
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         self.queries.append(query)
@@ -251,6 +275,40 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
 
 
 class TestBacktestStatusRoute(unittest.TestCase):
+    def test_cancel_route_exposes_queued_and_running_progress_and_conflicts(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(repository=repository, new_run_id=lambda: "queued")
+        queued = service.submit(BacktestSubmissionRequestSchema(**_valid_payload()).to_domain())
+        repository.runs_by_id["running"] = replace(
+            queued,
+            run_id="running",
+            status=BacktestRunStatus.RUNNING,
+            started_at_ms=21,
+        )
+        repository.runs_by_id["failed"] = replace(
+            queued,
+            run_id="failed",
+            status=BacktestRunStatus.FAILED,
+            started_at_ms=21,
+            completed_at_ms=22,
+            error_code="failure",
+            error_message="failed",
+        )
+        with TestClient(create_app(service=service)) as client:
+            cancelled = client.post("/backtests/queued/cancel")
+            again = client.post("/backtests/queued/cancel")
+            cancelling = client.post("/backtests/running/cancel")
+            conflict = client.post("/backtests/failed/cancel")
+            missing = client.post("/backtests/missing/cancel")
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(cancelled.json()["status"], "cancelled")
+        self.assertEqual(cancelled.json()["cancel_requested_at_ms"], 42)
+        self.assertEqual(again.json(), cancelled.json())
+        self.assertEqual(cancelling.json()["status"], "cancelling")
+        self.assertNotIn("completed_at_ms", cancelling.json())
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(missing.status_code, 404)
+
     def test_legacy_request_and_result_remain_readable_without_assigned_version(self) -> None:
         repository = _FakeRunRepository()
         current = BacktestRunService(repository=repository).submit(

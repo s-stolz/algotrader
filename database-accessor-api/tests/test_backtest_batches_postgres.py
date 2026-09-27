@@ -293,6 +293,80 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
                 ],
             )
 
+    async def test_cancellation_during_pause_preserves_the_next_member_until_resume(self) -> None:
+        now = datetime(2026, 9, 26, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+            payload = self._payload("batch-cancel-pause", "member-active")
+            payload["raw_count"] = payload["member_count"] = 2
+            payload["members"].append(
+                {**payload["members"][0], "run_id": "member-next", "member_ordinal": 1}
+            )
+            await crud.create_backtest_batch(session, payload)
+            self.assertTrue(
+                await backtest_execution.claim(
+                    session, run_id="member-active", owner_token="owner", started_at=now
+                )
+            )
+            pause = await self._control(
+                session, batch_id="batch-cancel-pause", command="pause", command_id="pause-1"
+            )
+            self.assertEqual(pause["status"], "pausing")
+            self.assertEqual(
+                await backtest_execution.cancel_run(
+                    session, run_id="member-active", requested_at=now
+                ),
+                "accepted",
+            )
+            self.assertEqual(
+                (await self._batch(session, "batch-cancel-pause"))["status"], "pausing"
+            )
+            self.assertEqual((await backtest_execution.read_slot(session))["owner_token"], "owner")
+            self.assertTrue(
+                await backtest_execution.settle(
+                    session,
+                    run_id="member-active",
+                    owner_token="owner",
+                    terminal={"status": "cancelled", "completed_at": now},
+                )
+            )
+            self.assertEqual((await self._batch(session, "batch-cancel-pause"))["status"], "paused")
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"], []
+            )
+            self.assertIsNone((await backtest_execution.read_slot(session))["owner_token"])
+            resumed = await self._control(
+                session, batch_id="batch-cancel-pause", command="resume", command_id="resume-1"
+            )
+            self.assertEqual(resumed["status"], "running")
+            self.assertEqual(
+                await backtest_execution.cancel_run(
+                    session, run_id="member-next", requested_at=now
+                ),
+                "accepted",
+            )
+            self.assertEqual(
+                (await self._batch(session, "batch-cancel-pause"))["status"], "completed"
+            )
+            self.assertEqual(
+                (await backtest_execution.read_queue_state(session))["queued_entries"], []
+            )
+            events = await crud.list_backtest_batch_events(session, "batch-cancel-pause")
+            self.assertEqual(
+                [event["event_type"] for event in events],
+                [
+                    "accepted",
+                    "started",
+                    "pause",
+                    "member_cancel_requested",
+                    "paused",
+                    "resume",
+                    "member_cancelled",
+                    "completed",
+                ],
+            )
+
     async def test_idle_pause_resume_and_restart_preserve_eligibility(self) -> None:
         now = datetime(2026, 9, 26, tzinfo=timezone.utc)
         async with self.sessions() as session:

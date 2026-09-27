@@ -139,10 +139,13 @@ class BacktestRunBase(BacktestContractModel):
     run_id: str
     batch_id: str | None = None
     member_ordinal: int | None = None
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: Literal["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
     submitted_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    cancel_requested_at: datetime | None = None
+    cancellation_source: str | None = None
+    cancellation_reason: str | None = None
     error_code: str | None = None
     error_message: str | None = None
     request_schema_version: int
@@ -177,10 +180,24 @@ class BacktestRunBase(BacktestContractModel):
             raise ValueError("request schema version 3 requires a positive strategy_version")
         if self.request_schema_version == 2 and self.request.strategy.strategy_version is not None:
             raise ValueError("request schema version 2 has no strategy_version")
+        if self.status in {"cancelling", "cancelled"} and (
+            self.cancel_requested_at is None
+            or not self.cancellation_source
+            or not self.cancellation_reason
+        ):
+            raise ValueError("cancelled runs require cancellation provenance")
         return self
 
 
 class BacktestRunCreateIn(BacktestRunBase):
+    @model_validator(mode="after")
+    def prohibit_cancellation_creation(self) -> "BacktestRunCreateIn":
+        if self.status in {"cancelling", "cancelled"} or any(
+            (self.cancel_requested_at, self.cancellation_source, self.cancellation_reason)
+        ):
+            raise ValueError("Cancellation requires the serialized command endpoint")
+        return self
+
     @model_validator(mode="after")
     def prohibit_member_creation(self) -> "BacktestRunCreateIn":
         if self.batch_id is not None or self.member_ordinal is not None:
@@ -254,7 +271,7 @@ class BacktestExecutionClaimIn(BacktestContractModel):
 class BacktestExecutionSettleIn(BacktestContractModel):
     run_id: str
     owner_token: str
-    status: Literal["succeeded", "failed"]
+    status: Literal["succeeded", "failed", "cancelled"]
     completed_at: datetime
     error_code: str | None = None
     error_message: str | None = None
@@ -274,6 +291,18 @@ class BacktestExecutionSettleIn(BacktestContractModel):
                 raise ValueError("successful settlement requires replay_descriptor")
             if self.error_code is not None or self.error_message is not None:
                 raise ValueError("successful settlement cannot carry an error")
+        elif self.status == "cancelled":
+            if (
+                self.error_code is not None
+                or self.error_message is not None
+                or self.fills
+                or self.trades
+                or self.result_schema_version is not None
+                or self.metrics is not None
+                or self.diagnostics is not None
+                or self.replay_descriptor is not None
+            ):
+                raise ValueError("cancelled settlement cannot carry result artifacts")
         elif (
             not self.error_code
             or not self.error_message

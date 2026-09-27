@@ -278,6 +278,9 @@ class DatabaseAccessorClient(_BaseClient):
             self._request("POST", "/backtest-execution/settle", json=settlement)
         )
 
+    def cancel_backtest_run(self, run_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/backtests/{run_id}/cancel")
+
     def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None:
         response = self._request("POST", "/backtest-execution/reconcile", json=reconciliation)
         return response["reconciled"]
@@ -528,6 +531,9 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         return _mutation_updated(
             await self._request("POST", "/backtest-execution/settle", json=settlement)
         )
+
+    async def cancel_backtest_run(self, run_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/backtests/{run_id}/cancel")
 
     async def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None:
         response = await self._request("POST", "/backtest-execution/reconcile", json=reconciliation)

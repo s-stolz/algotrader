@@ -4,6 +4,7 @@ import queuedBatchQueue from '../fixtures/queuedBatchQueue.json';
 
 import {
   BacktestSubmissionError,
+  cancelBacktestRun,
   controlBacktestBatch,
   deleteBacktestRun,
   fetchStrategyCatalog,
@@ -30,6 +31,26 @@ const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
 describe('backtester API client', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('accepts durable cancellation progress and validates the returned run', async () => {
+    const cancelling = {
+      ...backtestRun(), status: 'cancelling', started_at_ms: 1_780_000_000_001,
+      cancel_requested_at_ms: 1_780_000_000_002,
+      cancellation_source: 'user', cancellation_reason: 'user_requested',
+    };
+    const cancelled = { ...cancelling, status: 'cancelled', completed_at_ms: 1_780_000_000_003 };
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(cancelling))
+      .mockResolvedValueOnce(jsonResponse(cancelled))
+      .mockResolvedValueOnce(jsonResponse({ ...cancelled, status: 'succeeded' }));
+
+    await expect(cancelBacktestRun('run-123')).resolves.toEqual(cancelling);
+    await expect(cancelBacktestRun('run-123')).resolves.toEqual(cancelled);
+    await expect(cancelBacktestRun('run-123')).rejects.toThrow('Invalid cancelled backtest run response');
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/run-123/cancel', {
+      method: 'POST',
+    });
   });
 
   it('posts stable batch command identity and validates the revision', async () => {

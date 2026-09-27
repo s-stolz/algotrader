@@ -21,6 +21,7 @@ from app.backtest_child import (
     _DEFAULT_FAILURE_CODE,
     _DEFAULT_FAILURE_MESSAGE,
     ChildExitUnconfirmedError,
+    CompactBacktestCancelled,
     CompactBacktestFailure,
     CompactBacktestResult,
     ProcessBacktestChildExecutor,
@@ -34,6 +35,8 @@ _MAX_ERROR_MESSAGE_LENGTH = 500
 
 class QueuedRunRepository(Protocol):
     def next_queued(self) -> BacktestRunRecord | None: ...
+
+    def get(self, run_id: str) -> BacktestRunRecord | None: ...
 
 
 class RunLifecyclePersistence(Protocol):
@@ -59,6 +62,10 @@ class RunLifecyclePersistence(Protocol):
         completed_at_ms: int,
         result: BacktestResult,
         execution_duration_ms: int,
+    ) -> bool: ...
+
+    def settle_cancellation(
+        self, *, run_id: str, owner_token: str, completed_at_ms: int
     ) -> bool: ...
 
     def reconcile_execution(self, *, completed_at_ms: int) -> int | None: ...
@@ -94,7 +101,7 @@ class BacktestChildExecutor(Protocol):
     def execute(
         self,
         snapshot: BacktestRequestSnapshot,
-    ) -> CompactBacktestResult | CompactBacktestFailure: ...
+    ) -> CompactBacktestResult | CompactBacktestFailure | CompactBacktestCancelled: ...
 
 
 class WorkerHeartbeatPublisher(Protocol):
@@ -179,7 +186,13 @@ class BacktestWorker:
 
     def _execute_claimed(self, selected: BacktestRunRecord, owner_token: str) -> bool:
         try:
-            outcome = self._child_executor.execute(selected.request_snapshot)
+            if isinstance(self._child_executor, ProcessBacktestChildExecutor):
+                outcome = self._child_executor.execute(
+                    selected.request_snapshot,
+                    on_poll=lambda: self._cancellation_requested(selected.run_id),
+                )
+            else:
+                outcome = self._child_executor.execute(selected.request_snapshot)
         except ChildExitUnconfirmedError as exc:
             self._record_fault(selected.run_id, owner_token, "child_exit_unconfirmed", str(exc))
             raise ExecutionOperationalError(
@@ -198,6 +211,13 @@ class BacktestWorker:
                     error_message="Backtest child process failed",
                 ),
             )
+            self._set_owner_token(None)
+            return True
+
+        if isinstance(outcome, CompactBacktestCancelled) or self._cancellation_requested(
+            selected.run_id
+        ):
+            self._settle_cancellation(selected.run_id, owner_token)
             self._set_owner_token(None)
             return True
 
@@ -233,6 +253,10 @@ class BacktestWorker:
             )
             raise
         if not completed:
+            if self._cancellation_requested(selected.run_id):
+                self._settle_cancellation(selected.run_id, owner_token)
+                self._set_owner_token(None)
+                return True
             _LOGGER.error(
                 "Backtest run completion was not persisted",
                 extra={"run_id": selected.run_id},
@@ -280,6 +304,9 @@ class BacktestWorker:
             )
             raise
         if not failed:
+            if self._cancellation_requested(run_id):
+                self._settle_cancellation(run_id, owner_token)
+                return
             _LOGGER.error(
                 "Backtest run failure was not persisted",
                 extra={"run_id": run_id},
@@ -292,6 +319,57 @@ class BacktestWorker:
             )
             raise ExecutionOperationalError(
                 "lost_ownership", run_id, f"Backtest run failure was not persisted: {run_id}"
+            )
+
+    def _cancellation_requested(self, run_id: str) -> bool:
+        try:
+            run = self._repository.get(run_id)
+        except Exception as exc:
+            self._record_fault(
+                run_id,
+                self._owner_token or "",
+                "cancellation_state_unavailable",
+                "Backtest cancellation state could not be read",
+            )
+            raise ExecutionOperationalError(
+                "cancellation_state_unavailable",
+                run_id,
+                "Backtest cancellation state could not be read",
+            ) from exc
+        if run is None:
+            self._record_fault(
+                run_id,
+                self._owner_token or "",
+                "lost_ownership",
+                "Claimed backtest run disappeared",
+            )
+            raise ExecutionOperationalError(
+                "lost_ownership", run_id, "Claimed backtest run disappeared"
+            )
+        return run.status == BacktestRunStatus.CANCELLING
+
+    def _settle_cancellation(self, run_id: str, owner_token: str) -> None:
+        try:
+            settled = self._lifecycle.settle_cancellation(
+                run_id=run_id, owner_token=owner_token, completed_at_ms=self._now_ms()
+            )
+        except Exception:
+            self._record_fault(
+                run_id,
+                owner_token,
+                "terminal_persistence_failed",
+                "Backtest cancellation could not be persisted",
+            )
+            raise
+        if not settled:
+            self._record_fault(
+                run_id,
+                owner_token,
+                "lost_ownership",
+                "Backtest cancellation was rejected by storage",
+            )
+            raise ExecutionOperationalError(
+                "lost_ownership", run_id, "Backtest cancellation was not persisted"
             )
 
     def _record_fault(self, run_id: str, owner_token: str, code: str, message: str) -> None:

@@ -142,7 +142,8 @@ Standalone Python backtesting module for historical candle simulation.
 - Forward-only upgrades preserve older standalone request snapshots, terminal
   results, Fills, and Closed Trades. Historical inspection and reuse use
   version-aware compatibility rather than deleting saved runs.
-- Durable lifecycle values are `queued`, `running`, `succeeded`, and `failed`.
+- Durable lifecycle values are `queued`, `running`, `cancelling`, `succeeded`,
+  `failed`, and `cancelled`.
   The backtester owns lifecycle policy; database-accessor-api exposes storage
   primitives.
 - `POST /backtests` validates deterministic request rules without loading market
@@ -159,6 +160,11 @@ Standalone Python backtesting module for historical candle simulation.
 - `GET /backtests/{run_id}` returns epoch-millisecond lifecycle timestamps and
   state-specific fields: no artifacts while queued/running, metrics and
   diagnostics when succeeded, and bounded sanitized errors when failed.
+- `POST /backtests/{run_id}/cancel` accepts queued and running standalone or
+  member runs. Queued runs become cancelled immediately; running runs return
+  cancelling with durable request time, source, and reason, and settle only
+  after the supervised process tree exits. Repeats retain their original
+  acceptance timestamp; succeeded or failed runs conflict.
 - `GET /backtests` accepts optional status, symbol, timeframe, strategy, engine,
   `submitted_from_ms`, and `submitted_to_ms` filters. It returns all matches in
   storage-provided newest-first order without pagination. It does not filter by

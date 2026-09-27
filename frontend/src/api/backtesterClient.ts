@@ -242,6 +242,17 @@ export async function getBacktestRun(runId: string): Promise<BacktestRun> {
   return payload;
 }
 
+export async function cancelBacktestRun(runId: string): Promise<BacktestRun> {
+  const payload = await parseJsonResponse(
+    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}/cancel`, { method: 'POST' }),
+    'Failed to cancel backtest run',
+  );
+  if (!isBacktestRun(payload) || !['cancelling', 'cancelled'].includes(payload.status)) {
+    throw new Error('Invalid cancelled backtest run response');
+  }
+  return payload;
+}
+
 export async function deleteBacktestRun(runId: string): Promise<void> {
   const response = await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}`, {
     method: 'DELETE',

@@ -269,10 +269,13 @@ class BacktestRunResponseSchema(ApiContractModel):
     run_id: str
     batch_id: str | None = None
     member_ordinal: int | None = None
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: Literal["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
     submitted_at_ms: int
     started_at_ms: int | None = None
     completed_at_ms: int | None = None
+    cancel_requested_at_ms: int | None = None
+    cancellation_source: str | None = None
+    cancellation_reason: str | None = None
     request_schema_version: int
     request: StoredBacktestRequestSchema
     result_schema_version: int | None = None
@@ -293,10 +296,14 @@ class BacktestRunResponseSchema(ApiContractModel):
             "member_ordinal": run.member_ordinal,
         }
 
-        if run.status.value in {"running", "succeeded", "failed"}:
+        if run.status.value in {"running", "cancelling", "succeeded", "failed", "cancelled"}:
             payload["started_at_ms"] = run.started_at_ms
-        if run.status.value in {"succeeded", "failed"}:
+        if run.status.value in {"succeeded", "failed", "cancelled"}:
             payload["completed_at_ms"] = run.completed_at_ms
+        if run.cancel_requested_at_ms is not None:
+            payload["cancel_requested_at_ms"] = run.cancel_requested_at_ms
+            payload["cancellation_source"] = run.cancellation_source
+            payload["cancellation_reason"] = run.cancellation_reason
 
         if run.status.value == "succeeded":
             if run.result_schema_version is None or run.metrics is None or run.diagnostics is None:

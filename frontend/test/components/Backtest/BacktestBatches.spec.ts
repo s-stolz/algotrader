@@ -1,12 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  controlBacktestBatch, getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers,
+  cancelBacktestRun, getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers,
+  controlBacktestBatch,
 } from '@/api/backtesterClient';
 import { isBacktestBatch, type BacktestBatch, type BacktestRun } from '@/types/backtesterContracts';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
+  cancelBacktestRun: vi.fn(),
   controlBacktestBatch: vi.fn(),
   getBacktestBatch: vi.fn(), listBacktestBatchEvents: vi.fn(),
   listBacktestBatchMembers: vi.fn(),
@@ -58,12 +60,36 @@ describe('accepted batch inspection', () => {
   });
 
   beforeEach(() => {
+    vi.mocked(cancelBacktestRun).mockReset();
     vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(getBacktestBatch).mockReset().mockResolvedValue(batch);
     vi.mocked(listBacktestBatchMembers).mockReset().mockResolvedValue([member(0), member(1)]);
     vi.mocked(listBacktestBatchEvents).mockReset().mockResolvedValue([{ batch_id: 'batch-1',
       revision: 0, event_type: 'accepted', status: 'queued',
       prior_status: null, occurred_at_ms: batch.accepted_at_ms, trigger_run_id: null, reason: null }]);
+  });
+
+  it('cancels only the chosen member and refreshes its durable outcome', async () => {
+    vi.mocked(cancelBacktestRun).mockResolvedValue({
+      ...member(0), status: 'cancelled', cancel_requested_at_ms: batch.accepted_at_ms + 1,
+      completed_at_ms: batch.accepted_at_ms + 1,
+      cancellation_source: 'user', cancellation_reason: 'user_requested',
+    });
+    vi.mocked(listBacktestBatchMembers).mockResolvedValueOnce([member(0), member(1)])
+      .mockResolvedValue([
+        { ...member(0), status: 'cancelled', cancel_requested_at_ms: batch.accepted_at_ms + 1,
+          completed_at_ms: batch.accepted_at_ms + 1,
+          cancellation_source: 'user', cancellation_reason: 'user_requested' },
+        member(1),
+      ]);
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-cancel-member-0"]').trigger('click');
+    await flushPromises();
+    expect(cancelBacktestRun).toHaveBeenCalledWith('member-0');
+    expect(wrapper.find('[data-testid="workspace-batch-members"]').text()).toContain('cancelled');
+    expect(wrapper.emitted('cancelled')).toHaveLength(1);
+    wrapper.unmount();
   });
 
   it('offers legal pause and resume controls and refreshes after command acceptance', async () => {
@@ -99,6 +125,29 @@ describe('accepted batch inspection', () => {
     await wrapper.get('button').trigger('click');
     await flushPromises();
     const calls = vi.mocked(controlBacktestBatch).mock.calls;
+    expect(calls[0][2]).toBe(calls[1][2]);
+    wrapper.unmount();
+  });
+
+  it('retains a pending Pause identity when member cancellation advances the batch revision', async () => {
+    vi.mocked(getBacktestBatch).mockResolvedValueOnce(batch)
+      .mockResolvedValue({ ...batch, status: 'queued', lifecycle_revision: 1 });
+    vi.mocked(listBacktestBatchEvents).mockResolvedValueOnce([{ batch_id: 'batch-1',
+      revision: 0, event_type: 'accepted', status: 'queued', prior_status: null,
+      occurred_at_ms: batch.accepted_at_ms, trigger_run_id: null, reason: null }])
+      .mockResolvedValue([{ batch_id: 'batch-1', revision: 1,
+        event_type: 'member_cancelled', status: 'queued', prior_status: 'queued',
+        occurred_at_ms: batch.accepted_at_ms + 1, trigger_run_id: 'member-0',
+        reason: 'user_requested', command_id: null }]);
+    vi.mocked(controlBacktestBatch).mockRejectedValue(new Error('Connection lost'));
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    await wrapper.get('button').trigger('click');
+    await flushPromises();
+    await wrapper.get('button').trigger('click');
+    await flushPromises();
+    const calls = vi.mocked(controlBacktestBatch).mock.calls;
+    expect(calls).toHaveLength(2);
     expect(calls[0][2]).toBe(calls[1][2]);
     wrapper.unmount();
   });

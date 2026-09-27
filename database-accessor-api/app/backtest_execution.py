@@ -289,6 +289,7 @@ async def _transition_batch(
     event_type: str,
     occurred_at,
     trigger_run_id: str | None,
+    reason: str | None = None,
     command_id: str | None = None,
     **timestamps,
 ) -> None:
@@ -314,6 +315,7 @@ async def _transition_batch(
             status=status,
             occurred_at=occurred_at,
             trigger_run_id=trigger_run_id,
+            reason=reason,
             command_id=command_id,
         )
     )
@@ -331,7 +333,7 @@ async def _active_member_matches(session, run_id: str | None, batch_id: str) -> 
             select(backtest_runs.c.run_id).where(
                 backtest_runs.c.run_id == run_id,
                 backtest_runs.c.batch_id == batch_id,
-                backtest_runs.c.status == "running",
+                backtest_runs.c.status.in_(["running", "cancelling"]),
             )
         )
     ).first() is not None
@@ -429,35 +431,132 @@ async def control_batch(
         raise
 
 
-async def _advance_batch_after_member(session, batch_id: str, run_id: str, completed_at) -> None:
-    batch = (
+async def _reconcile_batch_after_run(session, batch_id: str, run_id: str, at) -> None:
+    batch_status = (
         await session.execute(
             select(backtest_batches.c.status)
             .where(backtest_batches.c.batch_id == batch_id)
             .with_for_update()
         )
-    ).one()
-    remaining = (
+    ).scalar_one()
+    statuses = (
+        (
+            await session.execute(
+                select(backtest_runs.c.status).where(backtest_runs.c.batch_id == batch_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    queued = "queued" in statuses
+    active = any(status in {"running", "cancelling"} for status in statuses)
+    if not queued and not active:
         await session.execute(
-            select(backtest_runs.c.run_id)
-            .where(backtest_runs.c.batch_id == batch_id, backtest_runs.c.status == "queued")
-            .limit(1)
+            delete(backtest_queue_turns).where(backtest_queue_turns.c.batch_id == batch_id)
         )
-    ).first()
-    if remaining is None:
-        await _transition_batch(
-            session,
-            batch_id,
-            "completed",
-            "completed",
-            completed_at,
-            run_id,
-            completed_at=completed_at,
+        terminal_status = "cancelled" if batch_status == "cancelling" else "completed"
+        if batch_status != terminal_status:
+            await _transition_batch(
+                session,
+                batch_id,
+                terminal_status,
+                terminal_status,
+                at,
+                run_id,
+                completed_at=at,
+            )
+    elif batch_status == "pausing" and not active:
+        await _transition_batch(session, batch_id, "paused", "paused", at, run_id)
+    elif queued and batch_status in {"queued", "running"}:
+        existing_turn = (
+            await session.execute(
+                select(backtest_queue_turns.c.turn_id)
+                .where(backtest_queue_turns.c.batch_id == batch_id)
+                .limit(1)
+            )
+        ).first()
+        if existing_turn is None and not active:
+            await session.execute(insert(backtest_queue_turns).values(batch_id=batch_id))
+
+
+async def cancel_run(session, *, run_id: str, requested_at) -> str:
+    """Accept one user cancellation in slot order; never release active capacity."""
+    try:
+        slot = (
+            (
+                await session.execute(
+                    select(backtest_execution_slot)
+                    .where(backtest_execution_slot.c.slot_id == 1)
+                    .with_for_update()
+                )
+            )
+            .mappings()
+            .one()
         )
-    elif batch.status == "pausing":
-        await _transition_batch(session, batch_id, "paused", "paused", completed_at, run_id)
-    elif batch.status in {"queued", "running"}:
-        await session.execute(insert(backtest_queue_turns).values(batch_id=batch_id))
+        run = (
+            (
+                await session.execute(
+                    select(backtest_runs.c.status, backtest_runs.c.batch_id)
+                    .where(backtest_runs.c.run_id == run_id)
+                    .with_for_update()
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if run is None:
+            await session.rollback()
+            return "not_found"
+        if run["status"] in {"cancelling", "cancelled"}:
+            await session.rollback()
+            return "accepted"
+        if run["status"] in {"succeeded", "failed"}:
+            await session.rollback()
+            return "conflict"
+        if run["status"] == "running" and (slot["run_id"] != run_id or slot["owner_token"] is None):
+            await session.rollback()
+            return "ownership_unconfirmed"
+        queued = run["status"] == "queued"
+        await session.execute(
+            update(backtest_runs)
+            .where(backtest_runs.c.run_id == run_id, backtest_runs.c.status == run["status"])
+            .values(
+                status="cancelled" if queued else "cancelling",
+                cancel_requested_at=requested_at,
+                cancellation_source="user",
+                cancellation_reason="user_requested",
+                completed_at=requested_at if queued else None,
+            )
+        )
+        if run["batch_id"] is not None:
+            batch_status = (
+                await session.execute(
+                    select(backtest_batches.c.status).where(
+                        backtest_batches.c.batch_id == run["batch_id"]
+                    )
+                )
+            ).scalar_one()
+            await _transition_batch(
+                session,
+                run["batch_id"],
+                batch_status,
+                "member_cancelled" if queued else "member_cancel_requested",
+                requested_at,
+                run_id,
+                reason="user_requested",
+            )
+        if queued:
+            if run["batch_id"] is None:
+                await session.execute(
+                    delete(backtest_queue_turns).where(backtest_queue_turns.c.run_id == run_id)
+                )
+            else:
+                await _reconcile_batch_after_run(session, run["batch_id"], run_id, requested_at)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return "accepted"
 
 
 async def settle(session, *, run_id: str, owner_token: str, terminal: dict) -> bool:
@@ -467,8 +566,24 @@ async def settle(session, *, run_id: str, owner_token: str, terminal: dict) -> b
     fills = data.pop("fills", [])
     trades = data.pop("trades", [])
     status = data.pop("status")
-    if status not in {"succeeded", "failed"}:
-        raise ValueError("terminal status must be succeeded or failed")
+    if status not in {"succeeded", "failed", "cancelled"}:
+        raise ValueError("invalid terminal status")
+    if status == "cancelled" and (
+        fills
+        or trades
+        or any(
+            data.get(key) is not None
+            for key in (
+                "error_code",
+                "error_message",
+                "result_schema_version",
+                "metrics",
+                "diagnostics",
+                "replay_descriptor",
+            )
+        )
+    ):
+        raise ValueError("cancelled run cannot have result artifacts")
     if status == "failed" and (
         fills
         or trades
@@ -498,9 +613,10 @@ async def settle(session, *, run_id: str, owner_token: str, terminal: dict) -> b
             )
         ).scalar_one()
         stored_data = {key: value for key, value in data.items() if value is not None}
+        expected_status = "cancelling" if status == "cancelled" else "running"
         run = await session.execute(
             update(backtest_runs)
-            .where(backtest_runs.c.run_id == run_id, backtest_runs.c.status == "running")
+            .where(backtest_runs.c.run_id == run_id, backtest_runs.c.status == expected_status)
             .values(status=status, **stored_data)
         )
         if run.rowcount != 1:
@@ -517,7 +633,7 @@ async def settle(session, *, run_id: str, owner_token: str, terminal: dict) -> b
                 )
             )
         if batch_id is not None:
-            await _advance_batch_after_member(session, batch_id, run_id, data["completed_at"])
+            await _reconcile_batch_after_run(session, batch_id, run_id, data["completed_at"])
         await session.execute(
             update(backtest_execution_slot)
             .where(backtest_execution_slot.c.slot_id == 1)
@@ -547,14 +663,14 @@ async def reconcile(session, *, completed_at, error_code: str, error_message: st
             (
                 await session.execute(
                     select(backtest_runs.c.run_id, backtest_runs.c.batch_id).where(
-                        backtest_runs.c.status == "running"
+                        backtest_runs.c.status.in_(("running", "cancelling"))
                     )
                 )
             )
             .mappings()
             .all()
         )
-        result = await session.execute(
+        failed = await session.execute(
             update(backtest_runs)
             .where(backtest_runs.c.status == "running")
             .values(
@@ -564,16 +680,21 @@ async def reconcile(session, *, completed_at, error_code: str, error_message: st
                 error_message=error_message,
             )
         )
+        cancelled = await session.execute(
+            update(backtest_runs)
+            .where(backtest_runs.c.status == "cancelling")
+            .values(status="cancelled", completed_at=completed_at)
+        )
         for run in interrupted:
-            if run["batch_id"] is None:
-                continue
-            batch_id = run["batch_id"]
-            await _advance_batch_after_member(session, batch_id, run["run_id"], completed_at)
+            if run["batch_id"] is not None:
+                await _reconcile_batch_after_run(
+                    session, run["batch_id"], run["run_id"], completed_at
+                )
         await session.commit()
     except Exception:
         await session.rollback()
         raise
-    return result.rowcount
+    return failed.rowcount + cancelled.rowcount
 
 
 async def record_fault(session, *, run_id: str, owner_token: str, code: str, message: str) -> bool:

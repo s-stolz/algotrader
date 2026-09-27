@@ -83,8 +83,16 @@ stored in TimescaleDB.
   verifies the earliest durable turn, batch eligibility, and lowest queued
   member ordinal, and atomically claims one run. Settlement requires the matching
   owner token and commits terminal state, artifacts, batch reconciliation/events,
-  next turn, and slot release together. Batch creation and standalone submission
-  serialize turn insertion through the same slot row; existing queued work was
+  the next turn, and slot release together. `POST /backtests/{run_id}/cancel`
+  serializes on the same slot: queued runs become cancelled without occupying it, while running
+  runs become cancelling and keep it until a fenced cancelled settlement.
+  The acceptance time, source, and reason persist on the run. A member
+  cancellation advances the batch revision and records a same-state command
+  event; final-member settlement changes the batch control state separately.
+  Startup reconciliation settles cancelling work only after the previous process
+  tree is confirmed gone and the slot is cleared by the operator. Batch creation
+  and standalone submission serialize turn insertion through the same slot row;
+  existing queued work was
   seeded in submission-time/identity order by V011.
   Automatic event rows record the locked batch's prior status and new status;
   pause/resume command rows also retain the unique client command identity.

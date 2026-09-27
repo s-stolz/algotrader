@@ -365,6 +365,19 @@ class DatabaseAccessorClientTests(unittest.TestCase):
              "/backtest-execution/fault"],
         )
 
+    def test_cancel_run_passes_durable_response_through(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual((request.method, request.url.path),
+                             ("POST", "/backtests/run-1/cancel"))
+            return httpx.Response(200, json={"run_id": "run-1", "status": "cancelling"})
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            self.assertEqual(client.cancel_backtest_run("run-1")["status"], "cancelling")
+        finally:
+            client.close()
+
     def test_worker_telemetry_uses_primitive_storage_routes(self) -> None:
         calls: list[tuple[str, str, dict | None]] = []
 
@@ -705,6 +718,19 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             calls, ["/backtest-execution/claim", "/backtest-execution/settle"]
         )
+
+    async def test_async_cancel_run_passes_durable_response_through(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual((request.method, request.url.path),
+                             ("POST", "/backtests/run-1/cancel"))
+            return httpx.Response(200, json={"run_id": "run-1", "status": "cancelled"})
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            self.assertEqual((await client.cancel_backtest_run("run-1"))["status"], "cancelled")
+        finally:
+            await client.aclose()
 
     async def test_async_get_execution_logs_and_delete_backtest_run(self) -> None:
         fill = {**_fill_payload(), "run_id": "run-async-123"}

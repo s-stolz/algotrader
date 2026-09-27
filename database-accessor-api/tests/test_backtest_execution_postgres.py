@@ -87,6 +87,108 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                 ROOT / "timescaledb-init/migrations/V012__backtest_batch_event_prior_status.sql"
             ).read_text()
         )
+        for pause_migration in (ROOT / "timescaledb-init/migrations").glob("V013__*.sql"):
+            await self.db.execute(pause_migration.read_text())
+        await self.db.execute(
+            (ROOT / "timescaledb-init/migrations/V014__backtest_run_cancellation.sql").read_text()
+        )
+
+    async def test_cancel_and_completion_are_serialized_at_the_slot(self) -> None:
+        await self._insert_run("active", "queued", "2026-06-08T12:30:00Z")
+        await self._insert_run("waiting", "queued", "2026-06-08T12:31:00Z")
+        await self._migrate()
+        engine = create_async_engine(
+            URL.create(
+                "postgresql+asyncpg",
+                username=self.connection_options["user"],
+                password=self.connection_options["password"],
+                host=self.connection_options["host"],
+                port=self.connection_options["port"],
+                database=self.connection_options["database"],
+            )
+        )
+        at = datetime.fromisoformat("2026-06-08T12:32:00+00:00")
+
+        async def operate(operation):
+            async with engine.connect() as connection:
+                await connection.execute(text(f'SET search_path TO "{self.schema}"'))
+                await connection.commit()
+                async with AsyncSession(bind=connection) as session:
+                    return await operation(session)
+
+        try:
+            self.assertTrue(
+                await operate(
+                    lambda session: backtest_execution.claim(
+                        session,
+                        run_id="active",
+                        owner_token="owner",
+                        started_at=at,
+                    )
+                )
+            )
+            cancel, normal = await asyncio.gather(
+                operate(
+                    lambda session: backtest_execution.cancel_run(
+                        session,
+                        run_id="active",
+                        requested_at=at,
+                    )
+                ),
+                operate(
+                    lambda session: backtest_execution.settle(
+                        session,
+                        run_id="active",
+                        owner_token="owner",
+                        terminal={
+                            "status": "failed",
+                            "completed_at": at,
+                            "error_code": "failure",
+                            "error_message": "failed",
+                        },
+                    )
+                ),
+            )
+            state = await self.db.fetchrow(
+                "SELECT status, cancel_requested_at FROM backtest_runs WHERE run_id='active'"
+            )
+            if normal:
+                self.assertEqual((cancel, state["status"]), ("conflict", "failed"))
+                self.assertIsNone(state["cancel_requested_at"])
+            else:
+                self.assertEqual((cancel, state["status"]), ("accepted", "cancelling"))
+                self.assertEqual(
+                    await self.db.fetchval("SELECT run_id FROM backtest_execution_slot"), "active"
+                )
+                self.assertTrue(
+                    await operate(
+                        lambda session: backtest_execution.settle(
+                            session,
+                            run_id="active",
+                            owner_token="owner",
+                            terminal={"status": "cancelled", "completed_at": at},
+                        )
+                    )
+                )
+            self.assertEqual(
+                await self.db.fetchval("SELECT count(*) FROM backtest_fills WHERE run_id='active'"),
+                0,
+            )
+            self.assertIsNone(
+                await self.db.fetchval("SELECT owner_token FROM backtest_execution_slot")
+            )
+            self.assertTrue(
+                await operate(
+                    lambda session: backtest_execution.claim(
+                        session,
+                        run_id="waiting",
+                        owner_token="next",
+                        started_at=at,
+                    )
+                )
+            )
+        finally:
+            await engine.dispose()
 
     async def test_heartbeat_and_queue_read_leave_durable_lifecycle_untouched(self) -> None:
         await self._insert_run("first", "queued", "2026-06-08T12:30:00Z")

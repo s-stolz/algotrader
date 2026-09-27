@@ -384,6 +384,25 @@ def get_backtest(
         ) from exc
 
 
+@router.post(
+    "/{run_id}/cancel",
+    response_model=BacktestRunResponseSchema,
+    response_model_exclude_none=True,
+)
+def cancel_backtest(
+    run_id: str,
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> BacktestRunResponseSchema:
+    try:
+        return BacktestRunResponseSchema.from_domain(service.cancel(run_id))
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Backtest run not found") from exc
+    except BacktestRunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BacktestRunPersistenceError as exc:
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
+
+
 @router.get("/{run_id}/equity-curve")
 def get_backtest_equity_curve(
     run_id: str,

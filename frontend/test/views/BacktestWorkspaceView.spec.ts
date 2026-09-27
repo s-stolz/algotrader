@@ -4,7 +4,7 @@ import { NSelect } from 'naive-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
+  cancelBacktestRun, deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
   fetchBacktestFills, fetchBacktestQueue, getBacktestBatch, getBacktestRun, listBacktestBatchEvents,
   listBacktestBatchMembers, listBacktestBatches, listBacktestRuns,
 } from '@/api/backtesterClient';
@@ -16,6 +16,7 @@ import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
+  cancelBacktestRun: vi.fn(),
   deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   fetchBacktestEquityCurve: vi.fn(),
@@ -115,6 +116,7 @@ describe('production Backtest Workspace', () => {
     vi.mocked(listBacktestBatchMembers).mockReset();
     vi.mocked(listBacktestBatchEvents).mockReset();
     vi.mocked(getBacktestRun).mockReset();
+    vi.mocked(cancelBacktestRun).mockReset();
     vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
     vi.mocked(fetchBacktestEquityCurve).mockReset();
@@ -476,6 +478,33 @@ describe('production Backtest Workspace', () => {
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(3);
     expect(wrapper.text()).toContain('No saved Backtest Runs or Batches.');
     expect(wrapper.text()).not.toContain('current lifecycle status is unknown');
+    wrapper.unmount();
+  });
+
+  it('cancels a queued standalone run once and refreshes its durable status', async () => {
+    const queued = run('queued', {
+      status: 'queued', started_at_ms: null, completed_at_ms: null,
+      result_schema_version: null, metrics: null,
+    });
+    const cancelled = run('queued', {
+      ...queued, status: 'cancelled', completed_at_ms: 1_780_922_100_000,
+      cancel_requested_at_ms: 1_780_922_100_000,
+      cancellation_source: 'user', cancellation_reason: 'user_requested',
+    });
+    vi.mocked(listBacktestRuns).mockResolvedValueOnce([queued]).mockResolvedValueOnce([cancelled]);
+    vi.mocked(cancelBacktestRun).mockResolvedValue(cancelled);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+
+    const cancelButton = wrapper.find('[data-testid="workspace-cancel-queued"]');
+    await cancelButton.trigger('click');
+    await flushPromises();
+
+    expect(cancelBacktestRun).toHaveBeenCalledOnce();
+    expect(cancelBacktestRun).toHaveBeenCalledWith('queued');
+    expect(wrapper.find('[data-testid="workspace-run-queued"]').text()).toContain('cancelled');
+    expect(wrapper.find('[data-testid="workspace-cancel-queued"]').attributes('disabled'))
+      .toBeDefined();
     wrapper.unmount();
   });
 

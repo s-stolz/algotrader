@@ -43,6 +43,18 @@ class _FakeRunClient:
     def get_backtest_run(self, run_id: str) -> dict:
         return dict(self.runs_by_id[run_id])
 
+    def cancel_backtest_run(self, run_id: str) -> dict:
+        run = dict(self.runs_by_id[run_id])
+        run.update(
+            status="cancelled",
+            cancel_requested_at="2026-06-08T12:31:00+00:00",
+            cancellation_source="user",
+            cancellation_reason="user_requested",
+            completed_at="2026-06-08T12:31:00+00:00",
+        )
+        self.runs_by_id[run_id] = run
+        return run
+
     def list_backtest_runs(self, **query) -> list[dict]:
         self.list_queries.append(query)
         return [dict(run) for run in self.listed_payloads]
@@ -67,7 +79,44 @@ class _MissingDeleteRunClient(_FakeRunClient):
         raise DatabaseAccessorClientError("not found", status_code=404)
 
 
+class _RejectedCancelRunClient(_FakeRunClient):
+    def __init__(self, status_code: int) -> None:
+        super().__init__()
+        self.status_code = status_code
+
+    def cancel_backtest_run(self, run_id: str) -> dict:
+        raise DatabaseAccessorClientError("rejected", status_code=self.status_code)
+
+
 class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
+    def test_cancel_maps_storage_outcome_without_reinterpreting_the_run(self) -> None:
+        client = _FakeRunClient()
+        repository = DatabaseAccessorBacktestRunRepository(client=client)
+        queued = BacktestRunRecord(
+            run_id="run-123",
+            status=BacktestRunStatus.QUEUED,
+            submitted_at_ms=1_780_921_805_123,
+            request_snapshot=BacktestRequestSnapshot.from_request(_request()),
+        )
+        repository.create(queued)
+        cancelled = repository.cancel("run-123")
+        self.assertEqual(cancelled.outcome, "accepted")
+        assert cancelled.run is not None
+        self.assertEqual(cancelled.run.status, BacktestRunStatus.CANCELLED)
+        self.assertEqual(cancelled.run.cancellation_reason, "user_requested")
+        self.assertEqual(
+            DatabaseAccessorBacktestRunRepository(client=_RejectedCancelRunClient(404))
+            .cancel("missing")
+            .outcome,
+            "not_found",
+        )
+        self.assertEqual(
+            DatabaseAccessorBacktestRunRepository(client=_RejectedCancelRunClient(409))
+            .cancel("terminal")
+            .outcome,
+            "conflict",
+        )
+
     def test_create_maps_queued_domain_record_and_round_trips_response(self) -> None:
         client = _FakeRunClient()
         repository = DatabaseAccessorBacktestRunRepository(client=client)

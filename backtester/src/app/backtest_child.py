@@ -84,6 +84,11 @@ class CompactBacktestFailure:
     error_message: str
 
 
+@dataclass(frozen=True)
+class CompactBacktestCancelled:
+    """The execution tree was stopped and reaped after durable cancellation."""
+
+
 class ProcessBacktestChildExecutor:
     """Runs one claimed request in a supervised, spawned process tree."""
 
@@ -104,17 +109,20 @@ class ProcessBacktestChildExecutor:
         self,
         snapshot: BacktestRequestSnapshot,
         *,
-        on_poll: Callable[[], None] | None = None,
-    ) -> CompactBacktestResult | CompactBacktestFailure:
+        on_poll: Callable[[], bool | None] | None = None,
+    ) -> CompactBacktestResult | CompactBacktestFailure | CompactBacktestCancelled:
         if sys.platform != "linux":
             raise ChildExitUnconfirmedError("Backtest supervision requires Linux child subreaping")
         context = get_context("spawn")
+        cancel_requested = context.Event()
         parent, child = context.Pipe(duplex=False)
-        process = context.Process(target=_run_child, args=(child, self._execute_fn, snapshot))
+        process = context.Process(
+            target=_run_child, args=(child, self._execute_fn, snapshot, cancel_requested)
+        )
         try:
             process.start()
             child.close()
-            return self._wait_for_child(process, parent, on_poll)
+            return self._wait_for_child(process, parent, on_poll, cancel_requested)
         except ChildExitUnconfirmedError:
             raise
         except BaseException as exc:
@@ -131,8 +139,9 @@ class ProcessBacktestChildExecutor:
         self,
         process: BaseProcess,
         parent: Connection,
-        on_poll: Callable[[], None] | None,
-    ) -> CompactBacktestResult | CompactBacktestFailure:
+        on_poll: Callable[[], bool | None] | None,
+        cancel_requested,
+    ) -> CompactBacktestResult | CompactBacktestFailure | CompactBacktestCancelled:
         outcome = None
         while True:
             if parent.poll(0.2):
@@ -141,14 +150,14 @@ class ProcessBacktestChildExecutor:
                 except EOFError:
                     pass
                 break
-            if on_poll is not None:
-                on_poll()
+            if on_poll is not None and on_poll():
+                cancel_requested.set()
             if not process.is_alive():
                 break
         while process.is_alive():
             process.join(timeout=0.2)
-            if on_poll is not None:
-                on_poll()
+            if on_poll is not None and on_poll():
+                cancel_requested.set()
         process.join()
         if isinstance(outcome, ChildExitUnconfirmedError):
             raise outcome
@@ -163,13 +172,14 @@ class ChildExitUnconfirmedError(RuntimeError):
 
 @dataclass(frozen=True)
 class _ReapedChildResult:
-    result: CompactBacktestResult | CompactBacktestFailure
+    result: CompactBacktestResult | CompactBacktestFailure | CompactBacktestCancelled
 
 
 def _run_child(
     connection: Connection,
     execute_fn: Callable[[BacktestRequestSnapshot], CompactBacktestResult | CompactBacktestFailure],
     snapshot: BacktestRequestSnapshot,
+    cancel_requested,
 ) -> None:
     try:
         os.setsid()
@@ -186,7 +196,7 @@ def _run_child(
         # even when a descendant double-forks or creates a new session.
         if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
             raise ChildExitUnconfirmedError("Cannot enable backtest child subreaping")
-        result = _supervise_execution(execute_fn, snapshot)
+        result = _supervise_execution(execute_fn, snapshot, cancel_requested)
         _reap_descendants()
         connection.send(_ReapedChildResult(result))
     except BaseException:
@@ -199,7 +209,8 @@ def _run_child(
 def _supervise_execution(
     execute_fn: Callable[[BacktestRequestSnapshot], CompactBacktestResult | CompactBacktestFailure],
     snapshot: BacktestRequestSnapshot,
-) -> CompactBacktestResult | CompactBacktestFailure:
+    cancel_requested,
+) -> CompactBacktestResult | CompactBacktestFailure | CompactBacktestCancelled:
     context = get_context("spawn")
     parent, child = context.Pipe(duplex=False)
     process = context.Process(target=_execute_child, args=(child, execute_fn, snapshot))
@@ -208,6 +219,17 @@ def _supervise_execution(
         process.start()
         child.close()
         while True:
+            if cancel_requested.is_set():
+                process.terminate()
+                process.join(timeout=2.0)
+                if process.is_alive():
+                    process.kill()
+                    process.join(timeout=2.0)
+                if process.is_alive():
+                    raise ChildExitUnconfirmedError(
+                        "Backtest execution child exit could not be confirmed"
+                    )
+                return CompactBacktestCancelled()
             if parent.poll(0.2):
                 try:
                     outcome = parent.recv()

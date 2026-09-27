@@ -14,6 +14,7 @@ from unittest.mock import patch
 import app.backtest_child as child_module
 from app.backtest_child import (
     ChildExitUnconfirmedError,
+    CompactBacktestCancelled,
     CompactBacktestFailure,
     CompactBacktestResult,
     ProcessBacktestChildExecutor,
@@ -37,6 +38,7 @@ class _FakeRunRepository:
     def __init__(self, batches: list[list[BacktestRunRecord]]) -> None:
         self._batches = list(batches)
         self.queries: list[BacktestRunQuery] = []
+        self.selected: BacktestRunRecord | None = None
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         self.queries.append(query)
@@ -48,7 +50,13 @@ class _FakeRunRepository:
         queued = self.list(
             BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
         )
-        return min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
+        self.selected = (
+            min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
+        )
+        return self.selected
+
+    def get(self, run_id: str) -> BacktestRunRecord | None:
+        return self.selected if self.selected and self.selected.run_id == run_id else None
 
 
 class _StatusFilteringRunRepository:
@@ -66,6 +74,9 @@ class _StatusFilteringRunRepository:
         )
         return min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
 
+    def get(self, run_id: str) -> BacktestRunRecord | None:
+        return next((run for run in self._runs if run.run_id == run_id), None)
+
 
 class _FakeLifecycle:
     def __init__(
@@ -79,6 +90,7 @@ class _FakeLifecycle:
         self.completions: list[dict] = []
         self.faults: list[dict] = []
         self.reconciliations: list[int] = []
+        self.cancellations: list[dict] = []
 
     def execution_slot(self) -> dict:
         return {"owner_token": None, "run_id": None, "fault_code": None, "fault_message": None}
@@ -125,6 +137,10 @@ class _FakeLifecycle:
             result=result,
             execution_duration_ms=execution_duration_ms,
         )
+
+    def settle_cancellation(self, **kwargs) -> bool:
+        self.cancellations.append(kwargs)
+        return True
 
     def reconcile_execution(self, *, completed_at_ms: int) -> int:
         self.reconciliations.append(completed_at_ms)
@@ -184,6 +200,16 @@ class _SlotTrackingLifecycle(_FakeLifecycle):
             self.owner_token = None
         return settled
 
+    def settle_cancellation(self, **kwargs) -> bool:
+        if self.marker is None:
+            raise AssertionError("Descendant identities must be recorded before cancellation")
+        if any(_process_exists(pid) for pid in _descendant_ids(self.marker)):
+            raise AssertionError("Execution processes must be reaped before cancellation")
+        settled = super().settle_cancellation(**kwargs)
+        if settled:
+            self.owner_token = None
+        return settled
+
     def record_execution_fault(
         self, *, run_id: str, owner_token: str, code: str, message: str
     ) -> bool:
@@ -214,6 +240,121 @@ class _UnconfirmedExitExecutor:
 
 
 class TestBacktestWorker(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
+    def test_running_cancellation_escalates_and_reaps_detached_descendant(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "cancelled-descendant.pid"
+            queued = _queued_run("run-descendant", submitted_at_ms=1)
+            repository = _FakeRunRepository([[queued]])
+            lifecycle = _SlotTrackingLifecycle()
+            lifecycle.marker = marker
+            worker = BacktestWorker(
+                repository=repository,
+                lifecycle=lifecycle,
+                child_executor=ProcessBacktestChildExecutor(
+                    execute_fn=_wait_with_ignoring_descendant
+                ),
+            )
+            failures: list[Exception] = []
+
+            def run_worker() -> None:
+                try:
+                    worker.run_once()
+                except Exception as exc:
+                    failures.append(exc)
+
+            thread = Thread(target=run_worker)
+            try:
+                with patch.dict(os.environ, {"BACKTEST_DESCENDANT_PID_FILE": str(marker)}):
+                    thread.start()
+                    deadline = time.monotonic() + 5
+                    while not marker.exists() and time.monotonic() < deadline:
+                        time.sleep(0.02)
+                    self.assertTrue(marker.exists())
+                    repository.selected = replace(queued, status=BacktestRunStatus.CANCELLING)
+                    thread.join(timeout=12)
+                self.assertFalse(thread.is_alive())
+                self.assertEqual(failures, [])
+                self.assertEqual(len(lifecycle.cancellations), 1)
+                self.assertEqual(lifecycle.completions, [])
+                self.assertIsNone(lifecycle.owner_token)
+                self.assertFalse(any(_process_exists(pid) for pid in _descendant_ids(marker)))
+            finally:
+                _stop_test_descendant(marker)
+
+    def test_accepted_cancellation_discards_child_result_and_settles_once(self) -> None:
+        queued = _queued_run("run-cancel", submitted_at_ms=1)
+        repository = _FakeRunRepository([[queued]])
+        lifecycle = _FakeLifecycle([True])
+
+        class CompletingAfterCancellation:
+            def execute(self, snapshot):
+                repository.selected = replace(queued, status=BacktestRunStatus.CANCELLING)
+                return _compact_result()
+
+        worker = BacktestWorker(
+            repository=repository,
+            lifecycle=lifecycle,
+            child_executor=CompletingAfterCancellation(),
+            now_ms=lambda: 42,
+        )
+        self.assertTrue(worker.run_once())
+        self.assertEqual(len(lifecycle.cancellations), 1)
+        self.assertEqual(lifecycle.completions, [])
+        self.assertEqual(lifecycle.faults, [])
+
+    def test_cancelled_child_settlement_failure_retains_operational_fault(self) -> None:
+        queued = _queued_run("run-cancel", submitted_at_ms=1)
+        repository = _FakeRunRepository([[queued]])
+
+        class FailingCancellation(_FakeLifecycle):
+            owner_token: str | None = None
+            fault_code: str | None = None
+
+            def execution_slot(self):
+                return {
+                    "owner_token": self.owner_token,
+                    "run_id": queued.run_id if self.owner_token else None,
+                    "fault_code": self.fault_code,
+                    "fault_message": None,
+                }
+
+            def claim_execution(self, *, run_id, owner_token, started_at_ms):
+                claimed = super().claim_execution(
+                    run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+                )
+                if claimed:
+                    self.owner_token = owner_token
+                return claimed
+
+            def settle_cancellation(self, **kwargs):
+                raise OSError("storage unavailable")
+
+            def record_execution_fault(self, *, run_id, owner_token, code, message):
+                recorded = super().record_execution_fault(
+                    run_id=run_id, owner_token=owner_token, code=code, message=message
+                )
+                if recorded:
+                    self.fault_code = code
+                return recorded
+
+        class CancelledChild:
+            def execute(self, snapshot):
+                repository.selected = replace(queued, status=BacktestRunStatus.CANCELLING)
+                return CompactBacktestCancelled()
+
+        lifecycle = FailingCancellation([True])
+        worker = BacktestWorker(
+            repository=repository,
+            lifecycle=lifecycle,
+            child_executor=CancelledChild(),
+        )
+        with self.assertRaises(OSError):
+            worker.run_once()
+        self.assertEqual(lifecycle.faults[0]["code"], "terminal_persistence_failed")
+        self.assertIsNotNone(lifecycle.execution_slot()["owner_token"])
+        self.assertEqual(lifecycle.execution_slot()["fault_code"], "terminal_persistence_failed")
+
     def test_uses_durable_turn_order_for_batch_and_standalone_requests(self) -> None:
         standalone = _queued_run("standalone", submitted_at_ms=1)
         member = replace(
@@ -226,6 +367,9 @@ class TestBacktestWorker(unittest.TestCase):
 
             def next_queued(self):
                 return self.turns.pop(0) if self.turns else None
+
+            def get(self, run_id):
+                return {standalone.run_id: standalone, member.run_id: member}.get(run_id)
 
         class TurnLifecycle(_FakeLifecycle):
             def __init__(self):
@@ -870,6 +1014,24 @@ def _return_with_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktes
     return _return_process_identity(snapshot)
 
 
+def _wait_with_ignoring_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    descendant = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)",
+        ],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    Path(os.environ["BACKTEST_DESCENDANT_PID_FILE"]).write_text(f"{os.getpid()} {descendant.pid}")
+    time.sleep(30)
+    return _return_process_identity(snapshot)
+
+
 def _return_with_detached_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:
     descendant = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"],
@@ -907,9 +1069,9 @@ def _return_with_double_forked_descendant(
     return _return_process_identity(snapshot)
 
 
-def _supervise_with_denied_signals(connection, execute_fn, snapshot) -> None:
+def _supervise_with_denied_signals(connection, execute_fn, snapshot, cancel_requested) -> None:
     with patch.object(child_module.os, "kill", side_effect=PermissionError("signal denied")):
-        child_module._run_child(connection, execute_fn, snapshot)
+        child_module._run_child(connection, execute_fn, snapshot, cancel_requested)
 
 
 def _kill_supervisor_with_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:

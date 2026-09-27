@@ -310,6 +310,71 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await main.get_backtest_run("member-1", db=self.db))["status"], "running")
         self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], "member-1")
 
+    async def test_individual_member_cancellation_preserves_other_members_and_completes_batch(self):
+        payload = self._batch_payload()
+        payload["raw_count"] = 2
+        payload["member_count"] = 2
+        payload["excluded_count"] = 0
+        payload["members"].append(
+            {
+                **payload["members"][0],
+                "run_id": "member-2",
+                "member_ordinal": 1,
+            }
+        )
+        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        _seed_execution_slot(self.session)
+        first = await main.cancel_backtest_run("member-1", db=self.db)
+        assert first is not None
+        self.assertEqual(first["status"], "cancelled")
+        batch = await main.get_backtest_batch("batch-1", db=self.db)
+        assert batch is not None
+        self.assertEqual(batch["status"], "queued")
+        self.assertEqual(
+            await main.claim_backtest_execution(
+                BacktestExecutionClaimIn(
+                    run_id="member-2",
+                    owner_token="owner-2",
+                    started_at=datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc),
+                ),
+                db=self.db,
+            ),
+            {"updated": True},
+        )
+        second = await main.cancel_backtest_run("member-2", db=self.db)
+        assert second is not None
+        self.assertEqual(second["status"], "cancelling")
+        batch = await main.get_backtest_batch("batch-1", db=self.db)
+        assert batch is not None
+        self.assertEqual(batch["status"], "running")
+        self.assertEqual(
+            await main.settle_backtest_execution(
+                BacktestExecutionSettleIn(
+                    run_id="member-2",
+                    owner_token="owner-2",
+                    status="cancelled",
+                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                ),
+                db=self.db,
+            ),
+            {"updated": True},
+        )
+        batch = await main.get_backtest_batch("batch-1", db=self.db)
+        self.assertEqual(batch["status"], "completed")
+        self.assertEqual(batch["lifecycle_revision"], 4)
+        events = await main.list_backtest_batch_events("batch-1", db=self.db)
+        self.assertEqual(
+            [event["event_type"] for event in events],
+            ["accepted", "member_cancelled", "started", "member_cancel_requested", "completed"],
+        )
+        self.assertEqual(
+            [
+                run["status"]
+                for run in await main.list_backtest_batch_members("batch-1", db=self.db)
+            ],
+            ["cancelled", "cancelled"],
+        )
+
     def test_member_cannot_be_created_through_standalone_route(self):
         with self.assertRaises(ValidationError):
             BacktestRunCreateIn(**_run_payload(batch_id="batch-1", member_ordinal=0))
@@ -1538,6 +1603,9 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "submitted_at",
                 "started_at",
                 "completed_at",
+                "cancel_requested_at",
+                "cancellation_source",
+                "cancellation_reason",
                 "error_code",
                 "error_message",
                 "request_schema_version",
@@ -1650,6 +1718,109 @@ class BacktestExecutionApiTests(unittest.IsolatedAsyncioTestCase):
             BacktestExecutionClaimIn(run_id=run_id, owner_token=token, started_at=self.started_at),
             db=self.db,
         )
+
+    async def test_queued_cancel_is_immediate_idempotent_and_leaves_next_turn(self):
+        from fastapi import HTTPException
+
+        await self._create_queue()
+        cancelled = await main.cancel_backtest_run("run-a", db=self.db)
+        assert cancelled is not None
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertEqual(cancelled["cancellation_source"], "user")
+        self.assertEqual(cancelled["cancellation_reason"], "user_requested")
+        self.assertEqual(cancelled["completed_at"], cancelled["cancel_requested_at"])
+        repeated = await main.cancel_backtest_run("run-a", db=self.db)
+        slot = await main.get_backtest_execution_slot(db=self.db)
+        assert repeated is not None and slot is not None
+        self.assertEqual(repeated["cancel_requested_at"], cancelled["cancel_requested_at"])
+        self.assertIsNone(slot["owner_token"])
+        self.assertEqual(await self._claim("run-b", "owner-b"), {"updated": True})
+        with self.assertRaises(HTTPException) as missing:
+            await main.cancel_backtest_run("missing", db=self.db)
+        self.assertEqual(missing.exception.status_code, 404)
+
+    async def test_active_cancel_fences_late_result_until_reaped_settlement(self):
+        from fastapi import HTTPException
+
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+        accepted = await main.cancel_backtest_run("run-a", db=self.db)
+        assert accepted is not None
+        self.assertEqual(accepted["status"], "cancelling")
+        self.assertIsNone(accepted["completed_at"])
+        slot = await main.get_backtest_execution_slot(db=self.db)
+        repeated = await main.cancel_backtest_run("run-a", db=self.db)
+        assert slot is not None and repeated is not None
+        self.assertEqual(slot["run_id"], "run-a")
+        self.assertEqual(repeated["status"], "cancelling")
+        normal = BacktestExecutionSettleIn(
+            run_id="run-a",
+            owner_token="owner-a",
+            status="failed",
+            completed_at=self.completed_at,
+            error_code="late",
+            error_message="late",
+        )
+        self.assertEqual(
+            await main.settle_backtest_execution(normal, db=self.db), {"updated": False}
+        )
+        self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], "run-a")
+        self.assertEqual(await self._claim("run-b", "owner-b"), {"updated": False})
+        cancelled = BacktestExecutionSettleIn(
+            run_id="run-a",
+            owner_token="owner-a",
+            status="cancelled",
+            completed_at=self.completed_at,
+        )
+        self.assertEqual(
+            await main.settle_backtest_execution(cancelled, db=self.db), {"updated": True}
+        )
+        self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], None)
+        self.assertEqual((await main.get_backtest_run("run-a", db=self.db))["status"], "cancelled")
+        self.assertEqual(await self._claim("run-b", "owner-b"), {"updated": True})
+        self.assertEqual(
+            await main.settle_backtest_execution(
+                BacktestExecutionSettleIn(
+                    run_id="run-b",
+                    owner_token="owner-b",
+                    status="failed",
+                    completed_at=self.completed_at,
+                    error_code="failure",
+                    error_message="failed",
+                ),
+                db=self.db,
+            ),
+            {"updated": True},
+        )
+        with self.assertRaises(HTTPException) as conflict:
+            await main.cancel_backtest_run("run-b", db=self.db)
+        self.assertEqual(conflict.exception.status_code, 409)
+
+    async def test_restart_reconciles_cancelling_only_after_verified_slot_clear(self):
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+        await main.cancel_backtest_run("run-a", db=self.db)
+        request = BacktestExecutionReconcileIn(
+            completed_at=self.completed_at,
+            error_code="worker_interrupted",
+            error_message="Backtest worker was interrupted before completion",
+        )
+        self.assertEqual(
+            await main.reconcile_backtest_execution(request, db=self.db), {"reconciled": None}
+        )
+        self.session.connection.execute(
+            backtest_execution_slot.update().values(owner_token=None, run_id=None)
+        )
+        self.session.connection.commit()
+        self.assertEqual(
+            await main.reconcile_backtest_execution(request, db=self.db), {"reconciled": 1}
+        )
+        self.assertEqual(
+            await main.reconcile_backtest_execution(request, db=self.db), {"reconciled": 0}
+        )
+        run = await main.get_backtest_run("run-a", db=self.db)
+        self.assertEqual((run["status"], run["error_code"]), ("cancelled", None))
+        self.assertEqual((await main.get_backtest_run("run-b", db=self.db))["status"], "queued")
 
     def _legacy_completion(self) -> BacktestRunCompleteIn:
         return BacktestRunCompleteIn(

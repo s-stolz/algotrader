@@ -29,6 +29,14 @@ and `reconciliation_failed`. A stale heartbeat alone never changes run status,
 cancels a child, or releases capacity. Check the slot and worker process tree
 before restarting under the single-owner safeguard below.
 
+`POST /backtests/{run_id}/cancel` accepts a queued run as `cancelled` immediately.
+An active run becomes `cancelling`; this means its supervised process tree is
+still stopping and the slot is held. The worker requests termination, escalates
+to a forced kill when necessary, and reaps all descendants before a fenced
+`cancelled` settlement releases capacity. A fault during cleanup or persistence
+keeps the slot held and appears in the queue health surface. Do not infer
+cancellation completion from elapsed time or a stale heartbeat.
+
 ## Execution environment
 
 Run the asynchronous worker on Linux (including the supplied Compose service).
@@ -61,7 +69,8 @@ sessions, or keep the slot held.
    `backtest_runs`, Fills, Closed Trades, or queued requests.
 3. Start one new worker. With the slot free, startup reconciliation marks any
    interrupted `running` runs `failed` with `worker_interrupted` once. It leaves
-   `queued` runs unchanged, then resumes durable turns. Running batch members
+   `queued` runs unchanged and settles previously accepted `cancelling` runs as
+   `cancelled`, then resumes durable turns. Running batch members
    are reconciled with their batch in the same transaction; a batch with
    remaining queued members rejoins the tail and a fully settled batch completes.
    Confirm these states via
@@ -89,7 +98,8 @@ sessions, or keep the slot held.
    ```
 
 4. Start one worker. Its first storage transaction reconciles interrupted
-   `running` rows to `failed` with `worker_interrupted`; repeated restarts do not
+   `running` rows to `failed` with `worker_interrupted` and accepted `cancelling`
+   rows to `cancelled`; repeated restarts do not
    alter terminal rows. Confirm the former running run is failed, queued runs
    remain queued, and the next eligible run can claim. The accessor rejects a
    late write with the old owner token and any legacy tokenless lifecycle write,

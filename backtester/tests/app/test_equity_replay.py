@@ -28,6 +28,9 @@ class _Repository:
     def get(self, run_id):
         return self.run if run_id == "run-1" else None
 
+    def cancel(self, run_id):
+        raise NotImplementedError
+
     def get_fills(self, run_id):
         return self.fills
 

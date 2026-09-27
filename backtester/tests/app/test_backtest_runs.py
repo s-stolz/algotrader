@@ -21,6 +21,7 @@ from domain.enums import (
 from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
+    BacktestRunCancellation,
     BacktestRunQuery,
     BacktestRunRecord,
     BacktestTradeRecord,
@@ -44,6 +45,19 @@ class _FakeRunRepository:
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
         return self.runs_by_id.get(run_id)
+
+    def cancel(self, run_id: str) -> BacktestRunCancellation:
+        run = self.runs_by_id[run_id]
+        cancelled = replace(
+            run,
+            status=BacktestRunStatus.CANCELLED,
+            cancel_requested_at_ms=42,
+            completed_at_ms=42,
+            cancellation_source="user",
+            cancellation_reason="user_requested",
+        )
+        self.runs_by_id[run_id] = cancelled
+        return BacktestRunCancellation("accepted", cancelled)
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         del query

@@ -170,6 +170,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   single-chart overlay.
 - Workspace history shows all lifecycle states, but only `succeeded` runs are
   selectable for chart overlays.
+- Workspace standalone rows and opened batch members offer Cancel while queued
+  or running. `cancelling` remains unsettled and explains that execution cleanup
+  is pending; `cancelled` appears only after verified active exit and settlement
+  or immediate queued cancellation. Command refreshes history and queue state.
 - Backtest Run chart overlays require result schema version 3 closed trades,
   including planned protective exit levels and explicit trade direction.
 - Runtime validation for frontend-facing HTTP and WebSocket payloads.

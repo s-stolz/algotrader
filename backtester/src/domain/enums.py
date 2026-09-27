@@ -17,8 +17,10 @@ class BacktestEngine(str, Enum):
 class BacktestRunStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
+    CANCELLING = "cancelling"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class DataGranularity(str, Enum):

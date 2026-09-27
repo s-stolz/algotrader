@@ -148,7 +148,8 @@ to a chart UI, and supports standalone backtesting.
   continuous aggregates or direct bucketing.
 - Broker historical trendbar routes use cTrader-style query names `fromTs` and `toTs`.
 - Database accessor routes use `start_ms` and `end_ms`.
-- Durable backtest runs use `queued`, `running`, `succeeded`, and `failed`
+- Durable backtest runs use `queued`, `running`, `cancelling`, `succeeded`, `failed`,
+  and `cancelled`
   lifecycle states. Lifecycle timestamps are normalized storage fields; the
   complete immutable request is versioned JSON, and fills/trades are normalized
   child records. New request schema version 3 adds exact Strategy Version and
@@ -184,6 +185,12 @@ to a chart UI, and supports standalone backtesting.
   run becomes `failed` with `worker_interrupted` after verified worker shutdown;
   queued history remains queued. Operational slot faults are separate from
   durable run outcomes.
+- Cancel Run accepts a queued standalone/member run as terminal `cancelled`, or
+  marks a running run `cancelling` while retaining its slot. Only confirmed
+  child-tree exit and fenced settlement complete cancellation and release the
+  slot. The acceptance timestamp, source, and reason remain durable. Individual
+  member acceptance advances its batch lifecycle revision and appends a member
+  command event even when the batch control state is unchanged.
 - The backtester-owned queue snapshot projects the durable slot and global
   queue with independent worker heartbeat telemetry. Its advisory positions and
   availability never change run lifecycle or release a held slot.

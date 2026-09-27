@@ -18,6 +18,7 @@ from domain.types import (
     BacktestFillRecord,
     BacktestRequestSnapshot,
     BacktestResult,
+    BacktestRunCancellation,
     BacktestRunQuery,
     BacktestRunRecord,
     BacktestTradeRecord,
@@ -36,6 +37,8 @@ class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
     """Client protocol for queued run creation and status retrieval."""
 
     def get_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
+
+    def cancel_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
 
     def get_backtest_queue_state(self) -> Mapping[str, Any]: ...
 
@@ -98,6 +101,22 @@ class DatabaseAccessorBacktestRunRepository:
                 return None
             raise
         return _run_record_from_response(response)
+
+    def cancel(self, run_id: str) -> BacktestRunCancellation:
+        try:
+            if self._client is not None:
+                response = self._client.cancel_backtest_run(run_id)
+            else:
+                client_cls = _import_database_accessor_client()
+                with client_cls() as client:
+                    response = client.cancel_backtest_run(run_id)
+        except DatabaseAccessorClientError as exc:
+            if exc.status_code == 404:
+                return BacktestRunCancellation("not_found")
+            if exc.status_code == 409:
+                return BacktestRunCancellation("conflict")
+            raise
+        return BacktestRunCancellation("accepted", _run_record_from_response(response))
 
     def next_queued(self) -> BacktestRunRecord | None:
         if self._client is not None:
@@ -280,6 +299,19 @@ class BacktestRunLifecyclePersistenceAdapter:
                     "completed_at": _epoch_ms_to_utc_text(completed_at_ms),
                     "error_code": error_code,
                     "error_message": error_message,
+                },
+            )
+        )
+
+    def settle_cancellation(self, *, run_id: str, owner_token: str, completed_at_ms: int) -> bool:
+        return bool(
+            self._call(
+                "settle_backtest_execution",
+                {
+                    "run_id": run_id,
+                    "owner_token": owner_token,
+                    "status": "cancelled",
+                    "completed_at": _epoch_ms_to_utc_text(completed_at_ms),
                 },
             )
         )
@@ -512,6 +544,9 @@ def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
         submitted_at_ms=_timestamp_to_epoch_ms(response["submitted_at"]),
         started_at_ms=_optional_timestamp_to_epoch_ms(response.get("started_at")),
         completed_at_ms=_optional_timestamp_to_epoch_ms(response.get("completed_at")),
+        cancel_requested_at_ms=_optional_timestamp_to_epoch_ms(response.get("cancel_requested_at")),
+        cancellation_source=_optional_text(response.get("cancellation_source")),
+        cancellation_reason=_optional_text(response.get("cancellation_reason")),
         error_code=_optional_text(response.get("error_code")),
         error_message=_optional_text(response.get("error_message")),
         request_snapshot=request_snapshot,

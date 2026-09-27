@@ -23,6 +23,7 @@ from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
     BacktestRequestSnapshot,
+    BacktestRunCancellation,
     BacktestRunQuery,
     BacktestRunRecord,
     BacktestTradeRecord,
@@ -49,6 +50,8 @@ class BacktestRunRepository(Protocol):
     def create(self, run: BacktestRunRecord) -> BacktestRunRecord: ...
 
     def get(self, run_id: str) -> BacktestRunRecord | None: ...
+
+    def cancel(self, run_id: str) -> BacktestRunCancellation: ...
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]: ...
 
@@ -116,6 +119,19 @@ class BacktestRunService:
         if run is None:
             raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
         return run
+
+    def cancel(self, run_id: str) -> BacktestRunRecord:
+        try:
+            cancellation = self._repository.cancel(run_id)
+        except Exception as exc:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+        if cancellation.outcome == "not_found":
+            raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
+        if cancellation.outcome == "conflict":
+            raise BacktestRunConflictError("Terminal backtest run cannot be cancelled")
+        if cancellation.run is None:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable")
+        return cancellation.run
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         if (
