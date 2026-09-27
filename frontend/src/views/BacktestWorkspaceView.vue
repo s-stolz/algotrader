@@ -172,7 +172,7 @@
           <ul class="curve-status">
             <li v-for="id in selectedComparisonIds" :key="id" :data-testid="`curve-status-${id}`">
               {{ analysisRunName(id) }}:
-              <template v-if="analysis[id]?.loading">Loading exact Equity Replay…</template>
+              <template v-if="analysis[id]?.loading && !analysis[id]?.curve">Loading exact Equity Replay…</template>
               <template v-else-if="analysis[id]?.error">Exact Equity Replay read failed: {{ analysis[id]?.error }}. Saved metrics remain available.</template>
               <template v-else-if="analysis[id]?.curve?.availability === 'unavailable'">Exact Equity Replay unavailable: {{ equityUnavailableReason(analysis[id]?.curve?.reason) }}. Saved metrics remain available.</template>
               <template v-else-if="analysis[id]?.curve?.availability === 'exact'">
@@ -392,16 +392,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'The Backtest service could not be read.';
 }
 
-async function loadSelected(runId: string): Promise<void> {
+async function loadSelected(runId: string, background = false): Promise<void> {
   const sequence = ++detailSequence;
-  detailLoading.value = true;
-  detailError.value = null;
+  detailLoading.value = !background;
   try {
     const detail = await getBacktestRun(runId);
     if (sequence === detailSequence && workspaceStore.selectedRunId === runId) {
       if (JSON.stringify(workspaceStore.selectedRun) !== JSON.stringify(detail)) {
         workspaceStore.selectRun(detail);
       }
+      detailError.value = null;
     }
   } catch (error) {
     if (sequence === detailSequence && workspaceStore.selectedRunId === runId) {
@@ -431,17 +431,17 @@ function loadAnalysis(refresh = false): void {
   analysis.value = Object.fromEntries(ids.flatMap((id) =>
     analysis.value[id] ? [[id, analysis.value[id]]] : []));
   for (const id of ids) {
-    if (!refresh && analysis.value[id]) continue;
+    if (!refresh && analysis.value[id] && (!analysis.value[id].loading || analysisTokens.has(id))) continue;
     const token = ++analysisSequence;
     analysisTokens.set(id, token);
-    analysis.value[id] = { loading: true, error: null, curve: null,
+    analysis.value[id] = { loading: true, error: null, curve: analysis.value[id]?.curve ?? null,
       detail: analysis.value[id]?.detail ?? null };
     void (async () => {
       try {
         const detail = await getBacktestRun(id);
         if (detail.status !== 'succeeded') throw new Error('Run is no longer successful');
         if (analysisTokens.get(id) === token) analysis.value[id] = {
-          loading: true, error: null, curve: null, detail,
+          loading: true, error: null, curve: analysis.value[id]?.curve ?? null, detail,
         };
         const curve = await fetchBacktestEquityCurve(id);
         if (analysisTokens.get(id) === token) analysis.value[id] = {
@@ -449,7 +449,7 @@ function loadAnalysis(refresh = false): void {
         };
       } catch (error) {
         if (analysisTokens.get(id) === token) analysis.value[id] = {
-          loading: false, error: errorMessage(error), curve: null,
+          loading: false, error: errorMessage(error), curve: analysis.value[id]?.curve ?? null,
           detail: analysis.value[id]?.detail ?? null,
         };
       }
@@ -479,7 +479,7 @@ function receiveMembers(batchId: string, members: BacktestRun[]): void {
   if (changed) batchMembers.value = members;
   const eligible = selectedComparisonIds.value.filter((id) =>
     members.some((run) => run.run_id === id && run.status === 'succeeded'));
-  setComparison(eligible, changed);
+  setComparison(eligible);
   const selected = members.find((run) => run.run_id === selectedRunId.value);
   if (selected && changed) workspaceStore.selectRun(selected);
 }
@@ -487,7 +487,7 @@ function receiveMembers(batchId: string, members: BacktestRun[]): void {
 async function readRuns(): Promise<void> {
   const generation = ++readGeneration;
   isLoading.value = runs.value === null;
-  isRefreshing.value = runs.value !== null;
+
   try {
     const [latest, latestBatches] = await Promise.all([
       listBacktestRuns({ membership: 'standalone' }), listBacktestBatches(),
@@ -518,10 +518,10 @@ async function readRuns(): Promise<void> {
     if (selected) {
       const changed = JSON.stringify(selectedRun.value) !== JSON.stringify(selected);
       if (changed) workspaceStore.selectRun(selected);
-      void loadSelected(selected.run_id);
-      if (changed) setComparison(selectedComparisonIds.value, true);
+      void loadSelected(selected.run_id, true);
+      if (changed) setComparison(selectedComparisonIds.value);
     } else if (selectedBatchId.value && selectedRunId.value) {
-      void loadSelected(selectedRunId.value);
+      void loadSelected(selectedRunId.value, true);
     } else if (selectedRunId.value) {
       workspaceStore.clearSelection();
       ++detailSequence;
@@ -554,6 +554,7 @@ function loadRuns(shouldQueue = true): Promise<void> {
 }
 
 function refreshWorkspace(): Promise<void> {
+  isRefreshing.value = true;
   if (selectedComparisonIds.value.length) loadAnalysis(true);
   void queueHealth.value?.refresh();
   return loadRuns();
@@ -1002,6 +1003,7 @@ function startPolling(): void {
   isActive = true;
   if (marketsStore.all.length === 0) void marketsStore.fetch();
   void loadRuns();
+  loadAnalysis();
   pollTimer = setInterval(() => { void loadRuns(false); }, POLL_INTERVAL_MS);
 }
 

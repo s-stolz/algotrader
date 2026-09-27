@@ -619,6 +619,52 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
+  it('keeps selected content steady while background detail reads are pending', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const saved = run('steady');
+    vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+    vi.mocked(getBacktestRun).mockResolvedValue(saved);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-run-steady"]').trigger('click');
+    await flushPromises();
+    vi.mocked(getBacktestRun).mockImplementation(() => new Promise(() => {}));
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('Loading selected Backtest');
+    wrapper.unmount();
+  });
+
+  it('keeps completed curves visible while another batch member settles', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const success = run('settled', { batch_id: 'active', member_ordinal: 0 });
+    const pending = run('pending', { batch_id: 'active', member_ordinal: 1,
+      status: 'running', metrics: null });
+    const accepted = batch('active', 2);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue([success, pending]);
+    vi.mocked(getBacktestRun).mockResolvedValue(success);
+    vi.mocked(fetchBacktestEquityCurve).mockResolvedValue({ availability: 'exact', reason: null,
+      source_point_count: 1, returned_point_count: 1, sampled: false,
+      equity_curve: [{ timestamp_ms: 1_714_521_600_000, equity: 10050, drawdown_pct: -1 }] });
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-batch-active"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="comparison-select-settled"]').setValue(true);
+    await flushPromises();
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue([success, { ...pending, status: 'failed' }]);
+    vi.mocked(fetchBacktestEquityCurve).mockImplementation(() => new Promise(() => {}));
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="curve-status-settled"]').text()).toContain('10050');
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
   it('sorts history dates in both directions with deterministic rows', async () => {
     const older = run('older');
     const newer = run('newer', {
