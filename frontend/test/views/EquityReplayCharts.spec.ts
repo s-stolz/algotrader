@@ -13,6 +13,7 @@ const { setData, remove, createChart, addSeries } = vi.hoisted(() => {
     timeScale: () => ({ fitContent }),
     applyOptions: vi.fn(),
     remove,
+    removeSeries: vi.fn(),
   }));
   return { setData, addSeries, fitContent, remove, createChart };
 });
@@ -39,6 +40,20 @@ describe('EquityReplayCharts', () => {
     ]);
     wrapper.unmount();
     expect(remove).toHaveBeenCalledTimes(2);
+  });
+
+  it('updates series without recreating chart canvases or resetting the viewport', async () => {
+    const run = { runId: 'one', name: 'One', points: [
+      { timestamp_ms: 1_700_000_000_123, equity: 100, drawdown_pct: 0 },
+    ] };
+    const wrapper = mount(EquityReplayCharts, { props: { series: [run] } });
+    await wrapper.setProps({ series: [{ ...run }] });
+    expect(createChart).toHaveBeenCalledTimes(2);
+    expect(remove).not.toHaveBeenCalled();
+    expect(addSeries).toHaveBeenCalledTimes(2);
+    await wrapper.setProps({ series: [] });
+    expect(createChart).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
   });
 
   it('overlays stable run identities in both full-width charts', () => {

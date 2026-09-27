@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue';
-import { createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
+import { createChart, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { ReplaySeries } from './backtestComparison';
 
 const props = defineProps<{ series: ReplaySeries[] }>();
@@ -35,23 +35,42 @@ function seriesColor(run: ReplaySeries): string {
   return `hsl(${hue} 72% 62%)`;
 }
 
+const rendered = new Map<string, {
+  equity: ISeriesApi<'Line'>; drawdown: ISeriesApi<'Line'>; points: ReplaySeries['points'];
+}>();
+let hasFitted = false;
+
 function render(): void {
   if (!equityChart || !drawdownChart) return;
+  const ids = new Set(props.series.map((run) => run.runId));
+  for (const [id, series] of rendered) {
+    if (ids.has(id)) continue;
+    equityChart.removeSeries(series.equity);
+    drawdownChart.removeSeries(series.drawdown);
+    rendered.delete(id);
+  }
   for (const run of props.series) {
-    const color = seriesColor(run);
-    const equity = equityChart.addSeries(LineSeries, { color, lineWidth: 2,
-      title: run.name });
-    const drawdown = drawdownChart.addSeries(LineSeries, { color, lineWidth: 2,
-      title: run.name });
-    equity.setData(run.points.map((point) => ({
+    let series = rendered.get(run.runId);
+    if (!series) {
+      const options = { color: seriesColor(run), lineWidth: 2 as const, title: run.name };
+      series = { equity: equityChart.addSeries(LineSeries, options),
+        drawdown: drawdownChart.addSeries(LineSeries, options), points: [] };
+      rendered.set(run.runId, series);
+    }
+    if (series.points === run.points) continue;
+    series.equity.setData(run.points.map((point) => ({
       time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp, value: point.equity,
     })));
-    drawdown.setData(run.points.map((point) => ({
+    series.drawdown.setData(run.points.map((point) => ({
       time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp, value: point.drawdown_pct,
     })));
+    series.points = run.points;
   }
-  equityChart.timeScale().fitContent();
-  drawdownChart.timeScale().fitContent();
+  if (!hasFitted && props.series.some((run) => run.points.length)) {
+    equityChart.timeScale().fitContent();
+    drawdownChart.timeScale().fitContent();
+    hasFitted = true;
+  }
 }
 
 function createCharts(): void {
@@ -74,13 +93,7 @@ onMounted(() => {
     resizeObserver.observe(drawdownContainer.value);
   }
 });
-watch(() => props.series, () => {
-  equityChart?.remove();
-  drawdownChart?.remove();
-  equityChart = null;
-  drawdownChart = null;
-  createCharts();
-});
+watch(() => props.series, render);
 onUnmounted(() => {
   resizeObserver?.disconnect();
   equityChart?.remove();
