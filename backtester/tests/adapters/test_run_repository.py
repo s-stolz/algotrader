@@ -91,6 +91,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
                     "request": dict(run.request_snapshot.payload),
                     "result_schema_version": None,
                     "metrics": None,
+                    "replay_descriptor": None,
                     "diagnostics": None,
                     "fills": [],
                     "trades": [],

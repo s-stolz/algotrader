@@ -29,6 +29,7 @@ from app.schemas import (  # noqa: E402
     BacktestRunCompleteIn,
     BacktestRunConditionalUpdateIn,
     BacktestRunCreateIn,
+    EquityReplayDescriptor,
 )
 
 
@@ -93,6 +94,19 @@ def _request_payload(**overrides):
     return payload
 
 
+def _replay_descriptor() -> EquityReplayDescriptor:
+    return EquityReplayDescriptor(
+        **{
+            "schema_version": 1,
+            "fingerprint_algorithm": "sha256-ts-close-v1",
+            "fingerprint_digest": "0" * 64,
+            "source_point_count": 1,
+            "first_timestamp_ms": 1714525200000,
+            "last_timestamp_ms": 1714525200000,
+        }
+    )
+
+
 def _run_payload(**overrides):
     payload = {
         "run_id": "run-queued-1",
@@ -111,6 +125,8 @@ def _run_payload(**overrides):
         "trades": [],
     }
     payload.update(overrides)
+    if payload["status"] == "succeeded" and "replay_descriptor" not in overrides:
+        payload["replay_descriptor"] = _replay_descriptor().model_dump()
     return payload
 
 
@@ -494,6 +510,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 expected_status="running",
                 completed_at=completed_at,
                 result_schema_version=3,
+                replay_descriptor=_replay_descriptor(),
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240000},
                 fills=[
@@ -555,6 +572,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(fetched["result_schema_version"], 3)
         self.assertEqual(fetched["metrics"], {"total_return_pct": 1.25})
+        self.assertEqual(fetched["replay_descriptor"], _replay_descriptor().model_dump())
         self.assertEqual(
             fetched["diagnostics"],
             {"execution_duration_ms": 240000},
@@ -612,6 +630,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                 result_schema_version=3,
+                replay_descriptor=_replay_descriptor(),
                 metrics={"trade_count": 2},
                 diagnostics={"bars": 120},
                 trades=[
@@ -690,6 +709,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                 result_schema_version=3,
+                replay_descriptor=_replay_descriptor(),
                 metrics=metrics,
                 diagnostics={"engine": "vectorized", "execution_duration_ms": 12},
                 fills=[
@@ -773,6 +793,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                 result_schema_version=3,
+                replay_descriptor=_replay_descriptor(),
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"bars": 25},
                 fills=[
@@ -816,6 +837,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 expected_status="running",
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                 result_schema_version=3,
+                replay_descriptor=_replay_descriptor(),
                 metrics={"trade_count": 0},
                 diagnostics={"bars": 0},
                 fills=[],
@@ -872,6 +894,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     expected_status="running",
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                     result_schema_version=3,
+                    replay_descriptor=_replay_descriptor(),
                     metrics={"total_return_pct": 1.25},
                     diagnostics={"execution_duration_ms": 240000},
                     fills=[fill],
@@ -901,6 +924,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                 completed_at=completed_at,
                 result_schema_version=3,
+                replay_descriptor=_replay_descriptor(),
                 metrics={"total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240000},
                 fills=[
@@ -1059,6 +1083,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                     result_schema_version=3,
+                    replay_descriptor=_replay_descriptor(),
                     metrics={"trade_count": 3},
                     diagnostics={"bars": 100},
                     fills=fills,
@@ -1109,6 +1134,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                     result_schema_version=3,
+                    replay_descriptor=_replay_descriptor(),
                     metrics={"trade_count": 0},
                     diagnostics={"bars": 0},
                 )
@@ -1134,6 +1160,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                     result_schema_version=3,
+                    replay_descriptor=_replay_descriptor(),
                     metrics={"trade_count": 1},
                     diagnostics={"bars": 10},
                     fills=[
@@ -1189,6 +1216,39 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValidationError):
             BacktestRunCreateIn(**_run_payload(request_schema_version=1))
 
+    def test_new_success_requires_replay_descriptor(self):
+        with self.assertRaises(ValidationError):
+            BacktestRunCreateIn(
+                **_run_payload(
+                    status="succeeded",
+                    result_schema_version=3,
+                    replay_descriptor=None,
+                )
+            )
+        with self.assertRaises(ValidationError):
+            BacktestRunCompleteIn.model_validate(
+                {
+                    "expected_status": "running",
+                    "completed_at": datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
+                    "result_schema_version": 3,
+                    "metrics": {},
+                    "diagnostics": {},
+                }
+            )
+
+    def test_successful_completion_cannot_overwrite_a_terminal_descriptor(self):
+        with self.assertRaises(ValidationError):
+            BacktestRunCompleteIn.model_validate(
+                {
+                    "expected_status": "succeeded",
+                    "completed_at": datetime(2026, 6, 8, 12, 36, tzinfo=timezone.utc),
+                    "result_schema_version": 3,
+                    "replay_descriptor": _replay_descriptor().model_dump(),
+                    "metrics": {},
+                    "diagnostics": {},
+                }
+            )
+
     def test_result_schema_version_accepts_v3_and_rejects_legacy_versions(self):
         BacktestRunCreateIn(**_run_payload(result_schema_version=None))
         BacktestRunCreateIn(**_run_payload(result_schema_version=3))
@@ -1196,6 +1256,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             expected_status="running",
             completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
             result_schema_version=3,
+            replay_descriptor=_replay_descriptor(),
             metrics={},
             diagnostics={},
         )
@@ -1209,6 +1270,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         expected_status="running",
                         completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                         result_schema_version=legacy_version,
+                        replay_descriptor=_replay_descriptor(),
                         metrics={},
                         diagnostics={},
                     )
@@ -1223,6 +1285,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
                 completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                 result_schema_version=3,
+                replay_descriptor=_replay_descriptor(),
                 metrics={},
                 diagnostics={},
             )
@@ -1299,6 +1362,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "result_schema_version",
                 "metrics",
                 "diagnostics",
+                "replay_descriptor",
             },
         )
         self.assertNotIn("symbol", backtest_runs.c)

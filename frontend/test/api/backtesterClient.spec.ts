@@ -6,6 +6,7 @@ import {
   deleteBacktestRun,
   fetchStrategyCatalog,
   fetchBacktestClosedTrades,
+  fetchBacktestEquityCurve,
   fetchBacktestFills,
   getBacktestRun,
   listBacktestRuns,
@@ -126,6 +127,28 @@ describe('backtester API client', () => {
 
     await expect(fetchBacktestClosedTrades('run-123')).resolves.toEqual(trades);
     expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123/trades');
+  });
+
+  it('reads exact replay in milliseconds and rejects malformed curves', async () => {
+    const curve = {
+      availability: 'exact', reason: null, source_point_count: 2,
+      returned_point_count: 2, sampled: false,
+      equity_curve: [
+        { timestamp_ms: 1_700_000_000_001, equity: 100, drawdown_pct: 0 },
+        { timestamp_ms: 1_700_000_060_001, equity: 90, drawdown_pct: -10 },
+      ],
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(curve));
+    await expect(fetchBacktestEquityCurve('run-123')).resolves.toEqual(curve);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/backtester/backtests/run-123/equity-curve?max_points=2000',
+    );
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...curve, equity_curve: [
+      curve.equity_curve[1], curve.equity_curve[0],
+    ] }));
+    await expect(fetchBacktestEquityCurve('run-123')).rejects.toThrow(
+      'Invalid Equity Replay response',
+    );
   });
 
   it('fetches ordered Fills through the public backtester resource', async () => {

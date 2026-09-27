@@ -61,3 +61,7 @@ Shared Python packages used by multiple services.
 
 - Indicator engine tests: `make test indicator_engine`.
 - Run affected consumer tests when shared client interfaces change.
+
+- Backtest run reads and completion payloads pass the nullable Equity Replay
+  descriptor through unchanged. The accessor client owns transport, while the
+  backtester owns fingerprinting, replay, and public availability semantics.

@@ -70,6 +70,50 @@ export interface BacktestRun {
   error_message?: string | null;
 }
 
+export interface EquityReplayPoint {
+  timestamp_ms: number;
+  equity: number;
+  drawdown_pct: number;
+}
+
+export interface EquityReplayResponse {
+  availability: 'exact' | 'unavailable';
+  reason: 'replay_metadata_missing' | 'fingerprint_mismatch' | 'unsupported_replay_shape' | null;
+  source_point_count: number;
+  returned_point_count: number;
+  sampled: boolean;
+  equity_curve: EquityReplayPoint[];
+}
+
+export function isEquityReplayResponse(value: unknown): value is EquityReplayResponse {
+  if (!isRecord(value) || !Array.isArray(value.equity_curve)) return false;
+  if (typeof value.source_point_count !== 'number' ||
+      !Number.isInteger(value.source_point_count) ||
+      typeof value.returned_point_count !== 'number' ||
+      !Number.isInteger(value.returned_point_count) ||
+      typeof value.sampled !== 'boolean' ||
+      value.equity_curve.length !== value.returned_point_count) return false;
+  let previousTimestamp = -Infinity;
+  for (const point of value.equity_curve) {
+    if (!isRecord(point) || typeof point.timestamp_ms !== 'number' ||
+        !Number.isInteger(point.timestamp_ms) ||
+        point.timestamp_ms <= previousTimestamp ||
+        !isFiniteNumber(point.equity) || !isFiniteNumber(point.drawdown_pct) ||
+        point.drawdown_pct > 0) return false;
+    previousTimestamp = point.timestamp_ms;
+  }
+  if (value.availability === 'exact') {
+    return value.reason === null && value.source_point_count > 0 &&
+      value.returned_point_count > 0 &&
+      value.returned_point_count <= value.source_point_count &&
+      value.sampled === (value.returned_point_count < value.source_point_count);
+  }
+  return value.availability === 'unavailable' && [
+    'replay_metadata_missing', 'fingerprint_mismatch', 'unsupported_replay_shape',
+  ].includes(String(value.reason)) && value.source_point_count === 0 &&
+    value.returned_point_count === 0 && value.sampled === false;
+}
+
 export interface StrategyParameterSchema {
   name: string;
   type: 'bool' | 'int' | 'float' | 'str';

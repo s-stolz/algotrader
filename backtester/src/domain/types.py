@@ -150,6 +150,7 @@ class BacktestRunRecord:
     result_schema_version: Optional[int] = None
     metrics: Optional[Mapping[str, Any]] = None
     diagnostics: Optional[Mapping[str, Any]] = None
+    replay_descriptor: Optional[Mapping[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -309,6 +310,7 @@ class BacktestResult:
     equity_curve: List[PortfolioSnapshot] = field(default_factory=list)
     metrics: Dict[str, float] = field(default_factory=dict)
     diagnostics: Dict[str, Any] = field(default_factory=dict)
+    replay_descriptor: Optional[Mapping[str, Any]] = None
     backtest_run_id: Optional[str] = None
     persisted_at: Optional[int] = None
 

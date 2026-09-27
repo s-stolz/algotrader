@@ -283,6 +283,7 @@ def build_succeeded_run_payload(
         "result_schema_version": BACKTEST_RESULT_SCHEMA_VERSION,
         "metrics": deepcopy(result.metrics),
         "diagnostics": diagnostics,
+        "replay_descriptor": _required_replay_descriptor(result),
         **artifacts,
     }
 
@@ -307,6 +308,7 @@ def build_successful_completion_payload(
         "result_schema_version": BACKTEST_RESULT_SCHEMA_VERSION,
         "metrics": deepcopy(result.metrics),
         "diagnostics": diagnostics,
+        "replay_descriptor": _required_replay_descriptor(result),
         **_result_artifact_payload(result),
     }
 
@@ -328,6 +330,7 @@ def _run_record_payload(run: BacktestRunRecord) -> dict[str, Any]:
         "request": deepcopy(dict(run.request_snapshot.payload)),
         "result_schema_version": run.result_schema_version,
         "metrics": deepcopy(run.metrics),
+        "replay_descriptor": deepcopy(run.replay_descriptor),
         "diagnostics": deepcopy(run.diagnostics),
         "fills": [],
         "trades": [],
@@ -382,6 +385,7 @@ def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
         ),
         metrics=_optional_mapping(response.get("metrics")),
         diagnostics=_optional_mapping(response.get("diagnostics")),
+        replay_descriptor=_optional_mapping(response.get("replay_descriptor")),
     )
 
 
@@ -578,3 +582,12 @@ def _append_monorepo_lib_path(lib_name: str) -> None:
 
 def _enum_or_text_value(value: object) -> str:
     return str(getattr(value, "value", value))
+
+
+def _required_replay_descriptor(result: BacktestResult) -> dict[str, Any]:
+    from app.equity_replay import valid_descriptor
+
+    replay_descriptor = result.replay_descriptor
+    if not isinstance(replay_descriptor, Mapping) or not valid_descriptor(replay_descriptor):
+        raise ValueError("A valid Equity Replay descriptor is required for successful completion")
+    return deepcopy(dict(replay_descriptor))

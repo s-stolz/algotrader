@@ -1,6 +1,7 @@
 import unittest
 from copy import deepcopy
 from dataclasses import replace
+from typing import cast
 from unittest.mock import patch
 
 import pandas as pd
@@ -9,6 +10,7 @@ from adapters.persistence import (
     DatabaseAccessorBacktestRunRepository,
 )
 from app.backtest_runner import run_backtest, run_backtest_with_market_data, save_backtest_result
+from app.backtest_runs import BacktestRunService
 from domain.enums import OrderSide, TradeDirection
 from domain.types import BacktestRequest, BacktestResult, ExecutionConfig, StrategyConfig
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
@@ -220,6 +222,18 @@ class TestBacktestPersistenceIntegration(unittest.TestCase):
         assert fetched_trades[0].take_profit_price is not None
         self.assertAlmostEqual(fetched_trades[0].stop_loss_price, 9.45)
         self.assertAlmostEqual(fetched_trades[0].take_profit_price, 8.1)
+
+        self.assertEqual(
+            saved_run["replay_descriptor"]["source_point_count"], len(result.equity_curve)
+        )
+        curve = BacktestRunService(
+            repository=repository,
+            data_adapter=_TimingAwareHistoricalAdapter(_build_short_acceptance_bars()),
+        ).get_equity_curve("run-short-acceptance")
+        self.assertEqual(curve["availability"], "exact")
+        self.assertEqual(curve["returned_point_count"], len(result.equity_curve))
+        points = cast(list[dict[str, float]], curve["equity_curve"])
+        self.assertAlmostEqual(points[-1]["equity"], result.equity_curve[-1].equity)
 
     def test_opt_in_request_persists_successful_run_and_attaches_metadata(self) -> None:
         adapter = _RecordingPersistenceAdapter()

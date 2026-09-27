@@ -167,3 +167,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Frontend gate: `make test frontend`.
 - Prefer store, utility, or WebSocket tests for behavior that does not need a full
   Vue mount.
+
+- The Workspace reads exact Equity Replay from the public backtester route for
+  one selected successful run. It preserves `timestamp_ms` through transport and
+  converts to chart seconds only for Lightweight Charts. Ending equity comes
+  from the final exact point; saved Return keeps its first-recorded-equity
+  baseline and request Initial capital remains separate. The UI distinguishes
+  sampled curves, specific unavailable reasons, and temporary read errors.

@@ -2,11 +2,13 @@ import {
   type BacktestClosedTrade,
   type BacktestFill,
   type BacktestRun,
+  type EquityReplayResponse,
   type BacktestRunListQuery,
   isBacktestClosedTradeArray,
   isBacktestFillArray,
   isBacktestRun,
   isBacktestRunArray,
+  isEquityReplayResponse,
   isStrategyCatalog,
   type BacktestRequestPayload,
   type StrategyCatalogEntry,
@@ -114,6 +116,20 @@ export async function fetchBacktestClosedTrades(
     throw new Error('Invalid backtest closed trades response');
   }
 
+  return payload;
+}
+
+export async function fetchBacktestEquityCurve(
+  runId: string,
+  maxPoints = 2000,
+): Promise<EquityReplayResponse> {
+  const payload = await parseJsonResponse(
+    await fetch(withQuery(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}/equity-curve`, {
+      max_points: maxPoints,
+    })),
+    'Failed to fetch exact Equity Replay',
+  );
+  if (!isEquityReplayResponse(payload)) throw new Error('Invalid Equity Replay response');
   return payload;
 }
 

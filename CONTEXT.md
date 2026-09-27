@@ -157,6 +157,11 @@ to a chart UI, and supports standalone backtesting.
   do not infer long or short trades from fill order. Run history filters request
   attributes from that JSON document and returns matches by `submitted_at DESC`,
   then `run_id ASC`.
+- New successful single-Market bar-mode runs atomically store an Equity Replay
+  descriptor with metrics, diagnostics, Fills, and Closed Trades. The descriptor
+  fingerprints executable Candle timestamps and closes; legacy successes retain
+  metrics and logs without a descriptor. Exact curves are reconstructed on read
+  from matching Candles and saved Fills, never stored as full curves.
 - Frontend and other non-storage consumers read durable backtest run history,
   fills, and trades through the public backtester API. `database-accessor-api`
   remains the primitive persistence API behind the backtester boundary.

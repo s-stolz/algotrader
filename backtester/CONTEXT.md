@@ -151,8 +151,8 @@ Standalone Python backtesting module for historical candle simulation.
 - `GET /health` reports API process readiness for the local stack healthcheck.
 - `BacktestRunLifecyclePersistenceAdapter` maps domain status enums and completed
   results to conditional lifecycle updates and atomic successful completion.
-  Completion payloads include metrics, diagnostics, fills, and closed trades,
-  but never the equity curve.
+  Completion payloads include metrics, diagnostics, fills, closed trades, and
+  an immutable Equity Replay descriptor, but never the equity curve.
 - New completed results use schema version 3; older versions remain readable.
   Closed trade artifacts include nullable `stop_loss_price` and
   `take_profit_price` planned levels plus required closed-trade Trade Direction.
@@ -221,3 +221,14 @@ Standalone Python backtesting module for historical candle simulation.
   `make smoke-backtester`.
 - Run shared client or indicator engine tests when data loading or indicator
   integration changes.
+
+- Equity Replay descriptor v1 uses `sha256-ts-close-v1`. The hash input is the
+  domain marker `algotrader/equity-replay/sha256-ts-close-v1` followed by NUL,
+  then length-prefixed UTF-8 exchange (empty when absent), symbol, and Timeframe,
+  then executable Candle timestamps as signed big-endian int64 and finite closes
+  as big-endian binary64; negative zero encodes as positive zero. Warmup is
+  excluded. Public `GET /backtests/{run_id}/equity-curve` verifies current Candles
+  and replays ordered saved Fills without rerunning strategy logic. `max_points`
+  defaults to 2,000 and accepts 100–10,000. Legacy successes return
+  `replay_metadata_missing`; changed Candles and invalid shapes have separate
+  unavailable reasons.

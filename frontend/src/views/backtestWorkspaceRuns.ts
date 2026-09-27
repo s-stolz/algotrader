@@ -89,3 +89,12 @@ export function compareHistoryRuns(left: BacktestRun, right: BacktestRun, key: H
   return compareValue(sortValue(left, key), sortValue(right, key)) ||
     compareText(runName(left), runName(right)) || compareText(left.run_id, right.run_id);
 }
+
+export function equityUnavailableReason(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'replay_metadata_missing': return 'Replay metadata is missing for this older successful run';
+    case 'fingerprint_mismatch': return 'Candle data changed since this run completed';
+    case 'unsupported_replay_shape': return 'Saved execution data cannot be replayed exactly';
+    default: return 'Unknown replay reason';
+  }
+}

@@ -39,6 +39,8 @@ TimescaleDB database.
   unavailable or not useful for the requested range.
 - `backtest_runs` stores normalized lifecycle fields, request/result schema
   versions, immutable request JSONB, and nullable metrics/diagnostics JSONB.
+- `V007` adds nullable `backtest_runs.replay_descriptor` without changing prior
+  successful rows or backfilling historical data.
 - `backtest_fills` and `backtest_closed_trades` use per-run sequence keys for
   deterministic ordering and cascade when the parent run is deleted.
 - `backtest_closed_trades` includes explicit trade direction plus nullable

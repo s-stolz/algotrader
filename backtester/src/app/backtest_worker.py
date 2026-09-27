@@ -50,6 +50,7 @@ class CompactBacktestResult:
     metrics: dict[str, float]
     diagnostics: dict[str, object]
     execution_duration_ms: int
+    replay_descriptor: dict[str, object] | None = None
 
     @classmethod
     def from_result(
@@ -64,6 +65,11 @@ class CompactBacktestResult:
             trades=deepcopy(result.trades),
             metrics=deepcopy(result.metrics),
             diagnostics=deepcopy(result.diagnostics),
+            replay_descriptor=(
+                deepcopy(dict(result.replay_descriptor))
+                if result.replay_descriptor is not None
+                else None
+            ),
             execution_duration_ms=max(0, int(execution_duration_ms)),
         )
 
@@ -74,6 +80,7 @@ class CompactBacktestResult:
             trades=deepcopy(self.trades),
             metrics=deepcopy(self.metrics),
             diagnostics=deepcopy(self.diagnostics),
+            replay_descriptor=deepcopy(self.replay_descriptor),
         )
 
 

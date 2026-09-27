@@ -87,6 +87,18 @@ COMMIT;
             check=False,
         )
 
+    def test_v007_preserves_successful_legacy_row_without_backfill(self) -> None:
+        self._run_psql(
+            f"INSERT INTO \"{self.schema}\".backtest_runs (run_id) VALUES ('legacy-success');"
+        )
+        migration = (migrate_db.MIGRATIONS_DIR / "V007__equity_replay_descriptor.sql").read_text()
+        self._run_psql(f'SET search_path TO "{self.schema}";\n{migration}')
+        row = self._run_psql(
+            f"SELECT run_id || ':' || COALESCE(replay_descriptor::text, 'NULL') "
+            f"FROM \"{self.schema}\".backtest_runs WHERE run_id = 'legacy-success';"
+        )
+        self.assertEqual(row.stdout.strip(), "legacy-success:NULL")
+
     def _column_state(self) -> str:
         completed = self._run_psql(f"""
 SELECT column_name || ':' || is_nullable

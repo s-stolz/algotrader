@@ -114,6 +114,20 @@
           :scroll-x="1860"
           size="small"
         />
+        <div v-if="selectedRun.status === 'succeeded'" class="curve-inspection">
+          <p v-if="curveLoading" role="status">Loading exact Equity Replay…</p>
+          <p v-else-if="curveError" role="alert">{{ curveError }}</p>
+          <p v-else-if="curve?.availability === 'unavailable'" role="status">
+            Exact Equity Replay unavailable: {{ curveReason }}. Saved metrics remain available.
+          </p>
+          <template v-else-if="curve?.availability === 'exact'">
+            <p v-if="curve.sampled" role="status">
+              Showing {{ curve.returned_point_count }} of {{ curve.source_point_count }} exact points (sampled).
+            </p>
+            <p>Ending equity: {{ endingEquity }}</p>
+            <EquityReplayCharts :points="curve.equity_curve" />
+          </template>
+        </div>
         <details class="request-details">
           <summary>Saved request and execution settings</summary>
           <dl>
@@ -149,16 +163,18 @@ import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { DocumentTextOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
 
-import { deleteBacktestRun, getBacktestRun, listBacktestRuns } from '@/api/backtesterClient';
+import { deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestRuns } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import { BACKTEST_RUN_STATUSES, type BacktestRun } from '@/types/backtesterContracts';
+import { BACKTEST_RUN_STATUSES, type BacktestRun, type EquityReplayResponse } from '@/types/backtesterContracts';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
+import EquityReplayCharts from './EquityReplayCharts.vue';
 
 import {
-  compareHistoryRuns, displayWinRate, formatMagnitude, formatSigned, formatUtcDate, runMarket,
+  compareHistoryRuns, displayWinRate, equityUnavailableReason, formatMagnitude, formatSigned,
+  formatUtcDate, runMarket,
   runName, savedMetric, strategyVersion, type HistorySortKey,
 } from './backtestWorkspaceRuns';
 
@@ -177,6 +193,12 @@ const detailError = ref<string | null>(null);
 const deleteError = ref<string | null>(null);
 const deletingRunIds = ref<ReadonlySet<string>>(new Set());
 const detailLoading = ref(false);
+const curve = ref<EquityReplayResponse | null>(null);
+const curveLoading = ref(false);
+const curveError = ref<string | null>(null);
+const curveReason = computed(() => equityUnavailableReason(curve.value?.reason));
+const endingEquity = computed(() => curve.value?.availability === 'exact'
+  ? curve.value.equity_curve.at(-1)?.equity ?? null : null);
 const creationOpen = ref(false);
 const search = ref('');
 const statusFilter = ref('all');
@@ -194,6 +216,7 @@ let readGeneration = 0;
 let activeHistoryRead: Promise<void> | null = null;
 let refreshAfterCurrentRead = false;
 let detailSequence = 0;
+let curveSequence = 0;
 let isActive = false;
 
 const statusOptions: SelectOption[] = [
@@ -244,6 +267,7 @@ async function loadSelected(runId: string): Promise<void> {
     const detail = await getBacktestRun(runId);
     if (sequence === detailSequence && workspaceStore.selectedRunId === runId) {
       workspaceStore.selectRun(detail);
+      void loadCurve(detail);
     }
   } catch (error) {
     if (sequence === detailSequence && workspaceStore.selectedRunId === runId) {
@@ -251,6 +275,24 @@ async function loadSelected(runId: string): Promise<void> {
     }
   } finally {
     if (sequence === detailSequence) detailLoading.value = false;
+  }
+}
+
+async function loadCurve(run: BacktestRun): Promise<void> {
+  const sequence = ++curveSequence;
+  curve.value = null;
+  curveError.value = null;
+  curveLoading.value = run.status === 'succeeded';
+  if (run.status !== 'succeeded') return;
+  try {
+    const response = await fetchBacktestEquityCurve(run.run_id);
+    if (sequence === curveSequence && selectedRunId.value === run.run_id) curve.value = response;
+  } catch (error) {
+    if (sequence === curveSequence && selectedRunId.value === run.run_id) {
+      curveError.value = errorMessage(error);
+    }
+  } finally {
+    if (sequence === curveSequence) curveLoading.value = false;
   }
 }
 
@@ -273,6 +315,8 @@ async function readRuns(): Promise<void> {
     } else if (selectedRunId.value) {
       workspaceStore.clearSelection();
       ++detailSequence;
+      ++curveSequence;
+      curve.value = null;
     }
   } catch (error) {
     if (generation === readGeneration && isActive) readError.value = errorMessage(error);
@@ -300,6 +344,10 @@ function loadRuns(shouldQueue = true): Promise<void> {
 }
 
 function selectRun(run: BacktestRun): void {
+  ++curveSequence;
+  curve.value = null;
+  curveError.value = null;
+  curveLoading.value = run.status === 'succeeded';
   workspaceStore.selectRun(run);
   void loadSelected(run.run_id);
 }
@@ -450,6 +498,8 @@ async function deleteRun(run: BacktestRun): Promise<void> {
     if (selectedRunId.value === run.run_id) {
       workspaceStore.clearSelection();
       ++detailSequence;
+      ++curveSequence;
+      curve.value = null;
     }
     if (overlayStore.selectedRunId === run.run_id) overlayStore.clearOverlay();
     await loadRuns();
@@ -490,6 +540,7 @@ function stopPolling(): void {
   isLoading.value = false;
   isRefreshing.value = false;
   ++detailSequence;
+  ++curveSequence;
   logRun.value = null;
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
@@ -517,6 +568,7 @@ onUnmounted(stopPolling);
 .current-backtest { margin-top: 32px; }
 .section-heading h2 { font-size: 18px; }
 .request-details { margin-top: 16px; }
+.curve-inspection { width: 100%; margin-top: 20px; }
 .request-details dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; }
 .request-details dt { color: #aeb8c8; }
 .request-details dd { margin: 0; overflow-wrap: anywhere; }

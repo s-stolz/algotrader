@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from time import perf_counter
 from typing import Protocol
 
@@ -18,6 +19,8 @@ from engines.event_driven import run_event_driven_backtest
 from engines.vectorized import run_vectorized_backtest
 from strategies.base import StrategyDefinition
 from strategies.registry import resolve_strategy
+
+from app.equity_replay import descriptor, executable_closes
 
 
 class BacktestPersistenceAdapter(Protocol):
@@ -73,7 +76,9 @@ def _run_backtest_without_persistence(
                 bars=prepared_bars,
                 strategy=resolved_strategy,
             )
-            return result, _elapsed_ms_since(started_at)
+            return _attach_replay_descriptor(request, prepared_bars, result), _elapsed_ms_since(
+                started_at
+            )
 
         raise ValueError(
             f"Unsupported data_granularity '{request.data_granularity.value}' "
@@ -88,7 +93,7 @@ def _run_backtest_without_persistence(
                 bars=bars,
                 strategy=resolved_strategy,
             )
-            return result, _elapsed_ms_since(started_at)
+            return _attach_replay_descriptor(request, bars, result), _elapsed_ms_since(started_at)
 
         raise ValueError(
             f"Unsupported data_granularity '{request.data_granularity.value}' "
@@ -144,7 +149,9 @@ def _run_backtest_with_market_data_without_persistence(
                 bars=prepared_bars,
                 strategy=resolved_strategy,
             )
-            return result, _elapsed_ms_since(started_at)
+            return _attach_replay_descriptor(request, prepared_bars, result), _elapsed_ms_since(
+                started_at
+            )
 
         raise ValueError(
             f"Unsupported data_granularity '{request.data_granularity.value}' "
@@ -165,7 +172,9 @@ def _run_backtest_with_market_data_without_persistence(
                 bars=raw_bars,
                 strategy=resolved_strategy,
             )
-            return result, _elapsed_ms_since(started_at)
+            return _attach_replay_descriptor(request, raw_bars, result), _elapsed_ms_since(
+                started_at
+            )
 
         raise ValueError(
             f"Unsupported data_granularity '{request.data_granularity.value}' "
@@ -173,6 +182,20 @@ def _run_backtest_with_market_data_without_persistence(
         )
 
     raise ValueError(f"Unsupported backtest engine '{_engine_value(request.engine)}'")
+
+
+def _attach_replay_descriptor(
+    request: BacktestRequest, bars: pd.DataFrame, result: BacktestResult
+) -> BacktestResult:
+    executable_timestamps = [point.timestamp_ms for point in result.equity_curve]
+    normalized = normalize_bar_data(bars=bars, symbol=str(request.symbols[0]))
+    bars_by_timestamp = {timestamp: close for timestamp, close in executable_closes(normalized)}
+    if len(executable_timestamps) != len(set(executable_timestamps)) or any(
+        timestamp not in bars_by_timestamp for timestamp in executable_timestamps
+    ):
+        raise ValueError("Executable Candle shape differs from the result equity points")
+    closes = [(timestamp, bars_by_timestamp[timestamp]) for timestamp in executable_timestamps]
+    return replace(result, replay_descriptor=descriptor(request, closes))
 
 
 def save_backtest_result(

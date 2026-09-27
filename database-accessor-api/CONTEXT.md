@@ -38,8 +38,8 @@ stored in TimescaleDB.
 - Backtest request attributes live only in versioned `request` JSON. New schema
   version 3 adds exact Strategy Version and resolved parameters; version 2
   remains readable without assigning a current version. Both use Allowed Directions.
-  Lifecycle status and timestamps are normalized columns; result metrics and
-  diagnostics are nullable versioned JSON documents.
+  Lifecycle status and timestamps are normalized columns; result metrics,
+  diagnostics, and Equity Replay descriptor are nullable JSON documents.
 - New request JSON uses schema version 3. The accessor preserves historical
   version 2 request JSON without backfill. New completed results use schema
   version 3; stored result versions 1 and 2 remain readable for inspection.
@@ -83,3 +83,7 @@ stored in TimescaleDB.
   tests around candle query semantics before changing `crud.py`.
 - Run affected shared client, ingestion, indicator, backtester, or frontend tests
   when route contracts change.
+
+- Successful completion requires a validated Equity Replay descriptor in the same
+  transaction as metrics, diagnostics, Fills, and Closed Trades. The nullable
+  column preserves pre-upgrade successful runs without backfill.

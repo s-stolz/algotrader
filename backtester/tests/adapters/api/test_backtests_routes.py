@@ -3,9 +3,11 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 
+import pandas as pd
 from adapters.api.app import create_app
 from adapters.api.schemas import BacktestSubmissionRequestSchema
 from app.backtest_runs import BacktestRunService
+from app.equity_replay import descriptor
 from domain.enums import (
     AllowedDirections,
     BacktestEngine,
@@ -511,6 +513,49 @@ class TestBacktestStatusRoute(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json(), {"detail": "Backtest persistence unavailable"})
         self.assertNotIn("password", response.text)
+
+
+class TestEquityReplayRoute(unittest.TestCase):
+    def test_exact_legacy_mismatch_and_status_contract(self) -> None:
+        repository, _ = _terminal_run_service("run-succeeded")
+        run = repository.runs_by_id["run-succeeded"]
+        request = run.request_snapshot.to_request()
+        closes = [(request.start_ms, 10.0), (request.start_ms + 60_000, 9.0)]
+        repository.runs_by_id["run-succeeded"] = replace(
+            run, replay_descriptor=descriptor(request, closes)
+        )
+
+        class Candles:
+            def fetch_bars(self, **kwargs):
+                return pd.DataFrame(
+                    {
+                        "timestamp_ms": [timestamp for timestamp, _ in closes],
+                        "close": [close for _, close in closes],
+                    }
+                )
+
+        service = BacktestRunService(repository=repository, data_adapter=Candles())
+        with TestClient(create_app(service=service)) as client:
+            exact = client.get("/backtests/run-succeeded/equity-curve")
+            invalid_limit = client.get("/backtests/run-succeeded/equity-curve?max_points=99")
+            missing = client.get("/backtests/missing/equity-curve")
+            repository.runs_by_id["run-succeeded"] = replace(run, replay_descriptor=None)
+            legacy = client.get("/backtests/run-succeeded/equity-curve")
+            repository.runs_by_id["run-succeeded"] = replace(
+                run, replay_descriptor=descriptor(request, [(request.start_ms, 12.0)])
+            )
+            mismatch = client.get("/backtests/run-succeeded/equity-curve")
+            repository.runs_by_id["run-succeeded"] = replace(run, status=BacktestRunStatus.FAILED)
+            conflict = client.get("/backtests/run-succeeded/equity-curve")
+
+        self.assertEqual(exact.status_code, 200)
+        self.assertEqual(exact.json()["availability"], "exact")
+        self.assertEqual(exact.json()["equity_curve"][-1]["equity"], 25000.0)
+        self.assertEqual(invalid_limit.status_code, 422)
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(legacy.json()["reason"], "replay_metadata_missing")
+        self.assertEqual(mismatch.json()["reason"], "fingerprint_mismatch")
+        self.assertEqual(conflict.status_code, 409)
 
 
 class TestBacktestExecutionLogAndDeletionRoutes(unittest.TestCase):

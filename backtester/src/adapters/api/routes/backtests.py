@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.backtest_runs import (
+    BacktestCandleUnavailableError,
     BacktestRunConflictError,
     BacktestRunNotFoundError,
     BacktestRunPersistenceError,
@@ -140,6 +141,22 @@ def get_backtest(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Backtest persistence unavailable",
         ) from exc
+
+
+@router.get("/{run_id}/equity-curve")
+def get_backtest_equity_curve(
+    run_id: str,
+    max_points: int = Query(default=2000, ge=100, le=10000),
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> dict[str, object]:
+    try:
+        return service.get_equity_curve(run_id, max_points)
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Backtest run not found") from exc
+    except BacktestRunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (BacktestCandleUnavailableError, BacktestRunPersistenceError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get(

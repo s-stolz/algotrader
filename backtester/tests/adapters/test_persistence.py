@@ -395,6 +395,14 @@ def _build_result(
             "trade_count": 1.0,
         },
         diagnostics={"engine": "event_driven", "bars": 25},
+        replay_descriptor={
+            "schema_version": 1,
+            "fingerprint_algorithm": "sha256-ts-close-v1",
+            "fingerprint_digest": "0" * 64,
+            "source_point_count": 1,
+            "first_timestamp_ms": 1_714_608_000_000,
+            "last_timestamp_ms": 1_714_608_000_000,
+        },
     )
 
 

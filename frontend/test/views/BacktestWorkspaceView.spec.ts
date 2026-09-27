@@ -4,7 +4,8 @@ import { NSelect } from 'naive-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestFills, getBacktestRun, listBacktestRuns,
+  deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
+  fetchBacktestFills, getBacktestRun, listBacktestRuns,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
@@ -16,6 +17,7 @@ vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
   deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
+  fetchBacktestEquityCurve: vi.fn(),
   fetchBacktestFills: vi.fn(),
   getBacktestRun: vi.fn(),
   listBacktestRuns: vi.fn(),
@@ -71,7 +73,7 @@ function run(id: string, overrides: Partial<BacktestRun> = {}): BacktestRun {
 
 function mountWorkspace() {
   return mount(BacktestWorkspaceView, {
-    global: { plugins: [pinia] },
+    global: { plugins: [pinia], stubs: { EquityReplayCharts: true } },
   });
 }
 
@@ -104,6 +106,11 @@ describe('production Backtest Workspace', () => {
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
+    vi.mocked(fetchBacktestEquityCurve).mockReset();
+    vi.mocked(fetchBacktestEquityCurve).mockResolvedValue({
+      availability: 'unavailable', reason: 'replay_metadata_missing',
+      source_point_count: 0, returned_point_count: 0, sampled: false, equity_curve: [],
+    });
     vi.mocked(fetchBacktestFills).mockReset();
     vi.mocked(deleteBacktestRun).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
@@ -514,6 +521,31 @@ describe('production Backtest Workspace', () => {
 
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('second');
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('failed');
+    wrapper.unmount();
+  });
+
+  it('shows sampled exact equity beside saved Return and Initial capital', async () => {
+    const success = run('success');
+    vi.mocked(listBacktestRuns).mockResolvedValue([success]);
+    vi.mocked(getBacktestRun).mockResolvedValue(success);
+    vi.mocked(fetchBacktestEquityCurve).mockResolvedValue({
+      availability: 'exact', reason: null, source_point_count: 5000,
+      returned_point_count: 2, sampled: true,
+      equity_curve: [
+        { timestamp_ms: 1_714_521_600_000, equity: 10000, drawdown_pct: 0 },
+        { timestamp_ms: 1_714_608_000_000, equity: 9875, drawdown_pct: -1.25 },
+      ],
+    });
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-run-success"]').trigger('click');
+    await flushPromises();
+
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledWith('success');
+    expect(wrapper.text()).toContain('Ending equity: 9875');
+    expect(wrapper.text()).toContain('Showing 2 of 5000 exact points (sampled).');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('-1.25%');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('10000');
     wrapper.unmount();
   });
 

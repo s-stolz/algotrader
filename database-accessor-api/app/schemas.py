@@ -120,6 +120,21 @@ class BacktestClosedTradeOut(BacktestClosedTradeIn):
     run_id: str
 
 
+class EquityReplayDescriptor(BacktestContractModel):
+    schema_version: Literal[1]
+    fingerprint_algorithm: Literal["sha256-ts-close-v1"]
+    fingerprint_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_point_count: int = Field(gt=0)
+    first_timestamp_ms: int
+    last_timestamp_ms: int
+
+    @model_validator(mode="after")
+    def validate_timestamps(self) -> "EquityReplayDescriptor":
+        if self.last_timestamp_ms < self.first_timestamp_ms:
+            raise ValueError("last_timestamp_ms precedes first_timestamp_ms")
+        return self
+
+
 class BacktestRunBase(BacktestContractModel):
     run_id: str
     status: Literal["queued", "running", "succeeded", "failed"]
@@ -133,6 +148,7 @@ class BacktestRunBase(BacktestContractModel):
     result_schema_version: int | None = None
     metrics: dict[str, Any] | None = None
     diagnostics: dict[str, Any] | None = None
+    replay_descriptor: EquityReplayDescriptor | None = None
 
     @field_validator("request_schema_version")
     @classmethod
@@ -163,6 +179,12 @@ class BacktestRunBase(BacktestContractModel):
 
 
 class BacktestRunCreateIn(BacktestRunBase):
+    @model_validator(mode="after")
+    def validate_new_success_descriptor(self) -> "BacktestRunCreateIn":
+        if self.status == "succeeded" and self.replay_descriptor is None:
+            raise ValueError("successful runs require replay_descriptor")
+        return self
+
     fills: list[BacktestFillIn] = Field(default_factory=list)
     trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
 
@@ -194,11 +216,12 @@ class BacktestRunConditionalUpdateIn(BacktestContractModel):
 
 
 class BacktestRunCompleteIn(BacktestContractModel):
-    expected_status: Literal["queued", "running", "succeeded", "failed"]
+    expected_status: Literal["running"]
     completed_at: datetime
     result_schema_version: int
     metrics: dict[str, Any]
     diagnostics: dict[str, Any]
+    replay_descriptor: EquityReplayDescriptor
     fills: list[BacktestFillIn] = Field(default_factory=list)
     trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
 

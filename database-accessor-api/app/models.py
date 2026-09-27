@@ -60,6 +60,7 @@ backtest_runs = Table(
     Column("result_schema_version", Integer, nullable=True),
     Column("metrics", json_document, nullable=True),
     Column("diagnostics", json_document, nullable=True),
+    Column("replay_descriptor", json_document, nullable=True),
     CheckConstraint(
         "status IN ('queued', 'running', 'succeeded', 'failed')",
         name="backtest_runs_status_check",
@@ -88,7 +89,7 @@ backtest_fills = Table(
     PrimaryKeyConstraint("run_id", "fill_sequence"),
     CheckConstraint("side IN ('buy', 'sell')", name="backtest_fills_side_check"),
     CheckConstraint(
-        "exit_reason IS NULL OR " "exit_reason IN ('signal', 'stop_loss', 'take_profit')",
+        "exit_reason IS NULL OR exit_reason IN ('signal', 'stop_loss', 'take_profit')",
         name="backtest_fills_exit_reason_check",
     ),
     Index(

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Callable, Protocol
 from uuid import uuid4
 
+from adapters.db_accessor import DatabaseAccessorHistoricalDataAdapter, HistoricalBarDataAdapter
 from db_accessor_client import normalize_timeframe_code
 from domain.enums import (
     BacktestEngine,
@@ -31,6 +32,14 @@ from strategies.registry import (
     InvalidStrategyParameterError,
     StrategyVersionUnavailableError,
     resolve_strategy_and_parameters,
+)
+
+from app.equity_replay import (
+    ReplayUnavailableError,
+    executable_closes,
+    replay,
+    sample,
+    valid_descriptor,
 )
 
 
@@ -66,6 +75,10 @@ class BacktestRunPersistenceError(RuntimeError):
     """Raised when the durable persistence boundary cannot complete an operation."""
 
 
+class BacktestCandleUnavailableError(RuntimeError):
+    """Current Candle storage cannot be read."""
+
+
 class BacktestRunService:
     """Coordinates durable run lifecycle operations without executing backtests."""
 
@@ -75,10 +88,12 @@ class BacktestRunService:
         repository: BacktestRunRepository,
         new_run_id: Callable[[], str] | None = None,
         now_ms: Callable[[], int] | None = None,
+        data_adapter: HistoricalBarDataAdapter | None = None,
     ) -> None:
         self._repository = repository
         self._new_run_id = new_run_id or _new_run_id
         self._now_ms = now_ms or _utc_now_ms
+        self._data_adapter = data_adapter
 
     def submit(self, request: BacktestRequest) -> BacktestRunRecord:
         request = _validate_submission(request)
@@ -122,6 +137,55 @@ class BacktestRunService:
             return self._repository.get_fills(run_id)
         except Exception as exc:
             raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+
+    def get_equity_curve(self, run_id: str, max_points: int = 2000) -> dict[str, object]:
+        if not 100 <= max_points <= 10000:
+            raise ValueError("max_points must be between 100 and 10000")
+        run = self.get(run_id)
+        if run.status != BacktestRunStatus.SUCCEEDED:
+            raise BacktestRunConflictError("Equity Replay requires a successful run")
+        if run.replay_descriptor is None:
+            return _unavailable_curve("replay_metadata_missing")
+        request = run.request_snapshot.to_request()
+        saved = run.replay_descriptor
+        if (
+            len(request.symbols) != 1
+            or request.data_granularity != DataGranularity.BAR
+            or not valid_descriptor(saved)
+        ):
+            return _unavailable_curve("unsupported_replay_shape")
+        adapter = self._data_adapter or DatabaseAccessorHistoricalDataAdapter()
+        try:
+            bars = adapter.fetch_bars(
+                symbol=request.symbols[0],
+                timeframe=request.timeframe,
+                start_ms=request.start_ms,
+                end_ms=request.end_ms,
+                exchange=request.exchange,
+            )
+        except (ValueError, TypeError, KeyError):
+            return _unavailable_curve("unsupported_replay_shape")
+        except Exception as exc:
+            raise BacktestCandleUnavailableError("Candle service unavailable") from exc
+        try:
+            closes = executable_closes(bars, first_timestamp_ms=int(saved["first_timestamp_ms"]))
+            fills = self._repository.get_fills(run_id)
+            points = replay(request, saved, closes, fills)
+        except ReplayUnavailableError as exc:
+            return _unavailable_curve(str(exc))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return _unavailable_curve("unsupported_replay_shape")
+        except Exception as exc:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+        returned = sample(points, max_points)
+        return {
+            "availability": "exact",
+            "reason": None,
+            "source_point_count": len(points),
+            "returned_point_count": len(returned),
+            "sampled": len(returned) != len(points),
+            "equity_curve": returned,
+        }
 
     def get_trades(self, run_id: str) -> list[BacktestTradeRecord]:
         self.get(run_id)
@@ -210,3 +274,14 @@ def _new_run_id() -> str:
 
 def _utc_now_ms() -> int:
     return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
+def _unavailable_curve(reason: str) -> dict[str, object]:
+    return {
+        "availability": "unavailable",
+        "reason": reason,
+        "source_point_count": 0,
+        "returned_point_count": 0,
+        "sampled": False,
+        "equity_curve": [],
+    }
