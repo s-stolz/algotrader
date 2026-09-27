@@ -7,6 +7,7 @@ import {
   cancelBacktestRun,
   controlBacktestBatch,
   deleteBacktestRun,
+  deleteBacktestBatch,
   fetchStrategyCatalog,
   fetchSweepCapabilities,
   previewParameterSweep,
@@ -354,6 +355,18 @@ describe('backtester API client', () => {
     await expect(deleteBacktestRun('run-running')).rejects.toThrow(
       'Failed to delete backtest run: Conflict',
     );
+  });
+
+  it('deletes a whole Batch through the public backtester proxy', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+    await expect(deleteBacktestBatch('batch/123')).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/batches/batch%2F123', {
+      method: 'DELETE',
+    });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 409, statusText: 'Conflict' }));
+    await expect(deleteBacktestBatch('active')).rejects.toThrow('Failed to delete Backtest Batch: Conflict');
   });
 
   it('rejects malformed Backtest Run and closed-trade responses', async () => {

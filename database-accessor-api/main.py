@@ -239,6 +239,17 @@ async def list_backtest_batch_events(batch_id: str, db: AsyncSession = Depends(g
     return await crud.list_backtest_batch_events(db, batch_id)
 
 
+@app.delete("/backtest-batches/{batch_id}", status_code=204, response_class=Response)
+async def delete_backtest_batch(batch_id: str, db: AsyncSession = Depends(get_db)) -> Response:
+    try:
+        deleted = await crud.delete_backtest_batch(db, batch_id)
+    except crud.BacktestDeletionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return Response(status_code=204)
+
+
 @app.post("/backtest-batches/{batch_id}/{command}", response_model=BacktestBatchCommandOut)
 async def control_backtest_batch(
     batch_id: str,
@@ -288,10 +299,10 @@ async def delete_backtest_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    run = await crud.get_backtest_run(db, run_id)
-    if run is not None and run["batch_id"] is not None:
-        raise HTTPException(status_code=409, detail="Batch members cannot be deleted individually")
-    deleted = await crud.delete_backtest_run(db, run_id)
+    try:
+        deleted = await crud.delete_backtest_run(db, run_id)
+    except crud.BacktestDeletionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Backtest run not found")
     return Response(status_code=204)

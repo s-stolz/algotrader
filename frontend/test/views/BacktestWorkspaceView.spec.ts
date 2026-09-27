@@ -4,11 +4,12 @@ import { NDataTable, NSelect } from 'naive-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  cancelBacktestRun, controlBacktestBatch, deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
+  cancelBacktestRun, controlBacktestBatch, deleteBacktestBatch, deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
   fetchBacktestFills, fetchBacktestQueue, getBacktestBatch, getBacktestRun, listBacktestBatchEvents,
   listBacktestBatchMembers, listBacktestBatches, listBacktestRuns,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
+import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { BacktestBatch, BacktestClosedTrade, BacktestFill, BacktestRun } from '@/types/backtesterContracts';
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
@@ -18,6 +19,7 @@ vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
   cancelBacktestRun: vi.fn(),
   controlBacktestBatch: vi.fn(),
+  deleteBacktestBatch: vi.fn(),
   deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   fetchBacktestEquityCurve: vi.fn(),
@@ -142,6 +144,7 @@ describe('production Backtest Workspace', () => {
     vi.mocked(cancelBacktestRun).mockReset();
     vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(deleteBacktestRun).mockReset();
+    vi.mocked(deleteBacktestBatch).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
     vi.mocked(fetchBacktestEquityCurve).mockReset();
     vi.mocked(fetchBacktestEquityCurve).mockResolvedValue({
@@ -154,6 +157,7 @@ describe('production Backtest Workspace', () => {
       availability: 'healthy', stale_after_ms: 30_000, operational_faults: [], queued: [],
     });
     vi.mocked(deleteBacktestRun).mockResolvedValue();
+    vi.mocked(deleteBacktestBatch).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
     vi.mocked(fetchBacktestFills).mockResolvedValue([]);
     useMarketsStore().all = [{
@@ -779,6 +783,41 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="workspace-run-success"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('404 Not Found');
+    wrapper.unmount();
+  });
+
+  it('keeps a Batch visible after delete conflict, then refreshes and clears its selection', async () => {
+    const accepted = batch('delete-me', 1);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValueOnce([accepted]).mockResolvedValueOnce([]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue([run('member-1', {
+      batch_id: 'delete-me', member_ordinal: 0,
+    })]);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(deleteBacktestBatch).mockRejectedValueOnce(new Error('Conflict'));
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-batch-delete-me"]').trigger('click');
+    await flushPromises();
+    const overlay = useBacktestOverlayStore();
+    overlay.selectedRunId = 'member-1';
+    overlay.selectedRun = run('member-1', { batch_id: 'delete-me', member_ordinal: 0 });
+
+    await wrapper.find('[data-testid="workspace-delete-batch-delete-me"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="workspace-batch-delete-me"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Conflict');
+    expect(listBacktestBatches).toHaveBeenCalledTimes(1);
+
+    await wrapper.find('[data-testid="workspace-delete-batch-delete-me"]').trigger('click');
+    await flushPromises();
+    expect(deleteBacktestBatch).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="workspace-batch-delete-me"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('removed from the chart overlay');
+    expect(overlay.selectedRunId).toBeNull();
+    expect(wrapper.text()).not.toContain('Conflict');
     wrapper.unmount();
   });
 

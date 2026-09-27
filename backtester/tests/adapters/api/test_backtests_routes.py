@@ -789,7 +789,7 @@ class TestBacktestExecutionLogAndDeletionRoutes(unittest.TestCase):
                     self.assertEqual(response.status_code, 409)
                     self.assertEqual(
                         response.json(),
-                        {"detail": "Only terminal backtest runs can be deleted"},
+                        {"detail": "Cancel and settle this run before deleting it"},
                     )
                     self.assertIn(run_id, repository.runs_by_id)
 

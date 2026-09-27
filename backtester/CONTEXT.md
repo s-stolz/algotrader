@@ -172,8 +172,10 @@ Standalone Python backtesting module for historical candle simulation.
 - `GET /backtests/{run_id}/fills` and `/trades` return separate execution-log
   collections in storage-provided sequence order. Existing runs with no artifacts
   return empty lists; missing runs return not found.
-- `DELETE /backtests/{run_id}` permits only `succeeded` and `failed` runs.
-  Queued, running, and all batch-member runs return a conflict.
+- `DELETE /backtests/{run_id}` permits `succeeded`, `failed`, and `cancelled`
+  standalone runs. `DELETE /backtests/batches/{batch_id}` removes an entire
+  `completed` or `cancelled` batch. Active work and individual members conflict;
+  the accessor rechecks eligibility inside the deletion transaction.
 - `POST /backtests/batches` revalidates the complete sweep against current
   strategy metadata, Markets, and raw-candidate limit. `GET /backtests/batches`,
   `/{batch_id}`, `/{batch_id}/members`, and `/{batch_id}/events` expose immutable

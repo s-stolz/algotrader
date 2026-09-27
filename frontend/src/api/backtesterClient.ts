@@ -262,8 +262,28 @@ export async function deleteBacktestRun(runId: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to delete backtest run: ${response.statusText || response.status}`);
+    throw new Error(`Failed to delete backtest run: ${await deletionFailure(response)}`);
   }
+}
+
+export async function deleteBacktestBatch(batchId: string): Promise<void> {
+  const response = await fetch(`${BACKTESTS_BASE_URL}/batches/${encodeURIComponent(batchId)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete Backtest Batch: ${await deletionFailure(response)}`);
+  }
+}
+
+async function deletionFailure(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === 'object' && body !== null && 'detail' in body &&
+      typeof body.detail === 'string') return body.detail;
+  } catch {
+    // A proxy may return an empty body; retain its HTTP status explanation.
+  }
+  return response.statusText || String(response.status);
 }
 
 export async function fetchBacktestClosedTrades(

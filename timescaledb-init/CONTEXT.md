@@ -49,6 +49,8 @@ TimescaleDB database.
   states and normalized request time, source, and reason; earlier history stays intact.
 - `migrations/V015__backtest_batch_cancellation.sql`: batch-level cancellation
   acceptance time and provenance, and durable Cancel Batch command receipts.
+- `migrations/V016__terminal_backtest_deletion.sql`: whole-batch member cascade
+  with a guard that still rejects direct member deletion while the batch exists.
 
 ## Contracts
 
@@ -79,6 +81,10 @@ TimescaleDB database.
   standalone rows, and creates batch/event tables. Unique identity and ordinal
   constraints plus triggers reject member replacement, late insertion, and
   individual deletion.
+- `V016` changes the member foreign key to cascade only when its parent batch is
+  deleted. The membership trigger still rejects an individual member delete;
+  normalized artifacts, events, queue turns, and command receipts cascade with
+  the whole batch in the same transaction.
 - `backtest_fills` and `backtest_closed_trades` use per-run sequence keys for
   deterministic ordering and cascade when the parent run is deleted.
 - `backtest_closed_trades` includes explicit trade direction plus nullable

@@ -174,6 +174,11 @@ to a chart UI, and supports standalone backtesting.
   consumption, member outcome, and automatic batch transition commit atomically.
   Revisioned batch events retain prior and new status for automatic transitions;
   accepted revision-zero and legacy events have a null prior status.
+- Explicit deletion permits settled `succeeded`, `failed`, or `cancelled`
+  standalone runs and entire `completed` or `cancelled` batches. Storage
+  rechecks eligibility under the execution-slot lock; batch deletion cascades
+  members, artifacts, command receipts, and events in one transaction. A member
+  cannot be deleted while its batch exists.
 - New successful single-Market bar-mode runs atomically store an Equity Replay
   descriptor with metrics, diagnostics, Fills, and Closed Trades. The descriptor
   fingerprints executable Candle timestamps and closes; legacy successes retain

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic import ValidationError
-from sqlalchemy import create_engine, insert, select, text
+from sqlalchemy import create_engine, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,9 +19,13 @@ os.environ.setdefault("TIMESCALEDB_DB", "test")
 import main  # noqa: E402
 from app import backtest_execution, crud  # noqa: E402
 from app.models import (  # noqa: E402
+    backtest_batch_commands,
+    backtest_batch_events,
+    backtest_batches,
     backtest_closed_trades,
     backtest_execution_slot,
     backtest_fills,
+    backtest_queue_turns,
     backtest_runs,
     metadata,
 )
@@ -504,11 +508,90 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_batch_member_cannot_be_individually_deleted(self):
         from fastapi import HTTPException
 
+        _seed_execution_slot(self.session)
         await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
         with self.assertRaises(HTTPException) as conflict:
             await main.delete_backtest_run("member-1", db=self.db)
         self.assertEqual(conflict.exception.status_code, 409)
         self.assertIsNotNone(await main.get_backtest_run("member-1", db=self.db))
+
+    async def test_batch_delete_rechecks_state_and_removes_members_events_and_commands(self):
+        _seed_execution_slot(self.session)
+        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        for status in ("queued", "running", "pausing", "paused", "cancelling"):
+            await self.session.execute(update(backtest_batches).values(status=status))
+            await self.session.commit()
+            with self.assertRaises(main.HTTPException) as conflict:
+                await main.delete_backtest_batch("batch-1", db=self.db)
+            self.assertEqual(conflict.exception.status_code, 409)
+            self.assertIsNotNone(await crud.get_backtest_batch(self.db, "batch-1"))
+        await self.session.execute(update(backtest_batches).values(status="completed"))
+        await self.session.commit()
+        with self.assertRaises(main.HTTPException) as conflict:
+            await main.delete_backtest_batch("batch-1", db=self.db)
+        self.assertEqual(conflict.exception.status_code, 409)
+
+        await self.session.execute(
+            update(backtest_runs)
+            .where(backtest_runs.c.run_id == "member-1")
+            .values(
+                status="succeeded", completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)
+            )
+        )
+        await self.session.execute(
+            insert(backtest_batch_commands).values(
+                batch_id="batch-1",
+                command_id="command-1",
+                command="pause",
+                status="paused",
+                lifecycle_revision=1,
+                occurred_at=datetime(2026, 6, 8, 12, 34, tzinfo=timezone.utc),
+            )
+        )
+        await self.session.commit()
+        response = await main.delete_backtest_batch("batch-1", db=self.db)
+        self.assertEqual(response.status_code, 204)
+        for table in (
+            backtest_batches,
+            backtest_runs,
+            backtest_batch_events,
+            backtest_batch_commands,
+            backtest_queue_turns,
+        ):
+            rows = (await self.session.execute(select(table))).fetchall()
+            self.assertEqual(rows, [], table.name)
+        with self.assertRaises(main.HTTPException) as missing:
+            await main.delete_backtest_batch("batch-1", db=self.db)
+        self.assertEqual(missing.exception.status_code, 404)
+
+    async def test_batch_delete_rolls_back_when_child_removal_fails(self):
+        _seed_execution_slot(self.session)
+        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        await self.session.execute(
+            update(backtest_batches).values(
+                status="cancelled",
+                cancel_requested_at=datetime(2026, 6, 8, 12, 34, tzinfo=timezone.utc),
+                cancellation_source="user",
+                cancellation_reason="user_requested",
+            )
+        )
+        await self.session.execute(
+            update(backtest_runs).values(
+                status="succeeded", completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)
+            )
+        )
+        await self.session.commit()
+
+        await self.session.execute(text("""CREATE TRIGGER reject_event_delete
+            BEFORE DELETE ON backtest_batch_events BEGIN
+                SELECT RAISE(ABORT, 'injected event deletion failure');
+            END"""))
+        await self.session.commit()
+        with self.assertRaisesRegex(IntegrityError, "injected event deletion failure"):
+            await crud.delete_backtest_batch(self.db, "batch-1")
+        self.assertIsNotNone(await crud.get_backtest_batch(self.db, "batch-1"))
+        self.assertEqual(len(await crud.list_backtest_batch_members(self.db, "batch-1")), 1)
+        self.assertEqual(len(await crud.list_backtest_batch_events(self.db, "batch-1")), 1)
 
     async def test_standalone_claim_cannot_consume_batch_member(self):
         await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
@@ -1639,6 +1722,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(ctx.exception.status_code, 404)
 
     async def test_delete_backtest_run_cascades_execution_logs(self):
+        _seed_execution_slot(self.session)
         await main.create_backtest_run(
             BacktestRunCreateIn(
                 **_run_payload(
@@ -1698,6 +1782,34 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(main.HTTPException) as ctx:
             await main.delete_backtest_run("run-delete", db=self.db)
         self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_run_delete_rechecks_terminal_state_and_allows_cancelled(self):
+        _seed_execution_slot(self.session)
+        await main.create_backtest_run(
+            BacktestRunCreateIn(**_run_payload(run_id="run-delete")), db=self.db
+        )
+        for status in ("queued", "running", "cancelling"):
+            values: dict[str, object] = {"status": status}
+            if status == "cancelling":
+                values.update(
+                    cancel_requested_at=datetime(2026, 6, 8, 12, 34, tzinfo=timezone.utc),
+                    cancellation_source="user",
+                    cancellation_reason="user_requested",
+                )
+            await self.session.execute(update(backtest_runs).values(**values))
+            await self.session.commit()
+            with self.assertRaises(main.HTTPException) as conflict:
+                await main.delete_backtest_run("run-delete", db=self.db)
+            self.assertEqual(conflict.exception.status_code, 409)
+        await self.session.execute(
+            update(backtest_runs).values(
+                status="cancelled", completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)
+            )
+        )
+        await self.session.commit()
+        self.assertEqual(
+            (await main.delete_backtest_run("run-delete", db=self.db)).status_code, 204
+        )
 
     def test_create_rejects_unknown_request_schema_version(self):
         with self.assertRaises(ValidationError):

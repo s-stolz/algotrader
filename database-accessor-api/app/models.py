@@ -94,7 +94,12 @@ backtest_runs = Table(
     Column("metrics", json_document, nullable=True),
     Column("diagnostics", json_document, nullable=True),
     Column("replay_descriptor", json_document, nullable=True),
-    Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=True),
+    Column(
+        "batch_id",
+        String(36),
+        ForeignKey("backtest_batches.batch_id", ondelete="CASCADE"),
+        nullable=True,
+    ),
     Column("member_ordinal", Integer, nullable=True),
     CheckConstraint(
         "status IN ('queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled')",
@@ -126,7 +131,12 @@ backtest_runs = Table(
 backtest_batch_events = Table(
     "backtest_batch_events",
     metadata,
-    Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=False),
+    Column(
+        "batch_id",
+        String(36),
+        ForeignKey("backtest_batches.batch_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("revision", Integer, nullable=False),
     Column("event_type", String(32), nullable=False),
     Column("prior_status", String(16), nullable=True),
@@ -142,7 +152,12 @@ backtest_batch_events = Table(
 backtest_batch_commands = Table(
     "backtest_batch_commands",
     metadata,
-    Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=False),
+    Column(
+        "batch_id",
+        String(36),
+        ForeignKey("backtest_batches.batch_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("command_id", String(36), nullable=False),
     Column("command", String(16), nullable=False),
     Column("status", String(16), nullable=False),
@@ -180,7 +195,12 @@ backtest_queue_turns = Table(
         autoincrement=True,
     ),
     Column("run_id", String(36), ForeignKey("backtest_runs.run_id"), nullable=True),
-    Column("batch_id", String(36), ForeignKey("backtest_batches.batch_id"), nullable=True),
+    Column(
+        "batch_id",
+        String(36),
+        ForeignKey("backtest_batches.batch_id", ondelete="CASCADE"),
+        nullable=True,
+    ),
     CheckConstraint(
         "(run_id IS NULL) <> (batch_id IS NULL)", name="backtest_queue_turn_identity_check"
     ),

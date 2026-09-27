@@ -564,13 +564,90 @@ async def get_backtest_trades(session, run_id: str):
     return [dict(row._mapping) for row in result.fetchall()]
 
 
+class BacktestDeletionConflictError(ValueError):
+    pass
+
+
 async def delete_backtest_run(session, run_id: str) -> bool:
-    stmt = delete(backtest_runs).where(
-        backtest_runs.c.run_id == run_id,
-        backtest_runs.c.batch_id.is_(None),
-    )
     try:
-        result = await session.execute(stmt)
+        slot = (
+            await session.execute(select(backtest_execution_slot.c.run_id).with_for_update())
+        ).scalar_one()
+        row = (
+            (
+                await session.execute(
+                    select(backtest_runs.c.status, backtest_runs.c.batch_id)
+                    .where(backtest_runs.c.run_id == run_id)
+                    .with_for_update()
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            await session.rollback()
+            return False
+        if row["batch_id"] is not None:
+            raise BacktestDeletionConflictError("Batch members cannot be deleted individually")
+        if row["status"] not in {"succeeded", "failed", "cancelled"} or slot == run_id:
+            raise BacktestDeletionConflictError("Cancel and settle this run before deleting it")
+        await session.execute(
+            delete(backtest_queue_turns).where(backtest_queue_turns.c.run_id == run_id)
+        )
+        result = await session.execute(
+            delete(backtest_runs).where(
+                backtest_runs.c.run_id == run_id,
+                backtest_runs.c.batch_id.is_(None),
+                backtest_runs.c.status.in_(["succeeded", "failed", "cancelled"]),
+            )
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return result.rowcount == 1
+
+
+async def delete_backtest_batch(session, batch_id: str) -> bool:
+    try:
+        slot = (
+            await session.execute(select(backtest_execution_slot.c.run_id).with_for_update())
+        ).scalar_one()
+        batch = (
+            await session.execute(
+                select(backtest_batches.c.status)
+                .where(backtest_batches.c.batch_id == batch_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if batch is None:
+            await session.rollback()
+            return False
+        if batch not in {"completed", "cancelled"}:
+            raise BacktestDeletionConflictError("Cancel and settle this batch before deleting it")
+        members = (
+            (
+                await session.execute(
+                    select(backtest_runs.c.run_id, backtest_runs.c.status)
+                    .where(backtest_runs.c.batch_id == batch_id)
+                    .with_for_update()
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if slot in {member["run_id"] for member in members} or any(
+            member["status"] not in {"succeeded", "failed", "cancelled"} for member in members
+        ):
+            raise BacktestDeletionConflictError(
+                "Cancel and settle all batch members before deleting it"
+            )
+        result = await session.execute(
+            delete(backtest_batches).where(
+                backtest_batches.c.batch_id == batch_id,
+                backtest_batches.c.status.in_(["completed", "cancelled"]),
+            )
+        )
         await session.commit()
     except Exception:
         await session.rollback()

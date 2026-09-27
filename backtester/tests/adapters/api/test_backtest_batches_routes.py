@@ -45,7 +45,12 @@ class BatchClient:
         return list(self.batches.values())
 
     def get_backtest_batch(self, batch_id: str) -> dict:
-        return next(batch for batch in self.batches.values() if batch["batch_id"] == batch_id)
+        batch = next(
+            (batch for batch in self.batches.values() if batch["batch_id"] == batch_id), None
+        )
+        if batch is None:
+            raise DatabaseAccessorClientError("Backtest batch not found", status_code=404)
+        return batch
 
     def list_backtest_batch_members(self, batch_id: str) -> list[dict]:
         return self.members[batch_id]
@@ -62,6 +67,13 @@ class BatchClient:
                 "reason": None,
             }
         ]
+
+    def delete_backtest_batch(self, batch_id: str) -> None:
+        batch = self.get_backtest_batch(batch_id)
+        if batch["status"] not in {"completed", "cancelled"}:
+            raise DatabaseAccessorClientError("Cancel and settle this batch", status_code=409)
+        self.batches.pop(batch["submission_id"])
+        self.members.pop(batch_id)
 
     def control_backtest_batch(
         self, batch_id: str, command: str, command_id: str, policy: dict
@@ -288,3 +300,17 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
             )
         self.assertEqual(conflict.status_code, 409)
         self.assertEqual(len(self.client_store.batches), 1)
+
+    def test_delete_requires_terminal_batch_and_removes_whole_history(self) -> None:
+        with patch.dict("os.environ", {"BACKTESTER_BATCH_ACCEPTANCE_ENABLED": "1"}):
+            accepted = self.client.post(
+                "/backtests/batches", json={**_definition(), "submission_id": "delete-1"}
+            )
+        self.assertEqual(accepted.status_code, 202)
+        batch_id = accepted.json()["batch_id"]
+        self.assertEqual(self.client.delete(f"/backtests/batches/{batch_id}").status_code, 409)
+        self.client_store.get_backtest_batch(batch_id)["status"] = "completed"
+        self.assertEqual(self.client.delete(f"/backtests/batches/{batch_id}").status_code, 204)
+        self.assertEqual(self.client_store.batches, {})
+        self.assertEqual(self.client_store.members, {})
+        self.assertEqual(self.client.delete(f"/backtests/batches/{batch_id}").status_code, 404)

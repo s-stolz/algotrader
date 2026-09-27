@@ -179,9 +179,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   run-identified equity and nonpositive drawdown series below the table.
   Per-run replay unavailability or read errors leave other series and saved
   metrics intact. Ending equity comes only from the last exact replay point.
-- Workspace history can delete terminal `succeeded` or `failed` standalone
-  runs through the public backtester API; queued/running deletion remains
-  unavailable until cancellation behavior is delivered.
+- Workspace history explicitly deletes terminal `succeeded`, `failed`, or
+  `cancelled` standalone runs and entire `completed` or `cancelled` batches
+  through the public backtester API. It refreshes history on success, retains
+  visible records on failure, and clears deleted selections and chart overlays.
 - Workspace run cells open a per-run execution-log drawer through the public
   backtester `/trades` and `/fills` resources. Closed Trades and Fills retain
   their stored sequence and separate direction/side semantics. Log reads occur

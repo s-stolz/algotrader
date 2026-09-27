@@ -78,6 +78,7 @@
         Run history unavailable; current lifecycle status is unknown. {{ readError }}
       </p>
       <p v-if="deleteError" role="alert">{{ deleteError }}</p>
+      <p v-if="selectionNotice" role="status">{{ selectionNotice }}</p>
       <p v-if="cancelError" role="alert">{{ cancelError }}</p>
       <p v-if="runs !== null && batches !== null && historyRows.length === 0 && !readError" role="status">
         No saved Backtest Runs or Batches.
@@ -223,7 +224,7 @@ import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { DocumentTextOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
 
-import { cancelBacktestRun, deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestBatchMembers, listBacktestRuns } from '@/api/backtesterClient';
+import { cancelBacktestRun, deleteBacktestBatch, deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestBatchMembers, listBacktestRuns } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
@@ -259,9 +260,11 @@ const isRefreshing = ref(false);
 const readError = ref<string | null>(null);
 const detailError = ref<string | null>(null);
 const deleteError = ref<string | null>(null);
+const selectionNotice = ref<string | null>(null);
 const cancelError = ref<string | null>(null);
 const cancellingRunIds = ref<ReadonlySet<string>>(new Set());
 const deletingRunIds = ref<ReadonlySet<string>>(new Set());
+const deletingBatchIds = ref<ReadonlySet<string>>(new Set());
 const detailLoading = ref(false);
 type AnalysisState = { loading: boolean; error: string | null;
   curve: EquityReplayResponse | null; detail: BacktestRun | null };
@@ -496,6 +499,21 @@ async function readRuns(): Promise<void> {
     if (logRun.value) {
       logRun.value = latest.find((run) => run.run_id === logRun.value?.run_id) ?? null;
     }
+    if ((overlayStore.selectedRun?.batch_id &&
+      !latestBatches.some((batch) => batch.batch_id === overlayStore.selectedRun?.batch_id)) ||
+      (overlayStore.selectedRun && !overlayStore.selectedRun.batch_id &&
+        !latest.some((run) => run.run_id === overlayStore.selectedRunId))) {
+      overlayStore.clearOverlay();
+      selectionNotice.value = 'The chart overlay was cleared because its saved Backtest is unavailable.';
+    }
+    if (selectedBatchId.value && !latestBatches.some((batch) => batch.batch_id === selectedBatchId.value)) {
+      selectedBatchId.value = null;
+      batchMembers.value = [];
+      workspaceStore.clearSelection();
+      ++detailSequence;
+      setComparison([]);
+      selectionNotice.value = 'The selected Backtest Batch is no longer available.';
+    }
     const selected = latest.find((run) => run.run_id === selectedRunId.value);
     if (selected) {
       const changed = JSON.stringify(selectedRun.value) !== JSON.stringify(selected);
@@ -508,6 +526,7 @@ async function readRuns(): Promise<void> {
       workspaceStore.clearSelection();
       ++detailSequence;
       setComparison([]);
+      selectionNotice.value = 'The selected Backtest Run is no longer available.';
     }
   } catch (error) {
     if (generation === readGeneration && isActive) readError.value = errorMessage(error);
@@ -574,6 +593,7 @@ function rowKey(entry: HistoryEntry): string {
 function historyRowProps(entry: HistoryEntry): Record<string, unknown> {
   const isRun = entry.kind === 'run';
   const select = () => {
+    selectionNotice.value = null;
     if (entry.kind === 'run') {
       selectedBatchId.value = null;
       batchMembers.value = [];
@@ -722,14 +742,24 @@ const historyColumns: DataTableColumns<HistoryEntry> = [
       text: true,
       size: 'small',
       'data-testid': `workspace-delete-${entry.run.run_id}`,
-      disabled: (entry.run.status !== 'succeeded' && entry.run.status !== 'failed') ||
+      disabled: !['succeeded', 'failed', 'cancelled'].includes(entry.run.status) ||
         deletingRunIds.value.has(entry.run.run_id),
       title: 'Delete terminal Backtest Run and its saved results, Fills, and Closed Trades',
       onClick: (event: MouseEvent) => {
         event.stopPropagation();
         void deleteRun(entry.run);
       },
-    }, { default: () => 'Delete' }) : cell('—'),
+    }, { default: () => 'Delete' }) : h(NButton, {
+      text: true, size: 'small',
+      'data-testid': `workspace-delete-batch-${entry.batch.batch_id}`,
+      disabled: !['completed', 'cancelled'].includes(entry.batch.status) ||
+        deletingBatchIds.value.has(entry.batch.batch_id),
+      title: 'Delete this terminal Batch, all members and their saved artifacts',
+      onClick: (event: MouseEvent) => {
+        event.stopPropagation();
+        void deleteBatch(entry.batch);
+      },
+    }, { default: () => 'Delete' }),
   },
 ];
 
@@ -893,21 +923,23 @@ async function cancelRun(run: BacktestRun): Promise<void> {
 }
 
 async function deleteRun(run: BacktestRun): Promise<void> {
-  if ((run.status !== 'succeeded' && run.status !== 'failed') ||
+  if (!['succeeded', 'failed', 'cancelled'].includes(run.status) ||
     deletingRunIds.value.has(run.run_id)) return;
   if (!window.confirm('Delete this Backtest and all saved results, trades and fills? This cannot be undone.')) return;
   deletingRunIds.value = new Set([...deletingRunIds.value, run.run_id]);
   deleteError.value = null;
   try {
     await deleteBacktestRun(run.run_id);
-    runs.value = runs.value?.filter((candidate) => candidate.run_id !== run.run_id) ?? null;
     if (logRun.value?.run_id === run.run_id) logRun.value = null;
     if (selectedRunId.value === run.run_id) {
       workspaceStore.clearSelection();
       ++detailSequence;
       setComparison([]);
     }
-    if (overlayStore.selectedRunId === run.run_id) overlayStore.clearOverlay();
+    if (overlayStore.selectedRunId === run.run_id) {
+      overlayStore.clearOverlay();
+      selectionNotice.value = 'The deleted Backtest Run was removed from the chart overlay.';
+    }
     void queueHealth.value?.refresh();
     await loadRuns();
   } catch (error) {
@@ -916,6 +948,40 @@ async function deleteRun(run: BacktestRun): Promise<void> {
     const stillDeleting = new Set(deletingRunIds.value);
     stillDeleting.delete(run.run_id);
     deletingRunIds.value = stillDeleting;
+  }
+}
+
+async function deleteBatch(batch: BacktestBatch): Promise<void> {
+  if (!['completed', 'cancelled'].includes(batch.status) ||
+    deletingBatchIds.value.has(batch.batch_id)) return;
+  if (!window.confirm('Delete this entire Backtest Batch, all members and saved results? This cannot be undone.')) return;
+  deletingBatchIds.value = new Set([...deletingBatchIds.value, batch.batch_id]);
+  deleteError.value = null;
+  try {
+    await deleteBacktestBatch(batch.batch_id);
+    const overlayBelongsToBatch = overlayStore.selectedRun?.batch_id === batch.batch_id ||
+      batchMembers.value.some((member) => member.run_id === overlayStore.selectedRunId);
+    if (selectedBatchId.value === batch.batch_id) {
+      selectedBatchId.value = null;
+      batchMembers.value = [];
+      workspaceStore.clearSelection();
+      ++detailSequence;
+      setComparison([]);
+      logRun.value = null;
+      selectionNotice.value = 'The deleted Backtest Batch is no longer selected.';
+    }
+    if (overlayBelongsToBatch) {
+      overlayStore.clearOverlay();
+      selectionNotice.value = 'The deleted Backtest Batch was removed from the chart overlay.';
+    }
+    void queueHealth.value?.refresh();
+    await loadRuns();
+  } catch (error) {
+    deleteError.value = errorMessage(error);
+  } finally {
+    const stillDeleting = new Set(deletingBatchIds.value);
+    stillDeleting.delete(batch.batch_id);
+    deletingBatchIds.value = stillDeleting;
   }
 }
 

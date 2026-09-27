@@ -57,10 +57,11 @@ Shared Python packages used by multiple services.
   identity through to the accessor and return the durable status/revision result.
 - Both clients also pass Cancel Batch with the caller-generated command identity
   and return its accepted status, revision, and command identity unchanged.
+- Sync and async clients pass whole-batch deletion to the primitive accessor;
+  both run and batch deletion accept `204 No Content` and surface 404/409 errors.
 - Execution-log methods pass ordered normalized fill/trade records through
   unchanged, including current result schema version 3 closed-trade direction
-  and planned protective exit prices; deletion accepts the
-  accessor's `204 No Content` response.
+  and planned protective exit prices.
 
 ## Change Triggers
 

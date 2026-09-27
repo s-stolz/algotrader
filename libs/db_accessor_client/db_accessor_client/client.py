@@ -291,6 +291,9 @@ class DatabaseAccessorClient(_BaseClient):
     def delete_backtest_run(self, run_id: str) -> None:
         self._request("DELETE", f"/backtests/{run_id}")
 
+    def delete_backtest_batch(self, batch_id: str) -> None:
+        self._request("DELETE", f"/backtest-batches/{batch_id}")
+
     def close(self) -> None:
         self.client.close()
 
@@ -546,6 +549,9 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def delete_backtest_run(self, run_id: str) -> None:
         await self._request("DELETE", f"/backtests/{run_id}")
+
+    async def delete_backtest_batch(self, batch_id: str) -> None:
+        await self._request("DELETE", f"/backtest-batches/{batch_id}")
 
     async def aclose(self) -> None:
         await self.client.aclose()

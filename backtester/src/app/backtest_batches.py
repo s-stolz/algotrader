@@ -18,6 +18,7 @@ class BatchClient(Protocol):
     def get_backtest_batch(self, batch_id: str) -> Mapping[str, Any]: ...
     def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]: ...
     def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]: ...
+    def delete_backtest_batch(self, batch_id: str) -> None: ...
     def control_backtest_batch(
         self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
     ) -> Mapping[str, Any]: ...
@@ -167,6 +168,9 @@ class BacktestBatchService:
                 )
             )
         )
+
+    def delete(self, batch_id: str) -> None:
+        self._with_client(lambda client: client.delete_backtest_batch(batch_id))
 
     @staticmethod
     def _batch_with_outcomes(client: BatchClient, batch: Mapping[str, Any]) -> dict[str, Any]:

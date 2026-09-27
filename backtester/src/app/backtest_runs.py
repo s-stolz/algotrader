@@ -214,10 +214,16 @@ class BacktestRunService:
         run = self.get(run_id)
         if run.batch_id is not None:
             raise BacktestRunConflictError("Batch members cannot be deleted individually")
-        if run.status not in (BacktestRunStatus.SUCCEEDED, BacktestRunStatus.FAILED):
-            raise BacktestRunConflictError("Only terminal backtest runs can be deleted")
+        if run.status not in (
+            BacktestRunStatus.SUCCEEDED,
+            BacktestRunStatus.FAILED,
+            BacktestRunStatus.CANCELLED,
+        ):
+            raise BacktestRunConflictError("Cancel and settle this run before deleting it")
         try:
             deleted = self._repository.delete(run_id)
+        except BacktestRunConflictError:
+            raise
         except Exception as exc:
             raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
         if not deleted:

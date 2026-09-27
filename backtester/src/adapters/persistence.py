@@ -146,6 +146,12 @@ class DatabaseAccessorBacktestRunRepository:
         except DatabaseAccessorClientError as exc:
             if exc.status_code == 404:
                 return False
+            if exc.status_code == 409:
+                from app.backtest_runs import BacktestRunConflictError
+
+                raise BacktestRunConflictError(
+                    "Cancel and settle this run before deleting it"
+                ) from exc
             raise
         return True
 

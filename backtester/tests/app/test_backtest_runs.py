@@ -345,15 +345,23 @@ class TestBacktestRunService(unittest.TestCase):
                 run_id="run-failed",
                 status=BacktestRunStatus.FAILED,
             ),
+            "run-cancelled": replace(
+                queued,
+                run_id="run-cancelled",
+                status=BacktestRunStatus.CANCELLED,
+            ),
         }
 
         service.delete("run-succeeded")
         service.delete("run-failed")
+        service.delete("run-cancelled")
 
-        self.assertEqual(repository.deleted_run_ids, ["run-succeeded", "run-failed"])
+        self.assertEqual(
+            repository.deleted_run_ids, ["run-succeeded", "run-failed", "run-cancelled"]
+        )
         for run_id in ("run-queued", "run-running"):
             with self.subTest(run_id=run_id):
-                with self.assertRaisesRegex(BacktestRunConflictError, "terminal"):
+                with self.assertRaisesRegex(BacktestRunConflictError, "Cancel and settle"):
                     service.delete(run_id)
                 self.assertIn(run_id, repository.runs_by_id)
 

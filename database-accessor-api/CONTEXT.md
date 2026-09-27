@@ -75,8 +75,12 @@ stored in TimescaleDB.
   levels.
 - Fill and trade reads are ordered by their per-run sequence values. Missing parent
   runs return not found, while existing runs with no child rows return empty lists.
-- Run deletion removes the parent row and relies on database foreign-key cascades
-  for fills and trades; terminal-state policy remains in the backtester.
+- Run deletion locks the execution slot and run, rechecks terminal standalone
+  state and membership, and removes the parent and its artifacts atomically.
+  Whole-batch deletion locks the slot, batch, and members, rechecks settled
+  state, and deletes the parent; database cascades remove members, results,
+  replay descriptors, Fills, Closed Trades, events, and command receipts.
+  Missing resources return 404, while ineligible state or membership returns 409.
 - Backtester code owns lifecycle transitions, queue selection, and scheduling.
   This service accepts caller-owned run identity and state as persistence data.
 - The execution slot is a single database row. Accessor claim locks that row,

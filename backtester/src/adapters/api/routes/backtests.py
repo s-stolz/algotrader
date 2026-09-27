@@ -211,6 +211,24 @@ def get_batch_events(
         raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
 
 
+@router.delete("/batches/{batch_id}", status_code=204, response_class=Response)
+def delete_batch(
+    batch_id: str, service: BacktestBatchService = Depends(get_backtest_batch_service)
+) -> Response:
+    try:
+        service.delete(batch_id)
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
+        if exc.status_code == 409:
+            raise HTTPException(
+                status_code=409,
+                detail="Cancel and settle the batch and all members before deleting it",
+            ) from exc
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+    return Response(status_code=204)
+
+
 class BatchCommandRequest(BaseModel):
     command_id: str = Field(min_length=1, max_length=36)
 
