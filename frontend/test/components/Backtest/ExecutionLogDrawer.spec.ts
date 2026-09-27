@@ -119,7 +119,8 @@ describe('execution-log drawer', () => {
       ? new Promise((resolve) => { resolveFirst = resolve; })
       : Promise.resolve([trade(1, 'short', timestamp, timestamp + 60_000)]));
     vi.mocked(fetchBacktestFills).mockResolvedValue([]);
-    const wrapper = mount(BacktestWorkspaceView, { global: { plugins: [pinia] } });
+    const wrapper = mount(BacktestWorkspaceView, { global: { plugins: [pinia],
+      stubs: { EquityReplayCharts: true } } });
     await flushPromises();
     await wrapper.find('[data-testid="workspace-run-first"]').trigger('click');
     await flushPromises();

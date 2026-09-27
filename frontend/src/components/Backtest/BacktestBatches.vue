@@ -42,23 +42,12 @@
       <p>First started: {{ formatTimestamp(selectedBatch.started_at_ms) }} ·
         Terminal: {{ formatTimestamp(selectedBatch.completed_at_ms) }}</p>
       <p v-if="detailError" role="alert">Batch detail unavailable. {{ detailError }}</p>
-      <p v-if="cancelError" role="alert">{{ cancelError }}</p>
       <details>
         <summary>Accepted sweep settings and Strategy Metadata Snapshot</summary>
         <pre>{{ JSON.stringify(selectedBatch.accepted_definition, null, 2) }}</pre>
         <pre>{{ JSON.stringify(selectedBatch.strategy_metadata, null, 2) }}</pre>
       </details>
       <p v-if="members && members.length === 0" role="alert">Accepted Batch has no members.</p>
-      <n-data-table
-        v-if="members && members.length"
-        data-testid="workspace-batch-members"
-        :columns="memberColumns"
-        :data="members"
-        :row-key="(run: BacktestRun) => run.run_id"
-        :row-props="memberRowProps"
-        :pagination="{ pageSize: 20 }"
-        size="small"
-      />
       <details v-if="events">
         <summary>Lifecycle events ({{ events.length }})</summary>
         <ol><li v-for="event in events" :key="event.revision">
@@ -74,23 +63,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue';
-import { NButton, NDataTable } from 'naive-ui';
-import type { DataTableColumns } from 'naive-ui';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  cancelBacktestRun, controlBacktestBatch, getBacktestBatch,
+  controlBacktestBatch, getBacktestBatch,
   listBacktestBatchEvents, listBacktestBatchMembers,
 } from '@/api/backtesterClient';
 import type { BacktestBatch, BacktestBatchEvent, BacktestRun } from '@/types/backtesterContracts';
 
-const emit = defineEmits<{ 'select-run': [run: BacktestRun]; cancelled: [] }>();
+const emit = defineEmits<{ members: [batchId: string, runs: BacktestRun[]] }>();
 const props = defineProps<{ batchId: string | null }>();
 const selectedBatch = ref<BacktestBatch | null>(null);
 const members = ref<BacktestRun[] | null>(null);
 const events = ref<BacktestBatchEvent[] | null>(null);
 const detailError = ref<string | null>(null);
-const cancelError = ref<string | null>(null);
-const cancellingRunIds = ref<ReadonlySet<string>>(new Set());
 const controlError = ref<string | null>(null);
 const controlPending = ref(false);
 type BatchCommand = 'pause' | 'resume';
@@ -105,61 +90,6 @@ const outcomeLabel = computed(() => selectedBatch.value ?
 
 function formatTimestamp(timestamp: number | null): string {
   return timestamp === null ? '—' : new Date(timestamp).toISOString();
-}
-
-const memberColumns: DataTableColumns<BacktestRun> = [
-  { title: '#', key: 'ordinal', render: (run) => String((run.member_ordinal ?? 0) + 1) },
-  { title: 'Run', key: 'run_id', render: (run) => run.run_id },
-  { title: 'Market', key: 'market', render: (run) => run.request.symbols[0] ?? '—' },
-  { title: 'Timeframe', key: 'timeframe', render: (run) => run.request.timeframe },
-  { title: 'Parameters', key: 'parameters', render: (run) =>
-    JSON.stringify(run.request.strategy.parameters) },
-  { title: 'Allowed Directions', key: 'directions', render: (run) =>
-    run.request.execution.allowed_directions },
-  { title: 'Status', key: 'status', render: (run) => run.status === 'cancelling'
-    ? 'cancelling · stopping execution' : run.status },
-  { title: 'Cancel', key: 'cancel', render: (run) => h(NButton, {
-    text: true, size: 'small',
-    'data-testid': `workspace-cancel-${run.run_id}`,
-    disabled: !['queued', 'running'].includes(run.status) || cancellingRunIds.value.has(run.run_id),
-    onClick: (event: MouseEvent) => {
-      event.stopPropagation();
-      void cancelMember(run);
-    },
-  }, { default: () => 'Cancel' }) },
-  { title: 'Failure', key: 'failure', render: (run) => run.error_message ?? '—' },
-  { title: 'Return (%)', key: 'return', render: (run) =>
-    typeof run.metrics?.total_return_pct === 'number' ?
-      String(run.metrics.total_return_pct) : '—' },
-];
-
-function memberRowProps(run: BacktestRun): Record<string, unknown> {
-  return { 'data-testid': `workspace-member-${run.run_id}`, tabindex: 0,
-    onClick: () => emit('select-run', run),
-    onKeydown: (event: KeyboardEvent) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        emit('select-run', run);
-      }
-    } };
-}
-
-async function cancelMember(run: BacktestRun): Promise<void> {
-  if (!['queued', 'running'].includes(run.status) || cancellingRunIds.value.has(run.run_id)) return;
-  cancellingRunIds.value = new Set([...cancellingRunIds.value, run.run_id]);
-  cancelError.value = null;
-  try {
-    await cancelBacktestRun(run.run_id);
-    if (props.batchId) await loadDetail(props.batchId);
-    emit('cancelled');
-  } catch (error) {
-    cancelError.value = error instanceof Error ? error.message : 'Cancellation failed';
-    if (props.batchId) await loadDetail(props.batchId);
-  } finally {
-    const pending = new Set(cancellingRunIds.value);
-    pending.delete(run.run_id);
-    cancellingRunIds.value = pending;
-  }
 }
 
 async function loadDetail(batchId: string): Promise<void> {
@@ -180,6 +110,7 @@ async function loadDetail(batchId: string): Promise<void> {
     selectedBatch.value = batch;
     members.value = loadedMembers;
     events.value = loadedEvents;
+    emit('members', batchId, loadedMembers);
   } catch (error) {
     if (revision === detailRevision) {
       detailError.value = error instanceof Error ? error.message : 'Read failed';

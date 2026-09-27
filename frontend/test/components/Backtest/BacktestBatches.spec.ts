@@ -1,14 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  cancelBacktestRun, getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers,
-  controlBacktestBatch,
+  getBacktestBatch, listBacktestBatchEvents, listBacktestBatchMembers, controlBacktestBatch,
 } from '@/api/backtesterClient';
 import { isBacktestBatch, type BacktestBatch, type BacktestRun } from '@/types/backtesterContracts';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
-  cancelBacktestRun: vi.fn(),
   controlBacktestBatch: vi.fn(),
   getBacktestBatch: vi.fn(), listBacktestBatchEvents: vi.fn(),
   listBacktestBatchMembers: vi.fn(),
@@ -60,7 +58,6 @@ describe('accepted batch inspection', () => {
   });
 
   beforeEach(() => {
-    vi.mocked(cancelBacktestRun).mockReset();
     vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(getBacktestBatch).mockReset().mockResolvedValue(batch);
     vi.mocked(listBacktestBatchMembers).mockReset().mockResolvedValue([member(0), member(1)]);
@@ -69,26 +66,11 @@ describe('accepted batch inspection', () => {
       prior_status: null, occurred_at_ms: batch.accepted_at_ms, trigger_run_id: null, reason: null }]);
   });
 
-  it('cancels only the chosen member and refreshes its durable outcome', async () => {
-    vi.mocked(cancelBacktestRun).mockResolvedValue({
-      ...member(0), status: 'cancelled', cancel_requested_at_ms: batch.accepted_at_ms + 1,
-      completed_at_ms: batch.accepted_at_ms + 1,
-      cancellation_source: 'user', cancellation_reason: 'user_requested',
-    });
-    vi.mocked(listBacktestBatchMembers).mockResolvedValueOnce([member(0), member(1)])
-      .mockResolvedValue([
-        { ...member(0), status: 'cancelled', cancel_requested_at_ms: batch.accepted_at_ms + 1,
-          completed_at_ms: batch.accepted_at_ms + 1,
-          cancellation_source: 'user', cancellation_reason: 'user_requested' },
-        member(1),
-      ]);
+  it('emits actual members to the workspace comparison table', async () => {
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
-    await wrapper.find('[data-testid="workspace-cancel-member-0"]').trigger('click');
-    await flushPromises();
-    expect(cancelBacktestRun).toHaveBeenCalledWith('member-0');
-    expect(wrapper.find('[data-testid="workspace-batch-members"]').text()).toContain('cancelled');
-    expect(wrapper.emitted('cancelled')).toHaveLength(1);
+    expect(wrapper.emitted('members')?.[0]).toEqual(['batch-1', [member(0), member(1)]]);
+    expect(wrapper.find('[data-testid="workspace-batch-members"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -191,8 +173,8 @@ describe('accepted batch inspection', () => {
     expect(reloaded.text()).toContain('2 fixed members');
     expect(reloaded.text()).toContain('0 / 2 settled');
     expect(reloaded.text()).toContain('0 executed');
-    expect(reloaded.find('[data-testid="workspace-batch-members"]').text()).toContain('member-1');
-    expect(reloaded.findAll('[data-testid^="workspace-member-"]')).toHaveLength(2);
+    expect(reloaded.emitted('members')?.[0]).toEqual(['batch-1', [member(0), member(1)]]);
+    expect(reloaded.find('[data-testid="workspace-batch-members"]').exists()).toBe(false);
     expect(reloaded.text()).toContain('Accepted sweep settings and Strategy Metadata Snapshot');
     expect(reloaded.text()).not.toContain('0%');
     reloaded.unmount();
@@ -234,8 +216,10 @@ describe('accepted batch inspection', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('1 member failure');
     expect(wrapper.text()).toContain('Active member #2');
-    expect(wrapper.find('[data-testid="workspace-batch-members"]').text())
-      .toContain('Data unavailable');
+    expect(wrapper.emitted('members')?.[0]?.[1]).toEqual([
+      { ...member(0), status: 'failed', error_message: 'Data unavailable' },
+      { ...member(1), status: 'running' },
+    ]);
     vi.advanceTimersByTime(5000);
     await flushPromises();
     expect(wrapper.text()).toContain('2 / 2 settled');
@@ -243,6 +227,10 @@ describe('accepted batch inspection', () => {
     expect(wrapper.text()).toContain('running → completed');
     expect(wrapper.text()).toContain('Terminal:');
     expect(wrapper.text()).toContain('run member-1');
+    expect(wrapper.emitted('members')?.[1]?.[1]).toEqual([
+      { ...member(0), status: 'failed', error_message: 'Data unavailable' },
+      { ...member(1), status: 'succeeded' },
+    ]);
     wrapper.unmount();
     vi.useRealTimers();
   });

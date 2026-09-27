@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
-import { NSelect } from 'naive-ui';
+import { NDataTable, NSelect } from 'naive-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -75,6 +75,28 @@ function run(id: string, overrides: Partial<BacktestRun> = {}): BacktestRun {
       short_realized_pnl: 0,
     },
     ...overrides,
+  };
+}
+
+function batch(id: string, members: number): BacktestBatch {
+  return {
+    batch_id: id, submission_id: `${id}-submission`, status: 'completed',
+    accepted_at_ms: 1_780_000_000_000, started_at_ms: 1_780_000_001_000,
+    completed_at_ms: 1_780_000_002_000, active_member_ordinal: null,
+    next_member_ordinal: null, lifecycle_revision: 1, definition_schema_version: 1,
+    accepted_definition: { schema_version: 1,
+      shared_request: { start_ms: 1_714_521_600_000, end_ms: 1_714_608_000_000 },
+      normalized_selections: { markets: [{ symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' }],
+        timeframes: ['M15'], parameters: {}, allowed_directions: ['long_and_short'] } },
+    strategy_metadata: { strategy_id: 'sma', strategy_version: 1,
+      display_name: 'SMA', parameters: [] },
+    raw_count: members, member_count: members, excluded_count: 0,
+    total_count: members, settled_count: members, executed_count: members,
+    outcome_counts: { queued: 0, running: 0, cancelling: 0, succeeded: members,
+      failed: 0, cancelled: 0 },
+    has_failed_members: false, markets: ['EURUSD'], exchanges: ['FX'],
+    market_contexts: [{ symbol: 'EURUSD', exchange: 'FX' }], timeframes: ['M15'],
+    strategy_id: 'sma', strategy_version: 1,
   };
 }
 
@@ -164,9 +186,12 @@ describe('production Backtest Workspace', () => {
     const current = wrapper.find('[data-testid="workspace-current-backtest"]');
     expect(current.text()).toContain('-1.25%');
     expect(current.text()).toContain('2.5%');
-    expect(current.text()).toContain('No trades');
+    await wrapper.find('[data-testid="comparison-preset-Long / short"]').trigger('click');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('No trades');
+    await wrapper.find('[data-testid="comparison-preset-Performance"]').trigger('click');
     expect(current.text()).toContain('10000');
-    expect(current.text()).not.toContain('Ending equity');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').findAll('td')
+      .map((column) => column.text())).toContain('—');
     expect(wrapper.text()).toContain('Saved request and execution settings');
     wrapper.unmount();
   });
@@ -298,6 +323,8 @@ describe('production Backtest Workspace', () => {
       metrics: {
         total_return_pct: -0.004,
         max_drawdown_pct: -0.004,
+        long_trade_count: 1,
+        short_trade_count: 1,
         long_realized_pnl: -0.003,
         short_realized_pnl: 0.002,
       },
@@ -308,13 +335,17 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     await wrapper.find('[data-testid="workspace-run-tiny"]').trigger('click');
     await flushPromises();
+    await wrapper.find('[data-testid="comparison-preset-Long / short"]').trigger('click');
+    const pnlCells = wrapper.find('[data-testid="workspace-current-backtest"]')
+      .findAll('td').map((cell) => cell.text());
+    expect(pnlCells).toContain('-0.003');
+    expect(pnlCells).toContain('+0.002');
+    await wrapper.find('[data-testid="comparison-preset-Performance"]').trigger('click');
 
     const cells = wrapper.find('[data-testid="workspace-current-backtest"]')
       .findAll('td').map((cell) => cell.text());
     expect(cells).toContain('-0.004%');
     expect(cells).toContain('0.004%');
-    expect(cells).toContain('-0.003');
-    expect(cells).toContain('+0.002');
     wrapper.unmount();
   });
 
@@ -401,7 +432,7 @@ describe('production Backtest Workspace', () => {
     expect(history().find('[data-testid="workspace-batch-batch-1"]').text()).toContain('1 failed');
     await history().find('[data-testid="workspace-batch-batch-1"]').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[data-testid="workspace-batch-members"]').text()).toContain('member-0');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('member-0');
     expect(listBacktestBatchMembers).toHaveBeenCalledWith('batch-1');
 
     await wrapper.find('[data-testid="workspace-search"] input').setValue('submit-1');
@@ -431,6 +462,136 @@ describe('production Backtest Workspace', () => {
     expect(orderedRows()).toEqual(['workspace-batch-batch-1', 'workspace-run-standalone']);
     await timeframeHeader?.trigger('click');
     expect(orderedRows()).toEqual(['workspace-run-standalone', 'workspace-batch-batch-1']);
+    wrapper.unmount();
+  });
+
+  it('compares ten successful members while retaining hidden selection, failures, and settings', async () => {
+    const members = Array.from({ length: 10 }, (_, ordinal) => run(`member-${ordinal}`, {
+      batch_id: 'comparison', member_ordinal: ordinal,
+      request: { ...run('base').request,
+        symbols: ordinal === 1 ? ['GBPUSD'] : ['EURUSD'],
+        strategy: { strategy_id: 'sma', strategy_version: 1,
+          parameters: { fast: ordinal, note: `value ${ordinal}` } } },
+      metrics: { ...run('base').metrics, total_return_pct: ordinal % 2 ? -1.25 : 2.5 },
+    }));
+    const noTrade = run('no-trade', { batch_id: 'comparison', member_ordinal: 10 });
+    const failed = run('failed-member', { batch_id: 'comparison', member_ordinal: 11,
+      status: 'failed', metrics: null });
+    const cancelled = run('cancelled-member', { batch_id: 'comparison', member_ordinal: 12,
+      status: 'cancelled', metrics: null });
+    const saved = [...members, noTrade, failed, cancelled];
+    const accepted = batch('comparison', saved.length);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue(saved);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => saved.find((item) => item.run_id === id)!);
+    vi.mocked(fetchBacktestEquityCurve).mockImplementation(async (id) => {
+      if (id === 'member-1') throw new Error('Replay service unavailable');
+      if (id === 'member-2') return { availability: 'unavailable',
+        reason: 'fingerprint_mismatch', source_point_count: 0, returned_point_count: 0,
+        sampled: false, equity_curve: [] };
+      return { availability: 'exact', reason: null, source_point_count: 2,
+        returned_point_count: 2, sampled: false,
+        equity_curve: [
+          { timestamp_ms: 1_714_521_600_000, equity: 10000, drawdown_pct: 0 },
+          { timestamp_ms: 1_714_608_000_000, equity: id === 'member-0' ? 10200 : 9800,
+            drawdown_pct: -2 },
+        ] };
+    });
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-batch-comparison"]').trigger('click');
+    await flushPromises();
+    const table = () => wrapper.find('[data-testid="workspace-current-backtest"]');
+    expect(table().findAll('tbody tr')).toHaveLength(13);
+    const dataTable = wrapper.findAllComponents(NDataTable).at(-1)!;
+    expect(dataTable.props('maxHeight')).toBe(360);
+    expect(dataTable.props('scrollX')).toBeGreaterThan(1000);
+    expect((dataTable.props('columns') ?? []).slice(0, 2).map((column: { fixed?: string }) =>
+      column.fixed)).toEqual(['left', 'left']);
+    expect(table().find('[data-testid="workspace-member-failed-member"]').text()).toContain('—');
+    expect(table().find('[data-testid="comparison-select-failed-member"]').attributes('disabled'))
+      .toBeDefined();
+    expect(table().find('[data-testid="comparison-select-cancelled-member"]').attributes('disabled'))
+      .toBeDefined();
+
+    for (let index = 0; index < 10; index++) {
+      await table().find(`[data-testid="comparison-select-member-${index}"]`).setValue(true);
+    }
+    await flushPromises();
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledWith('member-0');
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledWith('member-9');
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(10);
+    expect(wrapper.find('[data-testid="comparison-compatibility"]').text()).toContain('Market');
+    expect(wrapper.find('[data-testid="curve-status-member-1"]').text())
+      .toContain('Replay service unavailable');
+    expect(wrapper.find('[data-testid="curve-status-member-2"]').text())
+      .toContain('Candle data changed');
+    expect(table().find('[data-testid="workspace-member-member-1"]').text()).toContain('-1.25%');
+    expect(table().find('[data-testid="workspace-member-member-1"]').text()).toContain('—');
+    expect(table().find('[data-testid="workspace-member-member-0"]').text()).toContain('10200');
+
+    await wrapper.find('[data-testid="comparison-search"] input').setValue('member-0');
+    expect(table().findAll('tbody tr')).toHaveLength(1);
+    expect(table().find('[data-testid="comparison-select-member-0"]').attributes('checked'))
+      .toBeDefined();
+    await wrapper.find('[data-testid="comparison-search"] input').setValue('');
+    expect(table().find('[data-testid="comparison-select-member-9"]').attributes('checked'))
+      .toBeDefined();
+    const returnHeader = table().findAll('th').find((header) => header.text().includes('Return (%)'));
+    await returnHeader?.trigger('click');
+    const rowOrder = () => table().findAll('tbody tr').map((row) => row.attributes('data-testid'));
+    const sortedOrder = rowOrder();
+    expect(sortedOrder).not.toEqual(saved.map((run) => `workspace-member-${run.run_id}`));
+    await wrapper.find('[data-testid="comparison-preset-Run settings"]').trigger('click');
+    expect(table().text()).toContain('Parameter: fast');
+    expect(table().text()).toContain('Parameter: note');
+    expect(rowOrder()).toEqual(sortedOrder);
+    expect(table().find('[data-testid="comparison-select-member-9"]').attributes('checked'))
+      .toBeDefined();
+    await wrapper.find('[data-testid="comparison-preset-Long / short"]').trigger('click');
+    expect(table().find('[data-testid="workspace-member-no-trade"]').text()).toContain('No trades');
+    expect(table().find('[data-testid="workspace-member-no-trade"]').text()).toContain('0');
+    expect(rowOrder()).toEqual(sortedOrder);
+    await wrapper.find('[data-testid="comparison-preset-Run settings"]').trigger('click');
+    await table().find('[data-testid="workspace-log-member-0"]').trigger('click');
+    await flushPromises();
+    expect(table().find('[data-testid="comparison-select-member-0"]').attributes('checked'))
+      .toBeDefined();
+    wrapper.unmount();
+  }, 30000);
+
+  it('keeps settled replay series loaded across unchanged batch polling', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const members = [0, 1].map((ordinal) => run(`member-${ordinal}`,
+      { batch_id: 'stable', member_ordinal: ordinal }));
+    const accepted = batch('stable', 2);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue(members);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => members.find((run) => run.run_id === id)!);
+    vi.mocked(fetchBacktestEquityCurve).mockResolvedValue({ availability: 'exact',
+      reason: null, source_point_count: 1, returned_point_count: 1, sampled: false,
+      equity_curve: [{ timestamp_ms: 1_714_521_600_000, equity: 10050, drawdown_pct: -1 }] });
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-batch-stable"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="comparison-select-member-0"]').setValue(true);
+    await wrapper.find('[data-testid="comparison-select-member-1"]').setValue(true);
+    await flushPromises();
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="curve-status-member-0"]').text()).toContain('10050');
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(listBacktestBatchMembers).toHaveBeenCalledTimes(2);
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="curve-status-member-0"]').text()).toContain('10050');
+    expect(wrapper.find('[data-testid="curve-status-member-1"]').text()).toContain('10050');
     wrapper.unmount();
   });
 
@@ -505,6 +666,40 @@ describe('production Backtest Workspace', () => {
     expect(wrapper.find('[data-testid="workspace-run-queued"]').text()).toContain('cancelled');
     expect(wrapper.find('[data-testid="workspace-cancel-queued"]').attributes('disabled'))
       .toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('cancels one queued Batch member from the combined table and refreshes that member', async () => {
+    const accepted = { ...batch('cancellable', 2), status: 'queued' as const };
+    const queued = [0, 1].map((ordinal) => run(`member-${ordinal}`, {
+      batch_id: 'cancellable', member_ordinal: ordinal,
+      status: 'queued', started_at_ms: null, completed_at_ms: null,
+      result_schema_version: null, metrics: null,
+    }));
+    const cancelled = { ...queued[0], status: 'cancelled' as const,
+      completed_at_ms: 1_780_922_100_000,
+      cancel_requested_at_ms: 1_780_922_100_000,
+      cancellation_source: 'user' as const, cancellation_reason: 'user_requested' as const };
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValueOnce(queued)
+      .mockResolvedValue([cancelled, queued[1]]);
+    vi.mocked(cancelBacktestRun).mockResolvedValue(cancelled);
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-batch-cancellable"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-cancel-member-0"]').trigger('click');
+    await flushPromises();
+    expect(cancelBacktestRun).toHaveBeenCalledOnce();
+    expect(cancelBacktestRun).toHaveBeenCalledWith('member-0');
+    expect(wrapper.find('[data-testid="workspace-cancel-member-0"]').attributes('disabled'))
+      .toBeDefined();
+    expect(wrapper.find('[data-testid="workspace-cancel-member-1"]').attributes('disabled'))
+      .toBeUndefined();
+    expect(wrapper.find('[data-testid="workspace-batch-members"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -654,6 +849,33 @@ describe('production Backtest Workspace', () => {
 
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('second');
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('failed');
+    wrapper.unmount();
+  });
+
+  it('ignores a late curve after switching the open Backtest', async () => {
+    const first = run('first');
+    const second = run('second');
+    vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => id === 'first' ? first : second);
+    let resolveFirst!: (value: Awaited<ReturnType<typeof fetchBacktestEquityCurve>>) => void;
+    vi.mocked(fetchBacktestEquityCurve).mockImplementation((id) => id === 'first'
+      ? new Promise((resolve) => { resolveFirst = resolve; })
+      : Promise.resolve({ availability: 'exact', reason: null,
+        source_point_count: 1, returned_point_count: 1, sampled: false,
+        equity_curve: [{ timestamp_ms: 1_714_521_600_000, equity: 11000, drawdown_pct: 0 }] }));
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-run-first"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-run-second"]').trigger('click');
+    await flushPromises();
+    resolveFirst({ availability: 'exact', reason: null,
+      source_point_count: 1, returned_point_count: 1, sampled: false,
+      equity_curve: [{ timestamp_ms: 1_714_521_600_000, equity: 9000, drawdown_pct: -1 }] });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="curve-status-second"]').text()).toContain('11000');
+    expect(wrapper.find('[data-testid="curve-status-first"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('11000');
     wrapper.unmount();
   });
 

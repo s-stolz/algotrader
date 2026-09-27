@@ -154,6 +154,23 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   displayed as a positive magnitude and PnL as signed account units. Missing
   results and zero-trade values remain distinct. Ending equity is not inferred
   from saved Return.
+- Opening a Batch feeds its ordinal-ordered members into the same combined
+  settings/performance table used for standalone inspection. Comparison IDs are
+  scoped to that open Batch or standalone Run and survive local filtering,
+  sorting, column changes, and execution-log inspection. Only successful rows
+  are selectable for comparison; failed, cancelled, and unfinished rows retain
+  request settings and missing result metrics. Frontend run readers accept
+  cancelling/cancelled statuses for future durable cancellation responses.
+- Performance, Long / short, and Run settings presets control visible columns;
+  all saved named strategy parameters remain available in Run settings and the
+  selected request. The comparison table pins selection and Run identity,
+  horizontally scrolls readable columns, and caps long bodies at 360px beneath
+  fixed headers. Differing request assumptions are called out without ranking.
+- Selected successful runs read detail and exact Equity Replay through the
+  public backtester API. The shared Lightweight Charts view overlays stable
+  run-identified equity and nonpositive drawdown series below the table.
+  Per-run replay unavailability or read errors leave other series and saved
+  metrics intact. Ending equity comes only from the last exact replay point.
 - Workspace history can delete terminal `succeeded` or `failed` standalone
   runs through the public backtester API; queued/running deletion remains
   unavailable until cancellation behavior is delivered.
