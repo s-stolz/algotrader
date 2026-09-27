@@ -74,6 +74,21 @@ describe('accepted batch inspection', () => {
     wrapper.unmount();
   });
 
+  it('does not discard a batch read that takes longer than a poll interval', async () => {
+    vi.useFakeTimers();
+    let resolve!: (batch: BacktestBatch) => void;
+    vi.mocked(getBacktestBatch).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    vi.advanceTimersByTime(10_000);
+    await flushPromises();
+    expect(getBacktestBatch).toHaveBeenCalledTimes(1);
+    resolve(batch);
+    await flushPromises();
+    expect(wrapper.emitted('members')).toHaveLength(1);
+    wrapper.unmount();
+    vi.useRealTimers();
+  });
+
   it('offers legal pause and resume controls and refreshes after command acceptance', async () => {
     vi.mocked(controlBacktestBatch).mockResolvedValueOnce({ batch_id: 'batch-1',
       status: 'paused', lifecycle_revision: 1 });

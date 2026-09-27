@@ -1,5 +1,6 @@
 <template>
   <section v-if="batchId" aria-label="Backtest Batch" class="batch-history">
+    <p v-if="detailError" role="alert">Batch detail unavailable. {{ detailError }}</p>
     <section v-if="selectedBatch" aria-label="Accepted Batch" class="batch-detail">
       <h3>Accepted Batch {{ selectedBatch.batch_id }}</h3>
       <p>{{ selectedBatch.status }} · {{ selectedBatch.member_count }} fixed members ·
@@ -54,7 +55,6 @@
       </p>
       <p>First started: {{ formatTimestamp(selectedBatch.started_at_ms) }} ·
         Terminal: {{ formatTimestamp(selectedBatch.completed_at_ms) }}</p>
-      <p v-if="detailError" role="alert">Batch detail unavailable. {{ detailError }}</p>
       <details>
         <summary>Accepted sweep settings and Strategy Metadata Snapshot</summary>
         <pre>{{ JSON.stringify(selectedBatch.accepted_definition, null, 2) }}</pre>
@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   controlBacktestBatch, getBacktestBatch,
   listBacktestBatchEvents, listBacktestBatchMembers,
@@ -94,6 +94,8 @@ const controlPending = ref(false);
 type BatchCommand = 'pause' | 'resume' | 'cancel';
 const commandIds: Partial<Record<BatchCommand, string>> = {};
 let detailRevision = 0;
+let isActive = false;
+let readPending = false;
 let timer: ReturnType<typeof setInterval> | null = null;
 
 const outcomeLabel = computed(() => selectedBatch.value ?
@@ -105,9 +107,10 @@ function formatTimestamp(timestamp: number | null): string {
   return timestamp === null ? '—' : new Date(timestamp).toISOString();
 }
 
-async function loadDetail(batchId: string): Promise<void> {
+async function loadDetail(batchId: string, background = false): Promise<void> {
+  if (!isActive || (background && readPending)) return;
+  readPending = true;
   const revision = ++detailRevision;
-  detailError.value = null;
   try {
     const [batch, loadedMembers, loadedEvents] = await Promise.all([
       getBacktestBatch(batchId), listBacktestBatchMembers(batchId), listBacktestBatchEvents(batchId),
@@ -120,6 +123,7 @@ async function loadDetail(batchId: string): Promise<void> {
         controlError.value = null;
       }
     }
+    detailError.value = null;
     selectedBatch.value = batch;
     members.value = loadedMembers;
     events.value = loadedEvents;
@@ -128,6 +132,8 @@ async function loadDetail(batchId: string): Promise<void> {
     if (revision === detailRevision) {
       detailError.value = error instanceof Error ? error.message : 'Read failed';
     }
+  } finally {
+    if (revision === detailRevision) readPending = false;
   }
 }
 
@@ -157,12 +163,26 @@ async function control(command: BatchCommand): Promise<void> {
   }
 }
 
-onMounted(() => {
+function start(): void {
+  if (isActive) return;
+  isActive = true;
   if (props.batchId) void loadDetail(props.batchId);
-  timer = setInterval(() => { if (props.batchId) void loadDetail(props.batchId); }, 5000);
-});
+  timer = setInterval(() => { if (props.batchId) void loadDetail(props.batchId, true); }, 5000);
+}
+function stop(): void {
+  isActive = false;
+  ++detailRevision;
+  readPending = false;
+  if (timer) clearInterval(timer);
+  timer = null;
+}
+onMounted(start);
+onActivated(start);
+onDeactivated(stop);
 watch(() => props.batchId, (batchId) => {
   ++detailRevision;
+  readPending = false;
+  detailError.value = null;
   selectedBatch.value = null;
   members.value = null;
   events.value = null;
@@ -172,10 +192,7 @@ watch(() => props.batchId, (batchId) => {
   delete commandIds.cancel;
   if (batchId) void loadDetail(batchId);
 });
-onUnmounted(() => {
-  ++detailRevision;
-  if (timer) clearInterval(timer);
-});
+onUnmounted(stop);
 </script>
 
 <style scoped>

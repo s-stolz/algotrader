@@ -75,6 +75,7 @@ const isUnknown = computed(() => readError.value !== null ||
   (snapshot.value !== null && nowMs.value - snapshot.value.snapshot_at_ms >
     snapshot.value.stale_after_ms));
 let generation = 0;
+let readPending = false;
 let isActive = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -87,8 +88,9 @@ function elapsed(sinceMs: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-async function refresh(): Promise<void> {
-  if (!isActive) return;
+async function refresh(background = false): Promise<void> {
+  if (!isActive || (background && readPending)) return;
+  readPending = true;
   const request = ++generation;
   try {
     const latest = await fetchBacktestQueue();
@@ -99,6 +101,8 @@ async function refresh(): Promise<void> {
   } catch (error) {
     if (!isActive || request !== generation) return;
     readError.value = error instanceof Error ? error.message : 'Queue read failed';
+  } finally {
+    if (request === generation) readPending = false;
   }
 }
 
@@ -107,13 +111,14 @@ function start(): void {
   isActive = true;
   nowMs.value = Date.now();
   void refresh();
-  pollTimer = setInterval(() => { void refresh(); }, POLL_INTERVAL_MS);
+  pollTimer = setInterval(() => { void refresh(true); }, POLL_INTERVAL_MS);
   clockTimer = setInterval(() => { nowMs.value = Date.now(); }, CLOCK_INTERVAL_MS);
 }
 
 function stop(): void {
   isActive = false;
   ++generation;
+  readPending = false;
   if (pollTimer) clearInterval(pollTimer);
   if (clockTimer) clearInterval(clockTimer);
   pollTimer = null;

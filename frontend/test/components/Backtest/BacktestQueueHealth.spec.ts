@@ -120,6 +120,19 @@ describe('Backtest queue health', () => {
     wrapper.unmount();
   });
 
+  it('allows a slow poll to finish before scheduling another', async () => {
+    let resolve!: (snapshot: BacktestQueueSnapshot) => void;
+    vi.mocked(fetchBacktestQueue).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    const wrapper = mount(BacktestQueueHealth);
+    vi.advanceTimersByTime(10_000);
+    await flushPromises();
+    expect(fetchBacktestQueue).toHaveBeenCalledTimes(1);
+    resolve(healthySnapshot);
+    await flushPromises();
+    expect(wrapper.text()).toContain('Worker healthy');
+    wrapper.unmount();
+  });
+
   it('ignores an older response after a newer refresh and after closing', async () => {
     let resolveFirst!: (snapshot: BacktestQueueSnapshot) => void;
     vi.mocked(fetchBacktestQueue)
