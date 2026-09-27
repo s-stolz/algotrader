@@ -61,6 +61,16 @@ class BacktestLifecycleClient(Protocol):
         completion: dict[str, Any],
     ) -> bool: ...
 
+    def get_backtest_execution_slot(self) -> Mapping[str, Any]: ...
+
+    def claim_backtest_execution(self, claim: dict[str, Any]) -> bool: ...
+
+    def settle_backtest_execution(self, settlement: dict[str, Any]) -> bool: ...
+
+    def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None: ...
+
+    def record_backtest_execution_fault(self, fault: dict[str, Any]) -> bool: ...
+
 
 @dataclass(frozen=True)
 class BacktestPersistenceMetadata:
@@ -194,6 +204,90 @@ class BacktestRunLifecyclePersistenceAdapter:
 
     def __init__(self, client: BacktestLifecycleClient | None = None) -> None:
         self._client = client
+
+    def execution_slot(self) -> Mapping[str, Any]:
+        return self._call("get_backtest_execution_slot")
+
+    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+        return bool(
+            self._call(
+                "claim_backtest_execution",
+                {
+                    "run_id": run_id,
+                    "owner_token": owner_token,
+                    "started_at": _epoch_ms_to_utc_text(started_at_ms),
+                },
+            )
+        )
+
+    def settle_failure(
+        self,
+        *,
+        run_id: str,
+        owner_token: str,
+        completed_at_ms: int,
+        error_code: str,
+        error_message: str,
+    ) -> bool:
+        return bool(
+            self._call(
+                "settle_backtest_execution",
+                {
+                    "run_id": run_id,
+                    "owner_token": owner_token,
+                    "status": "failed",
+                    "completed_at": _epoch_ms_to_utc_text(completed_at_ms),
+                    "error_code": error_code,
+                    "error_message": error_message,
+                },
+            )
+        )
+
+    def settle_success(
+        self,
+        *,
+        run_id: str,
+        owner_token: str,
+        completed_at_ms: int,
+        result: BacktestResult,
+        execution_duration_ms: int,
+    ) -> bool:
+        completion = build_successful_completion_payload(
+            expected_status=BacktestRunStatus.RUNNING,
+            completed_at_ms=completed_at_ms,
+            result=result,
+            execution_duration_ms=execution_duration_ms,
+        )
+        completion.pop("expected_status")
+        completion.update(run_id=run_id, owner_token=owner_token, status="succeeded")
+        return bool(self._call("settle_backtest_execution", completion))
+
+    def reconcile_execution(self, *, completed_at_ms: int) -> int | None:
+        return self._call(
+            "reconcile_backtest_execution",
+            {
+                "completed_at": _epoch_ms_to_utc_text(completed_at_ms),
+                "error_code": "worker_interrupted",
+                "error_message": "Backtest worker was interrupted before completion",
+            },
+        )
+
+    def record_execution_fault(
+        self, *, run_id: str, owner_token: str, code: str, message: str
+    ) -> bool:
+        return bool(
+            self._call(
+                "record_backtest_execution_fault",
+                {"run_id": run_id, "owner_token": owner_token, "code": code, "message": message},
+            )
+        )
+
+    def _call(self, name: str, *args: Any) -> Any:
+        if self._client is not None:
+            return getattr(self._client, name)(*args)
+        client_cls = _import_database_accessor_client()
+        with client_cls() as client:
+            return getattr(client, name)(*args)
 
     def conditional_update(
         self,

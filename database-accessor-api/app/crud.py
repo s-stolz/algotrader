@@ -5,6 +5,7 @@ from app.models import (
     backtest_batch_events,
     backtest_batches,
     backtest_closed_trades,
+    backtest_execution_slot,
     backtest_fills,
     backtest_runs,
     candles,
@@ -741,6 +742,11 @@ async def conditional_update_backtest_run(
     expected_status: str,
     updates: dict,
 ) -> bool:
+    # Any installed slot requires token-fenced lifecycle writes, even after manual clear.
+    slot = await session.execute(select(backtest_execution_slot.c.slot_id).limit(1))
+    if slot.first() is not None:
+        await session.rollback()
+        return False
     stmt = (
         update(backtest_runs)
         .where(
@@ -767,6 +773,11 @@ async def complete_backtest_run(
     expected_status: str,
     completion: dict,
 ) -> bool:
+    # Once the durable slot exists, terminal writes must use token-fenced settlement.
+    slot = await session.execute(select(backtest_execution_slot.c.slot_id).limit(1))
+    if slot.first() is not None:
+        await session.rollback()
+        return False
     completion_data = dict(completion)
     fills = completion_data.pop("fills", [])
     trades = completion_data.pop("trades", [])

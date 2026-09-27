@@ -245,6 +245,73 @@ class BacktestRunMutationOut(BacktestContractModel):
     updated: bool
 
 
+class BacktestExecutionClaimIn(BacktestContractModel):
+    run_id: str
+    owner_token: str
+    started_at: datetime
+
+
+class BacktestExecutionSettleIn(BacktestContractModel):
+    run_id: str
+    owner_token: str
+    status: Literal["succeeded", "failed"]
+    completed_at: datetime
+    error_code: str | None = None
+    error_message: str | None = None
+    result_schema_version: int | None = None
+    metrics: dict[str, Any] | None = None
+    diagnostics: dict[str, Any] | None = None
+    replay_descriptor: EquityReplayDescriptor | None = None
+    fills: list[BacktestFillIn] = Field(default_factory=list)
+    trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_terminal(self) -> "BacktestExecutionSettleIn":
+        if self.status == "succeeded":
+            if self.result_schema_version != 3 or self.metrics is None or self.diagnostics is None:
+                raise ValueError("successful settlement requires schema version 3 and results")
+            if self.replay_descriptor is None:
+                raise ValueError("successful settlement requires replay_descriptor")
+            if self.error_code is not None or self.error_message is not None:
+                raise ValueError("successful settlement cannot carry an error")
+        elif (
+            not self.error_code
+            or not self.error_message
+            or self.fills
+            or self.trades
+            or self.result_schema_version is not None
+            or self.metrics is not None
+            or self.diagnostics is not None
+            or self.replay_descriptor is not None
+        ):
+            raise ValueError("failed settlement requires an error and no results")
+        return self
+
+
+class BacktestExecutionReconcileIn(BacktestContractModel):
+    completed_at: datetime
+    error_code: str
+    error_message: str
+
+
+class BacktestExecutionFaultIn(BacktestContractModel):
+    run_id: str
+    owner_token: str
+    code: str
+    message: str
+
+
+class BacktestExecutionSlotOut(BacktestContractModel):
+    owner_token: str | None
+    run_id: str | None
+    fault_code: str | None
+    fault_message: str | None
+
+
+class BacktestExecutionReconcileOut(BacktestContractModel):
+    reconciled: int | None
+
+
 class BacktestBatchMemberIn(BacktestContractModel):
     run_id: str
     member_ordinal: int = Field(ge=0)

@@ -125,6 +125,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   acceptance. The drawer retains one client submission identity across retries
   of an unchanged draft and requires a fresh successful preview after rejection;
   it never automatically resubmits.
+- Startup reconciliation appears through these same public history reads as a
+  durable failed run with `worker_interrupted`; queued runs remain queued.
+  Process ownership and execution-slot faults are operational data, not run
+  history fields.
 - The current-backtest table shows the selected saved request and metrics.
   Saved Return retains its first-recorded-equity baseline; maximum drawdown is
   displayed as a positive magnitude and PnL as signed account units. Missing

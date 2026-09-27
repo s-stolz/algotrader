@@ -252,6 +252,24 @@ class DatabaseAccessorClient(_BaseClient):
         )
         return _mutation_updated(response)
 
+    def get_backtest_execution_slot(self) -> dict[str, Any]:
+        return self._request("GET", "/backtest-execution/slot")
+
+    def claim_backtest_execution(self, claim: dict[str, Any]) -> bool:
+        return _mutation_updated(self._request("POST", "/backtest-execution/claim", json=claim))
+
+    def settle_backtest_execution(self, settlement: dict[str, Any]) -> bool:
+        return _mutation_updated(
+            self._request("POST", "/backtest-execution/settle", json=settlement)
+        )
+
+    def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None:
+        response = self._request("POST", "/backtest-execution/reconcile", json=reconciliation)
+        return response["reconciled"]
+
+    def record_backtest_execution_fault(self, fault: dict[str, Any]) -> bool:
+        return _mutation_updated(self._request("POST", "/backtest-execution/fault", json=fault))
+
     def delete_backtest_run(self, run_id: str) -> None:
         self._request("DELETE", f"/backtests/{run_id}")
 
@@ -467,6 +485,28 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             json=completion,
         )
         return _mutation_updated(response)
+
+    async def get_backtest_execution_slot(self) -> dict[str, Any]:
+        return await self._request("GET", "/backtest-execution/slot")
+
+    async def claim_backtest_execution(self, claim: dict[str, Any]) -> bool:
+        return _mutation_updated(
+            await self._request("POST", "/backtest-execution/claim", json=claim)
+        )
+
+    async def settle_backtest_execution(self, settlement: dict[str, Any]) -> bool:
+        return _mutation_updated(
+            await self._request("POST", "/backtest-execution/settle", json=settlement)
+        )
+
+    async def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None:
+        response = await self._request("POST", "/backtest-execution/reconcile", json=reconciliation)
+        return response["reconciled"]
+
+    async def record_backtest_execution_fault(self, fault: dict[str, Any]) -> bool:
+        return _mutation_updated(
+            await self._request("POST", "/backtest-execution/fault", json=fault)
+        )
 
     async def delete_backtest_run(self, run_id: str) -> None:
         await self._request("DELETE", f"/backtests/{run_id}")

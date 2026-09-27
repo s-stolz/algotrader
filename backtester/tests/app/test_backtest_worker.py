@@ -1,17 +1,25 @@
 import os
+import signal
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
 from dataclasses import replace
+from multiprocessing import active_children
+from pathlib import Path
+from unittest.mock import patch
 
-import pandas as pd
-from app.backtest_worker import (
-    BacktestWorker,
+import app.backtest_child as child_module
+from app.backtest_child import (
+    ChildExitUnconfirmedError,
     CompactBacktestFailure,
     CompactBacktestResult,
     ProcessBacktestChildExecutor,
-    execute_backtest_child,
 )
+from app.backtest_worker import BacktestWorker, ExecutionOperationalError
 from app.config import BacktesterConfig
-from domain.enums import BacktestEngine, BacktestRunStatus
+from domain.enums import BacktestRunStatus
 from domain.types import (
     BacktestRequest,
     BacktestRequestSnapshot,
@@ -22,21 +30,6 @@ from domain.types import (
     PortfolioSnapshot,
     StrategyConfig,
 )
-
-
-class _FakeHistoricalAdapter:
-    def __init__(self, bars: pd.DataFrame) -> None:
-        self._bars = bars
-        self.calls: list[dict] = []
-
-    def fetch_bars(self, **kwargs) -> pd.DataFrame:
-        self.calls.append(kwargs)
-        return self._bars.copy()
-
-
-class _FailingHistoricalAdapter:
-    def fetch_bars(self, **kwargs) -> pd.DataFrame:
-        raise RuntimeError("database password exposed")
 
 
 class _FakeRunRepository:
@@ -71,6 +64,64 @@ class _FakeLifecycle:
         self._completion_results = list(completion_results or [])
         self.claims: list[dict] = []
         self.completions: list[dict] = []
+        self.faults: list[dict] = []
+        self.reconciliations: list[int] = []
+
+    def execution_slot(self) -> dict:
+        return {"owner_token": None, "run_id": None, "fault_code": None, "fault_message": None}
+
+    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+        return self.conditional_update(
+            run_id=run_id,
+            expected_status=BacktestRunStatus.QUEUED,
+            new_status=BacktestRunStatus.RUNNING,
+            started_at_ms=started_at_ms,
+        )
+
+    def settle_failure(
+        self,
+        *,
+        run_id: str,
+        owner_token: str,
+        completed_at_ms: int,
+        error_code: str,
+        error_message: str,
+    ) -> bool:
+        return self.conditional_update(
+            run_id=run_id,
+            expected_status=BacktestRunStatus.RUNNING,
+            new_status=BacktestRunStatus.FAILED,
+            completed_at_ms=completed_at_ms,
+            error_code=error_code,
+            error_message=error_message,
+        )
+
+    def settle_success(
+        self,
+        *,
+        run_id: str,
+        owner_token: str,
+        completed_at_ms: int,
+        result: BacktestResult,
+        execution_duration_ms: int,
+    ) -> bool:
+        return self.complete(
+            run_id=run_id,
+            expected_status=BacktestRunStatus.RUNNING,
+            completed_at_ms=completed_at_ms,
+            result=result,
+            execution_duration_ms=execution_duration_ms,
+        )
+
+    def reconcile_execution(self, *, completed_at_ms: int) -> int:
+        self.reconciliations.append(completed_at_ms)
+        return 0
+
+    def record_execution_fault(
+        self, *, run_id: str, owner_token: str, code: str, message: str
+    ) -> bool:
+        self.faults.append({"run_id": run_id, "code": code, "message": message})
+        return True
 
     def conditional_update(self, **kwargs) -> bool:
         self.claims.append(kwargs)
@@ -87,6 +138,50 @@ class _FakeLifecycle:
         return result
 
 
+class _SlotTrackingLifecycle(_FakeLifecycle):
+    def __init__(self) -> None:
+        super().__init__([True])
+        self.owner_token: str | None = None
+        self.fault_code: str | None = None
+        self.marker: Path | None = None
+
+    def execution_slot(self) -> dict:
+        return {
+            "owner_token": self.owner_token,
+            "run_id": "run-descendant" if self.owner_token else None,
+            "fault_code": self.fault_code,
+            "fault_message": None,
+        }
+
+    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+        claimed = super().claim_execution(
+            run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+        )
+        if claimed:
+            self.owner_token = owner_token
+        return claimed
+
+    def settle_success(self, **kwargs) -> bool:
+        if self.marker is None:
+            raise AssertionError("Descendant identities must be recorded before settlement")
+        if any(_process_exists(pid) for pid in _descendant_ids(self.marker)):
+            raise AssertionError("Execution processes must be reaped before settlement")
+        settled = super().settle_success(**kwargs)
+        if settled:
+            self.owner_token = None
+        return settled
+
+    def record_execution_fault(
+        self, *, run_id: str, owner_token: str, code: str, message: str
+    ) -> bool:
+        recorded = super().record_execution_fault(
+            run_id=run_id, owner_token=owner_token, code=code, message=message
+        )
+        if recorded:
+            self.fault_code = code
+        return recorded
+
+
 class _FakeChildExecutor:
     def __init__(self, result: CompactBacktestResult | CompactBacktestFailure) -> None:
         self._result = result
@@ -98,6 +193,11 @@ class _FakeChildExecutor:
     ) -> CompactBacktestResult | CompactBacktestFailure:
         self.snapshots.append(snapshot)
         return self._result
+
+
+class _UnconfirmedExitExecutor:
+    def execute(self, snapshot: BacktestRequestSnapshot):
+        raise ChildExitUnconfirmedError("Child descendants remain active")
 
 
 class TestBacktestWorker(unittest.TestCase):
@@ -171,6 +271,143 @@ class TestBacktestWorker(unittest.TestCase):
             ["run-lost", "run-winner"],
         )
         self.assertEqual(executor.snapshots, [winner.request_snapshot])
+
+    def test_held_slot_prevents_another_worker_from_executing(self) -> None:
+        selected = _queued_run("run-held", submitted_at_ms=100)
+        lifecycle = _FakeLifecycle([False])
+        lifecycle.execution_slot = lambda: {
+            "owner_token": "other-worker",
+            "run_id": "other-run",
+            "fault_code": None,
+            "fault_message": None,
+        }
+        executor = _FakeChildExecutor(_compact_result())
+        worker = BacktestWorker(
+            repository=_FakeRunRepository([[selected]]),
+            lifecycle=lifecycle,
+            child_executor=executor,
+        )
+
+        self.assertFalse(worker.run_once())
+        self.assertEqual(executor.snapshots, [])
+
+    def test_unconfirmed_child_exit_keeps_capacity_occupied(self) -> None:
+        selected = _queued_run("run-uncertain", submitted_at_ms=100)
+        lifecycle = _FakeLifecycle([True])
+        worker = BacktestWorker(
+            repository=_FakeRunRepository([[selected]]),
+            lifecycle=lifecycle,
+            child_executor=_UnconfirmedExitExecutor(),
+        )
+
+        with self.assertRaises(ExecutionOperationalError) as error:
+            worker.run_once()
+
+        self.assertEqual(error.exception.code, "child_exit_unconfirmed")
+        self.assertEqual(lifecycle.faults[0]["code"], "child_exit_unconfirmed")
+        self.assertEqual(len(lifecycle.claims), 1)
+        self.assertEqual(lifecycle.completions, [])
+
+    @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
+    def test_descendants_are_reaped_before_settlement_releases_slot(self) -> None:
+        for execute_fn in (
+            _return_with_descendant,
+            _return_with_detached_descendant,
+            _return_with_double_forked_descendant,
+        ):
+            with self.subTest(execute_fn=execute_fn.__name__):
+                with tempfile.TemporaryDirectory() as directory:
+                    marker = Path(directory) / "descendant.pid"
+                    lifecycle = _SlotTrackingLifecycle()
+                    lifecycle.marker = marker
+                    worker = BacktestWorker(
+                        repository=_FakeRunRepository(
+                            [[_queued_run("run-descendant", submitted_at_ms=100)]]
+                        ),
+                        lifecycle=lifecycle,
+                        child_executor=ProcessBacktestChildExecutor(execute_fn=execute_fn),
+                    )
+                    before = {child.pid for child in active_children()}
+                    try:
+                        with patch.dict(os.environ, {"BACKTEST_DESCENDANT_PID_FILE": str(marker)}):
+                            self.assertTrue(worker.run_once())
+                        self.assertEqual(len(lifecycle.completions), 1)
+                        self.assertIsNone(lifecycle.execution_slot()["owner_token"])
+                        self.assertIsNone(lifecycle.execution_slot()["fault_code"])
+                        self.assertEqual({child.pid for child in active_children()}, before)
+                    finally:
+                        _stop_test_descendant(marker)
+
+    @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
+    def test_unconfirmed_real_detached_descendant_faults_and_retains_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "descendant.pid"
+            lifecycle = _SlotTrackingLifecycle()
+            worker = BacktestWorker(
+                repository=_FakeRunRepository(
+                    [[_queued_run("run-descendant", submitted_at_ms=100)]]
+                ),
+                lifecycle=lifecycle,
+                child_executor=ProcessBacktestChildExecutor(
+                    execute_fn=_return_with_detached_descendant
+                ),
+            )
+            try:
+                with patch.dict(os.environ, {"BACKTEST_DESCENDANT_PID_FILE": str(marker)}):
+                    with patch.object(child_module, "_run_child", _supervise_with_denied_signals):
+                        with self.assertRaises(ExecutionOperationalError) as error:
+                            worker.run_once()
+                self.assertEqual(error.exception.code, "child_exit_unconfirmed")
+                child_pid, descendant_pid = _descendant_ids(marker)
+                self.assertFalse(_process_exists(child_pid))
+                self.assertTrue(_process_exists(descendant_pid))
+                self.assertEqual(lifecycle.execution_slot()["fault_code"], "child_exit_unconfirmed")
+                self.assertIsNotNone(lifecycle.execution_slot()["owner_token"])
+                self.assertEqual(lifecycle.completions, [])
+                self.assertEqual(len(lifecycle.claims), 1)
+            finally:
+                _stop_test_descendant(marker)
+
+    @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
+    def test_supervisor_loss_with_detached_descendant_retains_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "descendant.pid"
+            lifecycle = _SlotTrackingLifecycle()
+            worker = BacktestWorker(
+                repository=_FakeRunRepository(
+                    [[_queued_run("run-descendant", submitted_at_ms=100)]]
+                ),
+                lifecycle=lifecycle,
+                child_executor=ProcessBacktestChildExecutor(
+                    execute_fn=_kill_supervisor_with_descendant
+                ),
+            )
+            try:
+                with patch.dict(os.environ, {"BACKTEST_DESCENDANT_PID_FILE": str(marker)}):
+                    with self.assertRaises(ExecutionOperationalError) as error:
+                        worker.run_once()
+                self.assertEqual(error.exception.code, "child_exit_unconfirmed")
+                self.assertTrue(_process_exists(_descendant_ids(marker)[1]))
+                self.assertIsNotNone(lifecycle.execution_slot()["owner_token"])
+                self.assertEqual(lifecycle.completions, [])
+                self.assertEqual(len(lifecycle.claims), 1)
+            finally:
+                _stop_test_descendant(marker)
+
+    def test_unavailable_containment_faults_without_starting_execution(self) -> None:
+        lifecycle = _SlotTrackingLifecycle()
+        worker = BacktestWorker(
+            repository=_FakeRunRepository([[_queued_run("run-descendant", submitted_at_ms=100)]]),
+            lifecycle=lifecycle,
+            child_executor=ProcessBacktestChildExecutor(execute_fn=_return_process_identity),
+        )
+        with patch.object(child_module.sys, "platform", "unsupported"):
+            with self.assertRaises(ExecutionOperationalError) as error:
+                worker.run_once()
+        self.assertEqual(error.exception.code, "child_exit_unconfirmed")
+        self.assertEqual(lifecycle.execution_slot()["fault_code"], "child_exit_unconfirmed")
+        self.assertIsNotNone(lifecycle.execution_slot()["owner_token"])
+        self.assertEqual(lifecycle.completions, [])
 
     def test_child_reported_failure_persists_sanitized_terminal_state(self) -> None:
         selected = _queued_run("run-failed", submitted_at_ms=100)
@@ -258,6 +495,7 @@ class TestBacktestWorker(unittest.TestCase):
             "Historical market data is unavailable",
         )
 
+    @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
     def test_abnormal_child_exit_persists_stable_worker_failure(self) -> None:
         selected = _queued_run("run-crashed", submitted_at_ms=100)
         lifecycle = _FakeLifecycle([True, True])
@@ -283,7 +521,9 @@ class TestBacktestWorker(unittest.TestCase):
             },
         )
         self.assertEqual(lifecycle.completions, [])
-        self.assertIn("BrokenProcessPool", "\n".join(captured.output))
+        self.assertIn(
+            "Child reported execution failure".lower(), "\n".join(captured.output).lower()
+        )
 
     def test_startup_reconciles_running_runs_before_claiming_queued_work(self) -> None:
         running_a = replace(
@@ -323,38 +563,20 @@ class TestBacktestWorker(unittest.TestCase):
 
         worker.run_forever(stop_requested=lambda: bool(executor.snapshots))
 
+        self.assertEqual(lifecycle.reconciliations, [1_000])
         self.assertEqual(
-            repository.queries[:2],
-            [
-                BacktestRunQuery(status=BacktestRunStatus.RUNNING, membership="standalone"),
-                BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone"),
-            ],
+            repository.queries,
+            [BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")],
         )
         self.assertEqual(
             lifecycle.claims,
             [
                 {
-                    "run_id": "run-running-a",
-                    "expected_status": BacktestRunStatus.RUNNING,
-                    "new_status": BacktestRunStatus.FAILED,
-                    "completed_at_ms": 1_000,
-                    "error_code": "worker_interrupted",
-                    "error_message": "Backtest worker was interrupted before completion",
-                },
-                {
-                    "run_id": "run-running-b",
-                    "expected_status": BacktestRunStatus.RUNNING,
-                    "new_status": BacktestRunStatus.FAILED,
-                    "completed_at_ms": 1_001,
-                    "error_code": "worker_interrupted",
-                    "error_message": "Backtest worker was interrupted before completion",
-                },
-                {
                     "run_id": "run-queued",
                     "expected_status": BacktestRunStatus.QUEUED,
                     "new_status": BacktestRunStatus.RUNNING,
-                    "started_at_ms": 1_002,
-                },
+                    "started_at_ms": 1_001,
+                }
             ],
         )
         self.assertEqual(executor.snapshots, [queued.request_snapshot])
@@ -422,7 +644,7 @@ class TestBacktestWorker(unittest.TestCase):
 
     def test_failed_run_is_not_automatically_executed_again(self) -> None:
         selected = _queued_run("run-no-retry", submitted_at_ms=100)
-        repository = _FakeRunRepository([[], [selected], []])
+        repository = _FakeRunRepository([[selected], []])
         lifecycle = _FakeLifecycle([True, True])
         executor = _FakeChildExecutor(
             CompactBacktestFailure(
@@ -460,92 +682,6 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertEqual(sleeps, [2.5])
 
 
-class TestBacktestChildExecution(unittest.TestCase):
-    def test_unavailable_exact_version_fails_before_loading_candles(self) -> None:
-        for strategy_id, version in (
-            ("sma_crossover", None),
-            ("sma_crossover", 999),
-            ("retired", 1),
-        ):
-            with self.subTest(strategy_id=strategy_id, version=version):
-                request = replace(
-                    _request(),
-                    strategy=replace(
-                        _request().strategy,
-                        strategy_id=strategy_id,
-                        strategy_version=version,
-                    ),
-                )
-                adapter = _FakeHistoricalAdapter(_bars())
-
-                outcome = execute_backtest_child(
-                    BacktestRequestSnapshot.from_request(request),
-                    data_adapter=adapter,
-                )
-
-                self.assertEqual(
-                    outcome,
-                    CompactBacktestFailure(
-                        error_code="strategy_version_unavailable",
-                        error_message="Exact strategy version is unavailable",
-                    ),
-                )
-                self.assertEqual(adapter.calls, [])
-
-    def test_process_executor_runs_request_in_spawned_child(self) -> None:
-        snapshot = BacktestRequestSnapshot.from_request(_request())
-        executor = ProcessBacktestChildExecutor(execute_fn=_return_process_identity)
-
-        compact = executor.execute(snapshot)
-
-        if not isinstance(compact, CompactBacktestResult):
-            self.fail(f"Expected successful child result, got {compact!r}")
-        self.assertNotEqual(compact.diagnostics["process_id"], os.getpid())
-        self.assertEqual(compact.request, snapshot.to_request())
-
-    def test_vectorized_and_event_driven_children_run_full_market_data_path(self) -> None:
-        for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
-            with self.subTest(engine=engine):
-                request = replace(_request(), engine=engine, persist_result=True)
-                adapter = _FakeHistoricalAdapter(_bars())
-
-                compact = execute_backtest_child(
-                    BacktestRequestSnapshot.from_request(request),
-                    data_adapter=adapter,
-                )
-
-                if not isinstance(compact, CompactBacktestResult):
-                    self.fail(f"Expected successful child result, got {compact!r}")
-                self.assertEqual(compact.request.engine, engine)
-                self.assertFalse(compact.request.persist_result)
-                self.assertEqual(compact.diagnostics["engine"], engine.value)
-                self.assertGreater(len(compact.fills), 0)
-                self.assertGreaterEqual(compact.execution_duration_ms, 0)
-                self.assertEqual(len(adapter.calls), 1)
-                self.assertFalse(hasattr(compact, "equity_curve"))
-
-    def test_execution_exception_returns_generic_failure_and_logs_details(self) -> None:
-        snapshot = BacktestRequestSnapshot.from_request(_request())
-
-        with self.assertLogs("app.backtest_worker", level="ERROR") as captured:
-            outcome = execute_backtest_child(
-                snapshot,
-                data_adapter=_FailingHistoricalAdapter(),
-            )
-
-        if not isinstance(outcome, CompactBacktestFailure):
-            self.fail(f"Expected child failure, got {outcome!r}")
-        self.assertEqual(
-            outcome,
-            CompactBacktestFailure(
-                error_code="backtest_failed",
-                error_message="Backtest execution failed",
-            ),
-        )
-        self.assertIn("RuntimeError: database password exposed", "\n".join(captured.output))
-        self.assertNotIn("password", outcome.error_message)
-
-
 def _queued_run(run_id: str, *, submitted_at_ms: int) -> BacktestRunRecord:
     return BacktestRunRecord(
         run_id=run_id,
@@ -570,24 +706,6 @@ def _request() -> BacktestRequest:
         ),
         execution=ExecutionConfig(),
         initial_capital=10_000.0,
-    )
-
-
-def _bars() -> pd.DataFrame:
-    start_ms = 1_700_000_000_000
-    minute = 60_000
-    timestamps = [start_ms - (3 * minute) + (minute * index) for index in range(12)]
-    closes = [13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 9.0, 10.0, 11.0, 10.0, 9.0, 8.0]
-    return pd.DataFrame(
-        {
-            "timestamp_ms": timestamps,
-            "symbol": ["AAPL"] * len(timestamps),
-            "open": closes,
-            "high": [value + 0.5 for value in closes],
-            "low": [value - 0.5 for value in closes],
-            "close": closes,
-            "volume": [1_000.0] * len(timestamps),
-        }
     )
 
 
@@ -619,6 +737,87 @@ def _return_process_identity(
         diagnostics={"process_id": os.getpid()},
         execution_duration_ms=0,
     )
+
+
+def _return_with_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:
+    descendant = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    Path(os.environ["BACKTEST_DESCENDANT_PID_FILE"]).write_text(f"{os.getpid()} {descendant.pid}")
+    return _return_process_identity(snapshot)
+
+
+def _return_with_detached_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:
+    descendant = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    Path(os.environ["BACKTEST_DESCENDANT_PID_FILE"]).write_text(f"{os.getpid()} {descendant.pid}")
+    return _return_process_identity(snapshot)
+
+
+def _return_with_double_forked_descendant(
+    snapshot: BacktestRequestSnapshot,
+) -> CompactBacktestResult:
+    marker = Path(os.environ["BACKTEST_DESCENDANT_PID_FILE"])
+    script = (
+        "import os, pathlib, signal, time; "
+        "parent = os.getpid(); child = os.fork(); "
+        "os._exit(0) if child else None; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"pathlib.Path({str(marker)!r}).write_text(f'{os.getpid()} {{parent}} {{os.getpid()}}'); "
+        "time.sleep(30)"
+    )
+    subprocess.Popen(
+        [sys.executable, "-c", script],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = time.monotonic() + 5
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    return _return_process_identity(snapshot)
+
+
+def _supervise_with_denied_signals(connection, execute_fn, snapshot) -> None:
+    with patch.object(child_module.os, "kill", side_effect=PermissionError("signal denied")):
+        child_module._run_child(connection, execute_fn, snapshot)
+
+
+def _kill_supervisor_with_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:
+    _return_with_detached_descendant(snapshot)
+    os.kill(os.getppid(), signal.SIGKILL)
+    os._exit(17)
+
+
+def _descendant_ids(marker: Path) -> tuple[int, ...]:
+    return tuple(int(pid) for pid in marker.read_text().split())
+
+
+def _process_exists(process_id: int) -> bool:
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _stop_test_descendant(marker: Path) -> None:
+    if not marker.exists():
+        return
+    for pid in _descendant_ids(marker):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 def _exit_abnormally(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:

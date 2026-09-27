@@ -1,3 +1,4 @@
+import json
 import os
 import unittest
 from datetime import datetime, timezone
@@ -5,7 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic import ValidationError
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, insert, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +17,10 @@ os.environ.setdefault("TIMESCALEDB_PORT", "5432")
 os.environ.setdefault("TIMESCALEDB_DB", "test")
 
 import main  # noqa: E402
+from app import crud  # noqa: E402
 from app.models import (  # noqa: E402
     backtest_closed_trades,
+    backtest_execution_slot,
     backtest_fills,
     backtest_runs,
     metadata,
@@ -25,6 +28,10 @@ from app.models import (  # noqa: E402
 from app.schemas import (  # noqa: E402
     BacktestBatchCreateIn,
     BacktestClosedTradeIn,
+    BacktestExecutionClaimIn,
+    BacktestExecutionReconcileIn,
+    BacktestExecutionSettleIn,
+    BacktestExecutionSlotOut,
     BacktestFillIn,
     BacktestRequestPayload,
     BacktestRunCompleteIn,
@@ -53,6 +60,11 @@ class InMemoryAsyncSession:
     def close(self):
         self.connection.close()
         self.engine.dispose()
+
+
+def _seed_execution_slot(session: InMemoryAsyncSession) -> None:
+    session.connection.execute(insert(backtest_execution_slot).values(slot_id=1))
+    session.connection.commit()
 
 
 def _request_payload(**overrides):
@@ -271,6 +283,33 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result, {"updated": False})
         self.assertEqual((await main.get_backtest_run("member-1", db=self.db))["status"], "queued")
+
+    async def test_owned_standalone_claim_skips_older_batch_members(self):
+        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="standalone",
+                    submitted_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+        _seed_execution_slot(self.session)
+        for run_id, expected in (("member-1", False), ("standalone", True)):
+            result = await main.claim_backtest_execution(
+                BacktestExecutionClaimIn(
+                    run_id=run_id,
+                    owner_token="owner",
+                    started_at=datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc),
+                ),
+                db=self.db,
+            )
+            self.assertEqual(result, {"updated": expected})
+        self.assertEqual((await main.get_backtest_run("member-1", db=self.db))["status"], "queued")
+        self.assertEqual(
+            (await main.get_backtest_execution_slot(db=self.db))["run_id"], "standalone"
+        )
 
     def test_member_cannot_be_created_through_standalone_route(self):
         with self.assertRaises(ValidationError):
@@ -1580,6 +1619,317 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         self.assertEqual(result_schema_migrations, [])
+
+
+class BacktestExecutionApiTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.session = InMemoryAsyncSession()
+        self.db = cast(AsyncSession, self.session)
+        _seed_execution_slot(self.session)
+        self.started_at = datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc)
+        self.completed_at = datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)
+
+    def tearDown(self):
+        self.session.close()
+
+    async def _create_queue(self):
+        await main.create_backtest_run(
+            BacktestRunCreateIn(**_run_payload(run_id="run-a")), db=self.db
+        )
+        await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="run-b",
+                    submitted_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
+                )
+            ),
+            db=self.db,
+        )
+
+    async def _claim(self, run_id: str, token: str):
+        return await main.claim_backtest_execution(
+            BacktestExecutionClaimIn(run_id=run_id, owner_token=token, started_at=self.started_at),
+            db=self.db,
+        )
+
+    def _legacy_completion(self) -> BacktestRunCompleteIn:
+        return BacktestRunCompleteIn(
+            expected_status="running",
+            completed_at=self.completed_at,
+            result_schema_version=3,
+            metrics={"trade_count": 1},
+            diagnostics={},
+            replay_descriptor=_replay_descriptor(),
+            fills=[
+                BacktestFillIn(
+                    fill_sequence=0,
+                    timestamp_ms=1714525200000,
+                    symbol="EURUSD",
+                    side="buy",
+                    quantity=1.0,
+                    price=1.0,
+                    fees=0.0,
+                    exit_reason=None,
+                )
+            ],
+        )
+
+    async def test_slot_route_result_matches_declared_response_schema(self):
+        slot = await main.get_backtest_execution_slot(db=self.db)
+
+        self.assertEqual(
+            BacktestExecutionSlotOut.model_validate(slot).model_dump(),
+            {
+                "owner_token": None,
+                "run_id": None,
+                "fault_code": None,
+                "fault_message": None,
+            },
+        )
+
+    async def test_claim_requires_oldest_queue_entry_and_one_free_slot(self):
+        await self._create_queue()
+
+        self.assertEqual(await self._claim("run-b", "owner-b"), {"updated": False})
+        self.assertEqual(await self._claim("run-a", "owner-a"), {"updated": True})
+        self.assertEqual(await self._claim("run-b", "owner-b"), {"updated": False})
+        slot = await main.get_backtest_execution_slot(db=self.db)
+        self.assertEqual(slot["run_id"], "run-a")
+        self.assertEqual(slot["owner_token"], "owner-a")
+        self.assertEqual((await main.get_backtest_run("run-b", db=self.db))["status"], "queued")
+
+    async def test_legacy_routes_cannot_bypass_a_migrated_slot(self):
+        await self._create_queue()
+        legacy_claim = await main.conditional_update_backtest_run(
+            "run-a",
+            BacktestRunConditionalUpdateIn(
+                expected_status="queued", new_status="running", started_at=self.started_at
+            ),
+            db=self.db,
+        )
+        self.assertEqual(legacy_claim, {"updated": False})
+
+        await self._claim("run-a", "owner-a")
+        legacy_completion = await main.complete_backtest_run(
+            "run-a",
+            BacktestRunCompleteIn(
+                expected_status="running",
+                completed_at=self.completed_at,
+                result_schema_version=3,
+                metrics={},
+                diagnostics={},
+                replay_descriptor=_replay_descriptor(),
+            ),
+            db=self.db,
+        )
+        self.assertEqual(legacy_completion, {"updated": False})
+        self.assertEqual((await main.get_backtest_run("run-a", db=self.db))["status"], "running")
+
+    async def test_legacy_completion_cannot_settle_queued_run_around_an_owned_slot(self):
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+
+        completion_data = self._legacy_completion().model_dump(exclude={"expected_status"})
+        completion = await crud.complete_backtest_run(
+            self.db, run_id="run-b", expected_status="queued", completion=completion_data
+        )
+
+        self.assertFalse(completion)
+        self.assertEqual((await main.get_backtest_run("run-b", db=self.db))["status"], "queued")
+        self.assertEqual(await main.get_backtest_fills("run-b", db=self.db), [])
+        self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], "run-a")
+
+    async def test_legacy_completion_cannot_write_after_operator_clears_slot(self):
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+        self.session.connection.execute(
+            backtest_execution_slot.update().values(owner_token=None, run_id=None)
+        )
+        self.session.connection.commit()
+
+        completion = await main.complete_backtest_run(
+            "run-a", self._legacy_completion(), db=self.db
+        )
+
+        self.assertEqual(completion, {"updated": False})
+        self.assertEqual((await main.get_backtest_run("run-a", db=self.db))["status"], "running")
+        self.assertEqual(await main.get_backtest_fills("run-a", db=self.db), [])
+        self.assertIsNone((await main.get_backtest_execution_slot(db=self.db))["owner_token"])
+
+    async def test_legacy_failure_cannot_write_after_slot_clear_before_reconciliation(self):
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+        self.session.connection.execute(
+            backtest_execution_slot.update().values(owner_token=None, run_id=None)
+        )
+        self.session.connection.commit()
+
+        late_failure = await main.conditional_update_backtest_run(
+            "run-a",
+            BacktestRunConditionalUpdateIn(
+                expected_status="running",
+                new_status="failed",
+                completed_at=self.completed_at,
+                error_code="stale_worker_failure",
+                error_message="late failure from previous owner",
+            ),
+            db=self.db,
+        )
+
+        self.assertEqual(late_failure, {"updated": False})
+        self.assertEqual((await main.get_backtest_run("run-a", db=self.db))["status"], "running")
+        reconciliation = await main.reconcile_backtest_execution(
+            BacktestExecutionReconcileIn(
+                completed_at=self.completed_at,
+                error_code="worker_interrupted",
+                error_message="Backtest worker was interrupted before completion",
+            ),
+            db=self.db,
+        )
+        self.assertEqual(reconciliation, {"reconciled": 1})
+        run = await main.get_backtest_run("run-a", db=self.db)
+        self.assertEqual((run["status"], run["error_code"]), ("failed", "worker_interrupted"))
+        self.assertEqual((await main.get_backtest_run("run-b", db=self.db))["status"], "queued")
+
+    async def _post_settlement(self, payload: dict) -> tuple[int, dict]:
+        async def database():
+            yield self.db
+
+        async def receive():
+            return {"type": "http.request", "body": json.dumps(payload).encode()}
+
+        messages = []
+
+        async def send(message):
+            messages.append(message)
+
+        main.app.dependency_overrides[main.get_db] = database
+        try:
+            await main.app(
+                {
+                    "type": "http",
+                    "http_version": "1.1",
+                    "method": "POST",
+                    "scheme": "http",
+                    "path": "/backtest-execution/settle",
+                    "query_string": b"",
+                    "headers": [(b"content-type", b"application/json")],
+                },
+                receive,
+                send,
+            )
+        finally:
+            main.app.dependency_overrides.pop(main.get_db)
+        return messages[0]["status"], json.loads(messages[1]["body"])
+
+    async def test_stale_owner_cannot_write_result_and_settlement_releases_slot(self):
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+        settlement = self._legacy_completion().model_dump(mode="json", exclude={"expected_status"})
+        settlement.update(run_id="run-a", owner_token="stale-owner", status="succeeded")
+
+        self.assertEqual(await self._post_settlement(settlement), (200, {"updated": False}))
+        stale_run = await main.get_backtest_run("run-a", db=self.db)
+        self.assertEqual(stale_run["status"], "running")
+        self.assertIsNone(stale_run["replay_descriptor"])
+        settlement["owner_token"] = "owner-a"
+        self.assertEqual(await self._post_settlement(settlement), (200, {"updated": True}))
+        completed = await main.get_backtest_run("run-a", db=self.db)
+        self.assertEqual(completed["status"], "succeeded")
+        self.assertEqual(completed["metrics"], settlement["metrics"])
+        self.assertEqual(completed["replay_descriptor"], settlement["replay_descriptor"])
+        self.assertEqual(len(await main.get_backtest_fills("run-a", db=self.db)), 1)
+        self.assertEqual(await self._claim("run-b", "owner-b"), {"updated": True})
+
+    async def test_settlement_rejects_missing_invalid_or_failed_replay_metadata(self):
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+        success = self._legacy_completion().model_dump(mode="json", exclude={"expected_status"})
+        success.update(run_id="run-a", owner_token="owner-a", status="succeeded")
+        missing = {key: value for key, value in success.items() if key != "replay_descriptor"}
+        invalid = {**success, "replay_descriptor": {"schema_version": 999}}
+        failed = {
+            "run_id": "run-a",
+            "owner_token": "owner-a",
+            "status": "failed",
+            "completed_at": self.completed_at.isoformat(),
+            "error_code": "backtest_failed",
+            "error_message": "Backtest execution failed",
+            "replay_descriptor": success["replay_descriptor"],
+        }
+        for payload in (missing, {**success, "replay_descriptor": None}, invalid, failed):
+            with self.subTest(payload=payload):
+                status, _ = await self._post_settlement(payload)
+                self.assertEqual(status, 422)
+                run = await main.get_backtest_run("run-a", db=self.db)
+                self.assertEqual(run["status"], "running")
+                self.assertIsNone(run["replay_descriptor"])
+                self.assertEqual(
+                    (await main.get_backtest_execution_slot(db=self.db))["owner_token"],
+                    "owner-a",
+                )
+
+    async def test_failed_artifact_write_keeps_slot_and_running_history(self):
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+        fill = BacktestFillIn(
+            fill_sequence=0,
+            timestamp_ms=1714525200000,
+            symbol="EURUSD",
+            side="buy",
+            quantity=1.0,
+            price=1.0,
+            fees=0.0,
+            exit_reason=None,
+        )
+        with self.assertRaises(IntegrityError):
+            await main.settle_backtest_execution(
+                BacktestExecutionSettleIn(
+                    run_id="run-a",
+                    owner_token="owner-a",
+                    status="succeeded",
+                    completed_at=self.completed_at,
+                    result_schema_version=3,
+                    metrics={},
+                    diagnostics={},
+                    replay_descriptor=_replay_descriptor(),
+                    fills=[fill, fill],
+                ),
+                db=self.db,
+            )
+
+        self.assertEqual((await main.get_backtest_run("run-a", db=self.db))["status"], "running")
+        self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], "run-a")
+        self.assertEqual(await main.get_backtest_fills("run-a", db=self.db), [])
+        self.assertIsNone((await main.get_backtest_run("run-a", db=self.db))["replay_descriptor"])
+
+    async def test_reconcile_is_idempotent_and_preserves_queue(self):
+        await self._create_queue()
+        await self._claim("run-a", "owner-a")
+        request = BacktestExecutionReconcileIn(
+            completed_at=self.completed_at,
+            error_code="worker_interrupted",
+            error_message="Backtest worker was interrupted before completion",
+        )
+        self.assertEqual(
+            await main.reconcile_backtest_execution(request, db=self.db),
+            {"reconciled": None},
+        )
+        self.session.connection.execute(
+            backtest_execution_slot.update().values(owner_token=None, run_id=None)
+        )
+        self.session.connection.commit()
+        self.assertEqual(
+            await main.reconcile_backtest_execution(request, db=self.db),
+            {"reconciled": 1},
+        )
+        self.assertEqual(
+            await main.reconcile_backtest_execution(request, db=self.db),
+            {"reconciled": 0},
+        )
+        run = await main.get_backtest_run("run-a", db=self.db)
+        self.assertEqual((run["status"], run["error_code"]), ("failed", "worker_interrupted"))
+        self.assertEqual((await main.get_backtest_run("run-b", db=self.db))["status"], "queued")
 
 
 if __name__ == "__main__":

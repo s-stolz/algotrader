@@ -41,11 +41,15 @@ Shared Python packages used by multiple services.
 - Synchronous and asynchronous `list_backtest_runs` methods pass optional
   lifecycle, immutable-request, and submission-date filters without pagination
   or queue-selection behavior.
+- Conditional run updates and legacy successful completion return the accessor's
+  `updated` flag. Once the durable execution slot is installed, tokenless
+  completion is rejected and worker results use owner-token settlement.
+- Sync and async execution methods expose slot inspection, oldest-queued claim,
+  token-fenced terminal settlement, conditional startup reconciliation, and
+  operational fault recording as primitive storage operations.
 - Both clients pass batch create/list/detail, ordered member/event reads, and
   membership filters through unchanged. The accessor owns atomic storage; the
   backtester owns acceptance and lifecycle policy.
-- Conditional run updates and successful completion return whether the accessor
-  atomically matched the caller-provided expected status.
 - Execution-log methods pass ordered normalized fill/trade records through
   unchanged, including current result schema version 3 closed-trade direction
   and planned protective exit prices; deletion accepts the

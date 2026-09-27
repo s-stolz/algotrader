@@ -86,13 +86,15 @@ Standalone Python backtesting module for historical candle simulation.
 - `src/app/backtest_runner.py`: orchestration for one backtest run.
 - `src/app/backtest_runs.py`: deterministic asynchronous submission validation,
   durable run retrieval/history, execution-log reads, and terminal-only deletion.
+- `src/app/backtest_child.py`: compact child outcomes, spawned execution, and
+  Linux process-tree supervision and reaping.
 - `src/app/sweeps.py`: stateless Parameter Sweep expansion through the standalone
   validation path, with authoritative Market resolution and complete bounded
   Ready/Excluded preview rows.
 - `src/app/backtest_batches.py`: authoritative sweep acceptance, saved batch
   projection, derived outcome counts, and immutable member/event inspection.
 - `src/app/backtest_worker.py`: singleton FIFO polling, conditional claiming,
-  child-process execution, and successful completion persistence.
+  fenced terminal persistence, and restart reconciliation.
 - `src/domain/`: runtime dataclasses, enums, and event types.
 - `src/data/`: market data loading, normalization, indicators, feature streams,
   and warmup trimming.
@@ -135,6 +137,9 @@ Standalone Python backtesting module for historical candle simulation.
 - Queued requests whose exact version is unavailable, including legacy requests
   without a version, fail before Candle loading with
   `strategy_version_unavailable`. Already executing children retain loaded code.
+- Forward-only upgrades preserve older standalone request snapshots, terminal
+  results, Fills, and Closed Trades. Historical inspection and reuse use
+  version-aware compatibility rather than deleting saved runs.
 - Durable lifecycle values are `queued`, `running`, `succeeded`, and `failed`.
   The backtester owns lifecycle policy; database-accessor-api exposes storage
   primitives.
@@ -180,19 +185,31 @@ Standalone Python backtesting module for historical candle simulation.
 - New completed results use schema version 3; older versions remain readable.
   Closed trade artifacts include nullable `stop_loss_price` and
   `take_profit_price` planned levels plus required closed-trade Trade Direction.
-- The singleton worker selects queued runs by `(submitted_at_ms, run_id)`, refreshes
-  the queue after a lost conditional claim, and executes at most one claimed run
-  at a time.
-- Claimed requests execute in a spawned child process from their immutable
-  snapshot. Child output is compact and excludes the equity curve; only the
-  worker parent persists lifecycle and result state.
+- The worker selects queued runs by `(submitted_at_ms, run_id)`, refreshes after a
+  lost claim, and uses the accessor's durable execution slot. A second worker
+  cannot create another slot. The child is polled and reaped; descendants must
+  exit before terminal persistence releases capacity.
+- Once the durable slot exists, worker results commit only through owner-token
+  settlement, including the required Equity Replay descriptor for success.
+  Tokenless legacy lifecycle writes cannot change runs or artifacts,
+  even after an operator clears a held slot.
+- Claimed requests execute from their immutable snapshot beneath a dedicated
+  spawned Linux subreaper supervisor. It adopts orphaned descendants regardless
+  of process group/session, stops leftovers, and reaps the whole tree before
+  acknowledging completion. The worker also reaps the supervisor before storing
+  results. Linux with accessible `/proc` and child-subreaper support is required
+  for asynchronous execution; use Compose on other hosts. Missing containment,
+  lost supervisor, or unconfirmed descendant exit faults and retains the slot.
+  Child output is compact and excludes the equity curve; only the worker parent
+  persists lifecycle and result state.
 - Child-reported execution failures and abnormal child exits become sanitized,
   bounded failed-run records. Detailed exception tracebacks remain in worker
   logs and failed runs persist no result artifacts.
-- Worker startup conditionally marks pre-existing running records failed with
-  `worker_interrupted` before claiming queued work. Terminal persistence errors
-  are logged and terminate the worker without retry so restart reconciliation
-  can resolve the still-running record.
+- Worker startup atomically reconciles pre-existing running records to failed
+  with `worker_interrupted` only when the slot is free. A held/faulted slot blocks
+  claims and requires verified operator recovery. Terminal persistence errors
+  retain the slot and expose a structured operational fault. See
+  `docs/operations/backtest-worker-recovery.md`.
 - Successful synchronous CLI persistence creates a terminal `succeeded` run using
   the versioned request/result contract and normalized fill/trade payloads.
 - Current parity slice is single-symbol bar-mode for vectorized and event-driven

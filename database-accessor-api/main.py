@@ -3,13 +3,19 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
-from app import crud, market_cache
+from app import backtest_execution, crud, market_cache
 from app.database import get_db
 from app.schemas import (
     BacktestBatchCreateIn,
     BacktestBatchEventOut,
     BacktestBatchOut,
     BacktestClosedTradeOut,
+    BacktestExecutionClaimIn,
+    BacktestExecutionFaultIn,
+    BacktestExecutionReconcileIn,
+    BacktestExecutionReconcileOut,
+    BacktestExecutionSettleIn,
+    BacktestExecutionSlotOut,
     BacktestFillOut,
     BacktestRunCompleteIn,
     BacktestRunConditionalUpdateIn,
@@ -96,6 +102,46 @@ async def create_backtest_run(
     if run.request_schema_version == 2:
         payload["request"]["strategy"].pop("strategy_version", None)
     return await crud.insert_backtest_run(db, payload)
+
+
+@app.get("/backtest-execution/slot", response_model=BacktestExecutionSlotOut)
+async def get_backtest_execution_slot(db: AsyncSession = Depends(get_db)):
+    return await backtest_execution.read_slot(db)
+
+
+@app.post("/backtest-execution/claim", response_model=BacktestRunMutationOut)
+async def claim_backtest_execution(
+    claim: BacktestExecutionClaimIn, db: AsyncSession = Depends(get_db)
+):
+    return {"updated": await backtest_execution.claim(db, **claim.model_dump())}
+
+
+@app.post("/backtest-execution/settle", response_model=BacktestRunMutationOut)
+async def settle_backtest_execution(
+    settlement: BacktestExecutionSettleIn, db: AsyncSession = Depends(get_db)
+):
+    data = settlement.model_dump()
+    run_id = data.pop("run_id")
+    owner_token = data.pop("owner_token")
+    return {
+        "updated": await backtest_execution.settle(
+            db, run_id=run_id, owner_token=owner_token, terminal=data
+        )
+    }
+
+
+@app.post("/backtest-execution/reconcile", response_model=BacktestExecutionReconcileOut)
+async def reconcile_backtest_execution(
+    reconciliation: BacktestExecutionReconcileIn, db: AsyncSession = Depends(get_db)
+):
+    return {"reconciled": await backtest_execution.reconcile(db, **reconciliation.model_dump())}
+
+
+@app.post("/backtest-execution/fault", response_model=BacktestRunMutationOut)
+async def record_backtest_execution_fault(
+    fault: BacktestExecutionFaultIn, db: AsyncSession = Depends(get_db)
+):
+    return {"updated": await backtest_execution.record_fault(db, **fault.model_dump())}
 
 
 @app.get("/backtests", response_model=list[BacktestRunOut])

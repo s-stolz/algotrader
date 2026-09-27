@@ -334,6 +334,37 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
         self.assertTrue(updated)
 
+    def test_execution_slot_mutations_use_fenced_storage_routes(self) -> None:
+        calls: list[tuple[str, str, dict | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content.decode()) if request.content else None
+            calls.append((request.method, request.url.path, body))
+            if request.url.path == "/backtest-execution/slot":
+                return httpx.Response(200, json={"owner_token": None, "run_id": None,
+                                                 "fault_code": None, "fault_message": None})
+            if request.url.path == "/backtest-execution/reconcile":
+                return httpx.Response(200, json={"reconciled": 1})
+            return httpx.Response(200, json={"updated": True})
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            self.assertIsNone(client.get_backtest_execution_slot()["owner_token"])
+            self.assertTrue(client.claim_backtest_execution({"run_id": "run-1"}))
+            self.assertTrue(client.settle_backtest_execution({"run_id": "run-1"}))
+            self.assertEqual(client.reconcile_backtest_execution({"completed_at": "now"}), 1)
+            self.assertTrue(client.record_backtest_execution_fault({"code": "fault"}))
+        finally:
+            client.close()
+
+        self.assertEqual(
+            [path for _, path, _ in calls],
+            ["/backtest-execution/slot", "/backtest-execution/claim",
+             "/backtest-execution/settle", "/backtest-execution/reconcile",
+             "/backtest-execution/fault"],
+        )
+
     def test_get_execution_logs_and_delete_backtest_run(self) -> None:
         fill = _fill_payload()
         trade = _trade_payload()
@@ -634,6 +665,25 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
             await client.aclose()
 
         self.assertTrue(updated)
+
+    async def test_async_execution_claim_and_settlement(self) -> None:
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            return httpx.Response(200, json={"updated": True})
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            self.assertTrue(await client.claim_backtest_execution({"run_id": "run-1"}))
+            self.assertTrue(await client.settle_backtest_execution({"run_id": "run-1"}))
+        finally:
+            await client.aclose()
+
+        self.assertEqual(
+            calls, ["/backtest-execution/claim", "/backtest-execution/settle"]
+        )
 
     async def test_async_get_execution_logs_and_delete_backtest_run(self) -> None:
         fill = {**_fill_payload(), "run_id": "run-async-123"}

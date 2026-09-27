@@ -45,6 +45,8 @@ stored in TimescaleDB.
   version 3; stored result versions 1 and 2 remain readable for inspection.
   Current closed trades include nullable planned protective exit prices and
   required closed-trade direction.
+- Forward-only upgrades preserve earlier terminal results, Fills, and Closed
+  Trades; older successes without replay metadata report its unavailable reason.
 - Stored backtest closed-trade `trade_direction` is required and limited to
   `long` or `short`.
 - Run listing filters status and submission dates through lifecycle columns and
@@ -72,9 +74,18 @@ stored in TimescaleDB.
   for fills and trades; terminal-state policy remains in the backtester.
 - Backtester code owns lifecycle transitions, queue selection, and scheduling.
   This service accepts caller-owned run identity and state as persistence data.
-- Conditional updates compare the stored status with `expected_status` in the
-  update statement. Successful completion updates the parent run and inserts all
-  fills and trades in one transaction, returning `updated=false` on a stale
+- The execution slot is a single database row. Accessor claim checks the oldest
+  queued standalone run and free slot in one transaction; settlement requires the matching
+  owner token and commits terminal state, artifacts, and slot release together.
+  Successful settlement requires a validated Equity Replay descriptor; failed
+  settlement rejects replay metadata and other result artifacts.
+  Faults remain separate from durable run history. Reconciliation is conditional
+  on a free, unfaulted slot and preserves queued work.
+- With the slot row installed, legacy tokenless conditional updates and completion
+  return `updated=false` for every expected status, including after manual slot
+  clear; only owner-token settlement may commit a worker outcome or its artifacts.
+- Before slot installation, conditional updates compare the stored status with
+  `expected_status` in the update statement and return `updated=false` on a stale
   expected status.
 
 ## Change Triggers

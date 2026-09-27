@@ -14,6 +14,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -104,6 +105,22 @@ backtest_batch_events = Table(
     Column("occurred_at", TIMESTAMP(timezone=True), nullable=False),
     Column("reason", Text, nullable=True),
     PrimaryKeyConstraint("batch_id", "revision"),
+)
+
+backtest_execution_slot = Table(
+    "backtest_execution_slot",
+    metadata,
+    Column("slot_id", Integer, primary_key=True),
+    Column("owner_token", String(36), nullable=True),
+    Column("run_id", String(36), ForeignKey("backtest_runs.run_id"), nullable=True),
+    Column("fault_code", String(64), nullable=True),
+    Column("fault_message", Text, nullable=True),
+    Column("updated_at", TIMESTAMP(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("slot_id = 1", name="backtest_execution_slot_id_check"),
+    CheckConstraint(
+        "(owner_token IS NULL) = (run_id IS NULL)",
+        name="backtest_execution_slot_owner_pair_check",
+    ),
 )
 
 backtest_fills = Table(

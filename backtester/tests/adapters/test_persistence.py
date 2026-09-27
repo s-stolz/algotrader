@@ -38,6 +38,7 @@ class _FakeLifecycleClient:
     def __init__(self) -> None:
         self.conditional_updates: list[tuple[str, dict]] = []
         self.completions: list[tuple[str, dict]] = []
+        self.execution_requests: list[tuple[str, dict | None]] = []
 
     def conditional_update_backtest_run(self, run_id: str, update: dict) -> bool:
         self.conditional_updates.append((run_id, update))
@@ -45,6 +46,26 @@ class _FakeLifecycleClient:
 
     def complete_backtest_run(self, run_id: str, completion: dict) -> bool:
         self.completions.append((run_id, completion))
+        return True
+
+    def get_backtest_execution_slot(self) -> dict:
+        self.execution_requests.append(("slot", None))
+        return {"owner_token": None, "run_id": None, "fault_code": None, "fault_message": None}
+
+    def claim_backtest_execution(self, claim: dict) -> bool:
+        self.execution_requests.append(("claim", claim))
+        return True
+
+    def settle_backtest_execution(self, settlement: dict) -> bool:
+        self.execution_requests.append(("settle", settlement))
+        return True
+
+    def reconcile_backtest_execution(self, reconciliation: dict) -> int:
+        self.execution_requests.append(("reconcile", reconciliation))
+        return 1
+
+    def record_backtest_execution_fault(self, fault: dict) -> bool:
+        self.execution_requests.append(("fault", fault))
         return True
 
 
@@ -218,6 +239,47 @@ class TestBacktestRunPersistenceAdapter(unittest.TestCase):
 
 
 class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
+    def test_execution_operations_carry_owner_token_and_reconciliation_reason(self) -> None:
+        client = _FakeLifecycleClient()
+        adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
+
+        self.assertIsNone(adapter.execution_slot()["owner_token"])
+        self.assertTrue(
+            adapter.claim_execution(
+                run_id="run-123", owner_token="owner-123", started_at_ms=1_780_921_860_000
+            )
+        )
+        self.assertTrue(
+            adapter.settle_failure(
+                run_id="run-123",
+                owner_token="owner-123",
+                completed_at_ms=1_780_922_100_000,
+                error_code="backtest_failed",
+                error_message="Backtest execution failed",
+            )
+        )
+        self.assertEqual(adapter.reconcile_execution(completed_at_ms=1_780_922_100_000), 1)
+        self.assertTrue(
+            adapter.record_execution_fault(
+                run_id="run-123",
+                owner_token="owner-123",
+                code="lost_ownership",
+                message="Storage rejected settlement",
+            )
+        )
+
+        names = [name for name, _ in client.execution_requests]
+        self.assertEqual(names, ["slot", "claim", "settle", "reconcile", "fault"])
+        claim_request = client.execution_requests[1][1]
+        settle_request = client.execution_requests[2][1]
+        reconcile_request = client.execution_requests[3][1]
+        assert claim_request is not None
+        assert settle_request is not None
+        assert reconcile_request is not None
+        self.assertEqual(claim_request["owner_token"], "owner-123")
+        self.assertEqual(settle_request["status"], "failed")
+        self.assertEqual(reconcile_request["error_code"], "worker_interrupted")
+
     def test_conditional_update_maps_status_enums_and_lifecycle_fields(self) -> None:
         client = _FakeLifecycleClient()
         adapter = BacktestRunLifecyclePersistenceAdapter(client=client)

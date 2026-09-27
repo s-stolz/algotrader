@@ -171,6 +171,12 @@ to a chart UI, and supports standalone backtesting.
 - Frontend and other non-storage consumers read durable backtest run history,
   fills, and trades through the public backtester API. `database-accessor-api`
   remains the primitive persistence API behind the backtester boundary.
+- Standalone worker execution uses one durable database slot. A claim atomically
+  occupies it and moves the oldest queued run to `running`; fenced terminal
+  persistence releases it only after child exit is confirmed. An interrupted
+  run becomes `failed` with `worker_interrupted` after verified worker shutdown;
+  queued history remains queued. Operational slot faults are separate from
+  durable run outcomes.
 
 ## Change Guidance
 

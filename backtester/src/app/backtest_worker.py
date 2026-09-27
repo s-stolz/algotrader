@@ -5,91 +5,31 @@ from __future__ import annotations
 import logging
 import math
 import re
-from concurrent.futures import ProcessPoolExecutor
-from copy import deepcopy
-from dataclasses import dataclass, replace
-from multiprocessing import get_context
-from time import perf_counter
 from time import sleep as default_sleep
-from typing import Callable, Protocol
+from typing import Any, Callable, Mapping, Protocol
+from uuid import uuid4
 
-from adapters.db_accessor import HistoricalBarDataAdapter
 from domain.enums import BacktestRunStatus
 from domain.types import (
-    BacktestRequest,
     BacktestRequestSnapshot,
     BacktestResult,
     BacktestRunQuery,
     BacktestRunRecord,
-    Fill,
-    Trade,
-)
-from strategies.registry import (
-    StrategyVersionUnavailableError,
-    current_strategy,
-    resolve_strategy_and_parameters,
 )
 
-from app.backtest_runner import run_backtest_with_market_data
+from app.backtest_child import (
+    _DEFAULT_FAILURE_CODE,
+    _DEFAULT_FAILURE_MESSAGE,
+    ChildExitUnconfirmedError,
+    CompactBacktestFailure,
+    CompactBacktestResult,
+    ProcessBacktestChildExecutor,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _PUBLIC_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,64}$")
 _EXCEPTION_DETAIL_PATTERN = re.compile(r"(?:^|\s)[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception):")
-_DEFAULT_FAILURE_CODE = "backtest_failed"
-_DEFAULT_FAILURE_MESSAGE = "Backtest execution failed"
 _MAX_ERROR_MESSAGE_LENGTH = 500
-
-
-@dataclass(frozen=True)
-class CompactBacktestResult:
-    """Pickle-safe child result that deliberately excludes the equity curve."""
-
-    request: BacktestRequest
-    fills: list[Fill]
-    trades: list[Trade]
-    metrics: dict[str, float]
-    diagnostics: dict[str, object]
-    execution_duration_ms: int
-    replay_descriptor: dict[str, object] | None = None
-
-    @classmethod
-    def from_result(
-        cls,
-        result: BacktestResult,
-        *,
-        execution_duration_ms: int,
-    ) -> "CompactBacktestResult":
-        return cls(
-            request=result.request,
-            fills=deepcopy(result.fills),
-            trades=deepcopy(result.trades),
-            metrics=deepcopy(result.metrics),
-            diagnostics=deepcopy(result.diagnostics),
-            replay_descriptor=(
-                deepcopy(dict(result.replay_descriptor))
-                if result.replay_descriptor is not None
-                else None
-            ),
-            execution_duration_ms=max(0, int(execution_duration_ms)),
-        )
-
-    def to_result(self) -> BacktestResult:
-        return BacktestResult(
-            request=self.request,
-            fills=deepcopy(self.fills),
-            trades=deepcopy(self.trades),
-            metrics=deepcopy(self.metrics),
-            diagnostics=deepcopy(self.diagnostics),
-            replay_descriptor=deepcopy(self.replay_descriptor),
-        )
-
-
-@dataclass(frozen=True)
-class CompactBacktestFailure:
-    """Pickle-safe child failure containing only public error details."""
-
-    error_code: str
-    error_message: str
 
 
 class QueuedRunRepository(Protocol):
@@ -97,6 +37,36 @@ class QueuedRunRepository(Protocol):
 
 
 class RunLifecyclePersistence(Protocol):
+    def execution_slot(self) -> Mapping[str, Any]: ...
+
+    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool: ...
+
+    def settle_failure(
+        self,
+        *,
+        run_id: str,
+        owner_token: str,
+        completed_at_ms: int,
+        error_code: str,
+        error_message: str,
+    ) -> bool: ...
+
+    def settle_success(
+        self,
+        *,
+        run_id: str,
+        owner_token: str,
+        completed_at_ms: int,
+        result: BacktestResult,
+        execution_duration_ms: int,
+    ) -> bool: ...
+
+    def reconcile_execution(self, *, completed_at_ms: int) -> int | None: ...
+
+    def record_execution_fault(
+        self, *, run_id: str, owner_token: str, code: str, message: str
+    ) -> bool: ...
+
     def conditional_update(
         self,
         *,
@@ -127,29 +97,11 @@ class BacktestChildExecutor(Protocol):
     ) -> CompactBacktestResult | CompactBacktestFailure: ...
 
 
-class ProcessBacktestChildExecutor:
-    """Runs one claimed request in one managed spawned child process."""
-
-    def __init__(
-        self,
-        *,
-        execute_fn: (
-            Callable[
-                [BacktestRequestSnapshot],
-                CompactBacktestResult | CompactBacktestFailure,
-            ]
-            | None
-        ) = None,
-    ) -> None:
-        self._execute_fn = execute_fn or execute_backtest_child
-
-    def execute(
-        self,
-        snapshot: BacktestRequestSnapshot,
-    ) -> CompactBacktestResult | CompactBacktestFailure:
-        context = get_context("spawn")
-        with ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
-            return executor.submit(self._execute_fn, snapshot).result()
+class ExecutionOperationalError(RuntimeError):
+    def __init__(self, code: str, run_id: str | None, message: str) -> None:
+        self.code = code
+        self.run_id = run_id
+        super().__init__(message)
 
 
 class BacktestWorker:
@@ -188,75 +140,109 @@ class BacktestWorker:
                 queued_runs,
                 key=lambda run: (run.submitted_at_ms, run.run_id),
             )
-            claimed = self._lifecycle.conditional_update(
+            owner_token = str(uuid4())
+            claimed = self._lifecycle.claim_execution(
                 run_id=selected.run_id,
-                expected_status=BacktestRunStatus.QUEUED,
-                new_status=BacktestRunStatus.RUNNING,
+                owner_token=owner_token,
                 started_at_ms=self._now_ms(),
             )
             if not claimed:
+                slot = self._lifecycle.execution_slot()
+                if slot["fault_code"] is not None:
+                    raise ExecutionOperationalError(
+                        str(slot["fault_code"]),
+                        slot["run_id"],
+                        str(slot["fault_message"] or "Backtest execution slot is faulted"),
+                    )
+                if slot["owner_token"] is not None:
+                    return False
                 continue
 
-            try:
-                outcome = self._child_executor.execute(selected.request_snapshot)
-            except Exception:
-                _LOGGER.exception(
-                    "Backtest child process failed",
-                    extra={"run_id": selected.run_id},
-                )
-                self._persist_failure(
-                    run_id=selected.run_id,
-                    failure=CompactBacktestFailure(
-                        error_code="child_process_failed",
-                        error_message="Backtest child process failed",
-                    ),
-                )
-                return True
+            return self._execute_claimed(selected, owner_token)
 
-            if isinstance(outcome, CompactBacktestFailure):
-                error_code, _ = _sanitize_failure(outcome)
-                _LOGGER.error(
-                    "Backtest child reported execution failure",
-                    extra={"run_id": selected.run_id, "error_code": error_code},
-                )
-                self._persist_failure(run_id=selected.run_id, failure=outcome)
-                return True
-
-            compact_result = outcome
-            try:
-                completed = self._lifecycle.complete(
-                    run_id=selected.run_id,
-                    expected_status=BacktestRunStatus.RUNNING,
-                    completed_at_ms=self._now_ms(),
-                    result=compact_result.to_result(),
-                    execution_duration_ms=compact_result.execution_duration_ms,
-                )
-            except Exception:
-                _LOGGER.exception(
-                    "Failed to persist backtest run completion",
-                    extra={"run_id": selected.run_id},
-                )
-                raise
-            if not completed:
-                _LOGGER.error(
-                    "Backtest run completion was not persisted",
-                    extra={"run_id": selected.run_id},
-                )
-                raise RuntimeError(f"Backtest run completion was not persisted: {selected.run_id}")
+    def _execute_claimed(self, selected: BacktestRunRecord, owner_token: str) -> bool:
+        try:
+            outcome = self._child_executor.execute(selected.request_snapshot)
+        except ChildExitUnconfirmedError as exc:
+            self._record_fault(selected.run_id, owner_token, "child_exit_unconfirmed", str(exc))
+            raise ExecutionOperationalError(
+                "child_exit_unconfirmed", selected.run_id, str(exc)
+            ) from exc
+        except Exception:
+            _LOGGER.exception(
+                "Backtest child process failed",
+                extra={"run_id": selected.run_id},
+            )
+            self._persist_failure(
+                run_id=selected.run_id,
+                owner_token=owner_token,
+                failure=CompactBacktestFailure(
+                    error_code="child_process_failed",
+                    error_message="Backtest child process failed",
+                ),
+            )
             return True
+
+        if isinstance(outcome, CompactBacktestFailure):
+            error_code, _ = _sanitize_failure(outcome)
+            _LOGGER.error(
+                "Backtest child reported execution failure",
+                extra={"run_id": selected.run_id, "error_code": error_code},
+            )
+            self._persist_failure(run_id=selected.run_id, owner_token=owner_token, failure=outcome)
+            return True
+
+        compact_result = outcome
+        try:
+            completed = self._lifecycle.settle_success(
+                run_id=selected.run_id,
+                owner_token=owner_token,
+                completed_at_ms=self._now_ms(),
+                result=compact_result.to_result(),
+                execution_duration_ms=compact_result.execution_duration_ms,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Failed to persist backtest run completion",
+                extra={"run_id": selected.run_id},
+            )
+            self._record_fault(
+                selected.run_id,
+                owner_token,
+                "terminal_persistence_failed",
+                "Backtest run completion could not be persisted",
+            )
+            raise
+        if not completed:
+            _LOGGER.error(
+                "Backtest run completion was not persisted",
+                extra={"run_id": selected.run_id},
+            )
+            self._record_fault(
+                selected.run_id,
+                owner_token,
+                "lost_ownership",
+                "Backtest run completion was rejected by storage",
+            )
+            raise ExecutionOperationalError(
+                "lost_ownership",
+                selected.run_id,
+                f"Backtest run completion was not persisted: {selected.run_id}",
+            )
+        return True
 
     def _persist_failure(
         self,
         *,
         run_id: str,
+        owner_token: str,
         failure: CompactBacktestFailure,
     ) -> None:
         error_code, error_message = _sanitize_failure(failure)
         try:
-            failed = self._lifecycle.conditional_update(
+            failed = self._lifecycle.settle_failure(
                 run_id=run_id,
-                expected_status=BacktestRunStatus.RUNNING,
-                new_status=BacktestRunStatus.FAILED,
+                owner_token=owner_token,
                 completed_at_ms=self._now_ms(),
                 error_code=error_code,
                 error_message=error_message,
@@ -266,13 +252,35 @@ class BacktestWorker:
                 "Failed to persist backtest run failure",
                 extra={"run_id": run_id},
             )
+            self._record_fault(
+                run_id,
+                owner_token,
+                "terminal_persistence_failed",
+                "Backtest run failure could not be persisted",
+            )
             raise
         if not failed:
             _LOGGER.error(
                 "Backtest run failure was not persisted",
                 extra={"run_id": run_id},
             )
-            raise RuntimeError(f"Backtest run failure was not persisted: {run_id}")
+            self._record_fault(
+                run_id,
+                owner_token,
+                "lost_ownership",
+                "Backtest run failure was rejected by storage",
+            )
+            raise ExecutionOperationalError(
+                "lost_ownership", run_id, f"Backtest run failure was not persisted: {run_id}"
+            )
+
+    def _record_fault(self, run_id: str, owner_token: str, code: str, message: str) -> None:
+        try:
+            self._lifecycle.record_execution_fault(
+                run_id=run_id, owner_token=owner_token, code=code, message=message
+            )
+        except Exception:
+            _LOGGER.exception("Failed to record backtest execution fault", extra={"run_id": run_id})
 
     def run_forever(
         self,
@@ -286,77 +294,27 @@ class BacktestWorker:
                 self._sleep(self._poll_interval_seconds)
 
     def reconcile_running_runs(self) -> None:
-        """Fail runs left running by a previously interrupted singleton worker."""
+        """Reconcile only after storage confirms the execution slot is free."""
 
-        running_runs = self._repository.list(
-            BacktestRunQuery(status=BacktestRunStatus.RUNNING, membership="standalone")
-        )
-        for run in running_runs:
-            try:
-                reconciled = self._lifecycle.conditional_update(
-                    run_id=run.run_id,
-                    expected_status=BacktestRunStatus.RUNNING,
-                    new_status=BacktestRunStatus.FAILED,
-                    completed_at_ms=self._now_ms(),
-                    error_code="worker_interrupted",
-                    error_message="Backtest worker was interrupted before completion",
-                )
-            except Exception:
-                _LOGGER.exception(
-                    "Failed to reconcile interrupted backtest run",
-                    extra={"run_id": run.run_id},
-                )
-                raise
-            if not reconciled:
-                _LOGGER.error(
-                    "Interrupted backtest run was not reconciled",
-                    extra={"run_id": run.run_id},
-                )
-                raise RuntimeError(f"Interrupted backtest run was not reconciled: {run.run_id}")
-            _LOGGER.warning(
-                "Reconciled interrupted backtest run",
-                extra={"run_id": run.run_id},
+        slot = self._lifecycle.execution_slot()
+        if slot["owner_token"] is not None or slot["fault_code"] is not None:
+            raise ExecutionOperationalError(
+                str(slot["fault_code"] or "ownership_held"),
+                slot["run_id"],
+                "Previous execution may still be active; operator recovery is required",
             )
-
-
-def execute_backtest_child(
-    snapshot: BacktestRequestSnapshot,
-    *,
-    data_adapter: HistoricalBarDataAdapter | None = None,
-) -> CompactBacktestResult | CompactBacktestFailure:
-    """Resolve and execute the immutable request entirely inside the child."""
-
-    try:
-        request = replace(snapshot.to_request(), persist_result=False)
-        if request.strategy.strategy_version is None:
-            raise StrategyVersionUnavailableError("strategy_version_unavailable")
         try:
-            current_strategy(request.strategy.strategy_id)
-        except ValueError as exc:
-            raise StrategyVersionUnavailableError("strategy_version_unavailable") from exc
-        strategy, _ = resolve_strategy_and_parameters(request.strategy)
-        started_at = perf_counter()
-        result = run_backtest_with_market_data(
-            request=request,
-            strategy=strategy,
-            data_adapter=data_adapter,
-        )
-        execution_duration_ms = max(0, int(round((perf_counter() - started_at) * 1000)))
-        return CompactBacktestResult.from_result(
-            result,
-            execution_duration_ms=execution_duration_ms,
-        )
-    except StrategyVersionUnavailableError:
-        return CompactBacktestFailure(
-            error_code="strategy_version_unavailable",
-            error_message="Exact strategy version is unavailable",
-        )
-    except Exception:
-        _LOGGER.exception("Backtest child execution failed")
-        return CompactBacktestFailure(
-            error_code=_DEFAULT_FAILURE_CODE,
-            error_message=_DEFAULT_FAILURE_MESSAGE,
-        )
+            reconciled = self._lifecycle.reconcile_execution(completed_at_ms=self._now_ms())
+        except Exception as exc:
+            raise ExecutionOperationalError(
+                "reconciliation_failed", None, "Interrupted runs could not be reconciled"
+            ) from exc
+        if reconciled is None:
+            raise ExecutionOperationalError(
+                "ownership_held", None, "Execution slot became unavailable during reconciliation"
+            )
+        if reconciled:
+            _LOGGER.warning("Reconciled interrupted backtest runs", extra={"count": reconciled})
 
 
 def _utc_now_ms() -> int:

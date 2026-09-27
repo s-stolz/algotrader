@@ -495,18 +495,30 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
-  it('refreshes lifecycle state periodically only while mounted', async () => {
+  it('shows reconciled failure and preserves queued work on Workspace refresh', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const queued = run('waiting', { status: 'queued', metrics: null });
+    const interrupted = run('active', {
+      status: 'failed', metrics: null, error_code: 'worker_interrupted',
+      error_message: 'Backtest worker was interrupted before completion',
+    });
     vi.mocked(listBacktestRuns)
-      .mockResolvedValueOnce([run('active', { status: 'running', metrics: null })])
-      .mockResolvedValueOnce([run('active', { status: 'succeeded' })]);
+      .mockResolvedValueOnce([run('active', { status: 'running', metrics: null }), queued])
+      .mockResolvedValueOnce([interrupted, queued]);
+    vi.mocked(getBacktestRun).mockResolvedValue(interrupted);
     const wrapper = mountWorkspace();
     await flushPromises();
     expect(wrapper.find('[data-testid="workspace-run-active"]').text()).toContain('running');
 
     vi.advanceTimersByTime(5000);
     await flushPromises();
-    expect(wrapper.find('[data-testid="workspace-run-active"]').text()).toContain('succeeded');
+    expect(wrapper.find('[data-testid="workspace-run-active"]').text()).toContain('failed');
+    expect(wrapper.find('[data-testid="workspace-run-waiting"]').text()).toContain('queued');
+    await wrapper.find('[data-testid="workspace-run-active"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      'Backtest worker was interrupted before completion',
+    );
 
     wrapper.unmount();
     vi.advanceTimersByTime(5000);
