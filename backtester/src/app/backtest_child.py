@@ -18,6 +18,7 @@ from time import sleep as default_sleep
 from typing import Callable
 
 from adapters.db_accessor import HistoricalBarDataAdapter
+from data.normalization import HistoricalDataUnavailableError
 from domain.types import BacktestRequest, BacktestRequestSnapshot, BacktestResult, Fill, Trade
 from strategies.registry import (
     StrategyVersionUnavailableError,
@@ -336,6 +337,14 @@ def execute_backtest_child(
         return CompactBacktestResult.from_result(
             result,
             execution_duration_ms=execution_duration_ms,
+        )
+    except HistoricalDataUnavailableError:
+        return CompactBacktestFailure(
+            error_code="historical_data_unavailable",
+            error_message=(
+                "No historical candles are available for this Market and date range. "
+                "Choose dates with stored data or backfill the missing candles."
+            ),
         )
     except StrategyVersionUnavailableError:
         return CompactBacktestFailure(

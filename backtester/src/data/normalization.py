@@ -18,6 +18,10 @@ REQUIRED_BAR_COLUMNS: Final[tuple[str, ...]] = (
 )
 
 
+class HistoricalDataUnavailableError(ValueError):
+    """The requested market has no stored candles in the loaded interval."""
+
+
 def normalize_bar_data(
     *,
     bars: pd.DataFrame,
@@ -33,7 +37,7 @@ def normalize_bar_data(
     normalized["symbol"] = normalized["symbol"].astype(str)
     normalized = normalized.loc[normalized["symbol"] == symbol].copy()
     if normalized.empty:
-        raise ValueError(f"No bars found for symbol {symbol}")
+        raise HistoricalDataUnavailableError(f"No bars found for symbol {symbol}")
 
     missing = [column for column in REQUIRED_BAR_COLUMNS if column not in normalized.columns]
     if missing:

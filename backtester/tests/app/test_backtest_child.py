@@ -160,6 +160,17 @@ class TestBacktestChildExecution(unittest.TestCase):
                 self.assertIsNotNone(compact.replay_descriptor)
                 self.assertEqual(compact.to_result().replay_descriptor, compact.replay_descriptor)
 
+    def test_missing_candles_explain_how_to_correct_the_request(self) -> None:
+        outcome = execute_backtest_child(
+            BacktestRequestSnapshot.from_request(_request()),
+            data_adapter=_FakeHistoricalAdapter(pd.DataFrame()),
+        )
+        if not isinstance(outcome, CompactBacktestFailure):
+            self.fail(f"Expected missing-data failure, got {outcome!r}")
+        self.assertEqual(outcome.error_code, "historical_data_unavailable")
+        self.assertIn("No historical candles", outcome.error_message)
+        self.assertIn("date range", outcome.error_message)
+
     def test_execution_exception_returns_generic_failure_and_logs_details(self) -> None:
         snapshot = BacktestRequestSnapshot.from_request(_request())
 
