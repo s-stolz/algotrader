@@ -89,7 +89,10 @@ async def create_backtest_run(
     run: BacktestRunCreateIn,
     db: AsyncSession = Depends(get_db),
 ):
-    return await crud.insert_backtest_run(db, run.model_dump())
+    payload = run.model_dump()
+    if run.request_schema_version == 2:
+        payload["request"]["strategy"].pop("strategy_version", None)
+    return await crud.insert_backtest_run(db, payload)
 
 
 @app.get("/backtests", response_model=list[BacktestRunOut])

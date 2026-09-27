@@ -6,7 +6,6 @@ import type { BacktestRun, BacktestRequestPayload } from '@/types/backtesterCont
 export const useBacktestWorkspaceStore = defineStore('backtestWorkspace', () => {
   const selectedRunId = ref<string | null>(null);
   const selectedRun = ref<BacktestRun | null>(null);
-  // Ticket 02 will fill this with an editable draft without changing navigation state.
   const creationDraft = ref<BacktestRequestPayload | null>(null);
 
   function selectRun(run: BacktestRun): void {

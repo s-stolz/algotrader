@@ -20,6 +20,7 @@ _BACKTEST_RUNNER_MODULE = importlib.import_module("app.backtest_runner")
 _APP_CONFIG_MODULE = importlib.import_module("app.config")
 _DOMAIN_ENUMS_MODULE = importlib.import_module("domain.enums")
 _DOMAIN_TYPES_MODULE = importlib.import_module("domain.types")
+_STRATEGY_REGISTRY_MODULE = importlib.import_module("strategies.registry")
 
 __all__ = ["build_parser", "main"]
 
@@ -140,6 +141,12 @@ def _build_request(args: argparse.Namespace) -> Any:
     if args.take_profit_pct is not None:
         strategy_parameters["take_profit_pct"] = float(args.take_profit_pct)
 
+    strategy = _DOMAIN_TYPES_MODULE.StrategyConfig(
+        strategy_id=str(args.strategy), parameters=strategy_parameters
+    )
+    if args.persist_result:
+        strategy = _STRATEGY_REGISTRY_MODULE.validate_parameters(strategy)
+
     execution = replace(
         _APP_CONFIG_MODULE.build_default_execution_config(),
         allowed_directions=_DOMAIN_ENUMS_MODULE.AllowedDirections(str(args.allowed_directions)),
@@ -153,10 +160,7 @@ def _build_request(args: argparse.Namespace) -> Any:
         timeframe=str(args.timeframe),
         start_ms=int(args.start_ms),
         end_ms=int(args.end_ms),
-        strategy=_DOMAIN_TYPES_MODULE.StrategyConfig(
-            strategy_id=str(args.strategy),
-            parameters=strategy_parameters,
-        ),
+        strategy=strategy,
         execution=execution,
         initial_capital=float(args.initial_capital),
         exchange=str(args.exchange) if args.exchange is not None else None,

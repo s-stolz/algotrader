@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Annotated, Mapping
 
 from strategies.base import (
     BarStrategyModel,
@@ -11,15 +12,38 @@ from strategies.base import (
     StrategyDefinition,
 )
 from strategies.conditions import ConditionRule
+from strategies.registry import ParameterInfo, register_strategy, reject_combination
 
 
+def _validate_sma_parameters(parameters: Mapping[str, object]) -> None:
+    fast_window = parameters["fast_window"]
+    slow_window = parameters["slow_window"]
+    if isinstance(fast_window, int) and isinstance(slow_window, int) and fast_window >= slow_window:
+        reject_combination(
+            "fast_window",
+            "slow_window",
+            message="Fast window must be smaller than slow window",
+        )
+
+
+@register_strategy(
+    "sma_crossover",
+    1,
+    display_name="SMA crossover",
+    validator=_validate_sma_parameters,
+)
 def build_sma_crossover_strategy(
     *,
-    fast_window: int = 5,
-    slow_window: int = 20,
-    quantity: float = 1.0,
-    stop_loss_pct: float | None = None,
-    take_profit_pct: float | None = None,
+    fast_window: Annotated[int, ParameterInfo(minimum=1)] = 5,
+    slow_window: Annotated[int, ParameterInfo(minimum=1)] = 20,
+    quantity: Annotated[float, ParameterInfo(minimum=0.0, exclusive_minimum=True)] = 1.0,
+    stop_loss_pct: Annotated[
+        float | None,
+        ParameterInfo(minimum=0.0, maximum=100.0, exclusive_minimum=True, exclusive_maximum=True),
+    ] = None,
+    take_profit_pct: Annotated[
+        float | None, ParameterInfo(minimum=0.0, exclusive_minimum=True)
+    ] = None,
 ) -> StrategyDefinition:
     """Build a direction-neutral SMA crossover strategy definition."""
 

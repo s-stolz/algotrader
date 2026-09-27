@@ -22,7 +22,7 @@ from domain.enums import (
     TradeDirection,
 )
 
-BACKTEST_REQUEST_SCHEMA_VERSION = 2
+BACKTEST_REQUEST_SCHEMA_VERSION = 3
 BACKTEST_RESULT_SCHEMA_VERSION = 3
 
 
@@ -30,6 +30,7 @@ BACKTEST_RESULT_SCHEMA_VERSION = 3
 class StrategyConfig:
     strategy_id: str
     parameters: Dict[str, Any] = field(default_factory=dict)
+    strategy_version: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -117,16 +118,23 @@ class BacktestRequestSnapshot:
     @classmethod
     def from_request(cls, request: BacktestRequest) -> "BacktestRequestSnapshot":
         return cls(
-            schema_version=BACKTEST_REQUEST_SCHEMA_VERSION,
+            schema_version=(
+                BACKTEST_REQUEST_SCHEMA_VERSION
+                if request.strategy.strategy_version is not None
+                else 2
+            ),
             payload=_backtest_request_payload(request),
         )
 
     def to_request(self) -> BacktestRequest:
-        if self.schema_version != BACKTEST_REQUEST_SCHEMA_VERSION:
-            raise ValueError(
-                "Unsupported backtest request schema version: " f"{self.schema_version}"
-            )
-        return _backtest_request_from_payload(self.payload)
+        if self.schema_version not in (2, BACKTEST_REQUEST_SCHEMA_VERSION):
+            raise ValueError(f"Unsupported backtest request schema version: {self.schema_version}")
+        if self.schema_version == 3:
+            strategy = _mapping_field(self.payload, "strategy")
+            version = strategy.get("strategy_version")
+            if type(version) is not int or version <= 0:
+                raise ValueError("Backtest request strategy_version must be a positive integer")
+        return _backtest_request_from_payload(self.payload, schema_version=self.schema_version)
 
 
 @dataclass(frozen=True)
@@ -348,6 +356,11 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
         "strategy": {
             "strategy_id": str(request.strategy.strategy_id),
             "parameters": deepcopy(request.strategy.parameters),
+            **(
+                {"strategy_version": request.strategy.strategy_version}
+                if request.strategy.strategy_version is not None
+                else {}
+            ),
         },
         "execution": {
             "signal_timing": _enum_value(execution.signal_timing),
@@ -366,11 +379,17 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
     }
 
 
-def _backtest_request_from_payload(payload: Mapping[str, Any]) -> BacktestRequest:
+def _backtest_request_from_payload(
+    payload: Mapping[str, Any], *, schema_version: int
+) -> BacktestRequest:
     _validate_payload_fields("Backtest request", payload, _REQUEST_PAYLOAD_FIELDS)
     strategy = _mapping_field(payload, "strategy")
     execution = _mapping_field(payload, "execution")
-    _validate_payload_fields("Backtest strategy", strategy, _STRATEGY_PAYLOAD_FIELDS)
+    _validate_payload_fields(
+        "Backtest strategy",
+        strategy,
+        _STRATEGY_PAYLOAD_FIELDS | ({"strategy_version"} if schema_version == 3 else set()),
+    )
     _validate_payload_fields("Backtest execution", execution, _EXECUTION_PAYLOAD_FIELDS)
 
     symbols = payload["symbols"]
@@ -400,6 +419,7 @@ def _backtest_request_from_payload(payload: Mapping[str, Any]) -> BacktestReques
         strategy=StrategyConfig(
             strategy_id=str(strategy["strategy_id"]),
             parameters=deepcopy(dict(parameters)),
+            strategy_version=(int(strategy["strategy_version"]) if schema_version == 3 else None),
         ),
         execution=ExecutionConfig(
             signal_timing=SignalTiming(execution["signal_timing"]),

@@ -23,7 +23,7 @@ export type BacktestTradeDirection = 'long' | 'short';
 
 export interface BacktestStrategyPayload {
   strategy_id: string;
-  strategy_version?: number;
+  strategy_version?: number | null;
   parameters: Record<string, JsonValue>;
 }
 
@@ -61,13 +61,70 @@ export interface BacktestRun {
   submitted_at_ms: number;
   started_at_ms?: number | null;
   completed_at_ms?: number | null;
-  request_schema_version: 2;
+  request_schema_version: 2 | 3;
   request: BacktestRequestPayload;
   result_schema_version?: 1 | 2 | typeof BACKTEST_RESULT_SCHEMA_VERSION | null;
   metrics?: JsonObject | null;
   diagnostics?: JsonObject | null;
   error_code?: string | null;
   error_message?: string | null;
+}
+
+export interface StrategyParameterSchema {
+  name: string;
+  type: 'bool' | 'int' | 'float' | 'str';
+  nullable: boolean;
+  required: boolean;
+  default?: JsonValue;
+  minimum?: number;
+  maximum?: number;
+  exclusive_minimum?: boolean;
+  exclusive_maximum?: boolean;
+  choices?: Array<number | string>;
+  description?: string;
+  display_name?: string;
+}
+
+export interface StrategyCatalogEntry {
+  strategy_id: string;
+  strategy_version: number;
+  display_name: string;
+  parameters: StrategyParameterSchema[];
+}
+
+function matchesParameterType(value: unknown, kind: string, nullable: boolean): boolean {
+  if (value === null) return nullable;
+  if (kind === 'bool') return typeof value === 'boolean';
+  if (kind === 'int') return Number.isInteger(value);
+  if (kind === 'float') return isFiniteNumber(value);
+  return kind === 'str' && typeof value === 'string';
+}
+
+function isStrategyParameterSchema(value: unknown): value is StrategyParameterSchema {
+  if (!isRecord(value) || !isNonEmptyString(value.name) ||
+      !['bool', 'int', 'float', 'str'].includes(String(value.type)) ||
+      typeof value.nullable !== 'boolean' || typeof value.required !== 'boolean') return false;
+  const numeric = value.type === 'int' || value.type === 'float';
+  return (!('default' in value) || (!value.required &&
+    matchesParameterType(value.default, value.type as string, value.nullable))) &&
+    (!('minimum' in value) || (numeric && isFiniteNumber(value.minimum))) &&
+    (!('maximum' in value) || (numeric && isFiniteNumber(value.maximum))) &&
+    (!('exclusive_minimum' in value) ||
+      (value.exclusive_minimum === true && isFiniteNumber(value.minimum))) &&
+    (!('exclusive_maximum' in value) ||
+      (value.exclusive_maximum === true && isFiniteNumber(value.maximum))) &&
+    (!('description' in value) || typeof value.description === 'string') &&
+    (!('display_name' in value) || typeof value.display_name === 'string') &&
+    (!('choices' in value) || (value.type !== 'bool' && Array.isArray(value.choices) &&
+      value.choices.every((choice: unknown) =>
+        matchesParameterType(choice, value.type as string, false))));
+}
+
+export function isStrategyCatalog(value: unknown): value is StrategyCatalogEntry[] {
+  return Array.isArray(value) && value.every((entry) => isRecord(entry) &&
+    isNonEmptyString(entry.strategy_id) && Number.isInteger(entry.strategy_version) &&
+    (entry.strategy_version as number) > 0 && isNonEmptyString(entry.display_name) &&
+    Array.isArray(entry.parameters) && entry.parameters.every(isStrategyParameterSchema));
 }
 
 export interface BacktestRunListQuery {
@@ -196,7 +253,7 @@ function isBacktestStrategyPayload(value: unknown): value is BacktestStrategyPay
   return (
     isRecord(value) &&
     isNonEmptyString(value.strategy_id) &&
-    (!('strategy_version' in value) || (
+    (!('strategy_version' in value) || value.strategy_version === null || (
       Number.isInteger(value.strategy_version) && (value.strategy_version as number) > 0
     )) &&
     isRecord(value.parameters) &&
@@ -267,7 +324,9 @@ export function isBacktestRun(value: unknown): value is BacktestRun {
     value.submitted_at_ms > 0 &&
     isOptionalNullableNumber(value, 'started_at_ms') &&
     isOptionalNullableNumber(value, 'completed_at_ms') &&
-    value.request_schema_version === 2 &&
+    (value.request_schema_version === 2 || value.request_schema_version === 3) &&
+    (value.request_schema_version !== 3 || (isRecord(value.request) &&
+      isRecord(value.request.strategy) && Number.isInteger(value.request.strategy.strategy_version))) &&
     isBacktestRequestPayload(value.request) &&
     isOptionalBacktestResultSchemaVersion(value) &&
     isOptionalNullableJsonObject(value, 'metrics') &&

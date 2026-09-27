@@ -12,6 +12,12 @@ from app.backtest_runs import (
 from domain.enums import BacktestEngine, BacktestRunStatus
 from domain.types import BacktestRunQuery
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from strategies.registry import (
+    InvalidParameterCombinationError,
+    InvalidStrategyParameterError,
+    StrategyVersionUnavailableError,
+    strategy_catalog,
+)
 
 from adapters.api.schemas import (
     BacktestFillResponseSchema,
@@ -41,6 +47,19 @@ def submit_backtest(
 ) -> BacktestSubmissionResponseSchema:
     try:
         run = service.submit(request.to_domain())
+    except StrategyVersionUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "strategy_version_unavailable",
+                "message": "Strategy version is unavailable",
+            },
+        ) from exc
+    except (InvalidParameterCombinationError, InvalidStrategyParameterError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": exc.code, "fields": exc.fields, "message": str(exc)},
+        ) from exc
     except (InvalidBacktestRequestError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -54,6 +73,11 @@ def submit_backtest(
 
     response.headers["Location"] = f"/backtests/{run.run_id}"
     return BacktestSubmissionResponseSchema(run_id=run.run_id, status="queued")
+
+
+@router.get("/strategies")
+def list_strategies() -> list[dict[str, object]]:
+    return strategy_catalog()
 
 
 @router.get(

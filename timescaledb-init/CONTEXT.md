@@ -43,11 +43,13 @@ TimescaleDB database.
   deterministic ordering and cascade when the parent run is deleted.
 - `backtest_closed_trades` includes explicit trade direction plus nullable
   planned protective exit prices for stop-loss and take-profit overlays. Result
-  schema version 3 is the only accepted completed-result schema.
+  schema version 3 is used for newly completed results.
 - `backtest_closed_trades.trade_direction` is required and constrained to
   `long` or `short`.
-- Request schema version 2 is current for request JSON; result schema version 3
-  is current for completed result artifacts.
+- New request JSON uses schema version 3 with exact Strategy Version and resolved
+  defaults; version 2 JSON remains stored without backfill. New results use
+  version 3 while historical result versions remain readable. This upgrade does
+  not change the JSONB table shape or require a SQL migration.
 - Fresh database initialization creates the complete durable backtest schema
   without a separate destructive reset script.
 - The TimescaleDB image entrypoint creates the database named by generated

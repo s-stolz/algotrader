@@ -16,6 +16,7 @@ from domain.enums import (
 )
 from domain.types import (
     BacktestFillRecord,
+    BacktestRequestSnapshot,
     BacktestRunQuery,
     BacktestRunRecord,
     BacktestTradeRecord,
@@ -65,6 +66,70 @@ class _FailingRunRepository(_FakeRunRepository):
 
 
 class TestBacktestSubmissionRoute(unittest.TestCase):
+    def test_catalog_and_version_conflict_are_public_and_create_nothing(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(repository=repository)
+        stale = _valid_payload()
+        stale["strategy"] = {**stale["strategy"], "strategy_version": 999}
+
+        with TestClient(create_app(service=service)) as client:
+            catalog_response = client.get("/backtests/strategies")
+            stale_response = client.post("/backtests", json=stale)
+
+        self.assertEqual(catalog_response.status_code, 200)
+        catalog = catalog_response.json()
+        self.assertEqual(catalog[0]["strategy_id"], "sma_crossover")
+        self.assertEqual(catalog[0]["strategy_version"], 1)
+        self.assertEqual(
+            [field["name"] for field in catalog[0]["parameters"]][:2],
+            [
+                "fast_window",
+                "slow_window",
+            ],
+        )
+        self.assertEqual(stale_response.status_code, 409)
+        self.assertEqual(stale_response.json()["detail"]["code"], "strategy_version_unavailable")
+        self.assertEqual(repository.runs_by_id, {})
+
+    def test_cross_parameter_rejection_has_stable_fields_and_no_history(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(repository=repository)
+        invalid = _valid_payload()
+        invalid["strategy"] = {
+            **invalid["strategy"],
+            "parameters": {
+                "fast_window": 20,
+                "slow_window": 5,
+            },
+        }
+
+        with TestClient(create_app(service=service)) as client:
+            response = client.post("/backtests", json=invalid)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            response.json()["detail"],
+            {
+                "code": "invalid_parameter_combination",
+                "fields": ["fast_window", "slow_window"],
+                "message": "Fast window must be smaller than slow window",
+            },
+        )
+        self.assertEqual(repository.runs_by_id, {})
+
+    def test_independent_parameter_error_identifies_field_without_creating_history(self) -> None:
+        repository = _FakeRunRepository()
+        invalid = _valid_payload()
+        invalid["strategy"] = {**invalid["strategy"], "parameters": {"fast_window": True}}
+
+        with TestClient(create_app(service=BacktestRunService(repository=repository))) as client:
+            response = client.post("/backtests", json=invalid)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"]["code"], "invalid_strategy_parameter")
+        self.assertEqual(response.json()["detail"]["fields"], ["fast_window"])
+        self.assertEqual(repository.runs_by_id, {})
+
     def test_submit_returns_accepted_queued_resource_location(self) -> None:
         repository = _FakeRunRepository()
         service = BacktestRunService(
@@ -81,7 +146,7 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
         self.assertEqual(response.headers["location"], "/backtests/run-123")
         self.assertIn("run-123", repository.runs_by_id)
         snapshot = repository.runs_by_id["run-123"].request_snapshot
-        self.assertEqual(snapshot.schema_version, 2)
+        self.assertEqual(snapshot.schema_version, 3)
         self.assertEqual(
             snapshot.payload["execution"]["allowed_directions"],
             "long_and_short",
@@ -184,6 +249,35 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
 
 
 class TestBacktestStatusRoute(unittest.TestCase):
+    def test_legacy_request_and_result_remain_readable_without_assigned_version(self) -> None:
+        repository = _FakeRunRepository()
+        current = BacktestRunService(repository=repository).submit(
+            BacktestSubmissionRequestSchema(**_valid_payload()).to_domain()
+        )
+        legacy_payload = dict(current.request_snapshot.payload)
+        legacy_payload["strategy"] = dict(legacy_payload["strategy"])
+        legacy_payload["strategy"].pop("strategy_version")
+        legacy = replace(
+            current,
+            run_id="legacy",
+            status=BacktestRunStatus.SUCCEEDED,
+            request_snapshot=BacktestRequestSnapshot(2, legacy_payload),
+            started_at_ms=1_780_921_900_000,
+            completed_at_ms=1_780_922_100_000,
+            result_schema_version=2,
+            metrics={"trade_count": 1},
+            diagnostics={},
+        )
+        repository.runs_by_id["legacy"] = legacy
+
+        with TestClient(create_app(service=BacktestRunService(repository=repository))) as client:
+            response = client.get("/backtests/legacy")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["request_schema_version"], 2)
+        self.assertNotIn("strategy_version", response.json()["request"]["strategy"])
+        self.assertEqual(response.json()["result_schema_version"], 2)
+
     def test_list_passes_all_filters_and_returns_every_matching_run(self) -> None:
         repository = _FakeRunRepository()
         request = BacktestSubmissionRequestSchema(**_valid_payload()).to_domain()
@@ -309,8 +403,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
                 completed_at_ms=1_780_922_100_000,
                 error_code="engine_failure",
                 error_message=(
-                    "Traceback (most recent call last):\n"
-                    "RuntimeError: secret implementation detail"
+                    "Traceback (most recent call last):\nRuntimeError: secret implementation detail"
                 ),
             ),
             "run-failed-one-line-internal": replace(
@@ -342,8 +435,8 @@ class TestBacktestStatusRoute(unittest.TestCase):
                 "run_id": "run-queued",
                 "status": "queued",
                 "submitted_at_ms": 1_780_921_805_123,
-                "request_schema_version": 2,
-                "request": _valid_payload(),
+                "request_schema_version": 3,
+                "request": queued.request_snapshot.payload,
             },
         )
 
@@ -630,6 +723,7 @@ def _valid_payload() -> dict:
         "initial_capital": 25_000.0,
         "strategy": {
             "strategy_id": "sma_crossover",
+            "strategy_version": 1,
             "parameters": {
                 "fast_window": 5,
                 "slow_window": 20,

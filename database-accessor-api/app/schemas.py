@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -47,6 +47,7 @@ class BacktestContractModel(BaseModel):
 
 class BacktestStrategyPayload(BacktestContractModel):
     strategy_id: str
+    strategy_version: StrictInt | None = Field(default=None, gt=0)
     parameters: dict[str, Any]
 
 
@@ -136,27 +137,40 @@ class BacktestRunBase(BacktestContractModel):
     @field_validator("request_schema_version")
     @classmethod
     def validate_request_schema_version(cls, value: int) -> int:
-        if value != 2:
-            raise ValueError("request_schema_version must be 2")
+        if value not in (2, 3):
+            raise ValueError("request_schema_version must be 2 or 3")
         return value
 
     @field_validator("result_schema_version")
     @classmethod
     def validate_result_schema_version(cls, value: int | None) -> int | None:
-        if value is not None and value != 3:
-            raise ValueError("result_schema_version must be 3 when present")
+        if value is not None and value not in (1, 2, 3):
+            raise ValueError("result_schema_version must be 1, 2, or 3 when present")
         return value
 
     @model_validator(mode="after")
     def validate_success_result_schema_version(self) -> "BacktestRunBase":
-        if self.status == "succeeded" and self.result_schema_version != 3:
-            raise ValueError("succeeded backtest runs must use result_schema_version 3")
+        if self.status == "succeeded" and self.result_schema_version not in (1, 2, 3):
+            raise ValueError("succeeded backtest runs require a result_schema_version")
+        if self.request_schema_version == 3 and (
+            self.request.strategy.strategy_version is None
+            or self.request.strategy.strategy_version <= 0
+        ):
+            raise ValueError("request schema version 3 requires a positive strategy_version")
+        if self.request_schema_version == 2 and self.request.strategy.strategy_version is not None:
+            raise ValueError("request schema version 2 has no strategy_version")
         return self
 
 
 class BacktestRunCreateIn(BacktestRunBase):
     fills: list[BacktestFillIn] = Field(default_factory=list)
     trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_current_result_schema(self) -> "BacktestRunCreateIn":
+        if self.result_schema_version is not None and self.result_schema_version != 3:
+            raise ValueError("new succeeded backtest runs must use result_schema_version 3")
+        return self
 
 
 class BacktestRunOut(BacktestRunBase):

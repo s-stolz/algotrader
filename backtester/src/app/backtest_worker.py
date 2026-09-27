@@ -24,6 +24,11 @@ from domain.types import (
     Fill,
     Trade,
 )
+from strategies.registry import (
+    StrategyVersionUnavailableError,
+    current_strategy,
+    resolve_strategy_and_parameters,
+)
 
 from app.backtest_runner import run_backtest_with_market_data
 
@@ -312,15 +317,28 @@ def execute_backtest_child(
 
     try:
         request = replace(snapshot.to_request(), persist_result=False)
+        if request.strategy.strategy_version is None:
+            raise StrategyVersionUnavailableError("strategy_version_unavailable")
+        try:
+            current_strategy(request.strategy.strategy_id)
+        except ValueError as exc:
+            raise StrategyVersionUnavailableError("strategy_version_unavailable") from exc
+        strategy, _ = resolve_strategy_and_parameters(request.strategy)
         started_at = perf_counter()
         result = run_backtest_with_market_data(
             request=request,
+            strategy=strategy,
             data_adapter=data_adapter,
         )
         execution_duration_ms = max(0, int(round((perf_counter() - started_at) * 1000)))
         return CompactBacktestResult.from_result(
             result,
             execution_duration_ms=execution_duration_ms,
+        )
+    except StrategyVersionUnavailableError:
+        return CompactBacktestFailure(
+            error_code="strategy_version_unavailable",
+            error_message="Exact strategy version is unavailable",
         )
     except Exception:
         _LOGGER.exception("Backtest child execution failed")

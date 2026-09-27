@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { BacktestRequestPayload } from '@/types/backtesterContracts';
 
 import {
+  BacktestSubmissionError,
   deleteBacktestRun,
+  fetchStrategyCatalog,
   fetchBacktestClosedTrades,
   fetchBacktestFills,
   getBacktestRun,
   listBacktestRuns,
+  submitBacktestRun,
 } from '@/api/backtesterClient';
 
 const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
@@ -18,6 +22,52 @@ const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
 describe('backtester API client', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('validates live strategy metadata and accepted submission responses', async () => {
+    const catalog = [{
+      strategy_id: 'sma_crossover', strategy_version: 1, display_name: 'SMA crossover',
+      parameters: [{ name: 'fast_window', type: 'int', nullable: false, required: false,
+        default: 5, minimum: 1 }],
+    }];
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(catalog))
+      .mockResolvedValueOnce(jsonResponse({ run_id: 'new-run', status: 'queued' }, { status: 202 }));
+
+    await expect(fetchStrategyCatalog()).resolves.toEqual(catalog);
+    await expect(submitBacktestRun(backtestRun().request as BacktestRequestPayload)).resolves.toBe('new-run');
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/strategies');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/backtester/backtests', expect.objectContaining({
+      method: 'POST',
+    }));
+  });
+
+  it('rejects catalog parameters whose runtime type disagrees with metadata', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse([{
+      strategy_id: 'broken', strategy_version: 1, display_name: 'Broken',
+      parameters: [{ name: 'enabled', type: 'bool', required: false,
+        nullable: false, default: 1 }],
+    }]));
+
+    await expect(fetchStrategyCatalog()).rejects.toThrow('Invalid strategy catalog response');
+  });
+
+  it('keeps stale-version and field rejections structured for the creation form', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ detail: {
+        code: 'strategy_version_unavailable', message: 'Strategy version is unavailable',
+      } }, { status: 409 }))
+      .mockResolvedValueOnce(jsonResponse({ detail: {
+        code: 'invalid_parameter_combination', fields: ['fast_window', 'slow_window'],
+        message: 'Fast window must be smaller than slow window',
+      } }, { status: 422 }));
+
+    await expect(submitBacktestRun(backtestRun().request as BacktestRequestPayload)).rejects.toMatchObject({
+      code: 'strategy_version_unavailable',
+    } satisfies Partial<BacktestSubmissionError>);
+    await expect(submitBacktestRun(backtestRun().request as BacktestRequestPayload)).rejects.toMatchObject({
+      code: 'invalid_parameter_combination', fields: ['fast_window', 'slow_window'],
+    } satisfies Partial<BacktestSubmissionError>);
   });
 
   it('lists Backtest Runs through the public backtester proxy', async () => {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Callable, Protocol
 from uuid import uuid4
@@ -25,7 +26,12 @@ from domain.types import (
     BacktestRunRecord,
     BacktestTradeRecord,
 )
-from strategies.registry import resolve_strategy
+from strategies.registry import (
+    InvalidParameterCombinationError,
+    InvalidStrategyParameterError,
+    StrategyVersionUnavailableError,
+    resolve_strategy_and_parameters,
+)
 
 
 class BacktestRunRepository(Protocol):
@@ -75,7 +81,7 @@ class BacktestRunService:
         self._now_ms = now_ms or _utc_now_ms
 
     def submit(self, request: BacktestRequest) -> BacktestRunRecord:
-        _validate_submission(request)
+        request = _validate_submission(request)
         run = BacktestRunRecord(
             run_id=self._new_run_id(),
             status=BacktestRunStatus.QUEUED,
@@ -136,10 +142,10 @@ class BacktestRunService:
             raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
 
 
-def _validate_submission(request: BacktestRequest) -> None:
+def _validate_submission(request: BacktestRequest) -> BacktestRequest:
     _validate_request_shape(request)
     _validate_execution(request)
-    _validate_strategy(request)
+    return _validate_strategy(request)
 
 
 def _validate_request_shape(request: BacktestRequest) -> None:
@@ -176,13 +182,22 @@ def _validate_execution(request: BacktestRequest) -> None:
         raise InvalidBacktestRequestError("Unsupported execution configuration")
 
 
-def _validate_strategy(request: BacktestRequest) -> None:
+def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
+    if request.strategy.strategy_version is None:
+        raise InvalidBacktestRequestError("strategy_version is required")
     try:
-        strategy = resolve_strategy(request.strategy)
+        strategy, resolved = resolve_strategy_and_parameters(request.strategy)
+    except (
+        InvalidParameterCombinationError,
+        InvalidStrategyParameterError,
+        StrategyVersionUnavailableError,
+    ):
+        raise
     except ValueError as exc:
         raise InvalidBacktestRequestError(str(exc)) from exc
     if not strategy.is_v1_parity_compatible:
         raise InvalidBacktestRequestError("Backtest requests require a v1 declarative bar strategy")
+    return replace(request, strategy=resolved)
 
 
 def _is_epoch_millisecond(value: object) -> bool:

@@ -142,6 +142,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             fetched["request"]["strategy"]["parameters"],
             _request_payload()["strategy"]["parameters"],
         )
+
         self.assertEqual(
             fetched["request"]["execution"],
             _request_payload()["execution"],
@@ -157,6 +158,25 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(fetched["diagnostics"])
         self.assertNotIn("fills", fetched)
         self.assertNotIn("trades", fetched)
+
+    async def test_create_version_three_preserves_exact_strategy_identity(self):
+        request = _request_payload()
+        request["strategy"] = {**request["strategy"], "strategy_version": 1}
+        created = await main.create_backtest_run(
+            BacktestRunCreateIn(
+                **_run_payload(
+                    run_id="versioned",
+                    request_schema_version=3,
+                    request=request,
+                )
+            ),
+            db=self.db,
+        )
+
+        fetched = await main.get_backtest_run(created["run_id"], db=self.db)
+
+        self.assertEqual(fetched["request_schema_version"], 3)
+        self.assertEqual(fetched["request"]["strategy"], request["strategy"])
 
     async def test_create_queued_run_defaults_absent_terminal_fields(self):
         run = BacktestRunCreateIn(

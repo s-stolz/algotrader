@@ -84,6 +84,10 @@ to a chart UI, and supports standalone backtesting.
   when either changes. A Backtest Run resolves the exact pair and cannot silently
   substitute another version; the version does not identify the complete runtime
   or keep retired strategy code executable.
+- **Current Strategy Catalog**: live metadata discovered from registered
+  single-file strategy builders. New standalone requests persist the exact
+  Strategy Version and resolved defaults; older unversioned requests remain
+  inspectable without assigning the current identity.
 - **Strategy Parameter Schema**: the public parameter names, types, defaults, and
   independent constraints derived from a registered strategy builder's annotated
   signature. The type itself defines inherent values such as Boolean `true` and
@@ -145,9 +149,10 @@ to a chart UI, and supports standalone backtesting.
 - Durable backtest runs use `queued`, `running`, `succeeded`, and `failed`
   lifecycle states. Lifecycle timestamps are normalized storage fields; the
   complete immutable request is versioned JSON, and fills/trades are normalized
-  child records. Request schema version 2 replaces legacy `allow_short` with
-  explicit Allowed Directions. Result schema version 3 is the only accepted
-  completed-result schema; closed trades carry nullable `stop_loss_price` and
+  child records. New request schema version 3 adds exact Strategy Version and
+  resolved parameters; version 2 remains readable. Both use explicit Allowed
+  Directions rather than legacy `allow_short`. New results use schema version 3;
+  older result versions remain readable. Closed trades carry nullable `stop_loss_price` and
   `take_profit_price` planned levels plus explicit trade direction so consumers
   do not infer long or short trades from fill order. Run history filters request
   attributes from that JSON document and returns matches by `submitted_at DESC`,

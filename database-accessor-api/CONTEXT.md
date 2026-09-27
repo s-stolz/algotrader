@@ -35,16 +35,16 @@ stored in TimescaleDB.
   `exchange`.
 - M1 reads use the raw `candles` table. Higher timeframe reads may use Timescale
   continuous aggregates or direct `time_bucket` fallback.
-- Backtest request attributes live only in versioned `request` JSON. Request
-  schema version 2 replaces legacy `allow_short` with Allowed Directions.
+- Backtest request attributes live only in versioned `request` JSON. New schema
+  version 3 adds exact Strategy Version and resolved parameters; version 2
+  remains readable without assigning a current version. Both use Allowed Directions.
   Lifecycle status and timestamps are normalized columns; result metrics and
   diagnostics are nullable versioned JSON documents.
-- Request schema version 2 is current for request JSON; existing local durable
-  backtest rows may be deleted instead of rewritten.
-- Result schema version 3 is the only accepted completed-result schema. Closed
-  trades include nullable planned protective exit prices and required
-  closed-trade direction. Existing local durable backtest rows may be deleted
-  during adoption rather than read through legacy compatibility logic.
+- New request JSON uses schema version 3. The accessor preserves historical
+  version 2 request JSON without backfill. New completed results use schema
+  version 3; stored result versions 1 and 2 remain readable for inspection.
+  Current closed trades include nullable planned protective exit prices and
+  required closed-trade direction.
 - Stored backtest closed-trade `trade_direction` is required and limited to
   `long` or `short`.
 - Run listing filters status and submission dates through lifecycle columns and

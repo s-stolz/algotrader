@@ -36,6 +36,7 @@ class ApiContractModel(BaseModel):
 
 class StrategyRequestSchema(ApiContractModel):
     strategy_id: str
+    strategy_version: StrictInt = Field(gt=0)
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -85,6 +86,7 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
             strategy=StrategyConfig(
                 strategy_id=self.strategy.strategy_id,
                 parameters=dict(self.strategy.parameters),
+                strategy_version=self.strategy.strategy_version,
             ),
             execution=ExecutionConfig(
                 signal_timing=SignalTiming(execution.signal_timing),
@@ -101,6 +103,16 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
             persist_result=self.persist_result,
             run_metadata=(dict(self.run_metadata) if self.run_metadata is not None else None),
         )
+
+
+class StoredStrategyRequestSchema(ApiContractModel):
+    strategy_id: str
+    strategy_version: StrictInt | None = Field(default=None, gt=0)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class StoredBacktestRequestSchema(BacktestSubmissionRequestSchema):
+    strategy: StoredStrategyRequestSchema
 
 
 class BacktestSubmissionResponseSchema(ApiContractModel):
@@ -175,7 +187,7 @@ class BacktestRunResponseSchema(ApiContractModel):
     started_at_ms: int | None = None
     completed_at_ms: int | None = None
     request_schema_version: int
-    request: BacktestSubmissionRequestSchema
+    request: StoredBacktestRequestSchema
     result_schema_version: int | None = None
     metrics: dict[str, Any] | None = None
     diagnostics: dict[str, Any] | None = None

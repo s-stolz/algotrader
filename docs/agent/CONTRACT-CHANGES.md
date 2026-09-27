@@ -20,6 +20,7 @@ contexts and tests to inspect.
 | Runtime configuration and generated env files | `config/topology.yaml`, `scripts/generate_env.py` | Docker Compose, frontend proxy, Python modules reading env | `config/CONTEXT.md`, `README.md` if human setup changes, ADR when ownership changes | `make validate-config`; stack smoke test when ports or hosts change |
 | Timescale storage shape and continuous aggregates | `timescaledb-init`, `database-accessor-api` | `ingestion-service`, `indicator-api`, `backtester`, `frontend` through queries | Root `CONTEXT.md`, `timescaledb-init/CONTEXT.md`, `database-accessor-api/CONTEXT.md`, affected consumer contexts | Database accessor tests; stack test when SQL migration behavior changes |
 | Durable backtest run persistence | `backtester`, `database-accessor-api`, `timescaledb-init` | `backtester`, `frontend`, `libs/db_accessor_client` | Root `CONTEXT.md`, `backtester/CONTEXT.md`, `frontend/CONTEXT.md`, `database-accessor-api/CONTEXT.md`, `timescaledb-init/CONTEXT.md`, `libs/CONTEXT.md`, ADR-0005 | Backtester, database accessor, shared client tests, frontend contract tests, and Python verification |
+| Strategy catalog and exact-version standalone submission | `backtester` registry and public API | `backtester` worker, `frontend`, `database-accessor-api` request JSON | Root `CONTEXT.md`, `backtester/CONTEXT.md`, `frontend/CONTEXT.md`, `database-accessor-api/CONTEXT.md`, `timescaledb-init/CONTEXT.md`, `libs/CONTEXT.md` | Registry, run service, route, worker, accessor, frontend creation and contract tests |
 
 ## Update Rule
 

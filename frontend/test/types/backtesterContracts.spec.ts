@@ -196,6 +196,11 @@ describe('backtester contract validators', () => {
       ...base,
       request: { ...request, strategy: { ...request.strategy, strategy_version: '4' } },
     })).toBe(false);
+    expect(isBacktestRun({ ...base, request_schema_version: 3, request })).toBe(false);
+    expect(isBacktestRun({
+      ...base, request_schema_version: 3,
+      request: { ...request, strategy: { ...request.strategy, strategy_version: 4 } },
+    })).toBe(true);
   });
 
   it('rejects legacy request snapshots that still use allow_short', () => {

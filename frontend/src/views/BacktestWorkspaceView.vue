@@ -6,6 +6,9 @@
         <p>Saved standalone Backtest Runs</p>
       </div>
       <div class="header-actions">
+        <n-button type="primary" data-testid="workspace-create" @click="creationOpen = true">
+          Create Backtest
+        </n-button>
         <n-button data-testid="workspace-refresh" :loading="isRefreshing" @click="loadRuns()">
           Refresh
         </n-button>
@@ -14,6 +17,8 @@
         </n-button>
       </div>
     </header>
+
+    <BacktestCreationDrawer v-model:show="creationOpen" @submitted="createdRun" />
 
     <section aria-label="Saved Backtest Runs">
       <div class="filters">
@@ -150,6 +155,7 @@ import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import { BACKTEST_RUN_STATUSES, type BacktestRun } from '@/types/backtesterContracts';
+import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
 
 import {
   compareHistoryRuns, displayWinRate, formatMagnitude, formatSigned, formatUtcDate, runMarket,
@@ -171,6 +177,7 @@ const detailError = ref<string | null>(null);
 const deleteError = ref<string | null>(null);
 const deletingRunIds = ref<ReadonlySet<string>>(new Set());
 const detailLoading = ref(false);
+const creationOpen = ref(false);
 const search = ref('');
 const statusFilter = ref('all');
 const typeFilter = ref('all');
@@ -295,6 +302,16 @@ function loadRuns(shouldQueue = true): Promise<void> {
 function selectRun(run: BacktestRun): void {
   workspaceStore.selectRun(run);
   void loadSelected(run.run_id);
+}
+
+async function createdRun(runId: string): Promise<void> {
+  try {
+    workspaceStore.selectRun(await getBacktestRun(runId));
+    detailError.value = null;
+  } catch (error) {
+    detailError.value = errorMessage(error);
+  }
+  await loadRuns();
 }
 
 function rowKey(run: BacktestRun): string {

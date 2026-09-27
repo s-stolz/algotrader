@@ -34,6 +34,14 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   public backtester API, not direct database-accessor storage routes.
 - Frontend development proxy exposes the public backtester API under
   `/api/backtester`.
+- The Workspace creation drawer reads the live `/backtests/strategies` catalog,
+  authoritative Market records, and supported Timeframe codes. It submits an
+  exact strategy/version pair to `POST /backtests` and preserves its draft across
+  chart navigation. A stale version refreshes metadata for explicit review,
+  without substitution or automatic resubmission.
+- Runtime run readers accept request schema versions 2 and 3. Version 2 has no
+  declared Strategy Version; history labels it unavailable instead of assigning
+  current code. Version 3 includes resolved parameter defaults.
 - Backtest chart overlays use Backtest Closed Trades as the primary artifact;
   Backtest Fills are lower-level execution-log records, not the default chart
   overlay.
@@ -43,9 +51,9 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Backtest marker labels must use closed-trade direction for short-capable
   results. Long trades enter with buy markers and exit with sell markers; short
   trades enter with sell markers and exit with buy markers.
-- Short-support frontend work is consumer-side unless a backtest submission UI
-  already exists: update runtime contracts, run-history metric display, and
-  chart overlay labels for result schema version 3 closed-trade direction.
+- The standalone submission drawer keeps Allowed Directions in execution settings
+  and defaults it to `long_and_short`; runtime contracts, run-history metrics,
+  and chart overlays read result schema version 3 closed-trade direction.
 - Backtest protective exit overlays show configured stop-loss and take-profit
   levels for each closed trade whenever the run's strategy defined them,
   regardless of whether the trade exited by signal, stop loss, or take profit.
@@ -93,8 +101,8 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Backtest overlays expose a compact candlestick-pane panel showing the applied
   run context and a remove action; saved run selection is in the Workspace.
 - The chart toolbar opens the full-screen Backtest Workspace. The chart route is
-  kept alive, and the Workspace store retains its selected run and a place for
-  the later creation draft when navigating between them.
+  kept alive, and the Workspace store retains its selected run and editable
+  creation draft when navigating between them.
 - Workspace history reads saved standalone runs from the public backtester API
   on entry and at five-second intervals while active. It provides search and
   status, type, Market, Strategy, and Timeframe filters, sortable history

@@ -7,11 +7,54 @@ import {
   isBacktestFillArray,
   isBacktestRun,
   isBacktestRunArray,
+  isStrategyCatalog,
+  type BacktestRequestPayload,
+  type StrategyCatalogEntry,
 } from '@/types/backtesterContracts';
 
 import { parseJsonResponse, withQuery } from './http';
 
 const BACKTESTS_BASE_URL = '/api/backtester/backtests';
+
+export class BacktestSubmissionError extends Error {
+  constructor(public readonly code: string, public readonly fields: string[], message: string) {
+    super(message);
+  }
+}
+
+export async function fetchStrategyCatalog(): Promise<StrategyCatalogEntry[]> {
+  const payload = await parseJsonResponse(
+    await fetch(`${BACKTESTS_BASE_URL}/strategies`), 'Failed to fetch strategy catalog',
+  );
+  if (!isStrategyCatalog(payload)) throw new Error('Invalid strategy catalog response');
+  return payload;
+}
+
+export async function submitBacktestRun(request: BacktestRequestPayload): Promise<string> {
+  const response = await fetch(BACKTESTS_BASE_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  });
+  const payload: unknown = await response.json();
+  if (!response.ok) {
+    if (typeof payload === 'object' && payload !== null && 'detail' in payload) {
+      const detail = payload.detail;
+      if (typeof detail === 'object' && detail !== null && 'code' in detail &&
+        typeof detail.code === 'string') {
+        const fields = 'fields' in detail && Array.isArray(detail.fields)
+          ? detail.fields.filter((field): field is string => typeof field === 'string') : [];
+        throw new BacktestSubmissionError(detail.code, fields,
+          'message' in detail && typeof detail.message === 'string' ? detail.message : detail.code);
+      }
+    }
+    throw new Error(`Backtest submission failed: ${response.statusText || response.status}`);
+  }
+  if (response.status !== 202 || typeof payload !== 'object' || payload === null ||
+    !('run_id' in payload) || typeof payload.run_id !== 'string' ||
+    !('status' in payload) || payload.status !== 'queued') {
+    throw new Error('Invalid backtest submission response');
+  }
+  return payload.run_id;
+}
 
 export async function listBacktestRuns(
   query: BacktestRunListQuery = {},

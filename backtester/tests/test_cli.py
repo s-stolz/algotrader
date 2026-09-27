@@ -429,7 +429,18 @@ class TestCli(unittest.TestCase):
                 payload = client.saved_runs[0]
                 self.assertEqual(payload["run_id"], run_id)
                 self.assertEqual(payload["status"], "succeeded")
-                self.assertEqual(payload["request_schema_version"], 2)
+                self.assertEqual(payload["request_schema_version"], 3)
+                self.assertEqual(payload["request"]["strategy"]["strategy_version"], 1)
+                self.assertEqual(
+                    payload["request"]["strategy"]["parameters"],
+                    {
+                        "fast_window": 2,
+                        "slow_window": 3,
+                        "quantity": 1.0,
+                        "stop_loss_pct": None,
+                        "take_profit_pct": None,
+                    },
+                )
                 self.assertEqual(
                     payload["request"]["execution"]["allowed_directions"],
                     "long_and_short",

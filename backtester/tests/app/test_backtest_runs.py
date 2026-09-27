@@ -80,8 +80,11 @@ class TestBacktestRunService(unittest.TestCase):
         self.assertEqual(submitted.run_id, "run-123")
         self.assertEqual(submitted.status, BacktestRunStatus.QUEUED)
         self.assertEqual(submitted.submitted_at_ms, 1_780_921_805_123)
-        self.assertEqual(submitted.request_snapshot.to_request(), request)
-        self.assertEqual(submitted.request_snapshot.schema_version, 2)
+        self.assertEqual(submitted.request_snapshot.to_request().strategy.strategy_version, 1)
+        self.assertEqual(submitted.request_snapshot.schema_version, 3)
+        self.assertEqual(
+            submitted.request_snapshot.payload["strategy"]["parameters"]["stop_loss_pct"], None
+        )
         self.assertEqual(
             submitted.request_snapshot.payload["execution"]["allowed_directions"],
             "long_and_short",
@@ -101,7 +104,9 @@ class TestBacktestRunService(unittest.TestCase):
 
                 submitted = service.submit(request)
 
-                self.assertEqual(submitted.request_snapshot.to_request(), request)
+                self.assertEqual(
+                    submitted.request_snapshot.to_request().execution, request.execution
+                )
                 self.assertEqual(
                     submitted.request_snapshot.payload["execution"]["allowed_directions"],
                     direction.value,
@@ -162,7 +167,7 @@ class TestBacktestRunService(unittest.TestCase):
             (
                 replace(
                     _valid_request(),
-                    strategy=StrategyConfig(strategy_id="unknown"),
+                    strategy=StrategyConfig(strategy_id="unknown", strategy_version=1),
                 ),
                 "Unknown strategy_id",
             ),
@@ -172,9 +177,10 @@ class TestBacktestRunService(unittest.TestCase):
                     strategy=StrategyConfig(
                         strategy_id="sma_crossover",
                         parameters={"fast_window": 20, "slow_window": 5},
+                        strategy_version=1,
                     ),
                 ),
-                "fast_window must be strictly smaller",
+                "Fast window must be smaller",
             ),
             (
                 replace(
@@ -182,9 +188,10 @@ class TestBacktestRunService(unittest.TestCase):
                     strategy=StrategyConfig(
                         strategy_id="sma_crossover",
                         parameters={"fast_window": 1.5, "slow_window": 20},
+                        strategy_version=1,
                     ),
                 ),
-                "SMA windows must be integers",
+                "fast_window must be int",
             ),
         )
 
@@ -193,7 +200,7 @@ class TestBacktestRunService(unittest.TestCase):
                 repository = _FakeRunRepository()
                 service = BacktestRunService(repository=repository)
 
-                with self.assertRaisesRegex(InvalidBacktestRequestError, message):
+                with self.assertRaisesRegex(ValueError, message):
                     service.submit(request)
 
                 self.assertEqual(repository.created_runs, [])
@@ -354,6 +361,7 @@ def _valid_request() -> BacktestRequest:
                 "slow_window": 20,
                 "quantity": 1_000.0,
             },
+            strategy_version=1,
         ),
         execution=ExecutionConfig(),
         initial_capital=25_000.0,

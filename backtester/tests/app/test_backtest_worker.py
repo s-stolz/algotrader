@@ -177,7 +177,7 @@ class TestBacktestWorker(unittest.TestCase):
             CompactBacktestFailure(
                 error_code="RuntimeError: database password exposed",
                 error_message=(
-                    "Traceback (most recent call last):\n" "RuntimeError: database password exposed"
+                    "Traceback (most recent call last):\nRuntimeError: database password exposed"
                 ),
             )
         )
@@ -458,6 +458,37 @@ class TestBacktestWorker(unittest.TestCase):
 
 
 class TestBacktestChildExecution(unittest.TestCase):
+    def test_unavailable_exact_version_fails_before_loading_candles(self) -> None:
+        for strategy_id, version in (
+            ("sma_crossover", None),
+            ("sma_crossover", 999),
+            ("retired", 1),
+        ):
+            with self.subTest(strategy_id=strategy_id, version=version):
+                request = replace(
+                    _request(),
+                    strategy=replace(
+                        _request().strategy,
+                        strategy_id=strategy_id,
+                        strategy_version=version,
+                    ),
+                )
+                adapter = _FakeHistoricalAdapter(_bars())
+
+                outcome = execute_backtest_child(
+                    BacktestRequestSnapshot.from_request(request),
+                    data_adapter=adapter,
+                )
+
+                self.assertEqual(
+                    outcome,
+                    CompactBacktestFailure(
+                        error_code="strategy_version_unavailable",
+                        error_message="Exact strategy version is unavailable",
+                    ),
+                )
+                self.assertEqual(adapter.calls, [])
+
     def test_process_executor_runs_request_in_spawned_child(self) -> None:
         snapshot = BacktestRequestSnapshot.from_request(_request())
         executor = ProcessBacktestChildExecutor(execute_fn=_return_process_identity)
@@ -532,6 +563,7 @@ def _request() -> BacktestRequest:
         strategy=StrategyConfig(
             strategy_id="sma_crossover",
             parameters={"fast_window": 2, "slow_window": 3, "quantity": 1.0},
+            strategy_version=1,
         ),
         execution=ExecutionConfig(),
         initial_capital=10_000.0,

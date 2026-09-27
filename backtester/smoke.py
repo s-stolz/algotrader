@@ -386,6 +386,7 @@ def _success_request() -> dict[str, Any]:
         "initial_capital": 10_000.0,
         "strategy": {
             "strategy_id": "sma_crossover",
+            "strategy_version": 1,
             "parameters": {
                 "fast_window": 2,
                 "slow_window": 3,

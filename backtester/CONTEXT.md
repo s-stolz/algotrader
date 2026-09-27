@@ -101,6 +101,8 @@ Standalone Python backtesting module for historical candle simulation.
 - `main.py`: backtester API process entrypoint.
 - `worker.py`: singleton asynchronous worker process entrypoint.
 - `smoke.py`: deployed success/failure lifecycle smoke check.
+- `STRATEGIES.md`: developer workflow for single-file registration, pure
+  validators, and mandatory Strategy Version bumps.
 
 ## Contracts
 
@@ -113,12 +115,21 @@ Standalone Python backtesting module for historical candle simulation.
   `long_and_short`.
 - CLI runs expose Allowed Directions through `--allowed-directions`, defaulting
   to `long_and_short`.
-- Version 2 request snapshots replace legacy `allow_short` with Allowed
-  Directions. New submissions use Allowed Directions only, and immutable request
-  snapshots always materialize the resolved `allowed_directions` value.
-- Request schema version 2 adoption assumes local durable backtest data can be
-  cleaned before rollout; runtime code does not need to backfill legacy
-  `allow_short` request snapshots.
+- New schema version 3 requests require exact Strategy Version and persist all
+  resolved strategy defaults. Version 2 remains readable without assigning a
+  current strategy identity. Both use Allowed Directions; submissions materialize
+  its resolved value.
+- Register each single-file strategy by decorating its annotated builder with
+  identifier and positive integer version. Bump that version whenever its public
+  parameter contract or behavior changes. The live `/backtests/strategies`
+  catalog derives signature order, types, defaults, and optional constraints
+  without a second manifest.
+- `validate_parameters` is the pure path for standalone and future sweep inputs.
+  Expected cross-parameter rejection has stable code, fields, and safe message;
+  unexpected validator failure is an error. No Candles load during validation.
+- Queued requests whose exact version is unavailable, including legacy requests
+  without a version, fail before Candle loading with
+  `strategy_version_unavailable`. Already executing children retain loaded code.
 - Durable lifecycle values are `queued`, `running`, `succeeded`, and `failed`.
   The backtester owns lifecycle policy; database-accessor-api exposes storage
   primitives.
@@ -142,7 +153,7 @@ Standalone Python backtesting module for historical candle simulation.
   results to conditional lifecycle updates and atomic successful completion.
   Completion payloads include metrics, diagnostics, fills, and closed trades,
   but never the equity curve.
-- Backtest result schema version 3 is the only accepted completed-result schema.
+- New completed results use schema version 3; older versions remain readable.
   Closed trade artifacts include nullable `stop_loss_price` and
   `take_profit_price` planned levels plus required closed-trade Trade Direction.
 - The singleton worker selects queued runs by `(submitted_at_ms, run_id)`, refreshes
