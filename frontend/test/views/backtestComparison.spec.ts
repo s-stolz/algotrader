@@ -37,6 +37,15 @@ describe('within-batch comparison', () => {
     expect(differingSettings([first])).toEqual([]);
   });
 
+  it('sorts drawdown by its displayed positive loss magnitude', () => {
+    const shallow = savedRun('shallow', 0);
+    const deep = savedRun('deep', 1);
+    shallow.metrics = { max_drawdown_pct: -2 };
+    deep.metrics = { max_drawdown_pct: -20 };
+    expect([deep, shallow].sort((a, b) => compareRuns(a, b, 'drawdown'))
+      .map((run) => run.run_id)).toEqual(['shallow', 'deep']);
+  });
+
   it('sorts ties by immutable ordinal and then run ID', () => {
     const rows = [savedRun('last', 2), savedRun('first', 0), savedRun('middle', 1)];
     expect([...rows].sort((a, b) => compareRuns(a, b, 'return'))

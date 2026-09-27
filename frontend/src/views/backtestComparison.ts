@@ -24,7 +24,10 @@ export function compareRuns(left: BacktestRun, right: BacktestRun,
       case 'market': return runMarket(run);
       case 'timeframe': return timeframeDuration(run.request.timeframe) ?? run.request.timeframe;
       case 'return': return savedMetric(run, 'total_return_pct');
-      case 'drawdown': return savedMetric(run, 'max_drawdown_pct');
+      case 'drawdown': {
+        const drawdown = savedMetric(run, 'max_drawdown_pct');
+        return drawdown === null ? null : Math.abs(drawdown);
+      }
       case 'capital': return run.request.initial_capital;
       case 'ordinal': return run.member_ordinal ?? 0;
     }
