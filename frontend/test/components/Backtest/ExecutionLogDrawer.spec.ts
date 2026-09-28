@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NSelect } from 'naive-ui';
 
 import {
   fetchBacktestClosedTrades, fetchBacktestFills, getBacktestRun, listBacktestBatches, listBacktestRuns,
@@ -94,8 +95,9 @@ describe('execution-log drawer', () => {
       '[data-testid="execution-trades-table"] tbody tr',
     )];
     expect(tradeRows.map((row) => row.cells[1].textContent)).toEqual(['long', 'short']);
-    expect(tradeRows[0].cells[4].textContent).toBe('2024-05-01T03:00:00.000Z');
-    expect(tradeRows[1].cells[2].textContent).toBe('2024-05-01T03:00:00.000Z');
+    expect(tradeRows[0].cells[2].textContent).toBe('01 May 2024, 01:00:00');
+    expect(tradeRows[0].cells[4].textContent).toBe('01 May 2024, 03:00:00');
+    expect(tradeRows[1].cells[2].textContent).toBe('01 May 2024, 03:00:00');
 
     document.body.querySelector<HTMLButtonElement>('[data-testid="execution-fills-tab"]')!.click();
     await wrapper.vm.$nextTick();
@@ -103,8 +105,51 @@ describe('execution-log drawer', () => {
       '[data-testid="execution-fills-table"] tbody tr',
     )];
     expect(fillRows.map((row) => row.cells[2].textContent)).toEqual(['buy', 'sell', 'buy']);
+    expect(fillRows[0].cells[1].textContent).toBe('01 May 2024, 01:00:00');
     expect(fillRows[1].cells[1].textContent).toBe(tradeRows[0].cells[4].textContent);
     expect(fillRows[1].cells[3].textContent).toBe('2000');
+    wrapper.unmount();
+  });
+
+  it('combines the Naive UI trade filters and keeps Fills unfiltered across tab changes', async () => {
+    const timestamp = 1_714_525_200_000;
+    vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([
+      trade(0, 'long', timestamp, timestamp + 60_000),
+      { ...trade(1, 'short', timestamp, timestamp + 60_000), exit_reason: 'stop_loss' },
+      { ...trade(2, 'long', timestamp, timestamp + 60_000), exit_reason: 'take_profit' },
+    ]);
+    vi.mocked(fetchBacktestFills).mockResolvedValue([
+      fill(0, 'buy', timestamp, 1000), fill(1, 'sell', timestamp + 60_000, 1000),
+    ]);
+    const wrapper = mount(ExecutionLogDrawer, { props: { run: run('filters'), show: true } });
+    await flushPromises();
+    const rows = () => [...document.body.querySelectorAll<HTMLTableRowElement>(
+      '[data-testid="execution-trades-table"] tbody tr',
+    )].map((row) => row.cells[0].textContent);
+    expect(document.body.querySelector('[data-testid="execution-log-drawer"] input[type="search"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="execution-log-drawer"] select')).toBeNull();
+    expect(rows()).toEqual(['0', '1', '2']);
+
+    wrapper.findAllComponents(NSelect)[0].vm.$emit('update:value', 'long');
+    await wrapper.vm.$nextTick();
+    expect(rows()).toEqual(['0', '2']);
+    wrapper.findAllComponents(NSelect)[1].vm.$emit('update:value', 'take_profit');
+    await wrapper.vm.$nextTick();
+    expect(rows()).toEqual(['2']);
+    wrapper.findAllComponents(NSelect)[0].vm.$emit('update:value', 'short');
+    await wrapper.vm.$nextTick();
+    expect(document.body.textContent).toContain('No Closed Trades match these filters.');
+
+    document.body.querySelector<HTMLElement>('[data-testid="execution-fills-tab"]')!.click();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findAllComponents(NSelect)).toHaveLength(0);
+    expect(document.body.querySelectorAll('[data-testid="execution-fills-table"] tbody tr')).toHaveLength(2);
+    document.body.querySelector<HTMLElement>('[data-testid="execution-trades-tab"]')!.click();
+    await wrapper.vm.$nextTick();
+    wrapper.findAllComponents(NSelect)[0].vm.$emit('update:value', 'all');
+    wrapper.findAllComponents(NSelect)[1].vm.$emit('update:value', 'all');
+    await wrapper.vm.$nextTick();
+    expect(rows()).toEqual(['0', '1', '2']);
     wrapper.unmount();
   });
 

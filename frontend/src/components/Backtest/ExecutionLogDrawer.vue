@@ -1,8 +1,8 @@
 <template>
-  <n-drawer class="backtest-drawer" :show="show" placement="right" :width="drawerWidth" @update:show="close">
+  <BaseDrawer :show="show" placement="right" :width="drawerWidth" @update:show="close">
     <n-drawer-content :title="`Execution log · ${runName(run)}`" closable>
       <div class="log-content" data-testid="execution-log-drawer">
-        <p class="run-identity">{{ run.run_id }}</p>
+        <div class="run-identity"><span>Run ID</span><code>{{ run.run_id }}</code></div>
         <p v-if="run.status !== 'succeeded'" role="status">
           This {{ run.status }} run has no completed execution log.
         </p>
@@ -17,52 +17,35 @@
               This successful run has no executions.
             </p>
             <template v-else>
-              <div class="tabs" role="tablist" aria-label="Execution records">
-                <n-button
-                  secondary
-                  role="tab"
-                  data-testid="execution-trades-tab"
-                  :aria-selected="tab === 'trades'"
-                  :type="tab === 'trades' ? 'primary' : 'default'"
-                  @click="tab = 'trades'"
-                >
-                  Closed Trades ({{ trades.length }})
-                </n-button>
-                <n-button
-                  secondary
-                  role="tab"
-                  data-testid="execution-fills-tab"
-                  :aria-selected="tab === 'fills'"
-                  :type="tab === 'fills' ? 'primary' : 'default'"
-                  @click="tab = 'fills'"
-                >
-                  Fills ({{ fills.length }})
-                </n-button>
-              </div>
-              <div class="log-filters">
-                <label>
-                  Search {{ tab === 'trades' ? 'Closed Trades' : 'Fills' }}
-                  <input v-model="search" data-testid="execution-search" type="search" />
-                </label>
-                <template v-if="tab === 'trades'">
-                  <label>
-                    Trade Direction
-                    <select v-model="direction" data-testid="execution-direction">
-                      <option value="all">All directions</option>
-                      <option value="long">Long</option>
-                      <option value="short">Short</option>
-                    </select>
-                  </label>
-                  <label>
-                    Exit reason
-                    <select v-model="exitReason" data-testid="execution-exit-reason">
-                      <option value="all">All reasons</option>
-                      <option value="signal">Signal</option>
-                      <option value="stop_loss">Stop loss</option>
-                      <option value="take_profit">Take profit</option>
-                    </select>
-                  </label>
-                </template>
+              <div class="log-toolbar">
+                <n-tabs v-model:value="tab" type="line" size="small" aria-label="Execution records">
+                  <n-tab name="trades" data-testid="execution-trades-tab">
+                    Closed Trades ({{ trades.length }})
+                  </n-tab>
+                  <n-tab name="fills" data-testid="execution-fills-tab">
+                    Fills ({{ fills.length }})
+                  </n-tab>
+                </n-tabs>
+                <div v-if="tab === 'trades'" class="log-filters">
+                  <div class="log-filter">
+                    <span id="execution-direction-label">Trade direction</span>
+                    <n-select
+                      v-model:value="direction"
+                      data-testid="execution-direction"
+                      aria-labelledby="execution-direction-label"
+                      :options="directionOptions"
+                    />
+                  </div>
+                  <div class="log-filter">
+                    <span id="execution-exit-reason-label">Exit reason</span>
+                    <n-select
+                      v-model:value="exitReason"
+                      data-testid="execution-exit-reason"
+                      aria-labelledby="execution-exit-reason-label"
+                      :options="exitReasonOptions"
+                    />
+                  </div>
+                </div>
               </div>
               <p v-if="activeRecords.length === 0" role="status">
                 <template v-if="activeTotal === 0">
@@ -73,45 +56,41 @@
                 </template>
               </p>
               <div v-else class="table-scroll" role="tabpanel" :aria-label="tab === 'trades' ? 'Closed Trades' : 'Fills'">
-                <table v-if="tab === 'trades'" data-testid="execution-trades-table">
-                  <thead><tr>
-                    <th>Sequence</th><th>Trade Direction</th><th>Entry time (UTC)</th>
-                    <th>Entry price</th><th>Exit time (UTC)</th><th>Exit price</th>
-                    <th>Quantity</th><th>Realized PnL (account units)</th><th>Fees (account units)</th>
-                    <th>Exit reason</th><th>Planned stop loss</th><th>Planned take profit</th>
-                  </tr></thead>
-                  <tbody><tr v-for="trade in filteredTrades" :key="trade.sequence">
-                    <td>{{ trade.sequence }}</td><td>{{ trade.trade_direction }}</td>
-                    <td>{{ utc(trade.entry_timestamp_ms) }}</td><td>{{ trade.entry_price }}</td>
-                    <td>{{ utc(trade.exit_timestamp_ms) }}</td><td>{{ trade.exit_price }}</td>
-                    <td>{{ trade.quantity }}</td><td>{{ signed(trade.realized_pnl) }}</td>
-                    <td>{{ trade.fees }}</td><td>{{ reasonLabel(trade.exit_reason) }}</td>
-                    <td>{{ trade.stop_loss_price ?? '—' }}</td>
-                    <td>{{ trade.take_profit_price ?? '—' }}</td>
-                  </tr></tbody>
-                </table>
-                <table v-else data-testid="execution-fills-table">
-                  <thead><tr><th>Sequence</th><th>Time (UTC)</th><th>Side</th>
-                    <th>Quantity</th><th>Price</th><th>Fee (account units)</th></tr></thead>
-                  <tbody><tr v-for="fill in filteredFills" :key="fill.sequence">
-                    <td>{{ fill.sequence }}</td><td>{{ utc(fill.timestamp_ms) }}</td>
-                    <td>{{ fill.side }}</td><td>{{ fill.quantity }}</td>
-                    <td>{{ fill.price }}</td><td>{{ fill.fees }}</td>
-                  </tr></tbody>
-                </table>
+                <BaseDataTable
+                  v-if="tab === 'trades'"
+                  data-testid="execution-trades-table"
+                  :columns="tradeColumns"
+                  :data="filteredTrades"
+                  :row-key="(trade: BacktestClosedTrade) => trade.sequence"
+                  :scroll-x="2200"
+                  max-height="min(60vh, 560px)"
+                  striped
+                />
+                <BaseDataTable
+                  v-else
+                  data-testid="execution-fills-table"
+                  :columns="fillColumns"
+                  :data="fills"
+                  :row-key="(fill: BacktestFill) => fill.sequence"
+                  :scroll-x="900"
+                  max-height="min(60vh, 560px)"
+                  striped
+                />
               </div>
             </template>
           </template>
         </template>
       </div>
     </n-drawer-content>
-  </n-drawer>
+  </BaseDrawer>
 </template>
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { NButton, NDrawer, NDrawerContent } from 'naive-ui';
+import { NDrawerContent, NSelect, NTab, NTabs, type DataTableColumns } from 'naive-ui';
 
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
+import BaseDrawer from '@/components/Common/BaseDrawer.vue';
 import { fetchBacktestClosedTrades, fetchBacktestFills } from '@/api/backtesterClient';
 import {
   BACKTEST_RESULT_SCHEMA_VERSION, type BacktestClosedTrade, type BacktestFill, type BacktestRun,
@@ -126,7 +105,6 @@ const fills = ref<BacktestFill[] | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const tab = ref<'trades' | 'fills'>('trades');
-const search = ref('');
 const direction = ref('all');
 const exitReason = ref('all');
 let generation = 0;
@@ -139,7 +117,6 @@ watch([() => props.run.run_id, () => props.run.status,
   error.value = null;
   loading.value = false;
   tab.value = 'trades';
-  search.value = '';
   direction.value = 'all';
   exitReason.value = 'all';
   if (!props.show || props.run.status !== 'succeeded' ||
@@ -161,40 +138,75 @@ watch([() => props.run.run_id, () => props.run.status,
 
 onUnmounted(() => { ++generation; });
 
+const directionOptions = [
+  { label: 'All directions', value: 'all' },
+  { label: 'Long', value: 'long' },
+  { label: 'Short', value: 'short' },
+];
+const exitReasonOptions = [
+  { label: 'All reasons', value: 'all' },
+  { label: 'Signal', value: 'signal' },
+  { label: 'Stop loss', value: 'stop_loss' },
+  { label: 'Take profit', value: 'take_profit' },
+];
 const filteredTrades = computed(() => (trades.value ?? []).filter((trade) =>
   (direction.value === 'all' || trade.trade_direction === direction.value) &&
-  (exitReason.value === 'all' || trade.exit_reason === exitReason.value) &&
-  (!search.value.trim() || [trade.sequence, trade.trade_id, trade.symbol,
-    trade.trade_direction, trade.entry_timestamp_ms, trade.exit_timestamp_ms,
-    trade.entry_price, trade.exit_price, trade.quantity, trade.realized_pnl, trade.fees,
-    trade.exit_reason, trade.stop_loss_price, trade.take_profit_price,
-    utc(trade.entry_timestamp_ms), utc(trade.exit_timestamp_ms)]
-    .some((value) => String(value ?? '').toLowerCase().includes(search.value.trim().toLowerCase()))),
+  (exitReason.value === 'all' || trade.exit_reason === exitReason.value),
 ));
-const filteredFills = computed(() => (fills.value ?? []).filter((fill) =>
-  !search.value.trim() || [fill.sequence, fill.timestamp_ms, fill.symbol, fill.side,
-    fill.quantity, fill.price, fill.fees, utc(fill.timestamp_ms)]
-    .some((value) => String(value).toLowerCase().includes(search.value.trim().toLowerCase())),
-));
-const activeRecords = computed(() => tab.value === 'trades' ? filteredTrades.value : filteredFills.value);
+const activeRecords = computed(() => tab.value === 'trades' ? filteredTrades.value : fills.value ?? []);
 const activeTotal = computed(() => tab.value === 'trades' ? trades.value?.length : fills.value?.length);
 
-function utc(timestampMs: number): string { return new Date(timestampMs).toISOString(); }
+const tradeColumns: DataTableColumns<BacktestClosedTrade> = [
+  { title: 'Sequence', key: 'sequence', width: 100 },
+  { title: 'Trade Direction', key: 'trade_direction', width: 140 },
+  { title: 'Entry time (UTC)', key: 'entry_timestamp_ms', width: 250,
+    render: (trade) => formatTimestamp(trade.entry_timestamp_ms) },
+  { title: 'Entry price', key: 'entry_price', width: 120 },
+  { title: 'Exit time (UTC)', key: 'exit_timestamp_ms', width: 250,
+    render: (trade) => formatTimestamp(trade.exit_timestamp_ms) },
+  { title: 'Exit price', key: 'exit_price', width: 120 },
+  { title: 'Quantity', key: 'quantity', width: 100 },
+  { title: 'Realized PnL (account units)', key: 'realized_pnl', width: 230,
+    render: (trade) => signed(trade.realized_pnl) },
+  { title: 'Fees (account units)', key: 'fees', width: 180 },
+  { title: 'Exit reason', key: 'exit_reason', width: 140,
+    render: (trade) => reasonLabel(trade.exit_reason) },
+  { title: 'Planned stop loss', key: 'stop_loss_price', width: 170,
+    render: (trade) => trade.stop_loss_price ?? '—' },
+  { title: 'Planned take profit', key: 'take_profit_price', width: 180,
+    render: (trade) => trade.take_profit_price ?? '—' },
+];
+const fillColumns: DataTableColumns<BacktestFill> = [
+  { title: 'Sequence', key: 'sequence', width: 100 },
+  { title: 'Time (UTC)', key: 'timestamp_ms', width: 250,
+    render: (fill) => formatTimestamp(fill.timestamp_ms) },
+  { title: 'Side', key: 'side', width: 100 },
+  { title: 'Quantity', key: 'quantity', width: 120 },
+  { title: 'Price', key: 'price', width: 120 },
+  { title: 'Fee (account units)', key: 'fees', width: 180 },
+];
+
+const timestampFormatter = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit', month: 'short', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC',
+});
+function formatTimestamp(timestampMs: number): string { return timestampFormatter.format(timestampMs); }
 function signed(value: number): string { return formatSigned(value); }
 function reasonLabel(reason: string): string { return reason.replaceAll('_', ' '); }
 function close(): void { emit('close'); }
 </script>
 
 <style scoped>
-.run-identity { color: #8d9fae; overflow-wrap: anywhere; font-size: 12px; }
-.tabs, .log-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
-.log-filters label { display: flex; flex-direction: column; gap: 7px; color: #9bafbe; font-size: 12px; }
-.log-filters input, .log-filters select { min-width: 150px; padding: 8px 10px; color: #dce4ed; background: #202a35; border: 1px solid #3b4856; border-radius: 5px; }
-.log-filters input:focus, .log-filters select:focus { outline: 1px solid #63caaa; }
-.table-scroll { max-height: min(60vh, 560px); overflow: auto; border: 1px solid #34414d; border-radius: 8px; }
-table { border-collapse: separate; border-spacing: 0; min-width: 100%; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
-th, td { padding: 12px 16px; border-bottom: 1px solid #303c49; text-align: left; }
-th { position: sticky; top: 0; background: #222d39; color: #9bb0c0; font-size: 11px; font-weight: 500; }
-tbody tr:nth-child(even) { background: #1e2731; }
-tbody tr:hover { background: #263941; }
+.log-content { display: flex; flex-direction: column; gap: 20px; }
+.run-identity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; color: #8d9fae; font-size: 12px; }
+.run-identity span { font-weight: 500; }
+.run-identity code { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.log-toolbar { padding: 0 18px 18px; border: 1px solid #2b3541; border-radius: 10px; background: #1a2029; }
+.log-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 18px; }
+.log-filter { display: flex; flex-direction: column; gap: 8px; min-width: 0; color: #9bafbe; font-size: 12px; font-weight: 500; }
+.table-scroll { min-width: 0; }
+@media (max-width: 600px) {
+  .log-toolbar { padding: 0 14px 14px; }
+  .log-filters { grid-template-columns: 1fr; gap: 12px; padding-top: 14px; }
+}
 </style>
