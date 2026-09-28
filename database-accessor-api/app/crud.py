@@ -526,10 +526,10 @@ async def insert_backtest_run(session, run_data: dict):
             await session.execute(insert(backtest_queue_turns).values(run_id=stored_run["run_id"]))
         if fills:
             fill_values = [{"run_id": stored_run["run_id"], **fill} for fill in fills]
-            await session.execute(insert(backtest_fills).values(fill_values))
+            await session.execute(insert(backtest_fills), fill_values)
         if trades:
             trade_values = [{"run_id": stored_run["run_id"], **trade} for trade in trades]
-            await session.execute(insert(backtest_closed_trades).values(trade_values))
+            await session.execute(insert(backtest_closed_trades), trade_values)
         await session.commit()
     except Exception:
         await session.rollback()
@@ -890,10 +890,10 @@ async def complete_backtest_run(
 
         if fills:
             fill_values = [{"run_id": run_id, **fill} for fill in fills]
-            await session.execute(insert(backtest_fills).values(fill_values))
+            await session.execute(insert(backtest_fills), fill_values)
         if trades:
             trade_values = [{"run_id": run_id, **trade} for trade in trades]
-            await session.execute(insert(backtest_closed_trades).values(trade_values))
+            await session.execute(insert(backtest_closed_trades), trade_values)
         await session.commit()
     except Exception:
         await session.rollback()

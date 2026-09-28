@@ -685,13 +685,12 @@ async def settle(session, *, run_id: str, owner_token: str, terminal: dict) -> b
             return False
         if fills:
             await session.execute(
-                insert(backtest_fills).values([{"run_id": run_id, **fill} for fill in fills])
+                insert(backtest_fills), [{"run_id": run_id, **fill} for fill in fills]
             )
         if trades:
             await session.execute(
-                insert(backtest_closed_trades).values(
-                    [{"run_id": run_id, **trade} for trade in trades]
-                )
+                insert(backtest_closed_trades),
+                [{"run_id": run_id, **trade} for trade in trades],
             )
         if batch_id is not None:
             await _reconcile_batch_after_run(session, batch_id, run_id, data["completed_at"])

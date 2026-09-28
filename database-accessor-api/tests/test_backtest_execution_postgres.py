@@ -15,6 +15,7 @@ import asyncpg
 from app import backtest_execution, crud
 from sqlalchemy import text
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 RUN_LIVE = os.environ.get("RUN_BACKTEST_EXECUTION_INTEGRATION_TESTS") == "1"
@@ -428,6 +429,118 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(
                 await self.db.fetchval("SELECT owner_token FROM backtest_execution_slot")
             )
+        finally:
+            await engine.dispose()
+
+    async def test_large_result_settlement_preserves_artifacts_and_atomicity(self) -> None:
+        await self._insert_run("large", "queued", "2026-06-08T12:30:00Z")
+        await self._insert_run("waiting", "queued", "2026-06-08T12:31:00Z")
+        await self._migrate()
+        engine = create_async_engine(
+            URL.create(
+                "postgresql+asyncpg",
+                username=self.connection_options["user"],
+                **{key: value for key, value in self.connection_options.items() if key != "user"},
+            )
+        )
+        at = datetime.fromisoformat("2026-06-08T12:32:00+00:00")
+        fills = [
+            dict(
+                fill_sequence=i,
+                timestamp_ms=i,
+                symbol="EURUSD",
+                side="buy",
+                quantity=1.0,
+                price=1.0,
+                fees=0.0,
+                exit_reason=None,
+            )
+            for i in range(4000)
+        ]
+        trades = [
+            dict(
+                trade_sequence=i,
+                trade_id=str(i),
+                symbol="EURUSD",
+                trade_direction="long",
+                quantity=1.0,
+                entry_timestamp_ms=i,
+                entry_price=1.0,
+                exit_timestamp_ms=i + 1,
+                exit_price=2.0,
+                stop_loss_price=None,
+                take_profit_price=None,
+                realized_pnl=1.0,
+                fees=0.0,
+                exit_reason="signal",
+            )
+            for i in range(3000)
+        ]
+        terminal = dict(
+            status="succeeded",
+            completed_at=at,
+            result_schema_version=3,
+            metrics={},
+            diagnostics={},
+            fills=fills,
+            trades=trades,
+        )
+        try:
+            async with engine.connect() as connection:
+                await connection.execute(text(f'SET search_path TO "{self.schema}"'))
+                await connection.commit()
+                async with AsyncSession(bind=connection) as session:
+                    self.assertTrue(
+                        await backtest_execution.claim(
+                            session, run_id="large", owner_token="owner", started_at=at
+                        )
+                    )
+                    # A late artifact failure must roll back earlier inserts and keep ownership.
+                    with self.assertRaises(IntegrityError):
+                        await backtest_execution.settle(
+                            session,
+                            run_id="large",
+                            owner_token="owner",
+                            terminal={**terminal, "trades": [*trades, trades[-1]]},
+                        )
+                    self.assertEqual(
+                        await self.db.fetchval("SELECT count(*) FROM backtest_fills"), 0
+                    )
+                    self.assertEqual(
+                        await self.db.fetchval("SELECT count(*) FROM backtest_closed_trades"), 0
+                    )
+                    self.assertEqual(
+                        await self.db.fetchval("SELECT owner_token FROM backtest_execution_slot"),
+                        "owner",
+                    )
+                    self.assertEqual(
+                        await self.db.fetchval(
+                            "SELECT status FROM backtest_runs WHERE run_id='large'"
+                        ),
+                        "running",
+                    )
+                    self.assertTrue(
+                        await backtest_execution.settle(
+                            session, run_id="large", owner_token="owner", terminal=terminal
+                        )
+                    )
+                    self.assertEqual(
+                        await self.db.fetchval("SELECT count(*) FROM backtest_fills"), 4000
+                    )
+                    self.assertEqual(
+                        await self.db.fetchval("SELECT count(*) FROM backtest_closed_trades"), 3000
+                    )
+                    self.assertEqual(
+                        await self.db.fetchval(
+                            "SELECT status FROM backtest_runs WHERE run_id='large'"
+                        ),
+                        "succeeded",
+                    )
+                    self.assertTrue(
+                        await backtest_execution.claim(
+                            session, run_id="waiting", owner_token="next", started_at=at
+                        )
+                    )
         finally:
             await engine.dispose()
 
