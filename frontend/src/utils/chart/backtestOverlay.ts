@@ -52,10 +52,24 @@ function markerForAction(
     id: `${tradeId}:${kind}`,
     time: timestampToChartTime(timestampMs),
     position: isBuy ? 'belowBar' : 'aboveBar',
-    shape: isBuy ? 'arrowUp' : 'arrowDown',
+    shape: kind === 'exit' ? 'circle' : isBuy ? 'arrowUp' : 'arrowDown',
     color: isBuy ? BUY_MARKER_COLOR : SELL_MARKER_COLOR,
     text: `${isBuy ? 'Buy' : 'Sell'} @ ${formatTradePrice(price, minMove)}`,
   };
+}
+
+export function formatBacktestMarkerDetails(
+  trade: BacktestClosedTrade,
+  kind: 'entry' | 'exit',
+  minMove?: number | null,
+): string {
+  const price = kind === 'entry' ? trade.entry_price : trade.exit_price;
+  const action = kind === 'entry' ? 'Open' : 'Close';
+  const details = `${action} ${trade.trade_direction} @ ${formatTradePrice(price, minMove)}`;
+  if (kind === 'entry') return details;
+
+  const pnl = trade.realized_pnl;
+  return `${details} · Realized PnL: ${pnl > 0 ? '+' : ''}${pnl.toFixed(2)} account units`;
 }
 
 export function buildBacktestTradeMarkers(

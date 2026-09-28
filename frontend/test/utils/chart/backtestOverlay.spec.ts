@@ -128,7 +128,7 @@ describe('backtest chart overlay utilities', () => {
         id: 'AAPL-trade-1:exit',
         time: 1_700_000_300,
         position: 'belowBar',
-        shape: 'arrowUp',
+        shape: 'circle',
         color: BUY_MARKER_COLOR,
         text: 'Buy @ 9.45',
       },
@@ -179,7 +179,7 @@ describe('backtest chart overlay utilities', () => {
         id: 'long-trade:exit',
         time: 600,
         position: 'aboveBar',
-        shape: 'arrowDown',
+        shape: 'circle',
         color: SELL_MARKER_COLOR,
         text: 'Sell @ 104.5',
       },
@@ -187,10 +187,23 @@ describe('backtest chart overlay utilities', () => {
         id: 'short-trade:exit',
         time: 660,
         position: 'belowBar',
-        shape: 'arrowUp',
+        shape: 'circle',
         color: BUY_MARKER_COLOR,
         text: 'Buy @ 96.5',
       },
+    ]);
+  });
+
+  it('keeps both reversal events but distinguishes the close from the new entry', () => {
+    const markers = buildBacktestTradeMarkers([
+      closedTrade({ trade_id: 'long' }),
+      closedTrade({ trade_id: 'short', trade_direction: 'short',
+        entry_timestamp_ms: 600_000, entry_price: 104.5, exit_timestamp_ms: 900_000 }),
+    ], { startMs: 600_000, endMs: 600_000 }, 0.01);
+    expect(markers).toHaveLength(2);
+    expect(markers.map(({ id, shape, text }) => ({ id, shape, text }))).toEqual([
+      { id: 'long:exit', shape: 'circle', text: 'Sell @ 104.50' },
+      { id: 'short:entry', shape: 'arrowDown', text: 'Sell @ 104.50' },
     ]);
   });
 

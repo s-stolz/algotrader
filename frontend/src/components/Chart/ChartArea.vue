@@ -31,6 +31,10 @@
             </n-icon>
           </n-button>
         </div>
+        <div class="backtest-marker-legend">↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div>
+        <div v-if="hoveredBacktestMarker" class="backtest-marker-details" role="tooltip">
+          {{ hoveredBacktestMarker }}
+        </div>
       </div>
     </Teleport>
 
@@ -97,6 +101,7 @@ import { buildMeasurementOverlayModel } from "@/utils/chart/measurementOverlay";
 import {
   buildBacktestProtectiveLineSegments,
   buildBacktestTradeMarkers,
+  formatBacktestMarkerDetails,
   type LoadedCandleRange,
 } from "@/utils/chart/backtestOverlay";
 import { getOrCreatePaneOverlayWrapper } from "@/utils/chart/paneOverlay";
@@ -157,6 +162,8 @@ interface ChartAreaData {
   indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
   chartSession: ChartSession | null;
   backtestOverlayTarget: HTMLElement | null;
+  backtestMarkerDetails: Map<string, string>;
+  hoveredBacktestMarker: string | null;
   measurementPaneElement: HTMLElement | null;
   activeMeasurement: MeasurementDragState | null;
 }
@@ -214,6 +221,8 @@ export default defineComponent({
       indicatorMessageHandler: null,
       chartSession: null,
       backtestOverlayTarget: null,
+      backtestMarkerDetails: markRaw(new Map()),
+      hoveredBacktestMarker: null,
       measurementPaneElement: null,
       activeMeasurement: null,
     };
@@ -766,6 +775,8 @@ export default defineComponent({
     },
 
     refreshBacktestMarkers(): void {
+      this.hoveredBacktestMarker = null;
+      this.backtestMarkerDetails.clear();
       const range = this.getBacktestLoadedCandleRange();
 
       if (!this.backtestOverlayStore.selectedRun || !range) {
@@ -775,6 +786,14 @@ export default defineComponent({
       }
 
       const trades = this.backtestOverlayStore.getClosedTradesForRange(range.startMs, range.endMs);
+      for (const trade of trades) {
+        for (const kind of ['entry', 'exit'] as const) {
+          this.backtestMarkerDetails.set(
+            `${trade.trade_id}:${kind}`,
+            formatBacktestMarkerDetails(trade, kind, this.currentMarketMinMove),
+          );
+        }
+      }
       this.chartInfrastructure.setCandlestickMarkers(
         buildBacktestTradeMarkers(trades, range, this.currentMarketMinMove),
       );
@@ -791,6 +810,11 @@ export default defineComponent({
     onCrosshairMove(param: MouseEventParams<Time>): void {
       try {
         const validCrosshairPoint = this.isValidCrosshairPoint(param);
+        this.hoveredBacktestMarker = validCrosshairPoint &&
+          (param.paneIndex === undefined || param.paneIndex === 0) &&
+          typeof param.hoveredObjectId === 'string'
+          ? this.backtestMarkerDetails.get(param.hoveredObjectId) ?? null
+          : null;
         if (!validCrosshairPoint) {
           return;
         }
@@ -905,6 +929,21 @@ export default defineComponent({
 
 .backtest-overlay-container {
   margin-bottom: 8px;
+}
+
+.backtest-marker-legend,
+.backtest-marker-details {
+  padding: 6px 12px;
+  color: #cbd5e1;
+  font-size: 12px;
+  background: rgba(19, 23, 34, 0.95);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.backtest-marker-details {
+  margin-top: 4px;
+  color: #f8fafc;
 }
 
 .backtest-overlay-panel {

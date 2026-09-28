@@ -26,6 +26,8 @@ import type {
 } from '@/components/Chart/chartSession';
 
 interface MockCrosshairParam {
+  hoveredObjectId?: unknown;
+  paneIndex?: number;
   time: number;
   point: { x: number; y: number };
   seriesData: Map<object, object>;
@@ -866,7 +868,7 @@ describe('ChartArea', () => {
         id: 'exit-only:exit',
         time: 600,
         position: 'aboveBar',
-        shape: 'arrowDown',
+        shape: 'circle',
         text: 'Sell @ 104.5000',
       }),
     ]);
@@ -1009,6 +1011,41 @@ describe('ChartArea', () => {
         endTime: 900,
       }),
     ]);
+  });
+
+  it('shows distinct reversal hover details and clears them outside markers and on removal', async () => {
+    setupStores();
+    const store = useBacktestOverlayStore();
+    store.selectedRunId = 'run-123';
+    store.selectedRun = backtestRun();
+    store.closedTrades = [
+      closedTrade({ trade_id: 'long', realized_pnl: -3.25 }),
+      closedTrade({ trade_id: 'short', trade_direction: 'short',
+        entry_timestamp_ms: 600_000, entry_price: 104.5, exit_timestamp_ms: 900_000 }),
+    ];
+    mountChartArea();
+    await flushPromises();
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000), candle(600_000)]);
+    const pane = chartAreaMocks.mainPaneElement;
+    const hover = async (hoveredObjectId?: unknown, paneIndex = 0, x = 1) => {
+      chartAreaMocks.crosshairHandler?.({ time: 600, point: { x, y: 1 },
+        seriesData: new Map(), hoveredObjectId, paneIndex });
+      await flushPromises();
+    };
+    await hover('long:exit');
+    expect(pane?.querySelector('[role="tooltip"]')?.textContent)
+      .toContain('Close long @ 104.5000 · Realized PnL: -3.25 account units');
+    await hover('short:entry');
+    expect(pane?.querySelector('[role="tooltip"]')?.textContent).toContain('Open short @ 104.5000');
+    expect(pane?.querySelector('[role="tooltip"]')?.textContent).not.toContain('PnL');
+    for (const args of [[undefined], ['unrelated'], ['long:exit', 1], ['long:exit', 0, -1]] as const) {
+      await hover(...args);
+      expect(pane?.querySelector('[role="tooltip"]')).toBeNull();
+    }
+    await hover('long:exit');
+    store.clearOverlay();
+    await flushPromises();
+    expect(pane?.querySelector('[role="tooltip"]')).toBeNull();
   });
 
   it('shows a compact Backtest Run overlay panel and removes the selected overlay', async () => {
