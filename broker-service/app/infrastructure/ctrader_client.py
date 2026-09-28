@@ -969,7 +969,13 @@ class CtraderClient(BrokerPort, MarketDataPort):
             ctidTraderAccountId=account_id,
             accessToken=self._access_token_provider(),
         )
-        await self._send_request(req)
+        res = await self._send_request(req)
+        if isinstance(res, ProtoOAErrorRes):
+            raise RuntimeError(
+                f"cTrader account authorization failed (code {res.errorCode}): {res.description}"
+            )
+        if not isinstance(res, ProtoOAAccountAuthRes) or res.ctidTraderAccountId != account_id:
+            raise RuntimeError("Unexpected cTrader account authorization response")
         self._authorized_accounts.add(account_id)
 
     async def _get_trader(self, account_id: int):
