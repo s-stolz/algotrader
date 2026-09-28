@@ -1,31 +1,30 @@
 <template>
   <div v-if="headerLine.length > 0" class="upload-data-preview">
-    <n-scrollbar x-scrollable>
-      <n-table :bordered="true" :single-line="false">
-        <tbody>
-          <tr>
-            <td v-for="(column, index) in headerLine" :key="index">{{ column }}</td>
-          </tr>
-          <tr>
-            <td v-for="(column, index) in headerLine" :key="index">
-              <n-select
-                :value="columnMapping[index]"
-                :options="columnOptions"
-                placeholder="Select field"
-                clearable
-                @update:value="(value) => updateColumnMapping(index, value)"
-              />
-            </td>
-          </tr>
-        </tbody>
-      </n-table>
-    </n-scrollbar>
+    <BaseDataTable :bordered="true" :single-line="false">
+      <tbody>
+        <tr>
+          <td v-for="(column, index) in headerLine" :key="index">{{ column }}</td>
+        </tr>
+        <tr>
+          <td v-for="(column, index) in headerLine" :key="index">
+            <n-select
+              :value="columnMapping[index]"
+              :options="columnOptions"
+              placeholder="Select field"
+              clearable
+              @update:value="(value) => updateColumnMapping(index, value)"
+            />
+          </td>
+        </tr>
+      </tbody>
+    </BaseDataTable>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NScrollbar, NSelect, NTable, type SelectOption } from 'naive-ui';
+import { NSelect, type SelectOption } from 'naive-ui';
 
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import type { UploadColumnField, UploadColumnMapping } from '@/types/contracts';
 
 defineOptions({

@@ -19,29 +19,22 @@
         <hr class="separator" />
       </span>
 
-      <n-scrollbar style="height: 300px">
-        <table>
-          <tbody>
-            <template v-for="(indicator) in filteredIndicators" :key="indicator.id">
-              <tr @click="onApplyIndicator(indicator)">
-                <td>
-                  {{ indicator.name }}
-                </td>
-              </tr>
-
-              <hr class="row-separator" />
-            </template>
-          </tbody>
-        </table>
-      </n-scrollbar>
+      <BaseDataTable :max-height="300">
+        <tbody>
+          <tr v-for="indicator in filteredIndicators" :key="indicator.id" @click="onApplyIndicator(indicator)">
+            <td>{{ indicator.name }}</td>
+          </tr>
+        </tbody>
+      </BaseDataTable>
     </div>
   </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { NIcon, NInput, NScrollbar } from 'naive-ui';
+import { NIcon, NInput } from 'naive-ui';
 
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import { fetchAvailableIndicators } from '@/api/indicatorClient';
 import BaseModal from '@/components/Common/BaseModal.vue';
 import { SearchOutline } from '@/icons';
@@ -111,30 +104,7 @@ onMounted(() => {
   margin: 8px 15px;
 }
 
-table {
-  width: 100%;
-}
-
 tr {
-  padding: 5px 15px;
-  width: calc(100% - 30px);
-  display: flex;
   cursor: pointer;
-}
-
-td {
-  line-height: 20px;
-  padding: 10px 0;
-}
-
-.row-separator {
-  border: none;
-  height: 1px;
-  background-color: #a0a0a029;
-  margin: 0;
-}
-
-tr:hover {
-  background-color: #36363661;
 }
 </style>

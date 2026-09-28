@@ -21,7 +21,7 @@
       </span>
       <hr class="separator" />
 
-      <n-scrollbar style="height: 300px">
+      <n-scrollbar v-if="showEmptyMarketPromo || showNoSearchMatches" style="height: 300px">
         <template v-if="showEmptyMarketPromo">
           <div class="empty-market-state">
             <n-button
@@ -77,26 +77,27 @@
           </div>
         </template>
 
-        <table v-else>
-          <tbody>
-            <template v-for="market of filteredMarketList" :key="market.symbol_id">
-              <SymbolRow
-                :market="market"
-                @market-click="onMarketClick"
-                @remove-market="$emit('remove-market', $event)"
-                @upload-data="$emit('upload-data', $event)"
-              />
-              <hr class="separator row-separator" />
-            </template>
-
-            <n-button text id="add-market-button" @click.stop="onAddMarketClick()">
-              <n-icon size="24">
-                <AddCircleOutline />
-              </n-icon>
-            </n-button>
-          </tbody>
-        </table>
       </n-scrollbar>
+
+      <template v-else>
+        <BaseDataTable :max-height="300">
+          <tbody>
+            <SymbolRow
+              v-for="market of filteredMarketList"
+              :key="market.symbol_id"
+              :market="market"
+              @market-click="onMarketClick"
+              @remove-market="$emit('remove-market', $event)"
+              @upload-data="$emit('upload-data', $event)"
+            />
+          </tbody>
+        </BaseDataTable>
+        <n-button text id="add-market-button" @click.stop="onAddMarketClick()">
+          <n-icon size="24">
+            <AddCircleOutline />
+          </n-icon>
+        </n-button>
+      </template>
     </div>
 
     <template #footer>
@@ -109,6 +110,7 @@
 import { computed, ref } from 'vue';
 import { NButton, NIcon, NInput, NQrCode, NScrollbar, NSpace, NText } from 'naive-ui';
 
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import BaseModal from '@/components/Common/BaseModal.vue';
 import { AddCircleOutline, SearchOutline } from '@/icons';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
@@ -183,10 +185,6 @@ defineExpose({ updateCurrentMarket });
 
 .row-separator {
   background-color: #a0a0a029;
-}
-
-table {
-  width: 100%;
 }
 
 tr {

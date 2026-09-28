@@ -1,6 +1,6 @@
 <template>
-  <n-scrollbar style="height: 300px">
-    <table>
+  <BaseDataTable :max-height="300">
+    <tbody>
       <template v-for="(output, outputKey) in indicatorInfo.outputs" :key="outputKey">
         <tr class="output-style-header">
           <td colspan="2">
@@ -68,14 +68,15 @@
           </template>
         </template>
       </template>
-    </table>
-  </n-scrollbar>
+    </tbody>
+  </BaseDataTable>
 </template>
 
 <script setup lang="ts">
 import { reactive, watch } from "vue";
-import { NScrollbar, NH3, NColorPicker, NInput, NInputNumber } from "naive-ui";
+import { NH3, NColorPicker, NInput, NInputNumber } from "naive-ui";
 
+import BaseDataTable from "@/components/Common/BaseDataTable.vue";
 import type { IndicatorInfo, JsonObject, JsonValue } from "@/types/contracts";
 import type { ChartSeriesOptions } from "@/utils/chart";
 
@@ -209,11 +210,6 @@ watch(
 </script>
 
 <style scoped>
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
 table tr td {
   padding: 5px 15px;
 }

@@ -1,6 +1,6 @@
 <template>
-  <n-scrollbar style="height: 300px">
-    <table>
+  <BaseDataTable :max-height="300">
+    <tbody>
       <tr
         v-for="(parameter, key) in indicatorParameters"
         :key="key"
@@ -36,14 +36,15 @@
           />
         </td>
       </tr>
-    </table>
-  </n-scrollbar>
+    </tbody>
+  </BaseDataTable>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
-import { NScrollbar, NInput, NInputNumber, NSelect } from "naive-ui";
+import { NInput, NInputNumber, NSelect } from "naive-ui";
 
+import BaseDataTable from "@/components/Common/BaseDataTable.vue";
 import { useIndicatorsStore } from "@/stores/indicatorsStore";
 import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
@@ -191,11 +192,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
 .indicator-parameter td,
 .output-style-option td {
   padding: 5px 15px;
