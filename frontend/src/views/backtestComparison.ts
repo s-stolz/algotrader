@@ -6,15 +6,6 @@ export type ComparisonSortKey = 'name' | 'status' | 'market' | 'timeframe' | 're
 export type ReplaySeries = { runId: string; name: string; ordinal?: number;
   points: EquityReplayPoint[] };
 
-export const COLUMN_PRESETS = {
-  Performance: ['status', 'market', 'timeframe', 'capital', 'return', 'drawdown',
-    'ending', 'trades'],
-  'Long / short': ['status', 'long-count', 'long-win', 'long-pnl', 'short-count',
-    'short-win', 'short-pnl'],
-  'Run settings': ['status', 'strategy', 'market', 'timeframe', 'start', 'end',
-    'capital', 'engine', 'directions', 'commission', 'slippage'],
-} as const;
-
 export function compareRuns(left: BacktestRun, right: BacktestRun,
   key: ComparisonSortKey): number {
   const value = (run: BacktestRun): string | number | null => {

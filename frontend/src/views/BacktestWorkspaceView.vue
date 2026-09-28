@@ -102,7 +102,7 @@
         No Backtest Runs or Batches match these filters.
       </p>
 
-      <n-data-table
+      <BaseDataTable
         v-if="runs !== null && batches !== null"
         data-testid="workspace-history"
         :columns="historyColumns"
@@ -112,7 +112,6 @@
         :pagination="historyPagination"
         :scroll-x="1470"
         :max-height="540"
-        :bordered="false"
         size="medium"
         striped
       />
@@ -129,12 +128,6 @@
       </div>
       <div class="section-heading">
         <div><h2>Run analysis</h2><p>Compare saved metrics and inspect exact performance over time.</p></div>
-        <n-button
-          v-if="selectedRun"
-          data-testid="workspace-open-chart"
-          :disabled="overlayStore.isLoading || !!chartReason"
-          @click="openOnChart"
-        >Open on chart</n-button>
       </div>
       <p v-if="!selectedRunId && !selectedBatchId">Select a saved run or Batch to inspect its request and results.</p>
       <p v-if="detailLoading" role="status">Loading selected Backtest…</p>
@@ -142,54 +135,63 @@
       <p v-if="overlayStore.error" role="alert">{{ overlayStore.error }}</p>
       <template v-if="currentRows.length">
         <div class="comparison-controls">
-          <n-input
-            v-model:value="memberSearch"
-            data-testid="comparison-search"
-            clearable
-            placeholder="Filter current runs"
-            aria-label="Filter current runs"
-          />
-          <div class="column-chooser">
-            <n-button
-              v-for="preset in presetNames"
-              :key="preset"
-              size="small"
-              :data-testid="`comparison-preset-${preset}`"
-              @click="applyPreset(preset)"
-            >
-              {{ preset }}
-            </n-button>
-            <n-popover trigger="click" placement="bottom-end" scrollable :style="{ maxHeight: '340px' }">
-              <template #trigger><n-button size="small">
+          <span class="column-count">{{ visibleColumns.length }} columns shown</span>
+          <BasePopover
+            trigger="click"
+            placement="bottom-end"
+            :width="500"
+            :style="{ maxWidth: 'calc(100vw - 32px)', marginBottom: '16px' }"
+          >
+            <template #trigger>
+              <n-button size="small" round data-testid="comparison-columns" aria-label="Run analysis columns">
                 <template #icon><n-icon :component="OptionsOutline" /></template>Columns
-              </n-button></template>
-              <div class="column-options">
-                <n-checkbox
-v-for="column in optionalColumns"
-:key="column.key"
-                  :checked="visibleColumns.includes(column.key)"
-                  :data-testid="`comparison-column-${column.key}`"
-                  @update:checked="toggleColumn(column.key)"
->{{ column.title }}</n-checkbox>
-              </div>
-            </n-popover>
-          </div>
+              </n-button>
+            </template>
+            <div class="column-popover">
+              <section
+                v-for="group in columnGroups"
+                :key="group.title"
+                :aria-label="group.title"
+                class="column-group"
+              >
+                <div class="column-group-heading">
+                  <h3>{{ group.title }}</h3>
+                  <BaseCheckbox
+                    :checked="group.enabled"
+                    :indeterminate="group.indeterminate"
+                    :data-testid="`comparison-group-${group.title}`"
+                    :aria-label="`Show all ${group.title} columns`"
+                    @update:checked="toggleColumnGroup(group.columns)"
+                  />
+                </div>
+                <div class="column-options">
+                  <BaseCheckbox
+                    v-for="column in group.columns"
+                    :key="column.key"
+                    :checked="visibleColumns.includes(column.key)"
+                    :data-testid="`comparison-column-${column.key}`"
+                    @update:checked="toggleColumn(column.key)"
+                  >
+                    {{ column.title }}
+                  </BaseCheckbox>
+                </div>
+              </section>
+            </div>
+          </BasePopover>
         </div>
-        <n-data-table
+        <BaseDataTable
           :key="visibleColumns.join(',')"
           data-testid="workspace-current-backtest"
           :columns="comparisonColumns"
-          :data="filteredCurrentRows"
+          :data="sortedCurrentRows"
           :row-key="(run: BacktestRun) => run.run_id"
           :row-props="currentRowProps"
           :pagination="false"
           :max-height="360"
           :scroll-x="comparisonScrollWidth"
-          :bordered="false"
           size="small"
           @update:sorter="updateComparisonSort"
         />
-        <p v-if="!filteredCurrentRows.length" role="status">No current runs match this filter. Selected runs remain selected.</p>
         <p v-if="compatibilityDifferences.length" data-testid="comparison-compatibility" role="note">
           Compared runs differ in {{ compatibilityDifferences.join(', ') }}. Interpret their results in context.
         </p>
@@ -197,26 +199,20 @@ v-for="column in optionalColumns"
           Select successful runs to inspect exact equity and drawdown.
         </p>
         <div v-else class="curve-inspection">
-          <ul class="curve-status">
-            <li v-for="id in selectedComparisonIds" :key="id" :data-testid="`curve-status-${id}`">
+          <ul v-if="curveStatusIds.length" class="curve-status">
+            <li v-for="id in curveStatusIds" :key="id" :data-testid="`curve-status-${id}`">
               {{ analysisRunName(id) }}:
-              <template v-if="analysis[id]?.loading && !analysis[id]?.curve">Loading exact Equity Replay…</template>
-              <template v-else-if="analysis[id]?.error">Exact Equity Replay read failed: {{ analysis[id]?.error }}. Saved metrics remain available.</template>
+              <template v-if="analysis[id]?.error">Exact Equity Replay read failed: {{ analysis[id]?.error }}. Saved metrics remain available.</template>
               <template v-else-if="analysis[id]?.curve?.availability === 'unavailable'">Exact Equity Replay unavailable: {{ equityUnavailableReason(analysis[id]?.curve?.reason) }}. Saved metrics remain available.</template>
-              <template v-else-if="analysis[id]?.curve?.availability === 'exact'">
-                Ending equity: {{ formatSigned(analysis[id]?.curve?.equity_curve.at(-1)?.equity).replace(/^\+/, '') }}
-                <span v-if="analysis[id]?.curve?.sampled"> · Showing {{ analysis[id]?.curve?.returned_point_count }} of {{ analysis[id]?.curve?.source_point_count }} exact points (sampled).</span>
-              </template>
             </li>
           </ul>
-          <EquityReplayCharts :series="chartSeries" />
+          <EquityReplayCharts v-if="chartSeries.length" :series="chartSeries" :sampled="hasSampledCurve" />
         </div>
       </template>
       <template v-if="selectedRun">
         <p v-if="selectedRun.error_message" class="run-error">
           {{ selectedRun.error_message }}
         </p>
-        <p v-if="chartReason" class="chart-reason">{{ chartReason }}</p>
         <details class="request-details">
           <summary>Saved request and execution settings</summary>
           <dl>
@@ -249,23 +245,26 @@ v-for="column in optionalColumns"
 
 <script setup lang="ts">
 import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { NButton, NCheckbox, NConfigProvider, NDataTable, NIcon, NInput, NPopover, NSelect, NTag, NTooltip } from 'naive-ui';
+import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
+import BasePopover from '@/components/Common/BasePopover.vue';
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
+import { NButton, NCheckbox, NConfigProvider, NIcon, NInput, NSelect, NTag, NTooltip } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
-import { DocumentTextOutline, ArrowBackOutline, AddOutline, RefreshOutline, OptionsOutline, CopyOutline, TrashOutline, StopCircleOutline } from '@vicons/ionicons5';
+import { DocumentTextOutline, BarChartOutline, ArrowBackOutline, AddOutline, RefreshOutline, OptionsOutline, CopyOutline, TrashOutline, StopCircleOutline, TimeOutline, PlayCircleOutline, HourglassOutline, CheckmarkCircleOutline, CloseCircleOutline, BanOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
 
 import { cancelBacktestRun, deleteBacktestBatch, deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestBatchMembers, listBacktestRuns } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
-import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
+import { getBacktestRunSelectability, useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import { BACKTEST_BATCH_STATUSES, BACKTEST_RUN_STATUSES, type BacktestBatch, type BacktestRun, type EquityReplayResponse } from '@/types/backtesterContracts';
+import { BACKTEST_BATCH_STATUSES, BACKTEST_RUN_STATUSES, type BacktestBatch, type BacktestRun, type BacktestRunStatus, type EquityReplayResponse } from '@/types/backtesterContracts';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
 import { reuseBatch, reuseStandalone } from './backtestReuse';
 import EquityReplayCharts from './EquityReplayCharts.vue';
-import { COLUMN_PRESETS, compareRuns, differingSettings,
+import { compareRuns, differingSettings,
   type ComparisonSortKey, type ReplaySeries } from './backtestComparison';
 
 import {
@@ -301,26 +300,24 @@ type AnalysisState = { loading: boolean; error: string | null;
 const analysis = ref<Record<string, AnalysisState>>({});
 const batchMembers = ref<BacktestRun[]>([]);
 const selectedComparisonIds = ref<string[]>([]);
-const memberSearch = ref('');
-const visibleColumns = ref<string[]>([...COLUMN_PRESETS.Performance]);
-const presetNames = Object.keys(COLUMN_PRESETS) as (keyof typeof COLUMN_PRESETS)[];
+const visibleColumns = ref<string[]>(['status', 'market', 'timeframe', 'capital',
+  'return', 'drawdown', 'ending', 'trades']);
 const currentRows = computed(() => (selectedBatchId.value ? batchMembers.value :
   selectedRun.value ? [selectedRun.value] : []).map((run) =>
   analysis.value[run.run_id]?.detail ?? run));
 const comparisonSortKey = ref<ComparisonSortKey>('ordinal');
 const comparisonSortOrder = ref<'ascend' | 'descend'>('ascend');
-const filteredCurrentRows = computed(() => currentRows.value.filter((run) => {
-  const query = memberSearch.value.trim().toLowerCase();
-  return !query || [runName(run), run.run_id, run.status, runMarket(run),
-    run.request.timeframe, ...Object.entries(run.request.strategy.parameters)
-      .map(([key, value]) => `${key} ${String(value)}`)]
-    .some((value) => value.toLowerCase().includes(query));
-}).sort((left, right) => (comparisonSortOrder.value === 'ascend' ? 1 : -1) *
+const sortedCurrentRows = computed(() => [...currentRows.value].sort((left, right) =>
+  (comparisonSortOrder.value === 'ascend' ? 1 : -1) *
   compareRuns(left, right, comparisonSortKey.value)));
 const selectedComparisonRuns = computed(() => selectedComparisonIds.value
   .map((id) => currentRows.value.find((run) => run.run_id === id))
   .filter((run): run is BacktestRun => run?.status === 'succeeded'));
 const compatibilityDifferences = computed(() => differingSettings(selectedComparisonRuns.value));
+const curveStatusIds = computed(() => selectedComparisonIds.value.filter((id) =>
+  analysis.value[id]?.error || analysis.value[id]?.curve?.availability === 'unavailable'));
+const hasSampledCurve = computed(() => selectedComparisonIds.value.some((id) =>
+  analysis.value[id]?.curve?.sampled));
 const chartSeries = computed<ReplaySeries[]>(() => selectedComparisonRuns.value.flatMap((run) => {
   const curve = analysis.value[run.run_id]?.curve;
   return curve?.availability === 'exact' ? [{ runId: run.run_id,
@@ -357,8 +354,11 @@ const failedFilter = ref('all');
 const selectedRunId = computed(() => workspaceStore.selectedRunId);
 const selectedRun = computed(() => workspaceStore.selectedRun);
 const logRun = ref<BacktestRun | null>(null);
-const chartReason = computed(() => selectedRun.value
-  ? overlayStore.getBacktestRunSelectability(selectedRun.value).reason : null);
+const openingChartRunId = ref<string | null>(null);
+function chartUnavailableReason(run: BacktestRun): string | null {
+  return marketsStore.all.length === 0 ? getBacktestRunSelectability(run).reason
+    : overlayStore.getBacktestRunSelectability(run).reason;
+}
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let readGeneration = 0;
 let activeHistoryRead: Promise<void> | null = null;
@@ -479,8 +479,7 @@ function analysisRunName(id: string): string {
 }
 
 function comparisonRunLabel(run: BacktestRun): string {
-  return run.member_ordinal == null ? runName(run) :
-    `#${run.member_ordinal + 1} · ${runName(run)}`;
+  return `#${(run.member_ordinal ?? 0) + 1}`;
 }
 
 function loadAnalysis(refresh = false): void {
@@ -703,24 +702,64 @@ function cell(value: string, explanation?: string) {
       whiteSpace: 'nowrap' } }, value);
 }
 
-function runCell(run: BacktestRun) {
+function executionLogAction(run: BacktestRun, label: string) {
+  return h(NTooltip, null, {
+    trigger: () => h(NButton, {
+      text: true, size: 'small',
+      'data-testid': `workspace-log-${run.run_id}`,
+      'aria-label': `View execution log for ${label}`,
+      onKeydown: (event: KeyboardEvent) => { event.stopPropagation(); },
+      onClick: (event: MouseEvent) => {
+        event.stopPropagation();
+        logRun.value = run;
+      },
+    }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(DocumentTextOutline) }) }),
+    default: () => 'View execution log',
+  });
+}
+
+function historyRunCell(run: BacktestRun) {
   return h('span', { class: 'run-cell' }, [
+    executionLogAction(run, runName(run)),
+    h('span', { class: 'run-identity' }, [cell(runName(run) === run.run_id
+      ? `${run.request.strategy.strategy_id.replaceAll('_', ' ')}${run.member_ordinal == null ? '' : ` #${run.member_ordinal + 1}`}`
+      : run.member_ordinal == null ? runName(run) : `#${run.member_ordinal + 1} · ${runName(run)}`, run.run_id), h('small', run.run_id.slice(0, 8))]),
+  ]);
+}
+
+function analysisRunActions(run: BacktestRun) {
+  return h('div', { class: 'row-actions' }, [
+    executionLogAction(run, `run ${comparisonRunLabel(run)}`),
     h(NTooltip, null, {
-      trigger: () => h(NButton, {
+      trigger: () => h('span', { class: 'run-chart-action' }, [h(NButton, {
         text: true, size: 'small',
-        'data-testid': `workspace-log-${run.run_id}`,
-        'aria-label': `View execution log for ${runName(run)}`,
+        'data-testid': `workspace-chart-${run.run_id}`,
+        'aria-label': `Open run ${comparisonRunLabel(run)} on chart`,
+        disabled: openingChartRunId.value !== null || overlayStore.isLoading || !!chartUnavailableReason(run),
+        loading: openingChartRunId.value === run.run_id,
         onKeydown: (event: KeyboardEvent) => { event.stopPropagation(); },
         onClick: (event: MouseEvent) => {
           event.stopPropagation();
-          logRun.value = run;
+          void openOnChart(run);
         },
-      }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(DocumentTextOutline) }) }),
-      default: () => 'View execution log',
+      }, { icon: () => h(NIcon, { size: 16, component: BarChartOutline }) })]),
+      default: () => chartUnavailableReason(run) ?? 'Open on chart',
     }),
-    h('span', { class: 'run-identity' }, [cell(runName(run) === run.run_id
-      ? `${run.request.strategy.strategy_id.replaceAll('_', ' ')}${run.member_ordinal == null ? '' : ` #${run.member_ordinal + 1}`}`
-      : comparisonRunLabel(run), run.run_id), h('small', run.run_id.slice(0, 8))]),
+    ...(['queued', 'running'].includes(run.status) ? [h(NTooltip, null, {
+      trigger: () => h(NButton, {
+        text: true, size: 'small',
+        'data-testid': `workspace-cancel-${run.run_id}`,
+        'aria-label': `Cancel run ${comparisonRunLabel(run)}`,
+        disabled: cancellingRunIds.value.has(run.run_id),
+        loading: cancellingRunIds.value.has(run.run_id),
+        onKeydown: (event: KeyboardEvent) => { event.stopPropagation(); },
+        onClick: (event: MouseEvent) => {
+          event.stopPropagation();
+          void cancelRun(run);
+        },
+      }, { icon: () => h(NIcon, { size: 16, component: StopCircleOutline }) }),
+      default: () => 'Cancel run',
+    })] : []),
   ]);
 }
 
@@ -773,7 +812,7 @@ function historyColumn(title: string, key: HistorySortKey | 'progress',
 
 const historyColumns: DataTableColumns<HistoryEntry> = [
   historyColumn('Name', 'name', (entry) => entry.kind === 'run'
-    ? runCell(entry.run) : cell(entry.batch.batch_id)),
+    ? historyRunCell(entry.run) : cell(entry.batch.batch_id)),
   historyColumn('Type', 'type', (entry) => cell(entry.kind === 'run' ? 'Standalone' : 'Parameter Sweep')),
   historyColumn('Strategy / version', 'strategy', (entry) => cell(entry.kind === 'run'
     ? `${entry.run.request.strategy.strategy_id} · ${strategyVersion(entry.run)}`
@@ -805,7 +844,7 @@ const historyColumns: DataTableColumns<HistoryEntry> = [
         'aria-label': `Create from this ${entry.kind} ${rowKey(entry)}`, title: 'Create from this',
         onClick: (event: MouseEvent) => { event.stopPropagation(); createFrom(entry); },
       }, { icon: () => h(NIcon, { component: CopyOutline }) }),
-      ...(entry.kind === 'run' ? [h(NButton, { quaternary: true, circle: true, size: 'small',
+      ...(entry.kind === 'run' && ['queued', 'running'].includes(entry.run.status) ? [h(NButton, { quaternary: true, circle: true, size: 'small',
         'data-testid': `workspace-cancel-${entry.run.run_id}`, 'aria-label': 'Cancel run', title: 'Cancel run',
         disabled: !['queued', 'running'].includes(entry.run.status) || cancellingRunIds.value.has(entry.run.run_id),
         onClick: (event: MouseEvent) => { event.stopPropagation(); void cancelRun(entry.run); },
@@ -843,78 +882,117 @@ function directionPnl(run: BacktestRun, direction: 'long' | 'short') {
   return cell(formatSigned(pnl), 'Saved sum of realized PnL from ' + direction +
     ' Closed Trades, signed account units. Zero when there were no trades.');
 }
-type ComparisonColumn = { title: string; key: string; width: number;
+const runStatusIcons = {
+  queued: { icon: TimeOutline, label: 'Queued', color: '#9aafbf' },
+  running: { icon: PlayCircleOutline, label: 'Running', color: '#70c0e8' },
+  cancelling: { icon: HourglassOutline, label: 'Cancelling', color: '#e8bc70' },
+  succeeded: { icon: CheckmarkCircleOutline, label: 'Succeeded', color: '#7cd8b7' },
+  failed: { icon: CloseCircleOutline, label: 'Failed', color: '#e88b8b' },
+  cancelled: { icon: BanOutline, label: 'Cancelled', color: '#9aafbf' },
+} satisfies Record<BacktestRunStatus, { icon: typeof TimeOutline; label: string; color: string }>;
+
+function runStatusCell(run: BacktestRun) {
+  const { icon, label, color } = runStatusIcons[run.status];
+  return h(NTooltip, null, {
+    trigger: () => h('span', { class: 'run-status-icon', role: 'img',
+      'aria-label': label, tabindex: 0 }, h(NIcon, {
+      component: icon, size: 20, color, 'aria-hidden': true,
+    })),
+    default: () => label,
+  });
+}
+
+type ComparisonColumn = { title: string; key: string; width: number; align?: 'center';
+  group: 'Run settings' | 'Performance' | 'Long / short';
   render: (run: BacktestRun) => ReturnType<typeof h> };
 const parameterKeys = computed(() => [...new Set(currentRows.value.flatMap((run) =>
   Object.keys(run.request.strategy.parameters)))].sort());
 const optionalColumns = computed<ComparisonColumn[]>(() => [
-  { title: 'Status', key: 'status', width: 120, render: (run) => cell(run.status) },
-  { title: 'Strategy / version', key: 'strategy', width: 190, render: (run) => cell(
+  { title: 'Status', key: 'status', group: 'Run settings', width: 100, align: 'center', render: runStatusCell },
+  { title: 'Strategy / version', key: 'strategy', group: 'Run settings', width: 190, render: (run) => cell(
     `${run.request.strategy.strategy_id} · ${strategyVersion(run)}`) },
-  { title: 'Market', key: 'market', width: 165, render: (run) => cell(runMarket(run)) },
-  { title: 'Timeframe', key: 'timeframe', width: 120, render: (run) => cell(run.request.timeframe) },
-  { title: 'Start', key: 'start', width: 130, render: (run) => cell(formatUtcDate(run.request.start_ms)) },
-  { title: 'End', key: 'end', width: 130, render: (run) => cell(formatUtcDate(run.request.end_ms)) },
-  { title: 'Initial capital', key: 'capital', width: 155, render: (run) => cell(
+  { title: 'Market', key: 'market', group: 'Run settings', width: 165, render: (run) => cell(runMarket(run)) },
+  { title: 'Timeframe', key: 'timeframe', group: 'Run settings', width: 120, render: (run) => cell(run.request.timeframe) },
+  { title: 'Start', key: 'start', group: 'Run settings', width: 130, render: (run) => cell(formatUtcDate(run.request.start_ms)) },
+  { title: 'End', key: 'end', group: 'Run settings', width: 130, render: (run) => cell(formatUtcDate(run.request.end_ms)) },
+  { title: 'Initial capital', key: 'capital', group: 'Performance', width: 155, render: (run) => cell(
     String(run.request.initial_capital), 'Saved request Initial capital, in account units.') },
-  { title: 'Engine', key: 'engine', width: 150, render: (run) => cell(run.request.engine) },
-  { title: 'Allowed Directions', key: 'directions', width: 165,
+  { title: 'Engine', key: 'engine', group: 'Run settings', width: 150, render: (run) => cell(run.request.engine) },
+  { title: 'Allowed Directions', key: 'directions', group: 'Run settings', width: 165,
     render: (run) => cell(run.request.execution.allowed_directions) },
-  { title: 'Commission (bps)', key: 'commission', width: 155,
+  { title: 'Commission (bps)', key: 'commission', group: 'Run settings', width: 155,
     render: (run) => cell(String(run.request.execution.commission_bps)) },
-  { title: 'Slippage (bps)', key: 'slippage', width: 150,
+  { title: 'Slippage (bps)', key: 'slippage', group: 'Run settings', width: 150,
     render: (run) => cell(String(run.request.execution.slippage_bps)) },
   ...parameterKeys.value.map((name) => ({ title: `Parameter: ${name}`, key: `parameter:${name}`,
+    group: 'Run settings' as const,
     width: 180, render: (run: BacktestRun) => cell(
       Object.hasOwn(run.request.strategy.parameters, name)
         ? JSON.stringify(run.request.strategy.parameters[name]) : '—') })),
-  { title: 'Return (%)', key: 'return', width: 145, render: (run) => metricCell(run,
+  { title: 'Return (%)', key: 'return', group: 'Performance', width: 145, render: (run) => metricCell(run,
     'total_return_pct', 'Saved signed percentage: (ending equity / first recorded equity − 1) × 100. First recorded equity follows the first Candle executions and fees; it can differ from Initial capital.', '%') },
-  { title: 'Max drawdown (%)', key: 'drawdown', width: 175,
+  { title: 'Max drawdown (%)', key: 'drawdown', group: 'Performance', width: 175,
     render: (run) => metricCell(run, 'max_drawdown_pct',
       'Positive magnitude of the saved largest peak-to-trough recorded equity loss, in percent.', '%', true) },
-  { title: 'Ending equity', key: 'ending', width: 155, render: (run) => cell(
+  { title: 'Ending equity', key: 'ending', group: 'Performance', width: 155, render: (run) => cell(
     run.status === 'succeeded' && analysis.value[run.run_id]?.curve?.availability === 'exact'
       ? formatSigned(analysis.value[run.run_id]?.curve?.equity_curve.at(-1)?.equity).replace(/^\+/, '') : '—',
     'Final point of exact Equity Replay, in account units. Unavailable replay leaves this missing.') },
-  { title: 'Trades', key: 'trades', width: 115, render: (run) => countCell(run,
+  { title: 'Trades', key: 'trades', group: 'Performance', width: 115, render: (run) => countCell(run,
     'trade_count', 'Saved count of Closed Trades. Zero is different from a missing result.') },
-  { title: 'Long trades', key: 'long-count', width: 135, render: (run) => countCell(run,
+  { title: 'Long trades', key: 'long-count', group: 'Long / short', width: 135, render: (run) => countCell(run,
     'long_trade_count', 'Saved count of long Closed Trades.') },
-  { title: 'Long win rate', key: 'long-win', width: 150, render: (run) => cell(
+  { title: 'Long win rate', key: 'long-win', group: 'Long / short', width: 150, render: (run) => cell(
     run.status === 'succeeded' ? displayWinRate(run, 'long') : '—',
     'Profitable long Closed Trades divided by long Closed Trades, in percent; No trades if count is zero.') },
-  { title: 'Long PnL', key: 'long-pnl', width: 140,
+  { title: 'Long PnL', key: 'long-pnl', group: 'Long / short', width: 140,
     render: (run) => directionPnl(run, 'long') },
-  { title: 'Short trades', key: 'short-count', width: 140, render: (run) => countCell(run,
+  { title: 'Short trades', key: 'short-count', group: 'Long / short', width: 140, render: (run) => countCell(run,
     'short_trade_count', 'Saved count of short Closed Trades.') },
-  { title: 'Short win rate', key: 'short-win', width: 155, render: (run) => cell(
+  { title: 'Short win rate', key: 'short-win', group: 'Long / short', width: 155, render: (run) => cell(
     run.status === 'succeeded' ? displayWinRate(run, 'short') : '—',
     'Profitable short Closed Trades divided by short Closed Trades, in percent; No trades if count is zero.') },
-  { title: 'Short PnL', key: 'short-pnl', width: 140,
+  { title: 'Short PnL', key: 'short-pnl', group: 'Long / short', width: 140,
     render: (run) => directionPnl(run, 'short') },
 ]);
+const columnGroups = computed(() => ['Run settings', 'Performance', 'Long / short']
+  .map((title) => {
+    const columns = optionalColumns.value.filter((column) => column.group === title);
+    const enabledCount = columns.filter((column) => visibleColumns.value.includes(column.key)).length;
+    return { title, columns, enabled: enabledCount === columns.length,
+      indeterminate: enabledCount > 0 && enabledCount < columns.length };
+  }));
+const analysisActionsWidth = computed(() => currentRows.value.some((run) =>
+  ['queued', 'running'].includes(run.status)) ? 92 : 68);
+const selectableComparisonIds = computed(() => currentRows.value
+  .filter((run) => run.status === 'succeeded').map((run) => run.run_id));
+const selectedComparisonCount = computed(() => selectableComparisonIds.value
+  .filter((id) => selectedComparisonIds.value.includes(id)).length);
 const comparisonColumns = computed<DataTableColumns<BacktestRun>>(() => [
-  { title: 'Compare', key: 'compare', width: 85, fixed: 'left', render: (run) => h('input', {
-    type: 'checkbox', checked: selectedComparisonIds.value.includes(run.run_id),
+  { title: () => h(NCheckbox, {
+    checked: selectableComparisonIds.value.length > 0 &&
+      selectedComparisonCount.value === selectableComparisonIds.value.length,
+    indeterminate: selectedComparisonCount.value > 0 &&
+      selectedComparisonCount.value < selectableComparisonIds.value.length,
+    disabled: selectableComparisonIds.value.length === 0,
+    'data-testid': 'comparison-select-all',
+    'aria-label': 'Select all successful runs for comparison',
+    onClick: (event: MouseEvent) => event.stopPropagation(),
+    onKeydown: (event: KeyboardEvent) => event.stopPropagation(),
+    'onUpdate:checked': (checked: boolean) => setComparison(checked ? selectableComparisonIds.value : []),
+  }), key: 'compare', width: 40, align: 'center', fixed: 'left', render: (run) => h(BaseCheckbox, {
+    checked: selectedComparisonIds.value.includes(run.run_id),
     disabled: run.status !== 'succeeded',
     'data-testid': `comparison-select-${run.run_id}`,
-    'aria-label': `Compare ${runName(run)}`,
+    'aria-label': `Compare run ${comparisonRunLabel(run)}`,
     onClick: (event: MouseEvent) => event.stopPropagation(),
-    onChange: () => toggleComparison(run),
+    onKeydown: (event: KeyboardEvent) => event.stopPropagation(),
+    'onUpdate:checked': () => toggleComparison(run),
   }) },
-  { title: 'Run', key: 'name', width: 225, fixed: 'left', render: runCell,
-    sorter: (a, b) => compareRuns(a, b, 'name'),
-    sortOrder: comparisonSortKey.value === 'name' ? comparisonSortOrder.value : false as const },
-  { title: 'Cancel', key: 'cancel', width: 100, render: (run) => h(NButton, {
-    text: true, size: 'small',
-    'data-testid': `workspace-cancel-${run.run_id}`,
-    disabled: !['queued', 'running'].includes(run.status) || cancellingRunIds.value.has(run.run_id),
-    onClick: (event: MouseEvent) => {
-      event.stopPropagation();
-      void cancelRun(run);
-    },
-  }, { default: () => 'Cancel' }) },
+  { title: 'Run', key: 'ordinal', width: 64, fixed: 'left',
+    render: (run) => h('span', { class: 'run-identity' }, cell(comparisonRunLabel(run), run.run_id)),
+    sorter: (a, b) => compareRuns(a, b, 'ordinal'),
+    sortOrder: comparisonSortKey.value === 'ordinal' ? comparisonSortOrder.value : false as const },
   ...optionalColumns.value.filter((column) => visibleColumns.value.includes(column.key))
     .map((column) => ({ ...column,
       ...(comparisonSortKeys.includes(column.key as ComparisonSortKey) ? {
@@ -923,10 +1001,11 @@ const comparisonColumns = computed<DataTableColumns<BacktestRun>>(() => [
         sortOrder: comparisonSortKey.value === column.key ? comparisonSortOrder.value : false as const,
       } : {}),
     })),
+  { title: 'Actions', key: 'actions', width: analysisActionsWidth.value, fixed: 'right', render: analysisRunActions },
 ]);
-const comparisonSortKeys: string[] = ['name', 'status', 'market', 'timeframe',
+const comparisonSortKeys: string[] = ['ordinal', 'status', 'market', 'timeframe',
   'capital', 'return', 'drawdown'];
-const comparisonScrollWidth = computed(() => 410 + optionalColumns.value
+const comparisonScrollWidth = computed(() => 104 + analysisActionsWidth.value + optionalColumns.value
   .filter((column) => visibleColumns.value.includes(column.key))
   .reduce((width, column) => width + column.width, 0));
 
@@ -944,9 +1023,11 @@ function toggleColumn(key: string): void {
     ? visibleColumns.value.filter((column) => column !== key)
     : [...visibleColumns.value, key];
 }
-function applyPreset(preset: keyof typeof COLUMN_PRESETS): void {
-  visibleColumns.value = [...COLUMN_PRESETS[preset],
-    ...(preset === 'Run settings' ? parameterKeys.value.map((name) => `parameter:${name}`) : [])];
+function toggleColumnGroup(columns: ComparisonColumn[]): void {
+  const keys = columns.map((column) => column.key);
+  visibleColumns.value = keys.every((key) => visibleColumns.value.includes(key))
+    ? visibleColumns.value.filter((key) => !keys.includes(key))
+    : [...new Set([...visibleColumns.value, ...keys])];
 }
 function currentRowProps(run: BacktestRun): Record<string, unknown> {
   const select = () => selectRun(run);
@@ -1046,15 +1127,18 @@ async function deleteBatch(batch: BacktestBatch): Promise<void> {
   }
 }
 
-async function openOnChart(): Promise<void> {
-  const run = selectedRun.value;
-  if (!run) return;
-  if (marketsStore.all.length === 0) await marketsStore.fetch();
+async function openOnChart(run: BacktestRun): Promise<void> {
+  if (openingChartRunId.value !== null || overlayStore.isLoading || chartUnavailableReason(run)) return;
+  openingChartRunId.value = run.run_id;
+  selectionNotice.value = null;
   try {
+    if (marketsStore.all.length === 0) await marketsStore.fetch();
     const selection = await overlayStore.selectRun(run);
     if (selection.selectable) await router.push('/');
-  } catch {
-    // The overlay store exposes the read failure beside the selected run.
+  } catch (error) {
+    selectionNotice.value = `Could not open run ${comparisonRunLabel(run)} on chart: ${errorMessage(error)}`;
+  } finally {
+    openingChartRunId.value = null;
   }
 }
 
@@ -1140,9 +1224,15 @@ onUnmounted(stopPolling);
 .current-backtest { margin-top: 24px; }
 .analysis-context { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: #9aafbf; font-size: 12px; margin-bottom: 22px; }
 .comparison-controls { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 22px 0 16px; }
-.comparison-controls .n-input { max-width: 270px; }
-.column-chooser { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.column-options { display: grid; gap: 10px; padding: 6px; }
+.column-count { color: #94a3b8; align-self: center; }
+.column-popover { display: grid; gap: 18px; width: 100%; padding: 4px; box-sizing: border-box; }
+.column-group + .column-group { border-top: 1px solid #2b3541; padding-top: 16px; }
+.column-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.column-group h3 { margin: 0; color: #9aafbf; font-size: 12px; font-weight: 600; }
+.column-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin-top: 10px; }
+@media (max-width: 480px) {
+  .column-options { grid-template-columns: 1fr; }
+}
 .curve-status { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0; font-size: 12px; color: #9aafbf; }
 .request-details { margin-top: 24px; padding: 16px; border: 1px solid #303c49; border-radius: 8px; background: #171e27; }
 .request-details summary { cursor: pointer; color: #b7c8d6; }
@@ -1150,19 +1240,15 @@ onUnmounted(stopPolling);
 .request-details dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; font-size: 12px; }
 .request-details dt { color: #8f9dab; }
 .request-details dd { margin: 0; overflow-wrap: anywhere; }
-.run-error, .chart-reason { color: #f1b1a8; padding: 12px 16px; border-radius: 6px; background: #35272b; }
+.run-error { color: #f1b1a8; padding: 12px 16px; border-radius: 6px; background: #35272b; }
 :deep(.run-cell) { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; }
 :deep(.run-identity) { min-width: 0; font-weight: 500; }
+:deep(.run-status-icon) { display: inline-flex; vertical-align: middle; }
 :deep(.run-identity small) { display: block; color: #8190a0; font-size: 10px; font-family: monospace; margin-top: 3px; }
 :deep(.row-actions) { display: flex; gap: 4px; }
 :deep(.negative-metric) { color: #f0aaa2; }
 :deep(.positive-metric) { color: #7dd5b4; }
-:deep(input[type="checkbox"]) { accent-color: #63caaa; }
-:deep(.n-data-table) { font-variant-numeric: tabular-nums; }
-:deep(.n-data-table-th) { font-size: 11px; color: #91a4b6; letter-spacing: .025em; }
 :deep(.n-data-table-tr) { cursor: pointer; }
-:deep(.n-data-table-tr[aria-selected='true'] td) { background: #203a39; }
-:deep(.n-data-table-tr:focus-visible) { outline: 2px solid #63d2b0; outline-offset: -2px; }
 @media (max-width: 1200px) { .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); } .workspace-header { align-items: flex-start; flex-direction: column; } }
 @media (max-width: 700px) { .workspace { padding: 16px 6px 32px; } .workspace-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; } .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-panel { padding: 14px; } .section-heading { align-items: flex-start; } }
 </style>

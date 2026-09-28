@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
-import { NDataTable, NSelect } from 'naive-ui';
+import { NCheckbox, NDataTable, NSelect } from 'naive-ui';
+import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -110,6 +111,19 @@ function mountWorkspace(includeBatchDetail = false) {
   });
 }
 
+async function toggleAnalysisColumns(wrapper: ReturnType<typeof mountWorkspace>, keys: string[]) {
+  await wrapper.find('[data-testid="comparison-columns"]').trigger('click');
+  await flushPromises();
+  for (const key of keys) {
+    const checkbox = document.querySelector<HTMLElement>(`[data-testid="comparison-column-${key}"]`);
+    expect(checkbox, `Column checkbox ${key}`).not.toBeNull();
+    checkbox!.click();
+    await flushPromises();
+  }
+  await wrapper.find('[data-testid="comparison-columns"]').trigger('click');
+  await flushPromises();
+}
+
 function trade(sequence: number, direction: 'long' | 'short',
   reason: 'signal' | 'stop_loss' | 'take_profit'): BacktestClosedTrade {
   return {
@@ -171,6 +185,48 @@ describe('production Backtest Workspace', () => {
     vi.unstubAllGlobals();
   });
 
+  it('selects all eligible runs and shows partial selection in the header checkbox', async () => {
+    const members = [
+      run('first', { batch_id: 'selection', member_ordinal: 0 }),
+      run('second', { batch_id: 'selection', member_ordinal: 1 }),
+      run('failed', { batch_id: 'selection', member_ordinal: 2, status: 'failed', metrics: null }),
+    ];
+    const accepted = batch('selection', members.length);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue(members);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => members.find((member) => member.run_id === id)!);
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-batch-selection"]').trigger('click');
+    await flushPromises();
+    const header = () => wrapper.findAllComponents(NCheckbox)
+      .find((checkbox) => checkbox.attributes('data-testid') === 'comparison-select-all')!;
+
+    header().vm.$emit('update:checked', false);
+    await flushPromises();
+    expect(header().props('checked')).toBe(false);
+    expect(header().props('indeterminate')).toBe(false);
+    await wrapper.get('[data-testid="comparison-select-first"]').setValue(true);
+    expect(header().props('indeterminate')).toBe(true);
+
+    header().vm.$emit('update:checked', true);
+    await flushPromises();
+    expect(header().props('checked')).toBe(true);
+    expect(header().props('indeterminate')).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-second"]').element.checked).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-failed"]').element.checked).toBe(false);
+    expect(fetchBacktestEquityCurve).not.toHaveBeenCalledWith('failed');
+
+    header().vm.$emit('update:checked', false);
+    await flushPromises();
+    expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-first"]').element.checked).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-second"]').element.checked).toBe(false);
+    wrapper.unmount();
+  });
+
   it('shows real saved history, selects one run, and retains signed metric semantics', async () => {
     const success = run('success', {
       request: { ...run('x').request, run_metadata: { name: 'Baseline' } },
@@ -192,13 +248,63 @@ describe('production Backtest Workspace', () => {
     const current = wrapper.find('[data-testid="workspace-current-backtest"]');
     expect(current.text()).toContain('-1.25%');
     expect(current.text()).toContain('2.5%');
-    await wrapper.find('[data-testid="comparison-preset-Long / short"]').trigger('click');
+    await wrapper.find('[data-testid="comparison-columns"]').trigger('click');
+    await flushPromises();
+    const groups = [...document.querySelectorAll('.column-group')];
+    expect(groups.map((group) => group.getAttribute('aria-label')))
+      .toEqual(['Run settings', 'Performance', 'Long / short']);
+    expect(groups.reduce((count, group) => count + group.querySelectorAll('.column-options [role="checkbox"]').length, 0))
+      .toBe(22);
+    expect(wrapper.findAll('.comparison-controls button')).toHaveLength(1);
+    await wrapper.find('[data-testid="comparison-columns"]').trigger('click');
+    await flushPromises();
+    await toggleAnalysisColumns(wrapper, ['long-win', 'short-win', 'long-pnl', 'short-pnl']);
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('No trades');
-    await wrapper.find('[data-testid="comparison-preset-Performance"]').trigger('click');
+    await toggleAnalysisColumns(wrapper, ['long-win', 'short-win', 'long-pnl', 'short-pnl']);
     expect(current.text()).toContain('10000');
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').findAll('td')
       .map((column) => column.text())).toContain('—');
     expect(wrapper.text()).toContain('Saved request and execution settings');
+    wrapper.unmount();
+  });
+
+  it('shows mixed selection and enables and disables whole column groups without changing other groups or run selection', async () => {
+    const saved = run('groups');
+    vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+    vi.mocked(getBacktestRun).mockResolvedValue(saved);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.find('[data-testid="workspace-run-groups"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="comparison-select-groups"]').setValue(true);
+    await flushPromises();
+    await wrapper.find('[data-testid="comparison-columns"]').trigger('click');
+    await flushPromises();
+    const group = (title: string) => document.querySelector<HTMLElement>(`[aria-label="${title}"]`)!;
+    expect(group('Run settings').querySelector('[data-testid="comparison-group-Run settings"]')?.getAttribute('aria-checked')).toBe('mixed');
+    expect(group('Performance').querySelector('[data-testid="comparison-group-Performance"]')?.getAttribute('aria-checked')).toBe('true');
+    expect(group('Long / short').querySelector('[data-testid="comparison-group-Long / short"]')?.getAttribute('aria-checked')).toBe('false');
+    for (const title of ['Run settings', 'Performance', 'Long / short']) {
+      const checkbox = group(title).querySelector<HTMLElement>(`[data-testid="comparison-group-${title}"]`)!;
+      if (checkbox.getAttribute('aria-checked') !== 'true') {
+        checkbox.click();
+        await flushPromises();
+      }
+      expect([...group(title).querySelectorAll<HTMLInputElement>('input')].every((input) => input.checked)).toBe(true);
+      expect(checkbox.getAttribute('aria-checked')).toBe('true');
+      checkbox.click();
+      await flushPromises();
+      expect([...group(title).querySelectorAll<HTMLInputElement>('input')].every((input) => !input.checked)).toBe(true);
+      expect(checkbox.getAttribute('aria-checked')).toBe('false');
+      if (title !== 'Performance') {
+        expect(group('Performance').querySelector<HTMLInputElement>('input')!.checked).toBe(true);
+      }
+      checkbox.click();
+      await flushPromises();
+    }
+    expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-groups"]').element.checked).toBe(true);
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('Parameter: fast');
+    await wrapper.find('[data-testid="comparison-columns"]').trigger('click');
     wrapper.unmount();
   });
 
@@ -239,7 +345,7 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
-  it('opens the accessible execution drawer without changing selection and filters distinct trades and fills', async () => {
+  it('opens the accessible execution drawer without changing selection and filters trades while showing all fills', async () => {
     const first = run('first', { request: { ...run('x').request, run_metadata: { name: 'First run' } } });
     const second = run('second');
     vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
@@ -254,7 +360,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
 
     const icon = wrapper.find('[data-testid="workspace-current-backtest"] [data-testid="workspace-log-first"]');
-    expect(icon.attributes('aria-label')).toBe('View execution log for First run');
+    expect(icon.attributes('aria-label')).toBe('View execution log for run #1');
     expect(icon.attributes('title')).toBeUndefined();
     await icon.trigger('click');
     await flushPromises();
@@ -263,19 +369,16 @@ describe('production Backtest Workspace', () => {
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
     expect(document.body.textContent).toContain('Closed Trades (2)');
     expect(document.body.textContent).toContain('Fills (2)');
-    expect(document.body.textContent).toContain('2024-05-01T01:00:00.000Z');
+    expect(document.body.textContent).toContain('01 May 2024, 01:00:00');
     expect(document.body.textContent).toContain('-3');
     expect(document.body.textContent).toContain('1.08');
 
-    const direction = document.body.querySelector<HTMLSelectElement>('[data-testid="execution-direction"]')!;
-    direction.value = 'short';
-    direction.dispatchEvent(new Event('change', { bubbles: true }));
+    const log = wrapper.findComponent(ExecutionLogDrawer);
+    log.findAllComponents(NSelect)[0].vm.$emit('update:value', 'short');
     await wrapper.vm.$nextTick();
     expect(document.body.querySelectorAll('[data-testid="execution-trades-table"] tbody tr')).toHaveLength(1);
     expect(document.body.textContent).toContain('stop loss');
-    const reason = document.body.querySelector<HTMLSelectElement>('[data-testid="execution-exit-reason"]')!;
-    reason.value = 'signal';
-    reason.dispatchEvent(new Event('change', { bubbles: true }));
+    log.findAllComponents(NSelect)[1].vm.$emit('update:value', 'signal');
     await wrapper.vm.$nextTick();
     expect(document.body.textContent).toContain('No Closed Trades match these filters.');
 
@@ -283,16 +386,12 @@ describe('production Backtest Workspace', () => {
     await wrapper.vm.$nextTick();
     expect(document.body.querySelectorAll('[data-testid="execution-fills-table"] tbody tr')).toHaveLength(2);
     expect(document.body.textContent).toContain('sell');
-    const fillSearch = document.body.querySelector<HTMLInputElement>('[data-testid="execution-search"]')!;
-    fillSearch.value = 'sell';
-    fillSearch.dispatchEvent(new Event('input', { bubbles: true }));
-    await wrapper.vm.$nextTick();
-    expect(document.body.querySelectorAll('[data-testid="execution-fills-table"] tbody tr')).toHaveLength(1);
+    expect(document.body.querySelector('[data-testid="execution-log-drawer"] input[type="search"]')).toBeNull();
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
     document.body.querySelector<HTMLButtonElement>('.n-drawer-header__close')!.click();
     await wrapper.vm.$nextTick();
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
-    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('First run');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"] .run-identity').text()).toBe('#1');
     wrapper.unmount();
   });
 
@@ -316,9 +415,7 @@ describe('production Backtest Workspace', () => {
     vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'buy')]);
     await wrapper.find('[data-testid="workspace-log-success"]').trigger('click');
     await flushPromises();
-    const search = document.body.querySelector<HTMLInputElement>('[data-testid="execution-search"]')!;
-    search.value = 'unmatched';
-    search.dispatchEvent(new Event('input', { bubbles: true }));
+    wrapper.findComponent(ExecutionLogDrawer).findAllComponents(NSelect)[0].vm.$emit('update:value', 'short');
     await wrapper.vm.$nextTick();
     expect(document.body.textContent).toContain('No Closed Trades match these filters.');
 
@@ -378,12 +475,12 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     await wrapper.find('[data-testid="workspace-run-tiny"]').trigger('click');
     await flushPromises();
-    await wrapper.find('[data-testid="comparison-preset-Long / short"]').trigger('click');
+    await toggleAnalysisColumns(wrapper, ['long-win', 'short-win', 'long-pnl', 'short-pnl']);
     const pnlCells = wrapper.find('[data-testid="workspace-current-backtest"]')
       .findAll('td').map((cell) => cell.text());
     expect(pnlCells).toContain('-0.003');
     expect(pnlCells).toContain('+0.002');
-    await wrapper.find('[data-testid="comparison-preset-Performance"]').trigger('click');
+    await toggleAnalysisColumns(wrapper, ['long-win', 'short-win', 'long-pnl', 'short-pnl']);
 
     const cells = wrapper.find('[data-testid="workspace-current-backtest"]')
       .findAll('td').map((cell) => cell.text());
@@ -475,7 +572,7 @@ describe('production Backtest Workspace', () => {
     expect(history().find('[data-testid="workspace-batch-batch-1"]').text()).toContain('1 failed');
     await history().find('[data-testid="workspace-batch-batch-1"]').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('member-0');
+    expect(wrapper.find('[data-testid="workspace-member-member-0"] .run-identity').text()).toBe('#1');
     expect(listBacktestBatchMembers).toHaveBeenCalledWith('batch-1');
 
     await wrapper.find('[data-testid="workspace-search"] input').setValue('submit-1');
@@ -508,7 +605,7 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
-  it('compares ten successful members while retaining hidden selection, failures, and settings', async () => {
+  it('compares ten successful members while retaining selection, failures, and settings', async () => {
     const members = Array.from({ length: 10 }, (_, ordinal) => run(`member-${ordinal}`, {
       batch_id: 'comparison', member_ordinal: ordinal,
       request: { ...run('base').request,
@@ -549,6 +646,12 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     const table = () => wrapper.find('[data-testid="workspace-current-backtest"]');
     expect(table().findAll('tbody tr')).toHaveLength(13);
+    expect(table().findAll('th').slice(0, 2).map((header) => header.text())).toEqual(['', 'Run']);
+    expect(table().findAll('th').at(-1)!.text()).toBe('Actions');
+    expect(table().findAll('th').some((header) => header.text() === 'Cancel')).toBe(false);
+    expect(table().find('[data-testid^="workspace-cancel-"]').exists()).toBe(false);
+    expect(table().get('[data-testid="workspace-member-member-0"] td:nth-child(2)').text()).toBe('#1');
+    expect(table().get('[data-testid="workspace-member-member-0"] td').find('button').exists()).toBe(false);
     const dataTable = wrapper.findAllComponents(NDataTable).at(-1)!;
     expect(dataTable.props('maxHeight')).toBe(360);
     expect(dataTable.props('scrollX')).toBeGreaterThan(1000);
@@ -576,11 +679,9 @@ describe('production Backtest Workspace', () => {
     expect(table().find('[data-testid="workspace-member-member-1"]').text()).toContain('—');
     expect(table().find('[data-testid="workspace-member-member-0"]').text()).toContain('10200');
 
-    await wrapper.find('[data-testid="comparison-search"] input').setValue('member-0');
-    expect(table().findAll('tbody tr')).toHaveLength(1);
+    expect(table().findAll('tbody tr')).toHaveLength(saved.length);
     expect(table().find('[data-testid="comparison-select-member-0"]').attributes('checked'))
       .toBeDefined();
-    await wrapper.find('[data-testid="comparison-search"] input').setValue('');
     expect(table().find('[data-testid="comparison-select-member-9"]').attributes('checked'))
       .toBeDefined();
     const returnHeader = table().findAll('th').find((header) => header.text().includes('Return (%)'));
@@ -588,17 +689,17 @@ describe('production Backtest Workspace', () => {
     const rowOrder = () => table().findAll('tbody tr').map((row) => row.attributes('data-testid'));
     const sortedOrder = rowOrder();
     expect(sortedOrder).not.toEqual(saved.map((run) => `workspace-member-${run.run_id}`));
-    await wrapper.find('[data-testid="comparison-preset-Run settings"]').trigger('click');
+    await toggleAnalysisColumns(wrapper, ['parameter:fast', 'parameter:note']);
     expect(table().text()).toContain('Parameter: fast');
     expect(table().text()).toContain('Parameter: note');
     expect(rowOrder()).toEqual(sortedOrder);
     expect(table().find('[data-testid="comparison-select-member-9"]').attributes('checked'))
       .toBeDefined();
-    await wrapper.find('[data-testid="comparison-preset-Long / short"]').trigger('click');
+    await toggleAnalysisColumns(wrapper, ['long-win', 'short-win', 'long-pnl', 'short-pnl']);
     expect(table().find('[data-testid="workspace-member-no-trade"]').text()).toContain('No trades');
     expect(table().find('[data-testid="workspace-member-no-trade"]').text()).toContain('0');
     expect(rowOrder()).toEqual(sortedOrder);
-    await wrapper.find('[data-testid="comparison-preset-Run settings"]').trigger('click');
+    await toggleAnalysisColumns(wrapper, ['long-win', 'short-win', 'long-pnl', 'short-pnl']);
     await table().find('[data-testid="workspace-log-member-0"]').trigger('click');
     await flushPromises();
     expect(table().find('[data-testid="comparison-select-member-0"]').attributes('checked'))
@@ -628,13 +729,19 @@ describe('production Backtest Workspace', () => {
     await wrapper.find('[data-testid="comparison-select-member-1"]').setValue(true);
     await flushPromises();
     expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(2);
-    expect(wrapper.find('[data-testid="curve-status-member-0"]').text()).toContain('10050');
+    expect(wrapper.findComponent({ name: 'EquityReplayCharts' }).props('series'))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ runId: 'member-0',
+        points: [{ timestamp_ms: 1_714_521_600_000, equity: 10050, drawdown_pct: -1 }] })]));
     vi.advanceTimersByTime(5000);
     await flushPromises();
     expect(listBacktestBatchMembers).toHaveBeenCalledTimes(2);
     expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(2);
-    expect(wrapper.find('[data-testid="curve-status-member-0"]').text()).toContain('10050');
-    expect(wrapper.find('[data-testid="curve-status-member-1"]').text()).toContain('10050');
+    expect(wrapper.findComponent({ name: 'EquityReplayCharts' }).props('series'))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ runId: 'member-0',
+        points: [{ timestamp_ms: 1_714_521_600_000, equity: 10050, drawdown_pct: -1 }] })]));
+    expect(wrapper.findComponent({ name: 'EquityReplayCharts' }).props('series'))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ runId: 'member-1',
+        points: [{ timestamp_ms: 1_714_521_600_000, equity: 10050, drawdown_pct: -1 }] })]));
     wrapper.unmount();
   });
 
@@ -683,7 +790,9 @@ describe('production Backtest Workspace', () => {
     vi.mocked(fetchBacktestEquityCurve).mockImplementation(() => new Promise(() => {}));
     vi.advanceTimersByTime(5000);
     await flushPromises();
-    expect(wrapper.find('[data-testid="curve-status-settled"]').text()).toContain('10050');
+    expect(wrapper.findComponent({ name: 'EquityReplayCharts' }).props('series'))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ runId: 'settled',
+        points: [{ timestamp_ms: 1_714_521_600_000, equity: 10050, drawdown_pct: -1 }] })]));
     expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
@@ -791,8 +900,7 @@ describe('production Backtest Workspace', () => {
     expect(cancelBacktestRun).toHaveBeenCalledOnce();
     expect(cancelBacktestRun).toHaveBeenCalledWith('queued');
     expect(wrapper.find('[data-testid="workspace-run-queued"]').text()).toContain('cancelled');
-    expect(wrapper.find('[data-testid="workspace-cancel-queued"]').attributes('disabled'))
-      .toBeDefined();
+    expect(wrapper.find('[data-testid="workspace-cancel-queued"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -822,8 +930,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     expect(cancelBacktestRun).toHaveBeenCalledOnce();
     expect(cancelBacktestRun).toHaveBeenCalledWith('member-0');
-    expect(wrapper.find('[data-testid="workspace-cancel-member-0"]').attributes('disabled'))
-      .toBeDefined();
+    expect(wrapper.find('[data-testid="workspace-cancel-member-0"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="workspace-cancel-member-1"]').attributes('disabled'))
       .toBeUndefined();
     expect(wrapper.find('[data-testid="workspace-batch-members"]').exists()).toBe(false);
@@ -1040,7 +1147,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
 
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('second');
-    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('failed');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"] [role="img"][aria-label="Failed"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -1065,7 +1172,7 @@ describe('production Backtest Workspace', () => {
       source_point_count: 1, returned_point_count: 1, sampled: false,
       equity_curve: [{ timestamp_ms: 1_714_521_600_000, equity: 9000, drawdown_pct: -1 }] });
     await flushPromises();
-    expect(wrapper.find('[data-testid="curve-status-second"]').text()).toContain('11000');
+    expect(wrapper.find('[data-testid="curve-status-second"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="curve-status-first"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('11000');
     wrapper.unmount();
@@ -1089,8 +1196,9 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
 
     expect(fetchBacktestEquityCurve).toHaveBeenCalledWith('success');
-    expect(wrapper.text()).toContain('Ending equity: 9875');
-    expect(wrapper.text()).toContain('Showing 2 of 5000 exact points (sampled).');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('9875');
+    expect(wrapper.find('[data-testid="curve-status-success"]').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'EquityReplayCharts' }).props('sampled')).toBe(true);
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('-1.25%');
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('10000');
     wrapper.unmount();
@@ -1106,10 +1214,102 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     await wrapper.find('[data-testid="workspace-run-success"]').trigger('click');
     await flushPromises();
-    await wrapper.find('[data-testid="workspace-open-chart"]').trigger('click');
+    expect(wrapper.find('[data-testid="workspace-open-chart"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="workspace-chart-success"]').trigger('click');
     await flushPromises();
 
     expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('success');
+    expect(routerMock.push).toHaveBeenCalledWith('/');
+    wrapper.unmount();
+  });
+
+
+  it('opens a batch row directly on the chart while preserving selection and comparison', async () => {
+    const members = [
+      run('z-first', { batch_id: 'direct', member_ordinal: 0 }),
+      run('a-tenth', { batch_id: 'direct', member_ordinal: 9 }),
+      run('m-second', { batch_id: 'direct', member_ordinal: 1 }),
+    ];
+    const accepted = batch('direct', members.length);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue(members);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => members.find((member) => member.run_id === id)!);
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-batch-direct"]').trigger('click');
+    await flushPromises();
+    const table = wrapper.get('[data-testid="workspace-current-backtest"]');
+    const identities = () => table.findAll('.run-identity').map((cell) => cell.text());
+    expect(identities()).toEqual(['#1', '#2', '#10']);
+    const dataTable = wrapper.findAllComponents(NDataTable).at(-1)!;
+    dataTable.vm.sort('ordinal', 'descend');
+    await flushPromises();
+    expect(identities()).toEqual(['#10', '#2', '#1']);
+    dataTable.vm.sort('ordinal', 'ascend');
+    await flushPromises();
+    expect(identities()).toEqual(['#1', '#2', '#10']);
+    await wrapper.get('[data-testid="workspace-member-z-first"]').trigger('click');
+    await flushPromises();
+    const chart = wrapper.get('[data-testid="workspace-chart-a-tenth"]');
+    expect(chart.attributes('aria-label')).toBe('Open run #10 on chart');
+    await chart.trigger('keydown', { key: 'Enter' });
+    expect(useBacktestWorkspaceStore().selectedRunId).toBe('z-first');
+    await chart.trigger('click');
+    await flushPromises();
+    expect(useBacktestOverlayStore().selectedRunId).toBe('a-tenth');
+    expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('a-tenth');
+    expect(routerMock.push).toHaveBeenCalledWith('/');
+    expect(useBacktestWorkspaceStore().selectedRunId).toBe('z-first');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-z-first"]').element.checked).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-a-tenth"]').element.checked).toBe(false);
+    wrapper.unmount();
+  });
+
+  it.each([
+    ['unfinished', { status: 'running', metrics: null }],
+    ['no-symbol', { request: { ...run('base').request, symbols: [] } }],
+    ['multi-symbol', { request: { ...run('base').request, symbols: ['EURUSD', 'GBPUSD'] } }],
+    ['missing-market', { request: { ...run('base').request, symbols: ['GBPUSD'] } }],
+  ] as [string, Partial<BacktestRun>][])('disables the chart action for %s runs', async (id, overrides) => {
+    const saved = run(id, overrides);
+    vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+    vi.mocked(getBacktestRun).mockResolvedValue(saved);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get(`[data-testid="workspace-run-${id}"]`).trigger('click');
+    await flushPromises();
+    expect(wrapper.get(`[data-testid="workspace-chart-${id}"]`).attributes('disabled')).toBeDefined();
+    expect(wrapper.get(`[data-testid="workspace-log-${id}"]`).attributes('disabled')).toBeUndefined();
+    expect(routerMock.push).not.toHaveBeenCalledWith('/');
+    wrapper.unmount();
+  });
+
+  it('prevents repeated chart opens during loading and allows retry after a failed read', async () => {
+    const saved = run('retry');
+    vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+    vi.mocked(getBacktestRun).mockResolvedValue(saved);
+    let rejectRead!: (reason: Error) => void;
+    vi.mocked(fetchBacktestClosedTrades).mockImplementationOnce(() =>
+      new Promise((_, reject) => { rejectRead = reject; }));
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-retry"]').trigger('click');
+    await flushPromises();
+    const chart = wrapper.get('[data-testid="workspace-chart-retry"]');
+    await chart.trigger('click');
+    expect(chart.attributes('disabled')).toBeDefined();
+    await chart.trigger('click');
+    expect(fetchBacktestClosedTrades).toHaveBeenCalledTimes(1);
+    rejectRead(new Error('Trades unavailable'));
+    await flushPromises();
+    expect(wrapper.text()).toContain('Trades unavailable');
+    expect(routerMock.push).not.toHaveBeenCalledWith('/');
+    expect(chart.attributes('disabled')).toBeUndefined();
+    await chart.trigger('click');
+    await flushPromises();
     expect(routerMock.push).toHaveBeenCalledWith('/');
     wrapper.unmount();
   });
@@ -1124,8 +1324,9 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('-1.25%');
-    expect(wrapper.text()).toContain('Backtest Run result schema is unsupported.');
-    expect(wrapper.find('[data-testid="workspace-open-chart"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="workspace-chart-legacy"]').attributes('disabled')).toBeDefined();
+    await wrapper.find('[data-testid="workspace-chart-legacy"]').element.parentElement?.dispatchEvent(new MouseEvent('mouseenter'));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Backtest Run result schema is unsupported.'));
     expect(routerMock.push).not.toHaveBeenCalledWith('/');
     wrapper.unmount();
   });
