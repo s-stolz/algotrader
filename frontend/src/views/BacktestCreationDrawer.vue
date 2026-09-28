@@ -1,5 +1,5 @@
 <template>
-  <n-drawer class="backtest-drawer" :show="show" :width="isSweep && preview ? 'min(1100px, 100vw)' : 'min(540px, 100vw)'" @update:show="emit('update:show', $event)">
+  <BaseDrawer :show="show" width="min(100vw, max(720px, 66.667vw))" @update:show="emit('update:show', $event)">
     <n-drawer-content :title="isSweep ? 'Review Parameter Sweep' : 'Create standalone Backtest'" closable>
       <p v-if="catalogError" role="alert">Strategy catalog unavailable. {{ catalogError }}</p>
       <n-button v-if="catalogError" @click="loadCatalog">Retry catalog</n-button>
@@ -40,7 +40,12 @@
               @update:value="setRunType"
             />
           </label>
-          <label>Strategy
+          <label>
+            <span class="strategy-label">Strategy
+              <n-tag v-if="selectedStrategy" size="small" round :bordered="false">
+                Version {{ selectedStrategy.strategy_version }}
+              </n-tag>
+            </span>
             <n-select
               :value="draft.strategy.strategy_id"
               :options="strategyOptions"
@@ -55,255 +60,305 @@
             Strategy version changed. Review the current schema before submitting.
             <n-button size="small" @click="useCurrentVersion">Use current version</n-button>
           </p>
-          <p v-else-if="selectedStrategy">Version {{ selectedStrategy.strategy_version }}</p>
-          <template v-for="parameter in selectedStrategy?.parameters ?? []" :key="parameter.name">
-            <label :for="`parameter-${parameter.name}`">{{ parameter.display_name || parameter.name }}
-              <span v-if="parameter.required"> *</span>
-            </label>
-            <n-select
-              v-if="isSweep"
-              :value="sweepParameter(parameter).mode"
-              :options="parameterModeOptions(parameter)"
-              :data-testid="`sweep-mode-${parameter.name}`"
-              @update:value="sweepParameter(parameter).mode = $event"
-            />
-            <n-select
-              v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
-                (parameter.choices || parameter.type === 'bool')"
-              :id="`parameter-${parameter.name}`"
-              :value="selectValue(parameter)"
-              :options="parameterOptions(parameter)"
-              :data-testid="`creation-param-${parameter.name}`"
-              @update:value="setChoice(parameter, $event)"
-            />
-            <n-input-number
-              v-else-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
-                (parameter.type === 'int' || parameter.type === 'float')"
-              :id="`parameter-${parameter.name}`"
-              :value="numberValue(parameter.name)"
-              :min="parameter.minimum"
-              :max="parameter.maximum"
-              :precision="parameter.type === 'int' ? 0 : undefined"
-              :data-testid="`creation-param-${parameter.name}`"
-              @update:value="setParameter(parameter.name, $event)"
-            />
-            <n-input
-              v-else-if="!isSweep || sweepParameter(parameter).mode === 'constant'"
-              :id="`parameter-${parameter.name}`"
-              :value="stringValue(parameter.name)"
-              :data-testid="`creation-param-${parameter.name}`"
-              @update:value="setParameter(parameter.name, $event)"
-            />
-            <template v-else-if="sweepParameter(parameter).mode === 'values'">
-              <n-select
-                v-if="parameter.choices || parameter.type === 'bool'"
-                multiple
-                :value="selectedChoiceIndexes(parameter)"
-                :options="parameterOptions(parameter)"
-                :data-testid="`sweep-values-${parameter.name}`"
-                @update:value="setSweepChoices(parameter, $event)"
-              />
-              <div v-else-if="parameter.type === 'str'" class="string-values">
-                <div v-for="(value, index) in stringValues(parameter)" :key="index" class="string-value">
-                  <n-input
-                    type="textarea"
-                    :value="value"
-                    :aria-label="`${parameter.display_name || parameter.name} value ${index + 1}`"
-                    :data-testid="`sweep-string-${parameter.name}-${index}`"
-                    @update:value="stringValues(parameter)[index] = $event"
+          <section class="parameters-section" aria-labelledby="parameters-heading">
+            <h3 id="parameters-heading">Strategy parameters</h3>
+            <div class="parameters-grid">
+              <div v-for="parameter in selectedStrategy?.parameters ?? []" :key="parameter.name" class="parameter-field">
+                <label class="parameter-label" :for="`parameter-${parameter.name}`">
+                  <span>{{ parameter.display_name || parameter.name }}<span v-if="parameter.required"> *</span></span>
+                  <small
+                    v-if="parameter.minimum !== undefined || parameter.maximum !== undefined"
+                    class="parameter-constraints"
+                  >
+                    <span v-if="parameter.minimum !== undefined">
+                      {{ parameter.exclusive_minimum ? '>' : '≥' }} {{ parameter.minimum }}
+                    </span>
+                    <span v-if="parameter.maximum !== undefined">
+                      {{ parameter.exclusive_maximum ? '<' : '≤' }} {{ parameter.maximum }}
+                    </span>
+                  </small>
+                </label>
+                <n-select
+                  v-if="isSweep"
+                  size="small"
+                  class="parameter-mode"
+                  :aria-label="`${parameter.display_name || parameter.name} mode`"
+                  :value="sweepParameter(parameter).mode"
+                  :options="parameterModeOptions(parameter)"
+                  :data-testid="`sweep-mode-${parameter.name}`"
+                  @update:value="sweepParameter(parameter).mode = $event"
+                />
+                <n-select
+                  v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
+                    (parameter.choices || parameter.type === 'bool')"
+                  :id="`parameter-${parameter.name}`"
+                  :value="selectValue(parameter)"
+                  :options="parameterOptions(parameter)"
+                  :data-testid="`creation-param-${parameter.name}`"
+                  @update:value="setChoice(parameter, $event)"
+                />
+                <n-input-number
+                  v-else-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
+                    (parameter.type === 'int' || parameter.type === 'float')"
+                  :id="`parameter-${parameter.name}`"
+                  :value="numberValue(parameter.name)"
+                  :min="parameter.minimum"
+                  :max="parameter.maximum"
+                  :precision="parameter.type === 'int' ? 0 : undefined"
+                  :data-testid="`creation-param-${parameter.name}`"
+                  @update:value="setParameter(parameter.name, $event)"
+                />
+                <n-input
+                  v-else-if="!isSweep || sweepParameter(parameter).mode === 'constant'"
+                  :id="`parameter-${parameter.name}`"
+                  :value="stringValue(parameter.name)"
+                  :data-testid="`creation-param-${parameter.name}`"
+                  @update:value="setParameter(parameter.name, $event)"
+                />
+                <template v-else-if="sweepParameter(parameter).mode === 'values'">
+                  <n-select
+                    v-if="parameter.choices || parameter.type === 'bool'"
+                    multiple
+                    :value="selectedChoiceIndexes(parameter)"
+                    :options="parameterOptions(parameter)"
+                    :data-testid="`sweep-values-${parameter.name}`"
+                    @update:value="setSweepChoices(parameter, $event)"
                   />
-                  <n-button
-                    size="small"
-                    :data-testid="`sweep-remove-${parameter.name}-${index}`"
-                    @click="stringValues(parameter).splice(index, 1)"
-                  >Remove value</n-button>
+                  <div v-else-if="parameter.type === 'str'" class="string-values">
+                    <div v-for="(value, index) in stringValues(parameter)" :key="index" class="string-value">
+                      <n-input
+                        type="textarea"
+                        :value="value"
+                        :aria-label="`${parameter.display_name || parameter.name} value ${index + 1}`"
+                        :data-testid="`sweep-string-${parameter.name}-${index}`"
+                        @update:value="stringValues(parameter)[index] = $event"
+                      />
+                      <n-button
+                        size="small"
+                        :data-testid="`sweep-remove-${parameter.name}-${index}`"
+                        @click="stringValues(parameter).splice(index, 1)"
+                      >Remove value</n-button>
+                    </div>
+                    <n-button
+                      size="small"
+                      :data-testid="`sweep-add-${parameter.name}`"
+                      @click="stringValues(parameter).push('')"
+                    >Add string value</n-button>
+                    <small>Each field is one exact string. An empty field is an empty string.</small>
+                  </div>
+                  <n-input
+                    v-else
+                    type="textarea"
+                    :value="sweepParameter(parameter).valuesText"
+                    placeholder="One numeric value per line"
+                    :data-testid="`sweep-values-${parameter.name}`"
+                    @update:value="sweepParameter(parameter).valuesText = $event"
+                  />
+                  <BaseCheckbox
+                    v-if="parameter.nullable && !parameter.choices && parameter.type !== 'bool'"
+                    v-model:checked="sweepParameter(parameter).includeNull"
+                  >Include null</BaseCheckbox>
+                </template>
+                <div v-else-if="sweepParameter(parameter).mode === 'range'" class="range-inputs">
+                  <label>Start<n-input-number
+                    v-model:value="sweepParameter(parameter).rangeStart"
+                    :precision="parameter.type === 'int' ? 0 : undefined"
+                  /></label>
+                  <label>Stop<n-input-number
+                    v-model:value="sweepParameter(parameter).rangeStop"
+                    :precision="parameter.type === 'int' ? 0 : undefined"
+                  /></label>
+                  <label>Step<n-input-number
+                    v-model:value="sweepParameter(parameter).rangeStep"
+                    :precision="parameter.type === 'int' ? 0 : undefined"
+                  /></label>
                 </div>
                 <n-button
-                  size="small"
-                  :data-testid="`sweep-add-${parameter.name}`"
-                  @click="stringValues(parameter).push('')"
-                >Add string value</n-button>
-                <small>Each field is one exact string. An empty field is an empty string.</small>
+                  v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
+                    parameter.nullable && !parameter.choices && parameter.type !== 'bool'"
+                  size="tiny"
+                  class="null-button"
+                  @click="setParameter(parameter.name, null)"
+                >Set null</n-button>
+                <small v-if="parameter.nullable && draft.strategy.parameters[parameter.name] === null">
+                  Null selected
+                </small>
+                <small v-if="parameter.description">{{ parameter.description }}</small>
+                <small v-if="fieldErrors[parameter.name]" role="alert">{{ fieldErrors[parameter.name] }}</small>
               </div>
-              <n-input
-                v-else
-                type="textarea"
-                :value="sweepParameter(parameter).valuesText"
-                placeholder="One numeric value per line"
-                :data-testid="`sweep-values-${parameter.name}`"
-                @update:value="sweepParameter(parameter).valuesText = $event"
-              />
-              <n-checkbox
-                v-if="parameter.nullable && !parameter.choices && parameter.type !== 'bool'"
-                v-model:checked="sweepParameter(parameter).includeNull"
-              >Include null</n-checkbox>
-            </template>
-            <div v-else-if="sweepParameter(parameter).mode === 'range'" class="range-inputs">
-              <label>Start<n-input-number
-                v-model:value="sweepParameter(parameter).rangeStart"
-                :precision="parameter.type === 'int' ? 0 : undefined"
-              /></label>
-              <label>Stop<n-input-number
-                v-model:value="sweepParameter(parameter).rangeStop"
-                :precision="parameter.type === 'int' ? 0 : undefined"
-              /></label>
-              <label>Step<n-input-number
-                v-model:value="sweepParameter(parameter).rangeStep"
-                :precision="parameter.type === 'int' ? 0 : undefined"
-              /></label>
             </div>
-            <n-button
-              v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
-                parameter.nullable && !parameter.choices && parameter.type !== 'bool'"
-              size="tiny"
-              @click="setParameter(parameter.name, null)"
-            >Set null</n-button>
-            <small v-if="parameter.nullable && draft.strategy.parameters[parameter.name] === null">
-              Null selected
-            </small>
-            <small v-if="parameter.minimum !== undefined || parameter.maximum !== undefined">
-              <template v-if="parameter.minimum !== undefined">
-                {{ parameter.exclusive_minimum ? '>' : '≥' }} {{ parameter.minimum }}
-              </template>
-              <template v-if="parameter.maximum !== undefined">
-                {{ parameter.exclusive_maximum ? '<' : '≤' }} {{ parameter.maximum }}
-              </template>
-            </small>
-            <small v-if="parameter.description">{{ parameter.description }}</small>
-            <small v-if="fieldErrors[parameter.name]" role="alert">{{ fieldErrors[parameter.name] }}</small>
-          </template>
-          <label v-if="!isSweep">Market
-            <n-select
-              :value="marketValue"
-              :options="marketOptions"
-              data-testid="creation-market"
-              @update:value="selectMarket"
-            />
-          </label>
-          <label v-else>Markets
-            <n-select
-              v-model:value="sweep.marketIds"
-              multiple
-              :options="marketOptions"
-              data-testid="sweep-markets"
-            />
-          </label>
-          <small v-if="!marketOptions.length" role="alert">Market options unavailable.</small>
-          <small v-if="missingMarkets.length" role="alert" data-testid="reuse-missing-market">
-            Saved Market{{ missingMarkets.length === 1 ? '' : 's' }}
-            {{ missingMarkets.join(', ') }} unavailable. Remove or replace before preview/submission.
-          </small>
-          <small v-if="fieldErrors.market" role="alert">{{ fieldErrors.market }}</small>
-          <label v-if="!isSweep">Timeframe
-            <n-select
-              v-model:value="draft.timeframe"
-              :options="timeframeOptions"
-              data-testid="creation-timeframe"
-            />
-          </label>
-          <label v-else>Timeframes
-            <n-select
-              v-model:value="sweep.timeframes"
-              multiple
-              :options="timeframeOptions"
-              data-testid="sweep-timeframes"
-            />
-          </label>
-          <label>Start date (UTC)
-            <n-date-picker
-              type="date"
-              value-format="yyyy-MM-dd"
-              :formatted-value="dateValue(draft.start_ms)"
-              :clearable="false"
-              :input-readonly="true"
-              data-testid="creation-start"
-              @update:formatted-value="setDate('start_ms', $event)"
-            />
-          </label>
-          <label>End date (UTC)
-            <n-date-picker
-              type="date"
-              value-format="yyyy-MM-dd"
-              :formatted-value="dateValue(draft.end_ms)"
-              :clearable="false"
-              :input-readonly="true"
-              data-testid="creation-end"
-              @update:formatted-value="setDate('end_ms', $event)"
-            />
-          </label>
-          <small v-if="fieldErrors.dates" role="alert">{{ fieldErrors.dates }}</small>
-          <label>Initial capital
-            <n-input-number
-              v-model:value="draft.initial_capital"
-              :min="0.01"
-              data-testid="creation-capital"
-            />
-          </label>
-          <small v-if="fieldErrors.capital" role="alert">{{ fieldErrors.capital }}</small>
-          <details>
-            <summary>Execution settings</summary>
-            <label v-if="!isSweep">Allowed Directions
-              <n-select
-                v-model:value="draft.execution.allowed_directions"
-                :options="directionOptions"
-                data-testid="creation-directions"
-              />
-            </label>
-            <label v-else>Allowed Directions
-              <n-select
-                v-model:value="sweep.allowedDirections"
-                multiple
-                :options="directionOptions"
-                data-testid="sweep-directions"
-              />
-            </label>
-            <label>Engine
-              <n-select v-model:value="draft.engine" :options="engineOptions" />
-            </label>
-            <label>Commission (bps)
-              <n-input-number v-model:value="draft.execution.commission_bps" :min="0" />
-            </label>
-            <label>Slippage (bps)
-              <n-input-number v-model:value="draft.execution.slippage_bps" :min="0" />
-            </label>
-            <label>Gap policy
-              <n-select v-model:value="draft.execution.gap_policy" :options="gapOptions" />
-            </label>
-            <label>Intrabar exit policy
-              <n-select v-model:value="draft.execution.intrabar_exit_policy" :options="exitOptions" />
-            </label>
-          </details>
+          </section>
+          <section class="settings-section" aria-labelledby="market-period-heading">
+            <h3 id="market-period-heading">Market &amp; period</h3>
+            <p class="section-description">Choose the historical data for your backtest. Dates use UTC.</p>
+            <div class="settings-grid">
+              <div class="field-group">
+                <label v-if="!isSweep">Market
+                  <n-select
+                    :value="marketValue"
+                    :options="marketOptions"
+                    data-testid="creation-market"
+                    @update:value="selectMarket"
+                  />
+                </label>
+                <label v-else>Markets
+                  <n-select
+                    v-model:value="sweep.marketIds"
+                    multiple
+                    :options="marketOptions"
+                    data-testid="sweep-markets"
+                  />
+                </label>
+                <small v-if="!marketOptions.length" role="alert">Market options unavailable.</small>
+                <small v-if="missingMarkets.length" role="alert" data-testid="reuse-missing-market">
+                  Saved Market{{ missingMarkets.length === 1 ? '' : 's' }}
+                  {{ missingMarkets.join(', ') }} unavailable. Remove or replace before preview/submission.
+                </small>
+                <small v-if="fieldErrors.market" role="alert">{{ fieldErrors.market }}</small>
+              </div>
+              <div class="field-group">
+                <label v-if="!isSweep">Timeframe
+                  <n-select
+                    v-model:value="draft.timeframe"
+                    :options="timeframeOptions"
+                    data-testid="creation-timeframe"
+                  />
+                </label>
+                <label v-else>Timeframes
+                  <n-select
+                    v-model:value="sweep.timeframes"
+                    multiple
+                    :options="timeframeOptions"
+                    data-testid="sweep-timeframes"
+                  />
+                </label>
+              </div>
+              <label>Start date (UTC)
+                <n-date-picker
+                  type="date"
+                  value-format="yyyy-MM-dd"
+                  :formatted-value="dateValue(draft.start_ms)"
+                  :clearable="false"
+                  :input-readonly="true"
+                  data-testid="creation-start"
+                  @update:formatted-value="setDate('start_ms', $event)"
+                />
+              </label>
+              <label>End date (UTC)
+                <n-date-picker
+                  type="date"
+                  value-format="yyyy-MM-dd"
+                  :formatted-value="dateValue(draft.end_ms)"
+                  :clearable="false"
+                  :input-readonly="true"
+                  data-testid="creation-end"
+                  @update:formatted-value="setDate('end_ms', $event)"
+                />
+              </label>
+              <small v-if="fieldErrors.dates" class="full-width" role="alert">{{ fieldErrors.dates }}</small>
+            </div>
+          </section>
+          <section class="settings-section" aria-labelledby="capital-heading">
+            <h3 id="capital-heading">Capital &amp; execution</h3>
+            <p class="section-description">Set the starting balance and simulation assumptions.</p>
+            <div class="capital-field field-group">
+              <label>Initial capital
+                <n-input-number
+                  v-model:value="draft.initial_capital"
+                  :min="0.01"
+                  data-testid="creation-capital"
+                />
+              </label>
+              <small v-if="fieldErrors.capital" role="alert">{{ fieldErrors.capital }}</small>
+            </div>
+            <details class="execution-settings">
+              <summary>Execution settings</summary>
+              <div class="execution-group">
+                <h4>Trading rules</h4>
+                <div class="settings-grid">
+                  <label v-if="!isSweep">Allowed Directions
+                    <n-select
+                      v-model:value="draft.execution.allowed_directions"
+                      :options="directionOptions"
+                      data-testid="creation-directions"
+                    />
+                  </label>
+                  <label v-else>Allowed Directions
+                    <n-select
+                      v-model:value="sweep.allowedDirections"
+                      multiple
+                      :options="directionOptions"
+                      data-testid="sweep-directions"
+                    />
+                  </label>
+                  <label>Engine
+                    <n-select v-model:value="draft.engine" :options="engineOptions" />
+                  </label>
+                </div>
+              </div>
+              <div class="execution-group">
+                <h4>Trading costs</h4>
+                <p class="section-description">Costs are in basis points: 1 bp = 0.01%.</p>
+                <div class="settings-grid">
+                  <label>Commission (bps)
+                    <n-input-number v-model:value="draft.execution.commission_bps" :min="0" />
+                  </label>
+                  <label>Slippage (bps)
+                    <n-input-number v-model:value="draft.execution.slippage_bps" :min="0" />
+                  </label>
+                </div>
+              </div>
+              <div class="execution-group">
+                <h4>Data &amp; fills</h4>
+                <div class="settings-grid">
+                  <label>Gap policy
+                    <n-select v-model:value="draft.execution.gap_policy" :options="gapOptions" />
+                  </label>
+                  <label>Intrabar exit policy
+                    <n-select v-model:value="draft.execution.intrabar_exit_policy" :options="exitOptions" />
+                  </label>
+                </div>
+              </div>
+            </details>
+          </section>
         </div>
         <p v-if="submitError" role="alert">{{ submitError }}</p>
-        <template v-if="isSweep">
-          <p v-if="sweepLimit">Current raw candidate limit: {{ sweepLimit }}.</p>
+        <section v-if="isSweep" class="preview-section" aria-labelledby="preview-heading">
+          <div class="section-header">
+            <h3 id="preview-heading">Sweep preview</h3>
+            <n-tag v-if="sweepLimit" size="small" :bordered="false">Limit: {{ sweepLimit }} candidates</n-tag>
+          </div>
           <p v-if="previewError" role="alert">{{ previewError }}</p>
           <p v-if="previewPending" role="status">Refreshing preview…</p>
           <section v-if="preview" class="preview-review" data-testid="sweep-review">
-            <p>{{ preview.raw_count }} raw candidates · {{ preview.ready_count }} Ready ·
-              {{ preview.excluded_count }} Excluded. Limit: {{ preview.max_sweep_candidate_count }}.</p>
-            <p>Candidate # preserves the full grid order. Ready member # is contiguous after exclusions.
+            <dl class="preview-counts">
+              <div><dt>Raw candidates</dt><dd>{{ preview.raw_count }}</dd></div>
+              <div><dt>Ready</dt><dd>{{ preview.ready_count }}</dd></div>
+              <div><dt>Excluded</dt><dd>{{ preview.excluded_count }}</dd></div>
+            </dl>
+            <p class="section-description">Candidate # preserves the full grid order. Ready member # is contiguous after exclusions.
               Sorting and filtering only change this review table.</p>
-            <label>Status
+            <label class="preview-filter">Status
               <n-select
                 v-model:value="previewFilter"
                 :options="previewFilterOptions"
                 data-testid="sweep-filter"
               />
             </label>
-            <n-data-table
+            <BaseDataTable
               :columns="previewColumns"
               :data="filteredCandidates"
               :pagination="{ pageSize: 20 }"
-              :bordered="false"
+              :scroll-x="previewColumns.length * 150"
               data-testid="sweep-candidates"
             />
           </section>
-        </template>
+        </section>
       </template>
       <template #footer>
         <n-button
           v-if="draft && catalog.length && !isSweep"
+          type="primary"
           :disabled="submitting || !marketOptions.length || !!catalogError || !selectedStrategy ||
             strategyNeedsReview"
           :loading="submitting"
@@ -312,6 +367,7 @@
         >Create Backtest</n-button>
         <n-button
           v-else-if="isSweep && sweepAcceptanceEnabled"
+          type="primary"
           :disabled="submitting || previewPending || !preview || !!previewError ||
             strategyNeedsReview || parameterIssues.length > 0 || missingMarkets.length > 0"
           :loading="submitting"
@@ -321,12 +377,15 @@
         <span v-else-if="isSweep">Parameter Sweep submission becomes available with batch execution.</span>
       </template>
     </n-drawer-content>
-  </n-drawer>
+  </BaseDrawer>
               </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { NButton, NDatePicker, NCheckbox, NDataTable, NDrawer, NDrawerContent, NInput, NInputNumber, NSelect } from 'naive-ui';
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
+import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
+import BaseDrawer from '@/components/Common/BaseDrawer.vue';
+import { NButton, NDatePicker, NDrawerContent, NInput, NInputNumber, NSelect, NTag } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
   previewParameterSweep, submitBacktestBatch, submitBacktestRun } from '@/api/backtesterClient';
@@ -913,18 +972,46 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.creation-fields { display: grid; gap: 12px; padding-bottom: 24px; }
-.creation-fields label { display: grid; gap: 4px; }
-.creation-fields small { color: #aeb8c8; }
+.creation-fields { display: grid; gap: 20px; padding: 8px 0 28px; }
+.creation-fields label, .preview-filter { display: grid; gap: 8px; min-width: 0; font-size: 13px; font-weight: 500; }
+.strategy-label { display: flex; align-items: center; gap: 10px; }
+.parameters-section { margin-top: 8px; }
+.creation-fields h3, .preview-section h3 { margin: 0 0 14px; font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.settings-section { padding: 20px; border: 1px solid #ffffff12; border-radius: 8px; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 20px 24px; }
+.field-group { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.full-width { grid-column: 1 / -1; }
+.section-description { margin: -6px 0 20px; color: #aeb8c8; font-size: 12px; line-height: 1.6; font-weight: normal; }
+.capital-field { max-width: 320px; }
+.execution-settings { margin-top: 24px; }
+.execution-group { margin-top: 24px; }
+.execution-group h4 { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
+.section-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.section-header h3 { margin: 0; }
+.preview-section { border-top: 1px solid #ffffff12; padding-top: 24px; }
+.preview-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 24px; }
+.preview-counts > div { display: flex; flex-direction: column; gap: 6px; padding: 14px; background: #ffffff05; border-radius: 8px; }
+.preview-counts dt { color: #aeb8c8; font-size: 12px; }
+.preview-counts dd { margin: 0; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.preview-filter { max-width: 220px; margin-bottom: 16px; }
+.preview-section [role='alert'] { color: #ffb4b4; }
+.parameters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; }
+.parameter-field { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 16px; border: 1px solid #ffffff12; border-radius: 8px; background: #ffffff03; }
+.creation-fields .parameter-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.parameter-label > span { overflow-wrap: anywhere; }
+.parameter-mode { max-width: 140px; }
+.null-button { align-self: flex-start; }
+.parameter-constraints { display: inline-flex; gap: 8px; margin-left: auto; font-weight: normal; }
+.parameter-constraints span { white-space: nowrap; }
+.creation-fields small { color: #aeb8c8; font-size: 12px; line-height: 1.5; }
 .creation-fields [role='alert'] { color: #ffb4b4; }
-.creation-fields details { display: grid; padding-top: 8px; }
-.creation-fields details label { margin-top: 12px; }
+.creation-fields details { padding-top: 16px; border-top: 1px solid #ffffff12; }
+.creation-fields summary { cursor: pointer; font-size: 14px; font-weight: 600; }
 .creation-fields :deep(.n-date-picker) { width: 100%; }
+.range-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.preview-review { min-width: 0; }
+.preview-review :deep(.n-data-table-th) { white-space: nowrap; }
 .string-values { display: grid; gap: 8px; }
 .string-value { display: flex; gap: 8px; align-items: start; }
 .string-value .n-input { flex: 1; }
-</style>
-
-<style>
-.backtest-drawer, .backtest-drawer * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 </style>

@@ -390,7 +390,7 @@ describe('Parameter Sweep creation review', () => {
       parameter_axes: { fast_window: { mode: 'range', start: 3, stop: 5, step: 2 },
         slow_window: { mode: 'constant', value: 30 } },
     }));
-    expect(document.body.textContent).toContain('1 Excluded');
+    expect(document.querySelectorAll('.preview-counts dd')[2]?.textContent).toBe('1');
     (document.querySelector('[data-testid="sweep-submit"]') as HTMLElement).click();
     await flushPromises();
     expect(submitBacktestBatch).toHaveBeenCalledWith(expect.anything(),
@@ -444,13 +444,13 @@ describe('Parameter Sweep creation review', () => {
     range[1].vm.$emit('update:value', 3);
     range[2].vm.$emit('update:value', 1);
     await advancePreview();
-    expect(document.body.textContent).toContain('Current raw candidate limit: 1000');
+    expect(document.body.textContent).toContain('Limit: 1000 candidates');
     expect(previewParameterSweep).toHaveBeenCalledWith(expect.objectContaining({
       markets: [1], timeframes: ['M1'], parameter_axes: {
         fast_window: { mode: 'range', start: 1, stop: 3, step: 1 },
       },
     }));
-    expect(document.body.textContent).toContain('2 raw candidates');
+    expect(document.querySelector('.preview-counts dd')?.textContent).toBe('2');
     expect(submitBacktestRun).not.toHaveBeenCalled();
     mode!.vm.$emit('update:value', 'constant');
     await flushPromises();
@@ -526,8 +526,7 @@ describe('Parameter Sweep creation review', () => {
     await flushPromises();
     first.resolve(previewFor(vi.mocked(previewParameterSweep).mock.calls[0][0], 1));
     await flushPromises();
-    expect(document.body.textContent).toContain('2 raw candidates');
-    expect(document.body.textContent).not.toContain('1 raw candidates');
+    expect(document.querySelector('.preview-counts dd')?.textContent).toBe('2');
     wrapper.unmount();
   });
 
