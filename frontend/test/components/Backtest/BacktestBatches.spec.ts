@@ -101,7 +101,7 @@ describe('accepted batch inspection', () => {
     expect(controlBacktestBatch).toHaveBeenCalledWith('batch-1', 'pause', expect.any(String));
     expect(wrapper.text()).toContain('Batch paused.');
     expect(wrapper.get('button').text()).toBe('Resume Batch');
-    expect(wrapper.text()).not.toContain('0%');
+    expect(wrapper.get('p[role="status"]').text()).not.toContain('%');
     wrapper.unmount();
   });
 
@@ -132,9 +132,9 @@ describe('accepted batch inspection', () => {
     await wrapper.get('[data-testid="workspace-cancel-batch"]').trigger('click');
     await flushPromises();
     expect(controlBacktestBatch).toHaveBeenCalledWith('batch-1', 'cancel', expect.any(String));
-    expect(wrapper.text()).toContain('1 / 2 settled');
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuetext')).toContain('1 / 2 settled');
     expect(wrapper.text()).toContain('0 executed');
-    expect(wrapper.text()).toContain('capacity remains held until cleanup commits');
+    expect(wrapper.text()).toContain('Cancellation will finish after cleanup');
     expect(wrapper.text()).toContain('Cancellation accepted:');
     expect(wrapper.find('[data-testid="workspace-cancel-batch"]').exists()).toBe(false);
     expect(wrapper.emitted('cancelled')).toHaveLength(1);
@@ -149,7 +149,7 @@ describe('accepted batch inspection', () => {
       .mockResolvedValueOnce({ batch_id: 'batch-1', status: 'running', lifecycle_revision: 3 });
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
-    expect(wrapper.text()).toContain('Pausing after the active member finishes.');
+    expect(wrapper.text()).toContain('Pausing after the active run finishes.');
     expect(wrapper.get('button').text()).toBe('Resume Batch');
     expect(wrapper.get('p[role="status"]').text()).not.toContain('%');
     await wrapper.get('button').trigger('click');
@@ -221,13 +221,13 @@ describe('accepted batch inspection', () => {
   it('shows one batch summary, saved definition, and actual ordered Ready members after reload', async () => {
     const reloaded = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
-    expect(reloaded.text()).toContain('2 fixed members');
-    expect(reloaded.text()).toContain('0 / 2 settled');
+    expect(reloaded.text()).toContain('2 of 3 combinations');
+    expect(reloaded.get('[role="progressbar"]').attributes('aria-valuetext')).toContain('0 / 2 settled');
     expect(reloaded.text()).toContain('0 executed');
     expect(reloaded.emitted('members')?.[0]).toEqual(['batch-1', [member(0), member(1)]]);
     expect(reloaded.find('[data-testid="workspace-batch-members"]').exists()).toBe(false);
-    expect(reloaded.text()).toContain('Accepted sweep settings and Strategy Metadata Snapshot');
-    expect(reloaded.text()).not.toContain('0%');
+    expect(reloaded.text()).toContain('Full saved definition and strategy metadata');
+    expect(reloaded.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('0');
     reloaded.unmount();
   });
 
@@ -265,18 +265,19 @@ describe('accepted batch inspection', () => {
     vi.useFakeTimers();
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
-    expect(wrapper.text()).toContain('1 member failure');
-    expect(wrapper.text()).toContain('Active member #2');
+    expect(wrapper.text()).toContain('1 run failed');
+    expect(wrapper.text()).toContain('Running #2 of 2');
     expect(wrapper.emitted('members')?.[0]?.[1]).toEqual([
       { ...member(0), status: 'failed', error_message: 'Data unavailable' },
       { ...member(1), status: 'running' },
     ]);
     vi.advanceTimersByTime(5000);
     await flushPromises();
-    expect(wrapper.text()).toContain('2 / 2 settled');
-    expect(wrapper.text()).toContain('succeeded: 1');
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuetext')).toContain('2 / 2 settled');
+    expect(wrapper.get('.outcome-grid .succeeded dd').text()).toBe('1');
+    expect(wrapper.get('.status-badge').text()).toBe('Completed with failures');
     expect(wrapper.text()).toContain('running → completed');
-    expect(wrapper.text()).toContain('Terminal:');
+    expect(wrapper.text()).toContain('Finished · UTC');
     expect(wrapper.text()).toContain('run member-1');
     expect(wrapper.emitted('members')?.[1]?.[1]).toEqual([
       { ...member(0), status: 'failed', error_message: 'Data unavailable' },
@@ -285,4 +286,71 @@ describe('accepted batch inspection', () => {
     wrapper.unmount();
     vi.useRealTimers();
   });
+
+  it('shows live run context and elapsed time, then freezes the final duration', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(batch.accepted_at_ms + 10_000);
+    vi.mocked(getBacktestBatch).mockResolvedValue({ ...batch, status: 'running',
+      started_at_ms: batch.accepted_at_ms, active_member_ordinal: 0,
+      next_member_ordinal: 1, outcome_counts: { ...batch.outcome_counts, running: 1, queued: 1 } });
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    expect(wrapper.get('.activity-copy').text()).toContain('Running #1 of 2');
+    expect(wrapper.get('.active-context').text()).toContain('Fast window: 5');
+    expect(wrapper.get('.activity-copy').text()).toContain('Up next: run #2');
+    expect(wrapper.get('.elapsed strong').text()).toBe('10s');
+    vi.advanceTimersByTime(1000);
+    await flushPromises();
+    expect(wrapper.get('.elapsed strong').text()).toBe('11s');
+    vi.mocked(getBacktestBatch).mockResolvedValue({ ...batch, status: 'completed',
+      started_at_ms: batch.accepted_at_ms, completed_at_ms: batch.accepted_at_ms + 12_000,
+      active_member_ordinal: null, next_member_ordinal: null, settled_count: 2, executed_count: 2,
+      outcome_counts: { ...batch.outcome_counts, queued: 0, succeeded: 2 } });
+    vi.advanceTimersByTime(4000);
+    await flushPromises();
+    expect(wrapper.get('.elapsed strong').text()).toBe('12s');
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('2');
+    expect(wrapper.findAll('button')).toHaveLength(0);
+    vi.advanceTimersByTime(10_000);
+    await flushPromises();
+    expect(wrapper.get('.elapsed strong').text()).toBe('12s');
+    wrapper.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('marks failed polling as unknown, retains counts, and recovers on the next poll', async () => {
+    vi.useFakeTimers();
+    vi.mocked(getBacktestBatch).mockResolvedValueOnce(batch)
+      .mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValue(batch);
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(wrapper.get('.status-badge').text()).toBe('Status unknown');
+    expect(wrapper.get('[role="alert"]').text()).toContain('last saved snapshot');
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuemax')).toBe('2');
+    expect(wrapper.text()).toContain('Updates interrupted');
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(wrapper.get('.status-badge').text()).toBe('Queued');
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
+    vi.useRealTimers();
+  });
+
+  it('counts cancelled runs as settled without counting them as executed', async () => {
+    vi.mocked(getBacktestBatch).mockResolvedValue({ ...batch, status: 'cancelled',
+      settled_count: 2, executed_count: 1, next_member_ordinal: null,
+      outcome_counts: { ...batch.outcome_counts, queued: 0, succeeded: 1, cancelled: 1 } });
+    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    await flushPromises();
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuetext')).toBe('2 / 2 settled; 1 executed');
+    expect(wrapper.get('.progress-percent').text()).toBe('100%');
+    expect(wrapper.get('.status-badge').text()).toBe('Cancelled');
+    expect(wrapper.get('.outcome-grid .cancelled dd').text()).toBe('1');
+    expect(wrapper.findAll('button')).toHaveLength(0);
+    wrapper.unmount();
+  });
+
 });
