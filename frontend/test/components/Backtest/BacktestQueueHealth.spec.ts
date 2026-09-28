@@ -34,9 +34,10 @@ describe('Backtest queue health', () => {
     const wrapper = mount(BacktestQueueHealth);
     await flushPromises();
     expect(wrapper.find('[data-testid="workspace-worker-status"]').text()).toContain('Worker healthy');
-    expect(wrapper.find('[data-testid="workspace-queue-active"]').text()).toContain('active for 2m 0s');
+    expect(wrapper.find('[data-testid="workspace-queue-active"]').text()).toContain('Active for 2m 0s');
     expect(wrapper.find('[data-testid="workspace-queue-run-waiting"]').text())
-      .toContain('estimated position 1 · waiting 1m 0s');
+      .toContain('Est. #1');
+    expect(wrapper.text()).toContain('Waiting 1m 0s');
     expect(wrapper.text()).toContain('no start time or ETA');
 
     vi.advanceTimersByTime(5000);
@@ -61,11 +62,15 @@ describe('Backtest queue health', () => {
     const wrapper = mount(BacktestQueueHealth);
     await flushPromises();
     expect(wrapper.find('[data-testid="workspace-queue-active"]').text())
-      .toContain('Batch active-batch member #1');
+      .toContain('Member #1');
+    expect(wrapper.find('[data-testid="workspace-queue-active"]').text()).toContain('active-batch');
     expect(wrapper.find('[data-testid="workspace-queue-batch-waiting-batch"]').text())
-      .toContain('estimated position 1 · waiting 1m 0s');
+      .toContain('Est. #1');
+    expect(wrapper.text()).toContain('Waiting 1m 0s');
     expect(wrapper.find('[data-testid="workspace-queue-batch-waiting-batch"]').text())
-      .toContain('next member #3 · 1 succeeded, 1 failed');
+      .toContain('Next member #3');
+    expect(wrapper.text()).toContain('1 succeeded');
+    expect(wrapper.text()).toContain('1 failed');
     vi.advanceTimersByTime(5000);
     await flushPromises();
     expect(wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists()).toBe(true);
