@@ -43,6 +43,14 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   timestamps, and ordered lifecycle events with nullable prior status, new
   status, and triggering Run IDs. A completed
   Batch can include failed members while successful member results remain usable.
+- Parameter Sweep detail separates the saved strategy identity, settled progress,
+  member outcome counts, and active/next run context. Its segmented bar shows
+  successful, failed, cancelled, running, and stopping members against the fixed
+  total; only terminal member outcomes contribute to the displayed percentage.
+  Elapsed wall time includes pauses and stops at the saved terminal timestamp.
+  Dates are readable UTC values. Accepted selections and an activity timeline
+  expand on demand, with full saved JSON and command identifiers in nested details.
+  Failed polling retains the last snapshot and explicitly marks live status unknown.
 - Batch history Market, Timeframe, Strategy, and failed-member filters use saved
   actual-member context and outcome fields, not the sweep's broader selections
   that may contain excluded candidates.
@@ -75,6 +83,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Backtest Closed Trade entry and exit markers label the executed action and
   price, such as `Buy @ 101.25` and `Sell @ 104.50`; exit reason is not marker
   label text.
+- Backtest entry markers use arrows and exit markers use circles; green means
+  buy and red means sell. Coincident reversal exits and entries remain separate.
+  Hovering a marker shows Open/Close and trade direction in the overlay panel,
+  with saved realized PnL in account units for exits.
 - Backtest marker labels must use closed-trade direction for short-capable
   results. Long trades enter with buy markers and exit with sell markers; short
   trades enter with sell markers and exit with buy markers.
@@ -164,14 +176,15 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   from saved Return.
 - Opening a Batch feeds its ordinal-ordered members into the same combined
   settings/performance table used for standalone inspection. Comparison IDs are
-  scoped to that open Batch or standalone Run and survive local filtering,
+  scoped to that open Batch or standalone Run and survive
   sorting, column changes, and execution-log inspection. Only successful rows
   are selectable for comparison; failed, cancelled, and unfinished rows retain
   request settings and missing result metrics. Frontend run readers accept
   cancelling/cancelled statuses for future durable cancellation responses.
-- Performance, Long / short, and Run settings presets control visible columns;
-  all saved named strategy parameters remain available in Run settings and the
-  selected request. The comparison table pins selection and Run identity,
+- One Columns popover controls visible columns with grouped checkboxes for
+  Run settings, Performance, and Long / short. Each group has a checked, unchecked,
+  or indeterminate checkbox that changes only that group. All saved named strategy parameters
+  remain available in Run settings and the selected request. The comparison table pins selection and Run identity,
   horizontally scrolls readable columns, and caps long bodies at 360px beneath
   fixed headers. Differing request assumptions are called out without ranking.
 - Selected successful runs read detail and exact Equity Replay through the
@@ -179,10 +192,26 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   run-identified equity and nonpositive drawdown series below the table.
   Per-run replay unavailability or read errors leave other series and saved
   metrics intact. Ending equity comes only from the last exact replay point.
+- Equity and drawdown comparison charts remain fitted to the full selected
+  history on data changes and resize, with chart scrolling and scaling disabled.
+  A compact legend identifies runs; series titles never cover the curves.
+  Drawdown uses a nonpositive, zero-anchored percentage axis with adaptive
+  precision for small losses. Backend sampling is retained and disclosed once
+  beside the legend; successful replay details are shown in the metrics table.
 - Workspace history explicitly deletes terminal `succeeded`, `failed`, or
   `cancelled` standalone runs and entire `completed` or `cancelled` batches
   through the public backtester API. It refreshes history on success, retains
   visible records on failure, and clears deleted selections and chart overlays.
+- Run analysis identifies rows and replay legends by one-based member number
+  (standalone runs use #1), with the full Run ID available on hover. The pinned
+  Run column follows a narrow, headerless comparison checkbox column and sorts
+  by that number. Comparison checkboxes use dark empty and disabled surfaces,
+  turquoise selection, and visible keyboard focus. A separate pinned Actions
+  column groups execution-log and Open on chart icons, with Cancel shown only
+  for queued or running runs. The Actions column contracts when no cancel action
+  is available. History also hides unavailable Cancel actions. Chart opening
+  acts directly on that row without changing inspection or comparison selection; unavailable actions explain why in a
+  tooltip.
 - Workspace run cells open a per-run execution-log drawer through the public
   backtester `/trades` and `/fills` resources. Closed Trades and Fills retain
   their stored sequence and separate direction/side semantics. Log reads occur
@@ -211,6 +240,29 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 
 ## Key Modules
 
+- `src/components/Common/BaseCheckbox.vue`: shared native checkbox with dark
+  empty/disabled surfaces, turquoise selection, and keyboard focus. Use it for
+  all checkbox controls, including run selection and labeled form inputs.
+  Supply `indeterminate` for Naive UI group checkboxes with mixed selection.
+- `src/components/Common/BasePopover.vue`: shared Naive UI popover with the
+  drawer's dark surface, text, borders, and typography; forwards props, events,
+  and slots and supports local theme overrides. The Columns popover shows its
+  full content without internal scrolling, with viewport margins.
+
+- `src/components/Common/BaseDrawer.vue`: shared Naive UI side panel with the
+  app's dark blue background, text, dividers, and typography. Use it for drawers;
+  it forwards Naive UI drawer props, events, and slots, and merges optional
+  `theme-overrides` for local customization.
+
+- `src/components/Common/BaseDataTable.vue`: shared Naive UI data table with the
+  app's dark blue surfaces, header typography, and keyboard focus styling.
+  Fixed columns share subtly lighter header/body surfaces, including striped,
+  hover, and sorted states, plus Naive UI boundary shadows. History and run
+  analysis use this same treatment without local background overrides. Use it
+  for data tables; it accepts Naive UI table props, events, slots, and optional
+  `theme-overrides` for local customization. Data tables use columns and data;
+  custom control tables supply table sections through the default slot. Both
+  render through Naive UI with its themed horizontal and vertical scrollbars.
 - `src/views/ChartView.vue`: page-level chart workspace.
 - `src/components/Chart/ChartArea.vue`: visual chart wiring, chart infrastructure
   lifecycle, legend updates, and session adapter construction.
