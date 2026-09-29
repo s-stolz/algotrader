@@ -1245,7 +1245,8 @@ onUnmounted(stopPolling);
 :deep(.run-identity) { min-width: 0; font-weight: 500; }
 :deep(.run-status-icon) { display: inline-flex; vertical-align: middle; }
 :deep(.run-identity small) { display: block; color: #8190a0; font-size: 10px; font-family: monospace; margin-top: 3px; }
-:deep(.row-actions) { display: flex; gap: 4px; }
+:deep(.row-actions) { display: flex; align-items: center; gap: 4px; }
+:deep(.run-chart-action) { display: inline-flex; align-items: center; }
 :deep(.negative-metric) { color: #f0aaa2; }
 :deep(.positive-metric) { color: #7dd5b4; }
 :deep(.n-data-table-tr) { cursor: pointer; }
