@@ -137,7 +137,6 @@
         <h2>Results</h2>
       </div>
       <p v-if="!selectedRunId && !selectedBatchId">Select a saved run or Batch to inspect its request and results.</p>
-      <p v-if="detailLoading" role="status">Loading selected Backtest…</p>
       <p v-if="detailError" role="alert">{{ detailError }}</p>
       <p v-if="overlayStore.error" role="alert">{{ overlayStore.error }}</p>
       <template v-if="currentRows.length">
@@ -314,7 +313,6 @@ const cancelError = ref<string | null>(null);
 const cancellingRunIds = ref<ReadonlySet<string>>(new Set());
 const deletingRunIds = ref<ReadonlySet<string>>(new Set());
 const deletingBatchIds = ref<ReadonlySet<string>>(new Set());
-const detailLoading = ref(false);
 type AnalysisState = { loading: boolean; error: string | null;
   curve: EquityReplayResponse | null; detail: BacktestRun | null };
 const analysis = ref<Record<string, AnalysisState>>({});
@@ -498,7 +496,6 @@ async function loadSelected(runId: string, background = false): Promise<void> {
   if (background && pendingDetailId === runId) return;
   pendingDetailId = runId;
   const sequence = ++detailSequence;
-  detailLoading.value = !background;
   try {
     const detail = await getBacktestRun(runId);
     if (sequence === detailSequence && workspaceStore.selectedRunId === runId) {
@@ -513,7 +510,6 @@ async function loadSelected(runId: string, background = false): Promise<void> {
     }
   } finally {
     if (sequence === detailSequence) {
-      detailLoading.value = false;
       pendingDetailId = null;
     }
   }
@@ -1258,15 +1254,12 @@ watch(() => router.currentRoute?.value.params, async (params) => {
     workspaceStore.clearSelection();
     setComparison([]);
     const sequence = ++detailSequence;
-    detailLoading.value = true;
     try {
       const run = await getBacktestRun(id);
       if (sequence !== detailSequence) return;
       selectRun(run);
     } catch (error) {
       if (sequence === detailSequence) detailError.value = errorMessage(error);
-    } finally {
-      if (sequence === detailSequence) detailLoading.value = false;
     }
   }
 }, { immediate: true });

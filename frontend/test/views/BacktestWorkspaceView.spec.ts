@@ -949,10 +949,11 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     await wrapper.find('[data-testid="workspace-run-steady"]').trigger('click');
     await flushPromises();
+    const selectedTable = wrapper.get('[data-testid="workspace-current-backtest"]').text();
     vi.mocked(getBacktestRun).mockImplementation(() => new Promise(() => {}));
     vi.advanceTimersByTime(5000);
     await flushPromises();
-    expect(wrapper.text()).not.toContain('Loading selected Backtest');
+    expect(wrapper.get('[data-testid="workspace-current-backtest"]').text()).toBe(selectedTable);
     const reads = vi.mocked(getBacktestRun).mock.calls.length;
     vi.advanceTimersByTime(5000);
     await flushPromises();
