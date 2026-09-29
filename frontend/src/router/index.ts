@@ -14,4 +14,15 @@ const router = createRouter({
   routes,
 });
 
+// Throwaway navigation prototype: bridge shareable URLs into the memory router.
+if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('variant')) {
+  const initialVariant = new URLSearchParams(window.location.search).get('variant') || 'A';
+  const initialPath = window.location.pathname + window.location.search;
+  router.beforeEach((to, from) => {
+    if (!to.query.variant) return { path: to.path, query: { ...to.query, variant: from.query.variant || initialVariant } };
+  });
+  router.afterEach((to) => window.history.replaceState(null, '', to.fullPath));
+  void router.isReady().then(() => router.replace(initialPath));
+}
+
 export default router;

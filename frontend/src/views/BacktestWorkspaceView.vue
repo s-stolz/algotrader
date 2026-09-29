@@ -7,7 +7,8 @@
         <h1>{{ page === 'history' ? 'Backtest Workspace' : analysisTitle }}</h1>
         <p>{{ page === 'history' ? 'Build experiments. Review results. Refine your strategy.' : analysisSubtitle }}</p>
       </div>
-      <div class="header-actions">
+      <PrototypeCreateAction v-if="isNavigationPrototype" />
+      <div v-else class="header-actions">
         <n-button v-if="page === 'analysis'" data-testid="workspace-history-return" @click="backToHistory">
           <template #icon><n-icon :component="ArrowBackOutline" /></template>All backtests
         </n-button>
@@ -27,6 +28,12 @@
       @submitted-batch="createdBatch"
     />
 
+    <div v-if="isNavigationPrototype" class="prototype-refresh">
+      <span>{{ readError ? 'Updates unavailable · showing last loaded history' : 'History checks automatically every 5 seconds' }}</span>
+      <n-button size="small" quaternary :loading="isRefreshing" @click="refreshWorkspace">
+        <template #icon><n-icon :component="RefreshOutline" /></template>{{ readError ? 'Retry now' : 'Check now' }}
+      </n-button>
+    </div>
     <BacktestQueueHealth ref="queueHealth" />
       <p v-if="readError" role="alert">
         Run history unavailable; current lifecycle status is unknown. {{ readError }}
@@ -244,6 +251,7 @@
 </template>
 
 <script setup lang="ts">
+import PrototypeCreateAction from './prototype-navigation/PrototypeCreateAction.vue';
 import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import BasePopover from '@/components/Common/BasePopover.vue';
@@ -277,6 +285,7 @@ defineOptions({ name: 'BacktestWorkspaceView' });
 
 const POLL_INTERVAL_MS = 5000;
 const router = useRouter();
+const isNavigationPrototype = computed(() => import.meta.env.DEV && Boolean(router.currentRoute.value.query.variant));
 const workspaceStore = useBacktestWorkspaceStore();
 const overlayStore = useBacktestOverlayStore();
 const marketsStore = useMarketsStore();
@@ -1206,6 +1215,7 @@ onUnmounted(stopPolling);
 <style scoped>
 .workspace { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: calc(100vh - 40px); max-width: 1800px; margin: 0 auto; padding: 24px 30px 48px; color: #dce4ed; }
 .workspace :deep(*) { font-family: inherit; }
+.prototype-refresh { display: flex; justify-content: flex-end; align-items: center; gap: 12px; color: #8f9dab; font-size: 12px; margin-bottom: 12px; }
 .workspace-header, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .workspace-header { margin-bottom: 28px; }
 .eyebrow { font-size: 11px; letter-spacing: .16em; color: #79c9b2; font-weight: 600; margin-bottom: 8px; }
