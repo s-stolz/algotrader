@@ -1,25 +1,21 @@
 <template>
   <n-config-provider :theme-overrides="{ common: { fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' } }">
   <main class="workspace">
+    <nav v-if="page === 'analysis'" class="analysis-breadcrumb" aria-label="Backtest location">
+      <n-button text data-testid="workspace-history-return" @click="backToHistory">
+        <template #icon><n-icon :component="ArrowBackOutline" /></template>All backtests
+      </n-button>
+      <span aria-hidden="true">/</span><span>Run analysis</span>
+    </nav>
     <header class="workspace-header">
       <div>
         <div class="eyebrow">RESEARCH / BACKTESTS</div>
         <h1>{{ page === 'history' ? 'Backtest Workspace' : analysisTitle }}</h1>
         <p>{{ page === 'history' ? 'Build experiments. Review results. Refine your strategy.' : analysisSubtitle }}</p>
       </div>
-      <PrototypeCreateAction v-if="isNavigationPrototype" />
-      <div v-else class="header-actions">
-        <n-button v-if="page === 'analysis'" data-testid="workspace-history-return" @click="backToHistory">
-          <template #icon><n-icon :component="ArrowBackOutline" /></template>All backtests
-        </n-button>
-        <n-button data-testid="workspace-refresh" :loading="isRefreshing" @click="refreshWorkspace">
-          <template #icon><n-icon :component="RefreshOutline" /></template>Refresh
-        </n-button>
-        <n-button data-testid="workspace-chart-return" @click="router.push('/')">Return to chart</n-button>
-        <n-button type="primary" data-testid="workspace-create" @click="creationOpen = true">
-          <template #icon><n-icon :component="AddOutline" /></template>Create Backtest
-        </n-button>
-      </div>
+      <n-button type="primary" data-testid="workspace-create" @click="creationOpen = true">
+        <template #icon><n-icon :component="AddOutline" /></template>Create Backtest
+      </n-button>
     </header>
 
     <BacktestCreationDrawer
@@ -28,9 +24,9 @@
       @submitted-batch="createdBatch"
     />
 
-    <div v-if="isNavigationPrototype" class="prototype-refresh">
-      <span>{{ readError ? 'Updates unavailable · showing last loaded history' : 'History checks automatically every 5 seconds' }}</span>
-      <n-button size="small" quaternary :loading="isRefreshing" @click="refreshWorkspace">
+    <div class="workspace-refresh">
+      <span>{{ readError ? 'History updates unavailable' : 'History checks automatically every 5 seconds' }}</span>
+      <n-button data-testid="workspace-refresh" size="small" quaternary :loading="isRefreshing" @click="refreshWorkspace">
         <template #icon><n-icon :component="RefreshOutline" /></template>{{ readError ? 'Retry now' : 'Check now' }}
       </n-button>
     </div>
@@ -255,7 +251,6 @@
 </template>
 
 <script setup lang="ts">
-import PrototypeCreateAction from './prototype-navigation/PrototypeCreateAction.vue';
 import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import BasePopover from '@/components/Common/BasePopover.vue';
@@ -289,7 +284,6 @@ defineOptions({ name: 'BacktestWorkspaceView' });
 
 const POLL_INTERVAL_MS = 5000;
 const router = useRouter();
-const isNavigationPrototype = computed(() => import.meta.env.DEV && Boolean(router.currentRoute.value.query.variant));
 const workspaceStore = useBacktestWorkspaceStore();
 const overlayStore = useBacktestOverlayStore();
 const marketsStore = useMarketsStore();
@@ -1230,15 +1224,17 @@ onUnmounted(stopPolling);
 </script>
 
 <style scoped>
-.workspace { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: calc(100vh - 40px); max-width: 1800px; margin: 0 auto; padding: 24px 30px 48px; color: #dce4ed; }
+.workspace { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 100%; box-sizing: border-box; max-width: 1800px; margin: 0 auto; padding: 24px 30px 48px; color: #dce4ed; }
 .workspace :deep(*) { font-family: inherit; }
-.prototype-refresh { display: flex; justify-content: flex-end; align-items: center; gap: 12px; color: #8f9dab; font-size: 12px; margin-bottom: 12px; }
+.workspace-refresh { display: flex; justify-content: flex-end; align-items: center; gap: 12px; color: #8f9dab; font-size: 12px; margin-bottom: 12px; }
 .workspace-header, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .workspace-header { margin-bottom: 28px; }
 .eyebrow { font-size: 11px; letter-spacing: .16em; color: #79c9b2; font-weight: 600; margin-bottom: 8px; }
 .workspace-header h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.7px; text-transform: capitalize; }
 .workspace-header p, .section-heading p { margin: 6px 0 0; color: #8f9dab; font-size: 13px; overflow-wrap: anywhere; }
-.header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.workspace-header > .n-button { flex-shrink: 0; }
+.analysis-breadcrumb { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; color: #8291a2; font-size: 12px; }
+.analysis-breadcrumb .n-button { color: #66dfbd; }
 .workspace-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 24px 0; }
 .workspace-summary > div { padding: 18px 22px; border: 1px solid #2b3541; border-radius: 10px; background: #1b222c; }
 .workspace-summary span { display: block; color: #96a5b4; font-size: 12px; }
@@ -1278,6 +1274,6 @@ onUnmounted(stopPolling);
 :deep(.negative-metric) { color: #f0aaa2; }
 :deep(.positive-metric) { color: #7dd5b4; }
 :deep(.n-data-table-tr) { cursor: pointer; }
-@media (max-width: 1200px) { .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); } .workspace-header { align-items: flex-start; flex-direction: column; } }
-@media (max-width: 700px) { .workspace { padding: 16px 6px 32px; } .workspace-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; } .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-panel { padding: 14px; } .section-heading { align-items: flex-start; } }
+@media (max-width: 1200px) { .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .workspace-header { flex-wrap: wrap; } .workspace-header > .n-button { margin-left: auto; } .workspace-refresh { flex-wrap: wrap; } .workspace { padding: 16px 6px 32px; } .workspace-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; } .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-panel { padding: 14px; } .section-heading { align-items: flex-start; } }
 </style>

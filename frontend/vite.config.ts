@@ -13,20 +13,6 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       vue(),
-      ...(mode === 'navigation-prototype' ? [{
-        name: 'navigation-prototype-read-only',
-        configureServer(server: import('vite').ViteDevServer) {
-          server.middlewares.use((request, response, next) => {
-            if (request.url?.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method || 'GET')) {
-              response.statusCode = 403;
-              response.setHeader('Content-Type', 'application/json');
-              response.end(JSON.stringify({ detail: 'Navigation prototype: writes are disabled.' }));
-              return;
-            }
-            next();
-          });
-        },
-      }] : []),
     ],
     resolve: {
       alias: {

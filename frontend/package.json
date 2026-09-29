@@ -5,7 +5,6 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "prototype:navigation": "VITE_PROXY_BACKTESTER_TARGET=http://127.0.0.1:8020 VITE_PROXY_DATA_ACCESSOR_TARGET=http://127.0.0.1:8000 VITE_PROXY_INDICATOR_TARGET=http://127.0.0.1:8010 vite --mode navigation-prototype --host 127.0.0.1 --port 5174 --open /backtests?variant=A",
         "build": "vite build",
         "preview": "vite preview",
         "lint": "eslint . --ext .mjs,.ts,.vue",

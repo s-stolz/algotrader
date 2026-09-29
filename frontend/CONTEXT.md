@@ -139,13 +139,20 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   direction. It coexists with chart crosshair and OHLC legend updates.
 - Backtest overlays expose a compact candlestick-pane panel showing the applied
   run context and a remove action; saved run selection is in the Workspace.
-- The chart toolbar opens the full-screen Backtest Workspace. The chart route is
+- A shared edge link opens the full-screen Backtest Workspace from the chart's
+  right edge and returns to Chart from the Workspace's left edge. Its 64 × 176
+  hit area exactly matches the revealed icon-and-arrow control; it opens on hover
+  or keyboard focus and hides immediately on pointer exit. Its background is
+  `#18222e`. The chart route is
   kept alive, and the Workspace store retains its selected run and editable
   creation draft when navigating between them.
 - Workspace history reads saved standalone runs and accepted Batches from the
   public backtester API on entry and at five-second intervals while active.
   One sortable table provides search and status, type, Market, Strategy,
-  Timeframe, and With failed runs filters, plus manual refresh. Failed reads
+  Timeframe, and With failed runs filters. History checks every five seconds;
+  Check now sits beside that status and becomes Retry now on read errors.
+  Create Backtest remains the primary header action, and All backtests belongs
+  above an analysis page's heading. Failed reads
   report unknown lifecycle state without replacing previously loaded records
   with an empty history.
 - Workspace history presents accepted Batches beside standalone summaries in
@@ -244,6 +251,14 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Runtime validation for frontend-facing HTTP and WebSocket payloads.
 
 ## Key Modules
+
+- `src/components/Workspace/WorkspaceNavigation.vue`: shared viewport layout and
+  accessible edge navigation between Chart and Backtests. Keeps long backtest
+  content scrollable within the viewport, moves keyboard focus to the destination
+  screen, and respects reduced motion. ChartView owns its flex layout so the chart
+  fills the remaining height without vertical page scrolling. App retains both
+  route instances with KeepAlive; workspace navigation does not reset drafts,
+  filters, or selected comparisons.
 
 - `src/components/Common/BaseCheckbox.vue`: shared native checkbox with dark
   empty/disabled surfaces, turquoise selection, and keyboard focus. Use it for

@@ -15,8 +15,9 @@ import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { BacktestBatch, BacktestClosedTrade, BacktestFill, BacktestRun, EquityReplayResponse } from '@/types/backtesterContracts';
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
+import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 
-const routerMock = vi.hoisted(() => ({ push: vi.fn(), currentRoute: { value: { query: {} } } }));
+const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
   cancelBacktestRun: vi.fn(),
@@ -379,6 +380,19 @@ describe('production Backtest Workspace', () => {
         wrapper.unmount();
       }
     });
+
+  it('opens the real creation workflow from the primary header action', async () => {
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    const wrapper = mount(BacktestWorkspaceView, {
+      global: { plugins: [pinia], stubs: { BacktestCreationDrawer: true,
+        BacktestBatches: true, EquityReplayCharts: true } },
+    });
+    await flushPromises();
+    expect(wrapper.getComponent(BacktestCreationDrawer).props('show')).toBe(false);
+    await wrapper.get('[data-testid="workspace-create"]').trigger('click');
+    expect(wrapper.getComponent(BacktestCreationDrawer).props('show')).toBe(true);
+    wrapper.unmount();
+  });
 
   it('opens a separate analysis page and restores history filters on return', async () => {
     const saved = run('navigation');
@@ -935,8 +949,10 @@ describe('production Backtest Workspace', () => {
 
     const wrapper = mountWorkspace();
     await flushPromises();
+    expect(wrapper.get('[data-testid="workspace-refresh"]').text()).toBe('Check now');
     await wrapper.find('[data-testid="workspace-refresh"]').trigger('click');
     await flushPromises();
+    expect(wrapper.get('[data-testid="workspace-refresh"]').text()).toBe('Retry now');
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('current lifecycle status is unknown');
     expect(wrapper.find('[data-testid="workspace-run-success"]').exists()).toBe(true);

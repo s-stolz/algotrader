@@ -7,9 +7,6 @@
     <TimeframeDropdown />
 
     <n-button round @click="modalStore.openModal('indicatorSearch')">Indicator</n-button>
-    <n-button round data-testid="open-backtest-runs" @click="router.push('/backtests')">
-      Backtests
-    </n-button>
 
     <div class="chart-interaction-controls" role="group" aria-label="Chart interaction mode">
       <n-button
@@ -62,7 +59,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
-import { useRouter } from 'vue-router';
 
 import {
   DEFAULT_CHART_INTERACTION_MODE,
@@ -90,7 +86,6 @@ const emit = defineEmits<{
 
 const currentMarketStore = useCurrentMarketStore();
 const modalStore = useModalStore();
-const router = useRouter();
 const currentSymbol = computed(() => currentMarketStore.symbol);
 const selectedChartInteractionModeColor = '#7fe7c4';
 
@@ -109,6 +104,7 @@ function selectChartInteractionMode(mode: ChartInteractionMode): void {
 
 <style scoped>
 #wrapper-select {
+  flex-shrink: 0;
   margin-bottom: 20px;
   display: flex;
   gap: 10px;

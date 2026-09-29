@@ -1,12 +1,12 @@
 <template>
-  <div>
+  <main class="chart-workspace">
     <TheTopBar v-model:chart-interaction-mode="chartInteractionMode" />
     <ChartArea
       id="chart-area"
       ref="chartArea"
       :interaction-mode="chartInteractionMode"
     />
-  </div>
+  </main>
 </template>
 
 <script setup lang="ts">
@@ -50,7 +50,16 @@ void initializeChartView();
 </script>
 
 <style scoped>
+.chart-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 #chart-area {
-  height: calc(100vh - 80px);
+  flex: 1;
+  min-height: 0;
 }
 </style>

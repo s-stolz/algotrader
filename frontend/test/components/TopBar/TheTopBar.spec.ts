@@ -3,12 +3,10 @@ import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useModalStore } from '@/stores/modalStore';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 
 import TheTopBar from '@/components/TopBar/TheTopBar.vue';
-
-const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
-vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 
 const NButtonStub = defineComponent({
   name: 'NButton',
@@ -27,10 +25,9 @@ const NButtonStub = defineComponent({
 describe('TheTopBar', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-    routerMock.push.mockReset();
   });
 
-  it('opens Backtests from the chart header', async () => {
+  it('shows the selected market and opens market search', async () => {
     useCurrentMarketStore().setMarket({
       symbol_id: 1,
       symbol: 'EURUSD',
@@ -55,11 +52,11 @@ describe('TheTopBar', () => {
       },
     });
 
-    expect(wrapper.find('[data-testid="open-backtest-runs"]').text()).toBe('Backtests');
-    expect(wrapper.find('[data-testid="open-backtest-runs"] n-icon-stub').exists()).toBe(false);
-
-    await wrapper.find('[data-testid="open-backtest-runs"]').trigger('click');
-
-    expect(routerMock.push).toHaveBeenCalledWith('/backtests');
+    const openModal = vi.spyOn(useModalStore(), 'openModal');
+    const marketButton = wrapper.findAll('button').find((button) => button.text() === 'EURUSD');
+    expect(marketButton).toBeDefined();
+    await marketButton!.trigger('click');
+    expect(openModal).toHaveBeenCalledWith('symbolSearch');
+    wrapper.unmount();
   });
 });

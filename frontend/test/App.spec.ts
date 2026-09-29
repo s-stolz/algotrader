@@ -24,7 +24,7 @@ describe('App', () => {
             template: '<div><slot /></div>',
           },
           'router-view': true,
-          NavigationPrototypeShell: { template: '<div><slot /></div>' },
+          WorkspaceNavigation: { template: '<div><slot /></div>' },
         },
       },
     });
@@ -67,11 +67,11 @@ describe('App', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="chart-route"]').exists()).toBe(true);
 
-    await router.push('/backtests');
+    await wrapper.get('a[aria-label="Open Backtests"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-testid="workspace-route"]').exists()).toBe(true);
 
-    await router.push('/');
+    await wrapper.get('a[aria-label="Return to Chart"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-testid="chart-route"]').exists()).toBe(true);
     expect(chartMounted).toHaveBeenCalledOnce();
