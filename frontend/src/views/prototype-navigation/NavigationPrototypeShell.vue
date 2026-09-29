@@ -13,7 +13,7 @@ const isAnalysis = computed(() => route.path.startsWith('/backtests/'));
 const variants = [
   { key: 'A', name: 'Workspace tabs', note: 'Two visible destinations. Best for frequent switching.' },
   { key: 'B', name: 'Navigation rail', note: 'A permanent home for navigation. Room for more workspaces.' },
-  { key: 'C', name: 'Adjacent screens', note: 'Chart on the left, backtests on the right. Click the edge to slide.' },
+  { key: 'C', name: 'Adjacent screens', note: 'Hover the edge notch to reveal the adjacent workspace.' },
 ];
 const direction = computed(() => isChart.value ? 'from-left' : 'from-right');
 function navigate(path: string): void {
@@ -37,17 +37,19 @@ function navigate(path: string): void {
         <button :aria-current="!isChart ? 'page' : undefined" @click="navigate('/backtests')"><span aria-hidden="true">▤</span> Backtests</button>
         <p>From an idea<br>to evidence.</p>
       </nav>
-      <template v-else>
-        <nav class="spatial-map" aria-label="Workspaces">
-          <button :aria-current="isChart ? 'page' : undefined" @click="navigate('/')">01 · Chart</button>
-          <span aria-hidden="true">—</span>
-          <button :aria-current="!isChart ? 'page' : undefined" @click="navigate('/backtests')">02 · Backtests</button>
-        </nav>
-        <button class="edge-link" :class="isChart ? 'edge-right' : 'edge-left'" @click="navigate(isChart ? '/backtests' : '/')">
-          <span class="edge-arrow" aria-hidden="true">{{ isChart ? '→' : '←' }}</span>
+      <button
+        v-else
+        :key="isChart ? 'chart-edge' : 'backtests-edge'"
+        class="edge-link"
+        :class="isChart ? 'edge-right' : 'edge-left'"
+        :aria-label="isChart ? 'Open Backtests' : 'Return to Chart'"
+        @click="navigate(isChart ? '/backtests' : '/')"
+      >
+        <span class="edge-reveal" aria-hidden="true">
+          <span class="edge-arrow">{{ isChart ? '→' : '←' }}</span>
           <span>{{ isChart ? 'Backtests' : 'Chart' }}</span>
-        </button>
-      </template>
+        </span>
+      </button>
     </template>
     <div class="prototype-content" :class="enabled && variant === 'C' ? direction : undefined" :data-screen="isChart ? 'chart' : 'backtests'">
       <nav v-if="enabled && isAnalysis" class="analysis-breadcrumb" aria-label="Backtest location">
@@ -80,14 +82,24 @@ function navigate(path: string): void {
 .workspace-rail button[aria-current] { color: var(--mint); border-color: #66dfbd35; background: #66dfbd0b; }
 .workspace-rail p { margin: auto 12px 10px; color: #607184; line-height: 1.7; font-size: 12px; }
 .variant-B .prototype-content { margin-left: 196px; padding-top: 8px; }
-.spatial-map { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 8px auto 18px; color: #617184; }
-.spatial-map button { background: transparent; border: none; padding: 10px; color: #8392a4; font-size: 12px; }
-.spatial-map button[aria-current] { color: var(--mint); }
-.variant-C .prototype-content { margin: 0 80px; }
-.edge-link { position: fixed; top: 43%; z-index: 20; display: flex; align-items: center; flex-direction: column; gap: 9px; width: 80px; padding: 24px 4px; background: #1a2533; border: 1px solid #3c5363; font-size: 11px !important; transition: background .18s, width .18s; }
-.edge-left { left: 0; border-radius: 0 14px 14px 0; }
-.edge-right { right: 0; border-radius: 14px 0 0 14px; }
-.edge-link:hover { background: #234039; width: 90px; color: var(--mint); }
+.variant-C { color-scheme: dark; position: fixed; inset: 0; box-sizing: border-box; min-height: 0; padding: 10px; overflow: hidden; }
+.variant-C .prototype-content { height: 100%; min-height: 0; margin: 0; overflow-x: hidden; overflow-y: auto; }
+.variant-C .prototype-content[data-screen='chart'] { overflow: hidden; }
+.variant-C [data-screen='chart'] > :deep(div) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.variant-C [data-screen='chart'] :deep(#wrapper-select) { flex-shrink: 0; }
+.edge-link { position: fixed; top: 50%; transform: translateY(-50%); z-index: 20; width: 24px; height: 120px; padding: 0; background: transparent; border: 0; }
+.edge-link::before { content: ''; position: absolute; top: 32px; width: 5px; height: 56px; background: #71879b66; border: 1px solid #96b4c833; box-sizing: border-box; transition: opacity .18s; }
+.edge-left { left: 0; }
+.edge-right { right: 0; }
+.edge-left::before { left: 0; border-radius: 0 5px 5px 0; }
+.edge-right::before { right: 0; border-radius: 5px 0 0 5px; }
+.edge-reveal { position: absolute; top: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 108px; height: 88px; box-sizing: border-box; background: #1b2b35f5; border: 1px solid #66dfbd60; color: var(--mint); font-size: 12px; box-shadow: 0 6px 24px #0005; opacity: 0; visibility: hidden; transition: transform .2s ease-out, opacity .2s, visibility .2s; }
+.edge-left .edge-reveal { left: 0; border-radius: 0 12px 12px 0; transform: translateX(-100%); }
+.edge-right .edge-reveal { right: 0; border-radius: 12px 0 0 12px; transform: translateX(100%); }
+.edge-link:hover .edge-reveal, .edge-link:focus-visible .edge-reveal { opacity: 1; visibility: visible; transform: translateX(0); }
+.edge-link:hover::before, .edge-link:focus-visible::before { opacity: 0; }
+.navigation-prototype .edge-link:focus-visible { outline: none; }
+.edge-link:focus-visible .edge-reveal { outline: 2px solid var(--mint); outline-offset: -4px; }
 .edge-arrow { font-size: 25px; }
 .variant-C .from-left { animation: arrive-left .32s ease-out; }
 .variant-C .from-right { animation: arrive-right .32s ease-out; }
@@ -96,9 +108,10 @@ function navigate(path: string): void {
 .navigation-prototype :deep(.workspace-header) { flex-direction: row; align-items: center; }
 .navigation-prototype :deep(.workspace-header > .n-button) { flex-shrink: 0; }
 .navigation-prototype :deep(#chart-area) { height: calc(100vh - 230px); }
+.variant-C [data-screen='chart'] :deep(#chart-area) { flex: 1; min-height: 0; height: auto; }
 @keyframes arrive-left { from { opacity: .4; transform: translateX(-100px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes arrive-right { from { opacity: .4; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
-@media (prefers-reduced-motion: reduce) { .prototype-content { animation: none !important; } .edge-link { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .prototype-content { animation: none !important; } .edge-reveal, .edge-link::before { transition: none; } }
 @media (max-width: 760px) {
   .navigation-prototype :deep(.workspace-header) { flex-wrap: wrap; }
   .navigation-prototype :deep(.workspace-header > .n-button) { margin-left: auto; }
@@ -106,6 +119,5 @@ function navigate(path: string): void {
   .workspace-tabs button { padding: 0 14px; }
   .workspace-rail { width: 104px; padding: 24px 8px; } .workspace-rail button { flex-direction: column; padding: 10px 3px; font-size: 12px; } .workspace-rail button span { margin: 0; }
   .rail-label, .workspace-rail p { display: none; } .variant-B .prototype-content { margin-left: 100px; }
-  .variant-C .prototype-content { margin: 0 34px; } .edge-link { width: 40px; font-size: 9px !important; padding: 18px 1px; } .edge-link:hover { width: 44px; }
 }
 </style>
