@@ -1,6 +1,6 @@
 <!-- Throwaway: three navigation layouts on the existing chart/backtest routes via ?variant=A|B|C. -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import PrototypeSwitcher from '@/components/Common/PrototypeSwitcher.vue';
 
@@ -13,34 +13,22 @@ const isAnalysis = computed(() => route.path.startsWith('/backtests/'));
 const variants = [
   { key: 'A', name: 'Workspace tabs', note: 'Two visible destinations. Best for frequent switching.' },
   { key: 'B', name: 'Navigation rail', note: 'A permanent home for navigation. Room for more workspaces.' },
-  { key: 'C', name: 'Adjacent screens', note: 'Approach the edge notch to reveal the adjacent workspace.' },
+  { key: 'C', name: 'Adjacent screens', note: 'Hover inside the button footprint to reveal it; leave to hide.' },
 ];
 const direction = computed(() => isChart.value ? 'from-left' : 'from-right');
-const isNearEdge = ref(false);
-watch(() => route.fullPath, () => { isNearEdge.value = false; });
-function updateEdgeProximity(event: PointerEvent): void {
-  if (!enabled.value || variant.value !== 'C' || event.pointerType === 'touch' || event.buttons !== 0) {
-    isNearEdge.value = false;
-    return;
-  }
-  const distanceFromEdge = isChart.value ? window.innerWidth - event.clientX : event.clientX;
-  const distanceFromCenter = Math.abs(event.clientY - window.innerHeight / 2);
-  // A larger exit region prevents flicker while moving onto the revealed button.
-  isNearEdge.value = distanceFromEdge < (isNearEdge.value ? 220 : 140) &&
-    distanceFromCenter < (isNearEdge.value ? 240 : 180);
-}
+const buttonVariant = computed(() => ['1', '2', '3'].includes(String(route.query.button)) ? String(route.query.button) : '1');
+const buttonVariants = [
+  { key: '1', name: 'Icon spine', note: '44 × 160 · Destination icon and a directional arrow.' },
+  { key: '2', name: 'Vertical label', note: '48 × 192 · A readable destination along a narrow tab.' },
+  { key: '3', name: 'Screen pair', note: '64 × 176 · Two miniature screens show where you are going.' },
+];
 function navigate(path: string): void {
-  void router.push({ path, query: { variant: variant.value } });
+  void router.push({ path, query: { ...route.query, variant: variant.value } });
 }
 </script>
 
 <template>
-  <div
-    :class="enabled ? ['navigation-prototype', `variant-${variant}`] : undefined"
-    @pointermove.capture="updateEdgeProximity"
-    @pointerleave="isNearEdge = false"
-    @pointerdown.capture="isNearEdge = false"
-  >
+  <div :class="enabled ? ['navigation-prototype', `variant-${variant}`] : undefined">
     <template v-if="enabled">
       <nav v-if="variant === 'A'" class="workspace-tabs" aria-label="Workspaces">
         <span class="brand">AT<span> / WORKSPACE</span></span>
@@ -59,13 +47,30 @@ function navigate(path: string): void {
         v-else
         :key="isChart ? 'chart-edge' : 'backtests-edge'"
         class="edge-link"
-        :class="[isChart ? 'edge-right' : 'edge-left', { 'edge-near': isNearEdge }]"
+        :class="[isChart ? 'edge-right' : 'edge-left', `edge-design-${buttonVariant}`]"
         :aria-label="isChart ? 'Open Backtests' : 'Return to Chart'"
         @click="navigate(isChart ? '/backtests' : '/')"
       >
         <span class="edge-reveal" aria-hidden="true">
-          <span class="edge-arrow">{{ isChart ? '→' : '←' }}</span>
-          <span>{{ isChart ? 'Backtests' : 'Chart' }}</span>
+          <template v-if="buttonVariant !== '3'">
+            <svg class="destination-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path v-if="isChart" d="M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1.2 2h13.6a1.3 1.3 0 0 0 1.2-2L14 9V3M8 14h8M10 17h.01M14 19h.01" />
+              <path v-else d="M3 3v18h18M7 15l4-5 4 3 6-8" />
+            </svg>
+            <span v-if="buttonVariant === '2'" class="vertical-label">{{ isChart ? 'Backtests' : 'Chart' }}</span>
+            <span v-else class="icon-divider" />
+            <svg class="direction-icon" :class="{ reverse: !isChart }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+          </template>
+          <template v-else>
+            <span class="mini-screen" :class="{ destination: !isChart }">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 17 5-7 5 3 8-8M3 21h18" /></svg>
+            </span>
+            <svg class="direction-icon" :class="{ reverse: !isChart }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16m-6-6 6 6-6 6" /></svg>
+            <span class="mini-screen" :class="{ destination: isChart }">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 5h16M4 11h6m4 0h6M4 17h6m4 0h6" /></svg>
+            </span>
+            <span class="screen-dots"><i :class="{ current: isChart }" /><i :class="{ current: !isChart }" /></span>
+          </template>
         </span>
       </button>
     </template>
@@ -75,7 +80,7 @@ function navigate(path: string): void {
       </nav>
       <slot />
     </div>
-    <PrototypeSwitcher v-if="enabled" :variants="variants" :current="variant" :screen="isChart ? 'Chart' : isAnalysis ? 'Run analysis' : 'History'" />
+    <PrototypeSwitcher v-if="enabled" :variants="variant === 'C' ? buttonVariants : variants" :current="variant === 'C' ? buttonVariant : variant" :query-key="variant === 'C' ? 'button' : 'variant'" :screen="isChart ? 'Chart' : isAnalysis ? 'Run analysis' : 'History'" />
   </div>
 </template>
 
@@ -105,20 +110,36 @@ function navigate(path: string): void {
 .variant-C .prototype-content[data-screen='chart'] { overflow: hidden; }
 .variant-C [data-screen='chart'] > :deep(div) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .variant-C [data-screen='chart'] :deep(#wrapper-select) { flex-shrink: 0; }
-.edge-link { position: fixed; top: 50%; transform: translateY(-50%); z-index: 20; width: 24px; height: 120px; padding: 0; background: transparent; border: 0; }
-.edge-link::before { content: ''; position: absolute; top: 32px; width: 5px; height: 56px; background: #71879b66; border: 1px solid #96b4c833; box-sizing: border-box; transition: opacity .18s; }
+.edge-link { position: fixed; top: 50%; transform: translateY(-50%); z-index: 20; width: var(--edge-width); height: var(--edge-height); padding: 0; background: transparent; border: 0; }
+.edge-design-1 { --edge-width: 44px; --edge-height: 160px; --edge-radius: 22px; }
+.edge-design-2 { --edge-width: 48px; --edge-height: 192px; --edge-radius: 9px; }
+.edge-design-3 { --edge-width: 64px; --edge-height: 176px; --edge-radius: 16px; }
+.edge-link::before { content: ''; position: absolute; top: 0; bottom: 0; width: 5px; background: #71879b66; border: 1px solid #96b4c833; box-sizing: border-box; }
 .edge-left { left: 0; }
 .edge-right { right: 0; }
 .edge-left::before { left: 0; border-radius: 0 5px 5px 0; }
 .edge-right::before { right: 0; border-radius: 5px 0 0 5px; }
-.edge-reveal { position: absolute; top: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 108px; height: 88px; box-sizing: border-box; background: #1b2b35f5; border: 1px solid #66dfbd60; color: var(--mint); font-size: 12px; box-shadow: 0 6px 24px #0005; opacity: 0; visibility: hidden; transition: transform .2s ease-out, opacity .2s, visibility .2s; }
-.edge-left .edge-reveal { left: 0; border-radius: 0 12px 12px 0; transform: translateX(-100%); }
-.edge-right .edge-reveal { right: 0; border-radius: 12px 0 0 12px; transform: translateX(100%); }
-.edge-near .edge-reveal, .edge-link:hover .edge-reveal, .edge-link:focus-visible .edge-reveal { opacity: 1; visibility: visible; transform: translateX(0); }
-.edge-near::before, .edge-link:hover::before, .edge-link:focus-visible::before { opacity: 0; }
+.edge-reveal { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; box-sizing: border-box; background: #1b2b35fa; border: 1px solid #66dfbd60; color: var(--mint); opacity: 0; visibility: hidden; pointer-events: none; }
+.edge-left .edge-reveal { border-radius: 0 var(--edge-radius) var(--edge-radius) 0; transform: translateX(-100%); }
+.edge-right .edge-reveal { border-radius: var(--edge-radius) 0 0 var(--edge-radius); transform: translateX(100%); }
+.edge-link:hover .edge-reveal, .edge-link:focus-visible .edge-reveal { opacity: 1; visibility: visible; transform: translateX(0); transition: transform .14s ease-out, opacity .14s; }
+.edge-link:hover::before, .edge-link:focus-visible::before { opacity: 0; }
 .navigation-prototype .edge-link:focus-visible { outline: none; }
 .edge-link:focus-visible .edge-reveal { outline: 2px solid var(--mint); outline-offset: -4px; }
-.edge-arrow { font-size: 25px; }
+.destination-icon { width: 23px; height: 23px; }
+.direction-icon { width: 21px; height: 21px; }
+.direction-icon.reverse { transform: rotate(180deg); }
+.icon-divider { width: 14px; height: 1px; background: #66dfbd45; }
+.edge-design-2 .edge-reveal { gap: 14px; background: #19252f; }
+.edge-design-2 .destination-icon { width: 19px; height: 19px; }
+.vertical-label { writing-mode: vertical-rl; font-size: 12px; letter-spacing: 1.4px; color: #d6e5e9; }
+.edge-design-3 .edge-reveal { gap: 10px; background: #18222e; }
+.mini-screen { display: flex; align-items: center; justify-content: center; width: 34px; height: 30px; border: 1px solid #526273; border-radius: 4px; color: #8393a3; }
+.mini-screen svg { width: 21px; height: 21px; }
+.mini-screen.destination { border-color: #66dfbd99; color: var(--mint); background: #66dfbd10; }
+.screen-dots { display: flex; gap: 5px; margin-top: 3px; }
+.screen-dots i { width: 4px; height: 4px; border-radius: 50%; background: #526273; }
+.screen-dots .current { background: var(--mint); }
 .variant-C .from-left { animation: arrive-left .32s ease-out; }
 .variant-C .from-right { animation: arrive-right .32s ease-out; }
 .analysis-breadcrumb { display: flex; align-items: center; gap: 14px; font-size: 12px; color: #8291a2; padding: 0 28px 16px; }
@@ -129,7 +150,7 @@ function navigate(path: string): void {
 .variant-C [data-screen='chart'] :deep(#chart-area) { flex: 1; min-height: 0; height: auto; }
 @keyframes arrive-left { from { opacity: .4; transform: translateX(-100px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes arrive-right { from { opacity: .4; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
-@media (prefers-reduced-motion: reduce) { .prototype-content { animation: none !important; } .edge-reveal, .edge-link::before { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .prototype-content { animation: none !important; } .edge-link:hover .edge-reveal, .edge-link:focus-visible .edge-reveal { transition: none; } }
 @media (max-width: 760px) {
   .navigation-prototype :deep(.workspace-header) { flex-wrap: wrap; }
   .navigation-prototype :deep(.workspace-header > .n-button) { margin-left: auto; }

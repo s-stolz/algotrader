@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-const props = defineProps<{ variants: { key: string; name: string; note: string }[]; current: string; screen: string }>();
+const props = defineProps<{ variants: { key: string; name: string; note: string }[]; current: string; screen: string; queryKey?: string }>();
 const router = useRouter();
 const route = useRoute();
 const selected = computed(() => props.variants.find((item) => item.key === props.current)!);
 function cycle(offset: number): void {
   const index = props.variants.findIndex((item) => item.key === props.current);
-  void router.replace({ path: route.path, query: { ...route.query, variant: props.variants[(index + offset + props.variants.length) % props.variants.length].key } });
+  void router.replace({ path: route.path, query: { ...route.query, [props.queryKey || 'variant']: props.variants[(index + offset + props.variants.length) % props.variants.length].key } });
 }
 function onKey(event: KeyboardEvent): void {
   const target = event.target as HTMLElement;
