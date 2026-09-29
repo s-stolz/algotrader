@@ -1049,6 +1049,7 @@ describe('production Backtest Workspace', () => {
   });
 
   it('distinguishes failed reads from empty history and refreshes after deletion', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const success = run('success');
     vi.mocked(listBacktestRuns).mockResolvedValueOnce([success]).mockRejectedValueOnce(
       new Error('Service unavailable'),
@@ -1058,8 +1059,8 @@ describe('production Backtest Workspace', () => {
 
     const wrapper = mountWorkspace();
     await flushPromises();
-    expect(wrapper.get('[data-testid="workspace-refresh"]').text()).toBe('Check now');
-    await wrapper.find('[data-testid="workspace-refresh"]').trigger('click');
+    expect(wrapper.find('[data-testid="workspace-refresh"]').exists()).toBe(false);
+    vi.advanceTimersByTime(5000);
     await flushPromises();
     expect(wrapper.get('[data-testid="workspace-refresh"]').text()).toBe('Retry now');
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
@@ -1072,6 +1073,7 @@ describe('production Backtest Workspace', () => {
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(3);
     expect(wrapper.text()).toContain('No saved Backtest Runs or Batches.');
     expect(wrapper.text()).not.toContain('current lifecycle status is unknown');
+    expect(wrapper.find('[data-testid="workspace-refresh"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -1308,20 +1310,25 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
-  it('coalesces a manual refresh requested during an active history read', async () => {
+  it('coalesces a retry requested during an active recovery poll', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     let resolveRead!: (runs: BacktestRun[]) => void;
     vi.mocked(listBacktestRuns)
+      .mockRejectedValueOnce(new Error('Service unavailable'))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }))
       .mockResolvedValueOnce([run('active', { status: 'succeeded' })]);
     const wrapper = mountWorkspace();
     await flushPromises();
 
+    expect(wrapper.get('[data-testid="workspace-refresh"]').text()).toBe('Retry now');
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
     await wrapper.find('[data-testid="workspace-refresh"]').trigger('click');
-    expect(listBacktestRuns).toHaveBeenCalledOnce();
+    expect(listBacktestRuns).toHaveBeenCalledTimes(2);
     resolveRead([run('active', { status: 'running', metrics: null })]);
     await flushPromises();
 
-    expect(listBacktestRuns).toHaveBeenCalledTimes(2);
+    expect(listBacktestRuns).toHaveBeenCalledTimes(3);
     expect(wrapper.find('[data-testid="workspace-run-active"]').text()).toContain('succeeded');
     wrapper.unmount();
   });

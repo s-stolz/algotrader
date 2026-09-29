@@ -149,8 +149,8 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
 - Workspace history reads saved standalone runs and accepted Batches from the
   public backtester API on entry and at five-second intervals while active.
   One sortable table provides search and status, type, Market, Strategy,
-  Timeframe, and With failed runs filters. History checks every five seconds;
-  Check now sits beside that status and becomes Retry now on read errors.
+  Timeframe, and With failed runs filters. Polling runs silently; Retry now appears
+  beside a history read error and disappears after recovery.
   Create Backtest sits beside Experiment history on the history page. Results
   pages keep it in the compact top toolbar with All backtests navigation, without
   a page title or separate divider. The results panel identifies standalone strategy, version, run type,

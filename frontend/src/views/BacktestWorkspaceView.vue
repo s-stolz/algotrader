@@ -18,15 +18,12 @@
       @submitted-batch="createdBatch"
     />
 
-    <div class="workspace-refresh">
-      <span>{{ readError ? 'History updates unavailable' : 'History checks automatically every 5 seconds' }}</span>
-      <n-button data-testid="workspace-refresh" size="small" quaternary :loading="isRefreshing" @click="refreshWorkspace">
-        <template #icon><n-icon :component="RefreshOutline" /></template>{{ readError ? 'Retry now' : 'Check now' }}
-      </n-button>
-    </div>
     <BacktestQueueHealth ref="queueHealth" />
       <p v-if="readError" role="alert">
         Run history unavailable; current lifecycle status is unknown. {{ readError }}
+        <n-button data-testid="workspace-refresh" size="small" quaternary :loading="isRefreshing" @click="refreshWorkspace">
+          <template #icon><n-icon :component="RefreshOutline" /></template>Retry now
+        </n-button>
       </p>
       <p v-if="deleteError" role="alert">{{ deleteError }}</p>
       <p v-if="selectionNotice" role="status">{{ selectionNotice }}</p>
@@ -1283,7 +1280,6 @@ onUnmounted(stopPolling);
 <style scoped>
 .workspace { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 100%; box-sizing: border-box; max-width: 1800px; margin: 0 auto; padding: 24px 30px 48px; color: #dce4ed; }
 .workspace :deep(*) { font-family: inherit; }
-.workspace-refresh { display: flex; justify-content: flex-end; align-items: center; gap: 12px; color: #8f9dab; font-size: 12px; margin-bottom: 12px; }
 .workspace-header, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .workspace-header { min-height: 36px; margin-bottom: 20px; }
 .section-heading p { margin: 6px 0 0; color: #8f9dab; font-size: 13px; overflow-wrap: anywhere; }
@@ -1337,5 +1333,5 @@ onUnmounted(stopPolling);
 :deep(.positive-metric) { color: #7dd5b4; }
 :deep(.n-data-table-tr) { cursor: pointer; }
 @media (max-width: 1200px) { .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (max-width: 700px) { .workspace-header { flex-wrap: wrap; } .workspace-header > .n-button { margin-left: auto; } .workspace-refresh { flex-wrap: wrap; } .workspace { padding: 16px 6px 32px; } .workspace-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; } .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-panel { padding: 14px; } .section-heading { align-items: flex-start; } }
+@media (max-width: 700px) { .workspace-header { flex-wrap: wrap; } .workspace { padding: 16px 6px 32px; } .workspace-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; } .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-panel { padding: 14px; } .section-heading { align-items: flex-start; } }
 </style>
