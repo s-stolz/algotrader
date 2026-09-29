@@ -233,7 +233,8 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   backtester `/trades` and `/fills` resources. Closed Trades and Fills retain
   their stored sequence and separate direction/side semantics. Log reads occur
   on demand and cannot change the selected run or saved metrics; stale reads
-  after switching or closing the drawer are ignored.
+  after switching or closing the drawer are ignored. Runs without a completed
+  supported log show a disabled log action with an explanation.
 - Backtest Run selection requires the run's Market to still exist in the
   frontend Market list; missing Markets leave the current chart unchanged and
   show an explanation in the Workspace.

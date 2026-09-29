@@ -271,7 +271,7 @@ import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
 import { getBacktestRunSelectability, useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import { BACKTEST_BATCH_STATUSES, BACKTEST_RUN_STATUSES, type BacktestBatch, type BacktestRun, type BacktestRunStatus, type EquityReplayResponse } from '@/types/backtesterContracts';
+import { BACKTEST_BATCH_STATUSES, BACKTEST_RESULT_SCHEMA_VERSION, BACKTEST_RUN_STATUSES, type BacktestBatch, type BacktestRun, type BacktestRunStatus, type EquityReplayResponse } from '@/types/backtesterContracts';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
 import { reuseBatch, reuseStandalone } from './backtestReuse';
 import EquityReplayCharts from './EquityReplayCharts.vue';
@@ -586,7 +586,8 @@ function receiveMembers(batchId: string, members: BacktestRun[]): void {
   const changed = JSON.stringify(batchMembers.value) !== JSON.stringify(members);
   if (changed) batchMembers.value = members;
   if (logRun.value?.batch_id === batchId) {
-    logRun.value = members.find((run) => run.run_id === logRun.value?.run_id) ?? null;
+    const updatedLogRun = members.find((run) => run.run_id === logRun.value?.run_id);
+    logRun.value = updatedLogRun && executionLogAvailable(updatedLogRun) ? updatedLogRun : null;
   }
   const eligible = selectedComparisonIds.value.filter((id) =>
     members.some((run) => run.run_id === id && run.status === 'succeeded'));
@@ -608,7 +609,8 @@ async function readRuns(): Promise<void> {
     batches.value = latestBatches;
     readError.value = null;
     if (logRun.value && !logRun.value.batch_id) {
-      logRun.value = latest.find((run) => run.run_id === logRun.value?.run_id) ?? null;
+      const updatedLogRun = latest.find((run) => run.run_id === logRun.value?.run_id);
+      logRun.value = updatedLogRun && executionLogAvailable(updatedLogRun) ? updatedLogRun : null;
     }
     if ((overlayStore.selectedRun?.batch_id &&
       !latestBatches.some((batch) => batch.batch_id === overlayStore.selectedRun?.batch_id)) ||
@@ -750,19 +752,32 @@ function cell(value: string, explanation?: string) {
       whiteSpace: 'nowrap' } }, value);
 }
 
+function executionLogAvailable(run: BacktestRun): boolean {
+  return run.status === 'succeeded' && run.result_schema_version === BACKTEST_RESULT_SCHEMA_VERSION;
+}
+
+function executionLogUnavailableReason(run: BacktestRun): string {
+  if (run.status !== 'succeeded') return `This ${run.status} run has no completed execution log.`;
+  return 'A completed execution log is unavailable for this result schema.';
+}
+
 function executionLogAction(run: BacktestRun, label: string) {
+  const available = executionLogAvailable(run);
   return h(NTooltip, null, {
-    trigger: () => h(NButton, {
+    trigger: () => h('span', { class: 'run-log-action' }, [h(NButton, {
       text: true, size: 'small',
       'data-testid': `workspace-log-${run.run_id}`,
-      'aria-label': `View execution log for ${label}`,
+      'aria-label': available ? `View execution log for ${label}` : `Execution log unavailable for ${label}`,
+      disabled: !available,
       onKeydown: (event: KeyboardEvent) => { event.stopPropagation(); },
       onClick: (event: MouseEvent) => {
         event.stopPropagation();
+        if (!available) return;
         logRun.value = run;
       },
-    }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(DocumentTextOutline) }) }),
-    default: () => 'View execution log',
+    }, { icon: () => h(NIcon, { size: 16, class: available ? undefined : 'unavailable-log-icon' },
+      { default: () => h(DocumentTextOutline) }) })]),
+    default: () => available ? 'View execution log' : executionLogUnavailableReason(run),
   });
 }
 
@@ -1312,6 +1327,9 @@ onUnmounted(stopPolling);
 :deep(.run-identity small) { display: block; color: #8190a0; font-size: 10px; font-family: monospace; margin-top: 3px; }
 :deep(.row-actions) { display: flex; align-items: center; gap: 4px; }
 :deep(.run-chart-action) { display: inline-flex; align-items: center; }
+:deep(.run-log-action) { display: inline-flex; align-items: center; }
+:deep(.unavailable-log-icon) { position: relative; }
+:deep(.unavailable-log-icon::after) { content: ''; position: absolute; top: 50%; left: -2px; width: 20px; height: 1.5px; background: currentColor; transform: rotate(-45deg); pointer-events: none; }
 :deep(.negative-metric) { color: #f0aaa2; }
 :deep(.positive-metric) { color: #7dd5b4; }
 :deep(.n-data-table-tr) { cursor: pointer; }

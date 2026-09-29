@@ -577,24 +577,36 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
-  it('distinguishes no executions, no matches, unavailable logs, and runs without completed logs', async () => {
+  it('disables unavailable execution logs while distinguishing empty, filtered, and failed reads', async () => {
     const success = run('success');
     const failed = run('failed', { status: 'failed', metrics: null });
-    vi.mocked(listBacktestRuns).mockResolvedValue([success, failed]);
+    const legacy = run('legacy', { result_schema_version: 2 });
+    vi.mocked(listBacktestRuns).mockResolvedValue([success, failed, legacy]);
     const wrapper = mountWorkspace();
     await flushPromises();
+
+    for (const id of ['failed', 'legacy']) {
+      const button = wrapper.get(`[data-testid="workspace-log-${id}"]`);
+      expect(button.attributes('disabled')).toBeDefined();
+      expect(button.attributes('aria-label')).toContain('Execution log unavailable');
+      expect(button.find('.unavailable-log-icon').exists()).toBe(true);
+      await button.trigger('click');
+    }
+    expect(wrapper.findComponent(ExecutionLogDrawer).exists()).toBe(false);
+    expect(fetchBacktestFills).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-testid="workspace-log-failed"]').element.parentElement?.dispatchEvent(new MouseEvent('mouseenter'));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('failed run has no completed execution log'));
 
     await wrapper.find('[data-testid="workspace-log-success"]').trigger('click');
     await flushPromises();
     expect(document.body.textContent).toContain('This successful run has no executions.');
-
-    await wrapper.find('[data-testid="workspace-log-failed"]').trigger('click');
-    await flushPromises();
-    expect(document.body.textContent).toContain('failed run has no completed execution log');
     expect(fetchBacktestFills).toHaveBeenCalledTimes(1);
 
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([trade(0, 'long', 'signal')]);
     vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'buy')]);
+    document.body.querySelector<HTMLButtonElement>('.n-drawer-header__close')!.click();
+    await wrapper.vm.$nextTick();
     await wrapper.find('[data-testid="workspace-log-success"]').trigger('click');
     await flushPromises();
     wrapper.findComponent(ExecutionLogDrawer).findAllComponents(NSelect)[0].vm.$emit('update:value', 'short');
@@ -602,7 +614,8 @@ describe('production Backtest Workspace', () => {
     expect(document.body.textContent).toContain('No Closed Trades match these filters.');
 
     vi.mocked(fetchBacktestClosedTrades).mockRejectedValue(new Error('Storage unavailable'));
-    await wrapper.find('[data-testid="workspace-log-failed"]').trigger('click');
+    document.body.querySelector<HTMLButtonElement>('.n-drawer-header__close')!.click();
+    await wrapper.vm.$nextTick();
     await wrapper.find('[data-testid="workspace-log-success"]').trigger('click');
     await flushPromises();
     expect(document.body.textContent).toContain('Execution log unavailable. Storage unavailable');
@@ -1466,7 +1479,11 @@ describe('production Backtest Workspace', () => {
     await wrapper.get(`[data-testid="workspace-run-${id}"]`).trigger('click');
     await flushPromises();
     expect(wrapper.get(`[data-testid="workspace-chart-${id}"]`).attributes('disabled')).toBeDefined();
-    expect(wrapper.get(`[data-testid="workspace-log-${id}"]`).attributes('disabled')).toBeUndefined();
+    if (saved.status === 'succeeded') {
+      expect(wrapper.get(`[data-testid="workspace-log-${id}"]`).attributes('disabled')).toBeUndefined();
+    } else {
+      expect(wrapper.get(`[data-testid="workspace-log-${id}"]`).attributes('disabled')).toBeDefined();
+    }
     expect(routerMock.push).not.toHaveBeenCalledWith('/');
     wrapper.unmount();
   });

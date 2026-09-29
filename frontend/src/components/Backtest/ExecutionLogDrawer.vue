@@ -3,81 +3,73 @@
     <n-drawer-content :title="`Execution log · ${runName(run)}`" closable>
       <div class="log-content" data-testid="execution-log-drawer">
         <div class="run-identity"><span>Run ID</span><code>{{ run.run_id }}</code></div>
-        <p v-if="run.status !== 'succeeded'" role="status">
-          This {{ run.status }} run has no completed execution log.
-        </p>
-        <p v-else-if="run.result_schema_version !== BACKTEST_RESULT_SCHEMA_VERSION" role="status">
-          A completed execution log is unavailable for this result schema.
-        </p>
-        <template v-else>
-          <p v-if="loading" role="status">Loading execution log…</p>
-          <p v-else-if="error" role="alert">Execution log unavailable. {{ error }}</p>
-          <template v-else-if="trades !== null && fills !== null">
-            <p v-if="trades.length === 0 && fills.length === 0" role="status">
-              This successful run has no executions.
-            </p>
-            <template v-else>
-              <div class="log-toolbar">
-                <n-tabs v-model:value="tab" type="line" size="small" aria-label="Execution records">
-                  <n-tab name="trades" data-testid="execution-trades-tab">
-                    Closed Trades ({{ trades.length }})
-                  </n-tab>
-                  <n-tab name="fills" data-testid="execution-fills-tab">
-                    Fills ({{ fills.length }})
-                  </n-tab>
-                </n-tabs>
-                <div v-if="tab === 'trades'" class="log-filters">
-                  <div class="log-filter">
-                    <span id="execution-direction-label">Trade direction</span>
-                    <BaseSelect
-                      v-model:value="direction"
-                      data-testid="execution-direction"
-                      aria-labelledby="execution-direction-label"
-                      :options="directionOptions"
-                    />
-                  </div>
-                  <div class="log-filter">
-                    <span id="execution-exit-reason-label">Exit reason</span>
-                    <BaseSelect
-                      v-model:value="exitReason"
-                      data-testid="execution-exit-reason"
-                      aria-labelledby="execution-exit-reason-label"
-                      :options="exitReasonOptions"
-                    />
-                  </div>
+        <p v-if="loading" role="status">Loading execution log…</p>
+        <p v-else-if="error" role="alert">Execution log unavailable. {{ error }}</p>
+        <template v-else-if="trades !== null && fills !== null">
+          <p v-if="trades.length === 0 && fills.length === 0" role="status">
+            This successful run has no executions.
+          </p>
+          <template v-else>
+            <div class="log-toolbar">
+              <n-tabs v-model:value="tab" type="line" size="small" aria-label="Execution records">
+                <n-tab name="trades" data-testid="execution-trades-tab">
+                  Closed Trades ({{ trades.length }})
+                </n-tab>
+                <n-tab name="fills" data-testid="execution-fills-tab">
+                  Fills ({{ fills.length }})
+                </n-tab>
+              </n-tabs>
+              <div v-if="tab === 'trades'" class="log-filters">
+                <div class="log-filter">
+                  <span id="execution-direction-label">Trade direction</span>
+                  <BaseSelect
+                    v-model:value="direction"
+                    data-testid="execution-direction"
+                    aria-labelledby="execution-direction-label"
+                    :options="directionOptions"
+                  />
+                </div>
+                <div class="log-filter">
+                  <span id="execution-exit-reason-label">Exit reason</span>
+                  <BaseSelect
+                    v-model:value="exitReason"
+                    data-testid="execution-exit-reason"
+                    aria-labelledby="execution-exit-reason-label"
+                    :options="exitReasonOptions"
+                  />
                 </div>
               </div>
-              <p v-if="activeRecords.length === 0" role="status">
-                <template v-if="activeTotal === 0">
-                  No {{ tab === 'trades' ? 'Closed Trades' : 'Fills' }} in this run.
-                </template>
-                <template v-else>
-                  No {{ tab === 'trades' ? 'Closed Trades' : 'Fills' }} match these filters.
-                </template>
-              </p>
-              <div v-else class="table-scroll" role="tabpanel" :aria-label="tab === 'trades' ? 'Closed Trades' : 'Fills'">
-                <BaseDataTable
-                  v-if="tab === 'trades'"
-                  data-testid="execution-trades-table"
-                  :columns="tradeColumns"
-                  :data="filteredTrades"
-                  :row-key="(trade: BacktestClosedTrade) => trade.sequence"
-                  :scroll-x="2200"
-                  max-height="min(60vh, 560px)"
-                  striped
-                />
-                <BaseDataTable
-                  v-else
-                  data-testid="execution-fills-table"
-                  :columns="fillColumns"
-                  :data="fills"
-                  :row-key="(fill: BacktestFill) => fill.sequence"
-                  :scroll-x="900"
-                  max-height="min(60vh, 560px)"
-                  striped
-                />
-              </div>
-            </template>
+            </div>
+            <p v-if="activeRecords.length === 0" role="status">
+              <template v-if="activeTotal === 0">
+                No {{ tab === 'trades' ? 'Closed Trades' : 'Fills' }} in this run.
+              </template>
+              <template v-else>
+                No {{ tab === 'trades' ? 'Closed Trades' : 'Fills' }} match these filters.
+              </template>
+            </p>
+            <div v-else class="table-scroll" role="tabpanel" :aria-label="tab === 'trades' ? 'Closed Trades' : 'Fills'">
+              <BaseDataTable
+                v-if="tab === 'trades'"
+                data-testid="execution-trades-table"
+                :columns="tradeColumns"
+                :data="filteredTrades"
+                :row-key="(trade: BacktestClosedTrade) => trade.sequence"
+                :scroll-x="2200"
+                max-height="min(60vh, 560px)"
+                striped
+              />
+              <BaseDataTable
+                v-else
+                data-testid="execution-fills-table"
+                :columns="fillColumns"
+                :data="fills"
+                :row-key="(fill: BacktestFill) => fill.sequence"
+                :scroll-x="900"
+                max-height="min(60vh, 560px)"
+                striped
+              />
+            </div>
           </template>
         </template>
       </div>
