@@ -151,8 +151,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   One sortable table provides search and status, type, Market, Strategy,
   Timeframe, and With failed runs filters. History checks every five seconds;
   Check now sits beside that status and becomes Retry now on read errors.
-  Create Backtest remains the primary header action, and All backtests belongs
-  above an analysis page's heading. Failed reads
+  Create Backtest sits beside Experiment history on the history page. Results
+  pages keep it in the compact top toolbar with All backtests navigation, without
+  a page title or separate divider. The results panel identifies standalone strategy, version, run type,
+  Market, Timeframe, dates, and status; run IDs stay in saved request details. Failed reads
   report unknown lifecycle state without replacing previously loaded records
   with an empty history.
 - Workspace history presents accepted Batches beside standalone summaries in

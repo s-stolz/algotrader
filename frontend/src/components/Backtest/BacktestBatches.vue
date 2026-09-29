@@ -7,7 +7,7 @@
     <section v-if="selectedBatch" aria-label="Accepted Batch" class="batch-detail">
       <header class="sweep-header">
         <div>
-          <div class="eyebrow">PARAMETER SWEEP <span :title="selectedBatch.batch_id">{{ selectedBatch.batch_id.slice(0, 8) }}</span></div>
+          <div class="eyebrow">PARAMETER SWEEP</div>
           <h3>{{ selectedBatch.strategy_metadata.display_name }}</h3>
           <p class="context">Version {{ selectedBatch.strategy_metadata.strategy_version }}
             <span aria-hidden="true">·</span> {{ selectedBatch.markets.join(', ') }}
@@ -87,7 +87,7 @@
       </div>
       <p v-if="selectedBatch.outcome_counts.failed > 0" class="notice warning" role="status">
         {{ selectedBatch.outcome_counts.failed }} run{{ selectedBatch.outcome_counts.failed === 1 ? '' : 's' }} failed.
-        Successful results remain available in Run analysis below.
+        Successful results remain available in Results below.
       </p>
       <p v-if="controlPending" class="notice" role="status">Applying batch command…</p>
       <p v-if="controlError" class="notice error" role="alert">{{ controlError }}</p>

@@ -1,18 +1,12 @@
 <template>
   <n-config-provider :theme-overrides="workspaceTheme">
   <main class="workspace">
-    <nav v-if="page === 'analysis'" class="analysis-breadcrumb" aria-label="Backtest location">
-      <n-button text data-testid="workspace-history-return" @click="backToHistory">
-        <template #icon><n-icon :component="ArrowBackOutline" /></template>All backtests
-      </n-button>
-      <span aria-hidden="true">/</span><span>Run analysis</span>
-    </nav>
-    <header class="workspace-header">
-      <div>
-        <div class="eyebrow">RESEARCH / BACKTESTS</div>
-        <h1>{{ page === 'history' ? 'Backtest Workspace' : analysisTitle }}</h1>
-        <p>{{ page === 'history' ? 'Build experiments. Review results. Refine your strategy.' : analysisSubtitle }}</p>
-      </div>
+    <header v-if="page === 'analysis'" class="workspace-header">
+      <nav class="analysis-breadcrumb" aria-label="Backtest location">
+        <n-button text data-testid="workspace-history-return" @click="backToHistory">
+          <template #icon><n-icon :component="ArrowBackOutline" /></template>All backtests
+        </n-button>
+      </nav>
       <n-button type="primary" data-testid="workspace-create" @click="creationOpen = true">
         <template #icon><n-icon :component="AddOutline" /></template>Create Backtest
       </n-button>
@@ -47,8 +41,16 @@
       </div>
       <div class="table-panel">
       <div class="section-heading history-heading">
-        <div><h2>Experiment history</h2><p>Open a backtest to explore its configuration and performance.</p></div>
-        <n-tag :bordered="false" size="small">{{ filteredHistory.length }} experiments</n-tag>
+        <div>
+          <div class="history-title">
+            <h2>Experiment history</h2>
+            <n-tag :bordered="false" size="small">{{ filteredHistory.length }} experiments</n-tag>
+          </div>
+          <p>Open a backtest to explore its configuration and performance.</p>
+        </div>
+        <n-button v-if="page === 'history'" type="primary" data-testid="workspace-create" @click="creationOpen = true">
+          <template #icon><n-icon :component="AddOutline" /></template>Create Backtest
+        </n-button>
       </div>
       <div class="filters">
         <n-input
@@ -124,13 +126,18 @@
     <section v-show="page === 'analysis'" class="current-backtest" aria-label="Current Backtest">
       <BacktestBatches :batch-id="selectedBatchId" @members="receiveMembers" @cancelled="refreshWorkspace" />
       <div class="table-panel">
-      <div class="analysis-context" v-if="selectedRun && !selectedBatchId">
-        <span>{{ runMarket(selectedRun) }}</span><span>{{ selectedRun.request.timeframe }}</span>
-        <span>{{ formatUtcDate(selectedRun.request.start_ms) }} — {{ formatUtcDate(selectedRun.request.end_ms) }} UTC</span>
-        <n-tag size="small" :type="selectedRun.status === 'succeeded' ? 'success' : selectedRun.status === 'failed' ? 'error' : 'info'" :bordered="false">{{ selectedRun.status }}</n-tag>
+      <div v-if="selectedRun && !selectedBatchId" class="run-heading">
+        <h2 class="strategy-name">{{ selectedRun.request.strategy.strategy_id.replaceAll('_', ' ') }}</h2>
+        <div class="analysis-context">
+          <n-tag size="small" :bordered="false">Standalone run</n-tag>
+          <span>{{ strategyVersion(selectedRun) }}</span>
+          <span>{{ runMarket(selectedRun) }}</span><span>{{ selectedRun.request.timeframe }}</span>
+          <span>{{ formatUtcDate(selectedRun.request.start_ms) }} — {{ formatUtcDate(selectedRun.request.end_ms) }} UTC</span>
+          <n-tag size="small" :type="selectedRun.status === 'succeeded' ? 'success' : selectedRun.status === 'failed' ? 'error' : 'info'" :bordered="false">{{ selectedRun.status }}</n-tag>
+        </div>
       </div>
-      <div class="section-heading">
-        <div><h2>Run analysis</h2><p>Compare saved metrics and inspect exact performance over time.</p></div>
+      <div v-else class="section-heading">
+        <h2>Results</h2>
       </div>
       <p v-if="!selectedRunId && !selectedBatchId">Select a saved run or Batch to inspect its request and results.</p>
       <p v-if="detailLoading" role="status">Loading selected Backtest…</p>
@@ -371,12 +378,6 @@ const page = ref<'history' | 'analysis'>('history');
 const historyPagination = ref({ page: 1, pageSize: 15, onChange: (page: number) => {
   historyPagination.value.page = page;
 } });
-const analysisTitle = computed(() => selectedBatchId.value
-  ? `${batches.value?.find((batch) => batch.batch_id === selectedBatchId.value)?.strategy_metadata.display_name ?? 'Parameter Sweep'} analysis`
-  : selectedRun.value ? `${selectedRun.value.request.strategy.strategy_id.replaceAll('_', ' ')} analysis` : 'Backtest analysis');
-const analysisSubtitle = computed(() => selectedBatchId.value
-  ? `Parameter Sweep · ${batchMembers.value.length} runs · ${selectedBatchId.value}`
-  : selectedRun.value ? `Standalone run · ${selectedRun.value.run_id}` : 'Loading saved backtest');
 function backToHistory(): void {
   page.value = 'history';
   void router.push('/backtests');
@@ -1284,13 +1285,11 @@ onUnmounted(stopPolling);
 .workspace :deep(*) { font-family: inherit; }
 .workspace-refresh { display: flex; justify-content: flex-end; align-items: center; gap: 12px; color: #8f9dab; font-size: 12px; margin-bottom: 12px; }
 .workspace-header, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.workspace-header { margin-bottom: 28px; }
-.eyebrow { font-size: 11px; letter-spacing: .16em; color: #79c9b2; font-weight: 600; margin-bottom: 8px; }
-.workspace-header h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.7px; text-transform: capitalize; }
-.workspace-header p, .section-heading p { margin: 6px 0 0; color: #8f9dab; font-size: 13px; overflow-wrap: anywhere; }
-.workspace-header > .n-button { flex-shrink: 0; }
-.analysis-breadcrumb { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; color: #8291a2; font-size: 12px; }
-.analysis-breadcrumb .n-button { color: #66dfbd; }
+.workspace-header { min-height: 36px; margin-bottom: 20px; }
+.section-heading p { margin: 6px 0 0; color: #8f9dab; font-size: 13px; overflow-wrap: anywhere; }
+.workspace-header > .n-button { flex-shrink: 0; margin-left: auto; }
+.analysis-breadcrumb { display: flex; align-items: center; gap: 14px; min-width: 0; color: #8291a2; font-size: 12px; }
+.analysis-breadcrumb .n-button { color: #9aafbf; }
 .workspace-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 24px 0; }
 .workspace-summary > div { padding: 18px 22px; border: 1px solid #2b3541; border-radius: 10px; background: #1b222c; }
 .workspace-summary span { display: block; color: #96a5b4; font-size: 12px; }
@@ -1298,10 +1297,14 @@ onUnmounted(stopPolling);
 .failure-count { color: #e7ae7b; }
 .table-panel { border: 1px solid #2b3541; border-radius: 12px; background: #1a2029; padding: 22px; overflow: hidden; }
 .section-heading h2 { margin: 0; font-size: 17px; font-weight: 600; }
-.history-heading { margin-bottom: 22px; }
+.history-heading { margin-bottom: 22px; flex-wrap: wrap; }
+.history-heading > .n-button { flex-shrink: 0; }
+.history-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .filters { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(6, minmax(110px, 1fr)); gap: 10px; margin-bottom: 20px; }
 .current-backtest { margin-top: 24px; }
-.analysis-context { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: #9aafbf; font-size: 12px; margin-bottom: 22px; }
+.run-heading h2 { margin: 0 0 12px; font-size: 20px; font-weight: 600; letter-spacing: -.3px; overflow-wrap: anywhere; }
+.strategy-name { text-transform: capitalize; }
+.analysis-context { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: #9aafbf; font-size: 12px; }
 .comparison-controls { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 22px 0 16px; }
 .column-count { color: #94a3b8; align-self: center; }
 .column-popover { display: grid; gap: 18px; width: 100%; padding: 4px; box-sizing: border-box; }
