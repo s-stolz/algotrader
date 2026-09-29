@@ -134,7 +134,8 @@ function navigate(path: string): void {
 .edge-design-2 .edge-reveal { gap: 14px; background: #19252f; }
 .edge-design-2 .destination-icon { width: 19px; height: 19px; }
 .vertical-label { writing-mode: vertical-rl; font-size: 12px; letter-spacing: 1.4px; color: #d6e5e9; }
-.edge-design-3 .edge-reveal { gap: 10px; background: #18222e; }
+.edge-design-3 .edge-reveal { gap: 10px; }
+.edge-design-3 .edge-reveal, .edge-design-4 .edge-reveal { background: #18222e; }
 .mini-screen { display: flex; align-items: center; justify-content: center; width: 34px; height: 30px; border: 1px solid #526273; border-radius: 4px; color: #8393a3; }
 .mini-screen svg { width: 21px; height: 21px; }
 .mini-screen.destination { border-color: #66dfbd99; color: var(--mint); background: #66dfbd10; }
