@@ -7,7 +7,7 @@ Local services should already be running (`make up`). Open http://127.0.0.1:5174
 
 - A — Workspace tabs: persistent destinations above both screens. Recommended starting point for two workspaces.
 - B — Navigation rail: persistent destinations at the left. Useful if more workspaces are added; costs horizontal space.
-- C — Adjacent screens: full-viewport Chart on the left, Backtests on the right, with no workspace navigation bar or reserved side gutters. A subtle edge notch reveals its destination on hover or keyboard focus. The chart fits the available height without vertical scrolling; long backtest content scrolls inside its screen. Respects reduced motion.
+- C — Adjacent screens: full-viewport Chart on the left, Backtests on the right, with no workspace navigation bar or reserved side gutters. A subtle edge notch reveals its destination when the pointer approaches within 140px of the edge and 180px of the notch vertically, or on keyboard focus. A larger exit region keeps it open while the pointer moves onto the button. Proximity detection does not intercept chart input or trigger during dragging. The chart fits the available height without vertical scrolling; long backtest content scrolls inside its screen. Respects reduced motion.
 
 Use the floating arrows or keyboard Left/Right to compare. Input fields retain their arrow keys. The URL preserves the variant and current route on reload. The real memory router, kept-alive pages, reads, tables, and five-second history polling remain in use.
 

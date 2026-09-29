@@ -1,6 +1,6 @@
 <!-- Throwaway: three navigation layouts on the existing chart/backtest routes via ?variant=A|B|C. -->
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import PrototypeSwitcher from '@/components/Common/PrototypeSwitcher.vue';
 
@@ -13,16 +13,34 @@ const isAnalysis = computed(() => route.path.startsWith('/backtests/'));
 const variants = [
   { key: 'A', name: 'Workspace tabs', note: 'Two visible destinations. Best for frequent switching.' },
   { key: 'B', name: 'Navigation rail', note: 'A permanent home for navigation. Room for more workspaces.' },
-  { key: 'C', name: 'Adjacent screens', note: 'Hover the edge notch to reveal the adjacent workspace.' },
+  { key: 'C', name: 'Adjacent screens', note: 'Approach the edge notch to reveal the adjacent workspace.' },
 ];
 const direction = computed(() => isChart.value ? 'from-left' : 'from-right');
+const isNearEdge = ref(false);
+watch(() => route.fullPath, () => { isNearEdge.value = false; });
+function updateEdgeProximity(event: PointerEvent): void {
+  if (!enabled.value || variant.value !== 'C' || event.pointerType === 'touch' || event.buttons !== 0) {
+    isNearEdge.value = false;
+    return;
+  }
+  const distanceFromEdge = isChart.value ? window.innerWidth - event.clientX : event.clientX;
+  const distanceFromCenter = Math.abs(event.clientY - window.innerHeight / 2);
+  // A larger exit region prevents flicker while moving onto the revealed button.
+  isNearEdge.value = distanceFromEdge < (isNearEdge.value ? 220 : 140) &&
+    distanceFromCenter < (isNearEdge.value ? 240 : 180);
+}
 function navigate(path: string): void {
   void router.push({ path, query: { variant: variant.value } });
 }
 </script>
 
 <template>
-  <div :class="enabled ? ['navigation-prototype', `variant-${variant}`] : undefined">
+  <div
+    :class="enabled ? ['navigation-prototype', `variant-${variant}`] : undefined"
+    @pointermove.capture="updateEdgeProximity"
+    @pointerleave="isNearEdge = false"
+    @pointerdown.capture="isNearEdge = false"
+  >
     <template v-if="enabled">
       <nav v-if="variant === 'A'" class="workspace-tabs" aria-label="Workspaces">
         <span class="brand">AT<span> / WORKSPACE</span></span>
@@ -41,7 +59,7 @@ function navigate(path: string): void {
         v-else
         :key="isChart ? 'chart-edge' : 'backtests-edge'"
         class="edge-link"
-        :class="isChart ? 'edge-right' : 'edge-left'"
+        :class="[isChart ? 'edge-right' : 'edge-left', { 'edge-near': isNearEdge }]"
         :aria-label="isChart ? 'Open Backtests' : 'Return to Chart'"
         @click="navigate(isChart ? '/backtests' : '/')"
       >
@@ -96,8 +114,8 @@ function navigate(path: string): void {
 .edge-reveal { position: absolute; top: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 108px; height: 88px; box-sizing: border-box; background: #1b2b35f5; border: 1px solid #66dfbd60; color: var(--mint); font-size: 12px; box-shadow: 0 6px 24px #0005; opacity: 0; visibility: hidden; transition: transform .2s ease-out, opacity .2s, visibility .2s; }
 .edge-left .edge-reveal { left: 0; border-radius: 0 12px 12px 0; transform: translateX(-100%); }
 .edge-right .edge-reveal { right: 0; border-radius: 12px 0 0 12px; transform: translateX(100%); }
-.edge-link:hover .edge-reveal, .edge-link:focus-visible .edge-reveal { opacity: 1; visibility: visible; transform: translateX(0); }
-.edge-link:hover::before, .edge-link:focus-visible::before { opacity: 0; }
+.edge-near .edge-reveal, .edge-link:hover .edge-reveal, .edge-link:focus-visible .edge-reveal { opacity: 1; visibility: visible; transform: translateX(0); }
+.edge-near::before, .edge-link:hover::before, .edge-link:focus-visible::before { opacity: 0; }
 .navigation-prototype .edge-link:focus-visible { outline: none; }
 .edge-link:focus-visible .edge-reveal { outline: 2px solid var(--mint); outline-offset: -4px; }
 .edge-arrow { font-size: 25px; }
