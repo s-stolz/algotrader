@@ -29,7 +29,7 @@
                 <div v-if="tab === 'trades'" class="log-filters">
                   <div class="log-filter">
                     <span id="execution-direction-label">Trade direction</span>
-                    <n-select
+                    <BaseSelect
                       v-model:value="direction"
                       data-testid="execution-direction"
                       aria-labelledby="execution-direction-label"
@@ -38,7 +38,7 @@
                   </div>
                   <div class="log-filter">
                     <span id="execution-exit-reason-label">Exit reason</span>
-                    <n-select
+                    <BaseSelect
                       v-model:value="exitReason"
                       data-testid="execution-exit-reason"
                       aria-labelledby="execution-exit-reason-label"
@@ -87,10 +87,11 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { NDrawerContent, NSelect, NTab, NTabs, type DataTableColumns } from 'naive-ui';
+import { NDrawerContent, NTab, NTabs, type DataTableColumns } from 'naive-ui';
 
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import BaseDrawer from '@/components/Common/BaseDrawer.vue';
+import BaseSelect from '@/components/Common/BaseSelect.vue';
 import { fetchBacktestClosedTrades, fetchBacktestFills } from '@/api/backtesterClient';
 import {
   BACKTEST_RESULT_SCHEMA_VERSION, type BacktestClosedTrade, type BacktestFill, type BacktestRun,

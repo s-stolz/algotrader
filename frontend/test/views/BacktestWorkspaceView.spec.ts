@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
-import { NCheckbox, NDataTable, NSelect } from 'naive-ui';
+import { NCheckbox, NDataTable, NPagination, NSelect } from 'naive-ui';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -226,6 +226,102 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-first"]').element.checked).toBe(false);
     expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-second"]').element.checked).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('paginates all fetched members with global sorting, page sizes, and an All option', async () => {
+    const members = Array.from({ length: 105 }, (_, ordinal) =>
+      run(`paged-${ordinal}`, { batch_id: 'paged', member_ordinal: ordinal }));
+    const accepted = batch('paged', members.length);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue(members);
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-batch-paged"]').trigger('click');
+    await flushPromises();
+    const table = () => wrapper.get('[data-testid="workspace-current-backtest"]');
+    const pagination = () => wrapper.findAllComponents(NPagination).at(-1)!;
+    const identities = () => table().findAll('.run-identity').map((cell) => cell.text());
+    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `#${index + 1}`));
+    expect(pagination().props('pageSize')).toBe(20);
+    expect(pagination().props('pageSizes')).toEqual([
+      { label: '20 rows', value: 20 },
+      { label: '50 rows', value: 50 },
+      { label: '100 rows', value: 100 },
+      { label: 'All rows', value: Number.MAX_SAFE_INTEGER },
+    ]);
+    const memberReads = vi.mocked(listBacktestBatchMembers).mock.calls.length;
+    pagination().vm.$emit('update:page', 3);
+    await flushPromises();
+    expect(identities()[0]).toBe('#41');
+    wrapper.findAllComponents(NDataTable).at(-1)!.vm.sort('ordinal', 'descend');
+    await flushPromises();
+    expect(pagination().props('page')).toBe(1);
+    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `#${105 - index}`));
+    for (const size of [50, 100, Number.MAX_SAFE_INTEGER, 20]) {
+      pagination().vm.$emit('update:pageSize', size);
+      await flushPromises();
+      expect(identities()).toHaveLength(Math.min(size, members.length));
+      expect(pagination().props('page')).toBe(1);
+      expect(pagination().exists()).toBe(true);
+    }
+    expect(listBacktestBatchMembers).toHaveBeenCalledTimes(memberReads);
+    expect(fetchBacktestEquityCurve).not.toHaveBeenCalled();
+    pagination().vm.$emit('update:page', 6);
+    await flushPromises();
+    expect(identities()).toHaveLength(5);
+    wrapper.findComponent({ name: 'BacktestBatches' }).vm.$emit('members', 'paged', members.slice(0, 25));
+    await flushPromises();
+    expect(pagination().props('page')).toBe(2);
+    expect(identities()).toEqual(['#5', '#4', '#3', '#2', '#1']);
+    wrapper.unmount();
+  });
+
+  it('selects and deselects only successful page members while retaining off-page comparisons', async () => {
+    const members = Array.from({ length: 25 }, (_, ordinal) =>
+      run(`page-selection-${ordinal}`, { batch_id: 'page-selection', member_ordinal: ordinal,
+        status: ordinal === 24 ? 'failed' : 'succeeded' }));
+    const accepted = batch('page-selection', members.length);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue(members);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => members.find((member) => member.run_id === id)!);
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-batch-page-selection"]').trigger('click');
+    await flushPromises();
+    const header = () => wrapper.findAllComponents(NCheckbox)
+      .find((checkbox) => checkbox.attributes('data-testid') === 'comparison-select-all')!;
+    const pagination = () => wrapper.findAllComponents(NPagination).at(-1)!;
+    header().vm.$emit('update:checked', true);
+    await flushPromises();
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(20);
+    expect(fetchBacktestEquityCurve).not.toHaveBeenCalledWith('page-selection-20');
+    pagination().vm.$emit('update:page', 2);
+    await flushPromises();
+    expect(header().props('checked')).toBe(false);
+    expect(header().props('indeterminate')).toBe(false);
+    await wrapper.get('[data-testid="comparison-select-page-selection-20"]').setValue(true);
+    await flushPromises();
+    expect(header().props('indeterminate')).toBe(true);
+    header().vm.$emit('update:checked', true);
+    await flushPromises();
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(24);
+    expect(fetchBacktestEquityCurve).not.toHaveBeenCalledWith('page-selection-24');
+    expect(header().props('checked')).toBe(true);
+    header().vm.$emit('update:checked', false);
+    await flushPromises();
+    expect(header().props('checked')).toBe(false);
+    pagination().vm.$emit('update:page', 1);
+    await flushPromises();
+    expect(header().props('checked')).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="comparison-select-page-selection-0"]').element.checked).toBe(true);
+    header().vm.$emit('update:checked', false);
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'EquityReplayCharts' }).exists()).toBe(false);
     wrapper.unmount();
   });
 

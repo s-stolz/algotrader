@@ -33,7 +33,7 @@
         <p v-for="change in parameterChanges" :key="change" role="status">{{ change }}</p>
         <div class="creation-fields">
           <label>Run type
-            <n-select
+            <BaseSelect
               :value="isSweep ? 'sweep' : 'standalone'"
               :options="runTypeOptions"
               data-testid="creation-run-type"
@@ -46,7 +46,7 @@
                 Version {{ selectedStrategy.strategy_version }}
               </n-tag>
             </span>
-            <n-select
+            <BaseSelect
               :value="draft.strategy.strategy_id"
               :options="strategyOptions"
               data-testid="creation-strategy"
@@ -78,7 +78,7 @@
                     </span>
                   </small>
                 </label>
-                <n-select
+                <BaseSelect
                   v-if="isSweep"
                   size="small"
                   class="parameter-mode"
@@ -88,7 +88,7 @@
                   :data-testid="`sweep-mode-${parameter.name}`"
                   @update:value="sweepParameter(parameter).mode = $event"
                 />
-                <n-select
+                <BaseSelect
                   v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
                     (parameter.choices || parameter.type === 'bool')"
                   :id="`parameter-${parameter.name}`"
@@ -116,7 +116,7 @@
                   @update:value="setParameter(parameter.name, $event)"
                 />
                 <template v-else-if="sweepParameter(parameter).mode === 'values'">
-                  <n-select
+                  <BaseSelect
                     v-if="parameter.choices || parameter.type === 'bool'"
                     multiple
                     :value="selectedChoiceIndexes(parameter)"
@@ -194,7 +194,7 @@
             <div class="settings-grid">
               <div class="field-group">
                 <label v-if="!isSweep">Market
-                  <n-select
+                  <BaseSelect
                     :value="marketValue"
                     :options="marketOptions"
                     data-testid="creation-market"
@@ -202,7 +202,7 @@
                   />
                 </label>
                 <label v-else>Markets
-                  <n-select
+                  <BaseSelect
                     v-model:value="sweep.marketIds"
                     multiple
                     :options="marketOptions"
@@ -218,14 +218,14 @@
               </div>
               <div class="field-group">
                 <label v-if="!isSweep">Timeframe
-                  <n-select
+                  <BaseSelect
                     v-model:value="draft.timeframe"
                     :options="timeframeOptions"
                     data-testid="creation-timeframe"
                   />
                 </label>
                 <label v-else>Timeframes
-                  <n-select
+                  <BaseSelect
                     v-model:value="sweep.timeframes"
                     multiple
                     :options="timeframeOptions"
@@ -277,14 +277,14 @@
                 <h4>Trading rules</h4>
                 <div class="settings-grid">
                   <label v-if="!isSweep">Allowed Directions
-                    <n-select
+                    <BaseSelect
                       v-model:value="draft.execution.allowed_directions"
                       :options="directionOptions"
                       data-testid="creation-directions"
                     />
                   </label>
                   <label v-else>Allowed Directions
-                    <n-select
+                    <BaseSelect
                       v-model:value="sweep.allowedDirections"
                       multiple
                       :options="directionOptions"
@@ -292,7 +292,7 @@
                     />
                   </label>
                   <label>Engine
-                    <n-select v-model:value="draft.engine" :options="engineOptions" />
+                    <BaseSelect v-model:value="draft.engine" :options="engineOptions" />
                   </label>
                 </div>
               </div>
@@ -312,10 +312,10 @@
                 <h4>Data &amp; fills</h4>
                 <div class="settings-grid">
                   <label>Gap policy
-                    <n-select v-model:value="draft.execution.gap_policy" :options="gapOptions" />
+                    <BaseSelect v-model:value="draft.execution.gap_policy" :options="gapOptions" />
                   </label>
                   <label>Intrabar exit policy
-                    <n-select v-model:value="draft.execution.intrabar_exit_policy" :options="exitOptions" />
+                    <BaseSelect v-model:value="draft.execution.intrabar_exit_policy" :options="exitOptions" />
                   </label>
                 </div>
               </div>
@@ -339,7 +339,7 @@
             <p class="section-description">Candidate # preserves the full grid order. Ready member # is contiguous after exclusions.
               Sorting and filtering only change this review table.</p>
             <label class="preview-filter">Status
-              <n-select
+              <BaseSelect
                 v-model:value="previewFilter"
                 :options="previewFilterOptions"
                 data-testid="sweep-filter"
@@ -385,7 +385,8 @@ import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import BaseDrawer from '@/components/Common/BaseDrawer.vue';
-import { NButton, NDatePicker, NDrawerContent, NInput, NInputNumber, NSelect, NTag } from 'naive-ui';
+import BaseSelect from '@/components/Common/BaseSelect.vue';
+import { NButton, NDatePicker, NDrawerContent, NInput, NInputNumber, NTag } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
   previewParameterSweep, submitBacktestBatch, submitBacktestRun } from '@/api/backtesterClient';

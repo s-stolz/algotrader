@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme-overrides="{ common: { fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' } }">
+  <n-config-provider :theme-overrides="workspaceTheme">
   <main class="workspace">
     <nav v-if="page === 'analysis'" class="analysis-breadcrumb" aria-label="Backtest location">
       <n-button text data-testid="workspace-history-return" @click="backToHistory">
@@ -58,37 +58,37 @@
           placeholder="Search saved runs and batches"
           aria-label="Search saved runs and batches"
         />
-        <n-select
+        <BaseSelect
           v-model:value="statusFilter"
           data-testid="workspace-status-filter"
           aria-label="Filter by status"
           :options="statusOptions"
         />
-        <n-select
+        <BaseSelect
           v-model:value="typeFilter"
           data-testid="workspace-type-filter"
           aria-label="Filter by type"
           :options="typeOptions"
         />
-        <n-select
+        <BaseSelect
           v-model:value="marketFilter"
           data-testid="workspace-market-filter"
           aria-label="Filter by Market"
           :options="marketOptions"
         />
-        <n-select
+        <BaseSelect
           v-model:value="strategyFilter"
           data-testid="workspace-strategy-filter"
           aria-label="Filter by Strategy"
           :options="strategyOptions"
         />
-        <n-select
+        <BaseSelect
           v-model:value="timeframeFilter"
           data-testid="workspace-timeframe-filter"
           aria-label="Filter by Timeframe"
           :options="timeframeOptions"
         />
-        <n-select
+        <BaseSelect
           v-model:value="failedFilter"
           data-testid="workspace-failed-filter"
           aria-label="Filter by failed runs"
@@ -193,12 +193,14 @@
           :data="sortedCurrentRows"
           :row-key="(run: BacktestRun) => run.run_id"
           :row-props="currentRowProps"
-          :pagination="false"
+          :pagination="analysisPagination"
+          :paginate-single-page="true"
           :max-height="360"
           :scroll-x="comparisonScrollWidth"
           size="small"
           @update:sorter="updateComparisonSort"
         />
+        <p class="column-count">The header checkbox selects successful runs on this page. Selections are retained across pages.</p>
         <p v-if="compatibilityDifferences.length" data-testid="comparison-compatibility" role="note">
           Compared runs differ in {{ compatibilityDifferences.join(', ') }}. Interpret their results in context.
         </p>
@@ -255,8 +257,10 @@ import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, s
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
-import { NButton, NCheckbox, NConfigProvider, NIcon, NInput, NSelect, NSkeleton, NTag, NTooltip } from 'naive-ui';
-import type { DataTableColumns, SelectOption } from 'naive-ui';
+import BaseSelect from '@/components/Common/BaseSelect.vue';
+import { baseSelectTheme } from '@/components/Common/baseSelectTheme';
+import { NButton, NCheckbox, NConfigProvider, NIcon, NInput, NSkeleton, NTag, NTooltip } from 'naive-ui';
+import type { DataTableColumns, GlobalThemeOverrides, PaginationProps, SelectOption } from 'naive-ui';
 import { DocumentTextOutline, BarChartOutline, ArrowBackOutline, AddOutline, RefreshOutline, OptionsOutline, CopyOutline, TrashOutline, StopCircleOutline, TimeOutline, PlayCircleOutline, HourglassOutline, CheckmarkCircleOutline, CloseCircleOutline, BanOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
 
@@ -283,6 +287,11 @@ import {
 defineOptions({ name: 'BacktestWorkspaceView' });
 
 const POLL_INTERVAL_MS = 5000;
+const ALL_ANALYSIS_ROWS = Number.MAX_SAFE_INTEGER;
+const workspaceTheme: GlobalThemeOverrides = {
+  common: { fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' },
+  Select: baseSelectTheme,
+};
 const router = useRouter();
 const workspaceStore = useBacktestWorkspaceStore();
 const overlayStore = useBacktestOverlayStore();
@@ -320,6 +329,29 @@ const comparisonSortOrder = ref<'ascend' | 'descend'>('ascend');
 const sortedCurrentRows = computed(() => [...currentRows.value].sort((left, right) =>
   (comparisonSortOrder.value === 'ascend' ? 1 : -1) *
   compareRuns(left, right, comparisonSortKey.value)));
+const analysisPage = ref(1);
+const analysisPageSize = ref(20);
+const analysisPagination = computed<PaginationProps>(() => ({
+  page: analysisPage.value,
+  pageSize: analysisPageSize.value,
+  showSizePicker: true,
+  pageSizes: [
+    { label: '20 rows', value: 20 },
+    { label: '50 rows', value: 50 },
+    { label: '100 rows', value: 100 },
+    { label: 'All rows', value: ALL_ANALYSIS_ROWS },
+  ],
+  selectProps: { menuProps: { class: 'base-select-menu' } },
+  onChange: (page: number) => { analysisPage.value = page; },
+  onUpdatePageSize: (size: number) => {
+    analysisPageSize.value = size;
+    analysisPage.value = 1;
+  },
+}));
+const visibleAnalysisRows = computed(() => sortedCurrentRows.value.slice(
+  (analysisPage.value - 1) * analysisPageSize.value,
+  analysisPage.value * analysisPageSize.value,
+));
 const selectedComparisonRuns = computed(() => selectedComparisonIds.value
   .map((id) => currentRows.value.find((run) => run.run_id === id))
   .filter((run): run is BacktestRun => run?.status === 'succeeded'));
@@ -363,6 +395,12 @@ const timeframeFilter = ref('all');
 const failedFilter = ref('all');
 const selectedRunId = computed(() => workspaceStore.selectedRunId);
 const selectedRun = computed(() => workspaceStore.selectedRun);
+watch(() => currentRows.value.length, (count) => {
+  analysisPage.value = Math.min(analysisPage.value, Math.max(1, Math.ceil(count / analysisPageSize.value)));
+});
+watch(() => selectedBatchId.value ?? selectedRun.value?.run_id, () => {
+  analysisPage.value = 1;
+});
 const logRun = ref<BacktestRun | null>(null);
 const openingChartRunId = ref<string | null>(null);
 function chartUnavailableReason(run: BacktestRun): string | null {
@@ -981,7 +1019,7 @@ const columnGroups = computed(() => ['Run settings', 'Performance', 'Long / shor
   }));
 const analysisActionsWidth = computed(() => currentRows.value.some((run) =>
   ['queued', 'running'].includes(run.status)) ? 92 : 68);
-const selectableComparisonIds = computed(() => currentRows.value
+const selectableComparisonIds = computed(() => visibleAnalysisRows.value
   .filter((run) => run.status === 'succeeded').map((run) => run.run_id));
 const selectedComparisonCount = computed(() => selectableComparisonIds.value
   .filter((id) => selectedComparisonIds.value.includes(id)).length);
@@ -993,10 +1031,12 @@ const comparisonColumns = computed<DataTableColumns<BacktestRun>>(() => [
       selectedComparisonCount.value < selectableComparisonIds.value.length,
     disabled: selectableComparisonIds.value.length === 0,
     'data-testid': 'comparison-select-all',
-    'aria-label': 'Select all successful runs for comparison',
+    'aria-label': 'Select all successful runs on this page for comparison',
     onClick: (event: MouseEvent) => event.stopPropagation(),
     onKeydown: (event: KeyboardEvent) => event.stopPropagation(),
-    'onUpdate:checked': (checked: boolean) => setComparison(checked ? selectableComparisonIds.value : []),
+    'onUpdate:checked': (checked: boolean) => setComparison(checked
+      ? [...new Set([...selectedComparisonIds.value, ...selectableComparisonIds.value])]
+      : selectedComparisonIds.value.filter((id) => !selectableComparisonIds.value.includes(id))),
   }), key: 'compare', width: 40, align: 'center', fixed: 'left', render: (run) => h(BaseCheckbox, {
     checked: selectedComparisonIds.value.includes(run.run_id),
     disabled: run.status !== 'succeeded',
@@ -1027,6 +1067,7 @@ const comparisonScrollWidth = computed(() => 104 + analysisActionsWidth.value + 
   .reduce((width, column) => width + column.width, 0));
 
 function updateComparisonSort(sorter: { columnKey: string | number; order: 'ascend' | 'descend' | false }) {
+  analysisPage.value = 1;
   if (sorter.order && comparisonSortKeys.includes(String(sorter.columnKey))) {
     comparisonSortKey.value = String(sorter.columnKey) as ComparisonSortKey;
     comparisonSortOrder.value = sorter.order;

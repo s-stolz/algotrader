@@ -188,6 +188,11 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   are selectable for comparison; failed, cancelled, and unfinished rows retain
   request settings and missing result metrics. Frontend run readers accept
   cancelling/cancelled statuses for future durable cancellation responses.
+- Run analysis fetches all members and sorts them locally before paginating with
+  Naive UI. Page sizes are 20 (default), 50, 100, and All. The header comparison
+  checkbox selects or deselects successful runs on the current page, preserving
+  selections on other pages. Sorting or opening another analysis resets the page;
+  page navigation and size changes do not fetch members or select runs.
 - One Columns popover controls visible columns with grouped checkboxes for
   Run settings, Performance, and Long / short. Each group has a checked, unchecked,
   or indeterminate checkbox that changes only that group.
@@ -268,6 +273,10 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   drawer's dark surface, text, borders, and typography; forwards props, events,
   and slots and supports local theme overrides. The Columns popover shows its
   full content without internal scrolling, with viewport margins.
+- `src/components/Common/BaseSelect.vue`: shared Naive UI select for Workspace
+  history, creation, and execution-log dropdowns. It forwards select props,
+  events, and slots while applying the dark control and menu theme. The Workspace
+  config provider uses the same theme for Naive UI pagination size pickers.
 
 - `src/components/Common/BaseDrawer.vue`: shared Naive UI side panel with the
   app's dark blue background, text, dividers, and typography. Use it for drawers;
