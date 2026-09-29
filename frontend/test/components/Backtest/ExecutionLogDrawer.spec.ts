@@ -12,7 +12,8 @@ import { useMarketsStore } from '@/stores/marketsStore';
 import type { BacktestClosedTrade, BacktestFill, BacktestRun } from '@/types/backtesterContracts';
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(),
+  currentRoute: { value: { query: {} } } }) }));
 vi.mock('@/api/backtesterClient', () => ({
   deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),

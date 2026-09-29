@@ -15,7 +15,7 @@ import { useMarketsStore } from '@/stores/marketsStore';
 import type { BacktestBatch, BacktestClosedTrade, BacktestFill, BacktestRun } from '@/types/backtesterContracts';
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 
-const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
+const routerMock = vi.hoisted(() => ({ push: vi.fn(), currentRoute: { value: { query: {} } } }));
 vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
   cancelBacktestRun: vi.fn(),

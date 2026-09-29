@@ -24,6 +24,7 @@ describe('App', () => {
             template: '<div><slot /></div>',
           },
           'router-view': true,
+          NavigationPrototypeShell: { template: '<div><slot /></div>' },
         },
       },
     });
