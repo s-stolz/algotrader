@@ -16,11 +16,12 @@ const variants = [
   { key: 'C', name: 'Adjacent screens', note: 'Hover inside the button footprint to reveal it; leave to hide.' },
 ];
 const direction = computed(() => isChart.value ? 'from-left' : 'from-right');
-const buttonVariant = computed(() => ['1', '2', '3'].includes(String(route.query.button)) ? String(route.query.button) : '1');
+const buttonVariant = computed(() => ['1', '2', '3', '4'].includes(String(route.query.button)) ? String(route.query.button) : '1');
 const buttonVariants = [
   { key: '1', name: 'Icon spine', note: '44 × 160 · Destination icon and a directional arrow.' },
   { key: '2', name: 'Vertical label', note: '48 × 192 · A readable destination along a narrow tab.' },
   { key: '3', name: 'Screen pair', note: '64 × 176 · Two miniature screens show where you are going.' },
+  { key: '4', name: 'Wide icon spine', note: '64 × 176 · Destination icon and a directional arrow.' },
 ];
 function navigate(path: string): void {
   void router.push({ path, query: { ...route.query, variant: variant.value } });
@@ -113,7 +114,7 @@ function navigate(path: string): void {
 .edge-link { position: fixed; top: 50%; transform: translateY(-50%); z-index: 20; width: var(--edge-width); height: var(--edge-height); padding: 0; background: transparent; border: 0; }
 .edge-design-1 { --edge-width: 44px; --edge-height: 160px; --edge-radius: 22px; }
 .edge-design-2 { --edge-width: 48px; --edge-height: 192px; --edge-radius: 9px; }
-.edge-design-3 { --edge-width: 64px; --edge-height: 176px; --edge-radius: 16px; }
+.edge-design-3, .edge-design-4 { --edge-width: 64px; --edge-height: 176px; --edge-radius: 16px; }
 .edge-link::before { content: ''; position: absolute; top: 0; bottom: 0; width: 5px; background: #71879b66; border: 1px solid #96b4c833; box-sizing: border-box; }
 .edge-left { left: 0; }
 .edge-right { right: 0; }
