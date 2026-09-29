@@ -183,6 +183,11 @@
                   </BaseCheckbox>
                 </div>
               </section>
+              <div v-if="!hasDefaultColumns" class="column-popover-footer">
+                <n-button size="small" round data-testid="comparison-reset-columns" @click="resetColumns">
+                  <template #icon><n-icon :component="RefreshOutline" /></template>Reset to default
+                </n-button>
+              </div>
             </div>
           </BasePopover>
         </div>
@@ -309,8 +314,11 @@ type AnalysisState = { loading: boolean; error: string | null;
 const analysis = ref<Record<string, AnalysisState>>({});
 const batchMembers = ref<BacktestRun[]>([]);
 const selectedComparisonIds = ref<string[]>([]);
-const visibleColumns = ref<string[]>(['status', 'market', 'timeframe', 'capital',
-  'return', 'drawdown', 'ending', 'trades']);
+const defaultColumns = ['status', 'market', 'timeframe', 'capital',
+  'return', 'drawdown', 'ending', 'trades'];
+const visibleColumns = ref<string[]>([...defaultColumns]);
+const hasDefaultColumns = computed(() => visibleColumns.value.length === defaultColumns.length &&
+  defaultColumns.every((key) => visibleColumns.value.includes(key)));
 const currentRows = computed(() => (selectedBatchId.value ? batchMembers.value :
   selectedRun.value ? [selectedRun.value] : []).map((run) =>
   analysis.value[run.run_id]?.detail ?? run));
@@ -1027,6 +1035,9 @@ function updateComparisonSort(sorter: { columnKey: string | number; order: 'asce
     comparisonSortOrder.value = 'ascend';
   }
 }
+function resetColumns(): void {
+  visibleColumns.value = [...defaultColumns];
+}
 function toggleColumn(key: string): void {
   visibleColumns.value = visibleColumns.value.includes(key)
     ? visibleColumns.value.filter((column) => column !== key)
@@ -1236,6 +1247,7 @@ onUnmounted(stopPolling);
 .comparison-controls { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 22px 0 16px; }
 .column-count { color: #94a3b8; align-self: center; }
 .column-popover { display: grid; gap: 18px; width: 100%; padding: 4px; box-sizing: border-box; }
+.column-popover-footer { display: flex; justify-content: flex-end; border-top: 1px solid #2b3541; padding-top: 16px; }
 .column-group + .column-group { border-top: 1px solid #2b3541; padding-top: 16px; }
 .column-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .column-group h3 { margin: 0; color: #9aafbf; font-size: 12px; font-weight: 600; }
