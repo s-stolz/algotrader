@@ -11,6 +11,55 @@ from scripts import generate_env
 COMPOSE_PATH = generate_env.ROOT_DIR / "docker-compose.yml"
 
 
+class DockerResourceConfigurationTests(unittest.TestCase):
+    def test_every_compose_service_uses_generated_resources(self) -> None:
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(set(topology["docker_resources"]), set(compose["services"]))
+        topology["docker_resources"]["backtester-worker"] = {
+            "cpus": 0.75,
+            "memory_reservation_mb": 768,
+        }
+
+        shared_env, _, _, _ = generate_env.build_env(topology, {})
+
+        self.assertEqual(shared_env["COMPOSE_BACKTESTER_WORKER_CPUS"], "0.75")
+        self.assertEqual(shared_env["COMPOSE_BACKTESTER_WORKER_MEMORY_RESERVATION"], "768m")
+        for name, service in compose["services"].items():
+            with self.subTest(service=name):
+                prefix = f"COMPOSE_{name.upper().replace('-', '_')}"
+                for field, suffix in (("cpus", "CPUS"), ("mem_reservation", "MEMORY_RESERVATION")):
+                    key = f"{prefix}_{suffix}"
+                    self.assertIn(key, shared_env)
+                    self.assertEqual(service[field], f"${{{key}:?Run make config}}")
+                self.assertNotIn("mem_limit", service)
+                self.assertNotIn("oom_kill_disable", service)
+
+    def test_invalid_resource_values_are_rejected(self) -> None:
+        for field, values in (
+            ("cpus", (0, -1, True, "1.0", float("inf"), float("nan"))),
+            ("memory_reservation_mb", (0, -1, True, 128.5, "256m")),
+        ):
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+                    topology["docker_resources"]["redis"][field] = value
+                    with self.assertRaisesRegex(ValueError, f"docker_resources.redis.{field}"):
+                        generate_env.build_env(topology, {})
+
+    def test_missing_or_unknown_service_resources_are_rejected(self) -> None:
+        for name in ("redis", "unknown-service"):
+            with self.subTest(service=name):
+                topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+                resources = topology["docker_resources"]
+                if name in resources:
+                    del resources[name]
+                else:
+                    resources[name] = {"cpus": 1, "memory_reservation_mb": 256}
+                with self.assertRaisesRegex(ValueError, "docker_resources"):
+                    generate_env.build_env(topology, {})
+
+
 class BacktesterRuntimeConfigurationTests(unittest.TestCase):
     def test_tracked_topology_generates_backtester_runtime_environment(self) -> None:
         topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)

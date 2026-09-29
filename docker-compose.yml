@@ -1,6 +1,8 @@
 services:
   database-accessor-api:
     container_name: database-accessor-api
+    cpus: ${COMPOSE_DATABASE_ACCESSOR_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_DATABASE_ACCESSOR_API_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: database-accessor-api/Dockerfile
@@ -32,6 +34,8 @@ services:
 
   backtester-api:
     container_name: backtester-api
+    cpus: ${COMPOSE_BACKTESTER_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BACKTESTER_API_MEMORY_RESERVATION:?Run make config}
     image: algotrader-backtester
     build:
       context: .
@@ -63,6 +67,8 @@ services:
 
   backtester-worker:
     container_name: backtester-worker
+    cpus: ${COMPOSE_BACKTESTER_WORKER_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BACKTESTER_WORKER_MEMORY_RESERVATION:?Run make config}
     image: algotrader-backtester
     build:
       context: .
@@ -80,6 +86,8 @@ services:
 
   indicator-api:
     container_name: indicator-api
+    cpus: ${COMPOSE_INDICATOR_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_INDICATOR_API_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: indicator-api/Dockerfile
@@ -102,6 +110,8 @@ services:
 
   timescaledb:
     container_name: timescaledb
+    cpus: ${COMPOSE_TIMESCALEDB_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_TIMESCALEDB_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: timescaledb-init/Dockerfile
@@ -130,6 +140,8 @@ services:
 
   broker-service:
     container_name: broker-service
+    cpus: ${COMPOSE_BROKER_SERVICE_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BROKER_SERVICE_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: broker-service/Dockerfile
@@ -162,6 +174,8 @@ services:
 
   ingestion-service:
     container_name: ingestion-service
+    cpus: ${COMPOSE_INGESTION_SERVICE_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_INGESTION_SERVICE_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: ingestion-service/Dockerfile
@@ -183,6 +197,8 @@ services:
 
   webserver:
     container_name: webserver
+    cpus: ${COMPOSE_WEBSERVER_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_WEBSERVER_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: webserver/Dockerfile
@@ -209,6 +225,8 @@ services:
 
   frontend:
     container_name: frontend
+    cpus: ${COMPOSE_FRONTEND_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_FRONTEND_MEMORY_RESERVATION:?Run make config}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -226,6 +244,8 @@ services:
 
   redis:
     container_name: redis
+    cpus: ${COMPOSE_REDIS_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_REDIS_MEMORY_RESERVATION:?Run make config}
     image: redis:7-alpine
     ports:
       - "${REDIS_PUBLISHED_PORT:-6379}:6379"

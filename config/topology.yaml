@@ -3,6 +3,39 @@ mode: development
 public:
   host: localhost
 
+# CPU quotas throttle execution; memory reservations are soft, not hard caps.
+docker_resources:
+  database-accessor-api:
+    cpus: 0.5
+    memory_reservation_mb: 256
+  backtester-api:
+    cpus: 0.5
+    memory_reservation_mb: 256
+  backtester-worker:
+    cpus: 1.0
+    memory_reservation_mb: 1024
+  indicator-api:
+    cpus: 1.0
+    memory_reservation_mb: 512
+  timescaledb:
+    cpus: 1.0
+    memory_reservation_mb: 512
+  broker-service:
+    cpus: 0.5
+    memory_reservation_mb: 256
+  ingestion-service:
+    cpus: 0.5
+    memory_reservation_mb: 256
+  webserver:
+    cpus: 0.25
+    memory_reservation_mb: 128
+  frontend:
+    cpus: 1.0
+    memory_reservation_mb: 512
+  redis:
+    cpus: 0.25
+    memory_reservation_mb: 256
+
 services:
   database_accessor_api:
     host: database-accessor-api

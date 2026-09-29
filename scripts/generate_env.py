@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,18 @@ REQUIRED_SECRETS = (
     "CTRADER_REFRESH_TOKEN",
     "CTRADER_HOST_TYPE",
     "ACCOUNT_ID",
+)
+DOCKER_SERVICES = (
+    "database-accessor-api",
+    "backtester-api",
+    "backtester-worker",
+    "indicator-api",
+    "timescaledb",
+    "broker-service",
+    "ingestion-service",
+    "webserver",
+    "frontend",
+    "redis",
 )
 
 
@@ -96,6 +109,26 @@ def stringify(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+def build_docker_resource_env(topology: dict[str, Any]) -> dict[str, str]:
+    resources = required(topology, "docker_resources")
+    if not isinstance(resources, dict) or set(resources) != set(DOCKER_SERVICES):
+        raise ValueError("docker_resources must configure exactly the Docker Compose services")
+
+    env: dict[str, str] = {}
+    for service in DOCKER_SERVICES:
+        path = f"docker_resources.{service}"
+        cpus = required(topology, f"{path}.cpus")
+        memory_mb = required(topology, f"{path}.memory_reservation_mb")
+        if type(cpus) not in (int, float) or not math.isfinite(cpus) or cpus <= 0:
+            raise ValueError(f"{path}.cpus must be a finite positive number")
+        if type(memory_mb) is not int or memory_mb <= 0:
+            raise ValueError(f"{path}.memory_reservation_mb must be a positive integer")
+        prefix = f"COMPOSE_{service.upper().replace('-', '_')}"
+        env[f"{prefix}_CPUS"] = stringify(cpus)
+        env[f"{prefix}_MEMORY_RESERVATION"] = f"{memory_mb}m"
+    return env
 
 
 def build_env(
@@ -276,6 +309,8 @@ def build_env(
         "CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS": "2628000",
         "CTRADER_TOKEN_REQUEST_TIMEOUT_SECONDS": "10.0",
     }
+
+    shared_env.update(build_docker_resource_env(topology))
 
     db_secrets_env: dict[str, str] = {}
     runtime_secrets_env = {

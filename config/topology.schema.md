@@ -7,6 +7,7 @@
 - `public.host` (string): host used for browser-facing URLs
 - `services` (map): service host/port topology
 - `infrastructure` (map): shared infra hosts/ports/databases
+- `docker_resources` (map): per-container CPU quotas and soft memory reservations
 - `webserver` (map): webserver stream tuning values
 - `ingestion` (map): ingestion-service tuning values
 - `backtester` (map): backtester worker tuning values
@@ -51,6 +52,23 @@
 ## Required backtester keys
 - `backtester.worker_poll_interval_seconds` (positive float, default topology value `1.0`)
 - `backtester.max_sweep_candidate_count` (positive integer, default topology value `1000`)
+
+## Required Docker resource keys
+
+`docker_resources` must contain exactly the Compose service names:
+`database-accessor-api`, `backtester-api`, `backtester-worker`, `indicator-api`,
+`timescaledb`, `broker-service`, `ingestion-service`, `webserver`, `frontend`, and
+`redis`.
+
+Each entry requires:
+
+- `cpus`: finite positive number; `1.0` allows one CPU's worth of execution time.
+- `memory_reservation_mb`: positive integer in MiB, emitted with Docker's `m`
+  suffix. This is a soft reservation, not a hard cap or a guarantee against OOM.
+
+These generate `COMPOSE_<SERVICE>_CPUS` and
+`COMPOSE_<SERVICE>_MEMORY_RESERVATION` for Compose interpolation. Service names
+are uppercased and hyphens become underscores. Regenerate with `make config`.
 
 ## Secrets
 Secrets are not stored in `config/topology.yaml`. Put them in `config/.env.secrets.local`.

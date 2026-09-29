@@ -168,6 +168,32 @@ make logs
 make ps
 ```
 
+### Docker resource budgets
+
+Edit `docker_resources` in `config/topology.yaml` to tune each container's
+`cpus` and `memory_reservation_mb`. `make config` generates the variables consumed
+by `docker-compose.yml`; do not edit generated env files. CPU quotas throttle
+execution. Memory reservations are soft and allow containers to exceed the
+configured amount; they do not allocate RAM in advance. Hard memory caps are
+intentionally omitted because exceeding one can trigger an out-of-memory kill.
+Exhausting the Docker VM's memory can still kill processes.
+
+For a 16 GB Mac with 10 logical CPUs, start with **4 CPUs, 6 GB RAM, and 1 GB
+swap** in **Docker Desktop → Settings → Resources → Advanced**. This separate
+machine setting governs the whole Docker VM, including other projects and builds;
+the per-container quotas share that budget. Applying Desktop settings restarts
+Docker. Tune these starting values against `docker stats` during representative
+backtests and chart use, alongside macOS Activity Monitor's memory pressure.
+
+Apply container configuration between backtests because recreation interrupts
+active work:
+
+```sh
+make config
+docker compose --env-file config/.env.shared config --quiet
+make up-detached
+```
+
 ## Local Python Environments
 
 Use a root virtual environment for shared library/test tooling and per-service virtual environments for service runtime dependencies.

@@ -12,7 +12,7 @@ Centralized non-secret topology plus generated runtime environment files.
 ## Key Files
 
 - `topology.yaml`: tracked shared topology for hosts, ports, logging, Redis,
-  TimescaleDB, broker limits, backtester worker polling, and
+  TimescaleDB, per-container Docker resources, broker limits, backtester worker polling, and
   ingestion/webserver knobs.
 - `.env.secrets.example`: template for local secrets.
 - `.env.secrets.local`: local secrets, gitignored.
@@ -29,6 +29,16 @@ Centralized non-secret topology plus generated runtime environment files.
 - Run `make validate-config` or `python scripts/generate_env.py --validate` to
   check required secret values.
 - Docker Compose uses `config/.env.shared` plus service-specific secret env files.
+- `docker_resources` configures every Compose service by its Compose name.
+  Positive finite `cpus` quotas and positive integer `memory_reservation_mb`
+  values generate `COMPOSE_<SERVICE>_CPUS` and
+  `COMPOSE_<SERVICE>_MEMORY_RESERVATION` in `.env.shared` (hyphens become
+  underscores). Compose requires these variables; pass `--env-file
+  config/.env.shared` or use the Make targets. Memory reservations use Docker's
+  `m` unit (MiB) and are soft, not hard limits or preallocated memory.
+  Recreate containers with `make up-detached` to apply changed values, between
+  backtests. Docker Desktop's overall CPU/RAM/swap budget is configured separately
+  on the host; per-service limits do not constrain image builds.
 - TimescaleDB topology generates both application-facing `TIMESCALEDB_DB` /
   `TIMESCALEDB_USER` values and image-facing `POSTGRES_DB` / `POSTGRES_USER`
   aliases. The password remains only in `config/.env.secrets.db`.
