@@ -142,7 +142,7 @@
       <p v-if="overlayStore.error" role="alert">{{ overlayStore.error }}</p>
       <template v-if="currentRows.length">
         <div class="comparison-controls">
-          <span class="column-count">{{ visibleColumns.length }} columns shown</span>
+          <span class="column-count">{{ columnSettings.visibleKeys.length }} columns shown</span>
           <BasePopover
             trigger="click"
             placement="bottom-end"
@@ -168,16 +168,16 @@
                     :indeterminate="group.indeterminate"
                     :data-testid="`comparison-group-${group.title}`"
                     :aria-label="`Show all ${group.title} columns`"
-                    @update:checked="toggleColumnGroup(group.columns)"
+                    @update:checked="setColumnGroup(group.columns, $event)"
                   />
                 </div>
                 <div class="column-options">
                   <BaseCheckbox
                     v-for="column in group.columns"
                     :key="column.key"
-                    :checked="visibleColumns.includes(column.key)"
+                    :checked="columnSettings.visibleKeys.includes(column.key)"
                     :data-testid="`comparison-column-${column.key}`"
-                    @update:checked="toggleColumn(column.key)"
+                    @update:checked="setColumn(column.key, $event)"
                   >
                     {{ column.title }}
                   </BaseCheckbox>
@@ -192,7 +192,6 @@
           </BasePopover>
         </div>
         <BaseDataTable
-          :key="visibleColumns.join(',')"
           data-testid="workspace-current-backtest"
           :columns="comparisonColumns"
           :data="sortedCurrentRows"
@@ -261,7 +260,7 @@ import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, s
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
-import { NButton, NCheckbox, NConfigProvider, NIcon, NInput, NSelect, NTag, NTooltip } from 'naive-ui';
+import { NButton, NCheckbox, NConfigProvider, NIcon, NInput, NSelect, NSkeleton, NTag, NTooltip } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { DocumentTextOutline, BarChartOutline, ArrowBackOutline, AddOutline, RefreshOutline, OptionsOutline, CopyOutline, TrashOutline, StopCircleOutline, TimeOutline, PlayCircleOutline, HourglassOutline, CheckmarkCircleOutline, CloseCircleOutline, BanOutline } from '@vicons/ionicons5';
 import { useRouter } from 'vue-router';
@@ -316,9 +315,9 @@ const batchMembers = ref<BacktestRun[]>([]);
 const selectedComparisonIds = ref<string[]>([]);
 const defaultColumns = ['status', 'market', 'timeframe', 'capital',
   'return', 'drawdown', 'ending', 'trades'];
-const visibleColumns = ref<string[]>([...defaultColumns]);
-const hasDefaultColumns = computed(() => visibleColumns.value.length === defaultColumns.length &&
-  defaultColumns.every((key) => visibleColumns.value.includes(key)));
+const columnSettings = ref({ visibleKeys: [...defaultColumns] });
+const hasDefaultColumns = computed(() => columnSettings.value.visibleKeys.length === defaultColumns.length &&
+  defaultColumns.every((key) => columnSettings.value.visibleKeys.includes(key)));
 const currentRows = computed(() => (selectedBatchId.value ? batchMembers.value :
   selectedRun.value ? [selectedRun.value] : []).map((run) =>
   analysis.value[run.run_id]?.detail ?? run));
@@ -951,10 +950,17 @@ const optionalColumns = computed<ComparisonColumn[]>(() => [
   { title: 'Max drawdown (%)', key: 'drawdown', group: 'Performance', width: 175,
     render: (run) => metricCell(run, 'max_drawdown_pct',
       'Positive magnitude of the saved largest peak-to-trough recorded equity loss, in percent.', '%', true) },
-  { title: 'Ending equity', key: 'ending', group: 'Performance', width: 155, render: (run) => cell(
-    run.status === 'succeeded' && analysis.value[run.run_id]?.curve?.availability === 'exact'
-      ? formatSigned(analysis.value[run.run_id]?.curve?.equity_curve.at(-1)?.equity).replace(/^\+/, '') : '—',
-    'Final point of exact Equity Replay, in account units. Unavailable replay leaves this missing.') },
+  { title: 'Ending equity', key: 'ending', group: 'Performance', width: 155, render: (run) =>
+    analysis.value[run.run_id]?.loading && !analysis.value[run.run_id]?.curve
+      ? h('span', { role: 'status', 'aria-label': 'Loading ending equity',
+        'data-testid': `ending-loading-${run.run_id}` }, h(NSkeleton, {
+        width: 90, height: 16,
+        themeOverrides: { color: '#253340', colorEnd: '#354757' },
+      }))
+      : cell(
+        run.status === 'succeeded' && analysis.value[run.run_id]?.curve?.availability === 'exact'
+          ? formatSigned(analysis.value[run.run_id]?.curve?.equity_curve.at(-1)?.equity).replace(/^\+/, '') : '—',
+        'Final point of exact Equity Replay, in account units. Unavailable replay leaves this missing.') },
   { title: 'Trades', key: 'trades', group: 'Performance', width: 115, render: (run) => countCell(run,
     'trade_count', 'Saved count of Closed Trades. Zero is different from a missing result.') },
   { title: 'Long trades', key: 'long-count', group: 'Long / short', width: 135, render: (run) => countCell(run,
@@ -975,7 +981,7 @@ const optionalColumns = computed<ComparisonColumn[]>(() => [
 const columnGroups = computed(() => ['Run settings', 'Performance', 'Long / short']
   .map((title) => {
     const columns = optionalColumns.value.filter((column) => column.group === title);
-    const enabledCount = columns.filter((column) => visibleColumns.value.includes(column.key)).length;
+    const enabledCount = columns.filter((column) => columnSettings.value.visibleKeys.includes(column.key)).length;
     return { title, columns, enabled: enabledCount === columns.length,
       indeterminate: enabledCount > 0 && enabledCount < columns.length };
   }));
@@ -1010,7 +1016,7 @@ const comparisonColumns = computed<DataTableColumns<BacktestRun>>(() => [
     render: (run) => h('span', { class: 'run-identity' }, cell(comparisonRunLabel(run), run.run_id)),
     sorter: (a, b) => compareRuns(a, b, 'ordinal'),
     sortOrder: comparisonSortKey.value === 'ordinal' ? comparisonSortOrder.value : false as const },
-  ...optionalColumns.value.filter((column) => visibleColumns.value.includes(column.key))
+  ...optionalColumns.value.filter((column) => columnSettings.value.visibleKeys.includes(column.key))
     .map((column) => ({ ...column,
       ...(comparisonSortKeys.includes(column.key as ComparisonSortKey) ? {
         sorter: (a: BacktestRun, b: BacktestRun) => compareRuns(a, b,
@@ -1023,7 +1029,7 @@ const comparisonColumns = computed<DataTableColumns<BacktestRun>>(() => [
 const comparisonSortKeys: string[] = ['ordinal', 'status', 'market', 'timeframe',
   'capital', 'return', 'drawdown'];
 const comparisonScrollWidth = computed(() => 104 + analysisActionsWidth.value + optionalColumns.value
-  .filter((column) => visibleColumns.value.includes(column.key))
+  .filter((column) => columnSettings.value.visibleKeys.includes(column.key))
   .reduce((width, column) => width + column.width, 0));
 
 function updateComparisonSort(sorter: { columnKey: string | number; order: 'ascend' | 'descend' | false }) {
@@ -1036,18 +1042,18 @@ function updateComparisonSort(sorter: { columnKey: string | number; order: 'asce
   }
 }
 function resetColumns(): void {
-  visibleColumns.value = [...defaultColumns];
+  columnSettings.value.visibleKeys = [...defaultColumns];
 }
-function toggleColumn(key: string): void {
-  visibleColumns.value = visibleColumns.value.includes(key)
-    ? visibleColumns.value.filter((column) => column !== key)
-    : [...visibleColumns.value, key];
+function setColumn(key: string, checked: boolean): void {
+  columnSettings.value.visibleKeys = checked
+    ? [...new Set([...columnSettings.value.visibleKeys, key])]
+    : columnSettings.value.visibleKeys.filter((column) => column !== key);
 }
-function toggleColumnGroup(columns: ComparisonColumn[]): void {
+function setColumnGroup(columns: ComparisonColumn[], checked: boolean): void {
   const keys = columns.map((column) => column.key);
-  visibleColumns.value = keys.every((key) => visibleColumns.value.includes(key))
-    ? visibleColumns.value.filter((key) => !keys.includes(key))
-    : [...new Set([...visibleColumns.value, ...keys])];
+  columnSettings.value.visibleKeys = checked
+    ? [...new Set([...columnSettings.value.visibleKeys, ...keys])]
+    : columnSettings.value.visibleKeys.filter((key) => !keys.includes(key));
 }
 function currentRowProps(run: BacktestRun): Record<string, unknown> {
   const select = () => selectRun(run);

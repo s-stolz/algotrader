@@ -183,8 +183,13 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   cancelling/cancelled statuses for future durable cancellation responses.
 - One Columns popover controls visible columns with grouped checkboxes for
   Run settings, Performance, and Long / short. Each group has a checked, unchecked,
-  or indeterminate checkbox that changes only that group. All saved named strategy parameters
-  remain available in Run settings and the selected request. The comparison table pins selection and Run identity,
+  or indeterminate checkbox that changes only that group.
+  Column settings update immediately and independently of analysis reads; toggling
+  a column does not fetch data or remount the table. Ending equity shows a cell
+  skeleton during its initial replay read, retains an existing value during
+  refresh, and returns to a missing value on unavailable or failed initial reads.
+  All saved named strategy parameters remain available in Run settings and the
+  selected request. The comparison table pins selection and Run identity,
   horizontally scrolls readable columns, and caps long bodies at 360px beneath
   fixed headers. Differing request assumptions are called out without ranking.
 - Selected successful runs read detail and exact Equity Replay through the
