@@ -84,7 +84,17 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 *Using this link costs you nothing extra but helps fund the development of new features and improvements.*
 
 ## Prerequisites
-- [Docker](https://docs.docker.com/get-started/get-docker/) installed on your machine.
+
+- [Docker](https://docs.docker.com/get-started/get-docker/) with the Compose v2 plugin (`docker compose`).
+- GNU Make (`make`).
+- Python 3 (`python3`) and PyYAML for host-side config generation.
+
+On Debian/Ubuntu, install the host setup tools (install Docker separately using the link above):
+
+```sh
+sudo apt update
+sudo apt install make python3 python3-yaml
+```
 
 ## Getting Started
 
@@ -97,11 +107,11 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
    ```sh
    cp config/.env.secrets.example config/.env.secrets.local
    ```
-3. Generate runtime env files from the tracked topology + local secrets:
+3. Edit `config/topology.yaml` for shared non-secret settings (ports, hosts, tuning), and edit `config/.env.secrets.local` for credentials/secrets.
+4. Generate runtime env files from the tracked topology + local secrets:
    ```sh
-   python scripts/generate_env.py
+   make config
    ```
-4. Edit `config/topology.yaml` for shared non-secret settings (ports, hosts, tuning), and edit `config/.env.secrets.local` for credentials/secrets.
 5. Run the project and explore.
 
 ## Running with Docker Compose
@@ -113,7 +123,7 @@ Default workflow (auto-regenerates config env files before Compose):
 
 Direct Docker Compose usage:
    ```sh
-   python scripts/generate_env.py --force
+   python3 scripts/generate_env.py --force
    docker compose --env-file config/.env.shared up --build
    ```
 This will build and start all necessary services as defined in the `docker-compose.yml` file.
@@ -158,8 +168,8 @@ See [the topology schema](config/topology.schema.md) for the complete structure.
 ### Validation and overwrite
 
 ```sh
-python scripts/generate_env.py --validate
-python scripts/generate_env.py --force
+python3 scripts/generate_env.py --validate
+python3 scripts/generate_env.py --force
 ```
 
 ### Make targets

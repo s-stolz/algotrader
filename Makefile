@@ -1,7 +1,7 @@
 ifneq ($(wildcard .venv/bin/python),)
 PYTHON ?= .venv/bin/python
 else
-PYTHON ?= python
+PYTHON ?= python3
 endif
 COMPOSE ?= docker compose --env-file config/.env.shared
 SERVICE ?=
@@ -21,6 +21,10 @@ UP_FLAGS += -d
 endif
 
 ensure-pyyaml:
+	@command -v "$(PYTHON)" >/dev/null 2>&1 || { \
+		echo "Python interpreter '$(PYTHON)' not found. Install Python 3 or set PYTHON=/path/to/python3." >&2; \
+		exit 1; \
+	}
 	@$(PYTHON) -c "import yaml" >/dev/null 2>&1 || { \
 		echo "PyYAML missing for $(PYTHON); installing..."; \
 		$(PYTHON) -m pip install pyyaml; \
