@@ -170,8 +170,10 @@ make ps
 
 ### Docker resource budgets
 
-Edit `docker_resources` in `config/topology.yaml` to tune each container's
-`cpus` and `memory_reservation_mb`. `make config` generates the variables consumed
+Edit `cpus` and `memory_reservation_mb` on each entry under `services` or
+`infrastructure` in `config/topology.yaml`. For example, the worker budget lives
+at `services.backtester_worker`, and Redis's budget at `infrastructure.redis`.
+`make config` generates the variables consumed
 by `docker-compose.yml`; do not edit generated env files. CPU quotas throttle
 execution. Memory reservations are soft and allow containers to exceed the
 configured amount; they do not allocate RAM in advance. Hard memory caps are

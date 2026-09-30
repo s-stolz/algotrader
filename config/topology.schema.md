@@ -5,9 +5,8 @@
 ## Root keys
 - `mode` (string): runtime mode (`development`, `production`, etc.)
 - `public.host` (string): host used for browser-facing URLs
-- `services` (map): service host/port topology
-- `infrastructure` (map): shared infra hosts/ports/databases
-- `docker_resources` (map): per-container CPU quotas and soft memory reservations
+- `services` (map): service host/port topology and per-container resource settings
+- `infrastructure` (map): shared infra hosts/ports/databases and resource settings
 - `webserver` (map): webserver stream tuning values
 - `ingestion` (map): ingestion-service tuning values
 - `backtester` (map): backtester worker tuning values
@@ -55,10 +54,16 @@
 
 ## Required Docker resource keys
 
-`docker_resources` must contain exactly the Compose service names:
-`database-accessor-api`, `backtester-api`, `backtester-worker`, `indicator-api`,
-`timescaledb`, `broker-service`, `ingestion-service`, `webserver`, `frontend`, and
-`redis`.
+Resource settings live directly on the existing topology entries:
+
+- `services.database_accessor_api`, `services.backtester_api`,
+  `services.backtester_worker`, `services.indicator_api`,
+  `services.broker_service`, `services.ingestion_service`, `services.webserver`,
+  and `services.frontend`.
+- `infrastructure.timescaledb` and `infrastructure.redis`.
+
+The worker-only entries `services.backtester_worker` and
+`services.ingestion_service` require no host or port fields.
 
 Each entry requires:
 
@@ -67,8 +72,9 @@ Each entry requires:
   suffix. This is a soft reservation, not a hard cap or a guarantee against OOM.
 
 These generate `COMPOSE_<SERVICE>_CPUS` and
-`COMPOSE_<SERVICE>_MEMORY_RESERVATION` for Compose interpolation. Service names
-are uppercased and hyphens become underscores. Regenerate with `make config`.
+`COMPOSE_<SERVICE>_MEMORY_RESERVATION` for Compose interpolation. Entry names
+are uppercased, for example `services.backtester_worker.cpus` generates
+`COMPOSE_BACKTESTER_WORKER_CPUS`. Regenerate with `make config`.
 
 ## Secrets
 Secrets are not stored in `config/topology.yaml`. Put them in `config/.env.secrets.local`.

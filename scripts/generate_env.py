@@ -33,17 +33,17 @@ REQUIRED_SECRETS = (
     "CTRADER_HOST_TYPE",
     "ACCOUNT_ID",
 )
-DOCKER_SERVICES = (
-    "database-accessor-api",
-    "backtester-api",
-    "backtester-worker",
-    "indicator-api",
-    "timescaledb",
-    "broker-service",
-    "ingestion-service",
-    "webserver",
-    "frontend",
-    "redis",
+DOCKER_RESOURCE_PATHS = (
+    "services.database_accessor_api",
+    "services.backtester_api",
+    "services.backtester_worker",
+    "services.indicator_api",
+    "infrastructure.timescaledb",
+    "services.broker_service",
+    "services.ingestion_service",
+    "services.webserver",
+    "services.frontend",
+    "infrastructure.redis",
 )
 
 
@@ -112,20 +112,16 @@ def stringify(value: Any) -> str:
 
 
 def build_docker_resource_env(topology: dict[str, Any]) -> dict[str, str]:
-    resources = required(topology, "docker_resources")
-    if not isinstance(resources, dict) or set(resources) != set(DOCKER_SERVICES):
-        raise ValueError("docker_resources must configure exactly the Docker Compose services")
-
     env: dict[str, str] = {}
-    for service in DOCKER_SERVICES:
-        path = f"docker_resources.{service}"
+    for path in DOCKER_RESOURCE_PATHS:
         cpus = required(topology, f"{path}.cpus")
         memory_mb = required(topology, f"{path}.memory_reservation_mb")
         if type(cpus) not in (int, float) or not math.isfinite(cpus) or cpus <= 0:
             raise ValueError(f"{path}.cpus must be a finite positive number")
         if type(memory_mb) is not int or memory_mb <= 0:
             raise ValueError(f"{path}.memory_reservation_mb must be a positive integer")
-        prefix = f"COMPOSE_{service.upper().replace('-', '_')}"
+        service = path.rsplit(".", 1)[1]
+        prefix = f"COMPOSE_{service.upper()}"
         env[f"{prefix}_CPUS"] = stringify(cpus)
         env[f"{prefix}_MEMORY_RESERVATION"] = f"{memory_mb}m"
     return env

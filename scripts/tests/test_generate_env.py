@@ -15,8 +15,13 @@ class DockerResourceConfigurationTests(unittest.TestCase):
     def test_every_compose_service_uses_generated_resources(self) -> None:
         topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
         compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(set(topology["docker_resources"]), set(compose["services"]))
-        topology["docker_resources"]["backtester-worker"] = {
+        configured_services = {
+            name.replace("_", "-")
+            for section in ("services", "infrastructure")
+            for name in topology[section]
+        }
+        self.assertEqual(configured_services, set(compose["services"]))
+        topology["services"]["backtester_worker"] = {
             "cpus": 0.75,
             "memory_reservation_mb": 768,
         }
@@ -43,21 +48,18 @@ class DockerResourceConfigurationTests(unittest.TestCase):
             for value in values:
                 with self.subTest(field=field, value=value):
                     topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
-                    topology["docker_resources"]["redis"][field] = value
-                    with self.assertRaisesRegex(ValueError, f"docker_resources.redis.{field}"):
+                    topology["infrastructure"]["redis"][field] = value
+                    with self.assertRaisesRegex(ValueError, f"infrastructure.redis.{field}"):
                         generate_env.build_env(topology, {})
 
-    def test_missing_or_unknown_service_resources_are_rejected(self) -> None:
-        for name in ("redis", "unknown-service"):
-            with self.subTest(service=name):
-                topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
-                resources = topology["docker_resources"]
-                if name in resources:
-                    del resources[name]
-                else:
-                    resources[name] = {"cpus": 1, "memory_reservation_mb": 256}
-                with self.assertRaisesRegex(ValueError, "docker_resources"):
-                    generate_env.build_env(topology, {})
+    def test_missing_service_resources_are_rejected(self) -> None:
+        for path in generate_env.DOCKER_RESOURCE_PATHS:
+            for field in ("cpus", "memory_reservation_mb"):
+                with self.subTest(path=path, field=field):
+                    topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+                    del generate_env.required(topology, path)[field]
+                    with self.assertRaisesRegex(ValueError, f"{path}.{field}"):
+                        generate_env.build_env(topology, {})
 
 
 class BacktesterRuntimeConfigurationTests(unittest.TestCase):

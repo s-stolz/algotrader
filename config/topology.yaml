@@ -3,65 +3,42 @@ mode: development
 public:
   host: localhost
 
-# CPU quotas throttle execution; memory reservations are soft, not hard caps.
-docker_resources:
-  database-accessor-api:
-    cpus: 0.5
-    memory_reservation_mb: 256
-  backtester-api:
-    cpus: 0.5
-    memory_reservation_mb: 256
-  backtester-worker:
-    cpus: 1.0
-    memory_reservation_mb: 1024
-  indicator-api:
-    cpus: 1.0
-    memory_reservation_mb: 512
-  timescaledb:
-    cpus: 1.0
-    memory_reservation_mb: 512
-  broker-service:
-    cpus: 0.5
-    memory_reservation_mb: 256
-  ingestion-service:
-    cpus: 0.5
-    memory_reservation_mb: 256
-  webserver:
-    cpus: 0.25
-    memory_reservation_mb: 128
-  frontend:
-    cpus: 1.0
-    memory_reservation_mb: 512
-  redis:
-    cpus: 0.25
-    memory_reservation_mb: 256
-
 services:
   database_accessor_api:
+    cpus: 0.5
+    memory_reservation_mb: 256
     host: database-accessor-api
     port: 8000
     published_port: 8000
     log_level: INFO
     log_format: pretty
   indicator_api:
+    cpus: 1.0
+    memory_reservation_mb: 512
     host: indicator-api
     port: 8010
     published_port: 8010
     log_level: INFO
     log_format: pretty
   backtester_api:
+    cpus: 0.5
+    memory_reservation_mb: 256
     host: backtester-api
     port: 8020
     published_port: 8020
     log_level: INFO
     log_format: pretty
   broker_service:
+    cpus: 0.5
+    memory_reservation_mb: 256
     host: broker-service
     port: 8050
     published_port: 8050
     log_level: INFO
     log_format: pretty
   webserver:
+    cpus: 0.25
+    memory_reservation_mb: 128
     host: webserver
     ws_port: 8765
     ws_published_port: 8765
@@ -70,17 +47,29 @@ services:
     log_level: INFO
     log_format: pretty
   frontend:
+    cpus: 1.0
+    memory_reservation_mb: 512
     host: frontend
     port: 5173
     published_port: 5173
+  backtester_worker:
+    cpus: 1.0
+    memory_reservation_mb: 1024
+  ingestion_service:
+    cpus: 0.5
+    memory_reservation_mb: 256
 
 infrastructure:
   redis:
+    cpus: 0.25
+    memory_reservation_mb: 256
     host: redis
     port: 6379
     published_port: 6379
     db: 0
   timescaledb:
+    cpus: 1.0
+    memory_reservation_mb: 512
     host: timescaledb
     port: 5432
     published_port: 5432

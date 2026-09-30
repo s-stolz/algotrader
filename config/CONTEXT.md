@@ -29,11 +29,13 @@ Centralized non-secret topology plus generated runtime environment files.
 - Run `make validate-config` or `python scripts/generate_env.py --validate` to
   check required secret values.
 - Docker Compose uses `config/.env.shared` plus service-specific secret env files.
-- `docker_resources` configures every Compose service by its Compose name.
+- Each entry under `services` and `infrastructure` owns its Docker resource settings.
+  `services.backtester_worker` and `services.ingestion_service` contain resource
+  settings only because those workers expose no service ports.
   Positive finite `cpus` quotas and positive integer `memory_reservation_mb`
   values generate `COMPOSE_<SERVICE>_CPUS` and
-  `COMPOSE_<SERVICE>_MEMORY_RESERVATION` in `.env.shared` (hyphens become
-  underscores). Compose requires these variables; pass `--env-file
+  `COMPOSE_<SERVICE>_MEMORY_RESERVATION` in `.env.shared` (entry names are
+  uppercased). Compose requires these variables; pass `--env-file
   config/.env.shared` or use the Make targets. Memory reservations use Docker's
   `m` unit (MiB) and are soft, not hard limits or preallocated memory.
   Recreate containers with `make up-detached` to apply changed values, between
