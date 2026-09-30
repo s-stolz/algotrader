@@ -124,6 +124,11 @@ Standalone Python backtesting module for historical candle simulation.
   `long_and_short`.
 - CLI runs expose Allowed Directions through `--allowed-directions`, defaulting
   to `long_and_short`.
+- CLI database endpoint defaults read `public.host` and
+  `services.database_accessor_api.network.published_port` from the tracked
+  topology, with fallback to `network.port`, then generated env settings when
+  topology is unavailable. Backtester API/worker topology and tuning are grouped
+  under `services.backtester`; generated environment variable names stay stable.
 - New schema version 3 requests require exact Strategy Version and persist all
   resolved strategy defaults. Version 2 remains readable without assigning a
   current strategy identity. Both use Allowed Directions; submissions materialize

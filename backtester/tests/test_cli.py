@@ -580,9 +580,11 @@ class TestCli(unittest.TestCase):
                     "public": {"host": "127.0.0.1"},
                     "services": {
                         "database_accessor_api": {
-                            "host": "database-accessor-api",
-                            "port": 8000,
-                            "published_port": 18000,
+                            "network": {
+                                "host": "database-accessor-api",
+                                "port": 8000,
+                                "published_port": 18000,
+                            },
                         },
                     },
                 },
@@ -701,7 +703,7 @@ class TestCli(unittest.TestCase):
                     "public": {"host": "127.0.0.1"},
                     "services": {
                         "database_accessor_api": {
-                            "published_port": 18000,
+                            "network": {"published_port": 18000},
                         },
                     },
                 },

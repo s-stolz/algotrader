@@ -33,18 +33,18 @@ REQUIRED_SECRETS = (
     "CTRADER_HOST_TYPE",
     "ACCOUNT_ID",
 )
-DOCKER_RESOURCE_PATHS = (
-    "services.database_accessor_api",
-    "services.backtester_api",
-    "services.backtester_worker",
-    "services.indicator_api",
-    "infrastructure.timescaledb",
-    "services.broker_service",
-    "services.ingestion_service",
-    "services.webserver",
-    "services.frontend",
-    "infrastructure.redis",
-)
+DOCKER_RESOURCE_PATHS = {
+    "database_accessor_api": "services.database_accessor_api.resources",
+    "indicator_api": "services.indicator_api.resources",
+    "backtester_api": "services.backtester.api.resources",
+    "broker_service": "services.broker_service.resources",
+    "webserver": "services.webserver.resources",
+    "frontend": "services.frontend.resources",
+    "backtester_worker": "services.backtester.worker.resources",
+    "ingestion_service": "services.ingestion_service.resources",
+    "redis": "infrastructure.redis.resources",
+    "timescaledb": "infrastructure.timescaledb.resources",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -113,14 +113,13 @@ def stringify(value: Any) -> str:
 
 def build_docker_resource_env(topology: dict[str, Any]) -> dict[str, str]:
     env: dict[str, str] = {}
-    for path in DOCKER_RESOURCE_PATHS:
+    for service, path in DOCKER_RESOURCE_PATHS.items():
         cpus = required(topology, f"{path}.cpus")
         memory_mb = required(topology, f"{path}.memory_reservation_mb")
         if type(cpus) not in (int, float) or not math.isfinite(cpus) or cpus <= 0:
             raise ValueError(f"{path}.cpus must be a finite positive number")
         if type(memory_mb) is not int or memory_mb <= 0:
             raise ValueError(f"{path}.memory_reservation_mb must be a positive integer")
-        service = path.rsplit(".", 1)[1]
         prefix = f"COMPOSE_{service.upper()}"
         env[f"{prefix}_CPUS"] = stringify(cpus)
         env[f"{prefix}_MEMORY_RESERVATION"] = f"{memory_mb}m"
@@ -134,88 +133,106 @@ def build_env(
     mode = required(topology, "mode")
     public_host = required(topology, "public.host")
 
-    db_api_host = required(topology, "services.database_accessor_api.host")
-    db_api_port = required(topology, "services.database_accessor_api.port")
-    db_api_published_port = required(topology, "services.database_accessor_api.published_port")
-    db_api_log_level = required(topology, "services.database_accessor_api.log_level")
-    db_api_log_format = required(topology, "services.database_accessor_api.log_format")
+    db_api_host = required(topology, "services.database_accessor_api.network.host")
+    db_api_port = required(topology, "services.database_accessor_api.network.port")
+    db_api_published_port = required(
+        topology, "services.database_accessor_api.network.published_port"
+    )
+    db_api_log_level = required(topology, "services.database_accessor_api.logging.level")
+    db_api_log_format = required(topology, "services.database_accessor_api.logging.format")
 
-    indicator_host = required(topology, "services.indicator_api.host")
-    indicator_port = required(topology, "services.indicator_api.port")
-    indicator_published_port = required(topology, "services.indicator_api.published_port")
-    indicator_log_level = required(topology, "services.indicator_api.log_level")
-    indicator_log_format = required(topology, "services.indicator_api.log_format")
+    indicator_host = required(topology, "services.indicator_api.network.host")
+    indicator_port = required(topology, "services.indicator_api.network.port")
+    indicator_published_port = required(topology, "services.indicator_api.network.published_port")
+    indicator_log_level = required(topology, "services.indicator_api.logging.level")
+    indicator_log_format = required(topology, "services.indicator_api.logging.format")
 
-    backtester_host = required(topology, "services.backtester_api.host")
-    backtester_port = required(topology, "services.backtester_api.port")
-    backtester_published_port = required(topology, "services.backtester_api.published_port")
-    backtester_log_level = required(topology, "services.backtester_api.log_level")
-    backtester_log_format = required(topology, "services.backtester_api.log_format")
+    backtester_host = required(topology, "services.backtester.api.network.host")
+    backtester_port = required(topology, "services.backtester.api.network.port")
+    backtester_published_port = required(topology, "services.backtester.api.network.published_port")
+    backtester_log_level = required(topology, "services.backtester.logging.level")
+    backtester_log_format = required(topology, "services.backtester.logging.format")
 
-    broker_host = required(topology, "services.broker_service.host")
-    broker_port = required(topology, "services.broker_service.port")
-    broker_published_port = required(topology, "services.broker_service.published_port")
-    broker_log_level = required(topology, "services.broker_service.log_level")
-    broker_log_format = required(topology, "services.broker_service.log_format")
+    broker_host = required(topology, "services.broker_service.network.host")
+    broker_port = required(topology, "services.broker_service.network.port")
+    broker_published_port = required(topology, "services.broker_service.network.published_port")
+    broker_log_level = required(topology, "services.broker_service.logging.level")
+    broker_log_format = required(topology, "services.broker_service.logging.format")
 
-    webserver_host = required(topology, "services.webserver.host")
-    webserver_ws_port = required(topology, "services.webserver.ws_port")
-    webserver_ws_published_port = required(topology, "services.webserver.ws_published_port")
-    webserver_health_port = required(topology, "services.webserver.health_port")
-    webserver_health_published_port = required(topology, "services.webserver.health_published_port")
-    webserver_log_level = required(topology, "services.webserver.log_level")
-    webserver_log_format = required(topology, "services.webserver.log_format")
+    webserver_host = required(topology, "services.webserver.network.host")
+    webserver_ws_port = required(topology, "services.webserver.network.websocket.port")
+    webserver_ws_published_port = required(
+        topology, "services.webserver.network.websocket.published_port"
+    )
+    webserver_health_port = required(topology, "services.webserver.network.health.port")
+    webserver_health_published_port = required(
+        topology, "services.webserver.network.health.published_port"
+    )
+    webserver_log_level = required(topology, "services.webserver.logging.level")
+    webserver_log_format = required(topology, "services.webserver.logging.format")
 
-    frontend_host = required(topology, "services.frontend.host")
-    frontend_port = required(topology, "services.frontend.port")
-    frontend_published_port = required(topology, "services.frontend.published_port")
+    frontend_host = required(topology, "services.frontend.network.host")
+    frontend_port = required(topology, "services.frontend.network.port")
+    frontend_published_port = required(topology, "services.frontend.network.published_port")
 
-    redis_host = required(topology, "infrastructure.redis.host")
-    redis_port = required(topology, "infrastructure.redis.port")
-    redis_published_port = required(topology, "infrastructure.redis.published_port")
-    redis_db = required(topology, "infrastructure.redis.db")
+    redis_host = required(topology, "infrastructure.redis.network.host")
+    redis_port = required(topology, "infrastructure.redis.network.port")
+    redis_published_port = required(topology, "infrastructure.redis.network.published_port")
+    redis_db = required(topology, "infrastructure.redis.database")
 
-    timescaledb_host = required(topology, "infrastructure.timescaledb.host")
-    timescaledb_port = required(topology, "infrastructure.timescaledb.port")
-    timescaledb_published_port = required(topology, "infrastructure.timescaledb.published_port")
-    timescaledb_user = required(topology, "infrastructure.timescaledb.user")
-    timescaledb_db = required(topology, "infrastructure.timescaledb.database")
-    timescaledb_echo = required(topology, "infrastructure.timescaledb.echo")
+    timescaledb_host = required(topology, "infrastructure.timescaledb.network.host")
+    timescaledb_port = required(topology, "infrastructure.timescaledb.network.port")
+    timescaledb_published_port = required(
+        topology, "infrastructure.timescaledb.network.published_port"
+    )
+    timescaledb_user = required(topology, "infrastructure.timescaledb.database.user")
+    timescaledb_db = required(topology, "infrastructure.timescaledb.database.name")
+    timescaledb_echo = required(topology, "infrastructure.timescaledb.database.echo")
 
-    webserver_redis_block_ms = required(topology, "webserver.redis_block_ms")
-    webserver_redis_batch_size = required(topology, "webserver.redis_batch_size")
-    webserver_stream_queue_size = required(topology, "webserver.stream_queue_size")
-    webserver_max_stream_length = required(topology, "webserver.max_stream_length")
+    webserver_redis_block_ms = required(topology, "services.webserver.consumer.block_ms")
+    webserver_redis_batch_size = required(topology, "services.webserver.consumer.batch_size")
+    webserver_stream_queue_size = required(topology, "services.webserver.streams.queue_size")
+    webserver_max_stream_length = required(topology, "services.webserver.streams.max_length")
 
-    ingestion_log_level = required(topology, "ingestion.log_level")
-    ingestion_log_format = required(topology, "ingestion.log_format")
-    ingestion_batch_size = required(topology, "ingestion.consumer_batch_size")
-    ingestion_block_ms = required(topology, "ingestion.consumer_block_ms")
+    ingestion_log_level = required(topology, "services.ingestion_service.logging.level")
+    ingestion_log_format = required(topology, "services.ingestion_service.logging.format")
+    ingestion_batch_size = required(topology, "services.ingestion_service.consumer.batch_size")
+    ingestion_block_ms = required(topology, "services.ingestion_service.consumer.block_ms")
 
     backtester_worker_poll_interval = required(
         topology,
-        "backtester.worker_poll_interval_seconds",
+        "services.backtester.worker.poll_interval_seconds",
     )
     backtester_worker_heartbeat_interval = required(
         topology,
-        "backtester.worker_heartbeat_interval_seconds",
+        "services.backtester.worker.heartbeat.interval_seconds",
     )
     backtester_worker_stale_after = required(
         topology,
-        "backtester.worker_stale_after_seconds",
+        "services.backtester.worker.heartbeat.stale_after_seconds",
     )
     backtester_max_sweep_candidate_count = required(
         topology,
-        "backtester.max_sweep_candidate_count",
+        "services.backtester.sweeps.max_candidate_count",
     )
 
-    broker_redis_stream_db = required(topology, "broker.redis_stream_db")
-    broker_tick_queue_size = required(topology, "broker.tick_queue_size")
-    broker_tick_stream_maxlen = required(topology, "broker.tick_stream_maxlen")
-    broker_candle_stream_maxlen = required(topology, "broker.candle_stream_maxlen")
-    broker_max_symbol_streams = required(topology, "broker.max_symbol_streams")
-    broker_max_trendbar_streams = required(topology, "broker.max_trendbar_streams")
-    broker_request_timeout = required(topology, "broker.ctrader_request_timeout_seconds")
+    broker_redis_stream_db = required(topology, "services.broker_service.streams.redis_db")
+    broker_tick_queue_size = required(topology, "services.broker_service.streams.ticks.queue_size")
+    broker_tick_stream_maxlen = required(
+        topology, "services.broker_service.streams.ticks.max_length"
+    )
+    broker_candle_stream_maxlen = required(
+        topology, "services.broker_service.streams.candles.max_length"
+    )
+    broker_max_symbol_streams = required(
+        topology, "services.broker_service.streams.limits.max_symbol_streams"
+    )
+    broker_max_trendbar_streams = required(
+        topology, "services.broker_service.streams.limits.max_trendbar_streams"
+    )
+    broker_request_timeout = required(
+        topology, "services.broker_service.ctrader.request_timeout_seconds"
+    )
 
     redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
     broker_redis_url = f"redis://{redis_host}:{redis_port}/{broker_redis_stream_db}"

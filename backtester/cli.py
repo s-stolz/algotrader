@@ -99,7 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help=(
             "Override database accessor port. Defaults to "
-            "services.database_accessor_api.published_port from config/topology.yaml."
+            "services.database_accessor_api.network.published_port from config/topology.yaml."
         ),
     )
     return parser
@@ -265,9 +265,11 @@ def _resolve_topology_database_accessor_defaults() -> dict[str, str] | None:
     port = (
         _lookup_topology_value(
             topology,
-            ("services", "database_accessor_api", "published_port"),
+            ("services", "database_accessor_api", "network", "published_port"),
         )
-        or _lookup_topology_value(topology, ("services", "database_accessor_api", "port"))
+        or _lookup_topology_value(
+            topology, ("services", "database_accessor_api", "network", "port")
+        )
         or _DEFAULT_LOCAL_DB_ACCESSOR_PORT
     )
     return {

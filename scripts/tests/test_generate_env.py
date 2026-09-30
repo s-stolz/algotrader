@@ -23,18 +23,108 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
 
         self.assertEqual(list(actual), expected)
 
+    def test_component_tuning_changes_only_its_runtime_variables(self) -> None:
+        cases = (
+            (
+                "services.backtester.worker.poll_interval_seconds",
+                2.5,
+                "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS",
+            ),
+            (
+                "services.backtester.worker.heartbeat.interval_seconds",
+                7.0,
+                "BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS",
+            ),
+            (
+                "services.backtester.worker.heartbeat.stale_after_seconds",
+                45.0,
+                "BACKTESTER_WORKER_STALE_AFTER_SECONDS",
+            ),
+            (
+                "services.backtester.sweeps.max_candidate_count",
+                250,
+                "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT",
+            ),
+            ("services.webserver.consumer.block_ms", 1234, "WEBSERVER_REDIS_BLOCK_MS"),
+            ("services.webserver.consumer.batch_size", 17, "WEBSERVER_REDIS_BATCH_SIZE"),
+            ("services.webserver.streams.queue_size", 31, "WEBSERVER_STREAM_QUEUE_SIZE"),
+            ("services.webserver.streams.max_length", 500, "WEBSERVER_MAX_STREAM_LENGTH"),
+            ("services.ingestion_service.consumer.block_ms", 2345, "CONSUMER_BLOCK_MS"),
+            ("services.ingestion_service.consumer.batch_size", 19, "CONSUMER_BATCH_SIZE"),
+            ("services.broker_service.streams.ticks.queue_size", 37, "BROKER_TICK_QUEUE_SIZE"),
+            ("services.broker_service.streams.ticks.max_length", 321, "BROKER_TICK_STREAM_MAXLEN"),
+            (
+                "services.broker_service.streams.candles.max_length",
+                654,
+                "BROKER_CANDLE_STREAM_MAXLEN",
+            ),
+            (
+                "services.broker_service.streams.limits.max_symbol_streams",
+                3,
+                "BROKER_MAX_SYMBOL_STREAMS",
+            ),
+            (
+                "services.broker_service.streams.limits.max_trendbar_streams",
+                4,
+                "BROKER_MAX_TRENDBAR_STREAMS",
+            ),
+            (
+                "services.broker_service.ctrader.request_timeout_seconds",
+                12.5,
+                "BROKER_CTRADER_REQUEST_TIMEOUT_SECONDS",
+            ),
+        )
+        for path, value, env_key in cases:
+            with self.subTest(path=path):
+                topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+                expected = generate_env.build_env(topology, {})
+                parent, field = path.rsplit(".", 1)
+                generate_env.required(topology, parent)[field] = value
+                expected[0][env_key] = str(value)
+
+                self.assertEqual(generate_env.build_env(topology, {}), expected)
+
+    def test_network_settings_keep_public_and_internal_addresses_distinct(self) -> None:
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        topology["public"]["host"] = "workstation.local"
+        topology["services"]["database_accessor_api"]["network"] = {
+            "host": "market-db-api",
+            "port": 8100,
+            "published_port": 18100,
+        }
+        topology["services"]["webserver"]["network"]["websocket"] = {
+            "port": 8766,
+            "published_port": 18766,
+        }
+        topology["infrastructure"]["redis"]["network"] = {
+            "host": "stream-store",
+            "port": 6380,
+            "published_port": 16380,
+        }
+        topology["infrastructure"]["redis"]["database"] = 2
+        topology["services"]["broker_service"]["streams"]["redis_db"] = 3
+
+        shared, _, _, _ = generate_env.build_env(topology, {})
+
+        self.assertEqual(shared["DATABASE_ACCESSOR_BASE_URL"], "http://market-db-api:8100")
+        self.assertEqual(shared["VITE_PROXY_DATA_ACCESSOR_TARGET"], "http://market-db-api:8100")
+        self.assertEqual(shared["DATABASE_ACCESSOR_PUBLISHED_PORT"], "18100")
+        self.assertEqual(shared["WEBSERVER_WS_PORT"], "8766")
+        self.assertEqual(shared["VITE_WS_URL"], "ws://workstation.local:18766")
+        self.assertEqual(shared["REDIS_URL"], "redis://stream-store:6380/2")
+        self.assertEqual(shared["BROKER_REDIS_URL"], "redis://stream-store:6380/3")
+        self.assertEqual(shared["REDIS_PUBLISHED_PORT"], "16380")
+
 
 class DockerResourceConfigurationTests(unittest.TestCase):
     def test_every_compose_service_uses_generated_resources(self) -> None:
         topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
         compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
         configured_services = {
-            name.replace("_", "-")
-            for section in ("services", "infrastructure")
-            for name in topology[section]
+            name.replace("_", "-") for name in generate_env.DOCKER_RESOURCE_PATHS
         }
         self.assertEqual(configured_services, set(compose["services"]))
-        topology["services"]["backtester_worker"] = {
+        topology["services"]["backtester"]["worker"]["resources"] = {
             "cpus": 0.75,
             "memory_reservation_mb": 768,
         }
@@ -61,12 +151,14 @@ class DockerResourceConfigurationTests(unittest.TestCase):
             for value in values:
                 with self.subTest(field=field, value=value):
                     topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
-                    topology["infrastructure"]["redis"][field] = value
-                    with self.assertRaisesRegex(ValueError, f"infrastructure.redis.{field}"):
+                    topology["infrastructure"]["redis"]["resources"][field] = value
+                    with self.assertRaisesRegex(
+                        ValueError, f"infrastructure.redis.resources.{field}"
+                    ):
                         generate_env.build_env(topology, {})
 
     def test_missing_service_resources_are_rejected(self) -> None:
-        for path in generate_env.DOCKER_RESOURCE_PATHS:
+        for path in generate_env.DOCKER_RESOURCE_PATHS.values():
             for field in ("cpus", "memory_reservation_mb"):
                 with self.subTest(path=path, field=field):
                     topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
@@ -129,8 +221,8 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
 class TimescaleRuntimeConfigurationTests(unittest.TestCase):
     def test_tracked_database_topology_generates_postgres_image_environment(self) -> None:
         topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
-        topology["infrastructure"]["timescaledb"]["user"] = "market_writer"
-        topology["infrastructure"]["timescaledb"]["database"] = "market_history"
+        topology["infrastructure"]["timescaledb"]["database"]["user"] = "market_writer"
+        topology["infrastructure"]["timescaledb"]["database"]["name"] = "market_history"
 
         shared_env, db_secrets_env, _, _ = generate_env.build_env(
             topology,

@@ -29,13 +29,16 @@ Centralized non-secret topology plus generated runtime environment files.
 - Run `make validate-config` or `python scripts/generate_env.py --validate` to
   check required secret values.
 - Docker Compose uses `config/.env.shared` plus service-specific secret env files.
-- Each entry under `services` and `infrastructure` owns its Docker resource settings.
-  `services.backtester_worker` and `services.ingestion_service` contain resource
-  settings only because those workers expose no service ports.
+- Topology has four root keys: `mode`, `public`, `services`, and `infrastructure`.
+  Each component owns `network`, `logging`, `resources`, and named runtime tuning
+  groups where applicable. `services.backtester` groups its `api` and `worker`
+  processes with shared `logging` and `sweeps` settings. Worker-only components
+  have no network endpoint. See `topology.schema.md` for exact paths.
+- Each container's `resources` mapping generates the existing
+  `COMPOSE_<SERVICE>_CPUS` and `COMPOSE_<SERVICE>_MEMORY_RESERVATION` variables.
+  `scripts/generate_env.py` maps nested owners to these stable Compose names.
   Positive finite `cpus` quotas and positive integer `memory_reservation_mb`
-  values generate `COMPOSE_<SERVICE>_CPUS` and
-  `COMPOSE_<SERVICE>_MEMORY_RESERVATION` in `.env.shared` (entry names are
-  uppercased). Compose requires these variables; pass `--env-file
+  values are required. Compose requires these variables; pass `--env-file
   config/.env.shared` or use the Make targets. Memory reservations use Docker's
   `m` unit (MiB) and are soft, not hard limits or preallocated memory.
   Recreate containers with `make up-detached` to apply changed values, between
@@ -54,6 +57,11 @@ Centralized non-secret topology plus generated runtime environment files.
 - Frontend proxy targets are generated from service topology as
   `VITE_PROXY_DATA_ACCESSOR_TARGET`, `VITE_PROXY_BACKTESTER_TARGET`, and
   `VITE_PROXY_INDICATOR_TARGET`.
+- `backtester/cli.py` is the other direct topology reader. It resolves the local
+  accessor endpoint from `public.host` and
+  `services.database_accessor_api.network.published_port`, with the existing
+  internal-port and generated-env fallbacks. Update its lookup and CLI tests
+  whenever that topology path changes.
 
 ## Change Triggers
 
@@ -66,5 +74,8 @@ Centralized non-secret topology plus generated runtime environment files.
 ## Verification
 
 - Config validation: `make validate-config`.
+- Structure-only changes must preserve all four generated env mappings. The
+  preservation fixture in `scripts/tests/fixtures/topology_environment.json`
+  uses empty secret inputs; update it only when runtime values intentionally change.
 - Stack-affecting host or port changes should be smoke-tested with the relevant
   Compose target.

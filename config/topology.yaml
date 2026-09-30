@@ -5,101 +5,138 @@ public:
 
 services:
   database_accessor_api:
-    cpus: 0.5
-    memory_reservation_mb: 256
-    host: database-accessor-api
-    port: 8000
-    published_port: 8000
-    log_level: INFO
-    log_format: pretty
+    network:
+      host: database-accessor-api
+      port: 8000
+      published_port: 8000
+    logging:
+      level: INFO
+      format: pretty
+    resources:
+      cpus: 0.5
+      memory_reservation_mb: 256
+
   indicator_api:
-    cpus: 1.0
-    memory_reservation_mb: 512
-    host: indicator-api
-    port: 8010
-    published_port: 8010
-    log_level: INFO
-    log_format: pretty
-  backtester_api:
-    cpus: 0.5
-    memory_reservation_mb: 256
-    host: backtester-api
-    port: 8020
-    published_port: 8020
-    log_level: INFO
-    log_format: pretty
+    network:
+      host: indicator-api
+      port: 8010
+      published_port: 8010
+    logging:
+      level: INFO
+      format: pretty
+    resources:
+      cpus: 1.0
+      memory_reservation_mb: 512
+
+  backtester:
+    logging:
+      level: INFO
+      format: pretty
+    api:
+      network:
+        host: backtester-api
+        port: 8020
+        published_port: 8020
+      resources:
+        cpus: 0.5
+        memory_reservation_mb: 256
+    worker:
+      resources:
+        cpus: 1.0
+        memory_reservation_mb: 1024
+      poll_interval_seconds: 1.0
+      heartbeat:
+        interval_seconds: 5.0
+        stale_after_seconds: 30.0
+    sweeps:
+      max_candidate_count: 1000
+
   broker_service:
-    cpus: 0.5
-    memory_reservation_mb: 256
-    host: broker-service
-    port: 8050
-    published_port: 8050
-    log_level: INFO
-    log_format: pretty
-  webserver:
-    cpus: 0.25
-    memory_reservation_mb: 128
-    host: webserver
-    ws_port: 8765
-    ws_published_port: 8765
-    health_port: 8080
-    health_published_port: 8080
-    log_level: INFO
-    log_format: pretty
-  frontend:
-    cpus: 1.0
-    memory_reservation_mb: 512
-    host: frontend
-    port: 5173
-    published_port: 5173
-  backtester_worker:
-    cpus: 1.0
-    memory_reservation_mb: 1024
+    network:
+      host: broker-service
+      port: 8050
+      published_port: 8050
+    logging:
+      level: INFO
+      format: pretty
+    resources:
+      cpus: 0.5
+      memory_reservation_mb: 256
+    streams:
+      redis_db: 0
+      ticks:
+        queue_size: 1000
+        max_length: null
+      candles:
+        max_length: null
+      limits:
+        max_symbol_streams: 20
+        max_trendbar_streams: 10
+    ctrader:
+      request_timeout_seconds: 20.0
+
   ingestion_service:
-    cpus: 0.5
-    memory_reservation_mb: 256
+    logging:
+      level: INFO
+      format: pretty
+    resources:
+      cpus: 0.5
+      memory_reservation_mb: 256
+    consumer:
+      batch_size: 100
+      block_ms: 5000
+
+  webserver:
+    network:
+      host: webserver
+      websocket:
+        port: 8765
+        published_port: 8765
+      health:
+        port: 8080
+        published_port: 8080
+    logging:
+      level: INFO
+      format: pretty
+    resources:
+      cpus: 0.25
+      memory_reservation_mb: 128
+    consumer:
+      block_ms: 5000
+      batch_size: 100
+    streams:
+      queue_size: 1000
+      max_length: 10000
+
+  frontend:
+    network:
+      host: frontend
+      port: 5173
+      published_port: 5173
+    resources:
+      cpus: 1.0
+      memory_reservation_mb: 512
 
 infrastructure:
   redis:
-    cpus: 0.25
-    memory_reservation_mb: 256
-    host: redis
-    port: 6379
-    published_port: 6379
-    db: 0
+    network:
+      host: redis
+      port: 6379
+      published_port: 6379
+    resources:
+      cpus: 0.25
+      memory_reservation_mb: 256
+    database: 0
+
   timescaledb:
-    cpus: 1.0
-    memory_reservation_mb: 512
-    host: timescaledb
-    port: 5432
-    published_port: 5432
-    user: postgres
-    database: finance_data
-    echo: false
-
-webserver:
-  redis_block_ms: 5000
-  redis_batch_size: 100
-  stream_queue_size: 1000
-  max_stream_length: 10000
-
-ingestion:
-  consumer_batch_size: 100
-  consumer_block_ms: 5000
-  log_level: INFO
-  log_format: pretty
-
-backtester:
-  worker_poll_interval_seconds: 1.0
-  worker_heartbeat_interval_seconds: 5.0
-  worker_stale_after_seconds: 30.0
-  max_sweep_candidate_count: 1000
-
-broker:
-  redis_stream_db: 0
-  tick_queue_size: 1000
-  tick_stream_maxlen:
-  candle_stream_maxlen:
-  max_symbol_streams: 20
-  max_trendbar_streams: 10
-  ctrader_request_timeout_seconds: 20.0
+    network:
+      host: timescaledb
+      port: 5432
+      published_port: 5432
+    resources:
+      cpus: 1.0
+      memory_reservation_mb: 512
+    database:
+      user: postgres
+      name: finance_data
+      echo: false

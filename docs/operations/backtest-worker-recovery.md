@@ -19,8 +19,8 @@ the worker heartbeat is fresh and no fault is visible; HTTP 503 carries
 ordinary `/health` endpoint checks only the API process.
 
 The worker emits a heartbeat from a separate thread while idle and during long
-child work. Configure `backtester.worker_heartbeat_interval_seconds` (default
-5) and `backtester.worker_stale_after_seconds` (default 30) in
+child work. Configure `services.backtester.worker.heartbeat.interval_seconds`
+(default 5) and `services.backtester.worker.heartbeat.stale_after_seconds` (default 30) in
 `config/topology.yaml`, then regenerate the shared environment. Set
 `BACKTESTER_LOG_FORMAT=json` to emit structured `worker_id`, `run_id`, and
 `fault_code` fields. Watch for `heartbeat_absent`, `heartbeat_stale`,

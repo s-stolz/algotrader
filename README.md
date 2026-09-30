@@ -128,7 +128,8 @@ Compose starts two processes from the same backtester image:
   run at a time.
 
 The API port, logging settings, and worker poll interval come from
-`config/topology.yaml`. The tracked worker default is one second. After the stack
+`services.backtester` in `config/topology.yaml`. The tracked worker default is
+one second. After the stack
 is healthy, run the fixture-backed success and failure smoke paths:
 
 ```sh
@@ -146,6 +147,13 @@ no partial artifacts for the failed run, and cleans up its terminal runs.
 - Gitignored secrets: `config/.env.secrets.local`
 - Generated runtime env files: `config/.env.shared`, `config/.env.secrets.db`, `config/.env.secrets.runtime`, `config/.env.secrets.broker`
 - Generator script: `scripts/generate_env.py`
+
+Topology groups all settings by their owner under `services` or `infrastructure`.
+Each component has `network`, `logging`, `resources`, and runtime tuning groups
+where applicable. Backtester groups its `api` and `worker` beneath
+`services.backtester`; shared logging and sweep settings live alongside them.
+Webserver, broker, and ingestion tuning live inside their service entries.
+See [the topology schema](config/topology.schema.md) for the complete structure.
 
 ### Validation and overwrite
 
@@ -170,9 +178,10 @@ make ps
 
 ### Docker resource budgets
 
-Edit `cpus` and `memory_reservation_mb` on each entry under `services` or
-`infrastructure` in `config/topology.yaml`. For example, the worker budget lives
-at `services.backtester_worker`, and Redis's budget at `infrastructure.redis`.
+Edit `cpus` and `memory_reservation_mb` in each container's `resources` mapping
+in `config/topology.yaml`. For example, the worker budget lives at
+`services.backtester.worker.resources`, and Redis's budget at
+`infrastructure.redis.resources`.
 `make config` generates the variables consumed
 by `docker-compose.yml`; do not edit generated env files. CPU quotas throttle
 execution. Memory reservations are soft and allow containers to exceed the
