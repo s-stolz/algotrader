@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 import yaml
 
 from scripts import generate_env
 
 COMPOSE_PATH = generate_env.ROOT_DIR / "docker-compose.yml"
+
+
+class GeneratedEnvironmentPreservationTests(unittest.TestCase):
+    def test_tracked_topology_preserves_all_runtime_variables(self) -> None:
+        fixture = Path(__file__).parent / "fixtures" / "topology_environment.json"
+        expected = json.loads(fixture.read_text(encoding="utf-8"))
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+
+        actual = generate_env.build_env(topology, {})
+
+        self.assertEqual(list(actual), expected)
 
 
 class DockerResourceConfigurationTests(unittest.TestCase):
