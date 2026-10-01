@@ -153,6 +153,29 @@ class LocalTopologyTests(unittest.TestCase):
                     generate_env.read_yaml(generate_env.TOPOLOGY_PATH), overrides
                 )
 
+    def test_invalid_history_is_rejected(self) -> None:
+        cases = [
+            (None, None),
+            (90, "2020-01-01"),
+            (0, None),
+            (-1, None),
+            (10**12, None),
+            (True, None),
+            (1.5, None),
+            (None, "2020-02-30"),
+            (None, "2999-01-01"),
+            (None, "20200101"),
+            (None, 2020),
+        ]
+        for days, start in cases:
+            with self.subTest(days=days, start=start), self.assertRaises(ValueError):
+                topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+                topology["services"]["ingestion_service"]["history"] = {
+                    "lookback_days": days,
+                    "start_date": start,
+                }
+                generate_env.build_env(topology, {})
+
 
 class DockerResourceConfigurationTests(unittest.TestCase):
     def test_every_compose_service_uses_generated_resources(self) -> None:

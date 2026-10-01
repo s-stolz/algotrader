@@ -76,6 +76,9 @@ services:
       request_timeout_seconds: 20.0
 
   ingestion_service:
+    history:
+      lookback_days: 90
+      start_date: null
     logging:
       level: INFO
       format: pretty

@@ -32,7 +32,6 @@ class IngestionService:
     TIMEFRAME_M1 = 1
     TIMEFRAME_CODE_M1 = "M1"
     CHUNK_SIZE = 10000
-    MAX_BACKFILL_DAYS = 365 * 5
     REDIS_STREAM_START = "0-0"
 
     @staticmethod
@@ -75,6 +74,7 @@ class IngestionService:
     def __init__(self):
         """Initialize the ingestion service."""
         self.config = load_config()
+        self.history_start_ms = self.config.history_start_ms(self._utc_now_ms())
         self.logger = setup_logging(self.config.log_level, self.config.log_format)
 
         self.db_client = DatabaseClient()
@@ -99,6 +99,7 @@ class IngestionService:
     async def startup(self) -> None:
         """Initialize connections and load configuration."""
         self.logger.info("Starting ingestion service...")
+        self.logger.info(f"History download boundary: {self._ms_to_iso(self.history_start_ms)}")
 
         self.redis = Redis.from_url(
             self.config.redis_url,
@@ -145,18 +146,17 @@ class IngestionService:
     def _get_frozen_watermark(self, symbol: str, exchange: str) -> int:
         latest_candle = self.db_client.get_latest_m1_candle(symbol, exchange=exchange or None)
         if not latest_candle:
-            fallback = self._utc_now_ms() - int(
-                timedelta(days=self.MAX_BACKFILL_DAYS).total_seconds() * 1000
-            )
+            # Callers advance the watermark by one M1 candle before fetching.
+            fallback = self.history_start_ms - 60_000
             self.logger.info(
                 f"{symbol} M1: No data in database, "
-                f"using fallback watermark {self._ms_to_iso(fallback)}"
+                f"downloading from {self._ms_to_iso(self.history_start_ms)}"
             )
             return fallback
 
         latest_ts = int(latest_candle["timestamp_ms"])
         self.logger.info(f"{symbol} M1: Frozen startup watermark at {self._ms_to_iso(latest_ts)}")
-        return latest_ts
+        return max(latest_ts, self.history_start_ms - 60_000)
 
     async def _snapshot_startup_watermarks(self) -> Dict[int, int]:
         if not self.runtime_states:

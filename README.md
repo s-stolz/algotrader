@@ -110,7 +110,8 @@ sudo apt install make python3 python3-yaml
 3. Edit `config/topology.yaml` for shared non-secret settings (ports, hosts, tuning), and edit `config/.env.secrets.local` for credentials/secrets.
    For machine-specific non-secret values, copy `config/topology.local.example.yaml`
    to `config/topology.local.yaml` and edit only the overrides you need. This file is
-   ignored by Git.
+   ignored by Git. Ingestion history defaults to 90 days; choose `lookback_days` or
+   a quoted `start_date`, setting the other to `null`.
 4. Generate runtime env files from shared topology + local overrides + local secrets:
    ```sh
    make config

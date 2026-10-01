@@ -25,6 +25,11 @@ backfilling missing data through broker-service.
 
 - Consumes M1 Redis candle streams defined in root `CONTEXT.md`.
 - Writes expanded candles through database-accessor-api.
+- History starts at the configured lookback (default 90 days) or UTC start date,
+  resolved once per service instance. Empty markets fetch from that inclusive boundary;
+  populated markets resume after the latest candle, bounded by that boundary.
+  Startup and reconnect recovery share this rule. Changing the range neither deletes
+  stored history nor fills older history before an existing latest candle.
 - Ingestion currently targets M1 storage and uses broker stream backfill for gaps.
 
 ## Change Triggers

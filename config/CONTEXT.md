@@ -27,6 +27,10 @@ Centralized non-secret topology plus generated runtime environment files.
 
 ## Contracts
 
+- Ingestion history selects exactly one of `services.ingestion_service.history.lookback_days`
+  (tracked default 90) or quoted `start_date` (`YYYY-MM-DD`, midnight UTC). Generated
+  variables are `INGESTION_HISTORY_LOOKBACK_DAYS` and `INGESTION_HISTORY_START_DATE`;
+  the inactive option is empty.
 - Run `make config` or `python scripts/generate_env.py --force` after topology or
   secrets changes.
 - Run `make validate-config` or `python scripts/generate_env.py --validate` to

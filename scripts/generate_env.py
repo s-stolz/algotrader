@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import math
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -107,6 +108,34 @@ def merge_topology(topology: dict[str, Any], overrides: dict[str, Any], prefix: 
             topology[key] = value
 
 
+def build_history_env(topology: dict[str, Any]) -> dict[str, str]:
+    """Validate the mutually exclusive ingestion history options."""
+    days = required(topology, "services.ingestion_service.history.lookback_days")
+    start = required(topology, "services.ingestion_service.history.start_date")
+    if (days is None) == (start is None):
+        raise ValueError("Ingestion history requires exactly one of lookback_days or start_date")
+    if days is not None:
+        if type(days) is not int or days <= 0:
+            raise ValueError("history.lookback_days must be a positive integer")
+        try:
+            datetime.now(timezone.utc) - timedelta(days=days)
+        except OverflowError as exc:
+            raise ValueError("history.lookback_days exceeds the supported date range") from exc
+    if start is not None:
+        if not isinstance(start, str):
+            raise ValueError("history.start_date must be a quoted YYYY-MM-DD string")
+        try:
+            parsed = date.fromisoformat(start)
+        except ValueError as exc:
+            raise ValueError("history.start_date must use YYYY-MM-DD") from exc
+        if parsed.isoformat() != start or parsed > datetime.now(timezone.utc).date():
+            raise ValueError("history.start_date must use YYYY-MM-DD and cannot be in the future")
+    return {
+        "INGESTION_HISTORY_LOOKBACK_DAYS": stringify(days),
+        "INGESTION_HISTORY_START_DATE": stringify(start),
+    }
+
+
 def read_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not path.exists():
@@ -159,6 +188,7 @@ def build_env(
     topology: dict[str, Any],
     secrets: dict[str, str],
 ) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    history_env = build_history_env(topology)
     mode = required(topology, "mode")
     public_host = required(topology, "public.host")
 
@@ -326,6 +356,7 @@ def build_env(
         "VITE_PROXY_BACKTESTER_TARGET": f"http://{backtester_host}:{backtester_port}",
         "VITE_PROXY_INDICATOR_TARGET": f"http://{indicator_host}:{indicator_port}",
         "VITE_WS_URL": f"ws://{public_host}:{webserver_ws_published_port}",
+        **history_env,
         "INGESTION_LOG_LEVEL": stringify(ingestion_log_level),
         "INGESTION_LOG_FORMAT": stringify(ingestion_log_format),
         "LOG_LEVEL": stringify(ingestion_log_level),

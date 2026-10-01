@@ -27,7 +27,7 @@ with their owning component; the generator and CLI read the new paths directly.
 | `services.backtester.api` | `network`, `resources` |
 | `services.backtester.worker` | `resources`, `poll_interval_seconds`, `heartbeat` |
 | `services.broker_service` | `network`, `logging`, `resources`, `streams`, `ctrader` |
-| `services.ingestion_service` | `logging`, `resources`, `consumer` |
+| `services.ingestion_service` | `logging`, `resources`, `consumer`, `history` |
 | `services.webserver` | `network`, `logging`, `resources`, `consumer`, `streams` |
 | `services.frontend` | `network`, `resources` |
 | `infrastructure.redis` | `network`, `resources`, `database` |
@@ -147,10 +147,16 @@ no container restart.
 Credentials remain in `config/.env.secrets.local`; they are never moved into the
 tracked topology. Generated env files remain gitignored.
 
-## Machine overrides
+## Machine overrides and ingestion history
 
 `config/topology.local.yaml` is an optional gitignored partial mapping merged
 recursively over `topology.yaml` before validation and generation. Omitted fields
 retain defaults; explicit `null` replaces a default. Unknown keys and changes from
 mapping to scalar (or vice versa) are rejected. Copy `topology.local.example.yaml`
 to get started. Keep secrets in `.env.secrets.local`.
+
+`services.ingestion_service.history` requires exactly one active option:
+`lookback_days` (positive integer, tracked default `90`) or `start_date` (quoted
+`YYYY-MM-DD`, no future dates). Set the other option to `null`, including when
+switching modes in an override. Dates begin at midnight UTC. Run `make config`
+and recreate affected containers after editing overrides.
