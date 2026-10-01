@@ -146,3 +146,11 @@ no container restart.
 
 Credentials remain in `config/.env.secrets.local`; they are never moved into the
 tracked topology. Generated env files remain gitignored.
+
+## Machine overrides
+
+`config/topology.local.yaml` is an optional gitignored partial mapping merged
+recursively over `topology.yaml` before validation and generation. Omitted fields
+retain defaults; explicit `null` replaces a default. Unknown keys and changes from
+mapping to scalar (or vice versa) are rejected. Copy `topology.local.example.yaml`
+to get started. Keep secrets in `.env.secrets.local`.

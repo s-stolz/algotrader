@@ -19,6 +19,7 @@ except ImportError as exc:  # pragma: no cover
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TOPOLOGY_PATH = ROOT_DIR / "config" / "topology.yaml"
+LOCAL_TOPOLOGY_PATH = ROOT_DIR / "config" / "topology.local.yaml"
 SECRETS_PATH = ROOT_DIR / "config" / ".env.secrets.local"
 OUTPUT_SHARED_PATH = ROOT_DIR / "config" / ".env.shared"
 OUTPUT_DB_SECRETS_PATH = ROOT_DIR / "config" / ".env.secrets.db"
@@ -52,7 +53,8 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Generate config/.env.shared, config/.env.secrets.db, "
             "config/.env.secrets.runtime, and config/.env.secrets.broker "
-            "from config/topology.yaml and config/.env.secrets.local"
+            "from config/topology.yaml, optional config/topology.local.yaml, "
+            "and config/.env.secrets.local"
         ),
     )
     parser.add_argument(
@@ -76,6 +78,33 @@ def read_yaml(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("Topology root must be a mapping")
     return data
+
+
+def load_topology(
+    path: Path = TOPOLOGY_PATH,
+    local_path: Path = LOCAL_TOPOLOGY_PATH,
+) -> dict[str, Any]:
+    """Load shared defaults and optional partial machine overrides."""
+    topology = read_yaml(path)
+    if local_path.exists():
+        merge_topology(topology, read_yaml(local_path))
+    return topology
+
+
+def merge_topology(topology: dict[str, Any], overrides: dict[str, Any], prefix: str = "") -> None:
+    """Merge known fields recursively, preserving explicit null overrides."""
+    for key, value in overrides.items():
+        field = f"{prefix}.{key}" if prefix else key
+        if key not in topology:
+            raise ValueError(f"Unknown local topology key: {field}")
+        if isinstance(topology[key], dict):
+            if not isinstance(value, dict):
+                raise ValueError(f"{field} must be a mapping")
+            merge_topology(topology[key], value, field)
+        else:
+            if isinstance(value, (dict, list)):
+                raise ValueError(f"{field} must be a scalar value")
+            topology[key] = value
 
 
 def read_env(path: Path) -> dict[str, str]:
@@ -380,7 +409,7 @@ def write_output(path: Path, content: str) -> bool:
 
 def main() -> int:
     args = parse_args()
-    topology = read_yaml(TOPOLOGY_PATH)
+    topology = load_topology()
     secrets = read_env(SECRETS_PATH)
     shared_env, db_secrets_env, runtime_secrets_env, broker_secrets_env = build_env(
         topology,

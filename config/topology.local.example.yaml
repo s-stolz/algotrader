@@ -1,0 +1,6 @@
+# Copy to topology.local.yaml for machine-specific settings (ignored by Git).
+# Only include fields you want to override. Omitted fields keep shared defaults.
+services:
+  ingestion_service:
+    consumer:
+      batch_size: 100

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -114,6 +115,43 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
         self.assertEqual(shared["REDIS_URL"], "redis://stream-store:6380/2")
         self.assertEqual(shared["BROKER_REDIS_URL"], "redis://stream-store:6380/3")
         self.assertEqual(shared["REDIS_PUBLISHED_PORT"], "16380")
+
+
+class LocalTopologyTests(unittest.TestCase):
+    def test_optional_override_preserves_defaults_and_replaces_explicit_null(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            shared = Path(directory) / "topology.yaml"
+            local = Path(directory) / "topology.local.yaml"
+            baseline = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+            baseline["services"]["broker_service"]["streams"]["ticks"]["max_length"] = 321
+            shared.write_text(yaml.safe_dump(baseline), encoding="utf-8")
+            self.assertEqual(generate_env.load_topology(shared, local), baseline)
+            local.write_text(
+                "services:\n  broker_service:\n    streams:\n"
+                "      ticks:\n        max_length: null\n        queue_size: 42\n",
+                encoding="utf-8",
+            )
+            merged = generate_env.load_topology(shared, local)
+            baseline["services"]["broker_service"]["streams"]["ticks"].update(
+                max_length=None, queue_size=42
+            )
+            self.assertEqual(merged, baseline)
+            env = generate_env.build_env(merged, {})[0]
+            self.assertEqual(env["BROKER_TICK_STREAM_MAXLEN"], "")
+            self.assertEqual(env["BROKER_TICK_QUEUE_SIZE"], "42")
+            self.assertEqual(
+                generate_env.read_yaml(shared)["services"]["broker_service"]["streams"]["ticks"][
+                    "max_length"
+                ],
+                321,
+            )
+
+    def test_invalid_override_structure_is_rejected(self) -> None:
+        for overrides in ({"typo": 1}, {"services": None}, {"mode": []}):
+            with self.subTest(overrides=overrides), self.assertRaises(ValueError):
+                generate_env.merge_topology(
+                    generate_env.read_yaml(generate_env.TOPOLOGY_PATH), overrides
+                )
 
 
 class DockerResourceConfigurationTests(unittest.TestCase):

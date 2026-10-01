@@ -28,6 +28,7 @@ _DEFAULT_LOCAL_DB_ACCESSOR_HOST = "localhost"
 _DEFAULT_LOCAL_DB_ACCESSOR_PORT = "8000"
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _TOPOLOGY_PATH = _REPO_ROOT / "config" / "topology.yaml"
+_LOCAL_TOPOLOGY_PATH = _REPO_ROOT / "config" / "topology.local.yaml"
 _SHARED_ENV_PATH = _REPO_ROOT / "config" / ".env.shared"
 
 
@@ -288,9 +289,29 @@ def _read_local_topology_file() -> Mapping[str, Any]:
         return {}
 
     data = yaml.safe_load(_TOPOLOGY_PATH.read_text(encoding="utf-8"))
-    if not isinstance(data, Mapping):
+    if not isinstance(data, dict):
         return {}
+    if _LOCAL_TOPOLOGY_PATH.exists():
+        overrides = yaml.safe_load(_LOCAL_TOPOLOGY_PATH.read_text(encoding="utf-8"))
+        if not isinstance(overrides, dict):
+            raise ValueError("Local topology root must be a mapping")
+        _merge_local_topology(data, overrides)
     return data
+
+
+def _merge_local_topology(topology: dict[str, Any], overrides: dict[str, Any]) -> None:
+    """Apply machine overrides to the CLI's direct topology read."""
+    for key, value in overrides.items():
+        if key not in topology:
+            raise ValueError(f"Unknown local topology key: {key}")
+        if isinstance(topology[key], dict):
+            if not isinstance(value, dict):
+                raise ValueError(f"Local topology {key} must be a mapping")
+            _merge_local_topology(topology[key], value)
+        else:
+            if isinstance(value, (dict, list)):
+                raise ValueError(f"Local topology {key} must be a scalar value")
+            topology[key] = value
 
 
 def _lookup_topology_value(topology: Mapping[str, Any], path: Sequence[str]) -> str | None:

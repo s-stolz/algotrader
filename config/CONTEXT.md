@@ -14,6 +14,9 @@ Centralized non-secret topology plus generated runtime environment files.
 - `topology.yaml`: tracked shared topology for hosts, ports, logging, Redis,
   TimescaleDB, per-container Docker resources, broker limits, backtester worker polling, and
   ingestion/webserver knobs.
+- `topology.local.yaml`: optional gitignored partial machine overrides; recursive
+  merge over tracked defaults, explicit null replaces defaults, unknown keys rejected.
+- `topology.local.example.yaml`: tracked override template.
 - `.env.secrets.example`: template for local secrets.
 - `.env.secrets.local`: local secrets, gitignored.
 - `.env.shared`: generated shared runtime env, gitignored.
@@ -57,7 +60,8 @@ Centralized non-secret topology plus generated runtime environment files.
 - Frontend proxy targets are generated from service topology as
   `VITE_PROXY_DATA_ACCESSOR_TARGET`, `VITE_PROXY_BACKTESTER_TARGET`, and
   `VITE_PROXY_INDICATOR_TARGET`.
-- `backtester/cli.py` is the other direct topology reader. It resolves the local
+- `backtester/cli.py` is the other direct topology reader and applies the same local
+  overrides. It resolves the local
   accessor endpoint from `public.host` and
   `services.database_accessor_api.network.published_port`, with the existing
   internal-port and generated-env fallbacks. Update its lookup and CLI tests

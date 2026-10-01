@@ -33,3 +33,12 @@ them through `make validate-config`. Generated env files are not edited by hand.
 - `config/topology.schema.md`
 - `scripts/generate_env.py`
 - `README.md`
+
+## Machine-specific overrides (2026-10-01)
+
+Non-secret shared defaults remain tracked in `config/topology.yaml`. An optional
+`config/topology.local.yaml`, ignored by Git, overrides known fields recursively
+before validation and environment generation. Explicit null values replace defaults;
+omitted fields retain them. A tracked example documents the local format. The
+backtester CLI applies these overrides when reading topology directly. This lets
+local and server clones use different tuning without modifying tracked defaults.

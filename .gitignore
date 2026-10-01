@@ -7,3 +7,5 @@ node_modules
 __pycache__
 *.DS_Store
 .claude
+
+config/topology.local.yaml

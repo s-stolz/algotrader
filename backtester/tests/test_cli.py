@@ -1,7 +1,9 @@
 import io
 import os
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -38,6 +40,26 @@ class _RecordingDurableRunClient:
 
 
 class TestCli(unittest.TestCase):
+    def test_database_defaults_include_machine_topology_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            shared = Path(directory) / "topology.yaml"
+            local = Path(directory) / "topology.local.yaml"
+            shared.write_text(
+                "public:\n  host: localhost\nservices:\n  database_accessor_api:\n"
+                "    network:\n      published_port: 8000\n",
+                encoding="utf-8",
+            )
+            local.write_text(
+                "public:\n  host: server.local\nservices:\n  database_accessor_api:\n"
+                "    network:\n      published_port: 18000\n",
+                encoding="utf-8",
+            )
+            with patch("cli._TOPOLOGY_PATH", shared), patch("cli._LOCAL_TOPOLOGY_PATH", local):
+                self.assertEqual(
+                    cli._resolve_topology_database_accessor_defaults(),
+                    {"host": "server.local", "port": "18000"},
+                )
+
     def _run_command_and_capture_request(self, extra_args: list[str]) -> tuple[int, Any]:
         captured_requests: list[Any] = []
 
