@@ -80,7 +80,7 @@
       </n-scrollbar>
 
       <template v-else>
-        <BaseDataTable :max-height="300">
+        <BaseDataTable :max-height="290">
           <tbody>
             <SymbolRow
               v-for="market of filteredMarketList"
@@ -93,7 +93,7 @@
             />
           </tbody>
         </BaseDataTable>
-        <n-button text id="add-market-button" @click.stop="onAddMarketClick()">
+        <n-button text id="add-market-button" class="add-market-row" @click.stop="onAddMarketClick()">
           <n-icon size="24">
             <AddCircleOutline />
           </n-icon>
@@ -196,6 +196,11 @@ defineExpose({ updateCurrentMarket });
   margin: auto;
   width: 100%;
   height: 40px;
+}
+
+.add-market-row {
+  background-color: var(--surface-inset);
+  border-top: 1px solid var(--surface-border);
 }
 
 .empty-state-cta {
