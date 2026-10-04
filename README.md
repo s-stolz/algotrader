@@ -6,66 +6,34 @@ AlgoTrader is an experimental trading project that uses the [Lightweight Charts]
 
 - Human-facing overview and setup live in this README and area README files.
 - Agent-facing vocabulary, system flow, and cross-service contracts live in
-  `CONTEXT.md`.
-- Task-specific context routing lives in `docs/CONTEXT-MAP.md`.
+  [CONTEXT.md](CONTEXT.md) and its focused references.
+- Task-specific context routing lives in [the context map](docs/CONTEXT-MAP.md).
 - Durable architecture decisions live in `docs/adr/`.
 
 ## Architecture
-The project is structured into multiple services, each responsible for a specific aspect of the trading system:
 
-```text
-   O        +------------+     Websocket     +------------+         +----------------------+
-  /|\ ----> |  Frontend  | <---------------> | Webserver  |         | External             |
-  / \       +------------+                   +------------+         | +------------------+ |
- User             |                                ^                | | Spotware         | |
-                  |                                |                | | (cTrader)        | |
-                  |                                |                | +------------------+ |
-                  |                                |                +----------------------+
-                  |                                |                          |
-                  |                                |                          | Open API
-                  |                                |                          | Data Stream
-                  |                                |                          v
-                  |                                |                   +----------------+
-                  |                                |                   | Broker Service |
-                  |                                |                   +----------------+
-                  |                                |                           |
-                  |                                |                           |
-                  |                                |                           |
-                  |                                | subscribe:                |publish prices
-                  |                                | indicators/prices         |
-                  |                                | backtest                  |
-                  |                                |                           v
-                  |          +------------------------------------------------------+
-                  |          |                    Redis Streams                     |
-                  |          +------------------------------------------------------+
-                  |                ^                  ^                        |
-                  |                | publish:         | publish:               | subscribe:
-                  |                | indicators       | event:backtest         | prices
-                  |                |                  |                        v
-                  |        +---------------+    +----------------+   +-------------------+
-   GET indicators +------> | Indicator API | -> | Backtester     |   | Ingestion Service |
-                  |        +---------------+    | Service        |   +-------------------+
-                  |              |              +----------------+             |
-                  |              |                                             |
-                  |              | GET candles/markets                         |
-                  |              |                                             |
-                  |              v                                             |
-   GET/PUT/DELETE |      +-----------------------+                             |
-  candles/markets +----> | Database Accessor API |<------ store raw data ------+
-                         +-----------------------+
-                                     |
-                                     | read/write database
-                                     v
-                               +--------------+
-                               | Timescale DB |
-                               +--------------+
-
-  +----------------------+
-  | Shared Libraries     |
-  | - indicator_engine   |
-  | - db_accessor_client |
-  +----------------------+
+```mermaid
+flowchart LR
+    Broker[Broker service / cTrader] -->|Ticks and Candles| Redis[Redis streams]
+    Redis --> Ingestion[Ingestion service]
+    Ingestion -->|Backfill requests| Broker
+    Ingestion -->|Closed Candles| DB[Database accessor API]
+    DB <--> Timescale[TimescaleDB]
+    DB -->|Historical Candles| Indicators[Indicator API]
+    Redis -->|Live Candles| Indicators
+    Indicators -->|Live Indicators| Redis
+    Redis --> Bridge[WebSocket bridge]
+    Bridge <-->|Subscriptions and updates| UI[Frontend]
+    Bridge -->|Stream control| Broker
+    Bridge -->|Stream control| Indicators
+    UI -->|History queries| DB
+    UI -->|Indicator queries| Indicators
+    UI -->|Backtests and history| Backtests[Backtester API / worker]
+    Backtests <-->|Candles and durable runs| DB
 ```
+
+Shared Python libraries provide data access, indicator computation, and logging.
+For ownership and transport contracts, see [root context](CONTEXT.md).
 
 ## Development Disclaimer
 

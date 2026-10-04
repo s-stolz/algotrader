@@ -10,12 +10,10 @@ A Python service that consumes market data from Redis streams and persists it to
 - **Batch Processing**: Efficiently batches candles before writing to database
 - **Graceful Shutdown**: Handles SIGTERM/SIGINT signals
 
-## Timestamp Contract
+## Data Contracts
 
-- Consumes Redis candle events in compact format with one-character keys: `o`, `h`, `l`, `c`, `v`, `t`.
-- `t` is UTC epoch milliseconds.
-- Persists candles via database-accessor-api using `timestamp_ms` (UTC epoch milliseconds).
-- No local timezone conversion is performed during ingestion.
+For timestamp and payload fields, read [root context](../CONTEXT.md).
+For closed-candle and recovery behavior, read [service context](CONTEXT.md).
 
 ## Configuration
 
@@ -43,8 +41,8 @@ python main.py
 
 ### Docker
 ```bash
-docker build -t ingestion-service .
-docker run --env-file .env ingestion-service
+# From the repository root
+make up-build
 ```
 
 ## Architecture

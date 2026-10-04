@@ -12,16 +12,11 @@ Use the commands in `docs/agent/COMMANDS.md` from the repository root. Generate
 configuration from a local secret input, build the full stack, and run:
 
 ```sh
-make up-build
+make up-build-detached
 make migrate-db
 make smoke-backtester
-make test
-make test db_accessor_client
-make test frontend
-./lint-python.sh
-make typecheck-python
-RUN_MIGRATION_INTEGRATION_TESTS=1 .venv/bin/python -m unittest scripts.tests.test_migrations_integration
 make verify
+RUN_MIGRATION_INTEGRATION_TESTS=1 .venv/bin/python -m unittest scripts.tests.test_migrations_integration
 ```
 
 For the opt-in accessor execution, batch, and deletion Postgres suites, point

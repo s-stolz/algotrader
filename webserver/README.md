@@ -50,44 +50,9 @@ Key settings:
 
 ## Message Protocol
 
-The current protocol uses flat JSON messages. The concise agent-facing summary
-lives in `webserver/CONTEXT.md`.
-
-Client-to-server examples:
-
-```json
-[
-  {"type": "subscribeCandles", "symbol": "EURUSD", "timeframe": "M1"},
-  {"type": "unsubscribeCandles", "symbol": "EURUSD", "timeframe": "M1"},
-  {
-    "type": "subscribeIndicator",
-    "symbol": "EURUSD",
-    "timeframe": "M1",
-    "indicatorId": 1,
-    "clientIndicatorId": "rsi-1"
-  },
-  {
-    "type": "unsubscribeIndicator",
-    "symbol": "EURUSD",
-    "timeframe": "M1",
-    "indicatorId": 1,
-    "clientIndicatorId": "rsi-1"
-  }
-]
-```
-
-Server to client updates use flat message types such as `candleUpdate`,
-`indicatorUpdate`, `indicatorSubscribed`, `indicatorUnsubscribed`, and `error`.
-Timestamp and Redis payload rules are defined in the repository root
-`CONTEXT.md`.
-
-## Components
-
-- `main.py`: process entrypoint, WebSocket server, health server, and message routing.
-- `app/subscription_manager.py`: client subscriptions, source lifecycle, and fanout.
-- `app/redis_consumer.py`: Redis stream consumption and payload expansion.
-- `app/broker_client.py`: broker-service stream start/stop adapter.
-- `app/indicator_api_client.py`: indicator-api live stream adapter.
+The flat JSON subscription/update protocol is defined in
+[service context](CONTEXT.md#contracts). Timestamp and Redis payload rules live in
+[root context](../CONTEXT.md#shared-contracts).
 
 ## Running Locally
 
@@ -108,14 +73,8 @@ make up
 
 ## Timeframes
 
-Supported timeframe codes:
-- `M1` - 1 minute
-- `M5` - 5 minutes
-- `M15` - 15 minutes
-- `M30` - 30 minutes
-- `H1` - 1 hour
-- `H4` - 4 hours
-- `D1` - 1 day
+Timeframe support depends on the upstream broker/indicator source and storage.
+Use [contract-change guidance](../docs/agent/CONTRACT-CHANGES.md) when adding one.
 
 ## Error Handling
 
@@ -124,11 +83,3 @@ Supported timeframe codes:
 - Broker-service unavailable: Error logged, subscription rolled back
 - Redis connection lost: Automatic reconnection attempts
 - Client disconnect: All subscriptions cleaned up, streams stopped if no other subscribers
-
-## Development Notes
-
-- The server maintains a single Redis connection for all stream consumption
-- Each active stream runs its own consumption loop
-- Broadcast logging is throttled (1% sample rate) to avoid spam
-- All async operations have proper error handling
-- Graceful shutdown ensures clean resource cleanup
