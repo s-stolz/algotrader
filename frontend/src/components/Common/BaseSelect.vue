@@ -40,7 +40,6 @@ export default defineComponent({
 <style>
 .base-select-menu, .base-select-menu * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .base-select-menu {
-  border: 1px solid var(--surface-border);
   border-radius: 6px;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }

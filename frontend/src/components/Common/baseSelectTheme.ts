@@ -2,7 +2,7 @@ import type { SelectProps } from 'naive-ui';
 import { selectionColors } from './selectionTheme';
 
 export const baseSelectTheme: NonNullable<SelectProps['themeOverrides']> = {
-  menuBoxShadow: '0 12px 32px rgba(0, 0, 0, .42)',
+  menuBoxShadow: `0 0 0 1px ${selectionColors.border}, 0 12px 32px rgba(0, 0, 0, .42)`,
   peers: {
     InternalSelection: {
       color: selectionColors.surface,
