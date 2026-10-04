@@ -108,7 +108,7 @@ watch(isChart, () => {
   justify-content: center;
   gap: 20px;
   box-sizing: border-box;
-  background: #18222e;
+  background: var(--surface-fixed);
   border: 1px solid #66dfbd60;
   opacity: 0;
   visibility: hidden;
@@ -116,11 +116,13 @@ watch(isChart, () => {
 }
 
 .workspace-edge-link--left .workspace-edge-face {
+  border-left: none;
   border-radius: 0 16px 16px 0;
   transform: translateX(-100%);
 }
 
 .workspace-edge-link--right .workspace-edge-face {
+  border-right: none;
   border-radius: 16px 0 0 16px;
   transform: translateX(100%);
 }

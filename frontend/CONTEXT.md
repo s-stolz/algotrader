@@ -143,7 +143,9 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   right edge and returns to Chart from the Workspace's left edge. Its 64 × 176
   hit area exactly matches the revealed icon-and-arrow control; it opens on hover
   or keyboard focus and hides immediately on pointer exit. Its background is
-  `#18222e`. The chart route is
+  the shared muted slate `--surface-fixed` (`#1b2230`) with a mint outline, divider, and
+  icons. The outline is open at the viewport edge: no right border on the
+  Backtests link and no left border on the Chart link. The chart route is
   kept alive, and the Workspace store retains its selected run and editable
   creation draft when navigating between them.
 - Workspace history reads saved standalone runs and accepted Batches from the
