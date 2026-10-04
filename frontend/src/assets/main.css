@@ -1,11 +1,16 @@
 :root {
-  --surface-panel: #20232b;
-  --surface-inset: #1c1f27;
-  --surface-header: #252832;
-  --surface-striped: #232630;
-  --surface-hover: #2e323d;
-  --surface-sorted: #282c36;
-  --surface-border: #373c48;
+  --surface-panel: #131722;
+  --surface-inset: #171e27;
+  --surface-header: #222a38;
+  --surface-header-hover: #2d384b;
+  --surface-striped: #131722;
+  --surface-hover: #253340;
+  --surface-sorted: #131722;
+  --surface-border: #2b3541;
+  --surface-fixed: #1b2230;
+  --surface-fixed-hover: #2b3648;
+  --surface-header-fixed: #2a3445;
+  --surface-header-fixed-hover: #344157;
 }
 
 @font-face {

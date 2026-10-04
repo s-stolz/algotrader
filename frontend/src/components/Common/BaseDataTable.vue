@@ -8,8 +8,8 @@ const themeOverrides: NonNullable<DataTableProps['themeOverrides']> = {
   tdColorHover: 'var(--surface-hover)',
   tdColorSorting: 'var(--surface-sorted)',
   thColor: 'var(--surface-header)',
-  thColorHover: 'var(--surface-hover)',
-  thColorSorting: 'var(--surface-sorted)',
+  thColorHover: 'var(--surface-header-hover)',
+  thColorSorting: 'var(--surface-header-hover)',
   borderColor: 'var(--surface-border)',
   tdTextColor: '#dce4ed',
   thTextColor: '#a5acba',
@@ -26,16 +26,16 @@ const themeOverrides: NonNullable<DataTableProps['themeOverrides']> = {
   tdColorHoverModal: 'var(--surface-hover)',
   tdColorSortingModal: 'var(--surface-sorted)',
   thColorModal: 'var(--surface-header)',
-  thColorHoverModal: 'var(--surface-hover)',
-  thColorSortingModal: 'var(--surface-sorted)',
+  thColorHoverModal: 'var(--surface-header-hover)',
+  thColorSortingModal: 'var(--surface-header-hover)',
   borderColorModal: 'var(--surface-border)',
   tdColorPopover: 'var(--surface-panel)',
   tdColorStripedPopover: 'var(--surface-striped)',
   tdColorHoverPopover: 'var(--surface-hover)',
   tdColorSortingPopover: 'var(--surface-sorted)',
   thColorPopover: 'var(--surface-header)',
-  thColorHoverPopover: 'var(--surface-hover)',
-  thColorSortingPopover: 'var(--surface-sorted)',
+  thColorHoverPopover: 'var(--surface-header-hover)',
+  thColorSortingPopover: 'var(--surface-header-hover)',
   borderColorPopover: 'var(--surface-border)',
 };
 
@@ -109,17 +109,17 @@ export default defineComponent({
 
 .base-data-table :deep(.n-data-table-td--fixed-left),
 .base-data-table :deep(.n-data-table-td--fixed-right) {
-  --n-merged-td-color: color-mix(in srgb, var(--n-td-color) 94%, white);
-  --n-merged-td-color-striped: color-mix(in srgb, var(--n-td-color-striped) 94%, white);
-  --n-merged-td-color-hover: color-mix(in srgb, var(--n-td-color-hover) 94%, white);
-  --n-merged-td-color-sorting: color-mix(in srgb, var(--n-td-color-sorting) 94%, white);
+  --n-merged-td-color: var(--surface-fixed);
+  --n-merged-td-color-striped: var(--surface-fixed);
+  --n-merged-td-color-hover: var(--surface-fixed-hover);
+  --n-merged-td-color-sorting: var(--surface-fixed);
 }
 
 .base-data-table :deep(.n-data-table-th--fixed-left),
 .base-data-table :deep(.n-data-table-th--fixed-right) {
-  --n-merged-th-color: color-mix(in srgb, var(--n-th-color) 94%, white);
-  --n-merged-th-color-hover: color-mix(in srgb, var(--n-th-color-hover) 94%, white);
-  --n-merged-th-color-sorting: color-mix(in srgb, var(--n-th-color-sorting) 94%, white);
+  --n-merged-th-color: var(--surface-header-fixed);
+  --n-merged-th-color-hover: var(--surface-header-fixed-hover);
+  --n-merged-th-color-sorting: var(--surface-header-fixed-hover);
 }
 
 .base-data-table :deep(.n-data-table-tr:focus-visible) {

@@ -287,7 +287,7 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   `theme-overrides` for local customization.
 
 - `src/components/Common/BaseDataTable.vue`: shared Naive UI data table with the
-  app's cool charcoal surfaces, header typography, and keyboard focus styling.
+  app's flat chart-blue surfaces, slate-blue headers, and keyboard focus styling.
   Surface tokens in `src/assets/main.css` also theme chart modals and Backtest
   Workspace sections. `rowHover` defaults to true; indicator parameter and style
   tables disable it. Selectable symbol rows have one shared cell hover and a
