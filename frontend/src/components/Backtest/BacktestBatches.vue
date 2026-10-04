@@ -336,7 +336,7 @@ onUnmounted(stop);
 
 <style scoped>
 .batch-history { margin-bottom: 20px; color: #e3eaf0; font-size: 13px; }
-.batch-detail { background: #19222c; border: 1px solid #33414e; border-radius: 14px; overflow: hidden; }
+.batch-detail { background: var(--surface-panel); border: 1px solid var(--surface-border); border-radius: 14px; overflow: hidden; }
 .sweep-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; padding: 24px 28px; }
 .eyebrow { display: flex; align-items: center; gap: 12px; color: #9db1c2; font-size: 10px; font-weight: 600; letter-spacing: 1.5px; }
 .eyebrow span { color: #98aaba; font: 11px ui-monospace, monospace; letter-spacing: 0; }
@@ -349,7 +349,7 @@ p { margin: 0; }
 .status-badge.completed { color: #91e0c1; border-color: #385e53; background: #203b34; }
 .status-badge.pausing, .status-badge.paused, .status-badge.cancelling, .status-badge.unknown { color: #edc791; border-color: #645539; background: #383124; }
 .status-badge.cancelled { color: #b5c0cc; border-color: #4a5562; background: #2a323c; }
-.progress-panel { margin: 0 28px 16px; padding: 20px; border: 1px solid #2f4050; border-radius: 10px; background: #141e28; }
+.progress-panel { margin: 0 28px 16px; padding: 20px; border: 1px solid var(--surface-border); border-radius: 10px; background: var(--surface-inset); }
 .progress-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 15px; }
 .progress-heading strong { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .progress-heading strong span { font-size: 22px; color: #8fa3b5; font-weight: 400; }
@@ -404,7 +404,7 @@ summary > span { margin-left: 10px; color: #95aabb; font-size: 11px; }
 .settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin: 20px 0; }
 .settings-grid dd { overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.6; }
 .settings-grid small { margin-left: 5px; color: #bbcad5; }
-.technical-details { padding: 12px; background: #141e28; border-radius: 6px; }
+.technical-details { padding: 12px; background: var(--surface-inset); border-radius: 6px; }
 pre { max-height: 300px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; color: #aabcca; }
 .event-timeline { list-style: none; padding: 0 0 0 15px; margin: 20px 0 0 4px; border-left: 1px solid #3b5163; }
 .event-timeline li { position: relative; padding: 0 0 20px 8px; }

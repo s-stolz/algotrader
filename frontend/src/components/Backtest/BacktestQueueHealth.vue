@@ -194,7 +194,7 @@ onUnmounted(stop);
 </script>
 
 <style scoped>
-.queue-health { border: 1px solid #303b46; border-radius: 10px; background: #18212a; padding: 13px 18px; font-variant-numeric: tabular-nums; position: relative; }
+.queue-health { border: 1px solid var(--surface-border); border-radius: 10px; background: var(--surface-panel); padding: 13px 18px; font-variant-numeric: tabular-nums; position: relative; }
 .queue-summary { display: flex; align-items: center; gap: 10px; padding-right: 120px; min-height: 24px; }
 .queue-summary h2 { font-size: 13px; font-weight: 600; margin: 0; }
 .queue-icon { color: #8facbe; flex-shrink: 0; }
@@ -203,17 +203,17 @@ onUnmounted(stop);
 .queue-details summary { position: absolute; right: 18px; top: 17px; color: #92a8b8; font-size: 12px; cursor: pointer; }
 .queue-details summary:hover { color: #dce5ed; }
 .queue-details summary:focus-visible { outline: 2px solid #68ceab; outline-offset: 4px; border-radius: 2px; }
-.queue-details[open] { padding-top: 20px; border-top: 1px solid #2d3a46; margin-top: 13px; }
+.queue-details[open] { padding-top: 20px; border-top: 1px solid var(--surface-border); margin-top: 13px; }
 .queue-alert, .queue-loading { margin-top: 14px; }
 .worker-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 20px; gap: 20px; }
-.worker-metrics > :not(:first-child) { border-left: 1px solid #2d3a46; padding-left: 24px; }
+.worker-metrics > :not(:first-child) { border-left: 1px solid var(--surface-border); padding-left: 24px; }
 .worker-state { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .metric-label, .metric-suffix { font-size: 12px; color: #92a8b8; }
 .worker-metrics :deep(.n-statistic__label) { font-size: 12px; color: #92a8b8; }
 .worker-metrics :deep(.n-statistic-value__content) { font-size: 22px; }
 .activity-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 14px; }
-.activity-card { min-width: 0; border: 1px solid #2d3a46; border-radius: 8px; background: #151e27; overflow: hidden; }
-.activity-heading { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #273440; color: #9bafbf; }
+.activity-card { min-width: 0; border: 1px solid var(--surface-border); border-radius: 8px; background: var(--surface-inset); overflow: hidden; }
+.activity-heading { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--surface-border); color: #9bafbf; }
 .activity-heading h3 { font-size: 12px; font-weight: 500; color: #d0dbe5; margin: 0; flex: 1; }
 .activity-empty { padding: 26px 16px; }
 .active-run { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; font-size: 12px; }
@@ -222,7 +222,7 @@ onUnmounted(stop);
 .active-batch { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 4px; overflow-wrap: anywhere; }
 .waiting-list { list-style: none; padding: 0; margin: 0; max-height: 280px; overflow-y: auto; }
 .waiting-list li { display: grid; gap: 10px; padding: 14px 16px; }
-.waiting-list li + li { border-top: 1px solid #273440; }
+.waiting-list li + li { border-top: 1px solid var(--surface-border); }
 .waiting-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
 .waiting-time { margin-left: auto; color: #92a8b8; }
 .batch-outcomes { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
@@ -243,6 +243,6 @@ onUnmounted(stop);
   .queue-details summary { position: static; margin-top: 12px; }
   .queue-details[open] { padding-top: 0; }
   .worker-metrics { grid-template-columns: minmax(0, 1fr); margin-top: 16px; }
-  .worker-metrics > :not(:first-child) { padding: 10px 0 0; border-left: 0; border-top: 1px solid #2d3a46; }
+  .worker-metrics > :not(:first-child) { padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--surface-border); }
 }
 </style>

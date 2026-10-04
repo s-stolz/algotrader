@@ -1,5 +1,5 @@
 <template>
-  <BaseDataTable :max-height="300">
+  <BaseDataTable :max-height="300" :row-hover="false">
     <tbody>
       <template v-for="(output, outputKey) in indicatorInfo.outputs" :key="outputKey">
         <tr class="output-style-header">

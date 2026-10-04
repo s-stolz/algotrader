@@ -1,5 +1,5 @@
 <template>
-  <BaseDataTable :max-height="300">
+  <BaseDataTable :max-height="300" :row-hover="false">
     <tbody>
       <tr
         v-for="(parameter, key) in indicatorParameters"
@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
 .indicator-parameter td,
 .output-style-option td {
   padding: 5px 15px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .indicator-parameter p {

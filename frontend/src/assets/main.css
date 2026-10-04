@@ -1,3 +1,13 @@
+:root {
+  --surface-panel: #20232b;
+  --surface-inset: #1c1f27;
+  --surface-header: #252832;
+  --surface-striped: #232630;
+  --surface-hover: #2e323d;
+  --surface-sorted: #282c36;
+  --surface-border: #373c48;
+}
+
 @font-face {
   font-family: Tektur;
   src: url('./fonts/Tektur/Tektur-VariableFont.ttf');

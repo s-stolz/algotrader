@@ -88,9 +88,9 @@ defineExpose({ close });
 
 .modal {
   position: relative;
-  background: #131722;
+  background: var(--surface-panel);
   border-radius: 15px;
-  border: 3px solid rgb(13, 14, 16);
+  border: 1px solid var(--surface-border);
   max-width: 550px;
   width: 100%;
   padding: 0;
@@ -118,8 +118,12 @@ defineExpose({ close });
 .modal .separator {
   border: none;
   height: 1px;
-  background-color: #ddd;
+  background-color: var(--surface-border);
   margin: 0;
+}
+
+.modal :deep(.separator) {
+  background-color: var(--surface-border);
 }
 
 .modal-footer {

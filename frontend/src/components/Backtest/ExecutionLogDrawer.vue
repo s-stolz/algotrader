@@ -194,7 +194,7 @@ function close(): void { emit('close'); }
 .run-identity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; color: #8d9fae; font-size: 12px; }
 .run-identity span { font-weight: 500; }
 .run-identity code { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
-.log-toolbar { padding: 0 18px 18px; border: 1px solid #2b3541; border-radius: 10px; background: #1a2029; }
+.log-toolbar { padding: 0 18px 18px; border: 1px solid var(--surface-border); border-radius: 10px; background: var(--surface-panel); }
 .log-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 18px; }
 .log-filter { display: flex; flex-direction: column; gap: 8px; min-width: 0; color: #9bafbe; font-size: 12px; font-weight: 500; }
 .table-scroll { min-width: 0; }

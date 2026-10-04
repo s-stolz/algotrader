@@ -1,5 +1,5 @@
 <template>
-  <tr @click="onRowClick">
+  <tr :aria-selected="isSelected" @click="onRowClick">
     <td class="symbol-cell">{{ market.symbol }}</td>
     <td class="actions-cell">
       <span class="market-info">
@@ -14,6 +14,7 @@
         <n-button
           text
           size="small"
+          :aria-label="`Actions for ${market.symbol}`"
           @click.stop
         >
           <n-icon size="20">
@@ -38,6 +39,7 @@ defineOptions({
 
 const props = defineProps<{
   market: Market;
+  isSelected?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -74,8 +76,7 @@ function onMenuSelect(key: string | number): void {
 
 <style scoped>
 tr {
-  padding: 5px 15px;
-  width: calc(100% - 30px);
+  width: 100%;
   display: flex;
   justify-content: space-between;
   cursor: pointer;
@@ -100,6 +101,7 @@ tr {
 }
 
 td {
+  padding: 5px 15px;
   line-height: 20px;
 }
 
@@ -108,7 +110,7 @@ td {
   vertical-align: middle;
 }
 
-tr:hover {
-  background-color: #36363661;
+tr[aria-selected="true"] .symbol-cell {
+  box-shadow: inset 2px 0 #9eafc4;
 }
 </style>

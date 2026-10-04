@@ -3,69 +3,75 @@ import { computed, defineComponent, h, mergeProps } from 'vue';
 import { NDataTable, NScrollbar, NTable, dataTableProps, type DataTableProps } from 'naive-ui';
 
 const themeOverrides: NonNullable<DataTableProps['themeOverrides']> = {
-  tdColor: '#1a2029',
-  tdColorStriped: '#1d2530',
-  tdColorHover: '#253340',
-  tdColorSorting: '#202c38',
-  thColor: '#171e27',
-  thColorHover: '#253340',
-  thColorSorting: '#202c38',
-  borderColor: '#2b3541',
+  tdColor: 'var(--surface-panel)',
+  tdColorStriped: 'var(--surface-striped)',
+  tdColorHover: 'var(--surface-hover)',
+  tdColorSorting: 'var(--surface-sorted)',
+  thColor: 'var(--surface-header)',
+  thColorHover: 'var(--surface-hover)',
+  thColorSorting: 'var(--surface-sorted)',
+  borderColor: 'var(--surface-border)',
   tdTextColor: '#dce4ed',
-  thTextColor: '#9aafbf',
+  thTextColor: '#a5acba',
   thFontWeight: '600',
   thIconColor: '#8190a0',
   thIconColorActive: '#63d2b0',
-  thButtonColorHover: '#253340',
+  thButtonColorHover: 'var(--surface-hover)',
   loadingColor: '#63d2b0',
-  borderRadius: '8px',
+  borderRadius: '4px',
   boxShadowBefore: 'inset -12px 0 8px -12px rgba(0, 0, 0, .4)',
   boxShadowAfter: 'inset 12px 0 8px -12px rgba(0, 0, 0, .4)',
-  tdColorModal: '#1a2029',
-  tdColorStripedModal: '#1d2530',
-  tdColorHoverModal: '#253340',
-  tdColorSortingModal: '#202c38',
-  thColorModal: '#171e27',
-  thColorHoverModal: '#253340',
-  thColorSortingModal: '#202c38',
-  borderColorModal: '#2b3541',
-  tdColorPopover: '#1a2029',
-  tdColorStripedPopover: '#1d2530',
-  tdColorHoverPopover: '#253340',
-  tdColorSortingPopover: '#202c38',
-  thColorPopover: '#171e27',
-  thColorHoverPopover: '#253340',
-  thColorSortingPopover: '#202c38',
-  borderColorPopover: '#2b3541',
+  tdColorModal: 'var(--surface-panel)',
+  tdColorStripedModal: 'var(--surface-striped)',
+  tdColorHoverModal: 'var(--surface-hover)',
+  tdColorSortingModal: 'var(--surface-sorted)',
+  thColorModal: 'var(--surface-header)',
+  thColorHoverModal: 'var(--surface-hover)',
+  thColorSortingModal: 'var(--surface-sorted)',
+  borderColorModal: 'var(--surface-border)',
+  tdColorPopover: 'var(--surface-panel)',
+  tdColorStripedPopover: 'var(--surface-striped)',
+  tdColorHoverPopover: 'var(--surface-hover)',
+  tdColorSortingPopover: 'var(--surface-sorted)',
+  thColorPopover: 'var(--surface-header)',
+  thColorHoverPopover: 'var(--surface-hover)',
+  thColorSortingPopover: 'var(--surface-sorted)',
+  borderColorPopover: 'var(--surface-border)',
 };
 
 export default defineComponent({
   name: 'BaseDataTable',
   inheritAttrs: false,
-  props: dataTableProps,
+  props: {
+    ...dataTableProps,
+    rowHover: { type: Boolean, default: true },
+  },
   setup(props, { attrs, slots }) {
     const mergedTheme = computed(() => ({ ...themeOverrides, ...props.themeOverrides }));
 
-    return () => slots.default ? h('div', mergeProps(attrs, {
-      class: 'base-data-table',
-    }), [h(NScrollbar, {
-      ...props.scrollbarProps,
-      xScrollable: true,
-      style: { maxHeight: typeof props.maxHeight === 'number' ? `${props.maxHeight}px` : props.maxHeight },
-    }, {
-      default: () => h(NTable, {
+    return () => {
+      const { rowHover: _rowHover, ...tableProps } = props;
+      return slots.default ? h('div', mergeProps(attrs, {
+        class: ['base-data-table', { 'base-data-table--row-hover': props.rowHover }],
+      }), [h(NScrollbar, {
+        ...props.scrollbarProps,
+        xScrollable: true,
+        style: { maxHeight: typeof props.maxHeight === 'number' ? `${props.maxHeight}px` : props.maxHeight },
+      }, {
+        default: () => h(NTable, {
+          bordered: props.bordered ?? false,
+          striped: props.striped,
+          size: props.size,
+          singleLine: props.singleLine,
+          themeOverrides: mergedTheme.value,
+          style: { minWidth: props.scrollX ? `${props.scrollX}px` : '100%' },
+        }, { default: slots.default }),
+      })]) : h(NDataTable, mergeProps(attrs, tableProps, {
+        class: ['base-data-table', { 'base-data-table--row-hover': props.rowHover }],
         bordered: props.bordered ?? false,
-        striped: props.striped,
-        size: props.size,
-        singleLine: props.singleLine,
         themeOverrides: mergedTheme.value,
-        style: { minWidth: props.scrollX ? `${props.scrollX}px` : '100%' },
-      }, { default: slots.default }),
-    })]) : h(NDataTable, mergeProps(attrs, props, {
-      class: 'base-data-table',
-      bordered: props.bordered ?? false,
-      themeOverrides: mergedTheme.value,
-    }), slots);
+      }), slots);
+    };
   },
 });
 </script>
@@ -80,8 +86,20 @@ export default defineComponent({
   letter-spacing: .025em;
 }
 
-.base-data-table :deep(.n-table tbody tr:hover td) {
-  background: #253340;
+.base-data-table--row-hover :deep(.n-table tbody tr:hover td) {
+  background: var(--n-td-color-hover, var(--surface-hover));
+}
+
+.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr:hover .n-data-table-td) {
+  background-color: var(--n-merged-td-color);
+}
+
+.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr--striped:hover .n-data-table-td) {
+  background-color: var(--n-merged-td-color-striped);
+}
+
+.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr:hover .n-data-table-td--sorting) {
+  background-color: var(--n-merged-td-color-sorting);
 }
 
 .base-data-table :deep(.n-data-table-th) {

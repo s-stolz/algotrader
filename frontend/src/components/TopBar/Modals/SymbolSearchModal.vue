@@ -86,6 +86,7 @@
               v-for="market of filteredMarketList"
               :key="market.symbol_id"
               :market="market"
+              :is-selected="market.symbol === currentMarketStore.symbol && market.exchange === currentMarketStore.exchange"
               @market-click="onMarketClick"
               @remove-market="$emit('remove-market', $event)"
               @upload-data="$emit('upload-data', $event)"
@@ -187,26 +188,8 @@ defineExpose({ updateCurrentMarket });
   background-color: #a0a0a029;
 }
 
-tr {
-  padding: 5px 15px;
-  width: calc(100% - 30px);
-  display: flex;
-  justify-content: space-between;
-  cursor: pointer;
-}
-
-td {
-  line-height: 20px;
-}
-
-.market-type {
-  font-size: x-small;
-  vertical-align: middle;
-}
-
-tr:hover,
 #add-market-button:hover {
-  background-color: #36363661;
+  background-color: var(--surface-hover);
 }
 
 #add-market-button {
