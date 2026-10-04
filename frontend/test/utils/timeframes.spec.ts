@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  groupTimeframeOptions,
   normalizeTimeframeCode,
   timeframeToMinutes,
   TIMEFRAME_OPTIONS,
@@ -30,5 +31,30 @@ describe('timeframe utilities', () => {
       { label: 'H4', value: 'H4' },
       { label: 'D1', value: 'D1' },
     ]);
+  });
+});
+
+describe('groupTimeframeOptions', () => {
+  it('groups and sorts caller-provided options by their complete units without changing the input', () => {
+    const options = [
+      { label: 'MN1', value: 'MN1' }, { label: 'H12', value: 'H12' },
+      { label: 'M30', value: 'M30' }, { label: 'W1', value: 'W1' },
+      { label: 'H1', value: 'H1' }, { label: 'M2', value: 'M2' },
+    ] as const;
+    const before = [...options];
+    expect(groupTimeframeOptions(options)).toEqual([
+      { label: 'Minutes', options: [options[5], options[2]] },
+      { label: 'Hours', options: [options[4], options[1]] },
+      { label: 'Weeks', options: [options[3]] },
+      { label: 'Months', options: [options[0]] },
+    ]);
+    expect(options).toEqual(before);
+  });
+
+  it('omits empty groups and preserves exactly the selectable set', () => {
+    expect(groupTimeframeOptions([])).toEqual([]);
+    const groups = groupTimeframeOptions(TIMEFRAME_OPTIONS);
+    expect(groups.map(group => group.label)).toEqual(['Minutes', 'Hours', 'Days']);
+    expect(groups.flatMap(group => group.options)).toEqual(TIMEFRAME_OPTIONS);
   });
 });

@@ -308,6 +308,16 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   `theme-overrides` for local customization. Data tables use columns and data;
   custom control tables supply table sections through the default slot. Both
   render through Naive UI with its themed horizontal and vertical scrollbars.
+- `src/components/Common/BaseGroupedSelect.vue`: shared grouped single-selection
+  popup. It preserves the rounded Naive UI trigger and supports hover, click,
+  arrow/Home/End navigation, disabled options, Escape, and focus restoration.
+  `TimeframeDropdown.vue` binds it to the current timeframe store.
+  `groupTimeframeOptions` derives groups from complete timeframe units (M, H, D,
+  W, MN), sorts by duration, and omits empty groups without expanding the caller's
+  supported options. Months must not be treated as minutes.
+- Approved selection design source: variant A on the local
+  `prototype/dropdown-designs` branch at `1f20fb4`. Prototype routes, fixtures,
+  switchers, and runner commands are excluded from the implementation branch.
 - `src/views/ChartView.vue`: page-level chart workspace.
 - `src/components/Chart/ChartArea.vue`: visual chart wiring, chart infrastructure
   lifecycle, legend updates, and session adapter construction.

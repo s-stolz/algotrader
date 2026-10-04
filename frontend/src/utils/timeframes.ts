@@ -55,3 +55,22 @@ export function timeframeToMinutes(timeframe: unknown): number {
   const code = normalizeTimeframeCode(timeframe);
   return TIMEFRAME_TO_MINUTES[code];
 }
+
+const timeframeUnits = [
+  { code: 'M', label: 'Minutes' },
+  { code: 'H', label: 'Hours' },
+  { code: 'D', label: 'Days' },
+  { code: 'W', label: 'Weeks' },
+  { code: 'MN', label: 'Months' },
+] as const;
+
+export function groupTimeframeOptions(options: readonly TimeframeOption[]): { label: string; options: TimeframeOption[] }[] {
+  return timeframeUnits.map(unit => ({
+    label: unit.label,
+    // Match the whole unit: MN is months, never minutes. Do not invent options
+    // for units unsupported by the caller's market or service.
+    options: options
+      .filter(option => option.value.replace(/\d+$/, '') === unit.code)
+      .sort((left, right) => TIMEFRAME_TO_MINUTES[left.value] - TIMEFRAME_TO_MINUTES[right.value]),
+  })).filter(group => group.options.length > 0);
+}
