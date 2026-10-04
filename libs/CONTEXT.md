@@ -1,88 +1,35 @@
 # Shared Libraries Context
 
-Shared Python packages used by multiple services.
+## Database Accessor Client
 
-## Owned Interfaces
+`db_accessor_client` owns sync/async HTTP transport, Candle DataFrame conversion,
+and shared Python Timeframe helpers. Centralize reusable Timeframe behavior here.
 
-- `db_accessor_client` HTTP clients, Candle DataFrame conversion, and Python
-  Timeframe helpers.
-- Synchronous and asynchronous durable backtest run create/get/list/delete,
-  fill/trade retrieval, conditional update, and successful-completion methods.
-- `indicator_engine` batch and streaming compute interface.
-- `algotrader_logger` shared logging helpers and request middleware.
+- DataFrames use UTC timestamp indexes; `include_timestamp_ms=True` also preserves
+  expanded timestamp fields for JSON-style callers.
+- Backtest methods pass versioned requests, results, replay descriptors, command
+  identities, and queue/heartbeat primitives through unchanged. Backtester owns
+  policy and public projections; the accessor owns transactions. Read
+  [backtest contracts](../docs/contracts/backtests.md) when changing those payloads.
+- Keep sync and async behavior aligned, including empty 204 deletion responses,
+  404/409 errors, ordered execution logs, and conditional-operation `updated` flags.
+- Candle shape changes affect the accessor, indicator-api, and backtester.
 
-## Libraries
+## Indicator Engine
 
-- `libs/db_accessor_client`: sync and async HTTP clients for database-accessor-api,
-  candle DataFrame conversion, and canonical Python Timeframe helpers.
-- `libs/indicator_engine`: NumPy-first indicator computation library with batch
-  and streaming update engines.
-- `libs/algotrader_logger`: shared logging helpers and request middleware.
+`indicator_engine` owns NumPy batch/streaming computation. UI metadata and transport
+formatting belong to indicator-api/frontend. Both engines share registry definitions.
 
-## Indicator Engine Concepts
+- `BarTensor`: aligned data shaped `(time, asset, field)`.
+- `Tensor`: outputs shaped `(time, asset, output, param)`.
+- `ParamGrid`: deterministic parameter combinations.
+- `HistoryPolicy`: rolling or unbounded streaming history.
+- NaNs propagate; the engine does not forward-fill.
 
-- `BarTensor`: dense aligned market data shaped `(time, asset, field)`.
-- `Tensor`: indicator output shaped `(time, asset, output, param)`.
-- `ParamGrid`: deterministic parameter grid for reproducible indicator runs.
-- `HistoryPolicy`: rolling or unbounded history control for streaming updates.
-- Batch engine and update engine should share indicator definitions through the
-  registry.
+For usage and shape examples, read [indicator engine README](indicator_engine/README.md).
 
-## Contracts
+## Logging and Verification
 
-- `db_accessor_client` returns pandas DataFrames indexed by UTC timestamps.
-- `include_timestamp_ms=True` preserves expanded timestamp fields for callers
-  that need JSON-style records.
-- `indicator_engine` intentionally propagates NaN and does not forward-fill.
-- `db_accessor_client.create_backtest_run` and `get_backtest_run` pass versioned
-  durable run documents through unchanged, including new request schema version 3
-  exact Strategy Version and older version 2 documents. Lifecycle policy and
-  domain mapping remain in backtester.
-- Synchronous and asynchronous `list_backtest_runs` methods pass optional
-  lifecycle, immutable-request, and submission-date filters without pagination
-  or queue-selection behavior.
-- Conditional run updates and legacy successful completion return the accessor's
-  `updated` flag. Once the durable execution slot is installed, tokenless
-  completion is rejected and worker results use owner-token settlement.
-- Sync and async execution methods expose slot inspection, oldest-queued claim,
-  token-fenced terminal settlement, conditional startup reconciliation, and
-  operational fault recording as primitive storage operations.
-- Sync and async `cancel_backtest_run` methods pass the serialized cancellation
-  response through unchanged. The backtester owns the public command policy;
-  the accessor enforces state and slot ordering.
-- Both clients pass batch create/list/detail, ordered member/event reads, and
-  membership filters through unchanged. The accessor owns atomic storage; the
-  backtester owns acceptance and lifecycle policy.
-- Both clients pass Pause/Resume batch commands with caller-generated command
-  identity through to the accessor and return the durable status/revision result.
-- Both clients also pass Cancel Batch with the caller-generated command identity
-  and return its accepted status, revision, and command identity unchanged.
-- Sync and async clients pass whole-batch deletion to the primitive accessor;
-  both run and batch deletion accept `204 No Content` and surface 404/409 errors.
-- Execution-log methods pass ordered normalized fill/trade records through
-  unchanged, including current result schema version 3 closed-trade direction
-  and planned protective exit prices.
-
-## Change Triggers
-
-- Prefer centralizing shared Timeframe behavior in `db_accessor_client` before
-  copying maps into services.
-- Keep UI metadata out of `indicator_engine`; indicator-api and frontend own
-  presentation metadata.
-- If Candle DataFrame shape changes, inspect `database-accessor-api`,
-  `indicator-api`, and `backtester` contexts.
-
-## Verification
-
-- Indicator engine tests: `make test indicator_engine`.
-- Run affected consumer tests when shared client interfaces change.
-
-- Backtest run reads and completion payloads pass the nullable Equity Replay
-  descriptor through unchanged. The accessor client owns transport, while the
-  backtester owns fingerprinting, replay, and public availability semantics.
-- Shared sync/async accessor clients expose primitive execution queue-state
-  reads and worker heartbeat writes. The backtester owns availability and
-  advisory position projections for frontend consumers.
-- Queue-state reads now include durable standalone and batch entries in turn
-  order, each batch's next member ordinal and outcome counts, and active member
-  identity. The existing client methods and transport paths remain unchanged.
+`algotrader_logger` owns shared logging and request middleware.
+Use `make test db_accessor_client` or `make test indicator_engine`, plus affected
+consumer tests when shared interfaces change.

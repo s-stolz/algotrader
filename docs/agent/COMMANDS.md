@@ -1,88 +1,44 @@
 # Agent Commands
 
-Run commands from the repository root unless noted.
+Run from the repository root. [Makefile](../../Makefile) is the command inventory
+and defines each gate; [frontend/package.json](../../frontend/package.json) owns
+individual frontend scripts.
 
-## Full Stack
+## Choosing a Gate
 
-- Generate config: `make config`
-- Validate config: `make validate-config`
-- Start stack: `make up`
-- Start rebuilt stack: `make up-build`
-- Start detached: `make up-detached`
-- Stop stack: `make down`
-- View logs: `make logs`
-- View containers: `make ps`
-- Exercise asynchronous backtester success/failure paths: `make smoke-backtester`
-- Apply pending TimescaleDB migrations to a running stack: `make migrate-db`
+| Scope | Command |
+| --- | --- |
+| Backend area | `make test <area>`; supported areas are listed in `Makefile` |
+| All configured backend suites | `make test` |
+| Frontend lint, types, layout, unit tests, build | `make test frontend` |
+| Python lint/format and types | `./lint-python.sh` and `make typecheck-python` |
+| Full implementation handoff | `make verify` |
+| Config generation / validation | `make config` / `make validate-config` |
+| Deployed asynchronous success/failure | `make smoke-backtester` |
 
-Direct Compose path:
+`make test` excludes the frontend and opt-in live PostgreSQL checks. The async
+worker requires Linux process supervision; use Compose on other hosts.
 
-```sh
-make config
-docker compose --env-file config/.env.shared up --build
-```
+## Stack and Environments
 
-Database migration path:
+- `make up-build` builds and starts the stack; `make up-detached` starts it in the
+  background. These targets generate configuration first.
+- `make migrate-db` applies pending migrations to the running Timescale container.
+  For upgrades involving workers, follow [recovery and cutover](../operations/backtest-worker-recovery.md).
+- `make venvs` creates environments; `make venv SERVICE=<area>` creates one.
+- Direct Compose calls need `--env-file config/.env.shared`.
 
-```sh
-make up-detached
-make migrate-db
-```
+## Live Storage Verification
 
-## Python Environments
-
-- Create all environments: `make venvs`
-- Create root environment: `make venv-root`
-- Create one service environment: `make venv SERVICE=broker-service`
-- Recreate all environments: `make venvs-recreate`
-- Validate environments: `make venvs-check`
-
-## Test Commands
-
-- All configured backend tests: `make test`
-- Backtester: `make test backtester`
-- Database accessor API: `make test database-accessor-api`
-- Shared database accessor client: `make test db_accessor_client`
-- Ingestion service: `make test ingestion-service`
-- Broker service: `make test broker-service`
-- Indicator engine: `make test indicator_engine`
-- Frontend quality gate: `make test frontend`
-- Full repository verification gate: `make verify`
-- Python-only verification gate: `make verify-python`
-- Timescale migration integration tests (running local stack):
-  `RUN_MIGRATION_INTEGRATION_TESTS=1 .venv/bin/python -m unittest scripts.tests.test_migrations_integration`
-
-Prefer `make` targets. Inspect `Makefile` only when debugging a target itself.
-
-## Documentation Changes
-
-For markdown-only changes, application tests are usually unnecessary. Verify that
-the context map, ADR links, and referenced files still line up with the edited
-workflow.
-
-## Frontend
+Migration integration checks against the local stack:
 
 ```sh
-cd frontend && npm run dev
-cd frontend && npm run lint
-cd frontend && npm run typecheck
-cd frontend && npm run test:unit
-cd frontend && npm run build
+RUN_MIGRATION_INTEGRATION_TESTS=1 .venv/bin/python -m unittest scripts.tests.test_migrations_integration
 ```
 
-## Python Quality
-
-```sh
-./lint-python.sh
-make typecheck-python
-```
-
-## Local Service Entrypoints
-
-```sh
-cd broker-service && uvicorn app.main:app --host 0.0.0.0 --port 8050
-cd backtester && python main.py        # API
-cd backtester && python worker.py      # singleton worker
-cd webserver && python main.py
-cd ingestion-service && python main.py
-```
+Accessor execution/deletion tests opt in with
+`RUN_BACKTEST_EXECUTION_INTEGRATION_TESTS=1`; batch tests use
+`BACKTEST_BATCH_TEST_DATABASE_URL`. For isolated database setup and worker
+interpreter requirements, see the
+[acceptance procedure](../operations/backtest-workspace-v1-acceptance.md#reproduce-the-gates).
+Check suite skip conditions before claiming live coverage.

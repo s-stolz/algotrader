@@ -8,7 +8,7 @@ executable behavior** change. The live catalog publishes only the current
 version. Retired code is not retained for future execution.
 
 Annotate every public builder parameter with `bool`, `int`, `float`, `str`, or
-`T | None`. Signature order is catalog and future sweep order. A parameter with
+`T | None`. Signature order is catalog and sweep order. A parameter with
 no default is required; a default is materialized into each accepted immutable
 request. Use `Annotated[T, ParameterInfo(...)]` only for numeric minimum/maximum,
 restricted numeric/string choices, descriptions, or display names. Boolean

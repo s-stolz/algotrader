@@ -1,50 +1,29 @@
 # Ingestion Service Context
 
-Worker that keeps stored M1 candles current by consuming Redis candle streams and
-backfilling missing data through broker-service.
+Consumes broker M1 Redis Candles, backfills missing history, and writes expanded
+Candles through database-accessor-api. Shared payloads are in
+[root context](../CONTEXT.md).
 
-## Owned Interfaces
+## History and Closed Candles
 
-- M1 Redis Candle ingestion from broker-service streams.
-- Closed-candle emission rule for storage writes.
-- Backfill and recovery calls to broker-service historical trendbars.
-- Expanded Candle writes through database-accessor-api.
+- `main.py` / `IngestionService` owns startup watermarks, tail IDs, stream-start
+  order, chunking, backfill, reconnect recovery, writes, and shutdown.
+- `app/stream_consumer.py` withholds the latest open Candle. It emits the previous
+  Candle only when a newer timestamp arrives; this protects closed-candle storage.
+- Resolve the configured lookback or UTC start date once per service instance.
+  Empty Markets fetch from that inclusive boundary; populated Markets resume
+  after their latest Candle, bounded by that boundary. Startup and reconnect use
+  the same rule. Changing the boundary neither deletes history nor fills older
+  history before an existing latest Candle.
+- `app/broker_client.py` adapts historical trendbars and stream control;
+  `app/db_client.py` wraps the shared accessor client. Keep broker and storage
+  query parameter conventions at these boundaries.
 
-## Key Modules
-
-- `main.py`: `IngestionService`, startup, per-symbol runtime state, backfill,
-  recovery, consumer task management, and shutdown.
-- `app/stream_consumer.py`: Redis XREAD consumer, compact candle parsing, and
-  closed-candle emission.
-- `app/broker_client.py`: broker-service historical trendbar and stream control
-  adapter.
-- `app/db_client.py`: wrapper around shared `db_accessor_client`.
-- `app/config.py`: environment configuration.
-
-## Contracts
-
-- Consumes M1 Redis candle streams defined in root `CONTEXT.md`.
-- Writes expanded candles through database-accessor-api.
-- History starts at the configured lookback (default 90 days) or UTC start date,
-  resolved once per service instance. Empty markets fetch from that inclusive boundary;
-  populated markets resume after the latest candle, bounded by that boundary.
-  Startup and reconnect recovery share this rule. Changing the range neither deletes
-  stored history nor fills older history before an existing latest candle.
-- Ingestion currently targets M1 storage and uses broker stream backfill for gaps.
-
-## Change Triggers
-
-- `IngestionService` owns startup watermarks, stream tail IDs, broker stream start
-  order, startup backfill, reconnect recovery, chunking, and writes.
-- `StreamConsumer` deliberately withholds the latest open candle and emits only
-  the previous candle after a newer timestamp arrives.
-- When changing candle parsing or closed-candle rules, inspect `indicator-api`
-  live parsing and `webserver` Redis parsing too.
-- If storage write semantics change, inspect `database-accessor-api/CONTEXT.md`
-  and root `CONTEXT.md`.
+History configuration is described in [config context](../config/CONTEXT.md).
+For parsing changes, also inspect indicator-api and webserver consumers; storage
+write changes reach [accessor context](../database-accessor-api/CONTEXT.md).
 
 ## Verification
 
-- Ingestion tests: `make test ingestion-service`.
-- Prefer tests that cover startup backfill, recovery backfill, closed-candle
-  emission, and write batching without live Redis or broker calls.
+Use `make test ingestion-service`. Cover startup/recovery boundaries, closed-candle
+emission, and batching with controlled broker/Redis doubles.

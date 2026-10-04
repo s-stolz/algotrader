@@ -3,23 +3,13 @@
 Python WebSocket bridge between frontend clients, broker-service, indicator-api,
 and Redis streams.
 
-## Owned Interfaces
+## Ownership
 
-- Frontend WebSocket protocol for subscribe/unsubscribe commands and live update
-  messages.
-- Redis Candle and Indicator stream consumption, expansion, and fanout.
-- Source stream reference counting and subscription lifecycle.
-- HTTP adapters for broker-service and indicator-api stream start/stop calls.
-
-## Key Modules
-
-- `main.py`: process entrypoint, WebSocket server, health server, message routing.
-- `app/subscription_manager.py`: client registration, subscription refcounts,
-  broker source dependencies, indicator stream metadata, and fanout.
-- `app/redis_consumer.py`: Redis stream consumption and compact-to-expanded
-  message parsing.
-- `app/broker_client.py`: broker-service stream start/stop HTTP adapter.
-- `app/indicator_api_client.py`: live indicator stream start/stop HTTP adapter.
+`app/subscription_manager.py` owns client subscriptions, source dependency counts,
+rollback, and fanout. `app/redis_consumer.py` expands Redis payloads; `main.py`
+routes WebSocket messages. Broker and indicator HTTP adapters control upstream
+stream start/stop. Shared Redis fields and timestamps live in
+[root context](../CONTEXT.md).
 
 ## Contracts
 
@@ -43,15 +33,10 @@ Webserver to frontend control messages are flat JSON objects:
 - `indicatorUnsubscribed` after indicator unsubscription succeeds.
 - `error` with an `error` string when message handling fails.
 
-- Uses the Redis stream names and compact candle fields defined in root
-  `CONTEXT.md`.
-- Expands Redis candle payloads before broadcasting to frontend clients.
-- Source streams are reference counted by `SubscriptionManager`.
+Source streams are reference counted; upstream streams are shared across clients.
 
 ## Change Triggers
 
-- `SubscriptionManager` is the owner of subscription lifecycle. It currently
-  embeds key-string grammar and rollback behavior.
 - Add tests before changing duplicate subscription handling, disconnect cleanup,
   source dependency counts, or indicator parameter sharing.
 - If WebSocket messages change, update `frontend/CONTEXT.md` and
@@ -61,6 +46,8 @@ Webserver to frontend control messages are flat JSON objects:
 
 ## Verification
 
-There is no dedicated first-party webserver test suite yet. New tests should cover
-subscription lifecycle and Redis fanout without requiring live Redis or broker
-network calls.
+Start with `tests/test_redis_consumer.py` for Redis parsing. Subscription lifecycle
+changes also need coverage for duplicate subscriptions, disconnect cleanup, source
+counts, and rollback using controlled Redis/broker adapters. Webserver tests are
+not included in the root `make test` target; run them from this service directory
+with its Python environment (`python -m unittest discover -s tests`).

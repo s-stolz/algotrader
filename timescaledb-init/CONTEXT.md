@@ -1,136 +1,47 @@
-# TimescaleDB Init Context
+# TimescaleDB Context
 
-Image-owned SQL bootstrap and ledgered migration files for the configured
-TimescaleDB database.
+Owns SQL bootstrap, hypertables, continuous aggregates, and forward-only schema
+migrations. Runtime query behavior belongs to
+[database-accessor-api](../database-accessor-api/CONTEXT.md).
 
-## Owned Interfaces
+## Migration Discipline
 
-- Timescale schema for Markets and Candles.
-- Raw Candle storage in `candles` with `timestamp_utc`.
-- Continuous aggregate views and refresh policies for higher Timeframes.
-- Idempotent SQL bootstrap and retune behavior for local databases.
-- Forward-only TimescaleDB migrations recorded in `schema_migrations`.
-- Durable backtest lifecycle, request/result JSONB, fill, and trade tables.
+- `migrations/` is the migration inventory. Add the next `VNNN__description.sql`;
+  applied migrations are immutable and reversions use later forward migrations.
+- `scripts/migrate_db.py` validates order/checksums against `schema_migrations`.
+  A session-scoped PostgreSQL advisory lock excludes concurrent runners and is
+  released on disconnect. Keep each migration transactional where supported.
+- The image installs migrations and bootstrap tooling; `01-run-migrations.sh`
+  applies them on fresh volumes. The upstream entrypoint creates the generated
+  `POSTGRES_DB` first. Existing volumes use `make migrate-db`.
+- Legacy baseline detection may record only V001–V002. V003/V004 must execute:
+  compression, policy, and historical-refresh effects cannot all be inferred
+  from catalog state. V005 upgrades compatible legacy closed-trade tables and
+  rejects populated directionless tables; V006 audits the complete structure.
+- For rationale or runner changes, read [ADR-0006](../docs/adr/0006-ledgered-timescaledb-migrations.md).
+  For upgrades with queued/running backtests, follow
+  [worker cutover](../docs/operations/backtest-worker-recovery.md#upgrade-with-queued-or-running-work).
 
-## Key Files
+## Storage Invariants
 
-- `Dockerfile`: TimescaleDB image with validated bootstrap tooling and migration
-  files installed under `/docker-entrypoint-initdb.d`.
-- `01-run-migrations.sh`: bootstrap-only migration application for fresh Docker
-  volumes.
-- `migrations/V001__base_schema.sql`: extension, market/candle tables, and
-  durable backtest lifecycle/result tables.
-- `migrations/V002__timestamp_utc.sql`: timestamp migration support.
-- `migrations/V003__optimize_candles.sql`: hypertable setup, compression,
-  indexes, continuous aggregates, and aggregate policies.
-- `migrations/V004__retune_cagg_and_index.sql`: continuous aggregate policy
-  retuning and historical refresh.
-- `migrations/V005__upgrade_legacy_closed_trades.sql`: explicit upgrade or
-  rejection for supported pre-ledger closed-trade table shapes.
-- `migrations/V006__audit_closed_trades_schema.sql`: complete structural audit
-  of the closed-trade table after the legacy upgrade.
-- `migrations/V007__equity_replay_descriptor.sql`: nullable replay metadata for
-  saved Backtest Runs.
-- `migrations/V008__immutable_backtest_batches.sql`: accepted batch, ordered
-  member identity, initial event storage, and immutable membership guards.
-- `migrations/V009__backtest_execution_slot.sql`: durable single-slot owner and
-  guard against legacy claims without slot ownership.
-- `migrations/V010__backtest_worker_heartbeat.sql`: per-process heartbeat and
-  last operational fault telemetry, separate from durable run history.
-- `migrations/V011__backtest_batch_turns.sql`: durable global queue turns and
-  automatic batch timing/event fields.
-- `migrations/V012__backtest_batch_event_prior_status.sql`: nullable prior status
-  for revisioned batch events; existing history remains intact and unknown prior
-  states remain null.
-- `migrations/V013__backtest_batch_commands.sql`: nullable command identity on
-  batch events with a per-batch uniqueness guard and durable receipts for
-  no-op Pause/Resume retries.
-- `migrations/V014__backtest_run_cancellation.sql`: forward-only run cancellation
-  states and normalized request time, source, and reason; earlier history stays intact.
-- `migrations/V015__backtest_batch_cancellation.sql`: batch-level cancellation
-  acceptance time and provenance, and durable Cancel Batch command receipts.
-- `migrations/V016__terminal_backtest_deletion.sql`: whole-batch member cascade
-  with a guard that still rejects direct member deletion while the batch exists.
-
-## Contracts
-
-- Raw candles are stored in `candles` with `timestamp_utc TIMESTAMPTZ`.
-- Primary key is `(symbol_id, timestamp_utc)`.
-- Current continuous aggregate views include M5, M15, M30, H1, H4, and D1.
-- Database-accessor-api may fall back to direct bucketing if an aggregate view is
-  unavailable or not useful for the requested range.
-- `backtest_runs` stores normalized lifecycle fields, request/result schema
-  versions, immutable request JSONB, and nullable metrics/diagnostics JSONB.
-  Accepted cancellation uses `cancelling` or `cancelled` plus normalized
-  `cancel_requested_at`, `cancellation_source`, and `cancellation_reason`.
-- `backtest_execution_slot` retains one owner token and run identity until a
-  fenced terminal transaction releases it. The row is never timed out or
-  automatically stolen; operator recovery requires verified child exit.
-- `backtest_worker_heartbeats` stores transient process freshness and fault
-  signals. It does not own the slot, affect run state, or represent durable
-  history; an active snapshot matches its heartbeat to the slot owner token.
-- `backtest_queue_turns` holds one ordered entry per queued standalone run or
-  eligible batch. Claim consumes the head under the slot lock; settlement or
-  restart reconciliation appends a remaining batch at the tail. Migration seeds
-  preexisting queued work in submission-time/identity order.
-- `V015` records nullable batch cancellation acceptance time, source, and reason
-  without changing prior batch history, and permits `cancel` command receipts.
-- `V007` adds nullable `backtest_runs.replay_descriptor` without changing prior
-  successful rows or backfilling historical data.
-- `V008` adds nullable `batch_id`/`member_ordinal` to runs, preserving legacy
-  standalone rows, and creates batch/event tables. Unique identity and ordinal
-  constraints plus triggers reject member replacement, late insertion, and
-  individual deletion.
-- `V016` changes the member foreign key to cascade only when its parent batch is
-  deleted. The membership trigger still rejects an individual member delete;
-  normalized artifacts, events, queue turns, and command receipts cascade with
-  the whole batch in the same transaction.
-- `backtest_fills` and `backtest_closed_trades` use per-run sequence keys for
-  deterministic ordering and cascade when the parent run is deleted.
-- `backtest_closed_trades` includes explicit trade direction plus nullable
-  planned protective exit prices for stop-loss and take-profit overlays. Result
-  schema version 3 is used for newly completed results.
-- `backtest_closed_trades.trade_direction` is required and constrained to
-  `long` or `short`.
-- New request JSON uses schema version 3 with exact Strategy Version and resolved
-  defaults; version 2 JSON remains stored without backfill. New results use
-  version 3 while historical result versions remain readable. This upgrade does
-  not change the JSONB table shape or require a SQL migration.
-- Fresh database initialization creates the complete durable backtest schema
-  without a separate destructive reset script.
-- The TimescaleDB image entrypoint creates the database named by generated
-  `POSTGRES_DB` before it runs `01-run-migrations.sh`; bootstrap SQL does not
-  hard-code or separately create a database.
-- The TimescaleDB container receives non-secret shared configuration separately
-  from its database password secret file.
-- Runtime migrations use strict `VNNN__description.sql` filenames and are applied
-  once, in order, with checksums recorded in `schema_migrations`.
-- Existing databases that match the historical schema may baseline `V001`-`V002`
-  into `schema_migrations`. `V003` and `V004` are always replayed because their
-  policy/compression and historical-refresh effects cannot all be inferred
-  reliably from catalog state.
-- Compatible legacy closed-trade tables are upgraded by `V005`; populated
-  directionless tables fail there. `V006` audits the complete resulting column,
-  key, relationship, and enum-check shape so structurally unsupported databases
-  fail with recovery guidance instead of being marked current.
-- Concurrent runners are excluded by a session-scoped PostgreSQL advisory lock,
-  which PostgreSQL releases automatically if the runner disconnects or dies.
-- Migration rollback is modeled as a later forward migration, not a down script.
-
-## Change Triggers
-
-- If adding Timeframe support, update this directory, `database-accessor-api`,
-  `libs/db_accessor_client`, frontend Timeframe options, and relevant service
-  contexts.
-- Keep migration SQL transactional where possible. Changes after a migration is
-  applied must be added as a later `VNNN` file instead of editing the applied
-  migration.
-- If bootstrap or migration runner behavior changes, update ADR-0006.
-- If Market or Candle storage shape changes, update root `CONTEXT.md` and
-  `docs/agent/CONTRACT-CHANGES.md` if the cross-service interface changes.
+- Raw M1 candles use `timestamp_utc TIMESTAMPTZ`, keyed by
+  `(symbol_id, timestamp_utc)`. Higher-Timeframe reads can use continuous
+  aggregates or accessor bucketing fallback. Inspect migration SQL for current
+  view definitions and refresh policies.
+- [Backtest contracts](../docs/contracts/backtests.md) owns lifecycle, snapshot,
+  membership, and deletion rules. SQL constraints/triggers protect immutable
+  requests and fixed membership; whole-batch deletion cascades while direct member
+  deletion remains guarded.
+- Lifecycle fields are normalized; versioned request/result documents and nullable
+  replay metadata use JSONB. Schema-version changes do not necessarily require
+  SQL changes. Preserve historical rows without manufacturing missing metadata.
+- Execution slot, durable queue turns, and worker heartbeat tables serve different
+  purposes: capacity, ordering, and telemetry. A stale heartbeat cannot free a slot.
+- Fills and Closed Trades use per-run sequence keys and parent cascades.
+  Stored closed-trade direction is required and constrained to `long` / `short`.
 
 ## Verification
 
-- Validate affected SQL against a local database when changing schema or
-  aggregate behavior.
-- Run database accessor and affected consumer tests when query semantics change.
+Validate schema/aggregate behavior against a local database; use the live migration
+checks in [commands](../docs/agent/COMMANDS.md#live-storage-verification).
+Run accessor and affected consumer tests when query semantics change.

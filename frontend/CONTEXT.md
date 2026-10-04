@@ -38,7 +38,7 @@ and behavior that is easy to break when changing them.
   navigation preserves drafts, history filters, and comparison selections.
 - Read history, commands, logs, and Equity Replay through
   `src/api/backtesterClient.ts`. For lifecycle or API changes, read
-  [backtester context](../backtester/CONTEXT.md); the public backtester API owns
+  [backtest contracts](../docs/contracts/backtests.md); the public backtester API owns
   those policies. Queue availability and position are advisory telemetry.
 - Failed polling retains the last good data and marks live status unknown.
   Ignore superseded responses after changing the inspected run, batch, or draft.

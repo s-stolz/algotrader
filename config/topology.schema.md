@@ -13,10 +13,6 @@ existing generated environment variables; YAML nesting does not change their nam
 | `services` | Application networking, logging, resources, and runtime tuning. |
 | `infrastructure` | Redis and TimescaleDB networking, resources, and database settings. |
 
-There are no separate root-level `backtester`, `broker`, `ingestion`, `webserver`,
-or `docker_resources` sections. Existing local topology customizations must move
-with their owning component; the generator and CLI read the new paths directly.
-
 ## Component structure
 
 | Component path | Settings groups |
@@ -95,23 +91,11 @@ Compose service names and container names do not change with topology grouping.
 
 ## Runtime tuning
 
-All fields below are required in the tracked topology. Numeric constraints
-specified here describe the runtime contract; the generator validates presence
-and resource values, while service settings enforce their own runtime constraints.
-
-| Path under `services` | Fields and tracked defaults |
-| --- | --- |
-| `backtester.worker` | `poll_interval_seconds: 1.0` |
-| `backtester.worker.heartbeat` | `interval_seconds: 5.0`, `stale_after_seconds: 30.0` |
-| `backtester.sweeps` | `max_candidate_count: 1000` |
-| `webserver.consumer` | `block_ms: 5000`, `batch_size: 100` |
-| `webserver.streams` | `queue_size: 1000`, `max_length: 10000` |
-| `ingestion_service.consumer` | `block_ms: 5000`, `batch_size: 100` |
-| `broker_service.streams` | `redis_db: 0` |
-| `broker_service.streams.ticks` | `queue_size: 1000`, `max_length: null` |
-| `broker_service.streams.candles` | `max_length: null` |
-| `broker_service.streams.limits` | `max_symbol_streams: 20`, `max_trendbar_streams: 10` |
-| `broker_service.ctrader` | `request_timeout_seconds: 20.0` |
+Use [topology.yaml](topology.yaml) for exact setting names and defaults.
+The generator validates presence and resource values; service settings enforce
+runtime-specific constraints. Backtester API/worker tuning is grouped under
+`services.backtester`; stream limits and cTrader settings belong to
+`services.broker_service`.
 
 Worker polling and heartbeat intervals are positive; the stale threshold must
 exceed the heartbeat interval. The sweep candidate limit is a positive integer.
@@ -122,10 +106,10 @@ Redis database setting.
 
 ## Infrastructure database settings
 
-- `infrastructure.redis.database`: integer logical database index (default `0`).
-- `infrastructure.timescaledb.database.name`: database name (default `finance_data`).
-- `infrastructure.timescaledb.database.user`: database user (default `postgres`).
-- `infrastructure.timescaledb.database.echo`: boolean SQL echo setting (default `false`).
+- `infrastructure.redis.database`: integer logical database index.
+- `infrastructure.timescaledb.database.name`: database name.
+- `infrastructure.timescaledb.database.user`: database user.
+- `infrastructure.timescaledb.database.echo`: boolean SQL echo setting.
 
 TimescaleDB name and user generate both the `TIMESCALEDB_*` application variables
 and `POSTGRES_*` image aliases.
@@ -156,7 +140,7 @@ mapping to scalar (or vice versa) are rejected. Copy `topology.local.example.yam
 to get started. Keep secrets in `.env.secrets.local`.
 
 `services.ingestion_service.history` requires exactly one active option:
-`lookback_days` (positive integer, tracked default `90`) or `start_date` (quoted
+`lookback_days` (positive integer) or `start_date` (quoted
 `YYYY-MM-DD`, no future dates). Set the other option to `null`, including when
 switching modes in an override. Dates begin at midnight UTC. Run `make config`
 and recreate affected containers after editing overrides.

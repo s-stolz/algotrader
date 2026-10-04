@@ -17,15 +17,10 @@ normal implementation work. Keep each ADR small and focused on one decision.
 
 ## When To Add An ADR
 
-Add an ADR when a decision:
-
-- changes a durable module interface or seam,
-- constrains future implementation choices,
-- explains why an obvious alternative should not be reintroduced, or
-- affects multiple areas of the repository.
-
-Do not add an ADR for temporary delivery sequencing, routine implementation
-details, or a decision already captured by executable tests and local context.
+Add an ADR when a durable choice has a meaningful trade-off and its rationale
+would be hard to infer later. Record the alternatives and consequences that
+future changes must consider. Routine implementation, temporary sequencing, and
+facts already clear from code or local context belong with their existing owner.
 
 ## Template
 

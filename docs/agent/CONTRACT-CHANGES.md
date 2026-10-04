@@ -1,39 +1,38 @@
 # Contract Changes
 
-Use this map when a change affects a durable cross-service interface. Root
-`CONTEXT.md` remains the canonical summary; this file tells agents which local
-contexts and tests to inspect.
+Before changing an interface, identify its producer and actual consumers using
+this map and code references. Root [CONTEXT.md](../../CONTEXT.md) owns shared
+summaries; linked references own details. Area contexts describe local obligations.
 
-## Change Map
+## Affected Areas
 
-| Contract | Producers | Consumers | Docs to update | Verification |
-| --- | --- | --- | --- | --- |
-| Candle transport fields (`timestamp_ms`, `open`, `high`, `low`, `close`, `volume`) | `database-accessor-api`, `broker-service`, `ingestion-service` | `frontend`, `indicator-api`, `backtester`, `libs/db_accessor_client` | Root `CONTEXT.md`, producer and consumer contexts | Relevant backend tests plus `make test frontend` when chart data changes |
-| Redis Candle payload (`o`, `h`, `l`, `c`, `v`, `t`) | `broker-service` | `webserver`, `ingestion-service`, `indicator-api` live streams | Root `CONTEXT.md`, `broker-service/CONTEXT.md`, `webserver/CONTEXT.md`, `ingestion-service/CONTEXT.md`, `indicator-api/CONTEXT.md` | Broker stream tests plus consumer parsing tests where available |
-| Tick payload (`b`, `a`, `t`) | `broker-service` | `webserver`, future UI consumers | Root `CONTEXT.md`, `broker-service/CONTEXT.md`, `webserver/CONTEXT.md` | Broker stream tests and WebSocket fanout tests where available |
-| Timeframe support | `broker-service`, `database-accessor-api`, `timescaledb-init`, `libs/db_accessor_client` | `frontend`, `indicator-api`, `ingestion-service`, `backtester` | Root `CONTEXT.md`, all affected area contexts, `config/topology.schema.md` if topology changes | Storage/query tests, shared client tests, frontend gate if UI options change |
-| Indicator historical response | `indicator-api`, `libs/indicator_engine` | `frontend`, future backtester integrations | Root `CONTEXT.md` if cross-service, `indicator-api/CONTEXT.md`, `frontend/CONTEXT.md`, `libs/CONTEXT.md` | `make test indicator_engine` plus indicator-api service tests when present |
-| Indicator live stream (`indicators:{account_id}:{exchange}:{symbol}:{timeframe}:{stream_id}` fields `t`, `s`, `i`, `d`) | `indicator-api` | `webserver`, `frontend` | Root `CONTEXT.md`, `indicator-api/CONTEXT.md`, `webserver/CONTEXT.md`, `frontend/CONTEXT.md` | Live manager tests, WebSocket tests, frontend WebSocket tests |
-| WebSocket protocol messages | `webserver` | `frontend` | `webserver/CONTEXT.md`, `frontend/CONTEXT.md`; root `CONTEXT.md` if message semantics become cross-service | Webserver protocol tests plus `frontend/test/utils/websocketService.spec.ts` |
-| Market identity (`symbol_id`, `symbol`, `exchange`, `market_type`, `min_move`, `timezone`) | `database-accessor-api`, `timescaledb-init` | `frontend`, `indicator-api`, `backtester`, `broker-service` where symbols are bridged | Root `CONTEXT.md`, `database-accessor-api/CONTEXT.md`, `timescaledb-init/CONTEXT.md`, affected consumers | Database accessor tests and affected consumer tests |
-| Order, Position, Deal contracts | `broker-service` | `frontend` or future automation modules | Root `CONTEXT.md` for durable vocabulary, `broker-service/CONTEXT.md`, affected consumer context | Broker route tests and consumer contract tests |
-| Runtime configuration and generated env files | `config/topology.yaml`, `scripts/generate_env.py` | Docker Compose, frontend proxy, Python modules reading env | `config/CONTEXT.md`, `README.md` if human setup changes, ADR when ownership changes | `make validate-config`; stack smoke test when ports or hosts change |
-| Timescale storage shape and continuous aggregates | `timescaledb-init`, `database-accessor-api` | `ingestion-service`, `indicator-api`, `backtester`, `frontend` through queries | Root `CONTEXT.md`, `timescaledb-init/CONTEXT.md`, `database-accessor-api/CONTEXT.md`, affected consumer contexts | Database accessor tests; stack test when SQL migration behavior changes |
-| Durable backtest run persistence | `backtester`, `database-accessor-api`, `timescaledb-init` | `backtester`, `frontend`, `libs/db_accessor_client` | Root `CONTEXT.md`, `backtester/CONTEXT.md`, `frontend/CONTEXT.md`, `database-accessor-api/CONTEXT.md`, `timescaledb-init/CONTEXT.md`, `libs/CONTEXT.md`, ADR-0005 | Backtester, database accessor, shared client tests, frontend contract tests, and Python verification |
-| Strategy catalog and exact-version standalone submission | `backtester` registry and public API | `backtester` worker, `frontend`, `database-accessor-api` request JSON | Root `CONTEXT.md`, `backtester/CONTEXT.md`, `frontend/CONTEXT.md`, `database-accessor-api/CONTEXT.md`, `timescaledb-init/CONTEXT.md`, `libs/CONTEXT.md` | Registry, run service, route, worker, accessor, frontend creation and contract tests |
-| Stateless Parameter Sweep preview | `backtester` application and public API | `frontend` creation drawer; future batch acceptance | `backtester/CONTEXT.md`, `frontend/CONTEXT.md`, `config/CONTEXT.md` for the raw limit | Backtester preview route and frontend draft/review tests; Python and frontend gates |
-| Immutable Backtest Batch acceptance and membership | `backtester`, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, standalone worker | Root `CONTEXT.md`, all producer/consumer area contexts, ADR-0005/0006 | Backtester and accessor acceptance tests, shared client and frontend tests, live migration integration |
-| Saved Backtest configuration reuse | Public run request and accepted Batch definition | `frontend` Workspace creation drawer | Root `CONTEXT.md`, `frontend/CONTEXT.md`; producer contexts when the saved definition changes | Frontend Create from this interactions, current-catalog validation and sweep preview; backend run/batch contract tests when producer changes |
-| Backtest queue and worker telemetry | `backtester` worker and public API, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, local monitoring | Root `CONTEXT.md`, producer/consumer contexts, `config/CONTEXT.md`, worker recovery guide | Worker heartbeat and API projection tests, shared client and frontend polling tests, live migration and stack demo |
-| Global Backtest Batch turns and automatic lifecycle | `backtester` worker, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client` | Root and producer/consumer contexts, worker recovery guide | Real storage claim/settlement/restart and migration tests, public projections, frontend polling |
-| Individual Backtest Run cancellation | `backtester` worker, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client` | Root and producer/consumer contexts, worker recovery guide | Storage races, child-tree exit, restart reconciliation, public API and Workspace tests |
-| Pause and Resume Batch commands | `backtester`, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, batch worker | Root and producer/consumer contexts | Public command tests, live claim/settlement/restart races, frontend control tests, migration gate |
-| Cancel Batch command and lifecycle | `backtester`, `database-accessor-api`, `timescaledb-init` | `frontend`, `libs/db_accessor_client`, batch worker | Root and producer/consumer contexts, worker recovery guide | Public command tests, live claim/settlement/restart and rollback races, frontend control tests, migration gate |
+Paths below are relative to the repository root; use the
+[context map](../CONTEXT-MAP.md) to open each area's guidance.
 
-## Update Rule
+| Contract | Producer → consumers | Verification focus |
+| --- | --- | --- |
+| Candle transport / Market identity | broker, ingestion, accessor → frontend, indicator-api, backtester, shared client | Serialization, timestamp conversion, symbol resolution, consumer parsing |
+| Redis Candles / Ticks | broker → webserver, ingestion, indicator-api (Candles) | Publication, parsing, closed-candle handling, stream lifecycle |
+| Historical / live Indicators | indicator-api + indicator engine → webserver (live), frontend | Tensor formatting, warmup, stream lifecycle, client validation |
+| WebSocket messages | webserver → frontend | Subscription/fanout and `frontend/test/utils/websocketService.spec.ts` |
+| Timeframe support | broker, accessor, Timescale, shared client → frontend, indicator-api, ingestion, backtester | Queries/aggregates and each supported consumer; UI options alone are insufficient |
+| Broker Orders / Positions / Deals | broker → current route callers | Validation, protobuf mapping, consumer contracts |
+| Runtime env | topology + generator → Compose, Vite proxy, Python services; CLI also reads topology | Config mapping fixture, validation, affected stack smoke |
+| SQL schema / aggregates | Timescale migrations → accessor → query consumers | Forward migration, query behavior, live storage tests |
+| Backtest run/batch persistence, commands, queue | backtester policy + accessor transactions + Timescale constraints → shared client, worker, frontend | Public contracts, sync/async clients, live transaction races, process cleanup, Workspace polling/controls |
+| Strategy catalog / sweeps / saved configuration reuse | backtester registry and API → frontend, worker, persisted snapshots | Exact versions, defaults, pure validation, deterministic preview/acceptance, historical compatibility |
+| Equity Replay / execution logs | backtester + accessor → frontend analysis/overlays | Fingerprint compatibility, ordered Fills/Trades, unavailable states, sampling |
 
-If a change modifies a contract in this table, update the producer context and
-every consumer context that must know the new interface. If the change only
-changes an implementation behind the same interface, leave root `CONTEXT.md`
-alone and update only the relevant area context when it adds durable locality
-knowledge.
+For backtest changes, read [shared contracts](../contracts/backtests.md).
+Worker capacity/recovery changes also require the
+[recovery guide](../operations/backtest-worker-recovery.md).
+
+## Completion
+
+- Update the authoritative contract and each affected area context whose local
+  responsibility changes. Keep shared rules in their owner, linked by consumers.
+- Verify producer behavior and affected consumer interpretation with the relevant
+  [commands](COMMANDS.md), including live storage/process checks where needed.
+- For implementation-only changes, update context only if new durable locality
+  knowledge is needed. For changed architecture trade-offs, consult
+  [ADRs](../adr/README.md).
