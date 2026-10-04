@@ -29,8 +29,8 @@ describe('BaseSelect', () => {
     expect(select.props('menuProps')?.class).toEqual(['base-select-menu', 'custom-menu']);
     expect(select.props('themeOverrides')).toEqual(expect.objectContaining({
       peers: expect.objectContaining({
-        InternalSelection: expect.objectContaining({ borderRadius: '12px', color: '#171e27' }),
-        InternalSelectMenu: expect.objectContaining({ optionTextColorActive: '#63d2b0' }),
+        InternalSelection: expect.objectContaining({ borderRadius: '12px', color: '#131722' }),
+        InternalSelectMenu: expect.objectContaining({ optionTextColorActive: '#dce4ed' }),
       }),
     }));
     select.vm.$emit('update:value', ['GBPUSD']);

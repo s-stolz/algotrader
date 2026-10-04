@@ -273,13 +273,22 @@ Vue 3 and Vite application for charting markets, candles, and indicators.
   all checkbox controls, including run selection and labeled form inputs.
   Supply `indeterminate` for Naive UI group checkboxes with mixed selection.
 - `src/components/Common/BasePopover.vue`: shared Naive UI popover with the
-  drawer's dark surface, text, borders, and typography; forwards props, events,
+  chart-blue surface, slate border, text, and typography; forwards props, events,
   and slots and supports local theme overrides. The Columns popover shows its
   full content without internal scrolling, with viewport margins.
 - `src/components/Common/BaseSelect.vue`: shared Naive UI select for Workspace
   history, creation, and execution-log dropdowns. It forwards select props,
-  events, and slots while applying the dark control and menu theme. The Workspace
+  events, and slots while applying rounded chart-blue controls, mint hover/focus
+  borders and trigger text, and slate popup selection with neutral option text
+  and mint checkmarks. Multi-selects retain their tags and clear behavior. The Workspace
   config provider uses the same theme for Naive UI pagination size pickers.
+
+- `src/components/Common/BaseDropdown.vue`: shared Naive UI action menu with the
+  same chart-blue popup surface and one-pixel slate outline. It forwards options,
+  events, trigger slots, and local theme overrides. Symbol row actions retain
+  their circular icon; the selected symbol's left marker uses the mint accent.
+  `selectionTheme.ts` supplies the shared popup palette. Use these wrappers for
+  selects, action menus, and popovers throughout the frontend.
 
 - `src/components/Common/BaseDrawer.vue`: shared Naive UI side panel with the
   app's dark blue background, text, dividers, and typography. Use it for drawers;

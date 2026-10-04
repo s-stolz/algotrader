@@ -7,7 +7,7 @@
         </tr>
         <tr>
           <td v-for="(column, index) in headerLine" :key="index">
-            <n-select
+            <BaseSelect
               :value="columnMapping[index]"
               :options="columnOptions"
               placeholder="Select field"
@@ -22,7 +22,8 @@
 </template>
 
 <script setup lang="ts">
-import { NSelect, type SelectOption } from 'naive-ui';
+import BaseSelect from '@/components/Common/BaseSelect.vue';
+import { type SelectOption } from 'naive-ui';
 
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import type { UploadColumnField, UploadColumnMapping } from '@/types/contracts';

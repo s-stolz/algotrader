@@ -22,7 +22,7 @@
         step="0.0001"
       />
 
-      <n-select
+      <BaseSelect
         class="new-symbol-input"
         v-model:value="marketType"
         placeholder="Market Type"
@@ -38,9 +38,10 @@
 </template>
 
 <script setup lang="ts">
+import BaseSelect from '@/components/Common/BaseSelect.vue';
 import { computed, ref } from 'vue';
 import type { SelectOption } from 'naive-ui';
-import { NButton, NInput, NInputNumber, NSelect } from 'naive-ui';
+import { NButton, NInput, NInputNumber } from 'naive-ui';
 
 import { createMarket } from '@/api/marketClient';
 import BaseModal from '@/components/Common/BaseModal.vue';

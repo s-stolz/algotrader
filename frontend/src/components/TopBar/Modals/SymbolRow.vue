@@ -6,7 +6,7 @@
         <span class="market-type">{{ market.market_type }}</span>
         {{ market.exchange }}
       </span>
-      <n-dropdown
+      <BaseDropdown
         :options="menuOptions"
         trigger="click"
         @select="onMenuSelect"
@@ -21,14 +21,15 @@
             <EllipsisHorizontalCircleOutline />
           </n-icon>
         </n-button>
-      </n-dropdown>
+      </BaseDropdown>
     </td>
   </tr>
 </template>
 
 <script setup lang="ts">
 import { h } from 'vue';
-import { NButton, NDropdown, NIcon, type DropdownOption } from 'naive-ui';
+import BaseDropdown from '@/components/Common/BaseDropdown.vue';
+import { NButton, NIcon, type DropdownOption } from 'naive-ui';
 
 import { CloudUploadOutline, EllipsisHorizontalCircleOutline, TrashOutline } from '@/icons';
 import type { Market } from '@/types/contracts';
@@ -111,6 +112,6 @@ td {
 }
 
 tr[aria-selected="true"] .symbol-cell {
-  box-shadow: inset 2px 0 #9eafc4;
+  box-shadow: inset 2px 0 var(--selection-accent);
 }
 </style>

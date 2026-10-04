@@ -13,7 +13,7 @@
         </td>
 
         <td>
-          <n-select
+          <BaseSelect
             v-if="isStringWithOptions(parameter)"
             v-model:value="parameter.value"
             @update:value="onParameterUpdate"
@@ -41,8 +41,9 @@
 </template>
 
 <script setup lang="ts">
+import BaseSelect from '@/components/Common/BaseSelect.vue';
 import { computed, onBeforeUnmount, ref } from "vue";
-import { NInput, NInputNumber, NSelect } from "naive-ui";
+import { NInput, NInputNumber } from "naive-ui";
 
 import BaseDataTable from "@/components/Common/BaseDataTable.vue";
 import { useIndicatorsStore } from "@/stores/indicatorsStore";

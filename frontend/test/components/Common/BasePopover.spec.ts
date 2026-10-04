@@ -15,7 +15,7 @@ describe('BasePopover', () => {
     expect(popover.props('width')).toBe(500);
     expect(document.body.querySelector('.base-popover')?.textContent).toContain('Show columns');
     expect(popover.props('themeOverrides')).toEqual(expect.objectContaining({
-      color: '#171e27', textColor: '#dce4ed', borderRadius: '8px', padding: '16px',
+      color: '#131722', textColor: '#dce4ed', borderRadius: '6px', padding: '16px',
     }));
     await wrapper.get('button').trigger('click');
     expect(onUpdateShow).toHaveBeenCalledWith(false);
