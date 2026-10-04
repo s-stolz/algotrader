@@ -124,7 +124,7 @@
       <BacktestBatches :batch-id="selectedBatchId" @members="receiveMembers" @cancelled="refreshWorkspace" />
       <div class="table-panel">
       <div v-if="selectedRun && !selectedBatchId" class="run-heading">
-        <h2 class="strategy-name">{{ selectedRun.request.strategy.strategy_id.replaceAll('_', ' ') }}</h2>
+        <h2 class="strategy-name">{{ runName(selectedRun) }}</h2>
         <div class="analysis-context">
           <n-tag size="small" :bordered="false">Standalone run</n-tag>
           <span>{{ strategyVersion(selectedRun) }}</span>
@@ -284,7 +284,7 @@ import { compareRuns, differingSettings,
 import {
   displayWinRate, equityUnavailableReason, formatMagnitude, formatSigned,
   formatUtcDate, runMarket,
-  runName, savedMetric, strategyVersion, timeframeDuration, type HistorySortKey,
+  runName, batchName, savedMetric, strategyVersion, timeframeDuration, type HistorySortKey,
 } from './backtestWorkspaceRuns';
 
 defineOptions({ name: 'BacktestWorkspaceView' });
@@ -483,7 +483,7 @@ const filteredHistory = computed(() => historyRows.value.filter((entry) => {
     (marketFilter.value === 'all' || batchMarkets(batch).includes(marketFilter.value)) &&
     (strategyFilter.value === 'all' || batch.strategy_id === strategyFilter.value) &&
     (timeframeFilter.value === 'all' || batchTimeframes(batch).includes(timeframeFilter.value)) &&
-    (!query || [batch.batch_id, batch.submission_id, batch.status,
+    (!query || [batchName(batch), batch.batch_id, batch.submission_id, batch.status,
       batch.strategy_id, ...batchMarkets(batch), ...batchTimeframes(batch)]
       .some((value) => value.toLowerCase().includes(query)));
 }));
@@ -521,7 +521,7 @@ function analysisRunName(id: string): string {
 }
 
 function comparisonRunLabel(run: BacktestRun): string {
-  return `#${(run.member_ordinal ?? 0) + 1}`;
+  return runName(run);
 }
 
 function loadAnalysis(refresh = false): void {
@@ -778,20 +778,18 @@ function executionLogAction(run: BacktestRun, label: string) {
 function historyRunCell(run: BacktestRun) {
   return h('span', { class: 'run-cell' }, [
     executionLogAction(run, runName(run)),
-    h('span', { class: 'run-identity' }, [cell(runName(run) === run.run_id
-      ? `${run.request.strategy.strategy_id.replaceAll('_', ' ')}${run.member_ordinal == null ? '' : ` #${run.member_ordinal + 1}`}`
-      : run.member_ordinal == null ? runName(run) : `#${run.member_ordinal + 1} · ${runName(run)}`, run.run_id), h('small', run.run_id.slice(0, 8))]),
+    h('span', { class: 'run-identity' }, [cell(runName(run), run.run_id), h('small', run.run_id.slice(0, 8))]),
   ]);
 }
 
 function analysisRunActions(run: BacktestRun) {
   return h('div', { class: 'row-actions' }, [
-    executionLogAction(run, `run ${comparisonRunLabel(run)}`),
+    executionLogAction(run, comparisonRunLabel(run)),
     h(NTooltip, null, {
       trigger: () => h('span', { class: 'run-chart-action' }, [h(NButton, {
         text: true, size: 'small',
         'data-testid': `workspace-chart-${run.run_id}`,
-        'aria-label': `Open run ${comparisonRunLabel(run)} on chart`,
+        'aria-label': `Open ${comparisonRunLabel(run)} on chart`,
         disabled: openingChartRunId.value !== null || overlayStore.isLoading || !!chartUnavailableReason(run),
         loading: openingChartRunId.value === run.run_id,
         onKeydown: (event: KeyboardEvent) => { event.stopPropagation(); },
@@ -806,7 +804,7 @@ function analysisRunActions(run: BacktestRun) {
       trigger: () => h(NButton, {
         text: true, size: 'small',
         'data-testid': `workspace-cancel-${run.run_id}`,
-        'aria-label': `Cancel run ${comparisonRunLabel(run)}`,
+        'aria-label': `Cancel ${comparisonRunLabel(run)}`,
         disabled: cancellingRunIds.value.has(run.run_id),
         loading: cancellingRunIds.value.has(run.run_id),
         onKeydown: (event: KeyboardEvent) => { event.stopPropagation(); },
@@ -837,7 +835,7 @@ function entrySortValue(entry: HistoryEntry, key: HistorySortKey | 'progress'): 
   const shared = batch.accepted_definition.shared_request;
   const durations = batchTimeframes(batch).map(timeframeDuration).filter((value) => value !== null);
   const values: Record<HistorySortKey | 'progress', string | number> = {
-    name: batch.batch_id, type: 'Parameter Sweep',
+    name: batchName(batch), type: 'Parameter Sweep',
     strategy: `${batch.strategy_id} v${batch.strategy_version}`,
     market: batchMarkets(batch).join(', '),
     timeframe: durations.length ? Math.min(...durations) : batchTimeframes(batch).join(', '),
@@ -869,7 +867,9 @@ function historyColumn(title: string, key: HistorySortKey | 'progress',
 
 const historyColumns: DataTableColumns<HistoryEntry> = [
   historyColumn('Name', 'name', (entry) => entry.kind === 'run'
-    ? historyRunCell(entry.run) : cell(entry.batch.batch_id)),
+    ? historyRunCell(entry.run) : h('span', { class: 'run-identity' }, [
+      cell(batchName(entry.batch), entry.batch.batch_id), h('small', entry.batch.batch_id.slice(0, 8)),
+    ])),
   historyColumn('Type', 'type', (entry) => cell(entry.kind === 'run' ? 'Standalone' : 'Parameter Sweep')),
   historyColumn('Strategy / version', 'strategy', (entry) => cell(entry.kind === 'run'
     ? `${entry.run.request.strategy.strategy_id} · ${strategyVersion(entry.run)}`
@@ -1050,13 +1050,13 @@ const comparisonColumns = computed<DataTableColumns<BacktestRun>>(() => [
     checked: selectedComparisonIds.value.includes(run.run_id),
     disabled: run.status !== 'succeeded',
     'data-testid': `comparison-select-${run.run_id}`,
-    'aria-label': `Compare run ${comparisonRunLabel(run)}`,
+    'aria-label': `Compare ${comparisonRunLabel(run)}`,
     onClick: (event: MouseEvent) => event.stopPropagation(),
     onKeydown: (event: KeyboardEvent) => event.stopPropagation(),
     'onUpdate:checked': () => toggleComparison(run),
   }) },
   { title: 'Run', key: 'ordinal', width: 64, fixed: 'left',
-    render: (run) => h('span', { class: 'run-identity' }, cell(comparisonRunLabel(run), run.run_id)),
+    render: (run) => h('span', { class: 'run-identity' }, [cell(comparisonRunLabel(run), run.run_id), h('small', run.run_id.slice(0, 8))]),
     sorter: (a, b) => compareRuns(a, b, 'ordinal'),
     sortOrder: comparisonSortKey.value === 'ordinal' ? comparisonSortOrder.value : false as const },
   ...optionalColumns.value.filter((column) => columnSettings.value.visibleKeys.includes(column.key))

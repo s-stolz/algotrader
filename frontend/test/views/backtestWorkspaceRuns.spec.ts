@@ -45,14 +45,15 @@ function run(id: string, overrides: Partial<BacktestRun> = {}): BacktestRun {
 describe('saved Backtest Run presentation', () => {
   it('uses recorded names and versions only when present', () => {
     const legacy = run('legacy');
-    expect(runName(legacy)).toBe('legacy');
+    expect(runName(legacy)).toBe('Unnamed standalone run');
     expect(strategyVersion(legacy)).toBe('Version unavailable');
     expect(runMarket(legacy)).toBe('FX:EURUSD');
 
     const named = run('named', {
+      name: 'Breakout baseline',
       request: {
         ...legacy.request,
-        run_metadata: { name: 'Breakout baseline' },
+        run_metadata: { name: 'Ignored legacy metadata' },
         strategy: { ...legacy.request.strategy, strategy_version: 4 },
       },
     });
@@ -70,10 +71,10 @@ describe('saved Backtest Run presentation', () => {
     expect(compareHistoryRuns(base, newer, 'start')).toBeLessThan(0);
 
     const sameNameA = run('run-2', {
-      request: { ...base.request, run_metadata: { name: 'Same' } },
+      name: 'Same',
     });
     const sameNameB = run('run-10', {
-      request: { ...base.request, run_metadata: { name: 'Same' } },
+      name: 'Same',
     });
     expect(compareHistoryRuns(sameNameA, sameNameB, 'status')).toBeLessThan(0);
     expect(compareHistoryRuns(sameNameB, sameNameA, 'status')).toBeGreaterThan(0);

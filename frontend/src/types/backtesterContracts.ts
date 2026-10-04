@@ -232,6 +232,7 @@ function isSweepMarket(value: unknown): value is SweepPreviewCandidate['market']
 
 export interface BacktestRun {
   run_id: string;
+  name?: string | null;
   batch_id?: string;
   member_ordinal?: number;
   status: BacktestRunStatus;
@@ -370,6 +371,7 @@ export type BacktestBatchStatus = typeof BACKTEST_BATCH_STATUSES[number];
 
 export interface BacktestBatch {
   batch_id: string;
+  name?: string | null;
   submission_id: string;
   status: BacktestBatchStatus;
   accepted_at_ms: number;
@@ -425,7 +427,7 @@ function isBatchOutcomeCounts(value: unknown): value is BacktestBatch['outcome_c
 export function isBacktestBatch(value: unknown): value is BacktestBatch {
   if (!isRecord(value) || !isRecord(value.accepted_definition)) return false;
   const definition = value.accepted_definition;
-  return isNonEmptyString(value.batch_id) && isNonEmptyString(value.submission_id) &&
+  return isNonEmptyString(value.batch_id) && isExperimentName(value.name) && isNonEmptyString(value.submission_id) &&
     typeof value.status === 'string' && BACKTEST_BATCH_STATUSES.includes(value.status as BacktestBatchStatus) &&
     Number.isInteger(value.accepted_at_ms) && (value.accepted_at_ms as number) > 0 &&
     (value.started_at_ms === null || isEpochMs(value.started_at_ms)) &&
@@ -684,6 +686,7 @@ export function isBacktestRun(value: unknown): value is BacktestRun {
 
   return (
     isNonEmptyString(value.run_id) &&
+    isExperimentName(value.name) &&
     (!('batch_id' in value) || value.batch_id === null || isNonEmptyString(value.batch_id)) &&
     (!('member_ordinal' in value) || value.member_ordinal === null ||
       (Number.isInteger(value.member_ordinal) && (value.member_ordinal as number) >= 0)) &&
@@ -771,3 +774,22 @@ export function isBacktestFillArray(value: unknown): value is BacktestFill[] {
   return Array.isArray(value) && value.every(isBacktestFill) &&
     value.every((fill, index) => index === 0 || fill.sequence > value[index - 1].sequence);
 }
+
+export function normalizeExperimentName(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const name = value.replace(/^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/gu, '');
+  if (!name) return null;
+  if (/[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/u.test(value)) {
+    throw new Error('Experiment name must be single-line.');
+  }
+  if ([...name].length > 120) throw new Error('Experiment name must have at most 120 characters.');
+  return name || null;
+}
+
+function isExperimentName(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value !== 'string') return false;
+  try { return normalizeExperimentName(value) === value; } catch { return false; }
+}
+
+export type BacktestCreationRequest = BacktestRequestPayload & { name?: string | null };

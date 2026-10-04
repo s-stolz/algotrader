@@ -230,6 +230,7 @@ describe('production Backtest Workspace', () => {
   });
 
   it('paginates all fetched members with global sorting, page sizes, and an All option', async () => {
+    vi.useFakeTimers();
     const members = Array.from({ length: 105 }, (_, ordinal) =>
       run(`paged-${ordinal}`, { batch_id: 'paged', member_ordinal: ordinal }));
     const accepted = batch('paged', members.length);
@@ -243,8 +244,8 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     const table = () => wrapper.get('[data-testid="workspace-current-backtest"]');
     const pagination = () => wrapper.findAllComponents(NPagination).at(-1)!;
-    const identities = () => table().findAll('.run-identity').map((cell) => cell.text());
-    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `#${index + 1}`));
+    const identities = () => table().findAll('.run-identity').map((cell) => cell.find('span').text());
+    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `Run #${index + 1}`));
     expect(pagination().props('pageSize')).toBe(20);
     expect(pagination().props('pageSizes')).toEqual([
       { label: '20 rows', value: 20 },
@@ -255,11 +256,11 @@ describe('production Backtest Workspace', () => {
     const memberReads = vi.mocked(listBacktestBatchMembers).mock.calls.length;
     pagination().vm.$emit('update:page', 3);
     await flushPromises();
-    expect(identities()[0]).toBe('#41');
+    expect(identities()[0]).toBe('Run #41');
     wrapper.findAllComponents(NDataTable).at(-1)!.vm.sort('ordinal', 'descend');
     await flushPromises();
     expect(pagination().props('page')).toBe(1);
-    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `#${105 - index}`));
+    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `Run #${105 - index}`));
     for (const size of [50, 100, Number.MAX_SAFE_INTEGER, 20]) {
       pagination().vm.$emit('update:pageSize', size);
       await flushPromises();
@@ -275,7 +276,7 @@ describe('production Backtest Workspace', () => {
     wrapper.findComponent({ name: 'BacktestBatches' }).vm.$emit('members', 'paged', members.slice(0, 25));
     await flushPromises();
     expect(pagination().props('page')).toBe(2);
-    expect(identities()).toEqual(['#5', '#4', '#3', '#2', '#1']);
+    expect(identities()).toEqual(['Run #5', 'Run #4', 'Run #3', 'Run #2', 'Run #1']);
     wrapper.unmount();
   });
 
@@ -327,7 +328,7 @@ describe('production Backtest Workspace', () => {
 
   it('shows real saved history, selects one run, and retains signed metric semantics', async () => {
     const success = run('success', {
-      request: { ...run('x').request, run_metadata: { name: 'Baseline' } },
+      name: 'Baseline',
     });
     const failed = run('failed', { status: 'failed', metrics: null, error_message: 'No candles' });
     vi.mocked(listBacktestRuns).mockResolvedValue([success, failed]);
@@ -528,7 +529,7 @@ describe('production Backtest Workspace', () => {
   });
 
   it('opens the accessible execution drawer without changing selection and filters trades while showing all fills', async () => {
-    const first = run('first', { request: { ...run('x').request, run_metadata: { name: 'First run' } } });
+    const first = run('first', { name: 'First run' });
     const second = run('second');
     vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
     vi.mocked(getBacktestRun).mockResolvedValue(first);
@@ -542,7 +543,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
 
     const icon = wrapper.find('[data-testid="workspace-current-backtest"] [data-testid="workspace-log-first"]');
-    expect(icon.attributes('aria-label')).toBe('View execution log for run #1');
+    expect(icon.attributes('aria-label')).toBe('View execution log for First run');
     expect(icon.attributes('title')).toBeUndefined();
     await icon.trigger('click');
     await flushPromises();
@@ -573,7 +574,7 @@ describe('production Backtest Workspace', () => {
     document.body.querySelector<HTMLButtonElement>('.n-drawer-header__close')!.click();
     await wrapper.vm.$nextTick();
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
-    expect(wrapper.find('[data-testid="workspace-current-backtest"] .run-identity').text()).toBe('#1');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"] .run-identity span').text()).toBe('First run');
     wrapper.unmount();
   });
 
@@ -643,7 +644,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     resolveFirst([trade(0, 'long', 'signal')]);
     await flushPromises();
-    expect(document.body.textContent).toContain('Execution log · second');
+    expect(document.body.textContent).toContain('Execution log · Unnamed standalone run');
     expect(document.body.textContent).toContain('short');
     expect(document.body.textContent).not.toContain('long');
 
@@ -684,9 +685,52 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
+  it('displays saved names and unnamed fallbacks with UUIDs and searches and sorts the visible names', async () => {
+    const named = run('alpha-run-full-uuid', { name: 'Alpha research' });
+    const unnamed = run('void-run-full-uuid', { request: {
+      ...run('x').request, run_metadata: { name: 'Ignored legacy name', label: 'Ignored legacy label' },
+    } });
+    const namedSweep = { ...batch('beta-batch-full-uuid', 1), name: 'Beta research' };
+    const unnamedSweep = batch('empty-batch-full-uuid', 1);
+    vi.mocked(listBacktestRuns).mockResolvedValue([named, unnamed]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([namedSweep, unnamedSweep]);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => id === named.run_id ? named : unnamed);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    const history = () => wrapper.get('[data-testid="workspace-history"]');
+    for (const [kind, id, label] of [['run', named.run_id, 'Alpha research'],
+      ['run', unnamed.run_id, 'Unnamed standalone run'],
+      ['batch', namedSweep.batch_id, 'Beta research'],
+      ['batch', unnamedSweep.batch_id, 'Unnamed parameter sweep']] as const) {
+      await wrapper.get('[data-testid="workspace-search"] input').setValue('');
+      const identity = history().get(`[data-testid="workspace-${kind}-${id}"] .run-identity`);
+      expect(identity.get('span').text()).toBe(label);
+      expect(identity.get('small').text()).toBe(id.slice(0, 8));
+      expect(identity.get('span').attributes('title')).toBe(id);
+      await wrapper.get('[data-testid="workspace-search"] input').setValue(`  ${label.toUpperCase()}  `);
+      expect(history().findAll('tbody tr')).toHaveLength(1);
+      expect(history().find(`[data-testid="workspace-${kind}-${id}"]`).exists()).toBe(true);
+    }
+    await wrapper.get('[data-testid="workspace-search"] input').setValue('Ignored legacy name');
+    expect(history().find('[data-testid="workspace-run-void-run-full-uuid"]').exists()).toBe(false);
+    for (const query of [named.run_id, namedSweep.batch_id, namedSweep.submission_id]) {
+      await wrapper.get('[data-testid="workspace-search"] input').setValue(query);
+      expect(history().findAll('tbody tr')).toHaveLength(1);
+    }
+    await wrapper.get('[data-testid="workspace-search"] input').setValue('');
+    wrapper.findAllComponents(NDataTable)[0].vm.sort('name', 'ascend');
+    await flushPromises();
+    expect(history().findAll('.run-identity span').map((identity) => identity.text()))
+      .toEqual(['Alpha research', 'Beta research', 'Unnamed parameter sweep', 'Unnamed standalone run']);
+    await history().get(`[data-testid="workspace-run-${named.run_id}"]`).trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.strategy-name').text()).toBe('Alpha research');
+    wrapper.unmount();
+  });
+
   it('filters by search, status, Market, Strategy, and Timeframe', async () => {
     const euro = run('euro', {
-      request: { ...run('x').request, run_metadata: { name: 'Euro setup' } },
+      name: 'Euro setup',
     });
     const pound = run('pound', {
       status: 'failed',
@@ -767,7 +811,7 @@ describe('production Backtest Workspace', () => {
     expect(history().find('[data-testid="workspace-batch-batch-1"]').text()).toContain('1 failed');
     await history().find('[data-testid="workspace-batch-batch-1"]').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[data-testid="workspace-member-member-0"] .run-identity').text()).toBe('#1');
+    expect(wrapper.find('[data-testid="workspace-member-member-0"] .run-identity span').text()).toBe('Run #1');
     expect(listBacktestBatchMembers).toHaveBeenCalledWith('batch-1');
 
     await wrapper.find('[data-testid="workspace-search"] input').setValue('submit-1');
@@ -845,7 +889,7 @@ describe('production Backtest Workspace', () => {
     expect(table().findAll('th').at(-1)!.text()).toBe('Actions');
     expect(table().findAll('th').some((header) => header.text() === 'Cancel')).toBe(false);
     expect(table().find('[data-testid^="workspace-cancel-"]').exists()).toBe(false);
-    expect(table().get('[data-testid="workspace-member-member-0"] td:nth-child(2)').text()).toBe('#1');
+    expect(table().get('[data-testid="workspace-member-member-0"] td:nth-child(2) .run-identity span').text()).toBe('Run #1');
     expect(table().get('[data-testid="workspace-member-member-0"] td').find('button').exists()).toBe(false);
     const dataTable = wrapper.findAllComponents(NDataTable).at(-1)!;
     expect(dataTable.props('maxHeight')).toBe(360);
@@ -1023,7 +1067,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     vi.advanceTimersByTime(5000);
     await flushPromises();
-    expect(document.body.textContent).toContain('Execution log · member');
+    expect(document.body.textContent).toContain('Execution log · Run #1');
     wrapper.unmount();
   });
 
@@ -1447,19 +1491,19 @@ describe('production Backtest Workspace', () => {
     await wrapper.get('[data-testid="workspace-batch-direct"]').trigger('click');
     await flushPromises();
     const table = wrapper.get('[data-testid="workspace-current-backtest"]');
-    const identities = () => table.findAll('.run-identity').map((cell) => cell.text());
-    expect(identities()).toEqual(['#1', '#2', '#10']);
+    const identities = () => table.findAll('.run-identity').map((cell) => cell.find('span').text());
+    expect(identities()).toEqual(['Run #1', 'Run #2', 'Run #10']);
     const dataTable = wrapper.findAllComponents(NDataTable).at(-1)!;
     dataTable.vm.sort('ordinal', 'descend');
     await flushPromises();
-    expect(identities()).toEqual(['#10', '#2', '#1']);
+    expect(identities()).toEqual(['Run #10', 'Run #2', 'Run #1']);
     dataTable.vm.sort('ordinal', 'ascend');
     await flushPromises();
-    expect(identities()).toEqual(['#1', '#2', '#10']);
+    expect(identities()).toEqual(['Run #1', 'Run #2', 'Run #10']);
     await wrapper.get('[data-testid="workspace-member-z-first"]').trigger('click');
     await flushPromises();
     const chart = wrapper.get('[data-testid="workspace-chart-a-tenth"]');
-    expect(chart.attributes('aria-label')).toBe('Open run #10 on chart');
+    expect(chart.attributes('aria-label')).toBe('Open Run #10 on chart');
     await chart.trigger('keydown', { key: 'Enter' });
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('z-first');
     await chart.trigger('click');

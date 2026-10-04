@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, ContextManager, Mapping, Protocol
 from uuid import uuid4
 
+from domain.experiment_names import normalize_experiment_name
 from domain.types import BacktestRequestSnapshot
 from strategies.registry import StrategyVersionUnavailableError, strategy_catalog
 
@@ -65,7 +66,10 @@ class BacktestBatchService:
         self._new_id = new_id or (lambda: str(uuid4()))
         self._now = now or (lambda: datetime.now(timezone.utc))
 
-    def accept(self, submission_id: str, definition: SweepDefinition) -> dict[str, Any]:
+    def accept(
+        self, submission_id: str, definition: SweepDefinition, *, name: str | None = None
+    ) -> dict[str, Any]:
+        name = normalize_experiment_name(name)
         if not submission_id or len(submission_id) > 36:
             raise ValueError("submission_id must be a nonempty client-generated identity")
         # Expansion reads the current Market catalog, strategy version, constraints,
@@ -105,6 +109,7 @@ class BacktestBatchService:
         payload = {
             "batch_id": self._new_id(),
             "submission_id": submission_id,
+            "name": name,
             "accepted_at": self._now().isoformat(),
             "definition_schema_version": 1,
             "accepted_definition": accepted_definition,

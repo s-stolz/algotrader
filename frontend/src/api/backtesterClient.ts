@@ -3,6 +3,7 @@ import {
   type BacktestClosedTrade,
   type BacktestFill,
   type BacktestRun,
+  type BacktestCreationRequest,
   type BacktestQueueSnapshot,
   type BacktestBatch,
   type BacktestBatchStatus,
@@ -19,7 +20,6 @@ import {
   isBacktestBatchEventArray,
   isEquityReplayResponse,
   isStrategyCatalog,
-  type BacktestRequestPayload,
   type StrategyCatalogEntry,
   type SweepPreview,
   type SweepPreviewRequest,
@@ -69,10 +69,10 @@ export async function fetchSweepCapabilities(): Promise<{
   return payload as { max_sweep_candidate_count: number; batch_acceptance_enabled: boolean };
 }
 
-export async function submitBacktestBatch(request: SweepPreviewRequest, submissionId: string): Promise<string> {
+export async function submitBacktestBatch(request: SweepPreviewRequest, submissionId: string, name: string | null = null): Promise<string> {
   const response = await fetch(`${BACKTESTS_BASE_URL}/batches`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...request, submission_id: submissionId }),
+    body: JSON.stringify({ ...request, submission_id: submissionId, name }),
   });
   const payload: unknown = await response.json();
   if (!response.ok) {
@@ -181,7 +181,7 @@ export async function previewParameterSweep(request: SweepPreviewRequest): Promi
   return payload;
 }
 
-export async function submitBacktestRun(request: BacktestRequestPayload): Promise<string> {
+export async function submitBacktestRun(request: BacktestCreationRequest): Promise<string> {
   const response = await fetch(BACKTESTS_BASE_URL, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
   });

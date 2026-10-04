@@ -36,6 +36,12 @@ and behavior that is easy to break when changing them.
   `src/stores/backtestWorkspaceStore.ts`; creation lives in
   `src/views/BacktestCreationDrawer.vue`. `src/App.vue` keeps routed views alive:
   navigation preserves drafts, history filters, and comparison selections.
+- Creation retains an optional experiment name alongside draft fields. Names
+  are top-level creation properties; omit them from stateless sweep preview.
+  History/detail names and member labels share `backtestWorkspaceRuns.ts`; use
+  that displayed name for search and sorting, with UUIDs beneath history labels.
+  Validation and exact unnamed text follow
+  [experiment names](../docs/contracts/backtests.md#experiment-names), with no metadata fallback.
 - Read history, commands, logs, and Equity Replay through
   `src/api/backtesterClient.ts`. For lifecycle or API changes, read
   [backtest contracts](../docs/contracts/backtests.md); the public backtester API owns

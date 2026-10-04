@@ -106,7 +106,7 @@ def _request_payload(**overrides):
         },
         "persist_result": False,
         "run_metadata": {
-            "label": "queued-smoke",
+            "source": "queued-smoke",
             "tags": ["durable", "api"],
         },
     }
@@ -160,6 +160,58 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     @property
     def db(self) -> AsyncSession:
         return cast(AsyncSession, self.session)
+
+    async def test_experiment_names_normalize_and_read_back_outside_requests(self):
+        names = [
+            (None, None),
+            ("", None),
+            (" \t ", None),
+            ("  Same  ", "Same"),
+            ("Same", "Same"),
+            ("😀" * 120, "😀" * 120),
+        ]
+        for index, (name, expected) in enumerate(names):
+            run_id = f"named-run-{index}"
+            payload = BacktestRunCreateIn(**_run_payload(run_id=run_id, name=name))
+            await main.create_backtest_run(payload, db=self.db)
+            detail = await main.get_backtest_run(run_id, db=self.db)
+            assert detail is not None
+            self.assertEqual(detail["name"], expected)
+            self.assertEqual(detail["request"], _request_payload())
+            batch = BacktestBatchCreateIn(
+                **self._batch_payload(
+                    batch_id=f"named-batch-{index}",
+                    submission_id=f"named-submit-{index}",
+                    name=name,
+                    members=[{**self._batch_payload()["members"][0], "run_id": f"member-{index}"}],
+                )
+            )
+            saved = await main.create_backtest_batch(batch, db=self.db)
+            assert saved is not None
+            self.assertEqual(saved["name"], expected)
+            members = await main.list_backtest_batch_members(saved["batch_id"], db=self.db)
+            self.assertIsNone(members[0]["name"])
+            self.assertNotIn("name", members[0]["request"])
+        history = await main.list_backtest_runs(db=self.db)
+        self.assertEqual(len(history), 12)
+        for name in ["x" * 121, "a\nb", "\ntrimmed", "a\u2028b", 123]:
+            for payload_type, payload in [
+                (BacktestRunCreateIn, _run_payload()),
+                (BacktestBatchCreateIn, self._batch_payload()),
+            ]:
+                with self.assertRaises(ValidationError):
+                    payload_type(**{**payload, "name": name})
+        for key in ("name", "label"):
+            with self.assertRaises(ValidationError):
+                BacktestRunCreateIn(
+                    **_run_payload(request=_request_payload(run_metadata={key: "old"}))
+                )
+            with self.assertRaises(ValidationError):
+                BacktestBatchCreateIn(
+                    **self._batch_payload(
+                        accepted_definition={"shared_request": {"run_metadata": {key: "old"}}}
+                    )
+                )
 
     async def test_serialized_legacy_run_keeps_strategy_version_absent(self):
         await main.create_backtest_run(BacktestRunCreateIn(**_run_payload()), db=self.db)
@@ -1961,6 +2013,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             set(backtest_runs.c.keys()),
             {
                 "run_id",
+                "name",
                 "status",
                 "submitted_at",
                 "started_at",

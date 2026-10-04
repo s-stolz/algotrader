@@ -102,6 +102,49 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
         assert result is not None
         return result
 
+    async def test_named_and_unnamed_experiments_persist_with_unchanged_queue_and_members(
+        self,
+    ) -> None:
+        from app.schemas import BacktestBatchCreateIn, BacktestRunCreateIn
+        from test_backtests_api import _request_payload, _run_payload
+
+        async with self.sessions() as session:
+            await session.execute(text("INSERT INTO backtest_execution_slot (slot_id) VALUES (1)"))
+            await session.commit()
+        for index, name in enumerate([None, " ", "  Duplicate  ", "Duplicate", "😀" * 120]):
+            run = BacktestRunCreateIn(**_run_payload(run_id=f"standalone-{index}", name=name))
+            payload = run.model_dump()
+            payload["request"]["strategy"].pop("strategy_version", None)
+            batch = self._payload(f"batch-{index}", f"member-{index}")
+            batch["submission_id"] = f"submission-{index}"
+            batch["name"] = name
+            batch["members"][0]["request"] = _request_payload()
+            batch["members"][0]["request"]["strategy"]["strategy_version"] = 1
+            accepted = BacktestBatchCreateIn(**batch).model_dump()
+            async with self.sessions() as session:
+                await crud.insert_backtest_run(session, payload)
+                await crud.create_backtest_batch(session, accepted)
+            # A fresh transaction establishes durable readback, independently of create results.
+            async with self.sessions() as session:
+                stored_run = await crud.get_backtest_run(session, f"standalone-{index}")
+                stored_batch = await crud.get_backtest_batch(session, f"batch-{index}")
+                members = await crud.list_backtest_batch_members(session, f"batch-{index}")
+                self.assertIsNotNone(stored_run)
+                self.assertIsNotNone(stored_batch)
+                assert stored_run is not None and stored_batch is not None
+                self.assertEqual(stored_run["name"], run.name)
+                self.assertEqual(stored_batch["name"], run.name)
+                self.assertEqual(stored_run["request"], payload["request"])
+                self.assertEqual(
+                    stored_batch["accepted_definition"], accepted["accepted_definition"]
+                )
+                self.assertIsNone(members[0]["name"])
+                self.assertEqual(members[0]["member_ordinal"], 0)
+                state = await backtest_execution.read_queue_state(session)
+                self.assertEqual(len(state["queued_entries"]), (index + 1) * 2)
+                self.assertEqual(stored_run["status"], "queued")
+                self.assertEqual(stored_batch["lifecycle_revision"], 0)
+
     async def test_simultaneous_same_id_transactions_return_one_complete_batch(self) -> None:
         barrier = asyncio.Barrier(2)
 

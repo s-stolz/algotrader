@@ -17,6 +17,7 @@ from db_accessor_client import (
 def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
     return {
         "run_id": run_id,
+        "name": "Queued smoke",
         "status": "queued",
         "submitted_at": "2026-06-08T12:30:00Z",
         "started_at": None,
@@ -54,7 +55,7 @@ def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
                 "slippage_bps": 0.75,
             },
             "persist_result": False,
-            "run_metadata": {"label": "queued-smoke"},
+            "run_metadata": {"source": "queued-smoke"},
         },
         "result_schema_version": None,
         "metrics": None,
@@ -188,6 +189,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             client.close()
 
         self.assertEqual(run["run_id"], "run-123")
+        self.assertEqual(run["name"], "Queued smoke")
         self.assertEqual(run["request"]["exchange"], "FX")
         self.assertEqual(
             run["request"]["strategy"]["parameters"]["fast_window"],
@@ -258,8 +260,13 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         self.assertEqual(runs, [response_payload])
 
     def test_batch_acceptance_and_inspection_routes(self) -> None:
-        payload = {"batch_id": "batch-1", "submission_id": "submit-1", "members": []}
-        batch = {"batch_id": "batch-1", "status": "queued"}
+        payload = {
+            "batch_id": "batch-1",
+            "submission_id": "submit-1",
+            "name": "Batch name",
+            "members": [],
+        }
+        batch = {"batch_id": "batch-1", "name": "Batch name", "status": "queued"}
         paths: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:

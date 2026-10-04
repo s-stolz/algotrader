@@ -29,10 +29,10 @@ from strategies.registry import (
 )
 
 from adapters.api.schemas import (
+    BacktestCreationRequestSchema,
     BacktestFillResponseSchema,
     BacktestQueueSnapshotSchema,
     BacktestRunResponseSchema,
-    BacktestSubmissionRequestSchema,
     BacktestSubmissionResponseSchema,
     BacktestTradeResponseSchema,
     BatchAcceptanceRequestSchema,
@@ -115,7 +115,7 @@ def accept_batch(
     service: BacktestBatchService = Depends(get_backtest_batch_service),
 ) -> dict[str, object]:
     try:
-        batch = service.accept(request.submission_id, request.to_definition())
+        batch = service.accept(request.submission_id, request.to_definition(), name=request.name)
     except StrategyVersionUnavailableError as exc:
         raise HTTPException(
             status_code=409,
@@ -297,12 +297,12 @@ def preview_sweep(
     status_code=status.HTTP_202_ACCEPTED,
 )
 def submit_backtest(
-    request: BacktestSubmissionRequestSchema,
+    request: BacktestCreationRequestSchema,
     response: Response,
     service: BacktestRunService = Depends(get_backtest_run_service),
 ) -> BacktestSubmissionResponseSchema:
     try:
-        run = service.submit(request.to_domain())
+        run = service.submit(request.to_domain(), name=request.name)
     except StrategyVersionUnavailableError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

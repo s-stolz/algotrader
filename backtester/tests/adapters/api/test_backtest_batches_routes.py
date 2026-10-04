@@ -130,6 +130,49 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.client.close()
 
+    def test_named_and_unnamed_acceptance_keep_preview_and_members_name_free(self) -> None:
+        for index, (name, expected) in enumerate(
+            [
+                (None, None),
+                (" \t ", None),
+                ("  Same experiment  ", "Same experiment"),
+                ("Same experiment", "Same experiment"),
+                ("😀" * 120, "😀" * 120),
+            ]
+        ):
+            payload = {**_definition(), "submission_id": f"name-{index}", "name": name}
+            response = self.client.post("/backtests/batches", json=payload)
+            self.assertEqual(response.status_code, 202, response.text)
+            batch_id = response.json()["batch_id"]
+            detail = self.client.get(f"/backtests/batches/{batch_id}").json()
+            self.assertEqual(detail["name"], expected)
+            self.assertNotIn("name", detail["accepted_definition"])
+            self.assertNotIn("name", detail["accepted_definition"]["shared_request"])
+            members = self.client.get(f"/backtests/batches/{batch_id}/members").json()
+            self.assertTrue(
+                all(
+                    member["name"] is None and "name" not in member["request"] for member in members
+                )
+            )
+            self.assertEqual(
+                self.client.post("/backtests/batches", json=payload).json(), response.json()
+            )
+        self.assertEqual(
+            [row["name"] for row in self.client.get("/backtests/batches").json()],
+            [None, None, "Same experiment", "Same experiment", "😀" * 120],
+        )
+        for name in ["x" * 121, "a\nb", "a\rb", "\ntrimmed", "a\u2029b", 123]:
+            response = self.client.post(
+                "/backtests/batches",
+                json={**_definition(), "submission_id": "invalid", "name": name},
+            )
+            self.assertEqual(response.status_code, 422)
+        response = self.client.post(
+            "/backtests/sweeps/preview", json={**_definition(), "name": "Preview"}
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(len(self.client_store.batches), 5)
+
     def test_public_launch_is_released_by_default(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             response = self.client.post(

@@ -8,7 +8,7 @@
       <header class="sweep-header">
         <div>
           <div class="eyebrow">PARAMETER SWEEP</div>
-          <h3>{{ selectedBatch.strategy_metadata.display_name }}</h3>
+          <h3>{{ batchName(selectedBatch) }}</h3>
           <p class="context">Version {{ selectedBatch.strategy_metadata.strategy_version }}
             <span aria-hidden="true">·</span> {{ selectedBatch.markets.join(', ') }}
             <span aria-hidden="true">·</span> {{ selectedBatch.timeframes.join(', ') }}</p>
@@ -143,6 +143,7 @@
 </template>
 
 <script setup lang="ts">
+import { batchName } from '@/views/backtestWorkspaceRuns';
 import { NButton, NIcon } from 'naive-ui';
 import { CheckmarkCircleOutline, HourglassOutline, PauseOutline, PlayOutline, StopCircleOutline } from '@vicons/ionicons5';
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';

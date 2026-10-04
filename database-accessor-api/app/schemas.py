@@ -99,6 +99,13 @@ class BacktestRequestPayload(BacktestContractModel):
     persist_result: bool
     run_metadata: dict[str, Any] | None
 
+    @field_validator("run_metadata")
+    @classmethod
+    def reject_metadata_names(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and ("name" in value or "label" in value):
+            raise ValueError("Use the top-level experiment name instead of metadata name/label")
+        return value
+
 
 class BacktestFillIn(BacktestContractModel):
     fill_sequence: int
@@ -151,7 +158,25 @@ class EquityReplayDescriptor(BacktestContractModel):
         return self
 
 
-class BacktestRunBase(BacktestContractModel):
+class ExperimentNameModel(BacktestContractModel):
+    name: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value.strip():
+            return None
+        if any(character in value for character in "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"):
+            raise ValueError("Experiment name must be single-line")
+        name = value.strip()
+        if len(name) > 120:
+            raise ValueError("Experiment name must have at most 120 characters")
+        return name or None
+
+
+class BacktestRunBase(ExperimentNameModel):
     run_id: str
     batch_id: str | None = None
     member_ordinal: int | None = None
@@ -184,6 +209,12 @@ class BacktestRunBase(BacktestContractModel):
         if value is not None and value not in (1, 2, 3):
             raise ValueError("result_schema_version must be 1, 2, or 3 when present")
         return value
+
+    @model_validator(mode="after")
+    def prohibit_member_name(self) -> "BacktestRunBase":
+        if self.batch_id is not None and self.name is not None:
+            raise ValueError("Batch members have no experiment name")
+        return self
 
     @model_validator(mode="after")
     def validate_success_result_schema_version(self) -> "BacktestRunBase":
@@ -388,7 +419,7 @@ class BacktestBatchMemberIn(BacktestContractModel):
     request: BacktestRequestPayload
 
 
-class BacktestBatchCreateIn(BacktestContractModel):
+class BacktestBatchCreateIn(ExperimentNameModel):
     batch_id: str
     submission_id: str
     accepted_at: datetime
@@ -402,6 +433,10 @@ class BacktestBatchCreateIn(BacktestContractModel):
 
     @model_validator(mode="after")
     def validate_members(self) -> "BacktestBatchCreateIn":
+        shared = self.accepted_definition.get("shared_request", {})
+        metadata = shared.get("run_metadata") if isinstance(shared, dict) else None
+        if isinstance(metadata, dict) and ("name" in metadata or "label" in metadata):
+            raise ValueError("Use the top-level experiment name instead of metadata name/label")
         if (
             self.member_count != len(self.members)
             or self.raw_count != self.member_count + self.excluded_count
@@ -427,7 +462,7 @@ class BacktestBatchCreateIn(BacktestContractModel):
         return self
 
 
-class BacktestBatchOut(BacktestContractModel):
+class BacktestBatchOut(ExperimentNameModel):
     batch_id: str
     submission_id: str
     status: Literal[

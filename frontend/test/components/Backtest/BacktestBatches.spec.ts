@@ -69,9 +69,20 @@ describe('accepted batch inspection', () => {
   it('emits actual members to the workspace comparison table', async () => {
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
+    expect(wrapper.get('h3').text()).toBe('Unnamed parameter sweep');
     expect(wrapper.emitted('members')?.[0]).toEqual(['batch-1', [member(0), member(1)]]);
     expect(wrapper.find('[data-testid="workspace-batch-members"]').exists()).toBe(false);
     wrapper.unmount();
+  });
+
+  it('shows the saved experiment name again after reloading detail', async () => {
+    vi.mocked(getBacktestBatch).mockResolvedValue({ ...batch, name: 'Sweep research' });
+    for (let reload = 0; reload < 2; reload += 1) {
+      const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+      await flushPromises();
+      expect(wrapper.get('h3').text()).toBe('Sweep research');
+      wrapper.unmount();
+    }
   });
 
   it('does not discard a batch read that takes longer than a poll interval', async () => {

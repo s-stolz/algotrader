@@ -64,6 +64,40 @@ describe('standalone creation drawer', () => {
     document.body.innerHTML = '';
   });
 
+  it('starts with an empty optional name, preserves drafts, and normalizes named and unnamed submissions', async () => {
+    vi.mocked(submitBacktestRun).mockResolvedValue('run-name');
+    let wrapper = openDrawer();
+    await flushPromises();
+    const input = () => wrapper.findAllComponents(NInput).find((component) =>
+      component.attributes('data-testid') === 'creation-name')!;
+    expect(input().props('value')).toBe('');
+    expect(input().props('placeholder')).toBe('Enter an experiment name');
+    input().vm.$emit('update:value', '  Research baseline  ');
+    await flushPromises();
+    wrapper.unmount();
+    wrapper = openDrawer();
+    await flushPromises();
+    expect(input().props('value')).toBe('  Research baseline  ');
+    (document.querySelector('[data-testid="creation-submit"]') as HTMLElement).click();
+    await flushPromises();
+    expect(submitBacktestRun).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'Research baseline' }));
+    expect(vi.mocked(submitBacktestRun).mock.calls[0][0].run_metadata).toBeNull();
+    input().vm.$emit('update:value', '   ');
+    await flushPromises();
+    (document.querySelector('[data-testid="creation-submit"]') as HTMLElement).click();
+    await flushPromises();
+    expect(submitBacktestRun).toHaveBeenLastCalledWith(expect.objectContaining({ name: null }));
+    for (const name of ['a'.repeat(121), 'two\nlines', '\ntrimmed']) {
+      input().vm.$emit('update:value', name);
+      await flushPromises();
+      (document.querySelector('[data-testid="creation-submit"]') as HTMLElement).click();
+      await flushPromises();
+      expect(submitBacktestRun).toHaveBeenCalledTimes(2);
+      expect(document.body.textContent).toContain('Experiment name must');
+    }
+    wrapper.unmount();
+  });
+
   it('uses Naive calendars and converts selected dates to UTC midnight', async () => {
     const wrapper = openDrawer();
     await flushPromises();
@@ -394,9 +428,40 @@ describe('Parameter Sweep creation review', () => {
     (document.querySelector('[data-testid="sweep-submit"]') as HTMLElement).click();
     await flushPromises();
     expect(submitBacktestBatch).toHaveBeenCalledWith(expect.anything(),
-      expect.not.stringContaining('old-submission'));
+      expect.not.stringContaining('old-submission'), null);
     expect(wrapper.emitted('submitted-batch')?.[0]).toEqual(['fresh-batch']);
     expect(batch).toEqual(original);
+    wrapper.unmount();
+  });
+
+  it('accepts named and unnamed sweeps without passing names to stateless preview', async () => {
+    vi.mocked(fetchSweepCapabilities).mockResolvedValue({
+      max_sweep_candidate_count: 1000, batch_acceptance_enabled: true,
+    });
+    vi.mocked(previewParameterSweep).mockImplementation(async (request) => previewFor(request, 2));
+    vi.mocked(submitBacktestBatch).mockResolvedValue('named-batch');
+    const wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
+    });
+    await flushPromises();
+    await advancePreview();
+    const input = wrapper.findAllComponents(NInput).find((component) =>
+      component.attributes('data-testid') === 'creation-name')!;
+    for (const [name, expected] of [['  Sweep baseline  ', 'Sweep baseline'], ['  ', null]] as const) {
+      input.vm.$emit('update:value', name);
+      await advancePreview();
+      expect(vi.mocked(previewParameterSweep).mock.calls.at(-1)?.[0]).not.toHaveProperty('name');
+      (document.querySelector('[data-testid="sweep-submit"]') as HTMLElement).click();
+      await flushPromises();
+      expect(submitBacktestBatch).toHaveBeenLastCalledWith(expect.not.objectContaining({ name: expect.anything() }),
+        expect.any(String), expected);
+    }
+    input.vm.$emit('update:value', 'a'.repeat(121));
+    await advancePreview();
+    (document.querySelector('[data-testid="sweep-submit"]') as HTMLElement).click();
+    await flushPromises();
+    expect(submitBacktestBatch).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain('Experiment name must have at most 120 characters');
     wrapper.unmount();
   });
 

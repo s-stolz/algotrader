@@ -489,6 +489,7 @@ def build_successful_completion_payload(
 def _run_record_payload(run: BacktestRunRecord) -> dict[str, Any]:
     return {
         "run_id": run.run_id,
+        "name": run.name,
         "status": _enum_or_text_value(run.status),
         "submitted_at": _epoch_ms_to_utc_text(run.submitted_at_ms),
         "started_at": (
@@ -546,6 +547,7 @@ def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
 
     return BacktestRunRecord(
         run_id=str(response["run_id"]),
+        name=_optional_text(response.get("name")),
         status=BacktestRunStatus(str(response["status"])),
         submitted_at_ms=_timestamp_to_epoch_ms(response["submitted_at"]),
         started_at_ms=_optional_timestamp_to_epoch_ms(response.get("started_at")),

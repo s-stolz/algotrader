@@ -134,6 +134,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
             [
                 {
                     "run_id": "run-123",
+                    "name": None,
                     "status": "queued",
                     "submitted_at": "2026-06-08T12:30:05.123000+00:00",
                     "started_at": None,

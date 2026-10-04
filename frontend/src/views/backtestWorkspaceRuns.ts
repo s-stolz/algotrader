@@ -1,12 +1,15 @@
-import type { BacktestRun } from '@/types/backtesterContracts';
+import type { BacktestRun, BacktestBatch } from '@/types/backtesterContracts';
 
 export type HistorySortKey = 'name' | 'type' | 'strategy' | 'market' | 'timeframe' |
   'start' | 'end' | 'status' | 'submitted' | 'duration';
 
 export function runName(run: BacktestRun): string {
-  const metadata = run.request.run_metadata;
-  const label = metadata?.name ?? metadata?.label;
-  return typeof label === 'string' && label.trim() ? label : run.run_id;
+  return run.batch_id != null ? `Run #${(run.member_ordinal ?? 0) + 1}` :
+    run.name ?? 'Unnamed standalone run';
+}
+
+export function batchName(batch: BacktestBatch): string {
+  return batch.name ?? 'Unnamed parameter sweep';
 }
 
 export function strategyVersion(run: BacktestRun): string {

@@ -6,9 +6,29 @@ import {
   isBacktestClosedTrade,
   isBacktestFill,
   isBacktestRun,
+  normalizeExperimentName,
 } from '@/types/backtesterContracts';
 
 describe('backtester contract validators', () => {
+  it('validates saved names and normalizes optional creation names consistently', () => {
+    for (const value of [undefined, null, '', ' \t ', '\n\r \t']) {
+      expect(normalizeExperimentName(value)).toBeNull();
+    }
+    expect(normalizeExperimentName('  Baseline  ')).toBe('Baseline');
+    expect(normalizeExperimentName('😀'.repeat(120))).toBe('😀'.repeat(120));
+    for (const value of ['x'.repeat(121), '😀'.repeat(121), 'two\nlines', 'two\u2028lines']) {
+      expect(() => normalizeExperimentName(value)).toThrow('Experiment name must');
+    }
+    const saved = { run_id: 'named', status: 'queued', submitted_at_ms: 1000,
+      request_schema_version: 2, request: backtestRequest() };
+    for (const name of [null, 'Baseline', '😀'.repeat(120)]) {
+      expect(isBacktestRun({ ...saved, name })).toBe(true);
+    }
+    for (const name of ['', ' padded ', 'two\nlines', 'x'.repeat(121), 123]) {
+      expect(isBacktestRun({ ...saved, name })).toBe(false);
+    }
+  });
+
   it('requires ordered batch lifecycle events with timestamps and trigger identity', () => {
     const accepted = { batch_id: 'batch-1', revision: 0, event_type: 'accepted',
       prior_status: null, status: 'queued', occurred_at_ms: 1_780_000_000_000,

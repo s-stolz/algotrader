@@ -19,6 +19,7 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
+from domain.experiment_names import normalize_experiment_name
 from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
@@ -98,10 +99,12 @@ class BacktestRunService:
         self._now_ms = now_ms or _utc_now_ms
         self._data_adapter = data_adapter
 
-    def submit(self, request: BacktestRequest) -> BacktestRunRecord:
+    def submit(self, request: BacktestRequest, *, name: str | None = None) -> BacktestRunRecord:
         request = _validate_submission(request)
+        name = normalize_experiment_name(name)
         run = BacktestRunRecord(
             run_id=self._new_run_id(),
+            name=name,
             status=BacktestRunStatus.QUEUED,
             submitted_at_ms=self._now_ms(),
             request_snapshot=BacktestRequestSnapshot.from_request(request),

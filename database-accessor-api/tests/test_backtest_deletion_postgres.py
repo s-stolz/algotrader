@@ -56,6 +56,7 @@ class BacktestDeletionPostgresTests(unittest.IsolatedAsyncioTestCase):
             "V014",
             "V015",
             "V016",
+            "V017",
         ):
             migration = next((ROOT / "timescaledb-init/migrations").glob(f"{version}__*.sql"))
             await self.db.execute(migration.read_text())

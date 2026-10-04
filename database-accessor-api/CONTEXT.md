@@ -31,6 +31,10 @@ lifecycle policy; the accessor applies it against locked current state.
 - Cancellation, pause/resume, deletion, and startup reconciliation must preserve
   those transaction boundaries. No-op command receipts retain identity without
   adding a revision/event; retries return the original result after later changes.
+- Run/batch creation persists a normalized top-level name separately from JSON
+  snapshots. Members cannot carry a custom name; legacy name/label request
+  metadata is rejected on new submissions. Apply
+  [experiment-name rules](../docs/contracts/backtests.md#experiment-names) at the storage boundary.
 - Standalone create rejects batch identity. Membership guards reject late member
   insertion/replacement and direct member deletion while the batch exists.
 - Preserve version-2 request JSON. When `strategy_version` was absent, omit it

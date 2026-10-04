@@ -22,6 +22,9 @@ streams live charts, and runs historical backtests.
   and lifecycle. Use this term rather than Strategy Run.
 - **Backtest Batch:** an immutable, nonempty collection of related Backtest Runs.
   A **Parameter Sweep** generates its members from configuration combinations.
+- **Experiment Name:** optional organizational `name` on a standalone Backtest
+  Run or whole Backtest Batch, separate from immutable execution snapshots.
+  Members use one-based `Run #N` presentation; see [backtest contracts](docs/contracts/backtests.md#experiment-names).
 - **Backtest Workspace:** UI for creating, monitoring, inspecting, and comparing
   runs and batches.
 
