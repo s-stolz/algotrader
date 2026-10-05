@@ -40,6 +40,8 @@ class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
 
     def cancel_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
 
+    def rename_backtest_run(self, run_id: str, name: str | None) -> Mapping[str, Any]: ...
+
     def get_backtest_queue_state(self) -> Mapping[str, Any]: ...
 
     def list_backtest_runs(self, **query: Any) -> Sequence[Mapping[str, Any]]: ...
@@ -100,6 +102,15 @@ class DatabaseAccessorBacktestRunRepository:
             if exc.status_code == 404:
                 return None
             raise
+        return _run_record_from_response(response)
+
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
+        if self._client is not None:
+            response = self._client.rename_backtest_run(run_id, name)
+        else:
+            client_cls = _import_database_accessor_client()
+            with client_cls() as client:
+                response = client.rename_backtest_run(run_id, name)
         return _run_record_from_response(response)
 
     def cancel(self, run_id: str) -> BacktestRunCancellation:

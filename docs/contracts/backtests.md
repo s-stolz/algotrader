@@ -68,6 +68,16 @@ Search matches a trimmed, case-insensitive whole-query substring against each
 individual displayed-name, full ID, submission ID, status, strategy ID, Market,
 or Timeframe field and combines with existing dropdown filters.
 
+Public `PATCH /backtests/{run_id}/name` and
+`PATCH /backtests/batches/{batch_id}/name` take exactly `{ "name": string | null }`
+and return the identity plus the authoritative nullable name. The accessor
+primitives use `/backtests/{run_id}/name` and `/backtest-batches/{batch_id}/name`
+and return the updated storage record. Missing identities return 404, invalid or
+missing name fields return 422, and naming any batch member (including clearing)
+returns 409. Renaming accepts every lifecycle state and writes only `name`; it
+never changes execution snapshots, timestamps, artifacts, lifecycle revisions or
+events, membership, or queue state.
+
 ## Runs and Results
 
 Run states are `queued`, `running`, `cancelling`, `succeeded`, `failed`, and

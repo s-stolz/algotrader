@@ -36,6 +36,9 @@ from adapters.api.schemas import (
     BacktestSubmissionResponseSchema,
     BacktestTradeResponseSchema,
     BatchAcceptanceRequestSchema,
+    BatchNameResponseSchema,
+    ExperimentNameUpdateSchema,
+    RunNameResponseSchema,
     SweepPreviewRequestSchema,
 )
 from adapters.persistence import (
@@ -165,6 +168,21 @@ def list_batches(
             with_failed_members=with_failed_members,
         )
     except DatabaseAccessorClientError as exc:
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+
+
+@router.patch("/batches/{batch_id}/name", response_model=BatchNameResponseSchema)
+def rename_batch(
+    batch_id: str,
+    request: ExperimentNameUpdateSchema,
+    service: BacktestBatchService = Depends(get_backtest_batch_service),
+) -> dict[str, Any]:
+    try:
+        batch = service.rename(batch_id, request.name)
+        return {"batch_id": batch["batch_id"], "name": batch["name"]}
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
         raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
 
 
@@ -400,6 +418,23 @@ def get_backtest(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Backtest persistence unavailable",
         ) from exc
+
+
+@router.patch("/{run_id}/name", response_model=RunNameResponseSchema)
+def rename_backtest(
+    run_id: str,
+    request: ExperimentNameUpdateSchema,
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> RunNameResponseSchema:
+    try:
+        run = service.rename(run_id, request.name)
+        return RunNameResponseSchema(run_id=run.run_id, name=run.name)
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Backtest run not found") from exc
+    except BacktestRunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BacktestRunPersistenceError as exc:
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
 @router.post(

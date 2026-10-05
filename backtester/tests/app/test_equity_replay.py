@@ -28,6 +28,9 @@ class _Repository:
     def get(self, run_id):
         return self.run if run_id == "run-1" else None
 
+    def rename(self, run_id, name):
+        raise NotImplementedError
+
     def cancel(self, run_id):
         raise NotImplementedError
 

@@ -15,6 +15,7 @@ from app.sweeps import SweepDefinition, SweepPreviewService
 
 class BatchClient(Protocol):
     def create_backtest_batch(self, batch: dict[str, Any]) -> Mapping[str, Any]: ...
+    def rename_backtest_batch(self, batch_id: str, name: str | None) -> Mapping[str, Any]: ...
     def list_backtest_batches(self) -> list[dict[str, Any]]: ...
     def get_backtest_batch(self, batch_id: str) -> Mapping[str, Any]: ...
     def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]: ...
@@ -149,6 +150,10 @@ class BacktestBatchService:
         return self._with_client(
             lambda client: self._batch_with_outcomes(client, client.get_backtest_batch(batch_id))
         )
+
+    def rename(self, batch_id: str, name: str | None) -> dict[str, Any]:
+        name = normalize_experiment_name(name)
+        return self._with_client(lambda client: dict(client.rename_backtest_batch(batch_id, name)))
 
     def members(self, batch_id: str) -> list[dict[str, Any]]:
         return self._with_client(lambda client: client.list_backtest_batch_members(batch_id))

@@ -1,5 +1,6 @@
 import {
   BACKTEST_BATCH_STATUSES,
+  normalizeExperimentName,
   type BacktestClosedTrade,
   type BacktestFill,
   type BacktestRun,
@@ -95,6 +96,24 @@ export async function submitBacktestBatch(request: SweepPreviewRequest, submissi
     throw new Error('Invalid batch submission response');
   }
   return payload.batch_id;
+}
+
+export async function renameExperiment(
+  kind: 'run' | 'batch', id: string, name: string | null,
+): Promise<string | null> {
+  const path = kind === 'batch' ? `batches/${encodeURIComponent(id)}` : encodeURIComponent(id);
+  const payload = await parseJsonResponse(await fetch(`${BACKTESTS_BASE_URL}/${path}/name`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: normalizeExperimentName(name) }),
+  }), 'Failed to save experiment name');
+  const identity = kind === 'batch' ? 'batch_id' : 'run_id';
+  if (typeof payload !== 'object' || payload === null || !(identity in payload) ||
+      (payload as Record<string, unknown>)[identity] !== id || !('name' in payload) ||
+      (payload.name !== null && typeof payload.name !== 'string') ||
+      normalizeExperimentName(payload.name) !== payload.name) {
+    throw new Error('Invalid experiment name response');
+  }
+  return payload.name;
 }
 
 export async function listBacktestBatches(): Promise<BacktestBatch[]> {

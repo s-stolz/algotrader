@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+import httpx
 from pydantic import ValidationError
 from sqlalchemy import create_engine, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -160,6 +161,58 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     @property
     def db(self) -> AsyncSession:
         return cast(AsyncSession, self.session)
+
+    async def test_name_routes_validate_persist_clear_and_reject_members(self):
+        await main.create_backtest_run(BacktestRunCreateIn(**_run_payload()), db=self.db)
+        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        batch_id = self._batch_payload()["batch_id"]
+        member_id = self._batch_payload()["members"][0]["run_id"]
+
+        async def database():
+            yield self.db
+
+        main.app.dependency_overrides[main.get_db] = database
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=main.app), base_url="http://test"
+            ) as client:
+                for path, read_path in [
+                    ("/backtests/run-queued-1/name", "/backtests/run-queued-1"),
+                    (f"/backtest-batches/{batch_id}/name", f"/backtest-batches/{batch_id}"),
+                ]:
+                    before = (await client.get(read_path)).json()
+                    for name, expected in [
+                        ("  Duplicate  ", "Duplicate"),
+                        ("", None),
+                        ("😀" * 120, "😀" * 120),
+                    ]:
+                        response = await client.patch(path, json={"name": name})
+                        self.assertEqual(response.status_code, 200, response.text)
+                        self.assertEqual(response.json(), {**before, "name": expected})
+                        self.assertEqual(
+                            (await client.get(read_path)).json(), {**before, "name": expected}
+                        )
+                    for payload in [
+                        {},
+                        {"name": "a\nb"},
+                        {"name": "x" * 121},
+                        {"name": 1},
+                        {"name": "ok", "status": "running"},
+                    ]:
+                        self.assertEqual((await client.patch(path, json=payload)).status_code, 422)
+                for path in ["/backtests/missing/name", "/backtest-batches/missing/name"]:
+                    self.assertEqual(
+                        (await client.patch(path, json={"name": None})).status_code, 404
+                    )
+                for name in [None, "member"]:
+                    self.assertEqual(
+                        (
+                            await client.patch(f"/backtests/{member_id}/name", json={"name": name})
+                        ).status_code,
+                        409,
+                    )
+        finally:
+            main.app.dependency_overrides.pop(main.get_db)
 
     async def test_experiment_names_normalize_and_read_back_outside_requests(self):
         names = [

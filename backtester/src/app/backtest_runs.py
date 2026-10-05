@@ -9,7 +9,7 @@ from typing import Callable, Protocol
 from uuid import uuid4
 
 from adapters.db_accessor import DatabaseAccessorHistoricalDataAdapter, HistoricalBarDataAdapter
-from db_accessor_client import normalize_timeframe_code
+from db_accessor_client import DatabaseAccessorClientError, normalize_timeframe_code
 from domain.enums import (
     BacktestEngine,
     BacktestRunStatus,
@@ -53,6 +53,8 @@ class BacktestRunRepository(Protocol):
     def get(self, run_id: str) -> BacktestRunRecord | None: ...
 
     def cancel(self, run_id: str) -> BacktestRunCancellation: ...
+
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord: ...
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]: ...
 
@@ -122,6 +124,22 @@ class BacktestRunService:
         if run is None:
             raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
         return run
+
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
+        name = normalize_experiment_name(name)
+        run = self.get(run_id)
+        if run.batch_id is not None:
+            raise BacktestRunConflictError("Batch members have no experiment name")
+        try:
+            return self._repository.rename(run_id, name)
+        except DatabaseAccessorClientError as exc:
+            if exc.status_code == 404:
+                raise BacktestRunNotFoundError("Backtest run not found") from exc
+            if exc.status_code == 409:
+                raise BacktestRunConflictError("Batch members have no experiment name") from exc
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+        except Exception as exc:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
     def cancel(self, run_id: str) -> BacktestRunRecord:
         try:

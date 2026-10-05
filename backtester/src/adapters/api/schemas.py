@@ -168,6 +168,20 @@ class ExperimentNameSchema(ApiContractModel):
         return normalize_experiment_name(value)
 
 
+class RunNameResponseSchema(ExperimentNameSchema):
+    run_id: str
+
+
+class BatchNameResponseSchema(ExperimentNameSchema):
+    batch_id: str
+
+
+class ExperimentNameUpdateSchema(ApiContractModel):
+    name: str | None
+
+    _normalize_name = field_validator("name")(ExperimentNameSchema.normalize_name.__func__)
+
+
 class BacktestCreationRequestSchema(BacktestSubmissionRequestSchema, ExperimentNameSchema):
     pass
 

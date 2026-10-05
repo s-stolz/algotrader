@@ -42,6 +42,13 @@ and behavior that is easy to break when changing them.
   that displayed name for search and sorting, with UUIDs beneath history labels.
   Validation and exact unnamed text follow
   [experiment names](../docs/contracts/backtests.md#experiment-names), with no metadata fallback.
+- Detail names use the shared inline experiment-name control. Drafts belong to
+  an edit session; acknowledgements belong to an experiment identity. Explicitly
+  committed names remain bound to that identity when navigation replaces or
+  unmounts the editor; Escape cancels still-unsent queued intent. Workspace
+  name revisions protect older reads and names awaiting readback, while allowing
+  fresh confirmed reads to resume normal polling. Apply name acknowledgements
+  without replacing execution fields from a save response.
 - Read history, commands, logs, and Equity Replay through
   `src/api/backtesterClient.ts`. For lifecycle or API changes, read
   [backtest contracts](../docs/contracts/backtests.md); the public backtester API owns

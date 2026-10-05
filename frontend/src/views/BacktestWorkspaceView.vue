@@ -124,7 +124,10 @@
       <BacktestBatches :batch-id="selectedBatchId" @members="receiveMembers" @cancelled="refreshWorkspace" />
       <div class="table-panel">
       <div v-if="selectedRun && !selectedBatchId" class="run-heading">
-        <h2 class="strategy-name">{{ runName(selectedRun) }}</h2>
+        <h2 class="strategy-name">
+          <ExperimentName v-if="!selectedRun.batch_id" kind="run" :experiment-id="selectedRun.run_id" :name="selectedRun.name" />
+          <template v-else>{{ runName(selectedRun) }}</template>
+        </h2>
         <div class="analysis-context">
           <n-tag size="small" :bordered="false">Standalone run</n-tag>
           <span>{{ strategyVersion(selectedRun) }}</span>
@@ -269,6 +272,7 @@ import { useRouter } from 'vue-router';
 
 import { cancelBacktestRun, deleteBacktestBatch, deleteBacktestRun, fetchBacktestEquityCurve, getBacktestRun, listBacktestBatches, listBacktestBatchMembers, listBacktestRuns } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
+import ExperimentName from '@/components/Backtest/ExperimentName.vue';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
 import { getBacktestRunSelectability, useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
@@ -496,8 +500,9 @@ async function loadSelected(runId: string, background = false): Promise<void> {
   if (background && pendingDetailId === runId) return;
   pendingDetailId = runId;
   const sequence = ++detailSequence;
+  const nameReadRevision = workspaceStore.nameRevision;
   try {
-    const detail = await getBacktestRun(runId);
+    const detail = workspaceStore.preserveRunName(await getBacktestRun(runId), nameReadRevision);
     if (sequence === detailSequence && workspaceStore.selectedRunId === runId) {
       if (JSON.stringify(workspaceStore.selectedRun) !== JSON.stringify(detail)) {
         workspaceStore.selectRun(detail);
@@ -535,19 +540,20 @@ function loadAnalysis(refresh = false): void {
   for (const id of ids) {
     if (!refresh && analysis.value[id] && (!analysis.value[id].loading || analysisTokens.has(id))) continue;
     const token = ++analysisSequence;
+    const nameReadRevision = workspaceStore.nameRevision;
     analysisTokens.set(id, token);
     analysis.value[id] = { loading: true, error: null, curve: analysis.value[id]?.curve ?? null,
       detail: analysis.value[id]?.detail ?? null };
     void (async () => {
       try {
-        const detail = await getBacktestRun(id);
+        const detail = workspaceStore.preserveRunName(await getBacktestRun(id), nameReadRevision);
         if (detail.status !== 'succeeded') throw new Error('Run is no longer successful');
         if (analysisTokens.get(id) === token) analysis.value[id] = {
           loading: true, error: null, curve: analysis.value[id]?.curve ?? null, detail,
         };
         const curve = await fetchBacktestEquityCurve(id);
         if (analysisTokens.get(id) === token) analysis.value[id] = {
-          loading: false, error: null, curve, detail,
+          loading: false, error: null, curve, detail: workspaceStore.preserveRunName(detail, nameReadRevision),
         };
       } catch (error) {
         if (analysisTokens.get(id) === token) analysis.value[id] = {
@@ -590,15 +596,26 @@ function receiveMembers(batchId: string, members: BacktestRun[]): void {
   if (selected && changed) workspaceStore.selectRun(selected);
 }
 
+watch(() => workspaceStore.nameRevision, () => {
+  if (runs.value) runs.value = runs.value.map((run) => workspaceStore.preserveRunName(run, -1));
+  if (batches.value) batches.value = batches.value.map((batch) => workspaceStore.preserveBatchName(batch, -1));
+  for (const state of Object.values(analysis.value)) {
+    if (state.detail) state.detail = workspaceStore.preserveRunName(state.detail, -1);
+  }
+});
+
 async function readRuns(): Promise<void> {
   const generation = ++readGeneration;
+  const nameReadRevision = workspaceStore.nameRevision;
   isLoading.value = runs.value === null;
 
   try {
-    const [latest, latestBatches] = await Promise.all([
+    const [readRunRecords, readBatchRecords] = await Promise.all([
       listBacktestRuns({ membership: 'standalone' }), listBacktestBatches(),
     ]);
     if (generation !== readGeneration || !isActive) return;
+    const latest = readRunRecords.map((run) => workspaceStore.preserveRunName(run, nameReadRevision));
+    const latestBatches = readBatchRecords.map((batch) => workspaceStore.preserveBatchName(batch, nameReadRevision));
     runs.value = latest;
     batches.value = latestBatches;
     readError.value = null;
@@ -1254,8 +1271,9 @@ watch(() => router.currentRoute?.value.params, async (params) => {
     workspaceStore.clearSelection();
     setComparison([]);
     const sequence = ++detailSequence;
+    const nameReadRevision = workspaceStore.nameRevision;
     try {
-      const run = await getBacktestRun(id);
+      const run = workspaceStore.preserveRunName(await getBacktestRun(id), nameReadRevision);
       if (sequence !== detailSequence) return;
       selectRun(run);
     } catch (error) {

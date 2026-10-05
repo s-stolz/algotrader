@@ -176,6 +176,12 @@ class ExperimentNameModel(BacktestContractModel):
         return name or None
 
 
+class ExperimentNameUpdateIn(BacktestContractModel):
+    name: str | None
+
+    _normalize_name = field_validator("name")(ExperimentNameModel.normalize_name.__func__)
+
+
 class BacktestRunBase(ExperimentNameModel):
     run_id: str
     batch_id: str | None = None

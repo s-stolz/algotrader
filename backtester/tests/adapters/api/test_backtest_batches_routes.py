@@ -41,6 +41,11 @@ class BatchClient:
         ]
         return stored
 
+    def rename_backtest_batch(self, batch_id: str, name: str | None) -> dict:
+        saved = self.get_backtest_batch(batch_id)
+        saved["name"] = name
+        return saved
+
     def list_backtest_batches(self) -> list[dict]:
         return list(self.batches.values())
 
@@ -129,6 +134,69 @@ class BatchAcceptanceRouteTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client.close()
+
+    def test_rename_and_clear_preserve_batch_and_members_in_every_state(self) -> None:
+        import copy
+
+        response = self.client.post(
+            "/backtests/batches", json={**_definition(), "submission_id": "rename"}
+        )
+        batch_id = response.json()["batch_id"]
+        for status in [
+            "queued",
+            "running",
+            "pausing",
+            "paused",
+            "cancelling",
+            "cancelled",
+            "completed",
+        ]:
+            batch = self.client_store.get_backtest_batch(batch_id)
+            batch["status"] = status
+            before = copy.deepcopy(batch)
+            members = copy.deepcopy(self.client_store.members[batch_id])
+            events = self.client.get(f"/backtests/batches/{batch_id}/events").json()
+            for name, expected in [
+                ("  Duplicate  ", "Duplicate"),
+                (" ", None),
+                ("😀" * 120, "😀" * 120),
+            ]:
+                renamed = self.client.patch(
+                    f"/backtests/batches/{batch_id}/name", json={"name": name}
+                )
+                self.assertEqual(renamed.status_code, 200, renamed.text)
+                self.assertEqual(renamed.json()["name"], expected)
+                self.assertEqual(batch, {**before, "name": expected})
+                self.assertEqual(self.client_store.members[batch_id], members)
+                self.assertEqual(
+                    self.client.get(f"/backtests/batches/{batch_id}/events").json(), events
+                )
+                self.assertEqual(
+                    self.client.get(f"/backtests/batches/{batch_id}").json()["name"], expected
+                )
+        for payload in [
+            {},
+            {"name": 123},
+            {"name": "a\nb"},
+            {"name": "x" * 121},
+            {"name": "x", "lifecycle_revision": 2},
+        ]:
+            self.assertEqual(
+                self.client.patch(f"/backtests/batches/{batch_id}/name", json=payload).status_code,
+                422,
+            )
+        self.assertEqual(
+            self.client.patch("/backtests/batches/missing/name", json={"name": None}).status_code,
+            404,
+        )
+        with patch.object(
+            self.client_store,
+            "rename_backtest_batch",
+            side_effect=DatabaseAccessorClientError("private", status_code=500),
+        ):
+            failed = self.client.patch(f"/backtests/batches/{batch_id}/name", json={"name": "x"})
+            self.assertEqual(failed.status_code, 503)
+            self.assertNotIn("private", failed.text)
 
     def test_named_and_unnamed_acceptance_keep_preview_and_members_name_free(self) -> None:
         for index, (name, expected) in enumerate(

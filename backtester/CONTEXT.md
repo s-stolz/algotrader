@@ -15,6 +15,8 @@ For run/batch commands, queue invariants, versions, or replay format, read
   name separately from execution requests/accepted definitions. Public schemas
   validate naming at creation; preview stays name-free. See
   [experiment names](../docs/contracts/backtests.md#experiment-names).
+- Name-only commands use run/batch policy services and return identity plus the
+  authoritative name. Renames accept every lifecycle state and reject members.
 - `src/app/backtest_worker.py` owns claim/settlement orchestration;
   `backtest_child.py` supervises execution. Only the worker parent persists child
   results. `backtest_queue.py` projects advisory availability from storage and

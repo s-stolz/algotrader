@@ -28,6 +28,7 @@ from app.schemas import (
     BacktestWorkerHeartbeatIn,
     BacktestWorkerHeartbeatOut,
     CandleBatchIn,
+    ExperimentNameUpdateIn,
     MarketIn,
 )
 from app.timeframes import TimeframeCode, timeframe_to_minutes
@@ -215,6 +216,29 @@ async def create_backtest_batch(batch: BacktestBatchCreateIn, db: AsyncSession =
 @app.get("/backtest-batches", response_model=list[BacktestBatchOut])
 async def list_backtest_batches(db: AsyncSession = Depends(get_db)):
     return await crud.list_backtest_batches(db)
+
+
+@app.patch("/backtest-batches/{batch_id}/name", response_model=BacktestBatchOut)
+async def rename_backtest_batch(
+    batch_id: str, request: ExperimentNameUpdateIn, db: AsyncSession = Depends(get_db)
+):
+    batch = await crud.rename_backtest_batch(db, batch_id, request.name)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return batch
+
+
+@app.patch("/backtests/{run_id}/name", response_model=BacktestRunOut)
+async def rename_backtest_run(
+    run_id: str, request: ExperimentNameUpdateIn, db: AsyncSession = Depends(get_db)
+):
+    try:
+        run = await crud.rename_backtest_run(db, run_id, request.name)
+    except crud.ExperimentNameConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if run is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return run
 
 
 @app.get("/backtest-batches/{batch_id}", response_model=BacktestBatchOut)

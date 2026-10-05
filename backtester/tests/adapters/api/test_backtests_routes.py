@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
+from unittest.mock import patch
 
 import pandas as pd
 from adapters.api.app import create_app
@@ -42,6 +43,11 @@ class _FakeRunRepository:
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
         return self.runs_by_id.get(run_id)
+
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
+        saved = replace(self.runs_by_id[run_id], name=name)
+        self.runs_by_id[run_id] = saved
+        return saved
 
     def cancel(self, run_id: str) -> BacktestRunCancellation:
         run = self.runs_by_id.get(run_id)
@@ -92,6 +98,52 @@ class _FailingRunRepository(_FakeRunRepository):
 
 
 class TestBacktestSubmissionRoute(unittest.TestCase):
+    def test_rename_and_clear_preserve_execution_for_all_lifecycle_states(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(repository=repository)
+        with TestClient(create_app(service=service)) as client:
+            run_id = client.post("/backtests", json=_valid_payload()).json()["run_id"]
+            for status in BacktestRunStatus:
+                before = replace(
+                    repository.runs_by_id[run_id],
+                    status=status,
+                    result_schema_version=3,
+                    metrics={},
+                    diagnostics={},
+                )
+                repository.runs_by_id[run_id] = before
+                for name, expected in [
+                    ("  Duplicate  ", "Duplicate"),
+                    ("", None),
+                    ("😀" * 120, "😀" * 120),
+                ]:
+                    response = client.patch(f"/backtests/{run_id}/name", json={"name": name})
+                    self.assertEqual(response.status_code, 200, response.text)
+                    self.assertEqual(response.json()["name"], expected)
+                    self.assertEqual(repository.runs_by_id[run_id], replace(before, name=expected))
+                    self.assertEqual(client.get(f"/backtests/{run_id}").json()["name"], expected)
+            for payload in [
+                {},
+                {"name": 123},
+                {"name": "x" * 121},
+                {"name": "a\nb"},
+                {"name": "ok", "status": "queued"},
+            ]:
+                response = client.patch(f"/backtests/{run_id}/name", json=payload)
+                self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(
+                client.patch("/backtests/missing/name", json={"name": "x"}).status_code, 404
+            )
+            repository.runs_by_id[run_id] = replace(before, batch_id="batch", member_ordinal=0)
+            for name in ["member", None]:
+                response = client.patch(f"/backtests/{run_id}/name", json={"name": name})
+                self.assertEqual(response.status_code, 409)
+            with patch.object(repository, "rename", side_effect=RuntimeError("private")):
+                repository.runs_by_id[run_id] = before
+                response = client.patch(f"/backtests/{run_id}/name", json={"name": "x"})
+                self.assertEqual(response.status_code, 503)
+                self.assertNotIn("private", response.text)
+
     def test_names_are_optional_normalized_and_outside_execution_snapshots(self) -> None:
         repository = _FakeRunRepository()
         service = BacktestRunService(repository=repository)

@@ -25,6 +25,7 @@ streams live charts, and runs historical backtests.
 - **Experiment Name:** optional organizational `name` on a standalone Backtest
   Run or whole Backtest Batch, separate from immutable execution snapshots.
   Saved names seed editable Create from this drafts with independent identities.
+  A name-only command changes this metadata in any lifecycle state.
   Members use one-based `Run #N` presentation; see [backtest contracts](docs/contracts/backtests.md#experiment-names).
 - **Backtest Workspace:** UI for creating, monitoring, inspecting, and comparing
   runs and batches.

@@ -35,6 +35,9 @@ lifecycle policy; the accessor applies it against locked current state.
   snapshots. Members cannot carry a custom name; legacy name/label request
   metadata is rejected on new submissions. Apply
   [experiment-name rules](../docs/contracts/backtests.md#experiment-names) at the storage boundary.
+- Name-only updates validate at the persistence boundary and update only `name`.
+  Member guards run under the run row lock; these writes never acquire or change
+  the execution slot, revisions, event history, or queue turns.
 - Standalone create rejects batch identity. Membership guards reject late member
   insertion/replacement and direct member deletion while the batch exists.
 - Preserve version-2 request JSON. When `strategy_version` was absent, omit it

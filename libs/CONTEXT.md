@@ -15,6 +15,8 @@ and shared Python Timeframe helpers. Centralize reusable Timeframe behavior here
   independently of execution JSON; sync and async clients pass it through
   unchanged. Naming policy belongs to the
   [public/storage contract](../docs/contracts/backtests.md#experiment-names).
+- Sync/async rename commands send only the nullable name and preserve the
+  authoritative storage response and missing/member error status.
 - Keep sync and async behavior aligned, including empty 204 deletion responses,
   404/409 errors, ordered execution logs, and conditional-operation `updated` flags.
 - Candle shape changes affect the accessor, indicator-api, and backtester.

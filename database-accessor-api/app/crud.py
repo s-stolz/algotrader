@@ -537,6 +537,58 @@ async def insert_backtest_run(session, run_data: dict):
     return dict(row._mapping)
 
 
+class ExperimentNameConflictError(ValueError):
+    """Batch members have no independently editable name."""
+
+
+async def rename_backtest_run(session, run_id: str, name: str | None):
+    from app.schemas import ExperimentNameUpdateIn
+
+    name = ExperimentNameUpdateIn(name=name).name
+    try:
+        result = await session.execute(
+            select(backtest_runs).where(backtest_runs.c.run_id == run_id).with_for_update()
+        )
+        row = result.fetchone()
+        if row is None:
+            await session.rollback()
+            return None
+        if row._mapping["batch_id"] is not None:
+            raise ExperimentNameConflictError("Batch members have no experiment name")
+        result = await session.execute(
+            update(backtest_runs)
+            .where(backtest_runs.c.run_id == run_id)
+            .values(name=name)
+            .returning(backtest_runs)
+        )
+        saved = dict(result.fetchone()._mapping)
+        await session.commit()
+        return saved
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def rename_backtest_batch(session, batch_id: str, name: str | None):
+    from app.schemas import ExperimentNameUpdateIn
+
+    name = ExperimentNameUpdateIn(name=name).name
+    try:
+        result = await session.execute(
+            update(backtest_batches)
+            .where(backtest_batches.c.batch_id == batch_id)
+            .values(name=name)
+            .returning(backtest_batches)
+        )
+        row = result.fetchone()
+        saved = dict(row._mapping) if row else None
+        await session.commit()
+        return saved
+    except Exception:
+        await session.rollback()
+        raise
+
+
 async def get_backtest_run(session, run_id: str):
     stmt = select(backtest_runs).where(backtest_runs.c.run_id == run_id)
     result = await session.execute(stmt)

@@ -46,6 +46,11 @@ class _FakeRunRepository:
     def get(self, run_id: str) -> BacktestRunRecord | None:
         return self.runs_by_id.get(run_id)
 
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
+        saved = replace(self.runs_by_id[run_id], name=name)
+        self.runs_by_id[run_id] = saved
+        return saved
+
     def cancel(self, run_id: str) -> BacktestRunCancellation:
         run = self.runs_by_id[run_id]
         cancelled = replace(
