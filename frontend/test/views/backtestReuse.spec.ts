@@ -16,13 +16,20 @@ const request = {
   persist_result: true, run_metadata: { name: 'Original' },
 } as const;
 
+const copyNames = [
+  [undefined, ''], [null, ''], ['', ''], ['Original', 'Original (copy)'],
+  ['a'.repeat(113), 'a'.repeat(113) + ' (copy)'],
+  ['😀'.repeat(120), '😀'.repeat(113) + ' (copy)'],
+] as const;
+
 describe('saved configuration reuse', () => {
-  it('copies a standalone request without retaining result history or assigning legacy identity', () => {
-    const run = { run_id: 'old', request_schema_version: 2, request,
+  it.each(copyNames)('copies a standalone name %s into an independent draft', (name, proposed) => {
+    const run = { run_id: 'old', name, request_schema_version: 2, request,
       status: 'succeeded' } as unknown as BacktestRun;
     const before = structuredClone(run);
     const reuse = reuseStandalone(run);
     expect(reuse.source.strategyVersion).toBeNull();
+    expect(reuse.request).toHaveProperty('name', proposed);
     expect(reuse.request).toMatchObject({ timeframe: 'M15', initial_capital: 25_000,
       strategy: { parameters: { fast: 3, slow: 10 } },
       execution: { allowed_directions: 'short_only' }, run_metadata: null });
@@ -30,9 +37,9 @@ describe('saved configuration reuse', () => {
     expect(run).toEqual(before);
   });
 
-  it('copies accepted ordered selections and ranges instead of resolved members', () => {
+  it.each(copyNames)('copies a batch name %s with accepted ordered selections and ranges', (name, proposed) => {
     const batch = {
-      batch_id: 'saved-batch', strategy_id: 'sma', strategy_version: 2,
+      batch_id: 'saved-batch', name, strategy_id: 'sma', strategy_version: 2,
       accepted_definition: { shared_request: { ...request, symbols: [], exchange: null,
         timeframe: 'M1', strategy: { strategy_id: 'sma', strategy_version: 2,
           parameters: {} } },
@@ -51,6 +58,7 @@ describe('saved configuration reuse', () => {
     } as unknown as BacktestBatch;
     const before = structuredClone(batch);
     const reuse = reuseBatch(batch);
+    expect(reuse.request).toHaveProperty('name', proposed);
     expect(reuse.sweep.marketIds).toEqual([2, 1]);
     expect(reuse.sweep.timeframes).toEqual(['H1', 'M15']);
     expect(reuse.sweep.allowedDirections).toEqual(['short_only', 'long_only']);

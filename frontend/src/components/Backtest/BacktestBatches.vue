@@ -8,7 +8,7 @@
       <header class="sweep-header">
         <div>
           <div class="eyebrow">PARAMETER SWEEP</div>
-          <h3>{{ selectedBatch.strategy_metadata.display_name }}</h3>
+          <h3><ExperimentName kind="batch" :experiment-id="selectedBatch.batch_id" :name="selectedBatch.name" /></h3>
           <p class="context">Version {{ selectedBatch.strategy_metadata.strategy_version }}
             <span aria-hidden="true">·</span> {{ selectedBatch.markets.join(', ') }}
             <span aria-hidden="true">·</span> {{ selectedBatch.timeframes.join(', ') }}</p>
@@ -143,6 +143,8 @@
 </template>
 
 <script setup lang="ts">
+import ExperimentName from './ExperimentName.vue';
+import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { NButton, NIcon } from 'naive-ui';
 import { CheckmarkCircleOutline, HourglassOutline, PauseOutline, PlayOutline, StopCircleOutline } from '@vicons/ionicons5';
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
@@ -154,6 +156,7 @@ import type { BacktestBatch, BacktestBatchEvent, BacktestRun } from '@/types/bac
 
 const emit = defineEmits<{ members: [batchId: string, runs: BacktestRun[]]; cancelled: [] }>();
 const props = defineProps<{ batchId: string | null }>();
+const workspaceStore = useBacktestWorkspaceStore();
 const selectedBatch = shallowRef<BacktestBatch | null>(null);
 const members = ref<BacktestRun[] | null>(null);
 const events = ref<BacktestBatchEvent[] | null>(null);
@@ -242,10 +245,15 @@ function directionLabel(value: string): string {
   return ({ long_only: 'Long only', short_only: 'Short only', long_and_short: 'Long and short' })[value] ?? value;
 }
 
+watch(() => workspaceStore.nameRevision, () => {
+  if (selectedBatch.value) selectedBatch.value = workspaceStore.preserveBatchName(selectedBatch.value, -1);
+});
+
 async function loadDetail(batchId: string, background = false): Promise<void> {
   if (!isActive || (background && readPending)) return;
   readPending = true;
   const revision = ++detailRevision;
+  const nameReadRevision = workspaceStore.nameRevision;
   try {
     const [batch, loadedMembers, loadedEvents] = await Promise.all([
       getBacktestBatch(batchId), listBacktestBatchMembers(batchId), listBacktestBatchEvents(batchId),
@@ -259,7 +267,7 @@ async function loadDetail(batchId: string, background = false): Promise<void> {
       }
     }
     detailError.value = null;
-    selectedBatch.value = batch;
+    selectedBatch.value = workspaceStore.preserveBatchName(batch, nameReadRevision);
     members.value = loadedMembers;
     events.value = loadedEvents;
     emit('members', batchId, loadedMembers);

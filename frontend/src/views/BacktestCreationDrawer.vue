@@ -32,6 +32,15 @@
         </p>
         <p v-for="change in parameterChanges" :key="change" role="status">{{ change }}</p>
         <div class="creation-fields">
+          <label>Experiment name (optional)
+            <n-input
+              v-model:value="draft.name"
+              data-testid="creation-name"
+              placeholder="Enter an experiment name"
+              :status="nameIssue ? 'error' : undefined"
+            />
+          </label>
+          <p v-if="nameIssue" role="alert">{{ nameIssue }}</p>
           <label>Run type
             <BaseSelect
               :value="isSweep ? 'sweep' : 'standalone'"
@@ -392,6 +401,7 @@ import { BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
   previewParameterSweep, submitBacktestBatch, submitBacktestRun } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
+import { normalizeExperimentName } from '@/types/backtesterContracts';
 import type { BacktestRequestPayload, StrategyCatalogEntry, StrategyParameterSchema,
   SweepDraftState, SweepParameterDraft, SweepPreview, SweepPreviewCandidate,
   SweepPreviewRequest, SweepParameterAxis } from '@/types/backtesterContracts';
@@ -401,6 +411,7 @@ import type { ReuseSource } from './backtestReuse';
 type DraftRequest = Omit<BacktestRequestPayload, 'strategy' | 'run_metadata'> & {
   strategy: { strategy_id: string; strategy_version?: number; parameters: Record<string, null | boolean | number | string> };
   run_metadata: null;
+  name?: string;
 };
 
 defineProps<{ show: boolean }>();
@@ -414,6 +425,10 @@ const sweep = ref<SweepDraftState>(store.creationSweepDraft ?? {
   isSweep: false, marketIds: [], timeframes: [], allowedDirections: [], parameters: {},
 });
 const isSweep = computed(() => sweep.value.isSweep);
+const nameIssue = computed(() => {
+  try { normalizeExperimentName(draft.value.name); return null; }
+  catch (error) { return error instanceof Error ? error.message : 'Invalid experiment name.'; }
+});
 const catalog = shallowRef<StrategyCatalogEntry[]>([]);
 const catalogError = ref<string | null>(null);
 const submitError = ref<string | null>(null);
@@ -753,7 +768,7 @@ function buildSweepRequest(): SweepPreviewRequest {
       parameter_axes[parameter.name] = { mode: 'values', values };
     }
   }
-  const { symbols: _symbols, timeframe: _timeframe, exchange: _exchange, ...shared } = draft.value;
+  const { symbols: _symbols, timeframe: _timeframe, exchange: _exchange, name: _name, ...shared } = draft.value;
   return { ...shared, strategy: { strategy_id: selected.strategy_id,
     strategy_version: selected.strategy_version },
     markets: sweep.value.marketIds, timeframes: sweep.value.timeframes,
@@ -786,7 +801,7 @@ function initialDraft(): DraftRequest {
     end_ms: Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()),
     strategy: { strategy_id: '', parameters: {} },
     initial_capital: 10_000, engine: 'vectorized', data_granularity: 'bar',
-    persist_result: false, run_metadata: null,
+    persist_result: false, run_metadata: null, name: '',
     execution: {
       signal_timing: 'close', fill_timing: 'next_open', price_source: 'open',
       allow_partial_fills: false, allowed_directions: 'long_and_short',
@@ -907,10 +922,11 @@ async function submit(): Promise<void> {
   if (selectedStrategy.value?.strategy_version !== draft.value.strategy.strategy_version) {
     submitError.value = 'Review the current strategy version before submitting.';
   }
+  if (nameIssue.value) submitError.value = nameIssue.value;
   if (Object.keys(fieldErrors.value).length || submitError.value) return;
   submitting.value = true;
   try {
-    emit('submitted', await submitBacktestRun(draft.value));
+    emit('submitted', await submitBacktestRun({ ...draft.value, name: normalizeExperimentName(draft.value.name) }));
     emit('update:show', false);
   } catch (error) {
     if (error instanceof BacktestSubmissionError) {
@@ -930,12 +946,13 @@ async function submit(): Promise<void> {
 }
 
 async function submitSweep(): Promise<void> {
+  if (nameIssue.value) { submitError.value = nameIssue.value; return; }
   if (!preview.value || previewPending.value || previewError.value || submitting.value) return;
   submitting.value = true;
   submitError.value = null;
   try {
     const request = buildSweepRequest();
-    const batchId = await submitBacktestBatch(request, submissionId);
+    const batchId = await submitBacktestBatch(request, submissionId, normalizeExperimentName(draft.value.name));
     emit('submitted-batch', batchId);
     emit('update:show', false);
   } catch (error) {

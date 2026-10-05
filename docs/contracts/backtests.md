@@ -27,7 +27,56 @@ API; the accessor owns atomic storage, and shared clients pass documents through
   Already executing children retain loaded code; saved history remains readable.
 - **Create from this** opens an editable draft against the current catalog from a
   saved request or batch definition. Submission creates independent history;
-  changing Strategy Version requires explicit review in the Workspace.
+  changing Strategy Version requires explicit review in the Workspace. Named
+  sources propose their saved top-level name plus ` (copy)` in the editable
+  creation draft; shorten the source portion by Unicode characters to retain
+  the suffix within 120 characters. Unnamed sources leave the draft empty.
+  Submissions use the ordinary naming contract with fresh Run/Batch identity
+  and never rename, mutate, or link the source experiment.
+
+## Experiment Names
+
+Standalone runs and whole batches carry one nullable top-level `name`, outside
+immutable execution requests and accepted sweep definitions. Creation accepts
+that field separately; list/detail responses return the saved field. Members
+have null names and display their existing zero-based ordinal as `Run #N` with
+one-based presentation. Strategy names and versions keep their own meaning.
+
+Names allow duplicates. Absent, empty, or whitespace-only values normalize to
+null; surrounding whitespace is trimmed. Reject any line separator (including
+CR/LF and Unicode line separators) in nonempty names before trimming, and names longer than 120
+Unicode characters after trimming. Frontend, public API, and storage apply the
+same rules. `run_metadata.name` and `run_metadata.label` are rejected on new
+submissions; unrelated metadata remains supported. Sweep preview does not accept
+a name and remains stateless; batch acceptance persists the name separately
+without copying it into members or the accepted definition. Retrying a batch
+submission retains its original accepted name, alongside its immutable definition.
+
+V017 transfers usable legacy names once, choosing metadata `name` before `label`
+(and falling back to a usable label when the name is invalid). Standalone names
+come from their request metadata; batch names come from accepted shared-request
+metadata. Invalid old values become null. V017 removes only those two metadata
+keys from run requests (including members) and accepted shared requests. This
+transactional cleanup is the explicit one-time exception to snapshot immutability;
+identities, artifacts, lifecycle, membership, and unrelated metadata are preserved.
+There is no legacy naming fallback after migration.
+
+Workspace history, details, and name sorting/search use the saved name or exactly
+`Unnamed standalone run` / `Unnamed parameter sweep`. History and member rows
+show shortened UUIDs underneath; existing details/tooltips retain full IDs.
+Search matches a trimmed, case-insensitive whole-query substring against each
+individual displayed-name, full ID, submission ID, status, strategy ID, Market,
+or Timeframe field and combines with existing dropdown filters.
+
+Public `PATCH /backtests/{run_id}/name` and
+`PATCH /backtests/batches/{batch_id}/name` take exactly `{ "name": string | null }`
+and return the identity plus the authoritative nullable name. The accessor
+primitives use `/backtests/{run_id}/name` and `/backtest-batches/{batch_id}/name`
+and return the updated storage record. Missing identities return 404, invalid or
+missing name fields return 422, and naming any batch member (including clearing)
+returns 409. Renaming accepts every lifecycle state and writes only `name`; it
+never changes execution snapshots, timestamps, artifacts, lifecycle revisions or
+events, membership, or queue state.
 
 ## Runs and Results
 

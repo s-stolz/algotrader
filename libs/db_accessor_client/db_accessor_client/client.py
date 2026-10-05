@@ -185,6 +185,12 @@ class DatabaseAccessorClient(_BaseClient):
     def create_backtest_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/backtest-batches", json=batch)
 
+    def rename_backtest_run(self, run_id: str, name: str | None) -> dict[str, Any]:
+        return self._request("PATCH", f"/backtests/{run_id}/name", json={"name": name})
+
+    def rename_backtest_batch(self, batch_id: str, name: str | None) -> dict[str, Any]:
+        return self._request("PATCH", f"/backtest-batches/{batch_id}/name", json={"name": name})
+
     def list_backtest_batches(self) -> list[dict[str, Any]]:
         return self._request("GET", "/backtest-batches")
 
@@ -439,6 +445,14 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def create_backtest_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/backtest-batches", json=batch)
+
+    async def rename_backtest_run(self, run_id: str, name: str | None) -> dict[str, Any]:
+        return await self._request("PATCH", f"/backtests/{run_id}/name", json={"name": name})
+
+    async def rename_backtest_batch(self, batch_id: str, name: str | None) -> dict[str, Any]:
+        return await self._request(
+            "PATCH", f"/backtest-batches/{batch_id}/name", json={"name": name}
+        )
 
     async def list_backtest_batches(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/backtest-batches")

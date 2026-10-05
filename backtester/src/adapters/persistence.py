@@ -40,6 +40,8 @@ class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
 
     def cancel_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
 
+    def rename_backtest_run(self, run_id: str, name: str | None) -> Mapping[str, Any]: ...
+
     def get_backtest_queue_state(self) -> Mapping[str, Any]: ...
 
     def list_backtest_runs(self, **query: Any) -> Sequence[Mapping[str, Any]]: ...
@@ -100,6 +102,15 @@ class DatabaseAccessorBacktestRunRepository:
             if exc.status_code == 404:
                 return None
             raise
+        return _run_record_from_response(response)
+
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
+        if self._client is not None:
+            response = self._client.rename_backtest_run(run_id, name)
+        else:
+            client_cls = _import_database_accessor_client()
+            with client_cls() as client:
+                response = client.rename_backtest_run(run_id, name)
         return _run_record_from_response(response)
 
     def cancel(self, run_id: str) -> BacktestRunCancellation:
@@ -489,6 +500,7 @@ def build_successful_completion_payload(
 def _run_record_payload(run: BacktestRunRecord) -> dict[str, Any]:
     return {
         "run_id": run.run_id,
+        "name": run.name,
         "status": _enum_or_text_value(run.status),
         "submitted_at": _epoch_ms_to_utc_text(run.submitted_at_ms),
         "started_at": (
@@ -546,6 +558,7 @@ def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
 
     return BacktestRunRecord(
         run_id=str(response["run_id"]),
+        name=_optional_text(response.get("name")),
         status=BacktestRunStatus(str(response["status"])),
         submitted_at_ms=_timestamp_to_epoch_ms(response["submitted_at"]),
         started_at_ms=_optional_timestamp_to_epoch_ms(response.get("started_at")),

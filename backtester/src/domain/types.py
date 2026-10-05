@@ -156,6 +156,7 @@ class BacktestRunRecord:
     replay_descriptor: Optional[Mapping[str, Any]] = None
     batch_id: Optional[str] = None
     member_ordinal: Optional[int] = None
+    name: Optional[str] = None
 
 
 @dataclass(frozen=True)

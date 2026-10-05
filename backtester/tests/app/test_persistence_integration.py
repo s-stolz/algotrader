@@ -118,6 +118,10 @@ class _InMemoryBacktestRunClient:
     def get_backtest_run(self, run_id: str) -> dict:
         return deepcopy(self._runs[run_id])
 
+    def rename_backtest_run(self, run_id: str, name: str | None) -> dict:
+        self._runs[run_id]["name"] = name
+        return deepcopy(self._runs[run_id])
+
     def cancel_backtest_run(self, run_id: str) -> dict:
         raise NotImplementedError
 

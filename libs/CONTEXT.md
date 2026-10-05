@@ -11,6 +11,12 @@ and shared Python Timeframe helpers. Centralize reusable Timeframe behavior here
   identities, and queue/heartbeat primitives through unchanged. Backtester owns
   policy and public projections; the accessor owns transactions. Read
   [backtest contracts](../docs/contracts/backtests.md) when changing those payloads.
+- Run/batch creation and read payloads preserve top-level experiment `name`
+  independently of execution JSON; sync and async clients pass it through
+  unchanged. Naming policy belongs to the
+  [public/storage contract](../docs/contracts/backtests.md#experiment-names).
+- Sync/async rename commands send only the nullable name and preserve the
+  authoritative storage response and missing/member error status.
 - Keep sync and async behavior aligned, including empty 204 deletion responses,
   404/409 errors, ordered execution logs, and conditional-operation `updated` flags.
 - Candle shape changes affect the accessor, indicator-api, and backtester.

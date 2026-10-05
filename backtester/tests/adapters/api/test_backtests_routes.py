@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
+from unittest.mock import patch
 
 import pandas as pd
 from adapters.api.app import create_app
@@ -42,6 +43,11 @@ class _FakeRunRepository:
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
         return self.runs_by_id.get(run_id)
+
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
+        saved = replace(self.runs_by_id[run_id], name=name)
+        self.runs_by_id[run_id] = saved
+        return saved
 
     def cancel(self, run_id: str) -> BacktestRunCancellation:
         run = self.runs_by_id.get(run_id)
@@ -92,6 +98,133 @@ class _FailingRunRepository(_FakeRunRepository):
 
 
 class TestBacktestSubmissionRoute(unittest.TestCase):
+    def test_rename_and_clear_preserve_execution_for_all_lifecycle_states(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(repository=repository)
+        with TestClient(create_app(service=service)) as client:
+            run_id = client.post("/backtests", json=_valid_payload()).json()["run_id"]
+            for status in BacktestRunStatus:
+                before = replace(
+                    repository.runs_by_id[run_id],
+                    status=status,
+                    result_schema_version=3,
+                    metrics={},
+                    diagnostics={},
+                )
+                repository.runs_by_id[run_id] = before
+                for name, expected in [
+                    ("  Duplicate  ", "Duplicate"),
+                    ("", None),
+                    ("😀" * 120, "😀" * 120),
+                ]:
+                    response = client.patch(f"/backtests/{run_id}/name", json={"name": name})
+                    self.assertEqual(response.status_code, 200, response.text)
+                    self.assertEqual(response.json()["name"], expected)
+                    self.assertEqual(repository.runs_by_id[run_id], replace(before, name=expected))
+                    self.assertEqual(client.get(f"/backtests/{run_id}").json()["name"], expected)
+            for payload in [
+                {},
+                {"name": 123},
+                {"name": "x" * 121},
+                {"name": "a\nb"},
+                {"name": "ok", "status": "queued"},
+            ]:
+                response = client.patch(f"/backtests/{run_id}/name", json=payload)
+                self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(
+                client.patch("/backtests/missing/name", json={"name": "x"}).status_code, 404
+            )
+            repository.runs_by_id[run_id] = replace(before, batch_id="batch", member_ordinal=0)
+            for name in ["member", None]:
+                response = client.patch(f"/backtests/{run_id}/name", json={"name": name})
+                self.assertEqual(response.status_code, 409)
+            with patch.object(repository, "rename", side_effect=RuntimeError("private")):
+                repository.runs_by_id[run_id] = before
+                response = client.patch(f"/backtests/{run_id}/name", json={"name": "x"})
+                self.assertEqual(response.status_code, 503)
+                self.assertNotIn("private", response.text)
+
+    def test_names_are_optional_normalized_and_outside_execution_snapshots(self) -> None:
+        repository = _FakeRunRepository()
+        service = BacktestRunService(repository=repository)
+        with TestClient(create_app(service=service)) as client:
+            for name, expected in [
+                (None, None),
+                ("", None),
+                (" \t ", None),
+                ("\n\r \t", None),
+                ("  Same experiment  ", "Same experiment"),
+                ("Same experiment", "Same experiment"),
+                ("😀" * 120, "😀" * 120),
+            ]:
+                with self.subTest(name=name):
+                    response = client.post("/backtests", json={**_valid_payload(), "name": name})
+                    self.assertEqual(response.status_code, 202, response.text)
+                    run_id = response.json()["run_id"]
+                    detail = client.get(f"/backtests/{run_id}").json()
+                    self.assertEqual(detail["name"], expected)
+                    self.assertNotIn("name", detail["request"])
+                    saved = repository.runs_by_id[run_id]
+                    self.assertEqual(saved.status, BacktestRunStatus.QUEUED)
+                    repository.listed_runs = [saved]
+                    self.assertEqual(client.get("/backtests").json()[0]["name"], expected)
+            for name in ["x" * 121, "a\nb", "a\rb", "\ntrimmed", "a\u2028b", 123]:
+                before = len(repository.runs_by_id)
+                response = client.post("/backtests", json={**_valid_payload(), "name": name})
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertEqual(len(repository.runs_by_id), before)
+            for key in ["name", "label"]:
+                response = client.post(
+                    "/backtests",
+                    json={**_valid_payload(), "run_metadata": {key: "legacy", "other": True}},
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_copied_names_create_fresh_runs_without_changing_sources(self) -> None:
+        repository = _FakeRunRepository()
+        with TestClient(create_app(service=BacktestRunService(repository=repository))) as client:
+            for source_name, chosen, expected in [
+                ("Baseline", "Baseline (copy)", "Baseline (copy)"),
+                (None, "", None),
+                ("😀" * 120, "😀" * 113 + " (copy)", "😀" * 113 + " (copy)"),
+                ("Baseline", "  Revised copy  ", "Revised copy"),
+            ]:
+                with self.subTest(source_name=source_name, chosen=chosen):
+                    accepted = client.post(
+                        "/backtests", json={**_valid_payload(), "name": source_name}
+                    )
+                    self.assertEqual(accepted.status_code, 202, accepted.text)
+                    source_id = accepted.json()["run_id"]
+                    source = client.get(f"/backtests/{source_id}").json()
+                    copied = client.post(
+                        "/backtests",
+                        json={**source["request"], "run_metadata": None, "name": chosen},
+                    )
+                    self.assertEqual(copied.status_code, 202, copied.text)
+                    copy_id = copied.json()["run_id"]
+                    self.assertNotEqual(copy_id, source_id)
+                    detail = client.get(f"/backtests/{copy_id}").json()
+                    self.assertEqual(detail["name"], expected)
+                    self.assertIsNone(detail.get("batch_id"))
+                    self.assertEqual(detail["status"], "queued")
+                    self.assertEqual(
+                        detail["request"],
+                        {
+                            key: value
+                            for key, value in source["request"].items()
+                            if key != "run_metadata"
+                        },
+                    )
+                    self.assertIsNone(detail["request"].get("run_metadata"))
+                    self.assertNotIn("name", detail["request"])
+                    self.assertEqual(client.get(f"/backtests/{source_id}").json(), source)
+                    repository.listed_runs = list(repository.runs_by_id.values())
+                    names_by_id = {
+                        row["run_id"]: row["name"] for row in client.get("/backtests").json()
+                    }
+                    self.assertEqual(names_by_id[copy_id], expected)
+                    self.assertEqual(names_by_id[source_id], source_name)
+
     def test_catalog_and_version_conflict_are_public_and_create_nothing(self) -> None:
         repository = _FakeRunRepository()
         service = BacktestRunService(repository=repository)
@@ -495,6 +628,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
             queued_response.json(),
             {
                 "run_id": "run-queued",
+                "name": None,
                 "status": "queued",
                 "submitted_at_ms": 1_780_921_805_123,
                 "request_schema_version": 3,
@@ -848,7 +982,7 @@ def _valid_payload() -> dict:
             "slippage_bps": 0.0,
         },
         "persist_result": False,
-        "run_metadata": {"label": "api-smoke"},
+        "run_metadata": {"source": "api-smoke"},
     }
 
 

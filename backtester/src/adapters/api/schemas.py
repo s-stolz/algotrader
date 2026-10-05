@@ -17,6 +17,7 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
+from domain.experiment_names import normalize_experiment_name
 from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
@@ -25,7 +26,15 @@ from domain.types import (
     ExecutionConfig,
     StrategyConfig,
 )
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    StrictInt,
+    field_validator,
+    model_serializer,
+)
 
 _PUBLIC_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,100}$")
 _EXCEPTION_DETAIL_PATTERN = re.compile(r"(?:^|\s)[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception):")
@@ -110,6 +119,13 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
     persist_result: bool = False
     run_metadata: dict[str, Any] | None = None
 
+    @field_validator("run_metadata")
+    @classmethod
+    def reject_metadata_names(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and ("name" in value or "label" in value):
+            raise ValueError("Use the top-level experiment name instead of metadata name/label")
+        return value
+
     def to_domain(self) -> BacktestRequest:
         execution = self.execution
         return BacktestRequest(
@@ -143,6 +159,33 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
         )
 
 
+class ExperimentNameSchema(ApiContractModel):
+    name: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        return normalize_experiment_name(value)
+
+
+class RunNameResponseSchema(ExperimentNameSchema):
+    run_id: str
+
+
+class BatchNameResponseSchema(ExperimentNameSchema):
+    batch_id: str
+
+
+class ExperimentNameUpdateSchema(ApiContractModel):
+    name: str | None
+
+    _normalize_name = field_validator("name")(ExperimentNameSchema.normalize_name.__func__)
+
+
+class BacktestCreationRequestSchema(BacktestSubmissionRequestSchema, ExperimentNameSchema):
+    pass
+
+
 class SweepPreviewRequestSchema(ApiContractModel):
     markets: list[StrictInt] = Field(min_length=1)
     timeframes: list[str] = Field(min_length=1)
@@ -158,6 +201,10 @@ class SweepPreviewRequestSchema(ApiContractModel):
     parameter_axes: dict[str, dict[str, Any]] = Field(default_factory=dict)
     allowed_directions: list[Literal["long_only", "short_only", "long_and_short"]] = Field(
         min_length=1
+    )
+
+    _reject_metadata_names = field_validator("run_metadata")(
+        BacktestSubmissionRequestSchema.reject_metadata_names.__func__
     )
 
     def to_definition(self) -> SweepDefinition:
@@ -181,12 +228,12 @@ class SweepPreviewRequestSchema(ApiContractModel):
         )
 
 
-class BatchAcceptanceRequestSchema(SweepPreviewRequestSchema):
+class BatchAcceptanceRequestSchema(SweepPreviewRequestSchema, ExperimentNameSchema):
     submission_id: str = Field(min_length=1, max_length=36)
 
     def to_definition(self) -> SweepDefinition:
         return SweepPreviewRequestSchema.model_validate(
-            self.model_dump(exclude={"submission_id"})
+            self.model_dump(exclude={"submission_id", "name"})
         ).to_definition()
 
 
@@ -267,6 +314,7 @@ class BacktestTradeResponseSchema(ApiContractModel):
 
 class BacktestRunResponseSchema(ApiContractModel):
     run_id: str
+    name: str | None = None
     batch_id: str | None = None
     member_ordinal: int | None = None
     status: Literal["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
@@ -284,10 +332,17 @@ class BacktestRunResponseSchema(ApiContractModel):
     error_code: str | None = None
     error_message: str | None = None
 
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload: dict[str, Any] = handler(self)
+        payload["name"] = self.name
+        return payload
+
     @classmethod
     def from_domain(cls, run: BacktestRunRecord) -> "BacktestRunResponseSchema":
         payload: dict[str, Any] = {
             "run_id": run.run_id,
+            "name": run.name,
             "status": run.status.value,
             "submitted_at_ms": run.submitted_at_ms,
             "request_schema_version": run.request_snapshot.schema_version,

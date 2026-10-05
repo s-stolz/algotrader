@@ -4,6 +4,7 @@ import queuedBatchQueue from '../fixtures/queuedBatchQueue.json';
 
 import {
   BacktestSubmissionError,
+  renameExperiment,
   cancelBacktestRun,
   controlBacktestBatch,
   deleteBacktestRun,
@@ -32,6 +33,23 @@ const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
 describe('backtester API client', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('sends only normalized names and validates rename identity and authoritative values', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ run_id: 'run/a', name: 'Saved' }))
+      .mockResolvedValueOnce(jsonResponse({ batch_id: 'batch', name: null }))
+      .mockResolvedValueOnce(jsonResponse({ run_id: 'wrong', name: 'Saved' }))
+      .mockResolvedValueOnce(jsonResponse({ run_id: 'run/a', name: ' untrimmed ' }));
+    await expect(renameExperiment('run', 'run/a', ' Saved ')).resolves.toBe('Saved');
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/run%2Fa/name', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Saved' }),
+    });
+    await expect(renameExperiment('batch', 'batch', '')).resolves.toBeNull();
+    await expect(renameExperiment('run', 'run/a', 'Saved')).rejects.toThrow('Invalid experiment name response');
+    await expect(renameExperiment('run', 'run/a', 'Saved')).rejects.toThrow('Invalid experiment name response');
+    await expect(renameExperiment('run', 'run/a', 'a\nb')).rejects.toThrow('single-line');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('accepts durable cancellation progress and validates the returned run', async () => {

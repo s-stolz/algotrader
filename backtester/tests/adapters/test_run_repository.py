@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 
 from adapters.persistence import DatabaseAccessorBacktestRunRepository
 from db_accessor_client import DatabaseAccessorClientError
@@ -43,6 +44,10 @@ class _FakeRunClient:
     def get_backtest_run(self, run_id: str) -> dict:
         return dict(self.runs_by_id[run_id])
 
+    def rename_backtest_run(self, run_id: str, name: str | None) -> dict:
+        self.runs_by_id[run_id]["name"] = name
+        return dict(self.runs_by_id[run_id])
+
     def cancel_backtest_run(self, run_id: str) -> dict:
         run = dict(self.runs_by_id[run_id])
         run.update(
@@ -84,11 +89,29 @@ class _RejectedCancelRunClient(_FakeRunClient):
         super().__init__()
         self.status_code = status_code
 
+    def rename_backtest_run(self, run_id: str, name: str | None) -> dict:
+        self.runs_by_id[run_id]["name"] = name
+        return dict(self.runs_by_id[run_id])
+
     def cancel_backtest_run(self, run_id: str) -> dict:
         raise DatabaseAccessorClientError("rejected", status_code=self.status_code)
 
 
 class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
+    def test_rename_preserves_authoritative_record(self) -> None:
+        client = _FakeRunClient()
+        repository = DatabaseAccessorBacktestRunRepository(client=client)
+        run = repository.create(
+            BacktestRunRecord(
+                run_id="rename",
+                status=BacktestRunStatus.QUEUED,
+                submitted_at_ms=1_780_921_805_123,
+                request_snapshot=BacktestRequestSnapshot.from_request(_request()),
+            )
+        )
+        self.assertEqual(repository.rename(run.run_id, "Renamed"), replace(run, name="Renamed"))
+        self.assertEqual(repository.get(run.run_id), replace(run, name="Renamed"))
+
     def test_cancel_maps_storage_outcome_without_reinterpreting_the_run(self) -> None:
         client = _FakeRunClient()
         repository = DatabaseAccessorBacktestRunRepository(client=client)
@@ -134,6 +157,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
             [
                 {
                     "run_id": "run-123",
+                    "name": None,
                     "status": "queued",
                     "submitted_at": "2026-06-08T12:30:05.123000+00:00",
                     "started_at": None,

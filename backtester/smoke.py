@@ -395,7 +395,8 @@ def _success_request() -> dict[str, Any]:
         },
         "execution": {},
         "persist_result": False,
-        "run_metadata": {"label": "compose-smoke-success"},
+        "name": "Compose smoke success",
+        "run_metadata": None,
     }
 
 
@@ -403,7 +404,7 @@ def _failure_request(symbol: str) -> dict[str, Any]:
     request = _success_request()
     request["symbols"] = [symbol]
     request["exchange"] = "SMOKE-MISSING"
-    request["run_metadata"] = {"label": "compose-smoke-failure"}
+    request["name"] = "Compose smoke failure"
     return request
 
 

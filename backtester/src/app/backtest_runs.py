@@ -9,7 +9,7 @@ from typing import Callable, Protocol
 from uuid import uuid4
 
 from adapters.db_accessor import DatabaseAccessorHistoricalDataAdapter, HistoricalBarDataAdapter
-from db_accessor_client import normalize_timeframe_code
+from db_accessor_client import DatabaseAccessorClientError, normalize_timeframe_code
 from domain.enums import (
     BacktestEngine,
     BacktestRunStatus,
@@ -19,6 +19,7 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
+from domain.experiment_names import normalize_experiment_name
 from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
@@ -52,6 +53,8 @@ class BacktestRunRepository(Protocol):
     def get(self, run_id: str) -> BacktestRunRecord | None: ...
 
     def cancel(self, run_id: str) -> BacktestRunCancellation: ...
+
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord: ...
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]: ...
 
@@ -98,10 +101,12 @@ class BacktestRunService:
         self._now_ms = now_ms or _utc_now_ms
         self._data_adapter = data_adapter
 
-    def submit(self, request: BacktestRequest) -> BacktestRunRecord:
+    def submit(self, request: BacktestRequest, *, name: str | None = None) -> BacktestRunRecord:
         request = _validate_submission(request)
+        name = normalize_experiment_name(name)
         run = BacktestRunRecord(
             run_id=self._new_run_id(),
+            name=name,
             status=BacktestRunStatus.QUEUED,
             submitted_at_ms=self._now_ms(),
             request_snapshot=BacktestRequestSnapshot.from_request(request),
@@ -119,6 +124,22 @@ class BacktestRunService:
         if run is None:
             raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
         return run
+
+    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
+        name = normalize_experiment_name(name)
+        run = self.get(run_id)
+        if run.batch_id is not None:
+            raise BacktestRunConflictError("Batch members have no experiment name")
+        try:
+            return self._repository.rename(run_id, name)
+        except DatabaseAccessorClientError as exc:
+            if exc.status_code == 404:
+                raise BacktestRunNotFoundError("Backtest run not found") from exc
+            if exc.status_code == 409:
+                raise BacktestRunConflictError("Batch members have no experiment name") from exc
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
+        except Exception as exc:
+            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
     def cancel(self, run_id: str) -> BacktestRunRecord:
         try:

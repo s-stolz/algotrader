@@ -35,6 +35,11 @@ migrations. Runtime query behavior belongs to
 - Lifecycle fields are normalized; versioned request/result documents and nullable
   replay metadata use JSONB. Schema-version changes do not necessarily require
   SQL changes. Preserve historical rows without manufacturing missing metadata.
+- V017 moves legacy experiment names into nullable run/batch columns and removes
+  only metadata name/label keys, including member request copies. It temporarily
+  disables the request guard inside the migration transaction and restores it
+  before commit. This is the one-time exception to snapshot immutability; see
+  [experiment names](../docs/contracts/backtests.md#experiment-names).
 - Execution slot, durable queue turns, and worker heartbeat tables serve different
   purposes: capacity, ordering, and telemetry. A stale heartbeat cannot free a slot.
 - Fills and Closed Trades use per-run sequence keys and parent cascades.

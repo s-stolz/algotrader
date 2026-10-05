@@ -29,13 +29,16 @@ from strategies.registry import (
 )
 
 from adapters.api.schemas import (
+    BacktestCreationRequestSchema,
     BacktestFillResponseSchema,
     BacktestQueueSnapshotSchema,
     BacktestRunResponseSchema,
-    BacktestSubmissionRequestSchema,
     BacktestSubmissionResponseSchema,
     BacktestTradeResponseSchema,
     BatchAcceptanceRequestSchema,
+    BatchNameResponseSchema,
+    ExperimentNameUpdateSchema,
+    RunNameResponseSchema,
     SweepPreviewRequestSchema,
 )
 from adapters.persistence import (
@@ -115,7 +118,7 @@ def accept_batch(
     service: BacktestBatchService = Depends(get_backtest_batch_service),
 ) -> dict[str, object]:
     try:
-        batch = service.accept(request.submission_id, request.to_definition())
+        batch = service.accept(request.submission_id, request.to_definition(), name=request.name)
     except StrategyVersionUnavailableError as exc:
         raise HTTPException(
             status_code=409,
@@ -165,6 +168,21 @@ def list_batches(
             with_failed_members=with_failed_members,
         )
     except DatabaseAccessorClientError as exc:
+        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+
+
+@router.patch("/batches/{batch_id}/name", response_model=BatchNameResponseSchema)
+def rename_batch(
+    batch_id: str,
+    request: ExperimentNameUpdateSchema,
+    service: BacktestBatchService = Depends(get_backtest_batch_service),
+) -> dict[str, Any]:
+    try:
+        batch = service.rename(batch_id, request.name)
+        return {"batch_id": batch["batch_id"], "name": batch["name"]}
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
         raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
 
 
@@ -297,12 +315,12 @@ def preview_sweep(
     status_code=status.HTTP_202_ACCEPTED,
 )
 def submit_backtest(
-    request: BacktestSubmissionRequestSchema,
+    request: BacktestCreationRequestSchema,
     response: Response,
     service: BacktestRunService = Depends(get_backtest_run_service),
 ) -> BacktestSubmissionResponseSchema:
     try:
-        run = service.submit(request.to_domain())
+        run = service.submit(request.to_domain(), name=request.name)
     except StrategyVersionUnavailableError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -400,6 +418,23 @@ def get_backtest(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Backtest persistence unavailable",
         ) from exc
+
+
+@router.patch("/{run_id}/name", response_model=RunNameResponseSchema)
+def rename_backtest(
+    run_id: str,
+    request: ExperimentNameUpdateSchema,
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> RunNameResponseSchema:
+    try:
+        run = service.rename(run_id, request.name)
+        return RunNameResponseSchema(run_id=run.run_id, name=run.name)
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Backtest run not found") from exc
+    except BacktestRunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BacktestRunPersistenceError as exc:
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
 @router.post(

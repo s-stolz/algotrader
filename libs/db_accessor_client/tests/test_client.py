@@ -17,6 +17,7 @@ from db_accessor_client import (
 def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
     return {
         "run_id": run_id,
+        "name": "Queued smoke",
         "status": "queued",
         "submitted_at": "2026-06-08T12:30:00Z",
         "started_at": None,
@@ -54,7 +55,7 @@ def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
                 "slippage_bps": 0.75,
             },
             "persist_result": False,
-            "run_metadata": {"label": "queued-smoke"},
+            "run_metadata": {"source": "queued-smoke"},
         },
         "result_schema_version": None,
         "metrics": None,
@@ -139,6 +140,19 @@ def _trade_payload() -> dict:
 
 
 class DatabaseAccessorClientTests(unittest.TestCase):
+    def test_rename_passes_name_only_and_authoritative_responses(self) -> None:
+        def handler(request):
+            self.assertEqual(request.method, "PATCH")
+            self.assertIn(request.url.path, ["/backtests/run/name", "/backtest-batches/batch/name"])
+            self.assertEqual(json.loads(request.content), {"name": None})
+            return httpx.Response(200, json={"name": None})
+
+        with DatabaseAccessorClient() as client:
+            client.client.close()
+            client.client = httpx.Client(transport=httpx.MockTransport(handler))
+            self.assertEqual(client.rename_backtest_run("run", None), {"name": None})
+            self.assertEqual(client.rename_backtest_batch("batch", None), {"name": None})
+
     def setUp(self) -> None:
         self._env_patcher = patch.dict(
             os.environ,
@@ -188,6 +202,7 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             client.close()
 
         self.assertEqual(run["run_id"], "run-123")
+        self.assertEqual(run["name"], "Queued smoke")
         self.assertEqual(run["request"]["exchange"], "FX")
         self.assertEqual(
             run["request"]["strategy"]["parameters"]["fast_window"],
@@ -258,8 +273,13 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         self.assertEqual(runs, [response_payload])
 
     def test_batch_acceptance_and_inspection_routes(self) -> None:
-        payload = {"batch_id": "batch-1", "submission_id": "submit-1", "members": []}
-        batch = {"batch_id": "batch-1", "status": "queued"}
+        payload = {
+            "batch_id": "batch-1",
+            "submission_id": "submit-1",
+            "name": "Batch name",
+            "members": [],
+        }
+        batch = {"batch_id": "batch-1", "name": "Batch name", "status": "queued"}
         paths: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -591,6 +611,21 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self) -> None:
         self._env_patcher.stop()
+
+    async def test_async_rename_passes_name_only_and_authoritative_responses(self) -> None:
+        def handler(request):
+            self.assertEqual(request.method, "PATCH")
+            self.assertIn(request.url.path, ["/backtests/run/name", "/backtest-batches/batch/name"])
+            self.assertEqual(json.loads(request.content), {"name": "saved"})
+            return httpx.Response(200, json={"name": "saved"})
+
+        async with AsyncDatabaseAccessorClient() as client:
+            await client.client.aclose()
+            client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            self.assertEqual(await client.rename_backtest_run("run", "saved"), {"name": "saved"})
+            self.assertEqual(
+                await client.rename_backtest_batch("batch", "saved"), {"name": "saved"}
+            )
 
     async def test_async_create_backtest_run_posts_versioned_payload(self) -> None:
         payload = _backtest_run_payload(run_id="run-async-123")

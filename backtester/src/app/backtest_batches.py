@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, ContextManager, Mapping, Protocol
 from uuid import uuid4
 
+from domain.experiment_names import normalize_experiment_name
 from domain.types import BacktestRequestSnapshot
 from strategies.registry import StrategyVersionUnavailableError, strategy_catalog
 
@@ -14,6 +15,7 @@ from app.sweeps import SweepDefinition, SweepPreviewService
 
 class BatchClient(Protocol):
     def create_backtest_batch(self, batch: dict[str, Any]) -> Mapping[str, Any]: ...
+    def rename_backtest_batch(self, batch_id: str, name: str | None) -> Mapping[str, Any]: ...
     def list_backtest_batches(self) -> list[dict[str, Any]]: ...
     def get_backtest_batch(self, batch_id: str) -> Mapping[str, Any]: ...
     def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]: ...
@@ -65,7 +67,10 @@ class BacktestBatchService:
         self._new_id = new_id or (lambda: str(uuid4()))
         self._now = now or (lambda: datetime.now(timezone.utc))
 
-    def accept(self, submission_id: str, definition: SweepDefinition) -> dict[str, Any]:
+    def accept(
+        self, submission_id: str, definition: SweepDefinition, *, name: str | None = None
+    ) -> dict[str, Any]:
+        name = normalize_experiment_name(name)
         if not submission_id or len(submission_id) > 36:
             raise ValueError("submission_id must be a nonempty client-generated identity")
         # Expansion reads the current Market catalog, strategy version, constraints,
@@ -105,6 +110,7 @@ class BacktestBatchService:
         payload = {
             "batch_id": self._new_id(),
             "submission_id": submission_id,
+            "name": name,
             "accepted_at": self._now().isoformat(),
             "definition_schema_version": 1,
             "accepted_definition": accepted_definition,
@@ -144,6 +150,10 @@ class BacktestBatchService:
         return self._with_client(
             lambda client: self._batch_with_outcomes(client, client.get_backtest_batch(batch_id))
         )
+
+    def rename(self, batch_id: str, name: str | None) -> dict[str, Any]:
+        name = normalize_experiment_name(name)
+        return self._with_client(lambda client: dict(client.rename_backtest_batch(batch_id, name)))
 
     def members(self, batch_id: str) -> list[dict[str, Any]]:
         return self._with_client(lambda client: client.list_backtest_batch_members(batch_id))

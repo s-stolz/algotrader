@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+import httpx
 from pydantic import ValidationError
 from sqlalchemy import create_engine, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -106,7 +107,7 @@ def _request_payload(**overrides):
         },
         "persist_result": False,
         "run_metadata": {
-            "label": "queued-smoke",
+            "source": "queued-smoke",
             "tags": ["durable", "api"],
         },
     }
@@ -160,6 +161,110 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     @property
     def db(self) -> AsyncSession:
         return cast(AsyncSession, self.session)
+
+    async def test_name_routes_validate_persist_clear_and_reject_members(self):
+        await main.create_backtest_run(BacktestRunCreateIn(**_run_payload()), db=self.db)
+        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        batch_id = self._batch_payload()["batch_id"]
+        member_id = self._batch_payload()["members"][0]["run_id"]
+
+        async def database():
+            yield self.db
+
+        main.app.dependency_overrides[main.get_db] = database
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=main.app), base_url="http://test"
+            ) as client:
+                for path, read_path in [
+                    ("/backtests/run-queued-1/name", "/backtests/run-queued-1"),
+                    (f"/backtest-batches/{batch_id}/name", f"/backtest-batches/{batch_id}"),
+                ]:
+                    before = (await client.get(read_path)).json()
+                    for name, expected in [
+                        ("  Duplicate  ", "Duplicate"),
+                        ("", None),
+                        ("😀" * 120, "😀" * 120),
+                    ]:
+                        response = await client.patch(path, json={"name": name})
+                        self.assertEqual(response.status_code, 200, response.text)
+                        self.assertEqual(response.json(), {**before, "name": expected})
+                        self.assertEqual(
+                            (await client.get(read_path)).json(), {**before, "name": expected}
+                        )
+                    for payload in [
+                        {},
+                        {"name": "a\nb"},
+                        {"name": "x" * 121},
+                        {"name": 1},
+                        {"name": "ok", "status": "running"},
+                    ]:
+                        self.assertEqual((await client.patch(path, json=payload)).status_code, 422)
+                for path in ["/backtests/missing/name", "/backtest-batches/missing/name"]:
+                    self.assertEqual(
+                        (await client.patch(path, json={"name": None})).status_code, 404
+                    )
+                for name in [None, "member"]:
+                    self.assertEqual(
+                        (
+                            await client.patch(f"/backtests/{member_id}/name", json={"name": name})
+                        ).status_code,
+                        409,
+                    )
+        finally:
+            main.app.dependency_overrides.pop(main.get_db)
+
+    async def test_experiment_names_normalize_and_read_back_outside_requests(self):
+        names = [
+            (None, None),
+            ("", None),
+            (" \t ", None),
+            ("  Same  ", "Same"),
+            ("Same", "Same"),
+            ("😀" * 120, "😀" * 120),
+        ]
+        for index, (name, expected) in enumerate(names):
+            run_id = f"named-run-{index}"
+            payload = BacktestRunCreateIn(**_run_payload(run_id=run_id, name=name))
+            await main.create_backtest_run(payload, db=self.db)
+            detail = await main.get_backtest_run(run_id, db=self.db)
+            assert detail is not None
+            self.assertEqual(detail["name"], expected)
+            self.assertEqual(detail["request"], _request_payload())
+            batch = BacktestBatchCreateIn(
+                **self._batch_payload(
+                    batch_id=f"named-batch-{index}",
+                    submission_id=f"named-submit-{index}",
+                    name=name,
+                    members=[{**self._batch_payload()["members"][0], "run_id": f"member-{index}"}],
+                )
+            )
+            saved = await main.create_backtest_batch(batch, db=self.db)
+            assert saved is not None
+            self.assertEqual(saved["name"], expected)
+            members = await main.list_backtest_batch_members(saved["batch_id"], db=self.db)
+            self.assertIsNone(members[0]["name"])
+            self.assertNotIn("name", members[0]["request"])
+        history = await main.list_backtest_runs(db=self.db)
+        self.assertEqual(len(history), 12)
+        for name in ["x" * 121, "a\nb", "\ntrimmed", "a\u2028b", 123]:
+            for payload_type, payload in [
+                (BacktestRunCreateIn, _run_payload()),
+                (BacktestBatchCreateIn, self._batch_payload()),
+            ]:
+                with self.assertRaises(ValidationError):
+                    payload_type(**{**payload, "name": name})
+        for key in ("name", "label"):
+            with self.assertRaises(ValidationError):
+                BacktestRunCreateIn(
+                    **_run_payload(request=_request_payload(run_metadata={key: "old"}))
+                )
+            with self.assertRaises(ValidationError):
+                BacktestBatchCreateIn(
+                    **self._batch_payload(
+                        accepted_definition={"shared_request": {"run_metadata": {key: "old"}}}
+                    )
+                )
 
     async def test_serialized_legacy_run_keeps_strategy_version_absent(self):
         await main.create_backtest_run(BacktestRunCreateIn(**_run_payload()), db=self.db)
@@ -1961,6 +2066,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             set(backtest_runs.c.keys()),
             {
                 "run_id",
+                "name",
                 "status",
                 "submitted_at",
                 "started_at",

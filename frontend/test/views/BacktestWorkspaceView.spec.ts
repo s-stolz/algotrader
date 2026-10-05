@@ -6,7 +6,7 @@ import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  cancelBacktestRun, controlBacktestBatch, deleteBacktestBatch, deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
+  renameExperiment, cancelBacktestRun, controlBacktestBatch, deleteBacktestBatch, deleteBacktestRun, fetchBacktestClosedTrades, fetchBacktestEquityCurve,
   fetchBacktestFills, fetchBacktestQueue, getBacktestBatch, getBacktestRun, listBacktestBatchEvents,
   listBacktestBatchMembers, listBacktestBatches, listBacktestRuns,
 } from '@/api/backtesterClient';
@@ -22,12 +22,16 @@ vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
   cancelBacktestRun: vi.fn(),
   controlBacktestBatch: vi.fn(),
+  renameExperiment: vi.fn(),
   deleteBacktestBatch: vi.fn(),
   deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   fetchBacktestEquityCurve: vi.fn(),
   fetchBacktestFills: vi.fn(),
   fetchBacktestQueue: vi.fn(),
+  fetchSweepCapabilities: vi.fn().mockResolvedValue({
+    max_sweep_candidate_count: 1000, batch_acceptance_enabled: true,
+  }),
   getBacktestRun: vi.fn(),
   getBacktestBatch: vi.fn(),
   listBacktestBatchEvents: vi.fn(),
@@ -157,6 +161,7 @@ describe('production Backtest Workspace', () => {
     vi.mocked(listBacktestBatchMembers).mockReset();
     vi.mocked(listBacktestBatchEvents).mockReset();
     vi.mocked(getBacktestRun).mockReset();
+    vi.mocked(renameExperiment).mockReset();
     vi.mocked(cancelBacktestRun).mockReset();
     vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(deleteBacktestRun).mockReset();
@@ -185,6 +190,400 @@ describe('production Backtest Workspace', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('renames inline with keyboard activation, Enter/blur deduplication, Escape, clearing and validation', async () => {
+    vi.useFakeTimers();
+    const savedRun = run('rename', { name: 'Saved name' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([savedRun]);
+    vi.mocked(getBacktestRun).mockResolvedValue(savedRun);
+    vi.mocked(renameExperiment).mockImplementation(async (_kind, _id, name) => name);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-rename"]').trigger('click');
+    await flushPromises();
+    const button = () => wrapper.get('.run-heading button[aria-label^="Edit experiment name"]');
+    const input = () => wrapper.get<HTMLInputElement>('.run-heading input[aria-label="Experiment name"]');
+    await button().trigger('keydown', { key: 'Enter' });
+    expect(input().element.value).toBe('Saved name');
+    await input().setValue('  New name  ');
+    expect(renameExperiment).not.toHaveBeenCalled();
+    const committedInput = input();
+    await committedInput.trigger('keydown', { key: 'Enter' });
+    await committedInput.trigger('blur');
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenCalledTimes(1);
+    expect(renameExperiment).toHaveBeenCalledWith('run', 'rename', 'New name');
+    expect(button().text()).toBe('New name');
+    expect(wrapper.get('[data-testid="workspace-run-rename"]').text()).toContain('New name');
+    expect(wrapper.get('.run-heading [role="status"]').text()).toBe('Saved');
+    await button().trigger('keydown', { key: ' ' });
+    await input().setValue('cancelled draft');
+    const cancelledInput = input();
+    await cancelledInput.trigger('keydown', { key: 'Escape' });
+    await cancelledInput.trigger('blur');
+    expect(renameExperiment).toHaveBeenCalledTimes(1);
+    expect(button().text()).toBe('New name');
+    await button().trigger('click');
+    await input().setValue('x'.repeat(121));
+    await input().trigger('keydown', { key: 'Enter' });
+    expect(wrapper.get('.run-heading [role="alert"]').text()).toContain('120');
+    expect(input().element.value).toBe('x'.repeat(121));
+    expect(renameExperiment).toHaveBeenCalledTimes(1);
+    await input().setValue('');
+    await input().trigger('blur');
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenLastCalledWith('run', 'rename', null);
+    expect(button().text()).toBe('Unnamed standalone run');
+    await button().trigger('click');
+    expect(input().element.value).toBe('');
+    wrapper.unmount();
+  });
+
+  it('retains failed drafts for retry and preserves them and acknowledged names across polling', async () => {
+    vi.useFakeTimers();
+    const savedRun = run('retry', { name: 'Old name' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([savedRun]);
+    vi.mocked(getBacktestRun).mockResolvedValue(savedRun);
+    vi.mocked(renameExperiment).mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValueOnce('Recovered name');
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-retry"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').trigger('click');
+    const input = () => wrapper.get<HTMLInputElement>('.run-heading input[aria-label="Experiment name"]');
+    await input().setValue('Recovered name');
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushPromises();
+    expect(input().element.value).toBe('Recovered name');
+    await input().trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect(input().element.value).toBe('Recovered name');
+    expect(wrapper.get('.run-heading [role="alert"]').text()).toBe('Connection lost');
+    await input().trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushPromises();
+    expect(wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').text()).toBe('Recovered name');
+    await wrapper.get('[data-testid="workspace-search"] input').setValue('Recovered name');
+    expect(wrapper.find('[data-testid="workspace-run-retry"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('keeps changes made during a save and isolates responses after navigating to another experiment', async () => {
+    vi.useFakeTimers();
+    const first = run('first-rename', { name: 'First' });
+    const second = run('second-rename', { name: 'Second' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => id === first.run_id ? first : second);
+    let resolve!: (name: string | null) => void;
+    vi.mocked(renameExperiment).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-first-rename"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').trigger('click');
+    const input = () => wrapper.get<HTMLInputElement>('.run-heading input[aria-label="Experiment name"]');
+    await input().setValue('Submitted');
+    await input().trigger('keydown', { key: 'Enter' });
+    expect(wrapper.get('.run-heading [role="status"]').text()).toBe('Saving…');
+    await input().setValue('Newer draft');
+    resolve('Submitted');
+    await flushPromises();
+    expect(input().element.value).toBe('Newer draft');
+    vi.mocked(renameExperiment).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    await input().trigger('keydown', { key: 'Enter' });
+    await wrapper.get('[data-testid="workspace-run-second-rename"]').trigger('click');
+    await flushPromises();
+    resolve('Newer draft');
+    await flushPromises();
+    expect(wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').text()).toBe('Second');
+    expect(wrapper.find('.run-heading input').exists()).toBe(false);
+    expect(wrapper.find('.run-heading [role="status"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="workspace-run-first-rename"]').text()).toContain('Newer draft');
+    wrapper.unmount();
+  });
+
+  it.each(['Enter', 'blur'])('saves a newer explicit %s gesture while an earlier rename is pending', async (gesture) => {
+    vi.useFakeTimers();
+    const original = run('pending-gesture', { name: 'Original' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([original]);
+    vi.mocked(getBacktestRun).mockResolvedValue(original);
+    let firstSave!: (name: string | null) => void;
+    vi.mocked(renameExperiment).mockImplementationOnce(() => new Promise((resolve) => { firstSave = resolve; }))
+      .mockResolvedValueOnce('Newer');
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-pending-gesture"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').trigger('click');
+    const input = () => wrapper.get<HTMLInputElement>('.run-heading input[aria-label="Experiment name"]');
+    await input().setValue('First');
+    await input().trigger('keydown', { key: 'Enter' });
+    await input().setValue('Newer');
+    if (gesture === 'Enter') await input().trigger('keydown', { key: 'Enter' });
+    await input().trigger('blur');
+    await input().setValue('Uncommitted draft');
+    expect(renameExperiment).toHaveBeenCalledTimes(1);
+    firstSave('First');
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenCalledTimes(2);
+    expect(renameExperiment).toHaveBeenLastCalledWith('run', original.run_id, 'Newer');
+    expect(wrapper.get('[data-testid="workspace-run-pending-gesture"]').text()).toContain('Newer');
+    expect(input().element.value).toBe('Uncommitted draft');
+    wrapper.unmount();
+  });
+
+  it.each([
+    ['run', 'Enter', 'run'],
+    ['run', 'blur', 'run'],
+    ['run', 'Enter', 'batch'],
+    ['batch', 'blur', 'run'],
+  ] as const)('persists a newer committed %s name after %s and navigation to %s detail', async (kind, gesture, destination) => {
+    vi.useFakeTimers();
+    const original = run('departed-run', { name: 'Original run' });
+    const other = run('other-run', { name: 'Other run' });
+    const sweep = { ...batch('departed-batch', 1), name: 'Original sweep' };
+    vi.mocked(listBacktestRuns).mockResolvedValue([original, other]);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => id === original.run_id ? original : other);
+    vi.mocked(listBacktestBatches).mockResolvedValue([sweep]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(sweep);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    let firstSave!: (name: string | null) => void;
+    vi.mocked(renameExperiment).mockImplementationOnce(() => new Promise((resolve) => { firstSave = resolve; }))
+      .mockResolvedValueOnce('Newer committed');
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    const sourceId = kind === 'run' ? original.run_id : sweep.batch_id;
+    const sourceRow = `[data-testid="workspace-${kind}-${sourceId}"]`;
+    await wrapper.get(sourceRow).trigger('click');
+    await flushPromises();
+    const sourceHeading = kind === 'run' ? '.run-heading' : '.sweep-header';
+    await wrapper.get(`${sourceHeading} button[aria-label^="Edit experiment name"]`).trigger('click');
+    const input = wrapper.get(`${sourceHeading} input[aria-label="Experiment name"]`);
+    await input.setValue('First');
+    await input.trigger('keydown', { key: 'Enter' });
+    await input.setValue('Newer committed');
+    if (gesture === 'Enter') await input.trigger('keydown', { key: 'Enter' });
+    await input.trigger('blur');
+    expect(renameExperiment).toHaveBeenCalledTimes(1);
+    const destinationId = destination === 'run' ? other.run_id : sweep.batch_id;
+    await wrapper.get(`[data-testid="workspace-${destination}-${destinationId}"]`).trigger('click');
+    await flushPromises();
+    const destinationHeading = destination === 'run' ? '.run-heading' : '.sweep-header';
+    const displayedName = destination === 'run' ? 'Other run' : 'Original sweep';
+    const button = () => wrapper.get(`${destinationHeading} button[aria-label^="Edit experiment name"]`);
+    expect(button().text()).toBe(displayedName);
+    expect(wrapper.find(`${destinationHeading} input`).exists()).toBe(false);
+    firstSave('First');
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenCalledTimes(2);
+    expect(renameExperiment).toHaveBeenLastCalledWith(kind, sourceId, 'Newer committed');
+    expect(wrapper.get(sourceRow).text()).toContain('Newer committed');
+    expect(button().text()).toBe(displayedName);
+    expect(wrapper.find(`${destinationHeading} input`).exists()).toBe(false);
+    expect(wrapper.find(`${destinationHeading} .experiment-name [role="status"]`).exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('cancels a newer queued commit with Escape while an earlier rename is pending', async () => {
+    vi.useFakeTimers();
+    const original = run('cancel-gesture', { name: 'Original' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([original]);
+    vi.mocked(getBacktestRun).mockResolvedValue(original);
+    let firstSave!: (name: string | null) => void;
+    vi.mocked(renameExperiment).mockImplementationOnce(() => new Promise((resolve) => { firstSave = resolve; }));
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-cancel-gesture"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').trigger('click');
+    const input = wrapper.get('.run-heading input[aria-label="Experiment name"]');
+    await input.setValue('First');
+    await input.trigger('keydown', { key: 'Enter' });
+    await input.setValue('Cancelled');
+    await input.trigger('keydown', { key: 'Enter' });
+    await input.trigger('keydown', { key: 'Escape' });
+    await input.trigger('blur');
+    firstSave('First');
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').text()).toBe('First');
+    wrapper.unmount();
+  });
+
+  it('renames a batch in detail and updates history search while members remain uneditable', async () => {
+    vi.useFakeTimers();
+    const accepted = { ...batch('rename-batch', 1), name: null };
+    const memberRun = run('rename-member', { batch_id: accepted.batch_id, member_ordinal: 0 });
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
+    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
+    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestBatchMembers).mockResolvedValue([memberRun]);
+    vi.mocked(getBacktestRun).mockResolvedValue(memberRun);
+    vi.mocked(renameExperiment).mockResolvedValue('Named sweep');
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-batch-rename-batch"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('.sweep-header button[aria-label^="Edit experiment name"]').trigger('click');
+    const input = wrapper.get<HTMLInputElement>('.sweep-header input[aria-label="Experiment name"]');
+    expect(input.element.value).toBe('');
+    await input.setValue('Named sweep');
+    await input.trigger('blur');
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenCalledWith('batch', accepted.batch_id, 'Named sweep');
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushPromises();
+    expect(wrapper.get('.sweep-header button[aria-label^="Edit experiment name"]').text()).toBe('Named sweep');
+    await wrapper.get('[data-testid="workspace-search"] input').setValue('Named sweep');
+    expect(wrapper.get('[data-testid="workspace-batch-rename-batch"]').text()).toContain('Named sweep');
+    expect(wrapper.findAll('button[aria-label^="Edit experiment name"]')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('protects an acknowledged rename from a history read started before saving', async () => {
+    vi.useFakeTimers();
+    const original = run('late-read', { name: 'Before' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([original]);
+    vi.mocked(getBacktestRun).mockResolvedValue(original);
+    vi.mocked(renameExperiment).mockResolvedValue('After');
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-late-read"]').trigger('click');
+    await flushPromises();
+    let finishRead!: (runs: BacktestRun[]) => void;
+    vi.mocked(listBacktestRuns).mockImplementationOnce(() => new Promise((resolve) => { finishRead = resolve; }));
+    await vi.advanceTimersByTimeAsync(5000);
+    await wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').trigger('click');
+    const input = wrapper.get('.run-heading input[aria-label="Experiment name"]');
+    await input.setValue('After');
+    await input.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    finishRead([original]);
+    await flushPromises();
+    expect(wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').text()).toBe('After');
+    expect(wrapper.get('[data-testid="workspace-run-late-read"]').text()).toContain('After');
+    wrapper.unmount();
+  });
+
+  it('serializes a new edit after cancelling a pending save for the same experiment', async () => {
+    vi.useFakeTimers();
+    const original = run('queued-name', { name: 'Original' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([original]);
+    vi.mocked(getBacktestRun).mockResolvedValue(original);
+    let firstSave!: (name: string | null) => void;
+    vi.mocked(renameExperiment).mockImplementationOnce(() => new Promise((resolve) => { firstSave = resolve; }))
+      .mockResolvedValueOnce('Second edit');
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-queued-name"]').trigger('click');
+    await flushPromises();
+    const button = () => wrapper.get('.run-heading button[aria-label^="Edit experiment name"]');
+    const input = () => wrapper.get<HTMLInputElement>('.run-heading input[aria-label="Experiment name"]');
+    await button().trigger('click');
+    await input().setValue('First edit');
+    await input().trigger('keydown', { key: 'Enter' });
+    await input().trigger('keydown', { key: 'Escape' });
+    await button().trigger('click');
+    await input().setValue('Second edit');
+    await input().trigger('keydown', { key: 'Enter' });
+    expect(renameExperiment).toHaveBeenCalledTimes(1);
+    firstSave('First edit');
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenCalledTimes(2);
+    expect(renameExperiment).toHaveBeenLastCalledWith('run', 'queued-name', 'Second edit');
+    expect(button().text()).toBe('Second edit');
+    expect(wrapper.get('[data-testid="workspace-run-queued-name"]').text()).toContain('Second edit');
+    wrapper.unmount();
+  });
+
+  it('retains a successful predecessor name when its cancelled session has a failed successor', async () => {
+    vi.useFakeTimers();
+    const original = run('failed-successor', { name: 'Original' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([original]);
+    vi.mocked(getBacktestRun).mockResolvedValue(original);
+    let firstSave!: (name: string | null) => void;
+    vi.mocked(renameExperiment).mockResolvedValueOnce('Last acknowledged')
+      .mockImplementationOnce(() => new Promise((resolve) => { firstSave = resolve; }))
+      .mockRejectedValueOnce(new Error('Successor failed'));
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-failed-successor"]').trigger('click');
+    await flushPromises();
+    const button = () => wrapper.get('.run-heading button[aria-label^="Edit experiment name"]');
+    const input = () => wrapper.get<HTMLInputElement>('.run-heading input[aria-label="Experiment name"]');
+    await button().trigger('click');
+    await input().setValue('Last acknowledged');
+    await input().trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await button().trigger('click');
+    await input().setValue('Persisted predecessor');
+    await input().trigger('keydown', { key: 'Enter' });
+    await input().trigger('keydown', { key: 'Escape' });
+    await button().trigger('click');
+    await input().setValue('Failed successor draft');
+    await input().trigger('keydown', { key: 'Enter' });
+    expect(renameExperiment).toHaveBeenCalledTimes(2);
+    firstSave('Persisted predecessor');
+    await flushPromises();
+    expect(renameExperiment).toHaveBeenCalledTimes(3);
+    expect(input().element.value).toBe('Failed successor draft');
+    expect(wrapper.get('.run-heading [role="alert"]').text()).toBe('Successor failed');
+    const persisted = { ...original, name: 'Persisted predecessor' };
+    vi.mocked(listBacktestRuns).mockResolvedValue([persisted]);
+    vi.mocked(getBacktestRun).mockResolvedValue(persisted);
+    await vi.advanceTimersByTimeAsync(10000);
+    await flushPromises();
+    expect(input().element.value).toBe('Failed successor draft');
+    expect(wrapper.get('.run-heading [role="alert"]').text()).toBe('Successor failed');
+    expect(wrapper.get('[data-testid="workspace-run-failed-successor"]').text()).toContain('Persisted predecessor');
+    await input().trigger('keydown', { key: 'Escape' });
+    expect(button().text()).toBe('Persisted predecessor');
+    await wrapper.get('[data-testid="workspace-search"] input').setValue('Persisted predecessor');
+    expect(wrapper.find('[data-testid="workspace-run-failed-successor"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('preserves a confirmed rename in comparison and chart legends after delayed Equity Replay', async () => {
+    vi.useFakeTimers();
+    const original = run('delayed-replay-name', { name: 'Before replay' });
+    vi.mocked(listBacktestRuns).mockResolvedValue([original]);
+    vi.mocked(getBacktestRun).mockResolvedValue(original);
+    vi.mocked(renameExperiment).mockResolvedValue('After rename');
+    let finishReplay!: (curve: EquityReplayResponse) => void;
+    vi.mocked(fetchBacktestEquityCurve).mockImplementationOnce(() => new Promise((resolve) => { finishReplay = resolve; }));
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-delayed-replay-name"]').trigger('click');
+    await flushPromises();
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(1);
+    await wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').trigger('click');
+    const input = wrapper.get('.run-heading input[aria-label="Experiment name"]');
+    await input.setValue('After rename');
+    await input.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    const persisted = { ...original, name: 'After rename' };
+    vi.mocked(listBacktestRuns).mockResolvedValue([persisted]);
+    vi.mocked(getBacktestRun).mockResolvedValue(persisted);
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushPromises();
+    const comparison = () => wrapper.get('[data-testid="workspace-current-backtest"] .run-identity span');
+    expect(comparison().text()).toBe('After rename');
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(1);
+    finishReplay({ availability: 'exact', reason: null, source_point_count: 1,
+      returned_point_count: 1, sampled: false,
+      equity_curve: [{ timestamp_ms: 1_714_521_600_000, equity: 10050, drawdown_pct: 0 }] });
+    await flushPromises();
+    expect(comparison().text()).toBe('After rename');
+    expect(wrapper.findComponent({ name: 'EquityReplayCharts' }).props('series'))
+      .toEqual([expect.objectContaining({ name: 'After rename' })]);
+    expect(wrapper.get('.run-heading button[aria-label^="Edit experiment name"]').text()).toBe('After rename');
+    expect(wrapper.get('[data-testid="workspace-run-delayed-replay-name"]').text()).toContain('After rename');
+    wrapper.unmount();
   });
 
   it('selects all eligible runs and shows partial selection in the header checkbox', async () => {
@@ -230,6 +629,7 @@ describe('production Backtest Workspace', () => {
   });
 
   it('paginates all fetched members with global sorting, page sizes, and an All option', async () => {
+    vi.useFakeTimers();
     const members = Array.from({ length: 105 }, (_, ordinal) =>
       run(`paged-${ordinal}`, { batch_id: 'paged', member_ordinal: ordinal }));
     const accepted = batch('paged', members.length);
@@ -243,8 +643,8 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     const table = () => wrapper.get('[data-testid="workspace-current-backtest"]');
     const pagination = () => wrapper.findAllComponents(NPagination).at(-1)!;
-    const identities = () => table().findAll('.run-identity').map((cell) => cell.text());
-    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `#${index + 1}`));
+    const identities = () => table().findAll('.run-identity').map((cell) => cell.find('span').text());
+    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `Run #${index + 1}`));
     expect(pagination().props('pageSize')).toBe(20);
     expect(pagination().props('pageSizes')).toEqual([
       { label: '20 rows', value: 20 },
@@ -255,11 +655,11 @@ describe('production Backtest Workspace', () => {
     const memberReads = vi.mocked(listBacktestBatchMembers).mock.calls.length;
     pagination().vm.$emit('update:page', 3);
     await flushPromises();
-    expect(identities()[0]).toBe('#41');
+    expect(identities()[0]).toBe('Run #41');
     wrapper.findAllComponents(NDataTable).at(-1)!.vm.sort('ordinal', 'descend');
     await flushPromises();
     expect(pagination().props('page')).toBe(1);
-    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `#${105 - index}`));
+    expect(identities()).toEqual(Array.from({ length: 20 }, (_, index) => `Run #${105 - index}`));
     for (const size of [50, 100, Number.MAX_SAFE_INTEGER, 20]) {
       pagination().vm.$emit('update:pageSize', size);
       await flushPromises();
@@ -275,7 +675,7 @@ describe('production Backtest Workspace', () => {
     wrapper.findComponent({ name: 'BacktestBatches' }).vm.$emit('members', 'paged', members.slice(0, 25));
     await flushPromises();
     expect(pagination().props('page')).toBe(2);
-    expect(identities()).toEqual(['#5', '#4', '#3', '#2', '#1']);
+    expect(identities()).toEqual(['Run #5', 'Run #4', 'Run #3', 'Run #2', 'Run #1']);
     wrapper.unmount();
   });
 
@@ -327,7 +727,7 @@ describe('production Backtest Workspace', () => {
 
   it('shows real saved history, selects one run, and retains signed metric semantics', async () => {
     const success = run('success', {
-      request: { ...run('x').request, run_metadata: { name: 'Baseline' } },
+      name: 'Baseline',
     });
     const failed = run('failed', { status: 'failed', metrics: null, error_message: 'No candles' });
     vi.mocked(listBacktestRuns).mockResolvedValue([success, failed]);
@@ -509,8 +909,9 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
-  it('opens Create from this without changing the saved run or selection', async () => {
-    const saved = run('source');
+  it.each([[null, ''], ['Baseline', 'Baseline (copy)']] as const)(
+    'opens Create from this for standalone name %s without changing the source or selection', async (name, proposed) => {
+    const saved = run('source', { name });
     const original = structuredClone(saved);
     vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
     const wrapper = mountWorkspace();
@@ -522,13 +923,32 @@ describe('production Backtest Workspace', () => {
     expect(useBacktestWorkspaceStore().reuseSource).toMatchObject({ kind: 'run', id: 'source',
       strategyVersion: null });
     expect(useBacktestWorkspaceStore().creationDraft?.strategy.strategy_id).toBe('sma');
+    expect(useBacktestWorkspaceStore().creationDraft?.name).toBe(proposed);
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('source');
     expect(saved).toEqual(original);
     wrapper.unmount();
   });
 
+  it.each([[null, ''], ['Sweep baseline', 'Sweep baseline (copy)']] as const)(
+    'opens Create from this for batch name %s without changing saved history', async (name, proposed) => {
+    const saved = { ...batch('source-batch', 1), name };
+    saved.accepted_definition.shared_request = JSON.parse(JSON.stringify(run('settings').request));
+    const original = structuredClone(saved);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([saved]);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-create-from-source-batch"]').trigger('click');
+    await flushPromises();
+    expect(useBacktestWorkspaceStore().reuseSource).toMatchObject({ kind: 'batch', id: 'source-batch' });
+    expect(useBacktestWorkspaceStore().creationDraft?.name).toBe(proposed);
+    expect(useBacktestWorkspaceStore().creationSweepDraft?.isSweep).toBe(true);
+    expect(saved).toEqual(original);
+    wrapper.unmount();
+  });
+
   it('opens the accessible execution drawer without changing selection and filters trades while showing all fills', async () => {
-    const first = run('first', { request: { ...run('x').request, run_metadata: { name: 'First run' } } });
+    const first = run('first', { name: 'First run' });
     const second = run('second');
     vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
     vi.mocked(getBacktestRun).mockResolvedValue(first);
@@ -542,7 +962,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
 
     const icon = wrapper.find('[data-testid="workspace-current-backtest"] [data-testid="workspace-log-first"]');
-    expect(icon.attributes('aria-label')).toBe('View execution log for run #1');
+    expect(icon.attributes('aria-label')).toBe('View execution log for First run');
     expect(icon.attributes('title')).toBeUndefined();
     await icon.trigger('click');
     await flushPromises();
@@ -573,7 +993,7 @@ describe('production Backtest Workspace', () => {
     document.body.querySelector<HTMLButtonElement>('.n-drawer-header__close')!.click();
     await wrapper.vm.$nextTick();
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
-    expect(wrapper.find('[data-testid="workspace-current-backtest"] .run-identity').text()).toBe('#1');
+    expect(wrapper.find('[data-testid="workspace-current-backtest"] .run-identity span').text()).toBe('First run');
     wrapper.unmount();
   });
 
@@ -643,7 +1063,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     resolveFirst([trade(0, 'long', 'signal')]);
     await flushPromises();
-    expect(document.body.textContent).toContain('Execution log · second');
+    expect(document.body.textContent).toContain('Execution log · Unnamed standalone run');
     expect(document.body.textContent).toContain('short');
     expect(document.body.textContent).not.toContain('long');
 
@@ -684,9 +1104,52 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
+  it('displays saved names and unnamed fallbacks with UUIDs and searches and sorts the visible names', async () => {
+    const named = run('alpha-run-full-uuid', { name: 'Alpha research' });
+    const unnamed = run('void-run-full-uuid', { request: {
+      ...run('x').request, run_metadata: { name: 'Ignored legacy name', label: 'Ignored legacy label' },
+    } });
+    const namedSweep = { ...batch('beta-batch-full-uuid', 1), name: 'Beta research' };
+    const unnamedSweep = batch('empty-batch-full-uuid', 1);
+    vi.mocked(listBacktestRuns).mockResolvedValue([named, unnamed]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([namedSweep, unnamedSweep]);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => id === named.run_id ? named : unnamed);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    const history = () => wrapper.get('[data-testid="workspace-history"]');
+    for (const [kind, id, label] of [['run', named.run_id, 'Alpha research'],
+      ['run', unnamed.run_id, 'Unnamed standalone run'],
+      ['batch', namedSweep.batch_id, 'Beta research'],
+      ['batch', unnamedSweep.batch_id, 'Unnamed parameter sweep']] as const) {
+      await wrapper.get('[data-testid="workspace-search"] input').setValue('');
+      const identity = history().get(`[data-testid="workspace-${kind}-${id}"] .run-identity`);
+      expect(identity.get('span').text()).toBe(label);
+      expect(identity.get('small').text()).toBe(id.slice(0, 8));
+      expect(identity.get('span').attributes('title')).toBe(id);
+      await wrapper.get('[data-testid="workspace-search"] input').setValue(`  ${label.toUpperCase()}  `);
+      expect(history().findAll('tbody tr')).toHaveLength(1);
+      expect(history().find(`[data-testid="workspace-${kind}-${id}"]`).exists()).toBe(true);
+    }
+    await wrapper.get('[data-testid="workspace-search"] input').setValue('Ignored legacy name');
+    expect(history().find('[data-testid="workspace-run-void-run-full-uuid"]').exists()).toBe(false);
+    for (const query of [named.run_id, namedSweep.batch_id, namedSweep.submission_id]) {
+      await wrapper.get('[data-testid="workspace-search"] input').setValue(query);
+      expect(history().findAll('tbody tr')).toHaveLength(1);
+    }
+    await wrapper.get('[data-testid="workspace-search"] input').setValue('');
+    wrapper.findAllComponents(NDataTable)[0].vm.sort('name', 'ascend');
+    await flushPromises();
+    expect(history().findAll('.run-identity span').map((identity) => identity.text()))
+      .toEqual(['Alpha research', 'Beta research', 'Unnamed parameter sweep', 'Unnamed standalone run']);
+    await history().get(`[data-testid="workspace-run-${named.run_id}"]`).trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.strategy-name').text()).toBe('Alpha research');
+    wrapper.unmount();
+  });
+
   it('filters by search, status, Market, Strategy, and Timeframe', async () => {
     const euro = run('euro', {
-      request: { ...run('x').request, run_metadata: { name: 'Euro setup' } },
+      name: 'Euro setup',
     });
     const pound = run('pound', {
       status: 'failed',
@@ -767,7 +1230,7 @@ describe('production Backtest Workspace', () => {
     expect(history().find('[data-testid="workspace-batch-batch-1"]').text()).toContain('1 failed');
     await history().find('[data-testid="workspace-batch-batch-1"]').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[data-testid="workspace-member-member-0"] .run-identity').text()).toBe('#1');
+    expect(wrapper.find('[data-testid="workspace-member-member-0"] .run-identity span').text()).toBe('Run #1');
     expect(listBacktestBatchMembers).toHaveBeenCalledWith('batch-1');
 
     await wrapper.find('[data-testid="workspace-search"] input').setValue('submit-1');
@@ -845,7 +1308,7 @@ describe('production Backtest Workspace', () => {
     expect(table().findAll('th').at(-1)!.text()).toBe('Actions');
     expect(table().findAll('th').some((header) => header.text() === 'Cancel')).toBe(false);
     expect(table().find('[data-testid^="workspace-cancel-"]').exists()).toBe(false);
-    expect(table().get('[data-testid="workspace-member-member-0"] td:nth-child(2)').text()).toBe('#1');
+    expect(table().get('[data-testid="workspace-member-member-0"] td:nth-child(2) .run-identity span').text()).toBe('Run #1');
     expect(table().get('[data-testid="workspace-member-member-0"] td').find('button').exists()).toBe(false);
     const dataTable = wrapper.findAllComponents(NDataTable).at(-1)!;
     expect(dataTable.props('maxHeight')).toBe(360);
@@ -1023,7 +1486,7 @@ describe('production Backtest Workspace', () => {
     await flushPromises();
     vi.advanceTimersByTime(5000);
     await flushPromises();
-    expect(document.body.textContent).toContain('Execution log · member');
+    expect(document.body.textContent).toContain('Execution log · Run #1');
     wrapper.unmount();
   });
 
@@ -1447,19 +1910,19 @@ describe('production Backtest Workspace', () => {
     await wrapper.get('[data-testid="workspace-batch-direct"]').trigger('click');
     await flushPromises();
     const table = wrapper.get('[data-testid="workspace-current-backtest"]');
-    const identities = () => table.findAll('.run-identity').map((cell) => cell.text());
-    expect(identities()).toEqual(['#1', '#2', '#10']);
+    const identities = () => table.findAll('.run-identity').map((cell) => cell.find('span').text());
+    expect(identities()).toEqual(['Run #1', 'Run #2', 'Run #10']);
     const dataTable = wrapper.findAllComponents(NDataTable).at(-1)!;
     dataTable.vm.sort('ordinal', 'descend');
     await flushPromises();
-    expect(identities()).toEqual(['#10', '#2', '#1']);
+    expect(identities()).toEqual(['Run #10', 'Run #2', 'Run #1']);
     dataTable.vm.sort('ordinal', 'ascend');
     await flushPromises();
-    expect(identities()).toEqual(['#1', '#2', '#10']);
+    expect(identities()).toEqual(['Run #1', 'Run #2', 'Run #10']);
     await wrapper.get('[data-testid="workspace-member-z-first"]').trigger('click');
     await flushPromises();
     const chart = wrapper.get('[data-testid="workspace-chart-a-tenth"]');
-    expect(chart.attributes('aria-label')).toBe('Open run #10 on chart');
+    expect(chart.attributes('aria-label')).toBe('Open Run #10 on chart');
     await chart.trigger('keydown', { key: 'Enter' });
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('z-first');
     await chart.trigger('click');

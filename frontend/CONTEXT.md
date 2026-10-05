@@ -36,6 +36,19 @@ and behavior that is easy to break when changing them.
   `src/stores/backtestWorkspaceStore.ts`; creation lives in
   `src/views/BacktestCreationDrawer.vue`. `src/App.vue` keeps routed views alive:
   navigation preserves drafts, history filters, and comparison selections.
+- Creation retains an optional experiment name alongside draft fields. Names
+  are top-level creation properties; omit them from stateless sweep preview.
+  History/detail names and member labels share `backtestWorkspaceRuns.ts`; use
+  that displayed name for search and sorting, with UUIDs beneath history labels.
+  Validation and exact unnamed text follow
+  [experiment names](../docs/contracts/backtests.md#experiment-names), with no metadata fallback.
+- Detail names use the shared inline experiment-name control. Drafts belong to
+  an edit session; acknowledgements belong to an experiment identity. Explicitly
+  committed names remain bound to that identity when navigation replaces or
+  unmounts the editor; Escape cancels still-unsent queued intent. Workspace
+  name revisions protect older reads and names awaiting readback, while allowing
+  fresh confirmed reads to resume normal polling. Apply name acknowledgements
+  without replacing execution fields from a save response.
 - Read history, commands, logs, and Equity Replay through
   `src/api/backtesterClient.ts`. For lifecycle or API changes, read
   [backtest contracts](../docs/contracts/backtests.md); the public backtester API owns
@@ -47,6 +60,10 @@ and behavior that is easy to break when changing them.
   requests and metadata. Require review of changed Strategy Versions before
   reuse. Keep submission/command identities across retries of the same action;
   submission follows explicit user action and advertised backend capability.
+  `src/views/backtestReuse.ts` proposes editable names from saved top-level names
+  with a complete ` (copy)` suffix, shortening by Unicode characters to fit the
+  existing limit. Unnamed sources leave the draft empty; copied names use the
+  ordinary creation contract and survive draft navigation and mode changes.
 - Treat missing metrics separately from zero. Ending equity comes from the last
   exact Equity Replay point; saved Return uses its first-recorded-equity baseline,
   separately from request Initial capital. Tables display maximum drawdown as a

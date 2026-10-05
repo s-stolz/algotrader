@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -8,6 +9,7 @@ import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
   controlBacktestBatch: vi.fn(),
+  renameExperiment: vi.fn(),
   getBacktestBatch: vi.fn(), listBacktestBatchEvents: vi.fn(),
   listBacktestBatchMembers: vi.fn(),
 }));
@@ -58,6 +60,7 @@ describe('accepted batch inspection', () => {
   });
 
   beforeEach(() => {
+    setActivePinia(createPinia());
     vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(getBacktestBatch).mockReset().mockResolvedValue(batch);
     vi.mocked(listBacktestBatchMembers).mockReset().mockResolvedValue([member(0), member(1)]);
@@ -69,9 +72,20 @@ describe('accepted batch inspection', () => {
   it('emits actual members to the workspace comparison table', async () => {
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
+    expect(wrapper.get('h3').text()).toBe('Unnamed parameter sweep');
     expect(wrapper.emitted('members')?.[0]).toEqual(['batch-1', [member(0), member(1)]]);
     expect(wrapper.find('[data-testid="workspace-batch-members"]').exists()).toBe(false);
     wrapper.unmount();
+  });
+
+  it('shows the saved experiment name again after reloading detail', async () => {
+    vi.mocked(getBacktestBatch).mockResolvedValue({ ...batch, name: 'Sweep research' });
+    for (let reload = 0; reload < 2; reload += 1) {
+      const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+      await flushPromises();
+      expect(wrapper.get('h3').text()).toBe('Sweep research');
+      wrapper.unmount();
+    }
   });
 
   it('does not discard a batch read that takes longer than a poll interval', async () => {
@@ -96,11 +110,11 @@ describe('accepted batch inspection', () => {
       .mockResolvedValue({ ...batch, status: 'paused', lifecycle_revision: 1 });
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     expect(controlBacktestBatch).toHaveBeenCalledWith('batch-1', 'pause', expect.any(String));
     expect(wrapper.text()).toContain('Batch paused.');
-    expect(wrapper.get('button').text()).toBe('Resume Batch');
+    expect(wrapper.get('.header-actions button').text()).toBe('Resume Batch');
     expect(wrapper.get('p[role="status"]').text()).not.toContain('%');
     wrapper.unmount();
   });
@@ -150,12 +164,12 @@ describe('accepted batch inspection', () => {
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
     expect(wrapper.text()).toContain('Pausing after the active run finishes.');
-    expect(wrapper.get('button').text()).toBe('Resume Batch');
+    expect(wrapper.get('.header-actions button').text()).toBe('Resume Batch');
     expect(wrapper.get('p[role="status"]').text()).not.toContain('%');
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('Connection lost');
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     const calls = vi.mocked(controlBacktestBatch).mock.calls;
     expect(calls[0][2]).toBe(calls[1][2]);
@@ -175,9 +189,9 @@ describe('accepted batch inspection', () => {
     vi.mocked(controlBacktestBatch).mockRejectedValue(new Error('Connection lost'));
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     const calls = vi.mocked(controlBacktestBatch).mock.calls;
     expect(calls).toHaveLength(2);
@@ -197,17 +211,17 @@ describe('accepted batch inspection', () => {
 
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
-    expect(wrapper.get('button').text()).toBe('Resume Batch');
+    expect(wrapper.get('.header-actions button').text()).toBe('Resume Batch');
     expect(wrapper.text()).toContain('revision 1');
 
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
-    expect(wrapper.get('button').text()).toBe('Pause Batch');
+    expect(wrapper.get('.header-actions button').text()).toBe('Pause Batch');
     expect(wrapper.text()).toContain('revision 2');
 
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     const calls = vi.mocked(controlBacktestBatch).mock.calls;
     expect(calls.map(([,, identity]) => identity)).toHaveLength(3);
@@ -310,7 +324,7 @@ describe('accepted batch inspection', () => {
     await flushPromises();
     expect(wrapper.get('.elapsed strong').text()).toBe('12s');
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('2');
-    expect(wrapper.findAll('button')).toHaveLength(0);
+    expect(wrapper.findAll('.header-actions button')).toHaveLength(0);
     vi.advanceTimersByTime(10_000);
     await flushPromises();
     expect(wrapper.get('.elapsed strong').text()).toBe('12s');
@@ -349,7 +363,7 @@ describe('accepted batch inspection', () => {
     expect(wrapper.get('.progress-percent').text()).toBe('100%');
     expect(wrapper.get('.status-badge').text()).toBe('Cancelled');
     expect(wrapper.get('.outcome-grid .cancelled dd').text()).toBe('1');
-    expect(wrapper.findAll('button')).toHaveLength(0);
+    expect(wrapper.findAll('.header-actions button')).toHaveLength(0);
     wrapper.unmount();
   });
 

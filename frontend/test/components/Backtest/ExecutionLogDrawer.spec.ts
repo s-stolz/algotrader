@@ -184,7 +184,11 @@ describe('execution-log drawer', () => {
     await wrapper.find('[data-testid="workspace-log-second"]').trigger('click');
     await flushPromises();
 
-    expect(document.body.textContent).toContain('Execution log · second');
+    expect(document.body.textContent).toContain('Execution log · Unnamed standalone run');
+    expect(document.body.querySelector(
+      '[data-testid="execution-log-drawer"] .run-identity code',
+    )?.textContent).toBe('second');
+    expect(fetchBacktestClosedTrades).toHaveBeenLastCalledWith('second');
     expect(document.body.textContent).toContain('short');
     expect(document.body.textContent).not.toContain('long');
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
