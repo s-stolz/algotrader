@@ -1,7 +1,8 @@
 import type {
-  BacktestBatch, BacktestRequestPayload, BacktestRun, StrategyCatalogEntry,
+  BacktestBatch, BacktestCreationRequest, BacktestRun, StrategyCatalogEntry,
   SweepDraftState, SweepParameterDraft,
 } from '@/types/backtesterContracts';
+import { normalizeExperimentName } from '@/types/backtesterContracts';
 
 export type ReuseSource = {
   kind: 'run' | 'batch';
@@ -13,7 +14,7 @@ export type ReuseSource = {
 };
 
 export type ReuseDraft = {
-  request: BacktestRequestPayload;
+  request: BacktestCreationRequest;
   sweep: SweepDraftState;
   source: ReuseSource;
 };
@@ -26,8 +27,15 @@ function copyJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function copyName(value: string | null | undefined): string {
+  const name = normalizeExperimentName(value);
+  const suffix = ' (copy)';
+  return name ? [...name].slice(0, 120 - suffix.length).join('') + suffix : '';
+}
+
 export function reuseStandalone(run: BacktestRun): ReuseDraft {
-  const request = copyJson(run.request);
+  const request: BacktestCreationRequest = copyJson(run.request);
+  request.name = copyName(run.name);
   request.run_metadata = null;
   return {
     request,
@@ -43,11 +51,12 @@ export function reuseBatch(batch: BacktestBatch): ReuseDraft {
   const firstMarket = selections.markets[0];
   const request = copyJson({
     ...shared,
+    name: copyName(batch.name),
     symbols: firstMarket ? [firstMarket.symbol] : [],
     exchange: firstMarket?.exchange ?? null,
     timeframe: selections.timeframes[0] ?? 'M1',
     run_metadata: null,
-  }) as BacktestRequestPayload;
+  }) as BacktestCreationRequest;
   const parameters: Record<string, SweepParameterDraft> = {};
   for (const [name, axis] of Object.entries(selections.parameters)) {
     const values = copyJson(axis.values);

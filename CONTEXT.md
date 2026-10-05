@@ -24,6 +24,7 @@ streams live charts, and runs historical backtests.
   A **Parameter Sweep** generates its members from configuration combinations.
 - **Experiment Name:** optional organizational `name` on a standalone Backtest
   Run or whole Backtest Batch, separate from immutable execution snapshots.
+  Saved names seed editable Create from this drafts with independent identities.
   Members use one-based `Run #N` presentation; see [backtest contracts](docs/contracts/backtests.md#experiment-names).
 - **Backtest Workspace:** UI for creating, monitoring, inspecting, and comparing
   runs and batches.

@@ -128,6 +128,51 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
                 )
                 self.assertEqual(response.status_code, 422)
 
+    def test_copied_names_create_fresh_runs_without_changing_sources(self) -> None:
+        repository = _FakeRunRepository()
+        with TestClient(create_app(service=BacktestRunService(repository=repository))) as client:
+            for source_name, chosen, expected in [
+                ("Baseline", "Baseline (copy)", "Baseline (copy)"),
+                (None, "", None),
+                ("😀" * 120, "😀" * 113 + " (copy)", "😀" * 113 + " (copy)"),
+                ("Baseline", "  Revised copy  ", "Revised copy"),
+            ]:
+                with self.subTest(source_name=source_name, chosen=chosen):
+                    accepted = client.post(
+                        "/backtests", json={**_valid_payload(), "name": source_name}
+                    )
+                    self.assertEqual(accepted.status_code, 202, accepted.text)
+                    source_id = accepted.json()["run_id"]
+                    source = client.get(f"/backtests/{source_id}").json()
+                    copied = client.post(
+                        "/backtests",
+                        json={**source["request"], "run_metadata": None, "name": chosen},
+                    )
+                    self.assertEqual(copied.status_code, 202, copied.text)
+                    copy_id = copied.json()["run_id"]
+                    self.assertNotEqual(copy_id, source_id)
+                    detail = client.get(f"/backtests/{copy_id}").json()
+                    self.assertEqual(detail["name"], expected)
+                    self.assertIsNone(detail.get("batch_id"))
+                    self.assertEqual(detail["status"], "queued")
+                    self.assertEqual(
+                        detail["request"],
+                        {
+                            key: value
+                            for key, value in source["request"].items()
+                            if key != "run_metadata"
+                        },
+                    )
+                    self.assertIsNone(detail["request"].get("run_metadata"))
+                    self.assertNotIn("name", detail["request"])
+                    self.assertEqual(client.get(f"/backtests/{source_id}").json(), source)
+                    repository.listed_runs = list(repository.runs_by_id.values())
+                    names_by_id = {
+                        row["run_id"]: row["name"] for row in client.get("/backtests").json()
+                    }
+                    self.assertEqual(names_by_id[copy_id], expected)
+                    self.assertEqual(names_by_id[source_id], source_name)
+
     def test_catalog_and_version_conflict_are_public_and_create_nothing(self) -> None:
         repository = _FakeRunRepository()
         service = BacktestRunService(repository=repository)

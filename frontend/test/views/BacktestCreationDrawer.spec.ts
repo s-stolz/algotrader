@@ -34,6 +34,13 @@ const catalog = [{
   ],
 }];
 
+const reuseNames = [
+  [null, '', '', null],
+  ['Baseline', 'Baseline (copy)', '  Reviewed copy  ', 'Reviewed copy'],
+  ['😀'.repeat(120), '😀'.repeat(113) + ' (copy)',
+    '😀'.repeat(113) + ' (copy)', '😀'.repeat(113) + ' (copy)'],
+] as const;
+
 let pinia: ReturnType<typeof createPinia>;
 
 function openDrawer() {
@@ -214,9 +221,9 @@ describe('standalone creation drawer', () => {
     wrapper.unmount();
   });
 
-  it('reviews a changed saved version and invalid choice before creating independent history', async () => {
+  it.each(reuseNames)('reviews a copied standalone name %s before creating independent history', async (name, proposed, chosen, expected) => {
     const saved = {
-      run_id: 'saved-run', request_schema_version: 3, status: 'succeeded',
+      run_id: 'saved-run', name, request_schema_version: 3, status: 'succeeded',
       submitted_at_ms: 1_714_608_000_000,
       request: { symbols: ['EURUSD'], exchange: 'FX', timeframe: 'M15',
         start_ms: 1_714_521_600_000, end_ms: 1_714_608_000_000,
@@ -236,8 +243,19 @@ describe('standalone creation drawer', () => {
         ? { ...parameter, choices: ['a', 'c'], default: 'c' } : parameter) }]);
     vi.mocked(submitBacktestRun).mockResolvedValue('fresh-run');
 
-    const wrapper = openDrawer();
+    let wrapper = openDrawer();
     await flushPromises();
+    const nameInput = () => wrapper.findAllComponents(NInput).find((input) =>
+      input.attributes('data-testid') === 'creation-name')!;
+    expect(nameInput().props('value')).toBe(proposed);
+    const runType = wrapper.findAllComponents(NSelect).find((select) =>
+      select.attributes('data-testid') === 'creation-run-type')!;
+    runType.vm.$emit('update:value', 'sweep');
+    await flushPromises();
+    expect(nameInput().props('value')).toBe(proposed);
+    runType.vm.$emit('update:value', 'standalone');
+    await flushPromises();
+    expect(nameInput().props('value')).toBe(proposed);
     expect(document.body.textContent).toContain('Saved sma_crossover version 1');
     expect(document.body.textContent).toContain('current version 2');
     expect(document.body.textContent).toContain('Invalid copied value: label');
@@ -252,13 +270,26 @@ describe('standalone creation drawer', () => {
     const label = wrapper.findAllComponents(NSelect).find((select) =>
       select.attributes('data-testid') === 'creation-param-label');
     label!.vm.$emit('update:value', 1);
+    nameInput().vm.$emit('update:value', 'invalid\nname');
     await flushPromises();
+    (document.querySelector('[data-testid="creation-submit"]') as HTMLElement).click();
+    await flushPromises();
+    expect(submitBacktestRun).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Experiment name must be single-line');
+    nameInput().vm.$emit('update:value', chosen);
+    await flushPromises();
+    wrapper.unmount();
+    wrapper = openDrawer();
+    await flushPromises();
+    expect(nameInput().props('value')).toBe(chosen);
     (document.querySelector('[data-testid="creation-submit"]') as HTMLElement).click();
     await flushPromises();
     expect(submitBacktestRun).toHaveBeenCalledWith(expect.objectContaining({
       strategy: expect.objectContaining({ strategy_version: 2,
         parameters: expect.objectContaining({ label: 'c', fast_window: 4 }) }),
     }));
+    expect(submitBacktestRun).toHaveBeenCalledWith(expect.objectContaining({ name: expected }));
+    expect(vi.mocked(submitBacktestRun).mock.calls[0][0]).not.toHaveProperty('run_id');
     expect(wrapper.emitted('submitted')?.[0]).toEqual(['fresh-run']);
     expect(saved).toEqual(original);
     wrapper.unmount();
@@ -350,9 +381,9 @@ describe('Parameter Sweep creation review', () => {
     vi.useRealTimers();
   });
 
-  it('revalidates a saved range batch against current defaults and Markets with a fresh identity', async () => {
+  it.each(reuseNames)('revalidates a copied batch name %s with a fresh identity', async (name, proposed, chosen, expected) => {
     const batch = {
-      batch_id: 'saved-batch', submission_id: 'old-submission', strategy_id: 'sma_crossover',
+      batch_id: 'saved-batch', name, submission_id: 'old-submission', strategy_id: 'sma_crossover',
       strategy_version: 1,
       accepted_definition: { shared_request: {
         symbols: [], exchange: null, timeframe: 'M1',
@@ -397,10 +428,29 @@ describe('Parameter Sweep creation review', () => {
       return result;
     });
     vi.mocked(submitBacktestBatch).mockResolvedValue('fresh-batch');
-    const wrapper = mount(BacktestCreationDrawer, {
+    let wrapper = mount(BacktestCreationDrawer, {
       props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
     });
     await advancePreview();
+    const nameInput = () => wrapper.findAllComponents(NInput).find((input) =>
+      input.attributes('data-testid') === 'creation-name')!;
+    expect(nameInput().props('value')).toBe(proposed);
+    const runType = wrapper.findAllComponents(NSelect).find((select) =>
+      select.attributes('data-testid') === 'creation-run-type')!;
+    runType.vm.$emit('update:value', 'standalone');
+    await flushPromises();
+    expect(nameInput().props('value')).toBe(proposed);
+    runType.vm.$emit('update:value', 'sweep');
+    await advancePreview();
+    expect(nameInput().props('value')).toBe(proposed);
+    nameInput().vm.$emit('update:value', chosen);
+    await flushPromises();
+    wrapper.unmount();
+    wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true }, global: { plugins: [pinia] }, attachTo: document.body,
+    });
+    await advancePreview();
+    expect(nameInput().props('value')).toBe(chosen);
     expect(document.body.textContent).toContain('Saved sma_crossover version 1');
     expect(document.body.textContent).toContain('slow_window default changed: 20 → 30');
     expect(document.body.textContent).toContain('Saved Market ID 9 unavailable');
@@ -428,7 +478,10 @@ describe('Parameter Sweep creation review', () => {
     (document.querySelector('[data-testid="sweep-submit"]') as HTMLElement).click();
     await flushPromises();
     expect(submitBacktestBatch).toHaveBeenCalledWith(expect.anything(),
-      expect.not.stringContaining('old-submission'), null);
+      expect.not.stringContaining('old-submission'), expected);
+    expect(vi.mocked(submitBacktestBatch).mock.calls[0][0]).not.toHaveProperty('name');
+    expect(vi.mocked(submitBacktestBatch).mock.calls[0][0]).not.toHaveProperty('batch_id');
+    expect(vi.mocked(previewParameterSweep).mock.calls.at(-1)?.[0]).not.toHaveProperty('name');
     expect(wrapper.emitted('submitted-batch')?.[0]).toEqual(['fresh-batch']);
     expect(batch).toEqual(original);
     wrapper.unmount();

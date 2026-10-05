@@ -28,6 +28,9 @@ vi.mock('@/api/backtesterClient', () => ({
   fetchBacktestEquityCurve: vi.fn(),
   fetchBacktestFills: vi.fn(),
   fetchBacktestQueue: vi.fn(),
+  fetchSweepCapabilities: vi.fn().mockResolvedValue({
+    max_sweep_candidate_count: 1000, batch_acceptance_enabled: true,
+  }),
   getBacktestRun: vi.fn(),
   getBacktestBatch: vi.fn(),
   listBacktestBatchEvents: vi.fn(),
@@ -510,8 +513,9 @@ describe('production Backtest Workspace', () => {
     wrapper.unmount();
   });
 
-  it('opens Create from this without changing the saved run or selection', async () => {
-    const saved = run('source');
+  it.each([[null, ''], ['Baseline', 'Baseline (copy)']] as const)(
+    'opens Create from this for standalone name %s without changing the source or selection', async (name, proposed) => {
+    const saved = run('source', { name });
     const original = structuredClone(saved);
     vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
     const wrapper = mountWorkspace();
@@ -523,7 +527,26 @@ describe('production Backtest Workspace', () => {
     expect(useBacktestWorkspaceStore().reuseSource).toMatchObject({ kind: 'run', id: 'source',
       strategyVersion: null });
     expect(useBacktestWorkspaceStore().creationDraft?.strategy.strategy_id).toBe('sma');
+    expect(useBacktestWorkspaceStore().creationDraft?.name).toBe(proposed);
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('source');
+    expect(saved).toEqual(original);
+    wrapper.unmount();
+  });
+
+  it.each([[null, ''], ['Sweep baseline', 'Sweep baseline (copy)']] as const)(
+    'opens Create from this for batch name %s without changing saved history', async (name, proposed) => {
+    const saved = { ...batch('source-batch', 1), name };
+    saved.accepted_definition.shared_request = JSON.parse(JSON.stringify(run('settings').request));
+    const original = structuredClone(saved);
+    vi.mocked(listBacktestRuns).mockResolvedValue([]);
+    vi.mocked(listBacktestBatches).mockResolvedValue([saved]);
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-create-from-source-batch"]').trigger('click');
+    await flushPromises();
+    expect(useBacktestWorkspaceStore().reuseSource).toMatchObject({ kind: 'batch', id: 'source-batch' });
+    expect(useBacktestWorkspaceStore().creationDraft?.name).toBe(proposed);
+    expect(useBacktestWorkspaceStore().creationSweepDraft?.isSweep).toBe(true);
     expect(saved).toEqual(original);
     wrapper.unmount();
   });

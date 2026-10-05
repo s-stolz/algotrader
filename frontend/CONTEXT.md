@@ -53,6 +53,10 @@ and behavior that is easy to break when changing them.
   requests and metadata. Require review of changed Strategy Versions before
   reuse. Keep submission/command identities across retries of the same action;
   submission follows explicit user action and advertised backend capability.
+  `src/views/backtestReuse.ts` proposes editable names from saved top-level names
+  with a complete ` (copy)` suffix, shortening by Unicode characters to fit the
+  existing limit. Unnamed sources leave the draft empty; copied names use the
+  ordinary creation contract and survive draft navigation and mode changes.
 - Treat missing metrics separately from zero. Ending equity comes from the last
   exact Equity Replay point; saved Return uses its first-recorded-equity baseline,
   separately from request Initial capital. Tables display maximum drawdown as a
