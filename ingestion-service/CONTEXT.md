@@ -33,3 +33,12 @@ be recovered historically, but cannot be admitted as an unprotected live write.
 
 For mixed sessions, retained legacy rows and compatible consumer rollout, read
 [live publication continuity](../docs/contracts/recovery.md#live-publication-continuity).
+
+**Dependency interruption:** an observed Redis read or database persistence failure
+that requires recovery even when publication continuity is unchanged. A failed
+live batch remains unconfirmed until its entire persistence callback succeeds.
+
+**Live write guard:** the durable pre-batch confirmed boundary for an unconfirmed
+live Candle write. Partial commits and lost receipts cannot hide it behind a
+newer latest Candle; normal successful live writes retire it without scheduling
+history. See the [guard contract](../docs/contracts/recovery.md#durable-live-write-guards).

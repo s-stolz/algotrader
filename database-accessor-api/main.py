@@ -8,6 +8,8 @@ from app.database import get_db
 from app.schemas import (
     CandleBatchIn,
     HistoricalCandleBatchIn,
+    LiveWriteBegin,
+    LiveWriteFinish,
     MarketIn,
     RecoveryAdvance,
     RecoveryBegin,
@@ -277,3 +279,30 @@ async def begin_pending_recovery(data: RecoveryBegin, db: AsyncSession = Depends
 @app.post("/recoveries/advance")
 async def advance_pending_recovery(data: RecoveryAdvance, db: AsyncSession = Depends(get_db)):
     return {"updated": await recovery.advance_recovery(db, data.symbol_id, data.account_id, data)}
+
+
+@app.get("/recoveries/live-writes/{symbol_id}")
+async def load_live_write_guard(
+    symbol_id: int,
+    account_id: str = Query(..., min_length=1, max_length=128),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"guard": await recovery.load_live_write_guard(db, symbol_id, account_id)}
+
+
+@app.post("/recoveries/live-writes/begin")
+async def begin_live_write(data: LiveWriteBegin, db: AsyncSession = Depends(get_db)):
+    from app.models import markets
+    from sqlalchemy import select
+
+    if (
+        await db.scalar(select(markets.c.symbol_id).where(markets.c.symbol_id == data.symbol_id))
+        is None
+    ):
+        raise HTTPException(status_code=404, detail="Market not found")
+    return await recovery.begin_live_write(db, **data.model_dump())
+
+
+@app.post("/recoveries/live-writes/finish")
+async def finish_live_write(data: LiveWriteFinish, db: AsyncSession = Depends(get_db)):
+    return {"updated": await recovery.finish_live_write(db, **data.model_dump())}

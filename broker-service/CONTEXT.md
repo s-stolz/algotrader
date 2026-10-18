@@ -12,7 +12,11 @@ completion. Their presence does not establish a completed history interval.
 
 **Publication session:** uninterrupted live Candle delivery on a stable Redis
 stream, identified by restart-safe per-message continuity. Its identity changes
-across transport interruptions and stream recreation, never ordinary silence.
+across transport interruptions, known publication loss and stream recreation,
+never ordinary silence.
+
+**Publication loss:** a dropped queued Candle or failed/uncertain Redis publication.
+The broker can remain connected while its publication session is interrupted.
 
 **Connection health:** successful current broker connectivity/authentication. It
 does not establish completed historical recovery.

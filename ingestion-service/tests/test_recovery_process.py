@@ -6,6 +6,7 @@ The controlled upstream supplies broker completion records and dependency faults
 
 import json
 import os
+import select
 import subprocess
 import sys
 import tempfile
@@ -53,15 +54,33 @@ class ProcessRecoveryTests(unittest.TestCase):
         with httpx.Client(base_url=ACCESSOR) as http, Redis.from_url(REDIS) as redis:
             if http.get("/markets").json():
                 raise RuntimeError("Process acceptance requires an empty disposable database")
-            for phase in ("before-save", "protected-live", "after-data", "sessions"):
+            for phase in (
+                "before-save",
+                "protected-live",
+                "after-data",
+                "sessions",
+                "redis-read",
+                "database-read",
+                "database-write",
+                "publication-loss",
+                "queue-overflow",
+                "uncertain-before-save",
+                "partial-before-save",
+            ):
                 with self.subTest(phase=phase):
                     self.exercise_phase(http, redis, phase)
 
     def exercise_phase(self, http, redis, phase):
+        restart_loss_phase = phase in ("uncertain-before-save", "partial-before-save")
+        dependency_phase = (
+            phase in ("redis-read", "database-read", "database-write") or restart_loss_phase
+        )
+        producer_phase = phase in ("publication-loss", "queue-overflow")
+        runtime_phase = dependency_phase or producer_phase
         accessor_url = str(ACCESSOR)
         redis_url = str(REDIS)
         symbol = "R" + uuid4().hex[:9].upper()
-        account = "vibe10-" + uuid4().hex
+        account = str(int(uuid4().hex[:12], 16))
         response = http.post(
             "/markets",
             json=dict(symbol=symbol, exchange="VIBE10", market_type="test", min_move=0.01),
@@ -79,10 +98,14 @@ class ProcessRecoveryTests(unittest.TestCase):
         response.raise_for_status()
         source = {"account_id": account}
         stream = f"candles:{account}:{symbol}:M1"
-        faults = dict(
+        faults: dict[str, Any] = dict(
             save=phase == "before-save",
-            history=phase not in ("after-data", "sessions"),
-            progress=phase != "sessions",
+            history=phase not in ("after-data", "sessions") and not runtime_phase,
+            progress=phase != "sessions" and not runtime_phase,
+            latest=False,
+            live=False,
+            write_loss="",
+            live_calls=0,
         )
         attempted = threading.Event()
         history_requests = []
@@ -116,7 +139,11 @@ class ProcessRecoveryTests(unittest.TestCase):
                             BOUNDARY,
                             BOUNDARY + 60000,
                             RESUMED,
-                            *([BOUNDARY + 86400000] if phase == "sessions" else []),
+                            *(
+                                [BOUNDARY + 86400000]
+                                if phase == "sessions" or runtime_phase
+                                else []
+                            ),
                         )
                         if start <= t <= end
                     ]
@@ -131,12 +158,34 @@ class ProcessRecoveryTests(unittest.TestCase):
                         )
                     )
                     return self.reply(200, "\n".join(json.dumps(r) for r in records).encode())
+                if parsed.path.endswith("/latest") and faults["latest"]:
+                    attempted.set()
+                    return self.reply(503, {"detail": "controlled latest lookup failure"})
                 with httpx.Client(base_url=accessor_url) as client:
                     result = client.get(self.path)
                 return self.reply(result.status_code, result.content)
 
             def do_POST(self):
                 body = self.rfile.read(int(self.headers["Content-Length"]))
+                if self.path == "/candles" and faults["write_loss"]:
+                    faults["live_calls"] += 1
+                    lose_receipt = faults["write_loss"] == "uncertain-before-save"
+                    fail_partial = faults["live_calls"] == 3
+                    if lose_receipt or fail_partial:
+                        if lose_receipt:
+                            with httpx.Client(base_url=accessor_url) as client:
+                                result = client.post(
+                                    self.path,
+                                    content=body,
+                                    headers={"Content-Type": "application/json"},
+                                )
+                            if result.status_code != 200:
+                                return self.reply(result.status_code, result.content)
+                        faults.update(write_loss="", save=True)
+                        return self.reply(503, {"detail": "controlled unconfirmed live batch"})
+                if self.path == "/candles" and faults["live"]:
+                    faults.update(live=False, save=True)
+                    return self.reply(503, {"detail": "controlled failed live write"})
                 if self.path == "/recoveries/begin" and faults["save"]:
                     attempted.set()
                     return self.reply(503, {"detail": "controlled boundary save failure"})
@@ -173,11 +222,13 @@ class ProcessRecoveryTests(unittest.TestCase):
             INGESTION_LOG_LEVEL="WARNING",
         )
         child = None
+        producer = None
         logs = tempfile.TemporaryFile(mode="w+")
         clock = tempfile.NamedTemporaryFile(mode="w", delete=False)
         clock_path = Path(clock.name)
-        clock.write(str(BOUNDARY + 120000 if phase == "sessions" else NOW))
+        clock.write(str(BOUNDARY + 120000 if phase == "sessions" or runtime_phase else NOW))
         clock.close()
+        redis_fault = clock_path.with_suffix(".redis-fault")
 
         def launch():
             return subprocess.Popen(
@@ -185,6 +236,15 @@ class ProcessRecoveryTests(unittest.TestCase):
                     sys.executable,
                     "-c",
                     "import asyncio, main; from pathlib import Path; "
+                    "from redis.asyncio import Redis; "
+                    "original_xread = Redis.xread\n"
+                    "async def controlled_read(self, *args, **kwargs):\n"
+                    f"    if Path({str(redis_fault)!r}).exists():\n"
+                    "        raise ConnectionError('controlled Redis read failure')\n"
+                    "    return await original_xread(self, *args, **kwargs)\n"
+                    "Redis.xread = controlled_read\n"
+                    "main.IngestionService.CHUNK_SIZE = "
+                    f"{1 if phase == 'partial-before-save' else 10000}\n"
                     "main.IngestionService._utc_now_ms = staticmethod(lambda: "
                     f"int(Path({str(clock_path)!r}).read_text())); asyncio.run(main.main())",
                 ],
@@ -217,8 +277,126 @@ class ProcessRecoveryTests(unittest.TestCase):
             response.raise_for_status()
             return response.json()
 
+        def publish_from_broker(action, timestamp):
+            assert (
+                producer is not None and producer.stdin is not None and producer.stdout is not None
+            )
+            producer.stdin.write(json.dumps(dict(action=action, timestamp=timestamp)) + "\n")
+            producer.stdin.flush()
+            if not select.select([producer.stdout], [], [], 15)[0]:
+                self.fail("Controlled broker publisher timed out")
+            result = producer.stdout.readline()
+            if not result:
+                logs.seek(0)
+                self.fail("Controlled broker publisher exited: " + logs.read()[-5000:])
+            return json.loads(result)
+
         try:
             child = launch()
+            if runtime_phase:
+                wait_for(lambda: pending() is None and len(stored()) == 2)
+                if producer_phase:
+                    producer_env = dict(
+                        environment,
+                        PYTHONPATH=str(ROOT / "broker-service"),
+                        RECOVERY_TEST_REDIS_URL=redis_url,
+                    )
+                    producer = subprocess.Popen(
+                        [
+                            sys.executable,
+                            str(ROOT / "broker-service/tests/infrastructure/publication_driver.py"),
+                            account,
+                            symbol,
+                            phase,
+                        ],
+                        cwd=ROOT,
+                        env=producer_env,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=logs,
+                        text=True,
+                    )
+                    publish_from_broker("prime", BOUNDARY + 60000)
+                else:
+                    redis.xadd(stream, bar(BOUNDARY + 60000))
+                    redis.xadd(stream, bar(BOUNDARY + 120000))
+                time.sleep(0.3)
+                wait_for(lambda: pending() is None)
+                faults["history"] = True
+                clock_path.write_text(str(NOW))
+                if producer_phase:
+                    publish_from_broker("interrupt", RESUMED)
+                    wait_for(lambda: pending() is not None)
+                else:
+                    if restart_loss_phase:
+                        faults["write_loss"] = phase
+                    elif phase == "database-write":
+                        faults["live"] = True
+                    else:
+                        faults["latest"] = phase == "database-read"
+                        faults["save"] = phase == "redis-read"
+                        redis_fault.touch()
+                        # XREAD is currently blocked; wake it without advancing
+                        # the minute, then the next real read is faulted.
+                        redis.xadd(stream, bar(BOUNDARY + 120000))
+                        wait_for(attempted.is_set)
+                    with redis.pipeline() as batch:
+                        batch.xadd(stream, bar(RESUMED))
+                        batch.xadd(stream, bar(RESUMED + 60000))
+                        if phase == "partial-before-save":
+                            batch.xadd(stream, bar(RESUMED + 120000))
+                        batch.execute()
+                    wait_for(attempted.is_set)
+                    if restart_loss_phase:
+                        # A committed prefix or a lost receipt has moved latest;
+                        # kill before any recovery-boundary save can succeed.
+                        self.assertTrue(any(r["timestamp_ms"] == RESUMED for r in stored()))
+                        self.assertIsNone(pending())
+                        child.kill()
+                        child.wait(timeout=5)
+                        faults.update(history=False, save=False, write_loss="")
+                        environment["HISTORY_LOOKBACK_DAYS"] = "1"
+                        before_restart_requests = len(history_requests)
+                        child = launch()
+                        wait_for(
+                            lambda: len(history_requests) > before_restart_requests
+                            and pending() is None
+                        )
+                        rows = {r["timestamp_ms"]: r for r in stored()}
+                        self.assertEqual(rows[BOUNDARY + 86400000]["close"], 9)
+                        self.assertEqual(rows[RESUMED]["close"], 9)
+                        redis.xadd(stream, bar(RESUMED + 120000))
+                        redis.xadd(stream, bar(RESUMED + 180000))
+                        wait_for(
+                            lambda: any(r["timestamp_ms"] == RESUMED + 120000 for r in stored())
+                        )
+                        child.terminate()
+                        self.assertEqual(child.wait(timeout=5), 0)
+                        return
+                    self.assertFalse(any(r["timestamp_ms"] == RESUMED for r in stored()))
+                    redis_fault.unlink(missing_ok=True)
+                    faults.update(latest=False, save=False)
+                    wait_for(lambda: pending() is not None)
+                    wait_for(lambda: any(r["timestamp_ms"] == RESUMED for r in stored()))
+                first = pending()
+                self.assertLessEqual(first["next_ms"], BOUNDARY + 120000)
+                self.assertEqual(first["target_ms"], NOW - 1)
+                child.kill()
+                child.wait(timeout=5)
+                faults.update(history=False, progress=False, save=False, latest=False, live=False)
+                environment["HISTORY_LOOKBACK_DAYS"] = "1"
+                child = launch()
+                wait_for(lambda: pending() is None)
+                rows = {r["timestamp_ms"]: r for r in stored()}
+                self.assertEqual(rows[BOUNDARY + 86400000]["close"], 9)
+                self.assertEqual(rows[RESUMED]["close"], 9)
+                # Continue with a valid fresh producer identity after restart.
+                redis.xadd(stream, bar(RESUMED + 120000, session="d"))
+                redis.xadd(stream, bar(RESUMED + 180000, session="d"))
+                wait_for(lambda: any(r["timestamp_ms"] == RESUMED + 120000 for r in stored()))
+                child.terminate()
+                self.assertEqual(child.wait(timeout=5), 0)
+                return
             if phase == "sessions":
                 wait_for(lambda: pending() is None and len(stored()) == 2)
                 redis.xadd(stream, bar(BOUNDARY + 60000))
@@ -310,6 +488,17 @@ class ProcessRecoveryTests(unittest.TestCase):
             if child is not None and child.poll() is None:
                 child.kill()
                 child.wait(timeout=5)
+            if producer is not None:
+                if producer.stdin is not None:
+                    producer.stdin.close()
+                try:
+                    producer.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    producer.kill()
+                    producer.wait(timeout=5)
+                if producer.stdout is not None:
+                    producer.stdout.close()
+            redis_fault.unlink(missing_ok=True)
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)

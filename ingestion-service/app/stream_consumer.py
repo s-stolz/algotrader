@@ -27,7 +27,15 @@ TIMEFRAME_TO_MINUTES = {
 class StreamConsumer:
     """Consumes candle data from Redis streams using XREAD."""
 
-    def __init__(self, redis: Redis, account_id: str, batch_size: int = 100, block_ms: int = 5000):
+    def __init__(
+        self,
+        redis: Redis,
+        account_id: str,
+        batch_size: int = 100,
+        block_ms: int = 5000,
+        backoff_initial_seconds: int = 1,
+        backoff_max_seconds: int = 60,
+    ):
         """Initialize the stream consumer.
 
         Args:
@@ -40,6 +48,8 @@ class StreamConsumer:
         self.account_id = account_id
         self.batch_size = batch_size
         self.block_ms = block_ms
+        self.backoff_initial_seconds = max(1, backoff_initial_seconds)
+        self.backoff_max_seconds = max(self.backoff_initial_seconds, backoff_max_seconds)
         self._running = False
         self._last_ids: Dict[str, str] = {}  # stream_key -> last_message_id
         self._pending_open_candles: Dict[str, Dict[str, Any]] = {}
@@ -171,6 +181,7 @@ class StreamConsumer:
         callback: Callable[[int, List[Dict[str, Any]]], Awaitable[None]],
         start_id: str = "0-0",
         continuity_callback: Callable[[int, str | None], Awaitable[None]] | None = None,
+        interruption_callback: Callable[[int, str], Awaitable[None]] | None = None,
     ):
         """Consume messages from a single Redis stream.
 
@@ -185,9 +196,17 @@ class StreamConsumer:
 
         self._running = True
         messages = None
+        interruption = None
+        backoff = self.backoff_initial_seconds
 
         while self._running:
+            stage = interruption or "redis-read-failure"
             try:
+                if interruption is not None:
+                    if interruption_callback is not None:
+                        await interruption_callback(symbol_id, interruption)
+                    interruption = None
+                stage = "redis-read-failure" if messages is None else "live-write-failure"
                 if messages is None:
                     messages = await self.redis.xread(
                         {stream_key: last_id},
@@ -197,7 +216,9 @@ class StreamConsumer:
 
                 if not messages:
                     messages = None
+                    backoff = self.backoff_initial_seconds
                     continue
+                stage = "live-write-failure"
 
                 # Process contiguous session runs in Redis order, committing each
                 # run's cursor only after its protection and Candle writes succeed.
@@ -235,13 +256,25 @@ class StreamConsumer:
                         self._last_ids[stream_key] = new_last_id
                         last_id = new_last_id
                 messages = None
+                backoff = self.backoff_initial_seconds
 
             except asyncio.CancelledError:
                 logger.info(f"Consumer for {stream_key} cancelled")
                 break
             except Exception as e:
-                logger.error(f"Error consuming {stream_key}: {e}")
-                await asyncio.sleep(5)
+                # Keep both the fetched batch and the failure trigger until the
+                # common recovery operation has durably protected this source.
+                interruption = interruption or stage
+                logger.error(
+                    "Consumer interrupted stream=%s market=%s trigger=%s retry=%s error=%s",
+                    stream_key,
+                    symbol_id,
+                    interruption,
+                    backoff,
+                    e,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(self.backoff_max_seconds, backoff * 2)
 
     async def backfill_from_stream(
         self,

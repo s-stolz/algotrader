@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from dataclasses import replace
 from decimal import Decimal
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -41,13 +42,13 @@ class LiveContinuityTests(unittest.IsolatedAsyncioTestCase):
         self.clients.append(client)
         return client
 
-    async def registry(self, client, redis):
+    async def registry(self, client, redis, queue_size=1000):
         publisher = RedisStreamsPublisher(redis, Settings())
         registry = TrendbarStreamRegistry(
             client.register_trendbar_handler,
             client.unregister_trendbar_handler,
             publisher.publish_candle,
-            Settings(),
+            replace(Settings(), tick_queue_size=queue_size),
         )
         self.registries.append(registry)
         await registry.start_trendbar_stream(AccountId(123), "EURUSD", Timeframe.M1)
@@ -211,3 +212,66 @@ class LiveContinuityTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await publisher.publish_candle(AccountId(1), "EURUSD", Timeframe.M1, bar)
         redis.xadd.assert_not_awaited()
+
+    async def test_overflow_is_observed_before_next_publication_without_disconnect(self):
+        client = self.client()
+        delivered = []
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def publish(key, fields, **kwargs):
+            if not delivered:
+                entered.set()
+                await release.wait()
+            delivered.append(fields)
+
+        await self.registry(client, Mock(xadd=AsyncMock(side_effect=publish)), queue_size=1)
+        await client._emit_trendbars(self.event(1))
+        await entered.wait()
+        # Independent event tasks overflow twice while the first XADD is active.
+        await asyncio.gather(*(client._emit_trendbars(self.event(m)) for m in (2, 3, 4)))
+        release.set()
+        async with asyncio.timeout(1):
+            while len(delivered) < 2:
+                await asyncio.sleep(0)
+        await client._emit_trendbars(self.event(5))
+        async with asyncio.timeout(1):
+            while len(delivered) < 3:
+                await asyncio.sleep(0)
+        self.assertEqual([d["t"] for d in delivered], ["60000", "240000", "300000"])
+        self.assertNotEqual(delivered[0]["continuity"], delivered[1]["continuity"])
+        self.assertEqual(delivered[1]["continuity"], delivered[2]["continuity"])
+
+    async def test_failed_publications_retry_and_protect_old_queued_bars(self):
+        client = self.client()
+        delivered, attempts = [], []
+        failed, release = asyncio.Event(), asyncio.Event()
+        real_sleep = asyncio.sleep
+
+        async def retry(_delay):
+            failed.set()
+            await release.wait()
+            await real_sleep(0)
+
+        async def publish(key, fields, **kwargs):
+            attempts.append(fields)
+            if len(attempts) in (2, 3):
+                raise OSError("Redis unavailable")
+            delivered.append(fields)
+
+        await self.registry(client, Mock(xadd=AsyncMock(side_effect=publish)))
+        await client._emit_trendbars(self.event(1))
+        async with asyncio.timeout(1):
+            while not delivered:
+                await real_sleep(0)
+        with patch("app.infrastructure.trendbar_stream_registry.asyncio.sleep", retry):
+            await client._emit_trendbars(self.event(2))
+            await failed.wait()
+            await client._emit_trendbars(self.event(3))
+            release.set()
+            async with asyncio.timeout(1):
+                while len(delivered) < 3:
+                    await real_sleep(0)
+        self.assertEqual([d["t"] for d in delivered], ["60000", "120000", "180000"])
+        self.assertNotEqual(delivered[0]["continuity"], delivered[1]["continuity"])
+        self.assertEqual(delivered[1]["continuity"], delivered[2]["continuity"])
+        self.assertNotEqual(attempts[2]["continuity"], delivered[1]["continuity"])

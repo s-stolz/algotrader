@@ -184,7 +184,7 @@ class MigrationRunnerTests(unittest.TestCase):
             hashlib.sha256(original).hexdigest(),
         )
 
-    def test_shipped_recovery_migration_applies_and_replays_without_changing_pending(self):
+    def test_shipped_recovery_migrations_upgrade_and_replay_without_changing_work(self):
         (self.inventory / "V001__initial.sql").unlink()
         shutil.copy2(
             ROOT / "timescaledb-init/migrations/V001__pending_recovery.sql", self.inventory
@@ -197,10 +197,17 @@ class MigrationRunnerTests(unittest.TestCase):
             "INSERT INTO pending_recoveries VALUES "
             "(1, 'account', 'identity', 1, 60000, 179999, 'startup')"
         )
+        shutil.copy2(
+            ROOT / "timescaledb-init/migrations/V002__live_write_guards.sql", self.inventory
+        )
         self.run_migrations()
+        self.query("INSERT INTO live_write_guards VALUES (1, 'account', 'batch', 60000)")
+        self.run_migrations()
+        self.assertEqual(self.query("SELECT boundary_ms FROM live_write_guards"), "60000")
         self.assertEqual(
             self.query("SELECT next_ms || ',' || target_ms FROM pending_recoveries"), "60000,179999"
         )
         self.assertEqual(
-            self.query("SELECT name FROM schema_migrations"), "V001__pending_recovery.sql"
+            self.query("SELECT name FROM schema_migrations ORDER BY name"),
+            "V001__pending_recovery.sql\nV002__live_write_guards.sql",
         )

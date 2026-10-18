@@ -28,6 +28,7 @@ class SymbolRuntimeState:
     recovery_requested: asyncio.Event = field(default_factory=asyncio.Event)
     handoff_start_ms: int | None = None
     continuity: str | None = None
+    live_boundary_ms: int | None = None
 
 
 class IngestionService:
@@ -110,17 +111,18 @@ class IngestionService:
             self.config.redis_url,
             decode_responses=False,
         )
-        await cast(Awaitable[bool], self.redis.ping())
-        self.logger.info("Connected to Redis")
+        self.markets = await self._own_task(self._load_markets())
+        self.logger.info("Connected to Redis and loaded Market sources")
 
         self.consumer = StreamConsumer(
             redis=self.redis,
             account_id=self.config.broker_account_id,
             batch_size=self.config.consumer_batch_size,
             block_ms=self.config.consumer_block_ms,
+            backoff_initial_seconds=self.config.recovery_backoff_initial_seconds,
+            backoff_max_seconds=self.config.recovery_backoff_max_seconds,
         )
 
-        self.markets = self.db_client.get_markets()
         if not self.markets:
             self.logger.warning(
                 "No markets found in database. Waiting for markets to be created..."
@@ -140,6 +142,22 @@ class IngestionService:
         self.logger.info(
             f"Loaded {len(self.markets)} markets: {[m['symbol'] for m in self.markets]}"
         )
+
+    async def _load_markets(self) -> List[Dict[str, Any]]:
+        """Retry dependency initialization before any Market can admit live writes."""
+        backoff = max(1, self.config.recovery_backoff_initial_seconds)
+        while not self._shutdown:
+            try:
+                assert self.redis is not None
+                await cast(Awaitable[bool], self.redis.ping())
+                return await self._db_call(self.db_client.get_markets)
+            except Exception:
+                self.logger.exception(
+                    "Source initialization failed trigger=dependency retry=%s", backoff
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(max(backoff, self.config.recovery_backoff_max_seconds), backoff * 2)
+        return []
 
     def _get_frozen_watermark(self, symbol: str, exchange: str) -> int:
         latest_candle = self.db_client.get_latest_m1_candle(symbol, exchange=exchange or None)
@@ -258,6 +276,15 @@ class IngestionService:
         # including when no subsequent update for that minute is published.
         state.handoff_start_ms = (self._utc_now_ms() // 60000) * 60000
 
+    async def observe_interruption(self, symbol_id: int, trigger: str) -> None:
+        """Protect dependency loss even when the producer session is unchanged."""
+        state = self._state_by_id[symbol_id]
+        # A partial batch may have moved latest already. Retain the last fully
+        # confirmed live boundary, captured before any writes in that batch.
+        start = state.live_boundary_ms if trigger == "live-write-failure" else None
+        await self.request_recovery(state, trigger, start)
+        state.handoff_start_ms = (self._utc_now_ms() // 60000) * 60000
+
     async def write_candles_callback(self, symbol_id: int, candles: List[Dict[str, Any]]) -> None:
         """Callback to write candles to database."""
         if not candles:
@@ -283,7 +310,19 @@ class IngestionService:
             async with state.protection_lock:
                 if not state.live_ready.is_set():
                     continue
+                assert state.live_boundary_ms is not None
+                guard = await self._db_call(
+                    self.db_client.begin_live_write,
+                    state.symbol_id,
+                    self.config.broker_account_id,
+                    state.live_boundary_ms,
+                )
                 await self._write_candles_in_chunks(state.symbol, state.exchange, mapped_candles)
+                state.live_boundary_ms = max(
+                    state.live_boundary_ms or 0,
+                    max(candle["timestamp_ms"] for candle in mapped_candles),
+                )
+                await self._db_call(self.db_client.finish_live_write, guard)
                 return
 
     async def _get_stream_tail_id(self, stream_key: str) -> str:
@@ -324,6 +363,13 @@ class IngestionService:
     ) -> dict[str, Any]:
         account = self.config.broker_account_id
         pending = await self._db_call(self.db_client.get_pending_recovery, state.symbol_id, account)
+        guard = await self._db_call(self.db_client.get_live_write_guard, state.symbol_id, account)
+        if guard is not None:
+            start_ms = (
+                min(start_ms, guard["boundary_ms"])
+                if start_ms is not None
+                else guard["boundary_ms"]
+            )
         if pending is not None:
             # Accepted work is never bounded again by a moving history policy.
             start_ms = (
@@ -335,6 +381,10 @@ class IngestionService:
         saved = await self._db_call(
             self.db_client.begin_recovery, state.symbol_id, account, start_ms, target, trigger
         )
+        # Only retire a recovered guard after its boundary is durably pending.
+        # Every later live attempt installs its own guard before Candle writes.
+        if guard is not None:
+            await self._db_call(self.db_client.finish_live_write, guard)
         self.logger.info(
             "Recovery protected market=%s account=%s M1 interval=[%s,%s] trigger=%s revision=%s",
             state.symbol,
@@ -369,9 +419,17 @@ class IngestionService:
                             state.symbol_id,
                             self.config.broker_account_id,
                         )
+                        guard = await self._db_call(
+                            self.db_client.get_live_write_guard,
+                            state.symbol_id,
+                            self.config.broker_account_id,
+                        )
+                        boundaries = ([pending["next_ms"]] if pending is not None else []) + (
+                            [guard["boundary_ms"]] if guard is not None else []
+                        )
                         start = (
-                            pending["next_ms"]
-                            if pending is not None
+                            min(boundaries)
+                            if boundaries
                             else await self._db_call(
                                 self._get_frozen_watermark, state.symbol, state.exchange
                             )
@@ -382,6 +440,7 @@ class IngestionService:
                     # Time is captured after subscription: history bridges the tail/setup interval.
                     async with self._boundary_semaphore:
                         saved = await self._save_recovery(state, "startup", start)
+                    state.live_boundary_ms = start
                     state.handoff_start_ms = saved["target_ms"] + 1
                     state.recovery_requested.set()
                     state.live_ready.set()
@@ -395,6 +454,7 @@ class IngestionService:
                                 callback=self.write_candles_callback,
                                 start_id=tail_id,
                                 continuity_callback=self.observe_continuity,
+                                interruption_callback=self.observe_interruption,
                             )
                         )
                     )

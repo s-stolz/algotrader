@@ -77,6 +77,7 @@ class HistoricalIngestionTests(unittest.IsolatedAsyncioTestCase):
         # This suite isolates authoritative history writes; durable startup is
         # exercised separately by test_recovery and the process restart suite.
         for state in self.service.runtime_states:
+            state.live_boundary_ms = BOUNDARY
             state.live_ready.set()
         await self.service.write_candles_callback(self.symbol_id, [compact(BOUNDARY, 1)])
         self.requests = []

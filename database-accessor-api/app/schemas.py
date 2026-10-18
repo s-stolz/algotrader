@@ -1,6 +1,6 @@
 from typing import List
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -93,3 +93,11 @@ class RecoveryAdvance(RecoverySource):
         if self.revision < 1 or not 0 <= self.expected_start_ms <= self.next_ms:
             raise ValueError("Recovery progress must advance the expected start")
         return self
+
+
+class LiveWriteBegin(RecoverySource):
+    boundary_ms: int = Field(ge=0)
+
+
+class LiveWriteFinish(RecoverySource):
+    write_id: str = Field(min_length=1, max_length=36)

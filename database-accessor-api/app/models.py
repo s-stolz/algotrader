@@ -56,3 +56,16 @@ pending_recoveries = Table(
     CheckConstraint("revision > 0"),
     CheckConstraint("next_ms >= 0 AND target_ms >= next_ms - 1"),
 )
+
+
+live_write_guards = Table(
+    "live_write_guards",
+    metadata,
+    Column(
+        "symbol_id", Integer, ForeignKey("markets.symbol_id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column("account_id", String(128), primary_key=True),
+    Column("write_id", String(36), nullable=False),
+    Column("boundary_ms", BigInteger, nullable=False),
+    CheckConstraint("boundary_ms >= 0"),
+)

@@ -221,6 +221,27 @@ class DatabaseAccessorClient(_BaseClient):
         )
         return result["updated"]
 
+    def get_live_write_guard(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = self._request(
+            "GET", f"/recoveries/live-writes/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["guard"]
+
+    def begin_live_write(self, symbol_id: int, account_id: str, boundary_ms: int) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/recoveries/live-writes/begin",
+            json={"symbol_id": symbol_id, "account_id": account_id, "boundary_ms": boundary_ms},
+        )
+
+    def finish_live_write(self, guard: dict[str, Any]) -> bool:
+        result = self._request(
+            "POST",
+            "/recoveries/live-writes/finish",
+            json={key: guard[key] for key in ("symbol_id", "account_id", "write_id")},
+        )
+        return result["updated"]
+
     def close(self) -> None:
         self.client.close()
 
@@ -410,6 +431,29 @@ class AsyncDatabaseAccessorClient(_BaseClient):
                 "expected_start_ms": pending["next_ms"],
                 "next_ms": next_ms,
             },
+        )
+        return result["updated"]
+
+    async def get_live_write_guard(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = await self._request(
+            "GET", f"/recoveries/live-writes/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["guard"]
+
+    async def begin_live_write(
+        self, symbol_id: int, account_id: str, boundary_ms: int
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/recoveries/live-writes/begin",
+            json={"symbol_id": symbol_id, "account_id": account_id, "boundary_ms": boundary_ms},
+        )
+
+    async def finish_live_write(self, guard: dict[str, Any]) -> bool:
+        result = await self._request(
+            "POST",
+            "/recoveries/live-writes/finish",
+            json={key: guard[key] for key in ("symbol_id", "account_id", "write_id")},
         )
         return result["updated"]
 

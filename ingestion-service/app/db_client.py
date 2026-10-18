@@ -110,5 +110,14 @@ class DatabaseClient:
     def advance_recovery(self, pending: dict[str, Any], next_ms: int) -> bool:
         return self._client.advance_recovery(pending, next_ms)
 
+    def get_live_write_guard(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        return self._client.get_live_write_guard(symbol_id, account_id)
+
+    def begin_live_write(self, symbol_id: int, account_id: str, boundary_ms: int) -> dict[str, Any]:
+        return self._client.begin_live_write(symbol_id, account_id, boundary_ms)
+
+    def finish_live_write(self, guard: dict[str, Any]) -> bool:
+        return self._client.finish_live_write(guard)
+
     def close(self) -> None:
         self._client.close()

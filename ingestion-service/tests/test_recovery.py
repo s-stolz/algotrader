@@ -36,6 +36,7 @@ class Storage:
         ]
         self.rows = {s: {BOUNDARY: dict(timestamp_ms=BOUNDARY, close=1)} for s in symbols}
         self.pending = {}
+        self.guards = {}
         self.protected = set()
         self.lock = threading.Lock()
         self.fail_read = set()
@@ -43,6 +44,10 @@ class Storage:
         self.fail_progress = False
         self.fail_history_write = 0
         self.history_writes = 0
+        self.live_writes = 0
+        self.fail_live_write = 0
+        self.on_live_failure = lambda: None
+        self.fail_pending_read = False
 
     def get_markets(self):
         return self.markets
@@ -53,6 +58,8 @@ class Storage:
         return self.rows[symbol][max(self.rows[symbol])] if self.rows[symbol] else None
 
     def get_pending_recovery(self, symbol_id, account):
+        if self.fail_pending_read:
+            raise RuntimeError("pending unavailable")
         with self.lock:
             return copy.deepcopy(self.pending.get((symbol_id, account)))
 
@@ -88,7 +95,36 @@ class Storage:
                 self.pending[key]["next_ms"] = next_ms
             return True
 
+    def get_live_write_guard(self, symbol_id, account):
+        with self.lock:
+            return copy.deepcopy(self.guards.get((symbol_id, account)))
+
+    def begin_live_write(self, symbol_id, account_id, boundary_ms):
+        with self.lock:
+            key = (symbol_id, account_id)
+            prior = self.guards.get(key)
+            guard = dict(
+                symbol_id=symbol_id,
+                account_id=account_id,
+                write_id=str(uuid4()),
+                boundary_ms=min(prior["boundary_ms"], boundary_ms) if prior else boundary_ms,
+            )
+            self.guards[key] = guard
+            return copy.deepcopy(guard)
+
+    def finish_live_write(self, guard):
+        with self.lock:
+            key = (guard["symbol_id"], guard["account_id"])
+            if self.guards.get(key) != guard:
+                return False
+            del self.guards[key]
+            return True
+
     def write_candles(self, symbol, candles, exchange=None):
+        self.live_writes += 1
+        if self.live_writes == self.fail_live_write:
+            self.on_live_failure()
+            raise RuntimeError("live write unavailable")
         # Writes are observable only after pending protection on this source.
         assert next(m["symbol_id"] for m in self.markets if m["symbol"] == symbol) in self.protected
         for item in candles:
@@ -118,7 +154,10 @@ class RedisInput:
 
     async def xread(self, streams, **kwargs):
         stream = next(iter(streams))
-        return await self.queues.setdefault(stream, asyncio.Queue()).get()
+        result = await self.queues.setdefault(stream, asyncio.Queue()).get()
+        if isinstance(result, Exception):
+            raise result
+        return result
 
     async def publish(self, symbol, bars):
         stream = f"candles:12345:{symbol}:M1"
@@ -175,14 +214,15 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             await service.shutdown()
         logging.disable(logging.NOTSET)
 
-    async def start(self, storage, broker, *, lookback=365 * 5, now=lambda: NOW):
-        redis = RedisInput()
+    async def start(self, storage, broker, *, lookback=365 * 5, now=lambda: NOW, redis=None):
+        redis = redis or RedisInput()
         config = replace(
             load_config(),
             history_lookback_days=lookback,
             history_start_date=None,
             startup_backfill_concurrency=1,
             recovery_backoff_initial_seconds=1,
+            recovery_backoff_max_seconds=1,
         )
         with patch("main.load_config", return_value=config), patch.object(
             IngestionService, "_utc_now_ms", side_effect=now
@@ -517,4 +557,137 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             load_config(), history_start_date="2026-10-18", history_lookback_days=None
         )
         self.assertEqual(configured.history_start_ms(NOW), RESUMED)
+        await service.shutdown()
+
+    async def test_redis_failure_with_unchanged_session_protects_failed_lookup_and_save(self):
+        for failure in ("read", "save", "pending"):
+            with self.subTest(failure=failure):
+                storage, broker = Storage(), Broker()
+                clock = [BOUNDARY + 120000]
+                broker.allow_history.set()
+                service, redis = await self.start(storage, broker, now=lambda: clock[0])
+                await eventually(lambda: not storage.pending and bool(broker.requests))
+                await redis.publish("BTC", [candle(BOUNDARY + 60000), candle(BOUNDARY + 120000)])
+                await eventually(lambda: service._state_by_id[1].continuity is not None)
+                await eventually(lambda: not storage.pending)
+                session = service._state_by_id[1].continuity
+                broker.allow_history.clear()
+                clock[0] = NOW
+                if failure == "read":
+                    storage.fail_read.add("BTC")
+                elif failure == "save":
+                    storage.fail_save.add(1)
+                else:
+                    storage.fail_pending_read = True
+                stream = service._state_by_id[1].stream_key
+                await redis.queues[stream].put(OSError("Redis read unavailable"))
+                await redis.publish("BTC", [candle(RESUMED), candle(RESUMED + 60000)])
+                await eventually(lambda: not service._state_by_id[1].live_ready.is_set())
+                self.assertNotIn(RESUMED, storage.rows["BTC"])
+                storage.fail_read.clear()
+                storage.fail_save.clear()
+                storage.fail_pending_read = False
+                await eventually(lambda: RESUMED in storage.rows["BTC"])
+                pending = next(iter(storage.pending.values()))
+                self.assertLessEqual(pending["next_ms"], BOUNDARY + 120000)
+                self.assertEqual(service._state_by_id[1].continuity, session)
+                broker.allow_history.set()
+                await eventually(lambda: not storage.pending)
+                self.assertEqual(storage.rows["BTC"][BOUNDARY + 86400000]["close"], 8)
+                self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
+                await service.shutdown()
+
+    async def test_live_database_failure_preserves_failed_batch_and_boundary_on_restart(self):
+        storage, broker = Storage(), Broker()
+        clock = [BOUNDARY + 120000]
+        broker.allow_history.set()
+        service, redis = await self.start(storage, broker, now=lambda: clock[0])
+        await eventually(lambda: not storage.pending and bool(broker.requests))
+        await redis.publish("BTC", [candle(BOUNDARY + 60000), candle(BOUNDARY + 120000)])
+        await eventually(lambda: storage.live_writes == 1 and not storage.pending)
+        # Startup/continuity work is complete; health and metadata stay unchanged.
+        clock[0] = NOW
+        broker.allow_history.clear()
+        service.CHUNK_SIZE = 1
+        storage.fail_live_write = storage.live_writes + 3
+        storage.on_live_failure = lambda: storage.fail_save.add(1)
+        await redis.publish(
+            "BTC", [candle(RESUMED), candle(RESUMED + 60000), candle(RESUMED + 120000)]
+        )
+        await eventually(lambda: not service._state_by_id[1].live_ready.is_set())
+        self.assertIn(RESUMED, storage.rows["BTC"])
+        self.assertNotIn(RESUMED + 60000, storage.rows["BTC"])
+        # Retry cannot choose the now-newer latest row or skip the failed chunk.
+        storage.fail_save.clear()
+        await eventually(lambda: RESUMED + 60000 in storage.rows["BTC"])
+        pending = next(iter(storage.pending.values()))
+        self.assertLessEqual(pending["next_ms"], BOUNDARY + 120000)
+        await service.shutdown()
+        storage.fail_live_write = 0
+        storage.fail_progress = True
+        broker.allow_history.set()
+        restarted, resumed = await self.start(storage, broker, lookback=1, now=lambda: clock[0])
+        await eventually(lambda: storage.rows["BTC"][BOUNDARY + 60000]["close"] == 8)
+        self.assertLessEqual(next(iter(storage.pending.values()))["next_ms"], BOUNDARY + 120000)
+        storage.fail_progress = False
+        await eventually(lambda: not storage.pending)
+        self.assertEqual(storage.rows["BTC"][BOUNDARY + 86400000]["close"], 8)
+        await resumed.publish("BTC", [candle(RESUMED + 120000), candle(RESUMED + 180000)])
+        await eventually(lambda: RESUMED + 120000 in storage.rows["BTC"])
+        await restarted.shutdown()
+
+    async def test_dependency_outage_in_one_market_does_not_block_healthy_market(self):
+        storage, broker = Storage(("BAD", "GOOD")), Broker()
+        broker.allow_history.set()
+        service, redis = await self.start(storage, broker)
+        await eventually(lambda: not storage.pending and len(broker.requests) >= 2)
+        await redis.publish("BAD", [candle(RESUMED), candle(RESUMED + 60000)])
+        await eventually(lambda: service._state_by_id[1].continuity is not None)
+        storage.fail_save.add(1)
+        await redis.queues[service._state_by_id[1].stream_key].put(OSError("read lost"))
+        await eventually(lambda: not service._state_by_id[1].live_ready.is_set())
+        await redis.publish("GOOD", [candle(RESUMED + 60000), candle(RESUMED + 120000)])
+        await eventually(lambda: RESUMED + 60000 in storage.rows["GOOD"])
+        self.assertFalse(service._state_by_id[1].live_ready.is_set())
+
+    async def test_initial_dependency_outages_retry_before_any_live_consumption(self):
+        storage, broker = Storage(), Broker()
+        broker.allow_history.set()
+        redis = RedisInput()
+        attempts = []
+        original_markets = storage.get_markets
+
+        async def ping():
+            attempts.append("redis")
+            if len(attempts) == 1:
+                raise OSError("initial Redis unavailable")
+            return True
+
+        def markets():
+            attempts.append("database")
+            if attempts.count("database") == 1:
+                raise OSError("initial database unavailable")
+            return original_markets()
+
+        redis.ping = ping
+        storage.get_markets = markets
+        service, _ = await self.start(storage, broker, redis=redis)
+        await eventually(lambda: not storage.pending and bool(broker.requests))
+        self.assertEqual(storage.rows["BTC"][BOUNDARY + 86400000]["close"], 8)
+        self.assertGreaterEqual(attempts.count("redis"), 3)
+        await service.shutdown()
+
+    async def test_successful_live_batches_retire_guard_without_scheduling_history(self):
+        storage, broker = Storage(), Broker()
+        broker.allow_history.set()
+        service, redis = await self.start(storage, broker, now=lambda: BOUNDARY + 300000)
+        await eventually(lambda: not storage.pending and bool(broker.requests))
+        await redis.publish("BTC", [candle(BOUNDARY + 60000), candle(BOUNDARY + 120000)])
+        await eventually(lambda: storage.live_writes == 1 and not storage.pending)
+        before = len(broker.requests)
+        await redis.publish("BTC", [candle(BOUNDARY + 180000), candle(BOUNDARY + 240000)])
+        await eventually(lambda: BOUNDARY + 180000 in storage.rows["BTC"])
+        await eventually(lambda: not storage.guards)
+        self.assertFalse(storage.pending)
+        self.assertEqual(len(broker.requests), before)
         await service.shutdown()

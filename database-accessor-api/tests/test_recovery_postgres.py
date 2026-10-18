@@ -119,3 +119,92 @@ class RecoveryStorageTests(HistoricalStorageTests):
             self.assertEqual(response.status_code, 422)
         self.assertFalse(await self.advance(old, 300000))
         self.assertEqual(await self.pending(), old)
+
+    async def guard(self, boundary=60000, account="account1", symbol_id=None):
+        response = await self.client.post(
+            "/recoveries/live-writes/begin",
+            json=dict(
+                symbol_id=symbol_id or self.symbol_id, account_id=account, boundary_ms=boundary
+            ),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def load_guard(self, account="account1", symbol_id=None):
+        response = await self.client.get(
+            f"/recoveries/live-writes/{symbol_id or self.symbol_id}", params={"account_id": account}
+        )
+        response.raise_for_status()
+        return response.json()["guard"]
+
+    async def finish_guard(self, guard):
+        response = await self.client.post(
+            "/recoveries/live-writes/finish",
+            json={key: guard[key] for key in ("symbol_id", "account_id", "write_id")},
+        )
+        response.raise_for_status()
+        return response.json()["updated"]
+
+    async def test_live_guard_is_durable_and_stale_completion_cannot_clear_new_attempt(self):
+        old = await self.guard()
+        await self.engine.dispose()
+        self.assertEqual(await self.load_guard(), old)
+        newer = await self.guard(120000)
+        self.assertEqual(newer["boundary_ms"], 60000)
+        self.assertNotEqual(old["write_id"], newer["write_id"])
+        self.assertFalse(await self.finish_guard(old))
+        self.assertEqual(await self.load_guard(), newer)
+        self.assertTrue(await self.finish_guard(newer))
+        self.assertIsNone(await self.load_guard())
+        self.assertIsNone(await self.pending())  # Normal live writes do not schedule history.
+
+    async def test_live_guard_races_and_market_account_isolation(self):
+        old = await self.guard()
+        for _ in range(10):
+            _, newer = await asyncio.gather(self.finish_guard(old), self.guard(120000))
+            actual = await self.load_guard()
+            self.assertEqual(actual["write_id"], newer["write_id"])
+            self.assertLessEqual(actual["boundary_ms"], 120000)
+            self.assertFalse(await self.finish_guard(old))
+            old = newer
+        other_account = await self.guard(account="another")
+        response = await self.client.post(
+            "/markets",
+            json=dict(symbol="GBPUSD", exchange="FX", market_type="forex", min_move=0.01),
+        )
+        response.raise_for_status()
+        other_market = await self.guard(symbol_id=response.json()["symbol_id"])
+        self.assertTrue(await self.finish_guard(other_market))
+        self.assertTrue(await self.finish_guard(other_account))
+        self.assertEqual(await self.load_guard(), old)
+
+    async def test_live_guard_forward_migration_and_replay_preserve_pending_work(self):
+        pending = await self.begin()
+        migration = (
+            Path(__file__).resolve().parents[2]
+            / "timescaledb-init/migrations/V002__live_write_guards.sql"
+        )
+        async with self.engine.begin() as connection:
+            await connection.execute(text("DROP TABLE live_write_guards"))
+            await connection.execute(text(migration.read_text()))
+        guard = await self.guard()
+        await self.engine.dispose()
+        self.assertEqual(await self.load_guard(), guard)
+        self.assertEqual(await self.pending(), pending)
+
+    async def test_live_guard_validation_does_not_mutate_existing_work(self):
+        original = await self.guard()
+        for fields, status in (
+            (dict(boundary_ms=-1), 422),
+            (dict(account_id=""), 422),
+            (dict(symbol_id=999999), 404),
+        ):
+            response = await self.client.post(
+                "/recoveries/live-writes/begin",
+                json=dict(
+                    dict(symbol_id=self.symbol_id, account_id="account1", boundary_ms=120000),
+                    **fields,
+                ),
+            )
+            self.assertEqual(response.status_code, status)
+        self.assertEqual(await self.load_guard(), original)

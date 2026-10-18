@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 import httpx
+from app.config import load_config
 from app.db_client import DatabaseClient
 from app.stream_consumer import StreamConsumer
 from main import IngestionService, SymbolRuntimeState
@@ -63,11 +64,17 @@ class StreamConsumerTests(unittest.IsolatedAsyncioTestCase):
         chunk_size = patch.object(self.service, "CHUNK_SIZE", 2)
         chunk_size.start()
         self.addCleanup(chunk_size.stop)
+        self.service.config = load_config()
         self.service._shutdown = False
         self.service._state_by_id = {1: SymbolRuntimeState(1, "EURUSD", "FX", STREAM)}
+        self.service._state_by_id[1].live_boundary_ms = 0
         self.service._state_by_id[1].live_ready.set()
 
     def persist(self, request):
+        if request.url.path == "/recoveries/live-writes/begin":
+            return httpx.Response(200, json=dict(json.loads(request.content), write_id="batch"))
+        if request.url.path == "/recoveries/live-writes/finish":
+            return httpx.Response(200, json={"updated": True})
         self.write_calls += 1
         should_fail = self.write_calls == self.fail_write
         if not should_fail or self.ambiguous:
@@ -153,6 +160,32 @@ class StreamConsumerTests(unittest.IsolatedAsyncioTestCase):
         redis = await self.consume([[_msg(b"2-0", 120000)], [_msg(b"3-0", 180000)]])
         self.assertEqual(sorted(self.stored), [60000, 120000])
         self.assertEqual(redis.cursors[0], "1-0")
+
+    async def test_recovery_save_retries_indefinitely_before_replaying_failed_batch(self):
+        self.consumer = StreamConsumer(redis=AsyncMock(), account_id="1", backoff_max_seconds=2)
+        self.fail_write = 1
+        redis = ControlledRedis(self.consumer, [[_msg(b"1-0", 60000), _msg(b"2-0", 120000)]])
+        self.consumer.redis = redis
+        delays = []
+        protections = []
+
+        async def protect(symbol_id, trigger):
+            protections.append((symbol_id, trigger))
+            self.assertFalse(self.stored)
+            if len(protections) < 4:
+                raise OSError("pending save unavailable")
+
+        async def retry(delay):
+            delays.append(delay)
+
+        with patch("app.stream_consumer.asyncio.sleep", retry):
+            await self.consumer.consume_stream(
+                STREAM, 1, self.service.write_candles_callback, interruption_callback=protect
+            )
+        self.assertEqual(delays, [1, 2, 2, 2])
+        self.assertEqual(protections, [(1, "live-write-failure")] * 4)
+        self.assertEqual(sorted(self.stored), [60000])
+        self.assertEqual(redis.cursors, ["0-0", "2-0"])
 
 
 if __name__ == "__main__":

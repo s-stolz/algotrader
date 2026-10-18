@@ -11,3 +11,8 @@ contracts. Preserve interval and exchange identity, and propagate failed writes.
 Market/account/M1 source. It is not general historical completeness. For source
 identity, conditional progress/completion and protected startup obligations, read
 the [recovery contract](../docs/contracts/recovery.md).
+
+**Live write guard:** the durable pre-batch confirmed boundary for an unconfirmed
+live Candle write. Partial commits and lost receipts cannot hide it behind a
+newer latest Candle; normal successful live writes retire it without scheduling
+history. See the [guard contract](../docs/contracts/recovery.md#durable-live-write-guards).

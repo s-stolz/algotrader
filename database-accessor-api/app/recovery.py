@@ -2,7 +2,7 @@
 
 from uuid import uuid4
 
-from app.models import pending_recoveries
+from app.models import live_write_guards, pending_recoveries
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
@@ -77,6 +77,59 @@ async def advance_recovery(session, symbol_id: int, account_id: str, data):
                 .returning(table.c.recovery_id)
             )
             updated = progress.first() is not None
+        await session.commit()
+        return updated
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def load_live_write_guard(session, symbol_id: int, account_id: str):
+    result = await session.execute(
+        select(live_write_guards).where(
+            live_write_guards.c.symbol_id == symbol_id,
+            live_write_guards.c.account_id == account_id,
+        )
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
+async def begin_live_write(session, symbol_id: int, account_id: str, boundary_ms: int):
+    from sqlalchemy import func
+
+    statement = insert(live_write_guards).values(
+        symbol_id=symbol_id, account_id=account_id, write_id=str(uuid4()), boundary_ms=boundary_ms
+    )
+    statement = statement.on_conflict_do_update(
+        index_elements=["symbol_id", "account_id"],
+        set_={
+            "write_id": statement.excluded.write_id,
+            "boundary_ms": func.least(live_write_guards.c.boundary_ms, boundary_ms),
+        },
+    ).returning(live_write_guards)
+    try:
+        result = await session.execute(statement)
+        row = dict(result.mappings().one())
+        await session.commit()
+        return row
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def finish_live_write(session, symbol_id: int, account_id: str, write_id: str):
+    try:
+        result = await session.execute(
+            delete(live_write_guards)
+            .where(
+                live_write_guards.c.symbol_id == symbol_id,
+                live_write_guards.c.account_id == account_id,
+                live_write_guards.c.write_id == write_id,
+            )
+            .returning(live_write_guards.c.write_id)
+        )
+        updated = result.first() is not None
         await session.commit()
         return updated
     except Exception:

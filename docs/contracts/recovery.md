@@ -30,11 +30,48 @@ cascades pending work; Candle writes alone never change it. The primary key is
 Market/account because M1 is the only recovery timeframe. No source subscription
 or historical-completeness registry is introduced.
 
+## Durable live write guards
+
+A **live write guard** preserves the pre-batch confirmed boundary while an M1 live
+batch can partially commit or lose its write receipt. It exists per logical
+Market/account source only while a batch is unconfirmed; it is neither a historical
+completeness index nor a reason to download history during normal successful live
+traffic. V002 adds `live_write_guards` without changing existing Candles or pending
+work; V001 remains immutable.
+
+- `GET /recoveries/live-writes/{symbol_id}?account_id=...` returns `{guard: record | null}`.
+- `POST /recoveries/live-writes/begin` accepts source and nonnegative `boundary_ms`.
+  Commit the returned guard before any live chunk can be written. The atomic
+  upsert preserves the least existing boundary and replaces opaque `write_id`.
+- `POST /recoveries/live-writes/finish` accepts source and `write_id`, returning
+  `{updated: bool}`. Conditional deletion cannot remove a newer attempt's guard.
+
+Ingestion installs a guard under the Market protection lock before the first
+chunk of each live callback. It retires the guard only after every chunk has a
+confirmed write response. Failed or uncertain Candle writes, shutdown, and failed
+subsequent boundary saves leave that old boundary durable. A failed guard begin
+never permits Candle writes. A lost guard-finish response is safe: every Candle
+write was already confirmed; any remaining guard can be recovered or replayed.
+
+Startup loads pending work and the guard before looking up latest or applying a
+fresh lookback. A surviving guard is merged into pending recovery with its original
+boundary, even if a partial/uncertain batch moved latest or the lookback shortened.
+Only after the pending save succeeds can that guard be retired. Failure between
+those operations leaves at least the guard or pending work durable. The same
+promotion applies to dependency recovery in a surviving process. Every later live
+attempt installs a new guard before writing, so a completed historical operation
+cannot expose an unguarded retry. Ordinary confirmed callbacks retire their own
+guard without advancing historical recovery or requesting more history.
+
 ## Protected startup and handoff
 
-Each Market starts independently. Before selecting a new latest-Candle boundary,
-load existing pending work. Pending progress is authoritative even if a newer live
-row exists or a rolling lookback has advanced. With no pending work, use the
+Initial Redis connectivity and Market enumeration retry dependency failures with
+capped backoff before starting any Market consumers. These initialization tasks
+are owned and drained during shutdown. Each Market then starts independently.
+Before selecting a new latest-Candle boundary,
+load existing pending work and any live write guard. Their earliest boundary is
+authoritative even if a newer live row exists or a rolling lookback has advanced.
+With neither pending work nor a guard, use the
 latest stored M1 timestamp, bounded by the process's configured history boundary;
 an empty Market uses that boundary inclusively.
 
@@ -72,11 +109,19 @@ Historical responses and public Candle/WebSocket fields retain their existing sh
 Broker transport identity is randomly initialized on each process start and
 changed by the actual cTrader disconnect callback before dispatch to the asyncio
 loop. Live event dispatch captures that identity. A dispatch delayed across the
-change is discarded; subsequent history recovers it. The stream registry assigns
-its own random publication identity at stream creation and after a changed
-transport identity, stamping each Candle before queueing it. Already queued old
-Candles retain their old identity; the FIFO writer publishes them before newer
-queued sessions. A writer must never apply its current identity to an old item.
+change is discarded; subsequent history recovers it. The stream registry stamps each Candle's transport session before queueing it.
+The single FIFO writer assigns a random publication identity for that queued
+session and the stream's current loss revision. Already queued old transport
+sessions stay ordered before newer ones, rather than borrowing the latest
+transport identity. Queue overflow increments a loss revision outside the lossy
+queue. Before the next publication attempt starts, the writer observes that
+revision and changes publication identity, even for previously queued Candles.
+An already in-flight XADD precedes that change in publication order. Failed or
+uncertain XADD increments the same revision and retries the retained Candle
+indefinitely with exponential backoff capped at 30 seconds; subsequent queued
+Candles share the changed identity until another interruption. Repeated overflow
+or publication failure cannot remove the pending loss signal. Other streams have
+independent writers; stopping a stream cancels and awaits publication retries.
 Elapsed time, missing Candles, weekends and holidays do not change identity.
 
 After application authentication, cTrader accounts and spots are restored before
@@ -117,6 +162,28 @@ health only. Historical recovery succeeds only when the finite interval's broker
 completion, authoritative writes and conditional progress all succeed. Empty
 broker history during a closure completes normally; silence alone requests no work.
 
+## Dependency interruptions
+
+An ingestion XREAD error or live persistence failure requests the same durable
+recovery operation even when the producer continuity is unchanged. Before another
+read or replay of the fetched batch, close the affected Market's write gate,
+load/merge pending work and successfully save it. Failed pending/latest lookups
+are failures, never empty history. Failed saves leave the trigger pending and the
+gate closed. Consumer retries use the configured initial and maximum recovery
+backoff, doubling indefinitely to the cap and resetting after successful work.
+
+Keep the unacknowledged batch, cursor and withheld open Candle through retry.
+Only advance a session run's cursor after its protection and whole write callback
+succeed. The service retains the boundary from startup or the last fully confirmed
+live batch and durably guards it before writing any live chunk. A failed
+multi-chunk write uses that old boundary, even if an earlier
+chunk committed and moved the latest database row. The retry durably merges that
+boundary before replaying any failed batch; existing earlier pending work wins.
+A new handoff covers the interruption's open minute once closed data resumes.
+Historical failures already have a durable pending window: retrieval, write or
+progress failure keeps that window pending and safely replays it. An overlapping
+interruption increments its revision, so older completion cannot clear it.
+
 ## Windows, retries, and shutdown
 
 Recover at most one finite day per historical request. Buffer at most its possible
@@ -150,8 +217,10 @@ clip accepted pending work. Expanding the policy does not audit older history
 before an existing Market's latest Candle.
 
 This branch's legacy schema bootstrap has no earlier ledgered migrations.
-`timescaledb-init/migrations/V001__pending_recovery.sql` adds pending state without
-changing existing Candles. `05-run-migrations.sh` applies it transactionally under
+`timescaledb-init/migrations/V001__pending_recovery.sql` adds pending state and
+`V002__live_write_guards.sql` adds pre-write crash protection without changing
+existing Candles. Apply both before starting the compatible accessor/ingestion.
+`05-run-migrations.sh` applies them transactionally under
 one session advisory lock and records a checksum in `schema_migrations`. Before
 any pending SQL, it validates strict names, unique consecutive versions from V001,
 and the presence/checksums of every applied migration. Applied versions must form
@@ -206,6 +275,19 @@ startup, then delivers two rapid changed identities while health always stays up
 merges their work and kills ingestion with it pending. After restart with a one-day
 lookback, it verifies a previously missing October 6 Candle and authoritative
 October 18 values from supplied broker results, then resumed Redis live delivery.
+Seven additional runtime phases keep broker connectivity healthy: Redis read,
+database latest-read and live-write failures, plus actual broker registry queue
+overflow and failed Redis publication. The two restart-before-save phases commit
+a live prefix or lose a normal-size committed write receipt, fail the subsequent
+boundary save, and kill ingestion before that save can recover. Restart with a
+one-day lookback must recover the supplied October 6 history from the durable
+guard. The producer phases run a separate
+controlled broker publisher with one unchanged source connection and real Redis.
+The consumer read fault is a controlled Redis adapter; database faults are HTTP
+503 responses at the real accessor client boundary. Every runtime phase completes
+startup first, preserves the old boundary durably before resumed live writes,
+kills ingestion, restarts with a shorter lookback, verifies the supplied October 6
+and October 18 historical values in Timescale, and verifies further live writes.
 Each phase verifies persisted Candles and pending state, without expecting one
 Candle per calendar minute. It removes only its synthetic Market and stream.
 No process or storage test may target real history. Missing environment variables

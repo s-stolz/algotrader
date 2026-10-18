@@ -17,7 +17,20 @@ PENDING = dict(
 )
 
 
+GUARD = dict(symbol_id=1, account_id="account", write_id="batch", boundary_ms=60000)
+
+
 def handler(request):
+    if "/live-writes/" in request.url.path:
+        if request.method == "GET":
+            assert request.url.params["account_id"] == "account"
+            return httpx.Response(200, json={"guard": GUARD})
+        data = json.loads(request.content)
+        if request.url.path.endswith("/begin"):
+            assert data == dict(symbol_id=1, account_id="account", boundary_ms=60000)
+            return httpx.Response(200, json=GUARD)
+        assert data == dict(symbol_id=1, account_id="account", write_id="batch")
+        return httpx.Response(200, json={"updated": False})
     if request.method == "GET":
         assert request.url.params["account_id"] == "account"
         return httpx.Response(200, json={"pending": PENDING})
@@ -43,12 +56,18 @@ class RecoveryClientTests(unittest.IsolatedAsyncioTestCase):
         with DatabaseAccessorClient() as client:
             client.client.close()
             client.client = httpx.Client(transport=httpx.MockTransport(handler))
+            self.assertEqual(client.get_live_write_guard(1, "account"), GUARD)
+            self.assertEqual(client.begin_live_write(1, "account", 60000), GUARD)
+            self.assertFalse(client.finish_live_write(GUARD))
             self.assertEqual(client.get_pending_recovery(1, "account"), PENDING)
             self.assertEqual(client.begin_recovery(1, "account", 60000, 179999, "startup"), PENDING)
             self.assertFalse(client.advance_recovery(PENDING, 180000))
         async with AsyncDatabaseAccessorClient() as client:
             await client.client.aclose()
             client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            self.assertEqual(await client.get_live_write_guard(1, "account"), GUARD)
+            self.assertEqual(await client.begin_live_write(1, "account", 60000), GUARD)
+            self.assertFalse(await client.finish_live_write(GUARD))
             self.assertEqual(await client.get_pending_recovery(1, "account"), PENDING)
             self.assertEqual(
                 await client.begin_recovery(1, "account", 60000, 179999, "startup"), PENDING
