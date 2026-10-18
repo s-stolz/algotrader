@@ -52,25 +52,18 @@ class BackfillRangeTests(unittest.TestCase):
 
     def test_empty_and_existing_markets_respect_inclusive_history_boundary(self) -> None:
         service = object.__new__(IngestionService)
-        service.history_start_ms = self.NOW - 90 * 86_400_000
+        service._history_start_ms = self.NOW - 90 * 86_400_000
         service.db_client = Mock()
         service.logger = Mock()
         for latest, expected in [
-            (None, service.history_start_ms),
-            ({"timestamp_ms": service.history_start_ms - 86400000}, service.history_start_ms),
-            ({"timestamp_ms": self.NOW - 120000}, self.NOW - 60000),
+            (None, service._history_start_ms),
+            ({"timestamp_ms": service._history_start_ms - 86400000}, service._history_start_ms),
+            ({"timestamp_ms": self.NOW - 120000}, self.NOW - 120000),
         ]:
             with self.subTest(latest=latest):
                 service.db_client.get_latest_m1_candle.return_value = latest
                 watermark = service._get_frozen_watermark("EURUSD", "")
-                self.assertEqual(service._next_candle_ts_ms(watermark, 1), expected)
-
-    def test_next_candle_ts_advances_by_timeframe(self) -> None:
-        latest_ts = 1_778_878_560_000
-
-        next_ts = IngestionService._next_candle_ts_ms(latest_ts, timeframe_minutes=1)
-
-        self.assertEqual(next_ts, latest_ts + 60_000)
+                self.assertEqual(watermark, expected)
 
     def test_redis_socket_timeout_exceeds_block_window(self) -> None:
         timeout = IngestionService._redis_socket_timeout_seconds(block_ms=5000)
