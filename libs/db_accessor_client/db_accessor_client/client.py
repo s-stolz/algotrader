@@ -169,6 +169,24 @@ class DatabaseAccessorClient(_BaseClient):
             payload["exchange"] = exchange
         return self._request("POST", "/candles", json=payload)
 
+    def write_historical_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "symbol": symbol,
+            "candles": candles,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        }
+        if exchange is not None:
+            payload["exchange"] = exchange
+        return self._request("POST", "/candles/historical", json=payload)
+
     def close(self) -> None:
         self.client.close()
 
@@ -306,6 +324,24 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         if exchange is not None:
             payload["exchange"] = exchange
         return await self._request("POST", "/candles", json=payload)
+
+    async def write_historical_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "symbol": symbol,
+            "candles": candles,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        }
+        if exchange is not None:
+            payload["exchange"] = exchange
+        return await self._request("POST", "/candles/historical", json=payload)
 
     async def aclose(self) -> None:
         await self.client.aclose()

@@ -76,5 +76,28 @@ class DatabaseClient:
             logger.error("HTTP error writing candles for symbol %s: %s", symbol, exc)
             raise
 
+    def write_historical_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+    ) -> bool:
+        try:
+            self._client.write_historical_candles(
+                symbol=symbol,
+                candles=candles,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                exchange=exchange,
+            )
+            return True
+        except DatabaseAccessorClientError:
+            logger.exception(
+                "Historical persistence failed for %s [%s, %s]", symbol, start_ms, end_ms
+            )
+            raise
+
     def close(self) -> None:
         self._client.close()

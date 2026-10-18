@@ -40,6 +40,17 @@ class DatabaseClientTests(unittest.TestCase):
         db_client._client.get_latest_m1_candle.return_value = None
         self.assertIsNone(db_client.get_latest_m1_candle("EURUSD"))
 
+    def test_historical_write_failure_propagates(self) -> None:
+        db_client = DatabaseClient()
+        self.addCleanup(db_client.close)
+        db_client._client = Mock()
+        db_client._client.write_historical_candles.side_effect = DatabaseAccessorClientError("boom")
+        with self.assertRaises(DatabaseAccessorClientError):
+            db_client.write_historical_candles("EURUSD", [], 60000, 119999, "FX")
+        db_client._client.write_historical_candles.assert_called_once_with(
+            symbol="EURUSD", candles=[], start_ms=60000, end_ms=119999, exchange="FX"
+        )
+
     def test_write_failure_propagates(self) -> None:
         db_client = DatabaseClient()
         self.addCleanup(db_client.close)

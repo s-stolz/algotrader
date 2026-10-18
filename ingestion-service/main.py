@@ -63,6 +63,9 @@ class IngestionService:
     def __init__(self):
         """Initialize the ingestion service."""
         self.config = load_config()
+        self._history_start_ms = self._utc_now_ms() - int(
+            timedelta(days=self.MAX_BACKFILL_DAYS).total_seconds() * 1000
+        )
         self.logger = setup_logging(self.config.log_level, self.config.log_format)
 
         self.db_client = DatabaseClient()
@@ -123,24 +126,17 @@ class IngestionService:
             f"Loaded {len(self.markets)} markets: {[m['symbol'] for m in self.markets]}"
         )
 
-    def _needs_backfill(self, latest_ts_ms: int, timeframe_minutes: int) -> bool:
-        expected_gap_ms = int(timedelta(minutes=timeframe_minutes * 2).total_seconds() * 1000)
-        return (self._utc_now_ms() - latest_ts_ms) > expected_gap_ms
-
     def _get_frozen_watermark(self, symbol: str, exchange: str) -> int:
-        latest_candle = self.db_client.get_latest_m1_candle(
-            symbol, exchange=exchange or None
-        )
+        latest_candle = self.db_client.get_latest_m1_candle(symbol, exchange=exchange or None)
         if not latest_candle:
-            fallback = self._utc_now_ms() - int(
-                timedelta(days=self.MAX_BACKFILL_DAYS).total_seconds() * 1000
-            )
+            fallback = self._history_start_ms
             self.logger.info(
-                f"{symbol} M1: No data in database, using fallback watermark {self._ms_to_iso(fallback)}"
+                f"{symbol} M1: No data in database, using fallback watermark "
+                f"{self._ms_to_iso(fallback)}"
             )
             return fallback
 
-        latest_ts = int(latest_candle["timestamp_ms"])
+        latest_ts = max(int(latest_candle["timestamp_ms"]), self._history_start_ms)
         self.logger.info(f"{symbol} M1: Frozen startup watermark at {self._ms_to_iso(latest_ts)}")
         return latest_ts
 
@@ -174,13 +170,15 @@ class IngestionService:
         if timeframe is None:
             timeframe = self.TIMEFRAME_CODE_M1
 
-        if timeframe == self.TIMEFRAME_CODE_M1:
-            to_ts = min(to_ts, (self._utc_now_ms() // 60000) * 60000 - 1)
+        if timeframe != self.TIMEFRAME_CODE_M1:
+            raise ValueError("Historical persistence accepts only M1 Candles")
+        to_ts = min(to_ts, (self._utc_now_ms() // 60000) * 60000 - 1)
         if from_ts > to_ts:
             return
 
         self.logger.info(
-            f"Backfilling {symbol} {timeframe} from {self._ms_to_iso(from_ts)} to {self._ms_to_iso(to_ts)}"
+            f"Backfilling {symbol} {timeframe} from {self._ms_to_iso(from_ts)} "
+            f"to {self._ms_to_iso(to_ts)}"
         )
 
         candles: List[Dict[str, Any]] = []
@@ -190,10 +188,17 @@ class IngestionService:
             start_time=from_ts,
             end_time=to_ts,
         ):
+            timestamp = int(candle["t"])
+            if not from_ts <= timestamp <= to_ts or timestamp % 60000:
+                raise ValueError("Broker returned a Candle outside the closed M1 interval")
             candles.append(candle)
 
         if candles:
-            await self.write_candles_callback(symbol_id, candles)
+            state = self._state_by_id[symbol_id]
+            mapped = [self._format_candle_for_db(candle) for candle in candles]
+            await self._write_candles_in_chunks(
+                state.symbol, state.exchange, mapped, historical_interval=(from_ts, to_ts)
+            )
             self.logger.info(f"Backfilled {len(candles)} candles for {symbol} {timeframe}")
         else:
             self.logger.debug(f"No backfill data available for {symbol} {timeframe}")
@@ -208,10 +213,6 @@ class IngestionService:
 
         async def worker(state: SymbolRuntimeState) -> None:
             from_ts_ms = watermarks[state.symbol_id]
-            if not self._needs_backfill(from_ts_ms, self.TIMEFRAME_M1):
-                self.logger.info(f"{state.symbol} M1: Backfill skipped, data is up to date")
-                return
-
             async with semaphore:
                 await self._backfill_symbol(
                     symbol_id=state.symbol_id,
@@ -229,6 +230,7 @@ class IngestionService:
         exchange: str | None,
         candles: List[Dict[str, Any]],
         chunk_size: Optional[int] = None,
+        historical_interval: tuple[int, int] | None = None,
     ) -> None:
         if chunk_size is None:
             chunk_size = self.CHUNK_SIZE
@@ -238,15 +240,21 @@ class IngestionService:
             chunk = candles[i : i + chunk_size]
             chunk_num = i // chunk_size + 1
 
-            await asyncio.to_thread(
-                self.db_client.write_candles,
-                symbol,
-                chunk,
-                exchange or None,
-            )
+            if historical_interval is None:
+                await asyncio.to_thread(
+                    self.db_client.write_candles, symbol, chunk, exchange or None
+                )
+            else:
+                await asyncio.to_thread(
+                    self.db_client.write_historical_candles,
+                    symbol,
+                    chunk,
+                    historical_interval[0],
+                    historical_interval[1],
+                    exchange or None,
+                )
             self.logger.info(
-                f"Wrote {len(chunk)} candles for {symbol} "
-                f"(chunk {chunk_num}/{total_chunks})"
+                f"Wrote {len(chunk)} candles for {symbol} " f"(chunk {chunk_num}/{total_chunks})"
             )
 
     async def write_candles_callback(self, symbol_id: int, candles: List[Dict[str, Any]]) -> None:
@@ -280,10 +288,6 @@ class IngestionService:
         semaphore: asyncio.Semaphore,
     ) -> None:
         from_ts_ms = watermarks[state.symbol_id]
-        if not self._needs_backfill(from_ts_ms, self.TIMEFRAME_M1):
-            self.logger.info(f"{state.symbol} M1: Backfill skipped, data is up to date")
-            return
-
         async with semaphore:
             await self._backfill_symbol(
                 symbol_id=state.symbol_id,
@@ -347,7 +351,7 @@ class IngestionService:
             self.logger.info("Startup backfill phase complete")
 
     async def _is_broker_connected(self) -> bool:
-        """Broker is considered connected only when broker-service is up and cTrader is authenticated."""
+        """Require an available broker-service and authenticated cTrader connection."""
         try:
             health = await self.broker_client.get_meta_health()
             ctrader = health.get("components", {}).get("ctrader", {})

@@ -12,3 +12,18 @@ broker-available Candles. It finishes normally, including during market closures
 **Partial historical delivery:** An unsuccessful download even when some Candles
 arrived. It cannot count as successful backfill; durable restart recovery is a
 separate operation beyond this transport contract.
+
+
+## Authoritative Historical Correction
+
+Startup and reconnect include the last stored M1 Candle, bounded by the existing
+five-year history policy frozen for the service instance. Empty Markets use that
+inclusive boundary. Even a recent last stored Candle is fetched again: recency
+does not establish that its live OHLCV was final.
+
+Backfill validates the completed broker interval before using the shared
+historical-write contract. Ordinary live callbacks retain insert-only behavior.
+Read [Candle persistence](../docs/contracts/candles.md) for request bounds,
+partial-commit replay, compressed storage, and higher-Timeframe refresh semantics.
+The opt-in `tests/test_history_integration.py` scenario needs an isolated accessor
+and real Timescale storage; a skipped test is missing acceptance evidence.
