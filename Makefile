@@ -149,3 +149,8 @@ test:
 
 backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine frontend:
 	@:
+
+# Creates disposable loopback Redis/Timescale services; never uses the configured stack.
+.PHONY: smoke-recovery
+smoke-recovery:
+	$(PYTHON) scripts/smoke_recovery.py

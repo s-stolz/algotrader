@@ -216,6 +216,7 @@ async def stream_trendbars(
     async def generate_ndjson() -> AsyncIterator[str]:
         import json
 
+        count = 0
         try:
             async for trendbar in service.stream_trendbars(
                 _account_id,
@@ -234,8 +235,19 @@ async def stream_trendbars(
                     "t": trendbar.t,
                     "digits": trendbar.digits,
                 }
+                count += 1
                 yield json.dumps(bar_dict) + "\n"
-        except RuntimeError:
+            yield json.dumps(
+                {
+                    "type": "complete",
+                    "version": 1,
+                    "count": count,
+                    "fromTs": _from_ts,
+                    "toTs": _to_ts,
+                    "limit": _limit,
+                }
+            ) + "\n"
+        except Exception:
             logger.exception(
                 "Trendbar stream interrupted due to upstream request failure "
                 "(symbol=%s, timeframe=%s, from_ts=%s, to_ts=%s, limit=%s)",
@@ -245,7 +257,7 @@ async def stream_trendbars(
                 _to_ts,
                 _limit,
             )
-            return
+            yield json.dumps({"type": "error", "message": "Historical download failed"}) + "\n"
 
     return StreamingResponse(
         generate_ndjson(),

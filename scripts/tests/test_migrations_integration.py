@@ -146,7 +146,7 @@ SELECT json_build_object('runs', (SELECT json_agg(row_to_json(r) ORDER BY run_id
             return json.loads(rows.stdout)
 
         before = snapshot()
-        migrations = migrate_db.load_migrations()
+        migrations = [m for m in migrate_db.load_migrations() if m.version <= 17]
         applied = {m.version: (m.name, m.checksum) for m in migrations if m.version < 17}
         for version, (name, checksum) in applied.items():
             self._run_psql(

@@ -167,6 +167,30 @@ class DatabaseAccessorClientTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._env_patcher.stop()
 
+    def test_historical_write_sends_explicit_interval_and_propagates_failure(self):
+        requests = []
+
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(503, text="unavailable")
+
+        with DatabaseAccessorClient() as client:
+            client.client.close()
+            client.client = httpx.Client(transport=httpx.MockTransport(handler))
+            with self.assertRaises(DatabaseAccessorClientError):
+                client.write_historical_candles("EURUSD", [], 60000, 119999, "FX")
+        self.assertEqual(requests[0].url.path, "/candles/historical")
+        self.assertEqual(
+            json.loads(requests[0].content),
+            {
+                "symbol": "EURUSD",
+                "exchange": "FX",
+                "candles": [],
+                "start_ms": 60000,
+                "end_ms": 119999,
+            },
+        )
+
     def test_get_markets_passes_query_params(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.url.path, "/markets")
@@ -598,6 +622,29 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
 
 class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_historical_write_preserves_contract_and_failure(self):
+        requests = []
+
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(503, text="unavailable")
+
+        async with AsyncDatabaseAccessorClient() as client:
+            await client.client.aclose()
+            client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            with self.assertRaises(DatabaseAccessorClientError):
+                await client.write_historical_candles("EURUSD", [], 60000, 119999)
+        self.assertEqual(requests[0].url.path, "/candles/historical")
+        self.assertEqual(
+            json.loads(requests[0].content),
+            {
+                "symbol": "EURUSD",
+                "candles": [],
+                "start_ms": 60000,
+                "end_ms": 119999,
+            },
+        )
+
     def setUp(self) -> None:
         self._env_patcher = patch.dict(
             os.environ,

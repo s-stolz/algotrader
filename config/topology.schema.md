@@ -144,3 +144,6 @@ to get started. Keep secrets in `.env.secrets.local`.
 `YYYY-MM-DD`, no future dates). Set the other option to `null`, including when
 switching modes in an override. Dates begin at midnight UTC. Run `make config`
 and recreate affected containers after editing overrides.
+
+Accepted pending recovery survives policy changes; see the
+[recovery contract](../docs/contracts/recovery.md).

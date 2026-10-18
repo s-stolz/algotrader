@@ -248,3 +248,8 @@ make venvs-check
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 This project makes use of third-party software so please check the [ATTRIBUTIONS.md](ATTRIBUTIONS.md) file for more information.
+
+## Market data recovery operations
+
+For controlled outage/restart acceptance, migration order, retained Redis data,
+and safe restart/rollback, follow the [recovery deployment guide](docs/operations/market-data-recovery.md).

@@ -43,3 +43,11 @@ Structure-only changes preserve all four generated env mappings. The fixture at
 `scripts/tests/fixtures/topology_environment.json` uses empty secrets; update it
 only when runtime values intentionally change. Configuration ownership rationale
 is in [ADR-0003](../docs/adr/0003-generated-runtime-configuration.md).
+
+# Configuration vocabulary
+
+**History policy** selects a fresh ingestion recovery boundary from a rolling
+lookback or a quoted UTC start date. Accepted pending recovery retains its earlier
+boundary when this policy changes. For configuration and deployment obligations,
+read the [recovery contract](../docs/contracts/recovery.md); field types and
+runtime mappings are in [topology schema](topology.schema.md).

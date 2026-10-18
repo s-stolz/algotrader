@@ -51,3 +51,14 @@ changes also need coverage for duplicate subscriptions, disconnect cleanup, sour
 counts, and rollback using controlled Redis/broker adapters. Webserver tests are
 not included in the root `make test` target; run them from this service directory
 with its Python environment (`python -m unittest discover -s tests`).
+
+# Webserver Candle transport context
+
+**Public Candle:** expanded OHLCV plus `timestamp_ms` delivered to WebSocket
+subscribers. Broker continuity is transport metadata, excluded from this shape.
+
+**Publication continuity:** backend session identity on Redis Candles. Chart fanout
+accepts both legacy and enriched rows; it does not trigger historical refresh.
+
+For the producer/consumer contract and protected upgrade sequence, read
+[live publication continuity](../docs/contracts/recovery.md#live-publication-continuity).

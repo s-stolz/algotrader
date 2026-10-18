@@ -300,6 +300,79 @@ class DatabaseAccessorClient(_BaseClient):
     def delete_backtest_batch(self, batch_id: str) -> None:
         self._request("DELETE", f"/backtest-batches/{batch_id}")
 
+    def write_historical_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "symbol": symbol,
+            "candles": candles,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        }
+        if exchange is not None:
+            payload["exchange"] = exchange
+        return self._request("POST", "/candles/historical", json=payload)
+
+    def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = self._request("GET", f"/recoveries/{symbol_id}", params={"account_id": account_id})
+        return result["pending"]
+
+    def begin_recovery(
+        self, symbol_id: int, account_id: str, start_ms: int, target_ms: int, trigger: str
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/recoveries/begin",
+            json={
+                "symbol_id": symbol_id,
+                "account_id": account_id,
+                "start_ms": start_ms,
+                "target_ms": target_ms,
+                "trigger": trigger,
+            },
+        )
+
+    def advance_recovery(self, pending: dict[str, Any], next_ms: int) -> bool:
+        result = self._request(
+            "POST",
+            "/recoveries/advance",
+            json={
+                "symbol_id": pending["symbol_id"],
+                "account_id": pending["account_id"],
+                "recovery_id": pending["recovery_id"],
+                "revision": pending["revision"],
+                "expected_start_ms": pending["next_ms"],
+                "next_ms": next_ms,
+            },
+        )
+        return result["updated"]
+
+    def get_live_write_guard(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = self._request(
+            "GET", f"/recoveries/live-writes/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["guard"]
+
+    def begin_live_write(self, symbol_id: int, account_id: str, boundary_ms: int) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/recoveries/live-writes/begin",
+            json={"symbol_id": symbol_id, "account_id": account_id, "boundary_ms": boundary_ms},
+        )
+
+    def finish_live_write(self, guard: dict[str, Any]) -> bool:
+        result = self._request(
+            "POST",
+            "/recoveries/live-writes/finish",
+            json={key: guard[key] for key in ("symbol_id", "account_id", "write_id")},
+        )
+        return result["updated"]
+
     def close(self) -> None:
         self.client.close()
 
@@ -566,6 +639,83 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def delete_backtest_batch(self, batch_id: str) -> None:
         await self._request("DELETE", f"/backtest-batches/{batch_id}")
+
+    async def write_historical_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "symbol": symbol,
+            "candles": candles,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        }
+        if exchange is not None:
+            payload["exchange"] = exchange
+        return await self._request("POST", "/candles/historical", json=payload)
+
+    async def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = await self._request(
+            "GET", f"/recoveries/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["pending"]
+
+    async def begin_recovery(
+        self, symbol_id: int, account_id: str, start_ms: int, target_ms: int, trigger: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/recoveries/begin",
+            json={
+                "symbol_id": symbol_id,
+                "account_id": account_id,
+                "start_ms": start_ms,
+                "target_ms": target_ms,
+                "trigger": trigger,
+            },
+        )
+
+    async def advance_recovery(self, pending: dict[str, Any], next_ms: int) -> bool:
+        result = await self._request(
+            "POST",
+            "/recoveries/advance",
+            json={
+                "symbol_id": pending["symbol_id"],
+                "account_id": pending["account_id"],
+                "recovery_id": pending["recovery_id"],
+                "revision": pending["revision"],
+                "expected_start_ms": pending["next_ms"],
+                "next_ms": next_ms,
+            },
+        )
+        return result["updated"]
+
+    async def get_live_write_guard(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = await self._request(
+            "GET", f"/recoveries/live-writes/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["guard"]
+
+    async def begin_live_write(
+        self, symbol_id: int, account_id: str, boundary_ms: int
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/recoveries/live-writes/begin",
+            json={"symbol_id": symbol_id, "account_id": account_id, "boundary_ms": boundary_ms},
+        )
+
+    async def finish_live_write(self, guard: dict[str, Any]) -> bool:
+        result = await self._request(
+            "POST",
+            "/recoveries/live-writes/finish",
+            json={key: guard[key] for key in ("symbol_id", "account_id", "write_id")},
+        )
+        return result["updated"]
 
     async def aclose(self) -> None:
         await self.client.aclose()
