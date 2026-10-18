@@ -292,12 +292,17 @@ Candle per calendar minute. It removes only its synthetic Market and stream.
 No process or storage test may target real history. Missing environment variables
 produce explicit skips, never evidence of acceptance.
 
-For runner integrity acceptance, start an owned disposable Timescale container
+For live migration acceptance, start an owned disposable Timescale container
 named `vibe10r1-*`, set `RECOVERY_MIGRATION_TEST_CONTAINER` to that name and
 `RECOVERY_MIGRATION_TEST_USER` to its synthetic PostgreSQL user, then run
 `python -m unittest discover -s timescaledb-init/tests -p test_run_migrations.py -v`.
-The tests own and remove fresh databases. They verify invalid inventories and
-ledger history return nonzero before any pending statement commits, immutable
-loaded content under changing deployment files, and shipped recovery migration
-replay preserving pending work. Without the container variable they explicitly
-skip; that is not real storage evidence.
+The tests own and remove fresh databases. They verify fresh full-inventory replay,
+V017-to-V019 upgrades preserving applied checksums and named experiments, pending
+V018 work surviving the guard upgrade, and replay preserving recovery rows.
+Without the container variable they explicitly skip; that is not real storage
+evidence.
+
+For separate migration-runner unit coverage, run
+`python -m unittest scripts.tests.test_migrate_db -v`. These checks cover migration
+inventory and checksum validation, ledger validation before pending SQL, and
+execution of the same loaded SQL content used for checksums.
