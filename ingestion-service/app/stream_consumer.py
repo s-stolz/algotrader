@@ -1,6 +1,8 @@
 """Redis stream consumer for market data."""
+
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Dict, List, Optional, Union
 
 from redis.asyncio import Redis
@@ -23,13 +25,7 @@ TIMEFRAME_TO_MINUTES = {
 class StreamConsumer:
     """Consumes candle data from Redis streams using XREAD."""
 
-    def __init__(
-        self,
-        redis: Redis,
-        account_id: str,
-        batch_size: int = 100,
-        block_ms: int = 5000
-    ):
+    def __init__(self, redis: Redis, account_id: str, batch_size: int = 100, block_ms: int = 5000):
         """Initialize the stream consumer.
 
         Args:
@@ -107,11 +103,12 @@ class StreamConsumer:
         self,
         stream_key: str,
         messages: List,
-    ) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[List[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
         """Process raw Redis stream messages into candles.
 
         Returns:
-            Tuple of (candles list, last_message_id or None)
+            Closed Candles, candidate cursor, and candidate open Candle. These
+            become acknowledged state only after the callback succeeds.
         """
         candles = []
         last_id = None
@@ -148,17 +145,14 @@ class StreamConsumer:
                     logger.error(f"Error transforming message {msg_id_str}: {e}")
                     continue
 
-        if pending is not None:
-            self._pending_open_candles[stream_key] = pending
-
-        return candles, last_id
+        return candles, last_id, pending
 
     async def consume_stream(
         self,
         stream_key: str,
         symbol_id: int,
-        callback: callable,
-        start_id: str = "0-0"
+        callback: Callable[[int, List[Dict[str, Any]]], Awaitable[None]],
+        start_id: str = "0-0",
     ):
         """Consume messages from a single Redis stream.
 
@@ -172,28 +166,34 @@ class StreamConsumer:
         logger.info(f"Starting consumption of {stream_key} from ID {last_id}")
 
         self._running = True
+        messages = None
 
         while self._running:
             try:
-                messages = await self.redis.xread(
-                    {stream_key: last_id},
-                    count=self.batch_size,
-                    block=self.block_ms
-                )
+                if messages is None:
+                    messages = await self.redis.xread(
+                        {stream_key: last_id},
+                        count=self.batch_size,
+                        block=self.block_ms,
+                    )
 
                 if not messages:
+                    messages = None
                     continue
 
-                candles, new_last_id = self._process_stream_messages(stream_key, messages)
+                candles, new_last_id, pending = self._process_stream_messages(stream_key, messages)
 
                 if candles:
                     logger.debug(f"Consumed {len(candles)} candles from {stream_key}")
                     logger.debug(f"New Candle for {stream_key}: {candles}")
                     await callback(symbol_id, candles)
 
+                if pending is not None:
+                    self._pending_open_candles[stream_key] = pending
                 if new_last_id:
                     self._last_ids[stream_key] = new_last_id
                     last_id = new_last_id
+                messages = None
 
             except asyncio.CancelledError:
                 logger.info(f"Consumer for {stream_key} cancelled")
@@ -208,7 +208,7 @@ class StreamConsumer:
         symbol_id: int,
         start_id: str,
         end_id: str,
-        callback: callable
+        callback: Callable[[int, List[Dict[str, Any]]], Awaitable[None]],
     ) -> int:
         """Backfill historical data from a stream between two message IDs.
 
@@ -234,7 +234,7 @@ class StreamConsumer:
                     stream_key,
                     min=f"({current_id}",  # Exclusive start
                     max=end_id,
-                    count=self.batch_size
+                    count=self.batch_size,
                 )
 
                 if not messages:

@@ -36,7 +36,7 @@ class DatabaseClient:
             )
         except DatabaseAccessorClientError as exc:
             logger.error("Error fetching latest candle for symbol %s: %s", symbol, exc)
-            return None
+            raise
 
     def get_latest_m1_candle(
         self, symbol: str, exchange: str | None = None
@@ -48,7 +48,7 @@ class DatabaseClient:
             )
         except DatabaseAccessorClientError as exc:
             logger.error("Error fetching latest M1 candle for symbol %s: %s", symbol, exc)
-            return None
+            raise
 
     def write_candles(
         self,
@@ -74,7 +74,7 @@ class DatabaseClient:
             return True
         except DatabaseAccessorClientError as exc:
             logger.error("HTTP error writing candles for symbol %s: %s", symbol, exc)
-            return False
+            raise
 
     def close(self) -> None:
         self._client.close()

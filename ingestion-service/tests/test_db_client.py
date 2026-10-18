@@ -21,14 +21,32 @@ class DatabaseClientTests(unittest.TestCase):
             exchange="FX",
         )
 
-    def test_get_latest_m1_candle_returns_none_on_client_error(self) -> None:
+    def test_latest_candle_failures_propagate(self) -> None:
         db_client = DatabaseClient()
         db_client._client = Mock()
         db_client._client.get_latest_m1_candle.side_effect = DatabaseAccessorClientError("boom")
 
-        result = db_client.get_latest_m1_candle("EURUSD")
+        for method in ("get_latest_m1_candle", "get_latest_candle"):
+            with self.subTest(method=method):
+                getattr(db_client._client, method).side_effect = DatabaseAccessorClientError("boom")
+                arguments = ("EURUSD", "M1") if method == "get_latest_candle" else ("EURUSD",)
+                with self.assertRaises(DatabaseAccessorClientError):
+                    getattr(db_client, method)(*arguments)
 
-        self.assertIsNone(result)
+    def test_successful_empty_latest_result_remains_none(self) -> None:
+        db_client = DatabaseClient()
+        self.addCleanup(db_client.close)
+        db_client._client = Mock()
+        db_client._client.get_latest_m1_candle.return_value = None
+        self.assertIsNone(db_client.get_latest_m1_candle("EURUSD"))
+
+    def test_write_failure_propagates(self) -> None:
+        db_client = DatabaseClient()
+        self.addCleanup(db_client.close)
+        db_client._client = Mock()
+        db_client._client.insert_candles.side_effect = DatabaseAccessorClientError("boom")
+        with self.assertRaises(DatabaseAccessorClientError):
+            db_client.write_candles("EURUSD", [{"timestamp_ms": 1000}])
 
 
 if __name__ == "__main__":
