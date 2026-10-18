@@ -293,3 +293,35 @@ backtest_closed_trades = Table(
         "trade_sequence",
     ),
 )
+
+
+# Pending recovery is keyed by the logical Market/account M1 source only.
+
+pending_recoveries = Table(
+    "pending_recoveries",
+    metadata,
+    Column(
+        "symbol_id", Integer, ForeignKey("markets.symbol_id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column("account_id", String(128), primary_key=True),
+    Column("recovery_id", String(36), nullable=False),
+    Column("revision", BigInteger, nullable=False),
+    Column("next_ms", BigInteger, nullable=False),
+    Column("target_ms", BigInteger, nullable=False),
+    Column("trigger", String(64), nullable=False),
+    CheckConstraint("revision > 0"),
+    CheckConstraint("next_ms >= 0 AND target_ms >= next_ms - 1"),
+)
+
+
+live_write_guards = Table(
+    "live_write_guards",
+    metadata,
+    Column(
+        "symbol_id", Integer, ForeignKey("markets.symbol_id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column("account_id", String(128), primary_key=True),
+    Column("write_id", String(36), nullable=False),
+    Column("boundary_ms", BigInteger, nullable=False),
+    CheckConstraint("boundary_ms >= 0"),
+)

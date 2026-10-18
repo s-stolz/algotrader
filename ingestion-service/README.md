@@ -4,7 +4,7 @@ A Python service that consumes market data from Redis streams and persists it to
 
 ## Features
 
-- **Automatic Backfill**: Downloads initial history and catches up after the latest stored candle through broker-service
+- **Durable Recovery**: Protects a saved boundary before live writes and retrieves broker history
 - **Redis Stream Consumer**: Consumes candle data using XREAD
 - **Dynamic Symbol Loading**: Fetches active symbols from the markets table
 - **Batch Processing**: Efficiently batches candles before writing to database
@@ -78,7 +78,10 @@ Run `make config` and recreate ingestion-service to apply the generated values
 (`INGESTION_HISTORY_LOOKBACK_DAYS` / `INGESTION_HISTORY_START_DATE`). Direct process
 launches must load the generated environment as usual.
 
-Existing markets resume after the latest stored candle, never earlier than the
+Existing markets include the latest stored candle in recovery, never earlier than the
 configured boundary. Reconnect recovery uses the same rule. Reducing the range
 does not delete stored candles; increasing it does not fetch older history for
 already populated markets. Older-history backfill remains a separate operation.
+
+For durable pending work, protected startup and rollout, read the
+[recovery contract](../docs/contracts/recovery.md).
