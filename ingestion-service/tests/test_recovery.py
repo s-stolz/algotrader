@@ -515,6 +515,119 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
         await eventually(lambda: not storage.pending)
         self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
 
+    async def test_queued_closed_callbacks_cannot_retire_the_open_handoff_minute(self):
+        storage, broker = Storage(), Broker()
+        broker.allow_history.set()
+        clock = [RESUMED + 30000]
+        service, redis = await self.start(storage, broker, now=lambda: clock[0])
+        await eventually(lambda: not storage.pending and bool(broker.requests))
+        # These queued bars close a live Candle before the excluded subscription
+        # minute has closed. They cannot establish coverage of that minute.
+        await redis.publish("BTC", [candle(RESUMED - 120000), candle(RESUMED - 60000)])
+        await eventually(lambda: storage.live_writes > 0 and not storage.pending)
+        self.assertNotIn(RESUMED, storage.rows["BTC"])
+        self.assertTrue(all(end < RESUMED for _, _, end in broker.requests))
+
+        clock[0] = NOW
+        await redis.publish("BTC", [candle(RESUMED + 60000), candle(RESUMED + 120000)])
+        await eventually(lambda: RESUMED + 60000 in storage.rows["BTC"] and not storage.pending)
+        self.assertIn(RESUMED, storage.rows["BTC"])
+        self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
+
+    async def test_late_handoff_is_durable_through_old_sessions_and_restart(self):
+        for session in ("a", "b"):
+            with self.subTest(resumed_session=session):
+                storage, broker = Storage(), Broker()
+                broker.allow_history.set()
+                clock = [RESUMED + 30000]
+                service, redis = await self.start(storage, broker, now=lambda: clock[0])
+                await eventually(lambda: not storage.pending and bool(broker.requests))
+                await redis.publish("BTC", [candle(RESUMED - 120000), candle(RESUMED - 60000)])
+                await eventually(lambda: storage.live_writes > 0 and not storage.pending)
+                # A late old-session run can itself cause a new interruption.
+                # Neither that run nor out-of-order bars can replace the earlier
+                # handoff with a newer latest-Candle boundary.
+                clock[0] = NOW
+                broker.allow_history.clear()
+                await redis.publish(
+                    "BTC",
+                    [
+                        candle(RESUMED - 180000, session=session),
+                        candle(RESUMED - 120000, session=session),
+                        candle(RESUMED + 60000, session=session),
+                        candle(RESUMED + 120000, session=session),
+                    ],
+                )
+                await eventually(lambda: RESUMED + 60000 in storage.rows["BTC"])
+                self.assertTrue(storage.pending)
+                self.assertLessEqual(next(iter(storage.pending.values()))["next_ms"], RESUMED)
+                self.assertNotIn(RESUMED, storage.rows["BTC"])
+                await service.shutdown()
+
+                # Durable work takes priority over a fresh latest lookup and a
+                # newer rolling lookback after an abrupt recovery interruption.
+                storage.fail_read.add("BTC")
+                restarted, _ = await self.start(storage, broker, lookback=1, now=lambda: clock[0])
+                broker.allow_history.set()
+                await eventually(lambda: not storage.pending)
+                self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
+                await restarted.shutdown()
+
+    async def test_minute_crossing_save_preserves_session_and_dependency_handoffs(self):
+        for trigger in ("continuity-change", "redis-read-failure"):
+            with self.subTest(trigger=trigger):
+                storage, broker = Storage(), Broker()
+                broker.allow_history.set()
+                clock = [RESUMED + 30000]
+                service, redis = await self.start(storage, broker, now=lambda: clock[0])
+                await eventually(lambda: not storage.pending and bool(broker.requests))
+                await redis.publish("BTC", [candle(RESUMED - 120000), candle(RESUMED - 60000)])
+                await eventually(lambda: storage.live_writes > 0 and not storage.pending)
+                original_begin = storage.begin_recovery
+                saved_targets = []
+
+                expected_trigger = trigger
+
+                def cross_minute_during_save(symbol_id, account_id, start_ms, target_ms, trigger):
+                    saved = original_begin(symbol_id, account_id, start_ms, target_ms, trigger)
+                    if trigger == expected_trigger and not saved_targets:
+                        saved_targets.append(saved["target_ms"])
+                        clock[0] = RESUMED + 60010
+                    return saved
+
+                storage.begin_recovery = cross_minute_during_save
+                clock[0] = RESUMED + 59990
+                if trigger == "continuity-change":
+                    session = "b"
+                    await redis.publish(
+                        "BTC",
+                        [
+                            candle(RESUMED - 120000, session=session),
+                            candle(RESUMED + 60000, session=session),
+                        ],
+                    )
+                else:
+                    session = "a"
+                    stream = "candles:12345:BTC:M1"
+                    await redis.queues[stream].put(OSError("controlled Redis read interruption"))
+                    await redis.publish("BTC", [candle(RESUMED + 60000)])
+                await eventually(lambda: storage.live_writes > 1 and not storage.pending)
+                self.assertEqual(saved_targets, [RESUMED - 1])
+
+                clock[0] = NOW
+                await redis.publish("BTC", [candle(RESUMED + 120000, session=session)])
+                await eventually(
+                    lambda: RESUMED + 60000 in storage.rows["BTC"] and not storage.pending
+                )
+                await service.shutdown()
+                before_restart = len(broker.requests)
+                await self.start(storage, broker, lookback=1, now=lambda: clock[0])
+                await eventually(
+                    lambda: len(broker.requests) > before_restart and not storage.pending
+                )
+                self.assertIn(RESUMED, storage.rows["BTC"])
+                self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
+
     async def test_shutdown_drains_inflight_write_before_closing_storage(self):
         for fails in (False, True):
             storage, broker = Storage(), Broker()

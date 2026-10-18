@@ -59,6 +59,9 @@ class ProcessRecoveryTests(unittest.TestCase):
                 "protected-live",
                 "after-data",
                 "sessions",
+                "early-handoff",
+                "session-save-crossing",
+                "redis-save-crossing",
                 "redis-read",
                 "database-read",
                 "database-write",
@@ -71,6 +74,8 @@ class ProcessRecoveryTests(unittest.TestCase):
                     self.exercise_phase(http, redis, phase)
 
     def exercise_phase(self, http, redis, phase):
+        crossing_phase = phase in ("session-save-crossing", "redis-save-crossing")
+        handoff_phase = phase == "early-handoff" or crossing_phase
         restart_loss_phase = phase in ("uncertain-before-save", "partial-before-save")
         dependency_phase = (
             phase in ("redis-read", "database-read", "database-write") or restart_loss_phase
@@ -100,14 +105,18 @@ class ProcessRecoveryTests(unittest.TestCase):
         stream = f"candles:{account}:{symbol}:M1"
         faults: dict[str, Any] = dict(
             save=phase == "before-save",
-            history=phase not in ("after-data", "sessions") and not runtime_phase,
-            progress=phase != "sessions" and not runtime_phase,
+            history=phase not in ("after-data", "sessions")
+            and not (runtime_phase or handoff_phase),
+            progress=phase != "sessions" and not (runtime_phase or handoff_phase),
             latest=False,
             live=False,
             write_loss="",
             live_calls=0,
+            cross_save=False,
         )
         attempted = threading.Event()
+        crossed = threading.Event()
+        frozen_targets = []
         history_requests = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -196,6 +205,11 @@ class ProcessRecoveryTests(unittest.TestCase):
                     result = client.post(
                         self.path, content=body, headers={"Content-Type": "application/json"}
                     )
+                if self.path == "/recoveries/begin" and faults["cross_save"] and result.is_success:
+                    faults["cross_save"] = False
+                    frozen_targets.append(json.loads(body)["target_ms"])
+                    clock_path.write_text(str(RESUMED + 60010))
+                    crossed.set()
                 return self.reply(result.status_code, result.content)
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -226,7 +240,13 @@ class ProcessRecoveryTests(unittest.TestCase):
         logs = tempfile.TemporaryFile(mode="w+")
         clock = tempfile.NamedTemporaryFile(mode="w", delete=False)
         clock_path = Path(clock.name)
-        clock.write(str(BOUNDARY + 120000 if phase == "sessions" or runtime_phase else NOW))
+        clock.write(
+            str(
+                RESUMED + 30000
+                if handoff_phase
+                else BOUNDARY + 120000 if phase == "sessions" or runtime_phase else NOW
+            )
+        )
         clock.close()
         redis_fault = clock_path.with_suffix(".redis-fault")
 
@@ -293,6 +313,45 @@ class ProcessRecoveryTests(unittest.TestCase):
 
         try:
             child = launch()
+            if handoff_phase:
+                wait_for(lambda: pending() is None and len(stored()) == 2)
+                redis.xadd(stream, bar(RESUMED - 120000))
+                redis.xadd(stream, bar(RESUMED - 60000))
+                wait_for(
+                    lambda: pending() is None
+                    and any(r["timestamp_ms"] == RESUMED - 120000 for r in stored())
+                )
+                self.assertTrue(all(end < RESUMED for _, end in history_requests))
+                session = "a"
+                if crossing_phase:
+                    clock_path.write_text(str(RESUMED + 59990))
+                    faults["cross_save"] = True
+                    if phase == "session-save-crossing":
+                        session = "b"
+                        redis.xadd(stream, bar(RESUMED - 120000, session=session))
+                        redis.xadd(stream, bar(RESUMED + 60000, session=session))
+                    else:
+                        redis_fault.touch()
+                        redis.xadd(stream, bar(RESUMED - 60000))
+                    wait_for(crossed.is_set)
+                    self.assertEqual(frozen_targets, [RESUMED - 1])
+                    redis_fault.unlink(missing_ok=True)
+                    if phase == "redis-save-crossing":
+                        redis.xadd(stream, bar(RESUMED + 60000))
+                    wait_for(lambda: pending() is None)
+                clock_path.write_text(str(NOW))
+                redis.xadd(stream, bar(RESUMED + 60000, session=session))
+                redis.xadd(stream, bar(RESUMED + 120000, session=session))
+                wait_for(
+                    lambda: pending() is None
+                    and any(r["timestamp_ms"] == RESUMED + 60000 for r in stored())
+                )
+                rows = {r["timestamp_ms"]: r for r in stored()}
+                self.assertIn(RESUMED, rows)
+                self.assertEqual(rows[RESUMED]["close"], 9)
+                child.terminate()
+                self.assertEqual(child.wait(timeout=5), 0)
+                return
             if runtime_phase:
                 wait_for(lambda: pending() is None and len(stored()) == 2)
                 if producer_phase:
@@ -322,6 +381,15 @@ class ProcessRecoveryTests(unittest.TestCase):
                     redis.xadd(stream, bar(BOUNDARY + 120000))
                 time.sleep(0.3)
                 wait_for(lambda: pending() is None)
+                if restart_loss_phase:
+                    # Complete the earlier subscription handoff before testing
+                    # an independent uncertain write with only its durable guard.
+                    clock_path.write_text(str(BOUNDARY + 180000))
+                    redis.xadd(stream, bar(BOUNDARY + 180000))
+                    wait_for(
+                        lambda: pending() is None
+                        and any(r["timestamp_ms"] == BOUNDARY + 120000 for r in stored())
+                    )
                 faults["history"] = True
                 clock_path.write_text(str(NOW))
                 if producer_phase:

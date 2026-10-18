@@ -272,9 +272,6 @@ class IngestionService:
             state, "continuity-change" if continuity is not None else "invalid-continuity"
         )
         state.continuity = continuity
-        # The new session's current open minute needs a later closed target,
-        # including when no subsequent update for that minute is published.
-        state.handoff_start_ms = (self._utc_now_ms() // 60000) * 60000
 
     async def observe_interruption(self, symbol_id: int, trigger: str) -> None:
         """Protect dependency loss even when the producer session is unchanged."""
@@ -283,7 +280,6 @@ class IngestionService:
         # confirmed live boundary, captured before any writes in that batch.
         start = state.live_boundary_ms if trigger == "live-write-failure" else None
         await self.request_recovery(state, trigger, start)
-        state.handoff_start_ms = (self._utc_now_ms() // 60000) * 60000
 
     async def write_candles_callback(self, symbol_id: int, candles: List[Dict[str, Any]]) -> None:
         """Callback to write candles to database."""
@@ -295,16 +291,19 @@ class IngestionService:
         if state is None:
             self.logger.warning("Skipping candles for unknown symbol_id=%s", symbol_id)
             return
-        if state.handoff_start_ms is not None:
+        if (
+            state.handoff_start_ms is not None
+            and state.handoff_start_ms + 60000 <= self._utc_now_ms()
+        ):
             # The open minute at subscription establishment was excluded from
-            # the first closed target. Cover it once a closed live batch arrives,
-            # before that batch can move the durable latest-Candle boundary.
+            # the first closed target. Queued closed bars can arrive before that
+            # minute closes, so retain protection until a saved target covers it.
             await self.request_recovery(
                 state,
                 "startup-handoff",
                 min(state.handoff_start_ms, min(int(candle["t"]) for candle in candles)),
+                establish_handoff=False,
             )
-            state.handoff_start_ms = None
         while not self._shutdown:
             await state.live_ready.wait()
             async with state.protection_lock:
@@ -359,7 +358,12 @@ class IngestionService:
         return task
 
     async def _save_recovery(
-        self, state: SymbolRuntimeState, trigger: str, start_ms: int | None = None
+        self,
+        state: SymbolRuntimeState,
+        trigger: str,
+        start_ms: int | None = None,
+        *,
+        establish_handoff: bool = True,
     ) -> dict[str, Any]:
         account = self.config.broker_account_id
         pending = await self._db_call(self.db_client.get_pending_recovery, state.symbol_id, account)
@@ -377,7 +381,19 @@ class IngestionService:
             )
         elif start_ms is None:
             start_ms = await self._db_call(self._get_frozen_watermark, state.symbol, state.exchange)
+        assert start_ms is not None
+        if state.handoff_start_ms is not None:
+            start_ms = min(start_ms, state.handoff_start_ms)
         target = (self._utc_now_ms() // 60000) * 60000 - 1
+        new_handoff = target + 1 if establish_handoff else None
+        if new_handoff is not None:
+            # Save and handoff share one frozen clock boundary. Retain the
+            # earliest excluded minute even if persistence fails or time moves.
+            state.handoff_start_ms = (
+                min(state.handoff_start_ms, new_handoff)
+                if state.handoff_start_ms is not None
+                else new_handoff
+            )
         saved = await self._db_call(
             self.db_client.begin_recovery, state.symbol_id, account, start_ms, target, trigger
         )
@@ -385,6 +401,14 @@ class IngestionService:
         # Every later live attempt installs its own guard before Candle writes.
         if guard is not None:
             await self._db_call(self.db_client.finish_live_write, guard)
+        # Durable pending work may retire the old minute while a new trigger
+        # excludes a later one. Neither can be replaced by the receipt's clock.
+        unresolved_handoffs = [
+            minute
+            for minute in (state.handoff_start_ms, new_handoff)
+            if minute is not None and saved["target_ms"] < minute + 59999
+        ]
+        state.handoff_start_ms = min(unresolved_handoffs) if unresolved_handoffs else None
         self.logger.info(
             "Recovery protected market=%s account=%s M1 interval=[%s,%s] trigger=%s revision=%s",
             state.symbol,
@@ -397,13 +421,20 @@ class IngestionService:
         return saved
 
     async def request_recovery(
-        self, state: SymbolRuntimeState, trigger: str, start_ms: int | None = None
+        self,
+        state: SymbolRuntimeState,
+        trigger: str,
+        start_ms: int | None = None,
+        *,
+        establish_handoff: bool = True,
     ) -> None:
         """Durably merge an interruption before allowing affected live writes."""
         state.live_ready.clear()
         async with state.protection_lock:
             async with self._boundary_semaphore:
-                await self._save_recovery(state, trigger, start_ms)
+                await self._save_recovery(
+                    state, trigger, start_ms, establish_handoff=establish_handoff
+                )
             state.recovery_requested.set()
             state.live_ready.set()
 
@@ -439,9 +470,8 @@ class IngestionService:
                         await self.broker_client.start_trendbar_stream(state.symbol, timeframe="M1")
                     # Time is captured after subscription: history bridges the tail/setup interval.
                     async with self._boundary_semaphore:
-                        saved = await self._save_recovery(state, "startup", start)
+                        await self._save_recovery(state, "startup", start)
                     state.live_boundary_ms = start
-                    state.handoff_start_ms = saved["target_ms"] + 1
                     state.recovery_requested.set()
                     state.live_ready.set()
                     self._own_task(self._recover_market(state))
