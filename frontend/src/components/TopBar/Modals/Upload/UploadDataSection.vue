@@ -27,51 +27,51 @@
   </div>
 </template>
 
-<script>
-import { NIcon, NUpload, NUploadDragger, NText, NP } from "naive-ui";
-import { CloudUploadOutline } from "@/icons";
+<script setup lang="ts">
+import { NIcon, NP, NText, NUpload, NUploadDragger, type UploadFileInfo, type UploadOnChange } from 'naive-ui';
 
-export default {
-  name: "UploadDataSection",
+import { CloudUploadOutline } from '@/icons';
 
-  components: {
-    NIcon,
-    NUpload,
-    NUploadDragger,
-    NText,
-    NP,
-    CloudUploadOutline,
-  },
+defineOptions({
+  name: 'UploadDataSection',
+});
 
-  props: {
-    fileList: {
-      type: Array,
-      default: () => [],
-    },
-  },
-
-  emits: ["file-change", "file-remove"],
-
-  methods: {
-    beforeUpload(data) {
-      const { file } = data;
-      const maxSize = 100 * 1024 * 1024; // 100MB
-
-      if (file.size > maxSize) {
-        console.error("File size exceeds 100MB limit");
-        return false;
-      }
-
-      return true;
-    },
-
-    handleFileChange(data) {
-      this.$emit("file-change", data);
-    },
-
-    handleFileRemove() {
-      this.$emit("file-remove");
-    },
-  },
+type UploadFileWithLegacySize = UploadFileInfo & {
+  size?: number;
 };
+
+interface BeforeUploadData {
+  file: UploadFileWithLegacySize;
+}
+
+withDefaults(defineProps<{
+  fileList?: UploadFileInfo[];
+}>(), {
+  fileList: () => [],
+});
+
+const emit = defineEmits<{
+  (event: 'file-change', data: Parameters<UploadOnChange>[0]): void;
+  (event: 'file-remove'): void;
+}>();
+
+function beforeUpload(data: BeforeUploadData): boolean {
+  const maxSize = 100 * 1024 * 1024;
+  const fileSize = data.file.file?.size ?? data.file.size ?? 0;
+
+  if (fileSize > maxSize) {
+    console.error('File size exceeds 100MB limit');
+    return false;
+  }
+
+  return true;
+}
+
+function handleFileChange(data: Parameters<UploadOnChange>[0]): void {
+  emit('file-change', data);
+}
+
+function handleFileRemove(): void {
+  emit('file-remove');
+}
 </script>

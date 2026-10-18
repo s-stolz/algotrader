@@ -1,63 +1,65 @@
 <template>
-  <div>
-    <the-top-bar />
-    <chart-area
+  <main class="chart-workspace">
+    <TheTopBar v-model:chart-interaction-mode="chartInteractionMode" />
+    <ChartArea
       id="chart-area"
       ref="chartArea"
+      :interaction-mode="chartInteractionMode"
     />
-  </div>
+  </main>
 </template>
 
-<script>
-import { useMarketsStore } from "@/stores/marketsStore";
-import { useCurrentMarketStore } from "@/stores/currentMarketStore";
+<script setup lang="ts">
+import { ref } from 'vue';
+import ChartArea from '@/components/Chart/ChartArea.vue';
+import {
+  DEFAULT_CHART_INTERACTION_MODE,
+  type ChartInteractionMode,
+} from '@/components/Chart/chartInteractionMode';
+import TheTopBar from '@/components/TopBar/TheTopBar.vue';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { useMarketsStore } from '@/stores/marketsStore';
 
-import TheTopBar from "@/components/TopBar/TheTopBar.vue";
-import ChartArea from "@/components/Chart/ChartArea.vue";
+defineOptions({
+  name: 'ChartView',
+});
 
-export default {
-  name: "ChartView",
+const marketsStore = useMarketsStore();
+const currentMarketStore = useCurrentMarketStore();
+const chartInteractionMode = ref<ChartInteractionMode>(DEFAULT_CHART_INTERACTION_MODE);
 
-  components: {
-    TheTopBar,
-    ChartArea,
-  },
+async function fetchMarketsAndInitCurrent(): Promise<void> {
+  await marketsStore.fetch();
 
-  data() {
-    return {
-      marketsStore: useMarketsStore(),
-      currentMarketStore: useCurrentMarketStore(),
-    };
-  },
+  if (marketsStore.all.length === 0) {
+    return;
+  }
 
-  async created() {
-    await this.initializeChartView();
-  },
+  if (currentMarketStore.isValid(marketsStore.all)) {
+    return;
+  }
 
-  methods: {
-    async initializeChartView() {
-      await this.fetchMarketsAndInitCurrent();
-    },
+  currentMarketStore.setMarket(marketsStore.all[0]);
+}
 
-    async fetchMarketsAndInitCurrent() {
-      await this.marketsStore.fetch();
+async function initializeChartView(): Promise<void> {
+  await fetchMarketsAndInitCurrent();
+}
 
-      if (this.marketsStore.all.length === 0) {
-        return;
-      }
-
-      if (this.currentMarketStore.isValid(this.marketsStore.all)) {
-        return;
-      }
-
-      this.currentMarketStore.setMarket(this.marketsStore.all[0]);
-    },
-  },
-};
+void initializeChartView();
 </script>
 
 <style scoped>
+.chart-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 #chart-area {
-  height: calc(100vh - 80px);
+  flex: 1;
+  min-height: 0;
 }
 </style>

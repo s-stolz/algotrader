@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional
@@ -32,12 +33,22 @@ class RedisConsumer:
         self.active_streams: Dict[str, dict] = {}
         self.is_connected = False
 
+    @staticmethod
+    def _redis_socket_timeout_seconds(block_ms: int) -> float | None:
+        if block_ms <= 0:
+            return None
+        return (block_ms / 1000.0) + 1.0
+
     async def connect(self):
         try:
             self.redis = await aioredis.from_url(
-                f"redis://{self.redis_host}:{self.redis_port}", decode_responses=True
+                f"redis://{self.redis_host}:{self.redis_port}",
+                decode_responses=True,
+                socket_timeout=self._redis_socket_timeout_seconds(self.block_ms),
             )
-            await self.redis.ping()
+            ping_result = self.redis.ping()
+            if inspect.isawaitable(ping_result):
+                await ping_result
             self.is_connected = True
         except Exception as e:
             logger.error(f"Failed to connect to Redis: {e}")
@@ -103,53 +114,61 @@ class RedisConsumer:
             self.active_streams.pop(stream_key, None)
 
     async def _consume_stream(self, stream_key: str, stream_info: dict):
+        while stream_info["running"] and self.is_connected:
+            if not self.redis:
+                return
+            try:
+                results = await self._read_stream_results(stream_key, stream_info)
+            except asyncio.CancelledError:
+                return
+            if not results:
+                continue
+            self._dispatch_stream_results(stream_info, results)
+
+    async def _read_stream_results(self, stream_key: str, stream_info: dict):
+        assert self.redis is not None
         try:
-            while stream_info["running"] and self.is_connected:
-                if not self.redis:
-                    break
-                try:
-                    results = await self.redis.xread(
-                        {stream_key: stream_info["last_id"]},
-                        count=self.batch_size,
-                        block=self.block_ms,
-                    )
+            return await self.redis.xread(
+                {stream_key: stream_info["last_id"]},
+                count=self.batch_size,
+                block=self.block_ms,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            if stream_info["running"]:
+                logger.error(f"Error consuming stream {stream_key}: {e}")
+                await asyncio.sleep(1)
+            return None
 
-                    if not results:
-                        continue
+    def _dispatch_stream_results(self, stream_info: dict, results: Any) -> None:
+        for _, messages in results:
+            for message_id, fields in messages:
+                stream_info["last_id"] = message_id
+                self._dispatch_stream_message(stream_info, fields)
 
-                    for _, messages in results:
-                        for message_id, fields in messages:
-                            stream_info["last_id"] = message_id
-
-                            if not self.subscription_manager:
-                                continue
-
-                            if stream_info["type"] == "candle":
-                                data = self._parse_candle_message(fields)
-                                self.subscription_manager.broadcast_candle(
-                                    stream_info["symbol"], stream_info["timeframe"], data
-                                )
-                            elif stream_info["type"] == "indicator":
-                                data = self._parse_indicator_message(fields)
-                                self.subscription_manager.broadcast_indicator(
-                                    stream_info["stream_id"],
-                                    data,
-                                )
-
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    if stream_info["running"]:
-                        logger.error(f"Error consuming stream {stream_key}: {e}")
-                        await asyncio.sleep(1)
-        finally:
-            pass
+    def _dispatch_stream_message(self, stream_info: dict, fields: Dict[str, str]) -> None:
+        if not self.subscription_manager:
+            return
+        if stream_info["type"] == "candle":
+            data = self._parse_candle_message(fields)
+            self.subscription_manager.broadcast_candle(
+                stream_info["symbol"],
+                stream_info["timeframe"],
+                data,
+            )
+            return
+        if stream_info["type"] == "indicator":
+            data = self._parse_indicator_message(fields)
+            self.subscription_manager.broadcast_indicator(stream_info["stream_id"], data)
 
     def _parse_candle_message(self, fields: Dict[str, str]) -> Dict[str, Any]:
         data = {}
         numeric_fields = {"t", "o", "h", "l", "c", "v"}
 
         for key, value in fields.items():
+            if key == "continuity":
+                continue
             if key in numeric_fields:
                 if key == "t":
                     data["timestamp_ms"] = int(value)

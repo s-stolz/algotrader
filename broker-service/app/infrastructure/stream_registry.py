@@ -48,14 +48,8 @@ class StreamEntry:
 class StreamRegistry(StreamRegistryPort):
     def __init__(
         self,
-        subscribe_fn: Callable[
-            [int, str, TickHandler],
-            Awaitable[TickSubscription]
-        ],
-        unsubscribe_fn: Callable[
-            [TickSubscription],
-            Awaitable[None]
-        ],
+        subscribe_fn: Callable[[int, str, TickHandler], Awaitable[TickSubscription]],
+        unsubscribe_fn: Callable[[TickSubscription], Awaitable[None]],
         publisher: TickPublisher,
         settings: Settings,
     ) -> None:
@@ -94,14 +88,8 @@ class StreamRegistry(StreamRegistryPort):
                     queue.put_nowait(tick)
                 entry.last_tick_at = tick.t / 1000
 
-            subscription = await self._subscribe_fn(
-                int(account_id),
-                symbol,
-                push_tick
-            )
-            writer_task = asyncio.create_task(
-                self._writer(queue, subscription)
-            )
+            subscription = await self._subscribe_fn(int(account_id), symbol, push_tick)
+            writer_task = asyncio.create_task(self._writer(queue, subscription))
 
             entry = StreamEntry(
                 subscription=subscription,
@@ -110,9 +98,7 @@ class StreamRegistry(StreamRegistryPort):
                 started_at=time.time(),
             )
             self._streams[key] = entry
-            writer_task.add_done_callback(
-                lambda t, e=entry: self._writer_done(e, t)
-            )
+            writer_task.add_done_callback(lambda t, e=entry: self._writer_done(e, t))
             return self._to_status(entry)
 
     async def shutdown(self) -> None:
@@ -139,11 +125,7 @@ class StreamRegistry(StreamRegistryPort):
             await entry.writer_task
         await self._unsubscribe_fn(entry.subscription)
 
-    async def get_tick_stream_status(
-        self,
-        account_id: AccountId,
-        symbol: str
-    ) -> TickStreamStatus:
+    async def get_tick_stream_status(self, account_id: AccountId, symbol: str) -> TickStreamStatus:
         async with self._lock:
             entry = self._streams.get((int(account_id), symbol))
             if entry is None:
@@ -169,11 +151,7 @@ class StreamRegistry(StreamRegistryPort):
                 subscription.symbol,
             )
 
-    def _writer_done(
-        self,
-        entry: StreamEntry,
-        task: asyncio.Task[None]
-    ) -> None:
+    def _writer_done(self, entry: StreamEntry, task: asyncio.Task[None]) -> None:
         if task.cancelled():
             return
         exc = task.exception()

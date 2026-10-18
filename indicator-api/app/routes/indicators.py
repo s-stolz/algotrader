@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Optional
 
+from fastapi import APIRouter, Body, Query, Request
+
 from app import get_available_indicators
 from app.schemas import IndicatorParameters
 from app.services.historical_indicator_service import run_historical_indicator
-from fastapi import APIRouter, Body, Query, Request
 
 router = APIRouter(prefix="/indicators", tags=["indicators"])
 

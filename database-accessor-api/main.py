@@ -1,12 +1,43 @@
 import os
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Literal, Optional
 
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
-from app import crud, market_cache
+from app import backtest_execution, crud, historical_candles, market_cache, recovery
 from app.database import get_db
-from app.schemas import CandleBatchIn, MarketIn
+from app.schemas import (
+    BacktestBatchCommandIn,
+    BacktestBatchCommandOut,
+    BacktestBatchCreateIn,
+    BacktestBatchEventOut,
+    BacktestBatchOut,
+    BacktestClosedTradeOut,
+    BacktestExecutionClaimIn,
+    BacktestExecutionFaultIn,
+    BacktestExecutionReconcileIn,
+    BacktestExecutionReconcileOut,
+    BacktestExecutionSettleIn,
+    BacktestExecutionSlotOut,
+    BacktestFillOut,
+    BacktestQueueStateOut,
+    BacktestRunCompleteIn,
+    BacktestRunConditionalUpdateIn,
+    BacktestRunCreateIn,
+    BacktestRunMutationOut,
+    BacktestRunOut,
+    BacktestWorkerHeartbeatIn,
+    BacktestWorkerHeartbeatOut,
+    CandleBatchIn,
+    ExperimentNameUpdateIn,
+    HistoricalCandleBatchIn,
+    LiveWriteBegin,
+    LiveWriteFinish,
+    MarketIn,
+    RecoveryAdvance,
+    RecoveryBegin,
+)
 from app.timeframes import TimeframeCode, timeframe_to_minutes
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,6 +102,277 @@ async def create_market(market: MarketIn, db: AsyncSession = Depends(get_db)):
     symbol_id = await crud.insert_market(db, market.model_dump())
     await market_cache.refresh_market_cache(db)
     return {"symbol_id": symbol_id, "status": "created"}
+
+
+@app.post("/backtests", response_model=BacktestRunOut, status_code=201)
+async def create_backtest_run(
+    run: BacktestRunCreateIn,
+    db: AsyncSession = Depends(get_db),
+):
+    payload = run.model_dump()
+    if run.request_schema_version == 2:
+        payload["request"]["strategy"].pop("strategy_version", None)
+    return await crud.insert_backtest_run(db, payload)
+
+
+@app.get("/backtest-execution/slot", response_model=BacktestExecutionSlotOut)
+async def get_backtest_execution_slot(db: AsyncSession = Depends(get_db)):
+    return await backtest_execution.read_slot(db)
+
+
+@app.get("/backtest-execution/queue-state", response_model=BacktestQueueStateOut)
+async def get_backtest_queue_state(db: AsyncSession = Depends(get_db)):
+    return await backtest_execution.read_queue_state(db)
+
+
+@app.post("/backtest-execution/heartbeat", response_model=BacktestWorkerHeartbeatOut)
+async def record_backtest_worker_heartbeat(
+    heartbeat: BacktestWorkerHeartbeatIn, db: AsyncSession = Depends(get_db)
+):
+    return await backtest_execution.record_heartbeat(db, **heartbeat.model_dump())
+
+
+@app.post("/backtest-execution/claim", response_model=BacktestRunMutationOut)
+async def claim_backtest_execution(
+    claim: BacktestExecutionClaimIn, db: AsyncSession = Depends(get_db)
+):
+    return {"updated": await backtest_execution.claim(db, **claim.model_dump())}
+
+
+@app.post("/backtest-execution/settle", response_model=BacktestRunMutationOut)
+async def settle_backtest_execution(
+    settlement: BacktestExecutionSettleIn, db: AsyncSession = Depends(get_db)
+):
+    data = settlement.model_dump()
+    run_id = data.pop("run_id")
+    owner_token = data.pop("owner_token")
+    return {
+        "updated": await backtest_execution.settle(
+            db, run_id=run_id, owner_token=owner_token, terminal=data
+        )
+    }
+
+
+@app.post("/backtests/{run_id}/cancel", response_model=BacktestRunOut)
+async def cancel_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    outcome = await backtest_execution.cancel_run(
+        db, run_id=run_id, requested_at=datetime.now(timezone.utc)
+    )
+    if outcome == "not_found":
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    if outcome == "conflict":
+        raise HTTPException(status_code=409, detail="Terminal backtest run cannot be cancelled")
+    if outcome == "ownership_unconfirmed":
+        raise HTTPException(status_code=503, detail="Execution ownership cannot be confirmed")
+    return await crud.get_backtest_run(db, run_id)
+
+
+@app.post("/backtest-execution/reconcile", response_model=BacktestExecutionReconcileOut)
+async def reconcile_backtest_execution(
+    reconciliation: BacktestExecutionReconcileIn, db: AsyncSession = Depends(get_db)
+):
+    return {"reconciled": await backtest_execution.reconcile(db, **reconciliation.model_dump())}
+
+
+@app.post("/backtest-execution/fault", response_model=BacktestRunMutationOut)
+async def record_backtest_execution_fault(
+    fault: BacktestExecutionFaultIn, db: AsyncSession = Depends(get_db)
+):
+    return {"updated": await backtest_execution.record_fault(db, **fault.model_dump())}
+
+
+@app.get("/backtests", response_model=list[BacktestRunOut])
+async def list_backtest_runs(
+    status: (
+        Literal["queued", "running", "cancelling", "succeeded", "failed", "cancelled"] | None
+    ) = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    strategy: str | None = None,
+    engine: Literal["vectorized", "event_driven"] | None = None,
+    submitted_from: datetime | None = None,
+    submitted_to: datetime | None = None,
+    membership: Literal["standalone", "batch"] | None = None,
+    batch_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    return await crud.list_backtest_runs(
+        db,
+        status=status,
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy=strategy,
+        engine=engine,
+        submitted_from=submitted_from,
+        submitted_to=submitted_to,
+        membership=membership,
+        batch_id=batch_id,
+    )
+
+
+@app.post("/backtest-batches", response_model=BacktestBatchOut, status_code=201)
+async def create_backtest_batch(batch: BacktestBatchCreateIn, db: AsyncSession = Depends(get_db)):
+    try:
+        return await crud.create_backtest_batch(db, batch.model_dump())
+    except crud.BatchSubmissionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/backtest-batches", response_model=list[BacktestBatchOut])
+async def list_backtest_batches(db: AsyncSession = Depends(get_db)):
+    return await crud.list_backtest_batches(db)
+
+
+@app.patch("/backtest-batches/{batch_id}/name", response_model=BacktestBatchOut)
+async def rename_backtest_batch(
+    batch_id: str, request: ExperimentNameUpdateIn, db: AsyncSession = Depends(get_db)
+):
+    batch = await crud.rename_backtest_batch(db, batch_id, request.name)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return batch
+
+
+@app.patch("/backtests/{run_id}/name", response_model=BacktestRunOut)
+async def rename_backtest_run(
+    run_id: str, request: ExperimentNameUpdateIn, db: AsyncSession = Depends(get_db)
+):
+    try:
+        run = await crud.rename_backtest_run(db, run_id, request.name)
+    except crud.ExperimentNameConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if run is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return run
+
+
+@app.get("/backtest-batches/{batch_id}", response_model=BacktestBatchOut)
+async def get_backtest_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
+    batch = await crud.get_backtest_batch(db, batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return batch
+
+
+@app.get("/backtest-batches/{batch_id}/members", response_model=list[BacktestRunOut])
+async def list_backtest_batch_members(batch_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest_batch(db, batch_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return await crud.list_backtest_batch_members(db, batch_id)
+
+
+@app.get("/backtest-batches/{batch_id}/events", response_model=list[BacktestBatchEventOut])
+async def list_backtest_batch_events(batch_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest_batch(db, batch_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return await crud.list_backtest_batch_events(db, batch_id)
+
+
+@app.delete("/backtest-batches/{batch_id}", status_code=204, response_class=Response)
+async def delete_backtest_batch(batch_id: str, db: AsyncSession = Depends(get_db)) -> Response:
+    try:
+        deleted = await crud.delete_backtest_batch(db, batch_id)
+    except crud.BacktestDeletionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return Response(status_code=204)
+
+
+@app.post("/backtest-batches/{batch_id}/{command}", response_model=BacktestBatchCommandOut)
+async def control_backtest_batch(
+    batch_id: str,
+    command: Literal["pause", "resume", "cancel"],
+    request: BacktestBatchCommandIn,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await backtest_execution.control_batch(
+            db,
+            batch_id=batch_id,
+            command=command,
+            command_id=request.command_id,
+            policy=request.policy.model_dump(),
+        )
+    except backtest_execution.BatchCommandConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Backtest batch not found")
+    return result
+
+
+@app.get("/backtests/{run_id}", response_model=BacktestRunOut)
+async def get_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await crud.get_backtest_run(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return run
+
+
+@app.get("/backtests/{run_id}/fills", response_model=list[BacktestFillOut])
+async def get_backtest_fills(run_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest_run(db, run_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return await crud.get_backtest_fills(db, run_id)
+
+
+@app.get("/backtests/{run_id}/trades", response_model=list[BacktestClosedTradeOut])
+async def get_backtest_trades(run_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest_run(db, run_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return await crud.get_backtest_trades(db, run_id)
+
+
+@app.delete("/backtests/{run_id}", status_code=204, response_class=Response)
+async def delete_backtest_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    try:
+        deleted = await crud.delete_backtest_run(db, run_id)
+    except crud.BacktestDeletionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return Response(status_code=204)
+
+
+@app.patch("/backtests/{run_id}", response_model=BacktestRunMutationOut)
+async def conditional_update_backtest_run(
+    run_id: str,
+    update: BacktestRunConditionalUpdateIn,
+    db: AsyncSession = Depends(get_db),
+):
+    update_data = update.model_dump(exclude_unset=True)
+    expected_status = update_data.pop("expected_status")
+    update_data["status"] = update_data.pop("new_status")
+    updated = await crud.conditional_update_backtest_run(
+        db,
+        run_id=run_id,
+        expected_status=expected_status,
+        updates=update_data,
+    )
+    return {"updated": updated}
+
+
+@app.post(
+    "/backtests/{run_id}/complete",
+    response_model=BacktestRunMutationOut,
+)
+async def complete_backtest_run(
+    run_id: str,
+    completion: BacktestRunCompleteIn,
+    db: AsyncSession = Depends(get_db),
+):
+    completion_data = completion.model_dump()
+    expected_status = completion_data.pop("expected_status")
+    updated = await crud.complete_backtest_run(
+        db,
+        run_id=run_id,
+        expected_status=expected_status,
+        completion=completion_data,
+    )
+    return {"updated": updated}
 
 
 @app.delete("/markets/{symbol}")
@@ -210,3 +512,90 @@ async def delete_candles(
     deleted_count = await crud.delete_candles(db, symbol_id)
 
     return {"status": "deleted", "deleted_count": deleted_count}
+
+
+@app.post("/candles/historical")
+async def write_historical_candle_batch(
+    data: HistoricalCandleBatchIn, db: AsyncSession = Depends(get_db)
+):
+    open_minute = (int(datetime.now(timezone.utc).timestamp() * 1000) // 60000) * 60000
+    if data.end_ms >= open_minute:
+        raise HTTPException(status_code=422, detail="Historical interval must exclude open M1")
+    await market_cache.ensure_market_cache(db)
+    try:
+        symbol_id = market_cache.resolve_symbol_id(
+            data.symbol, data.exchange, reject_ambiguous=True
+        )
+        if symbol_id is None:
+            await market_cache.refresh_market_cache(db)
+            symbol_id = market_cache.resolve_symbol_id(
+                data.symbol, data.exchange, reject_ambiguous=True
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if symbol_id is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    values = [candle.model_dump() for candle in data.candles]
+    total = 0
+    for offset in range(0, len(values), 4000):
+        total += await historical_candles.write_historical_candles(
+            db, symbol_id, values[offset : offset + 4000]
+        )
+    return {"status": "ok", "written_candles": total, "total_candles": len(values)}
+
+
+@app.get("/recoveries/{symbol_id}")
+async def load_pending_recovery(
+    symbol_id: int,
+    account_id: str = Query(..., min_length=1, max_length=128),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"pending": await recovery.load_recovery(db, symbol_id, account_id)}
+
+
+@app.post("/recoveries/begin")
+async def begin_pending_recovery(data: RecoveryBegin, db: AsyncSession = Depends(get_db)):
+    from app.models import markets
+    from sqlalchemy import select
+
+    if (
+        await db.scalar(select(markets.c.symbol_id).where(markets.c.symbol_id == data.symbol_id))
+        is None
+    ):
+        raise HTTPException(status_code=404, detail="Market not found")
+    open_minute = (int(datetime.now(timezone.utc).timestamp() * 1000) // 60000) * 60000
+    if data.target_ms >= open_minute:
+        raise HTTPException(status_code=422, detail="Recovery must exclude open M1")
+    return await recovery.begin_recovery(db, **data.model_dump())
+
+
+@app.post("/recoveries/advance")
+async def advance_pending_recovery(data: RecoveryAdvance, db: AsyncSession = Depends(get_db)):
+    return {"updated": await recovery.advance_recovery(db, data.symbol_id, data.account_id, data)}
+
+
+@app.get("/recoveries/live-writes/{symbol_id}")
+async def load_live_write_guard(
+    symbol_id: int,
+    account_id: str = Query(..., min_length=1, max_length=128),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"guard": await recovery.load_live_write_guard(db, symbol_id, account_id)}
+
+
+@app.post("/recoveries/live-writes/begin")
+async def begin_live_write(data: LiveWriteBegin, db: AsyncSession = Depends(get_db)):
+    from app.models import markets
+    from sqlalchemy import select
+
+    if (
+        await db.scalar(select(markets.c.symbol_id).where(markets.c.symbol_id == data.symbol_id))
+        is None
+    ):
+        raise HTTPException(status_code=404, detail="Market not found")
+    return await recovery.begin_live_write(db, **data.model_dump())
+
+
+@app.post("/recoveries/live-writes/finish")
+async def finish_live_write(data: LiveWriteFinish, db: AsyncSession = Depends(get_db)):
+    return {"updated": await recovery.finish_live_write(db, **data.model_dump())}

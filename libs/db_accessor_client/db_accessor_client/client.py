@@ -31,6 +31,14 @@ def _candles_to_dataframe(
     return df
 
 
+def _mutation_updated(response: Any) -> bool:
+    if not isinstance(response, dict) or not isinstance(response.get("updated"), bool):
+        raise DatabaseAccessorClientError(
+            "database-accessor-api returned an invalid mutation response"
+        )
+    return response["updated"]
+
+
 class _BaseClient:
     def __init__(self) -> None:
         host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
@@ -58,6 +66,8 @@ class DatabaseAccessorClient(_BaseClient):
         try:
             response = self.client.request(method, self._url(path), **kwargs)
             response.raise_for_status()
+            if response.status_code == 204:
+                return None
             return response.json()
         except httpx.HTTPStatusError as exc:
             raise DatabaseAccessorClientError(
@@ -169,6 +179,200 @@ class DatabaseAccessorClient(_BaseClient):
             payload["exchange"] = exchange
         return self._request("POST", "/candles", json=payload)
 
+    def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/backtests", json=run)
+
+    def create_backtest_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/backtest-batches", json=batch)
+
+    def rename_backtest_run(self, run_id: str, name: str | None) -> dict[str, Any]:
+        return self._request("PATCH", f"/backtests/{run_id}/name", json={"name": name})
+
+    def rename_backtest_batch(self, batch_id: str, name: str | None) -> dict[str, Any]:
+        return self._request("PATCH", f"/backtest-batches/{batch_id}/name", json={"name": name})
+
+    def list_backtest_batches(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/backtest-batches")
+
+    def get_backtest_batch(self, batch_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/backtest-batches/{batch_id}")
+
+    def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtest-batches/{batch_id}/members")
+
+    def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtest-batches/{batch_id}/events")
+
+    def control_backtest_batch(
+        self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/backtest-batches/{batch_id}/{command}",
+            json={"command_id": command_id, "policy": policy},
+        )
+
+    def get_backtest_run(self, run_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/backtests/{run_id}")
+
+    def get_backtest_fills(self, run_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtests/{run_id}/fills")
+
+    def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtests/{run_id}/trades")
+
+    def list_backtest_runs(
+        self,
+        *,
+        status: str | None = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        strategy: str | None = None,
+        engine: str | None = None,
+        submitted_from: str | None = None,
+        submitted_to: str | None = None,
+        membership: str | None = None,
+        batch_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params = _build_params(
+            status=status,
+            symbol=symbol,
+            timeframe=timeframe,
+            strategy=strategy,
+            engine=engine,
+            submitted_from=submitted_from,
+            submitted_to=submitted_to,
+            membership=membership,
+            batch_id=batch_id,
+        )
+        return self._request("GET", "/backtests", params=params)
+
+    def conditional_update_backtest_run(
+        self,
+        run_id: str,
+        update: dict[str, Any],
+    ) -> bool:
+        response = self._request("PATCH", f"/backtests/{run_id}", json=update)
+        return _mutation_updated(response)
+
+    def complete_backtest_run(
+        self,
+        run_id: str,
+        completion: dict[str, Any],
+    ) -> bool:
+        response = self._request(
+            "POST",
+            f"/backtests/{run_id}/complete",
+            json=completion,
+        )
+        return _mutation_updated(response)
+
+    def get_backtest_execution_slot(self) -> dict[str, Any]:
+        return self._request("GET", "/backtest-execution/slot")
+
+    def get_backtest_queue_state(self) -> dict[str, Any]:
+        return self._request("GET", "/backtest-execution/queue-state")
+
+    def record_backtest_worker_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/backtest-execution/heartbeat", json=heartbeat)
+
+    def claim_backtest_execution(self, claim: dict[str, Any]) -> bool:
+        return _mutation_updated(self._request("POST", "/backtest-execution/claim", json=claim))
+
+    def settle_backtest_execution(self, settlement: dict[str, Any]) -> bool:
+        return _mutation_updated(
+            self._request("POST", "/backtest-execution/settle", json=settlement)
+        )
+
+    def cancel_backtest_run(self, run_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/backtests/{run_id}/cancel")
+
+    def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None:
+        response = self._request("POST", "/backtest-execution/reconcile", json=reconciliation)
+        return response["reconciled"]
+
+    def record_backtest_execution_fault(self, fault: dict[str, Any]) -> bool:
+        return _mutation_updated(self._request("POST", "/backtest-execution/fault", json=fault))
+
+    def delete_backtest_run(self, run_id: str) -> None:
+        self._request("DELETE", f"/backtests/{run_id}")
+
+    def delete_backtest_batch(self, batch_id: str) -> None:
+        self._request("DELETE", f"/backtest-batches/{batch_id}")
+
+    def write_historical_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "symbol": symbol,
+            "candles": candles,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        }
+        if exchange is not None:
+            payload["exchange"] = exchange
+        return self._request("POST", "/candles/historical", json=payload)
+
+    def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = self._request("GET", f"/recoveries/{symbol_id}", params={"account_id": account_id})
+        return result["pending"]
+
+    def begin_recovery(
+        self, symbol_id: int, account_id: str, start_ms: int, target_ms: int, trigger: str
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/recoveries/begin",
+            json={
+                "symbol_id": symbol_id,
+                "account_id": account_id,
+                "start_ms": start_ms,
+                "target_ms": target_ms,
+                "trigger": trigger,
+            },
+        )
+
+    def advance_recovery(self, pending: dict[str, Any], next_ms: int) -> bool:
+        result = self._request(
+            "POST",
+            "/recoveries/advance",
+            json={
+                "symbol_id": pending["symbol_id"],
+                "account_id": pending["account_id"],
+                "recovery_id": pending["recovery_id"],
+                "revision": pending["revision"],
+                "expected_start_ms": pending["next_ms"],
+                "next_ms": next_ms,
+            },
+        )
+        return result["updated"]
+
+    def get_live_write_guard(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = self._request(
+            "GET", f"/recoveries/live-writes/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["guard"]
+
+    def begin_live_write(self, symbol_id: int, account_id: str, boundary_ms: int) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/recoveries/live-writes/begin",
+            json={"symbol_id": symbol_id, "account_id": account_id, "boundary_ms": boundary_ms},
+        )
+
+    def finish_live_write(self, guard: dict[str, Any]) -> bool:
+        result = self._request(
+            "POST",
+            "/recoveries/live-writes/finish",
+            json={key: guard[key] for key in ("symbol_id", "account_id", "write_id")},
+        )
+        return result["updated"]
+
     def close(self) -> None:
         self.client.close()
 
@@ -190,6 +394,8 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         try:
             response = await self.client.request(method, self._url(path), **kwargs)
             response.raise_for_status()
+            if response.status_code == 204:
+                return None
             return response.json()
         except httpx.HTTPStatusError as exc:
             raise DatabaseAccessorClientError(
@@ -306,6 +512,210 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         if exchange is not None:
             payload["exchange"] = exchange
         return await self._request("POST", "/candles", json=payload)
+
+    async def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/backtests", json=run)
+
+    async def create_backtest_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/backtest-batches", json=batch)
+
+    async def rename_backtest_run(self, run_id: str, name: str | None) -> dict[str, Any]:
+        return await self._request("PATCH", f"/backtests/{run_id}/name", json={"name": name})
+
+    async def rename_backtest_batch(self, batch_id: str, name: str | None) -> dict[str, Any]:
+        return await self._request(
+            "PATCH", f"/backtest-batches/{batch_id}/name", json={"name": name}
+        )
+
+    async def list_backtest_batches(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/backtest-batches")
+
+    async def get_backtest_batch(self, batch_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/backtest-batches/{batch_id}")
+
+    async def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtest-batches/{batch_id}/members")
+
+    async def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtest-batches/{batch_id}/events")
+
+    async def control_backtest_batch(
+        self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/backtest-batches/{batch_id}/{command}",
+            json={"command_id": command_id, "policy": policy},
+        )
+
+    async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/backtests/{run_id}")
+
+    async def get_backtest_fills(self, run_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtests/{run_id}/fills")
+
+    async def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtests/{run_id}/trades")
+
+    async def list_backtest_runs(
+        self,
+        *,
+        status: str | None = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        strategy: str | None = None,
+        engine: str | None = None,
+        submitted_from: str | None = None,
+        submitted_to: str | None = None,
+        membership: str | None = None,
+        batch_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params = _build_params(
+            status=status,
+            symbol=symbol,
+            timeframe=timeframe,
+            strategy=strategy,
+            engine=engine,
+            submitted_from=submitted_from,
+            submitted_to=submitted_to,
+            membership=membership,
+            batch_id=batch_id,
+        )
+        return await self._request("GET", "/backtests", params=params)
+
+    async def conditional_update_backtest_run(
+        self,
+        run_id: str,
+        update: dict[str, Any],
+    ) -> bool:
+        response = await self._request("PATCH", f"/backtests/{run_id}", json=update)
+        return _mutation_updated(response)
+
+    async def complete_backtest_run(
+        self,
+        run_id: str,
+        completion: dict[str, Any],
+    ) -> bool:
+        response = await self._request(
+            "POST",
+            f"/backtests/{run_id}/complete",
+            json=completion,
+        )
+        return _mutation_updated(response)
+
+    async def get_backtest_execution_slot(self) -> dict[str, Any]:
+        return await self._request("GET", "/backtest-execution/slot")
+
+    async def get_backtest_queue_state(self) -> dict[str, Any]:
+        return await self._request("GET", "/backtest-execution/queue-state")
+
+    async def record_backtest_worker_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/backtest-execution/heartbeat", json=heartbeat)
+
+    async def claim_backtest_execution(self, claim: dict[str, Any]) -> bool:
+        return _mutation_updated(
+            await self._request("POST", "/backtest-execution/claim", json=claim)
+        )
+
+    async def settle_backtest_execution(self, settlement: dict[str, Any]) -> bool:
+        return _mutation_updated(
+            await self._request("POST", "/backtest-execution/settle", json=settlement)
+        )
+
+    async def cancel_backtest_run(self, run_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/backtests/{run_id}/cancel")
+
+    async def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None:
+        response = await self._request("POST", "/backtest-execution/reconcile", json=reconciliation)
+        return response["reconciled"]
+
+    async def record_backtest_execution_fault(self, fault: dict[str, Any]) -> bool:
+        return _mutation_updated(
+            await self._request("POST", "/backtest-execution/fault", json=fault)
+        )
+
+    async def delete_backtest_run(self, run_id: str) -> None:
+        await self._request("DELETE", f"/backtests/{run_id}")
+
+    async def delete_backtest_batch(self, batch_id: str) -> None:
+        await self._request("DELETE", f"/backtest-batches/{batch_id}")
+
+    async def write_historical_candles(
+        self,
+        symbol: str,
+        candles: list[dict[str, Any]],
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "symbol": symbol,
+            "candles": candles,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        }
+        if exchange is not None:
+            payload["exchange"] = exchange
+        return await self._request("POST", "/candles/historical", json=payload)
+
+    async def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = await self._request(
+            "GET", f"/recoveries/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["pending"]
+
+    async def begin_recovery(
+        self, symbol_id: int, account_id: str, start_ms: int, target_ms: int, trigger: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/recoveries/begin",
+            json={
+                "symbol_id": symbol_id,
+                "account_id": account_id,
+                "start_ms": start_ms,
+                "target_ms": target_ms,
+                "trigger": trigger,
+            },
+        )
+
+    async def advance_recovery(self, pending: dict[str, Any], next_ms: int) -> bool:
+        result = await self._request(
+            "POST",
+            "/recoveries/advance",
+            json={
+                "symbol_id": pending["symbol_id"],
+                "account_id": pending["account_id"],
+                "recovery_id": pending["recovery_id"],
+                "revision": pending["revision"],
+                "expected_start_ms": pending["next_ms"],
+                "next_ms": next_ms,
+            },
+        )
+        return result["updated"]
+
+    async def get_live_write_guard(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = await self._request(
+            "GET", f"/recoveries/live-writes/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["guard"]
+
+    async def begin_live_write(
+        self, symbol_id: int, account_id: str, boundary_ms: int
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/recoveries/live-writes/begin",
+            json={"symbol_id": symbol_id, "account_id": account_id, "boundary_ms": boundary_ms},
+        )
+
+    async def finish_live_write(self, guard: dict[str, Any]) -> bool:
+        result = await self._request(
+            "POST",
+            "/recoveries/live-writes/finish",
+            json={key: guard[key] for key in ("symbol_id", "account_id", "write_id")},
+        )
+        return result["updated"]
 
     async def aclose(self) -> None:
         await self.client.aclose()

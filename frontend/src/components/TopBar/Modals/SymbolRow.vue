@@ -1,12 +1,12 @@
 <template>
-  <tr @click="onRowClick">
+  <tr :aria-selected="isSelected" @click="onRowClick">
     <td class="symbol-cell">{{ market.symbol }}</td>
     <td class="actions-cell">
       <span class="market-info">
         <span class="market-type">{{ market.market_type }}</span>
         {{ market.exchange }}
       </span>
-      <n-dropdown
+      <BaseDropdown
         :options="menuOptions"
         trigger="click"
         @select="onMenuSelect"
@@ -14,82 +14,70 @@
         <n-button
           text
           size="small"
+          :aria-label="`Actions for ${market.symbol}`"
           @click.stop
         >
           <n-icon size="20">
             <EllipsisHorizontalCircleOutline />
           </n-icon>
         </n-button>
-      </n-dropdown>
+      </BaseDropdown>
     </td>
   </tr>
 </template>
 
-<script>
-import { h } from "vue";
-import { NIcon, NButton, NDropdown } from "naive-ui";
-import { TrashOutline, CloudUploadOutline, EllipsisHorizontalCircleOutline } from "@/icons";
+<script setup lang="ts">
+import { h } from 'vue';
+import BaseDropdown from '@/components/Common/BaseDropdown.vue';
+import { NButton, NIcon, type DropdownOption } from 'naive-ui';
 
-export default {
-  name: "SymbolRow",
+import { CloudUploadOutline, EllipsisHorizontalCircleOutline, TrashOutline } from '@/icons';
+import type { Market } from '@/types/contracts';
 
-  components: {
-    NIcon,
-    NButton,
-    NDropdown,
-    // eslint-disable-next-line vue/no-unused-components
-    TrashOutline,
-    // eslint-disable-next-line vue/no-unused-components
-    CloudUploadOutline,
-    EllipsisHorizontalCircleOutline,
+defineOptions({
+  name: 'SymbolRow',
+});
+
+const props = defineProps<{
+  market: Market;
+  isSelected?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (event: 'market-click', market: Market): void;
+  (event: 'remove-market', market: Market): void;
+  (event: 'upload-data', market: Market): void;
+}>();
+
+const menuOptions: DropdownOption[] = [
+  {
+    label: 'Upload Data',
+    key: 'upload',
+    icon: () => h(NIcon, null, { default: () => h(CloudUploadOutline) }),
   },
-
-  props: {
-    market: {
-      type: Object,
-      required: true,
-    },
+  {
+    label: 'Remove',
+    key: 'remove',
+    icon: () => h(NIcon, null, { default: () => h(TrashOutline) }),
   },
+];
 
-  emits: ["market-click", "remove-market", "upload-data"],
+function onRowClick(): void {
+  emit('market-click', props.market);
+}
 
-  computed: {
-    menuOptions() {
-      return [
-        {
-          label: "Upload Data",
-          key: "upload",
-          icon: () => h(NIcon, null, { default: () => h(CloudUploadOutline) }),
-        },
-        {
-          label: "Remove",
-          key: "remove",
-          icon: () => h(NIcon, null, { default: () => h(TrashOutline) }),
-        },
-      ];
-    },
-  },
-
-  methods: {
-    onRowClick() {
-      this.$emit("market-click", this.market);
-    },
-
-    onMenuSelect(key) {
-      if (key === "remove") {
-        this.$emit("remove-market", this.market);
-      } else if (key === "upload") {
-        this.$emit("upload-data", this.market);
-      }
-    },
-  },
-};
+function onMenuSelect(key: string | number): void {
+  if (key === 'remove') {
+    emit('remove-market', props.market);
+  } else if (key === 'upload') {
+    emit('upload-data', props.market);
+  }
+}
 </script>
 
 <style scoped>
 tr {
-  padding: 5px 15px;
-  width: calc(100% - 30px);
+  width: 100%;
   display: flex;
   justify-content: space-between;
   cursor: pointer;
@@ -114,6 +102,7 @@ tr {
 }
 
 td {
+  padding: 12px 15px;
   line-height: 20px;
 }
 
@@ -122,7 +111,7 @@ td {
   vertical-align: middle;
 }
 
-tr:hover {
-  background-color: #36363661;
+tr[aria-selected="true"] .symbol-cell {
+  box-shadow: inset 2px 0 var(--selection-accent);
 }
 </style>

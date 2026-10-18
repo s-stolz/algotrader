@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, Request
 from app.api.contracts import CLOSE_POSITION_REQUEST_SCHEMA
 from app.api.dependencies import get_account_id, get_position_service
 from app.api.serialization import to_jsonable
+from app.api.service_protocols import PositionServicePort
 from app.api.validation import parse_close_position_request, read_json_body
-from app.application.services import PositionService
 from app.domain.value_objects import AccountId, PositionId
 
 router = APIRouter(prefix="/positions", tags=["positions"])
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/positions", tags=["positions"])
 @router.get("/")
 async def get_open_positions(
     account_id: AccountId = Depends(get_account_id),
-    service: PositionService = Depends(get_position_service),
+    service: PositionServicePort = Depends(get_position_service),
 ) -> list[dict[str, Any]]:
     return to_jsonable(await service.get_open_positions(account_id))
 
@@ -39,7 +39,7 @@ async def close_position(
     position_id: int,
     request: Request,
     account_id: AccountId = Depends(get_account_id),
-    service: PositionService = Depends(get_position_service),
+    service: PositionServicePort = Depends(get_position_service),
 ) -> dict[str, Any]:
     body = {}
     if request.headers.get("content-length") not in {None, "0"}:

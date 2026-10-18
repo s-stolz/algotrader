@@ -1,0 +1,11 @@
+# Copy to topology.local.yaml for machine-specific settings (ignored by Git).
+# Only include fields you want to override. Omitted fields keep shared defaults.
+services:
+  ingestion_service:
+    history:
+      lookback_days: 90
+      start_date: null
+
+# For a fixed start, replace the history options above with:
+#      lookback_days: null
+#      start_date: "2020-01-01"

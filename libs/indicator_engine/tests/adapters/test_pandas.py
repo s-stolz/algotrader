@@ -24,7 +24,11 @@ class PandasAdapterTests(unittest.TestCase):
 
     def test_bars_from_dataframe_multiindex_preserves_field_asset_values(self) -> None:
         columns = pd.MultiIndex.from_product([["close"], ["EURUSD", "GBPUSD"]])
-        df = pd.DataFrame([[1.2, 1.4], [1.3, 1.5]], index=[1000, 2000], columns=columns)
+        df = pd.DataFrame(
+            [[1.2, 1.4], [1.3, 1.5]],
+            index=pd.Index([1000, 2000]),
+            columns=columns,
+        )
 
         bar = bars_from_dataframe(df)
 

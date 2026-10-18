@@ -1,10 +1,21 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.models import candles, markets
-from sqlalchemy import delete, insert, select, text
+from app.models import (
+    backtest_batch_events,
+    backtest_batches,
+    backtest_closed_trades,
+    backtest_execution_slot,
+    backtest_fills,
+    backtest_queue_turns,
+    backtest_runs,
+    candles,
+    markets,
+)
+from sqlalchemy import cast, delete, exists, func, insert, select, text, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 CAGG_VIEW_BY_MINUTES: dict[int, str] = {
     5: "candles_agg_m5",
@@ -14,6 +25,8 @@ CAGG_VIEW_BY_MINUTES: dict[int, str] = {
     240: "candles_agg_h4",
     1440: "candles_agg_d1",
 }
+
+M1_LIMIT_CHUNK_WINDOW_SIZE = 2
 
 
 def _epoch_ms_to_utc_datetime(value: int) -> datetime:
@@ -148,8 +161,7 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
     ]
 
     stmt = pg_insert(candles).values(values)
-    stmt = stmt.on_conflict_do_nothing(
-        index_elements=["symbol_id", "timestamp_utc"])
+    stmt = stmt.on_conflict_do_nothing(index_elements=["symbol_id", "timestamp_utc"])
     result = await session.execute(stmt)
     await session.commit()
 
@@ -158,9 +170,12 @@ async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
 
 
 async def get_candles(
-    session, symbol_id: int, timeframe: int,
-    start_ms: Optional[int] = None, end_ms: Optional[int] = None,
-    limit: Optional[int] = None
+    session,
+    symbol_id: int,
+    timeframe: int,
+    start_ms: Optional[int] = None,
+    end_ms: Optional[int] = None,
+    limit: Optional[int] = None,
 ):
     """
     Get candles from the database
@@ -193,9 +208,7 @@ async def get_candles(
         # Continuous aggregate policies only materialize a rolling time window.
         # If older buckets are not materialized, fallback to direct bucketing
         # to avoid returning false empty pages during lazy-loading.
-        return await _get_bucketed_candles(
-            session, symbol_id, timeframe, start_ms, end_ms, limit
-        )
+        return await _get_bucketed_candles(session, symbol_id, timeframe, start_ms, end_ms, limit)
 
     return await _get_bucketed_candles(session, symbol_id, timeframe, start_ms, end_ms, limit)
 
@@ -228,6 +241,131 @@ async def _execute_candle_query(session, sql: str, params: dict, limit: Optional
     return [dict(row._mapping) for row in rows]
 
 
+async def _get_candle_chunk_windows(
+    session,
+    *,
+    start_ms: Optional[int],
+    end_ms: Optional[int],
+    window_size: int = M1_LIMIT_CHUNK_WINDOW_SIZE,
+) -> list[tuple[datetime, datetime]]:
+    where_clauses = [
+        "hypertable_schema = 'public'",
+        "hypertable_name = 'candles'",
+    ]
+    params: dict[str, int] = {}
+
+    if start_ms is not None:
+        where_clauses.append("range_end::timestamptz > to_timestamp(:start_ms / 1000.0)")
+        params["start_ms"] = start_ms
+
+    if end_ms is not None:
+        where_clauses.append("range_start::timestamptz < to_timestamp(:end_ms / 1000.0)")
+        params["end_ms"] = end_ms
+
+    sql = f"""
+        SELECT
+            range_start::timestamptz AS range_start,
+            range_end::timestamptz AS range_end
+        FROM timescaledb_information.chunks
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY range_end::timestamptz DESC
+    """
+    result = await session.execute(text(sql), params)
+    chunks = [dict(row._mapping) for row in result.fetchall()]
+
+    windows = []
+    for index in range(0, len(chunks), window_size):
+        chunk_batch = chunks[index : index + window_size]
+        windows.append(
+            (
+                chunk_batch[-1]["range_start"],
+                chunk_batch[0]["range_end"],
+            )
+        )
+    return windows
+
+
+async def _get_m1_limited_candles_by_chunk_window(
+    session,
+    *,
+    symbol_id: int,
+    window_start: datetime,
+    window_end: datetime,
+    start_ms: Optional[int],
+    end_ms: Optional[int],
+    limit: int,
+) -> list[dict]:
+    where_clauses = [
+        "symbol_id = :symbol_id",
+        "timestamp_utc >= :window_start",
+        "timestamp_utc < :window_end",
+    ]
+    time_filters, params = _build_time_filters(
+        column="timestamp_utc",
+        start_ms=start_ms,
+        end_ms=end_ms,
+    )
+    where_clauses.extend(time_filters)
+    params.update(
+        {
+            "symbol_id": symbol_id,
+            "window_start": window_start,
+            "window_end": window_end,
+            "limit": limit,
+        }
+    )
+
+    sql = f"""
+        SELECT
+            CAST(EXTRACT(EPOCH FROM timestamp_utc) * 1000 AS BIGINT) AS timestamp_ms,
+            open,
+            high,
+            low,
+            close,
+            volume
+        FROM candles
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY timestamp_utc DESC
+        LIMIT :limit
+    """
+    result = await session.execute(text(sql), params)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+async def _get_m1_limited_candles(
+    session,
+    symbol_id: int,
+    start_ms: Optional[int],
+    end_ms: Optional[int],
+    limit: int,
+):
+    rows_desc: list[dict] = []
+    chunk_windows = await _get_candle_chunk_windows(
+        session,
+        start_ms=start_ms,
+        end_ms=end_ms,
+    )
+
+    for window_start, window_end in chunk_windows:
+        remaining = limit - len(rows_desc)
+        if remaining <= 0:
+            break
+
+        rows_desc.extend(
+            await _get_m1_limited_candles_by_chunk_window(
+                session,
+                symbol_id=symbol_id,
+                window_start=window_start,
+                window_end=window_end,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                limit=remaining,
+            )
+        )
+
+    return list(reversed(rows_desc[:limit]))
+
+
 async def _get_m1_candles(
     session,
     symbol_id: int,
@@ -235,6 +373,9 @@ async def _get_m1_candles(
     end_ms: Optional[int],
     limit: Optional[int],
 ):
+    if limit is not None:
+        return await _get_m1_limited_candles(session, symbol_id, start_ms, end_ms, limit)
+
     where_clauses = ["symbol_id = :symbol_id"]
     time_filters, params = _build_time_filters(
         column="timestamp_utc",
@@ -345,22 +486,14 @@ async def _get_bucketed_candles(
 
 
 async def get_latest_m1_candle(session, symbol_id: int):
-    sql = text("""
-        SELECT
-            CAST(EXTRACT(EPOCH FROM timestamp_utc) * 1000 AS BIGINT) AS timestamp_ms,
-            open,
-            high,
-            low,
-            close,
-            volume
-        FROM candles
-        WHERE symbol_id = :symbol_id
-        ORDER BY timestamp_utc DESC
-        LIMIT 1
-    """)
-    result = await session.execute(sql, {"symbol_id": symbol_id})
-    row = result.fetchone()
-    return dict(row._mapping) if row else None
+    candles_data = await _get_m1_limited_candles(
+        session,
+        symbol_id,
+        start_ms=None,
+        end_ms=None,
+        limit=1,
+    )
+    return candles_data[0] if candles_data else None
 
 
 async def delete_candles(session, symbol_id: int):
@@ -377,3 +510,444 @@ async def delete_candles(session, symbol_id: int):
     result = await session.execute(stmt)
     await session.commit()
     return result.rowcount
+
+
+async def insert_backtest_run(session, run_data: dict):
+    stored_run = dict(run_data)
+    fills = stored_run.pop("fills", [])
+    trades = stored_run.pop("trades", [])
+    try:
+        if stored_run["status"] == "queued":
+            await session.execute(select(backtest_execution_slot.c.slot_id).with_for_update())
+        stmt = insert(backtest_runs).values(**stored_run).returning(backtest_runs)
+        result = await session.execute(stmt)
+        row = result.fetchone()
+        if stored_run["status"] == "queued":
+            await session.execute(insert(backtest_queue_turns).values(run_id=stored_run["run_id"]))
+        if fills:
+            fill_values = [{"run_id": stored_run["run_id"], **fill} for fill in fills]
+            await session.execute(insert(backtest_fills), fill_values)
+        if trades:
+            trade_values = [{"run_id": stored_run["run_id"], **trade} for trade in trades]
+            await session.execute(insert(backtest_closed_trades), trade_values)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return dict(row._mapping)
+
+
+class ExperimentNameConflictError(ValueError):
+    """Batch members have no independently editable name."""
+
+
+async def rename_backtest_run(session, run_id: str, name: str | None):
+    from app.schemas import ExperimentNameUpdateIn
+
+    name = ExperimentNameUpdateIn(name=name).name
+    try:
+        result = await session.execute(
+            select(backtest_runs).where(backtest_runs.c.run_id == run_id).with_for_update()
+        )
+        row = result.fetchone()
+        if row is None:
+            await session.rollback()
+            return None
+        if row._mapping["batch_id"] is not None:
+            raise ExperimentNameConflictError("Batch members have no experiment name")
+        result = await session.execute(
+            update(backtest_runs)
+            .where(backtest_runs.c.run_id == run_id)
+            .values(name=name)
+            .returning(backtest_runs)
+        )
+        saved = dict(result.fetchone()._mapping)
+        await session.commit()
+        return saved
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def rename_backtest_batch(session, batch_id: str, name: str | None):
+    from app.schemas import ExperimentNameUpdateIn
+
+    name = ExperimentNameUpdateIn(name=name).name
+    try:
+        result = await session.execute(
+            update(backtest_batches)
+            .where(backtest_batches.c.batch_id == batch_id)
+            .values(name=name)
+            .returning(backtest_batches)
+        )
+        row = result.fetchone()
+        saved = dict(row._mapping) if row else None
+        await session.commit()
+        return saved
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def get_backtest_run(session, run_id: str):
+    stmt = select(backtest_runs).where(backtest_runs.c.run_id == run_id)
+    result = await session.execute(stmt)
+    row = result.fetchone()
+    return dict(row._mapping) if row else None
+
+
+async def get_backtest_fills(session, run_id: str):
+    stmt = (
+        select(backtest_fills)
+        .where(backtest_fills.c.run_id == run_id)
+        .order_by(backtest_fills.c.fill_sequence.asc())
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+async def get_backtest_trades(session, run_id: str):
+    stmt = (
+        select(backtest_closed_trades)
+        .where(backtest_closed_trades.c.run_id == run_id)
+        .order_by(backtest_closed_trades.c.trade_sequence.asc())
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+class BacktestDeletionConflictError(ValueError):
+    pass
+
+
+async def delete_backtest_run(session, run_id: str) -> bool:
+    try:
+        slot = (
+            await session.execute(select(backtest_execution_slot.c.run_id).with_for_update())
+        ).scalar_one()
+        row = (
+            (
+                await session.execute(
+                    select(backtest_runs.c.status, backtest_runs.c.batch_id)
+                    .where(backtest_runs.c.run_id == run_id)
+                    .with_for_update()
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            await session.rollback()
+            return False
+        if row["batch_id"] is not None:
+            raise BacktestDeletionConflictError("Batch members cannot be deleted individually")
+        if row["status"] not in {"succeeded", "failed", "cancelled"} or slot == run_id:
+            raise BacktestDeletionConflictError("Cancel and settle this run before deleting it")
+        await session.execute(
+            delete(backtest_queue_turns).where(backtest_queue_turns.c.run_id == run_id)
+        )
+        result = await session.execute(
+            delete(backtest_runs).where(
+                backtest_runs.c.run_id == run_id,
+                backtest_runs.c.batch_id.is_(None),
+                backtest_runs.c.status.in_(["succeeded", "failed", "cancelled"]),
+            )
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return result.rowcount == 1
+
+
+async def delete_backtest_batch(session, batch_id: str) -> bool:
+    try:
+        slot = (
+            await session.execute(select(backtest_execution_slot.c.run_id).with_for_update())
+        ).scalar_one()
+        batch = (
+            await session.execute(
+                select(backtest_batches.c.status)
+                .where(backtest_batches.c.batch_id == batch_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if batch is None:
+            await session.rollback()
+            return False
+        if batch not in {"completed", "cancelled"}:
+            raise BacktestDeletionConflictError("Cancel and settle this batch before deleting it")
+        members = (
+            (
+                await session.execute(
+                    select(backtest_runs.c.run_id, backtest_runs.c.status)
+                    .where(backtest_runs.c.batch_id == batch_id)
+                    .with_for_update()
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if slot in {member["run_id"] for member in members} or any(
+            member["status"] not in {"succeeded", "failed", "cancelled"} for member in members
+        ):
+            raise BacktestDeletionConflictError(
+                "Cancel and settle all batch members before deleting it"
+            )
+        result = await session.execute(
+            delete(backtest_batches).where(
+                backtest_batches.c.batch_id == batch_id,
+                backtest_batches.c.status.in_(["completed", "cancelled"]),
+            )
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return result.rowcount == 1
+
+
+class BatchSubmissionConflictError(ValueError):
+    pass
+
+
+async def create_backtest_batch(session, payload: dict):
+    """Accept a complete materialized batch in one transaction."""
+    data = dict(payload)
+    members = data.pop("members")
+    existing = await get_backtest_batch_by_submission(session, data["submission_id"])
+    if existing is not None:
+        if existing["accepted_definition"] != data["accepted_definition"]:
+            raise BatchSubmissionConflictError("submission_id belongs to a different definition")
+        return existing
+    data.update(status="queued", lifecycle_revision=0)
+    try:
+        await session.execute(select(backtest_execution_slot.c.slot_id).with_for_update())
+        await session.execute(insert(backtest_batches).values(**data))
+        await session.execute(
+            insert(backtest_runs).values(
+                [
+                    {
+                        "run_id": member["run_id"],
+                        "batch_id": data["batch_id"],
+                        "member_ordinal": member["member_ordinal"],
+                        "status": "queued",
+                        "submitted_at": data["accepted_at"],
+                        "request_schema_version": member["request_schema_version"],
+                        "request": member["request"],
+                    }
+                    for member in members
+                ]
+            )
+        )
+        await session.execute(
+            insert(backtest_batch_events).values(
+                batch_id=data["batch_id"],
+                revision=0,
+                event_type="accepted",
+                prior_status=None,
+                status="queued",
+                occurred_at=data["accepted_at"],
+            )
+        )
+        await session.execute(insert(backtest_queue_turns).values(batch_id=data["batch_id"]))
+        await session.commit()
+        return await get_backtest_batch(session, data["batch_id"])
+    except IntegrityError as exc:
+        await session.rollback()
+        existing = await get_backtest_batch_by_submission(session, data["submission_id"])
+        if existing is not None:
+            if existing["accepted_definition"] != data["accepted_definition"]:
+                raise BatchSubmissionConflictError(
+                    "submission_id belongs to a different definition"
+                ) from exc
+            return existing
+        raise
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def get_backtest_batch_by_submission(session, submission_id: str):
+    result = await session.execute(
+        select(backtest_batches).where(backtest_batches.c.submission_id == submission_id)
+    )
+    row = result.fetchone()
+    return dict(row._mapping) if row else None
+
+
+async def get_backtest_batch(session, batch_id: str):
+    result = await session.execute(
+        select(backtest_batches).where(backtest_batches.c.batch_id == batch_id)
+    )
+    row = result.fetchone()
+    return dict(row._mapping) if row else None
+
+
+async def list_backtest_batches(session):
+    result = await session.execute(
+        select(backtest_batches).order_by(
+            backtest_batches.c.accepted_at.desc(), backtest_batches.c.batch_id.asc()
+        )
+    )
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+async def list_backtest_batch_members(session, batch_id: str):
+    result = await session.execute(
+        select(backtest_runs)
+        .where(backtest_runs.c.batch_id == batch_id)
+        .order_by(backtest_runs.c.member_ordinal.asc())
+    )
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+async def list_backtest_batch_events(session, batch_id: str):
+    result = await session.execute(
+        select(backtest_batch_events)
+        .where(backtest_batch_events.c.batch_id == batch_id)
+        .order_by(backtest_batch_events.c.revision.asc())
+    )
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+def _filter_run_membership(stmt, membership: str | None, batch_id: str | None):
+    if membership == "standalone":
+        stmt = stmt.where(backtest_runs.c.batch_id.is_(None))
+    elif membership == "batch":
+        stmt = stmt.where(backtest_runs.c.batch_id.is_not(None))
+    if batch_id is not None:
+        stmt = stmt.where(backtest_runs.c.batch_id == batch_id)
+    return stmt
+
+
+async def list_backtest_runs(
+    session,
+    *,
+    status: str | None = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    strategy: str | None = None,
+    engine: str | None = None,
+    submitted_from: datetime | None = None,
+    submitted_to: datetime | None = None,
+    membership: str | None = None,
+    batch_id: str | None = None,
+):
+    stmt = _filter_run_membership(select(backtest_runs), membership, batch_id)
+    if status is not None:
+        stmt = stmt.where(backtest_runs.c.status == status)
+    if symbol is not None:
+        stmt = stmt.where(_symbol_membership_filter(session, symbol))
+    if timeframe is not None:
+        stmt = stmt.where(backtest_runs.c.request["timeframe"].as_string() == timeframe)
+    if strategy is not None:
+        stmt = stmt.where(
+            backtest_runs.c.request["strategy"]["strategy_id"].as_string() == strategy
+        )
+    if engine is not None:
+        stmt = stmt.where(backtest_runs.c.request["engine"].as_string() == engine)
+    if submitted_from is not None:
+        stmt = stmt.where(backtest_runs.c.submitted_at >= submitted_from)
+    if submitted_to is not None:
+        stmt = stmt.where(backtest_runs.c.submitted_at <= submitted_to)
+    stmt = stmt.order_by(
+        backtest_runs.c.submitted_at.desc(),
+        backtest_runs.c.run_id.asc(),
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+def _symbol_membership_filter(session, symbol: str):
+    bind = session.get_bind() if hasattr(session, "get_bind") else session.engine
+    if bind.dialect.name == "postgresql":
+        symbols = cast(backtest_runs.c.request["symbols"], JSONB)
+        return symbols.contains([symbol])
+
+    symbols = func.json_each(
+        backtest_runs.c.request,
+        "$.symbols",
+    ).table_valued("key", "value")
+    return exists(select(1).select_from(symbols).where(symbols.c.value == symbol))
+
+
+async def conditional_update_backtest_run(
+    session,
+    *,
+    run_id: str,
+    expected_status: str,
+    updates: dict,
+) -> bool:
+    # Any installed slot requires token-fenced lifecycle writes, even after manual clear.
+    slot = await session.execute(select(backtest_execution_slot.c.slot_id).limit(1))
+    if slot.first() is not None:
+        await session.rollback()
+        return False
+    stmt = (
+        update(backtest_runs)
+        .where(
+            backtest_runs.c.run_id == run_id,
+            backtest_runs.c.status == expected_status,
+        )
+        .values(**updates)
+    )
+    if expected_status == "queued" and updates.get("status") == "running":
+        stmt = stmt.where(backtest_runs.c.batch_id.is_(None))
+    try:
+        result = await session.execute(stmt)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return result.rowcount == 1
+
+
+async def complete_backtest_run(
+    session,
+    *,
+    run_id: str,
+    expected_status: str,
+    completion: dict,
+) -> bool:
+    # Once the durable slot exists, terminal writes must use token-fenced settlement.
+    slot = await session.execute(select(backtest_execution_slot.c.slot_id).limit(1))
+    if slot.first() is not None:
+        await session.rollback()
+        return False
+    completion_data = dict(completion)
+    fills = completion_data.pop("fills", [])
+    trades = completion_data.pop("trades", [])
+    completion_data.update(
+        {
+            "status": "succeeded",
+            "error_code": None,
+            "error_message": None,
+        }
+    )
+    stmt = (
+        update(backtest_runs)
+        .where(
+            backtest_runs.c.run_id == run_id,
+            backtest_runs.c.status == expected_status,
+        )
+        .values(**completion_data)
+    )
+
+    try:
+        result = await session.execute(stmt)
+        if result.rowcount != 1:
+            await session.rollback()
+            return False
+
+        if fills:
+            fill_values = [{"run_id": run_id, **fill} for fill in fills]
+            await session.execute(insert(backtest_fills), fill_values)
+        if trades:
+            trade_values = [{"run_id": run_id, **trade} for trade in trades]
+            await session.execute(insert(backtest_closed_trades), trade_values)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return True

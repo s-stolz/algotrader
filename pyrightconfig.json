@@ -1,0 +1,42 @@
+{
+  "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": [
+    "libs/algotrader_logger",
+    "libs/db_accessor_client",
+    "libs/indicator_engine"
+  ],
+  "exclude": [
+    "backtester",
+    "broker-service",
+    "database-accessor-api",
+    "indicator-api",
+    "ingestion-service",
+    "webserver",
+    "frontend",
+    "timescaledb-init",
+    "**/__pycache__",
+    "**/.venv"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "libs/algotrader_logger",
+      "extraPaths": [
+        "libs/algotrader_logger"
+      ]
+    },
+    {
+      "root": "libs/db_accessor_client",
+      "extraPaths": [
+        "libs/db_accessor_client"
+      ]
+    },
+    {
+      "root": "libs/indicator_engine",
+      "extraPaths": [
+        "libs/indicator_engine"
+      ]
+    }
+  ]
+}

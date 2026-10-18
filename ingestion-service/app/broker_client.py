@@ -1,7 +1,8 @@
 """HTTP client for broker-service interactions."""
+
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List
 
 import httpx
 
@@ -32,9 +33,9 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str = "M1",
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        limit: Optional[int] = None
+        start_time: str | int | None = None,
+        end_time: str | int | None = None,
+        limit: int | None = None,
     ) -> List[Dict[str, Any]]:
         """Fetch historical trendbars (candles) from the broker-service.
 
@@ -50,14 +51,14 @@ class BrokerClient:
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbars"
 
-        params = {
+        params: dict[str, Any] = {
             "timeframe": timeframe,
         }
 
-        if start_time:
+        if start_time is not None:
             params["fromTs"] = normalize_timestamp_to_epoch_ms(start_time)
 
-        if end_time:
+        if end_time is not None:
             params["toTs"] = normalize_timestamp_to_epoch_ms(end_time)
 
         if limit:
@@ -71,19 +72,23 @@ class BrokerClient:
             logger.info(f"Fetched {len(trendbars)} trendbars for {symbol} {timeframe}")
             return trendbars
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching trendbars: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                "HTTP error fetching trendbars: %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
             raise
         except Exception as e:
             logger.error(f"Error fetching trendbars: {e}")
             raise
 
-    async def stream_trendbars(
+    async def stream_trendbars(  # noqa: C901
         self,
         symbol: str,
         timeframe: str = "M1",
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        limit: Optional[int] = None
+        start_time: str | int | None = None,
+        end_time: str | int | None = None,
+        limit: int | None = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream historical trendbars from the broker-service.
 
@@ -102,14 +107,14 @@ class BrokerClient:
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbars/stream"
 
-        params = {
+        params: dict[str, Any] = {
             "timeframe": timeframe,
         }
 
-        if start_time:
+        if start_time is not None:
             params["fromTs"] = normalize_timestamp_to_epoch_ms(start_time)
 
-        if end_time:
+        if end_time is not None:
             params["toTs"] = normalize_timestamp_to_epoch_ms(end_time)
 
         if limit:
@@ -122,11 +127,35 @@ class BrokerClient:
             async with self.async_client.stream("GET", url, params=params) as response:
                 response.raise_for_status()
 
+                completed = False
                 async for line in response.aiter_lines():
-                    if line.strip():
-                        trendbar = json.loads(line)
-                        count += 1
-                        yield trendbar
+                    if not line.strip():
+                        continue
+                    record = json.loads(line)
+                    if not isinstance(record, dict) or completed:
+                        raise RuntimeError("Invalid historical stream record")
+                    if record.get("type") == "error":
+                        raise RuntimeError("Broker historical download failed")
+                    if record.get("type") == "complete":
+                        if (
+                            record.get("version") != 1
+                            or type(record.get("count")) is not int
+                            or record["count"] != count
+                            or record.get("limit") != limit
+                            or ("fromTs" in params and record.get("fromTs") != params["fromTs"])
+                            or ("toTs" in params and record.get("toTs") != params["toTs"])
+                        ):
+                            raise RuntimeError("Historical completion does not match request")
+                        completed = True
+                        continue
+                    if "type" in record or not all(
+                        key in record for key in ("o", "h", "l", "c", "v", "t")
+                    ):
+                        raise RuntimeError("Invalid historical Candle record")
+                    count += 1
+                    yield record
+                if not completed:
+                    raise RuntimeError("Historical stream ended without completion")
 
             logger.info(f"Streamed {count} trendbars for {symbol} {timeframe}")
 
@@ -164,17 +193,17 @@ class BrokerClient:
             logger.info(f"Started trendbar stream: {status}")
             return status
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error starting trendbar stream: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                "HTTP error starting trendbar stream: %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
             raise
         except Exception as e:
             logger.error(f"Error starting trendbar stream: {e}")
             raise
 
-    async def stop_trendbar_stream(
-        self,
-        symbol: str,
-        timeframe: str = "M1"
-    ) -> Dict[str, Any]:
+    async def stop_trendbar_stream(self, symbol: str, timeframe: str = "M1") -> Dict[str, Any]:
         """Stop a live trendbar stream.
 
         Args:
@@ -195,7 +224,11 @@ class BrokerClient:
             logger.info(f"Stopped trendbar stream: {status}")
             return status
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error stopping trendbar stream: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                "HTTP error stopping trendbar stream: %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
             raise
         except Exception as e:
             logger.error(f"Error stopping trendbar stream: {e}")
@@ -209,7 +242,11 @@ class BrokerClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching broker health: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                "HTTP error fetching broker health: %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
             raise
         except Exception as e:
             logger.error(f"Error fetching broker health: {e}")

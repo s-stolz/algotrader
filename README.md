@@ -2,9 +2,38 @@
 
 AlgoTrader is an experimental trading project that uses the [Lightweight Charts](https://tradingview.github.io/lightweight-charts/) library to visualize historical market data.
 
+## Documentation Ownership
+
+- Human-facing overview and setup live in this README and area README files.
+- Agent-facing vocabulary, system flow, and cross-service contracts live in
+  [CONTEXT.md](CONTEXT.md) and its focused references.
+- Task-specific context routing lives in [the context map](docs/CONTEXT-MAP.md).
+- Durable architecture decisions live in `docs/adr/`.
+
 ## Architecture
-The project is structured into multiple services, each responsible for a specific aspect of the trading system:
-![Architecture](algotrader-architecture.jpg)
+
+```mermaid
+flowchart LR
+    Broker[Broker service / cTrader] -->|Ticks and Candles| Redis[Redis streams]
+    Redis --> Ingestion[Ingestion service]
+    Ingestion -->|Backfill requests| Broker
+    Ingestion -->|Closed Candles| DB[Database accessor API]
+    DB <--> Timescale[TimescaleDB]
+    DB -->|Historical Candles| Indicators[Indicator API]
+    Redis -->|Live Candles| Indicators
+    Indicators -->|Live Indicators| Redis
+    Redis --> Bridge[WebSocket bridge]
+    Bridge <-->|Subscriptions and updates| UI[Frontend]
+    Bridge -->|Stream control| Broker
+    Bridge -->|Stream control| Indicators
+    UI -->|History queries| DB
+    UI -->|Indicator queries| Indicators
+    UI -->|Backtests and history| Backtests[Backtester API / worker]
+    Backtests <-->|Candles and durable runs| DB
+```
+
+Shared Python libraries provide data access, indicator computation, and logging.
+For ownership and transport contracts, see [root context](CONTEXT.md).
 
 ## Development Disclaimer
 
@@ -23,7 +52,17 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 *Using this link costs you nothing extra but helps fund the development of new features and improvements.*
 
 ## Prerequisites
-- [Docker](https://docs.docker.com/get-started/get-docker/) installed on your machine.
+
+- [Docker](https://docs.docker.com/get-started/get-docker/) with the Compose v2 plugin (`docker compose`).
+- GNU Make (`make`).
+- Python 3 (`python3`) and PyYAML for host-side config generation.
+
+On Debian/Ubuntu, install the host setup tools (install Docker separately using the link above):
+
+```sh
+sudo apt update
+sudo apt install make python3 python3-yaml
+```
 
 ## Getting Started
 
@@ -36,26 +75,53 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
    ```sh
    cp config/.env.secrets.example config/.env.secrets.local
    ```
-3. Generate the root `.env` from the tracked topology + local secrets:
+3. Edit `config/topology.yaml` for shared non-secret settings (ports, hosts, tuning), and edit `config/.env.secrets.local` for credentials/secrets.
+   For machine-specific non-secret values, copy `config/topology.local.example.yaml`
+   to `config/topology.local.yaml` and edit only the overrides you need. This file is
+   ignored by Git. Ingestion history defaults to 90 days; choose `lookback_days` or
+   a quoted `start_date`, setting the other to `null`.
+4. Generate runtime env files from shared topology + local overrides + local secrets:
    ```sh
-   python scripts/generate_env.py
+   make config
    ```
-4. Edit `config/topology.yaml` for shared non-secret settings (ports, hosts, tuning), and edit `config/.env.secrets.local` for credentials/secrets.
 5. Run the project and explore.
 
 ## Running with Docker Compose
 
-Default workflow (auto-regenerates `.env` before Compose):
+Default workflow (auto-regenerates config env files before Compose):
    ```sh
    make up
    ```
 
 Direct Docker Compose usage:
    ```sh
-   python scripts/generate_env.py --force
-   docker compose up --build
+   python3 scripts/generate_env.py --force
+   docker compose --env-file config/.env.shared up --build
    ```
 This will build and start all necessary services as defined in the `docker-compose.yml` file.
+
+### Asynchronous backtests
+
+Compose starts two processes from the same backtester image:
+
+- `backtester-api` exposes the public API on `http://localhost:8020` by default
+  and provides `GET /health`.
+- `backtester-worker` is a singleton worker that claims and executes one durable
+  run at a time.
+
+The API port, logging settings, and worker poll interval come from
+`services.backtester` in `config/topology.yaml`. The tracked worker default is
+one second. After the stack
+is healthy, run the fixture-backed success and failure smoke paths:
+
+```sh
+make smoke-backtester
+```
+
+The smoke command seeds a temporary market and candles through
+`database-accessor-api`, submits through the public backtester API, waits for
+terminal status, verifies metrics/fills/trades for the successful run, verifies
+no partial artifacts for the failed run, and cleans up its terminal runs.
 
 ## Central Configuration Model
 
@@ -64,11 +130,18 @@ This will build and start all necessary services as defined in the `docker-compo
 - Generated runtime env files: `config/.env.shared`, `config/.env.secrets.db`, `config/.env.secrets.runtime`, `config/.env.secrets.broker`
 - Generator script: `scripts/generate_env.py`
 
+Topology groups all settings by their owner under `services` or `infrastructure`.
+Each component has `network`, `logging`, `resources`, and runtime tuning groups
+where applicable. Backtester groups its `api` and `worker` beneath
+`services.backtester`; shared logging and sweep settings live alongside them.
+Webserver, broker, and ingestion tuning live inside their service entries.
+See [the topology schema](config/topology.schema.md) for the complete structure.
+
 ### Validation and overwrite
 
 ```sh
-python scripts/generate_env.py --validate
-python scripts/generate_env.py --force
+python3 scripts/generate_env.py --validate
+python3 scripts/generate_env.py --force
 ```
 
 ### Make targets
@@ -76,12 +149,42 @@ python scripts/generate_env.py --force
 ```sh
 make config
 make validate-config
+make smoke-backtester
 make up
 make build
 make down
 make restart
 make logs
 make ps
+```
+
+### Docker resource budgets
+
+Edit `cpus` and `memory_reservation_mb` in each container's `resources` mapping
+in `config/topology.yaml`. For example, the worker budget lives at
+`services.backtester.worker.resources`, and Redis's budget at
+`infrastructure.redis.resources`.
+`make config` generates the variables consumed
+by `docker-compose.yml`; do not edit generated env files. CPU quotas throttle
+execution. Memory reservations are soft and allow containers to exceed the
+configured amount; they do not allocate RAM in advance. Hard memory caps are
+intentionally omitted because exceeding one can trigger an out-of-memory kill.
+Exhausting the Docker VM's memory can still kill processes.
+
+For a 16 GB Mac with 10 logical CPUs, start with **4 CPUs, 6 GB RAM, and 1 GB
+swap** in **Docker Desktop → Settings → Resources → Advanced**. This separate
+machine setting governs the whole Docker VM, including other projects and builds;
+the per-container quotas share that budget. Applying Desktop settings restarts
+Docker. Tune these starting values against `docker stats` during representative
+backtests and chart use, alongside macOS Activity Monitor's memory pressure.
+
+Apply container configuration between backtests because recreation interrupts
+active work:
+
+```sh
+make config
+docker compose --env-file config/.env.shared config --quiet
+make up-detached
 ```
 
 ## Local Python Environments
@@ -145,3 +248,8 @@ make venvs-check
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 This project makes use of third-party software so please check the [ATTRIBUTIONS.md](ATTRIBUTIONS.md) file for more information.
+
+## Market data recovery operations
+
+For controlled outage/restart acceptance, migration order, retained Redis data,
+and safe restart/rollback, follow the [recovery deployment guide](docs/operations/market-data-recovery.md).

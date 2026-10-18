@@ -1,6 +1,8 @@
 services:
   database-accessor-api:
     container_name: database-accessor-api
+    cpus: ${COMPOSE_DATABASE_ACCESSOR_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_DATABASE_ACCESSOR_API_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: database-accessor-api/Dockerfile
@@ -30,8 +32,62 @@ services:
       retries: 5
       start_period: 10s
 
+  backtester-api:
+    container_name: backtester-api
+    cpus: ${COMPOSE_BACKTESTER_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BACKTESTER_API_MEMORY_RESERVATION:?Run make config}
+    image: algotrader-backtester
+    build:
+      context: .
+      dockerfile: backtester/Dockerfile
+    ports:
+      - "${BACKTESTER_API_PUBLISHED_PORT:-8020}:${BACKTESTER_API_PORT:-8020}"
+    volumes:
+      - ./backtester:/app
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+    env_file:
+      - ./config/.env.shared
+    command: ["python", "main.py"]
+    init: true
+    restart: always
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, urllib.request; urllib.request.urlopen(f\"http://localhost:{os.getenv('BACKTESTER_API_PORT', '8020')}/health\")"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  backtester-worker:
+    container_name: backtester-worker
+    cpus: ${COMPOSE_BACKTESTER_WORKER_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BACKTESTER_WORKER_MEMORY_RESERVATION:?Run make config}
+    image: algotrader-backtester
+    build:
+      context: .
+      dockerfile: backtester/Dockerfile
+    volumes:
+      - ./backtester:/app
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+    env_file:
+      - ./config/.env.shared
+    command: ["python", "worker.py"]
+    init: true
+    restart: always
+
   indicator-api:
     container_name: indicator-api
+    cpus: ${COMPOSE_INDICATOR_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_INDICATOR_API_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: indicator-api/Dockerfile
@@ -54,16 +110,19 @@ services:
 
   timescaledb:
     container_name: timescaledb
-    image: timescale/timescaledb:latest-pg17
+    cpus: ${COMPOSE_TIMESCALEDB_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_TIMESCALEDB_MEMORY_RESERVATION:?Run make config}
+    build:
+      context: .
+      dockerfile: timescaledb-init/Dockerfile
+    image: algotrader-timescaledb
     env_file:
+      - ./config/.env.shared
       - ./config/.env.secrets.db
-    environment:
-      POSTGRES_USER: ${TIMESCALEDB_USER:-postgres}
     ports:
       - ${TIMESCALEDB_PUBLISHED_PORT:-5432}:5432
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
-      - ./timescaledb-init:/docker-entrypoint-initdb.d
     command:
       [
         "postgres",
@@ -81,6 +140,8 @@ services:
 
   broker-service:
     container_name: broker-service
+    cpus: ${COMPOSE_BROKER_SERVICE_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BROKER_SERVICE_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: broker-service/Dockerfile
@@ -113,6 +174,8 @@ services:
 
   ingestion-service:
     container_name: ingestion-service
+    cpus: ${COMPOSE_INGESTION_SERVICE_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_INGESTION_SERVICE_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: ingestion-service/Dockerfile
@@ -134,6 +197,8 @@ services:
 
   webserver:
     container_name: webserver
+    cpus: ${COMPOSE_WEBSERVER_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_WEBSERVER_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
       dockerfile: webserver/Dockerfile
@@ -160,14 +225,17 @@ services:
 
   frontend:
     container_name: frontend
+    cpus: ${COMPOSE_FRONTEND_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_FRONTEND_MEMORY_RESERVATION:?Run make config}
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
       - ${FRONTEND_PUBLISHED_PORT:-5173}:${FRONTEND_PORT:-5173}
     volumes:
-      - frontend_data:/app/dist
       - ./frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules
+      - frontend_data:/app/frontend/dist
     depends_on:
       webserver:
         condition: service_healthy
@@ -176,6 +244,8 @@ services:
 
   redis:
     container_name: redis
+    cpus: ${COMPOSE_REDIS_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_REDIS_MEMORY_RESERVATION:?Run make config}
     image: redis:7-alpine
     ports:
       - "${REDIS_PUBLISHED_PORT:-6379}:6379"
@@ -193,4 +263,5 @@ services:
 volumes:
   timescaledb_data:
   frontend_data:
+  frontend_node_modules:
   redis_data:

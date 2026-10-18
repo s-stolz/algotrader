@@ -52,8 +52,10 @@ class TokenLifecycleManagerTests(unittest.IsolatedAsyncioTestCase):
 
         await manager.startup()
         self.assertEqual(manager.get_access_token(), "env-access")
-        self.assertIsNotNone(repo.state)
-        self.assertEqual(repo.state.access_token, "env-access")
+        state = repo.state
+        self.assertIsNotNone(state)
+        assert state is not None
+        self.assertEqual(state.access_token, "env-access")
         await manager.shutdown()
 
     async def test_startup_refreshes_immediately_when_due(self) -> None:
@@ -83,8 +85,10 @@ class TokenLifecycleManagerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(oauth.calls, 1)
         self.assertEqual(manager.get_access_token(), "new-access-1")
-        self.assertIsNotNone(repo.state)
-        self.assertEqual(repo.state.refresh_token, "new-refresh-1")
+        state = repo.state
+        self.assertIsNotNone(state)
+        assert state is not None
+        self.assertEqual(state.refresh_token, "new-refresh-1")
         await manager.shutdown()
 
 

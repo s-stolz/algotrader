@@ -15,12 +15,14 @@ TRADE_SIDE_VALUES = frozenset(member.value for member in TradeSide)
 
 def _validation_error(loc: list[str], message: str, input_value: Any) -> RequestValidationError:
     return RequestValidationError(
-        [{
-            "type": "value_error",
-            "loc": ["body", *loc],
-            "msg": message,
-            "input": input_value,
-        }]
+        [
+            {
+                "type": "value_error",
+                "loc": ["body", *loc],
+                "msg": message,
+                "input": input_value,
+            }
+        ]
     )
 
 
@@ -29,12 +31,14 @@ async def read_json_body(request: Request) -> dict[str, Any]:
         body = await request.json()
     except json.JSONDecodeError as exc:
         raise RequestValidationError(
-            [{
-                "type": "json_invalid",
-                "loc": ["body", exc.lineno, exc.colno],
-                "msg": "JSON decode error",
-                "input": {},
-            }]
+            [
+                {
+                    "type": "json_invalid",
+                    "loc": ["body", exc.lineno, exc.colno],
+                    "msg": "JSON decode error",
+                    "input": {},
+                }
+            ]
         ) from exc
 
     if not isinstance(body, dict):
@@ -46,12 +50,14 @@ def _required_str(payload: dict[str, Any], key: str) -> str:
     value = payload.get(key)
     if value is None:
         raise RequestValidationError(
-            [{
-                "type": "missing",
-                "loc": ["body", key],
-                "msg": "Field required",
-                "input": payload,
-            }]
+            [
+                {
+                    "type": "missing",
+                    "loc": ["body", key],
+                    "msg": "Field required",
+                    "input": payload,
+                }
+            ]
         )
     if not isinstance(value, str):
         raise _validation_error([key], "Input should be a valid string", value)
@@ -71,12 +77,14 @@ def _required_int(payload: dict[str, Any], key: str) -> int:
     value = payload.get(key)
     if value is None:
         raise RequestValidationError(
-            [{
-                "type": "missing",
-                "loc": ["body", key],
-                "msg": "Field required",
-                "input": payload,
-            }]
+            [
+                {
+                    "type": "missing",
+                    "loc": ["body", key],
+                    "msg": "Field required",
+                    "input": payload,
+                }
+            ]
         )
     if not isinstance(value, int) or isinstance(value, bool):
         raise _validation_error([key], "Input should be a valid integer", value)
@@ -148,7 +156,11 @@ def parse_close_position_request(payload: dict[str, Any]) -> ClosePositionReques
 def parse_tick_stream_body(payload: dict[str, Any]) -> tuple[int | None, int | None]:
     queue_size = _optional_int(payload, "queueSize")
     if queue_size is not None and queue_size < 1:
-        raise _validation_error(["queueSize"], "Input should be greater than or equal to 1", queue_size)
+        raise _validation_error(
+            ["queueSize"],
+            "Input should be greater than or equal to 1",
+            queue_size,
+        )
 
     max_stream_length = _optional_int(payload, "maxStreamLength")
     if max_stream_length is not None and max_stream_length < 100:

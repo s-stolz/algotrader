@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from decimal import Decimal
+from typing import Awaitable, Callable
 
 from app.domain.models import Trendbar
 from app.domain.value_objects import AccountId, Timeframe
@@ -14,7 +15,7 @@ from app.settings import Settings
 class TrendbarStreamRegistryTests(unittest.IsolatedAsyncioTestCase):
     async def test_publishes_every_live_update(self) -> None:
         published: list[Trendbar] = []
-        handler = None
+        handler: Callable[[Trendbar], Awaitable[None]] | None = None
 
         async def subscribe_fn(account_id, symbol, timeframe, callback):
             nonlocal handler

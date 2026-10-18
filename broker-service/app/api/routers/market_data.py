@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from app.api.contracts import SymbolLightBody, TickStreamStatusBody, TrendbarStreamStatusBody
 from app.api.dependencies import get_account_id, get_market_data_service
 from app.api.serialization import (
     serialize_symbol,
@@ -15,8 +16,8 @@ from app.api.serialization import (
     serialize_tick_stream_status,
     serialize_trendbar_stream_status,
 )
+from app.api.service_protocols import MarketDataServicePort
 from app.api.validation import parse_tick_stream_body, read_json_body
-from app.application.services import MarketDataService
 from app.domain.value_objects import (
     AccountId,
     TickStreamOptions,
@@ -48,8 +49,8 @@ def _options_from_inputs(
 @router.get("/")
 async def list_symbols(
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
-) -> list[dict[str, Any]]:
+    service: MarketDataServicePort = Depends(get_market_data_service),
+) -> list[SymbolLightBody]:
     symbols = await service.list_symbols(account_id)
     return [serialize_symbol_light(symbol) for symbol in symbols]
 
@@ -58,7 +59,7 @@ async def list_symbols(
 async def get_symbol(
     symbol: str,
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
+    service: MarketDataServicePort = Depends(get_market_data_service),
 ) -> dict[str, Any]:
     normalized_symbol = symbol.upper()
     symbol_info = await service.get_symbol(account_id, normalized_symbol)
@@ -71,11 +72,11 @@ async def get_symbol(
 async def start_tick_stream(
     symbol: str,
     request: Request,
-    queueSize: int | None = Query(default=None, ge=1),
-    maxStreamLength: int | None = Query(default=None, ge=100),
+    queue_size: int | None = Query(default=None, ge=1, alias="queueSize"),
+    max_stream_length: int | None = Query(default=None, ge=100, alias="maxStreamLength"),
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
-) -> dict[str, Any]:
+    service: MarketDataServicePort = Depends(get_market_data_service),
+) -> TickStreamStatusBody:
     normalized_symbol = symbol.upper()
     body_values: tuple[int | None, int | None] | None = None
     if request.headers.get("content-length") not in {None, "0"}:
@@ -84,7 +85,7 @@ async def start_tick_stream(
     status = await service.start_tick_stream(
         account_id,
         normalized_symbol,
-        _options_from_inputs(queueSize, maxStreamLength, body_values),
+        _options_from_inputs(queue_size, max_stream_length, body_values),
     )
     return serialize_tick_stream_status(status)
 
@@ -93,7 +94,7 @@ async def start_tick_stream(
 async def stop_tick_stream(
     symbol: str,
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
+    service: MarketDataServicePort = Depends(get_market_data_service),
 ) -> dict[str, str]:
     normalized_symbol = symbol.upper()
     await service.stop_tick_stream(account_id, normalized_symbol)
@@ -104,8 +105,8 @@ async def stop_tick_stream(
 async def tick_stream_status(
     symbol: str,
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
-) -> dict[str, Any]:
+    service: MarketDataServicePort = Depends(get_market_data_service),
+) -> TickStreamStatusBody:
     normalized_symbol = symbol.upper()
     status = await service.tick_stream_status(account_id, normalized_symbol)
     return serialize_tick_stream_status(status)
@@ -128,10 +129,12 @@ async def get_trendbars(
     limit: int | None = Query(
         default=None,
         ge=1,
-        description="Max number of bars to return. If specified, fetches most recent bars up to limit.",
+        description=(
+            "Max number of bars to return. If specified, fetches most recent bars up to limit."
+        ),
     ),
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
+    service: MarketDataServicePort = Depends(get_market_data_service),
 ) -> list[dict[str, Any]]:
     tf = timeframe
     normalized_symbol = symbol.upper()
@@ -162,6 +165,9 @@ async def get_trendbars(
             "MN1": 43200,
         }.get(tf.value, 1)
         from_ts = to_ts - (limit * timeframe_minutes * 60 * 1000 * 3)
+
+    if from_ts is None:
+        raise HTTPException(status_code=400, detail="Either 'fromTs' or 'limit' must be specified")
 
     bars = await service.get_trendbars(
         account_id,
@@ -197,7 +203,7 @@ async def stream_trendbars(
     ),
     limit: int | None = Query(default=None, ge=1),
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
+    service: MarketDataServicePort = Depends(get_market_data_service),
 ) -> StreamingResponse:
     tf = timeframe
     _from_ts = from_ts
@@ -210,6 +216,7 @@ async def stream_trendbars(
     async def generate_ndjson() -> AsyncIterator[str]:
         import json
 
+        count = 0
         try:
             async for trendbar in service.stream_trendbars(
                 _account_id,
@@ -228,8 +235,19 @@ async def stream_trendbars(
                     "t": trendbar.t,
                     "digits": trendbar.digits,
                 }
+                count += 1
                 yield json.dumps(bar_dict) + "\n"
-        except RuntimeError:
+            yield json.dumps(
+                {
+                    "type": "complete",
+                    "version": 1,
+                    "count": count,
+                    "fromTs": _from_ts,
+                    "toTs": _to_ts,
+                    "limit": _limit,
+                }
+            ) + "\n"
+        except Exception:
             logger.exception(
                 "Trendbar stream interrupted due to upstream request failure "
                 "(symbol=%s, timeframe=%s, from_ts=%s, to_ts=%s, limit=%s)",
@@ -239,7 +257,7 @@ async def stream_trendbars(
                 _to_ts,
                 _limit,
             )
-            return
+            yield json.dumps({"type": "error", "message": "Historical download failed"}) + "\n"
 
     return StreamingResponse(
         generate_ndjson(),
@@ -256,8 +274,8 @@ async def start_trendbar_stream(
     symbol: str,
     timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
-) -> dict[str, Any]:
+    service: MarketDataServicePort = Depends(get_market_data_service),
+) -> TrendbarStreamStatusBody:
     tf = timeframe
     normalized_symbol = symbol.upper()
 
@@ -274,7 +292,7 @@ async def stop_trendbar_stream(
     symbol: str,
     timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
+    service: MarketDataServicePort = Depends(get_market_data_service),
 ) -> dict[str, str]:
     tf = timeframe
     normalized_symbol = symbol.upper()
@@ -287,8 +305,8 @@ async def trendbar_stream_status(
     symbol: str,
     timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
     account_id: AccountId = Depends(get_account_id),
-    service: MarketDataService = Depends(get_market_data_service),
-) -> dict[str, Any]:
+    service: MarketDataServicePort = Depends(get_market_data_service),
+) -> TrendbarStreamStatusBody:
     tf = timeframe
     normalized_symbol = symbol.upper()
     status = await service.trendbar_stream_status(account_id, normalized_symbol, tf)

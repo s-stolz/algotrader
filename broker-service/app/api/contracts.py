@@ -70,7 +70,9 @@ CLOSE_POSITION_REQUEST_SCHEMA = {
     "properties": {
         "closeQuantity": {
             "type": ["integer", "null"],
-            "description": "Quantity to close in trade units (volume * 100). None closes full position",
+            "description": (
+                "Quantity to close in trade units (volume * 100). " "None closes full position"
+            ),
         }
     },
 }

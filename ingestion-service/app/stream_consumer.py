@@ -1,11 +1,17 @@
 """Redis stream consumer for market data."""
+
 import asyncio
 import logging
+import re
+from collections.abc import Awaitable, Callable
+from itertools import groupby
 from typing import Any, Dict, List, Optional, Union
 
 from redis.asyncio import Redis
 
 logger = logging.getLogger("ingestion-service.stream_consumer")
+
+CandleBatchCallback = Callable[[int, list[dict[str, Any]]], Awaitable[None]]
 
 
 # Timeframe mapping: string code to minutes
@@ -28,7 +34,9 @@ class StreamConsumer:
         redis: Redis,
         account_id: str,
         batch_size: int = 100,
-        block_ms: int = 5000
+        block_ms: int = 5000,
+        backoff_initial_seconds: int = 1,
+        backoff_max_seconds: int = 60,
     ):
         """Initialize the stream consumer.
 
@@ -42,6 +50,8 @@ class StreamConsumer:
         self.account_id = account_id
         self.batch_size = batch_size
         self.block_ms = block_ms
+        self.backoff_initial_seconds = max(1, backoff_initial_seconds)
+        self.backoff_max_seconds = max(self.backoff_initial_seconds, backoff_max_seconds)
         self._running = False
         self._last_ids: Dict[str, str] = {}  # stream_key -> last_message_id
         self._pending_open_candles: Dict[str, Dict[str, Any]] = {}
@@ -103,15 +113,31 @@ class StreamConsumer:
             "v": float(redis_data[b"v"].decode()),
         }
 
+    @staticmethod
+    def _continuity(data: Dict[bytes, bytes]) -> str | None:
+        raw = data.get(b"continuity")
+        if not isinstance(raw, bytes):
+            return None
+        try:
+            value = raw.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+        return value if re.fullmatch(r"v1:[0-9a-f]{32}", value) else None
+
+    @staticmethod
+    def _id_after(candidate: str, cursor: str) -> bool:
+        return tuple(map(int, candidate.split("-"))) > tuple(map(int, cursor.split("-")))
+
     def _process_stream_messages(
         self,
         stream_key: str,
         messages: List,
-    ) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[List[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
         """Process raw Redis stream messages into candles.
 
         Returns:
-            Tuple of (candles list, last_message_id or None)
+            Closed Candles, candidate cursor, and candidate open Candle. These
+            become acknowledged state only after the callback succeeds.
         """
         candles = []
         last_id = None
@@ -148,17 +174,16 @@ class StreamConsumer:
                     logger.error(f"Error transforming message {msg_id_str}: {e}")
                     continue
 
-        if pending is not None:
-            self._pending_open_candles[stream_key] = pending
+        return candles, last_id, pending
 
-        return candles, last_id
-
-    async def consume_stream(
+    async def consume_stream(  # noqa: C901
         self,
         stream_key: str,
         symbol_id: int,
-        callback: callable,
-        start_id: str = "0-0"
+        callback: Callable[[int, List[Dict[str, Any]]], Awaitable[None]],
+        start_id: str = "0-0",
+        continuity_callback: Callable[[int, str | None], Awaitable[None]] | None = None,
+        interruption_callback: Callable[[int, str], Awaitable[None]] | None = None,
     ):
         """Consume messages from a single Redis stream.
 
@@ -172,35 +197,86 @@ class StreamConsumer:
         logger.info(f"Starting consumption of {stream_key} from ID {last_id}")
 
         self._running = True
+        messages = None
+        interruption = None
+        backoff = self.backoff_initial_seconds
 
         while self._running:
+            stage = interruption or "redis-read-failure"
             try:
-                messages = await self.redis.xread(
-                    {stream_key: last_id},
-                    count=self.batch_size,
-                    block=self.block_ms
-                )
+                if interruption is not None:
+                    if interruption_callback is not None:
+                        await interruption_callback(symbol_id, interruption)
+                    interruption = None
+                stage = "redis-read-failure" if messages is None else "live-write-failure"
+                if messages is None:
+                    messages = await self.redis.xread(
+                        {stream_key: last_id},
+                        count=self.batch_size,
+                        block=self.block_ms,
+                    )
 
                 if not messages:
+                    messages = None
+                    backoff = self.backoff_initial_seconds
                     continue
+                stage = "live-write-failure"
 
-                candles, new_last_id = self._process_stream_messages(stream_key, messages)
-
-                if candles:
-                    logger.debug(f"Consumed {len(candles)} candles from {stream_key}")
-                    logger.debug(f"New Candle for {stream_key}: {candles}")
-                    await callback(symbol_id, candles)
-
-                if new_last_id:
-                    self._last_ids[stream_key] = new_last_id
-                    last_id = new_last_id
+                # Process contiguous session runs in Redis order, committing each
+                # run's cursor only after its protection and Candle writes succeed.
+                entries: list[tuple[Any, Any]] = [
+                    entry
+                    for _stream, batch in messages
+                    for entry in batch
+                    if self._id_after(self._decode_bytes(entry[0]), last_id)
+                ]
+                groups = groupby(entries, key=lambda entry: self._continuity(entry[1]))
+                for continuity, run in groups:
+                    batch = list(run)
+                    if continuity_callback is not None:
+                        await continuity_callback(symbol_id, continuity)
+                        pending = self._pending_open_candles.get(stream_key)
+                        if pending is not None and pending.get("continuity") != continuity:
+                            # An old open Candle may be incomplete. History owns
+                            # it after the boundary is durably protected above.
+                            self._pending_open_candles.pop(stream_key, None)
+                        if continuity is None:
+                            # Legacy/invalid rows have no trusted session. Discard
+                            # only after protection, and never persist them live.
+                            last_id = self._decode_bytes(batch[-1][0])
+                            self._last_ids[stream_key] = last_id
+                            continue
+                    candles, new_last_id, pending = self._process_stream_messages(
+                        stream_key, [(stream_key, batch)]
+                    )
+                    if candles:
+                        await callback(symbol_id, candles)
+                    if pending is not None:
+                        pending["continuity"] = continuity
+                        self._pending_open_candles[stream_key] = pending
+                    if new_last_id:
+                        self._last_ids[stream_key] = new_last_id
+                        last_id = new_last_id
+                messages = None
+                backoff = self.backoff_initial_seconds
 
             except asyncio.CancelledError:
                 logger.info(f"Consumer for {stream_key} cancelled")
                 break
             except Exception as e:
-                logger.error(f"Error consuming {stream_key}: {e}")
-                await asyncio.sleep(5)
+                # Keep both the fetched batch and the failure trigger until the
+                # common recovery operation has durably protected this source.
+                interruption = interruption or stage
+                logger.error(
+                    "Consumer interrupted stream=%s market=%s trigger=%s retry=%s error=%s",
+                    stream_key,
+                    symbol_id,
+                    interruption,
+                    backoff,
+                    e,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(self.backoff_max_seconds, backoff * 2)
 
     async def backfill_from_stream(
         self,
@@ -208,7 +284,7 @@ class StreamConsumer:
         symbol_id: int,
         start_id: str,
         end_id: str,
-        callback: callable
+        callback: CandleBatchCallback,
     ) -> int:
         """Backfill historical data from a stream between two message IDs.
 
@@ -234,7 +310,7 @@ class StreamConsumer:
                     stream_key,
                     min=f"({current_id}",  # Exclusive start
                     max=end_id,
-                    count=self.batch_size
+                    count=self.batch_size,
                 )
 
                 if not messages:

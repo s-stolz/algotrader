@@ -1,5 +1,6 @@
 """Unit tests for the shared db accessor clients."""
 
+import json
 import os
 import unittest
 from unittest.mock import patch
@@ -13,7 +14,145 @@ from db_accessor_client import (
 )
 
 
+def _backtest_run_payload(*, run_id: str = "run-123") -> dict:
+    return {
+        "run_id": run_id,
+        "name": "Queued smoke",
+        "status": "queued",
+        "submitted_at": "2026-06-08T12:30:00Z",
+        "started_at": None,
+        "completed_at": None,
+        "error_code": None,
+        "error_message": None,
+        "request_schema_version": 2,
+        "request": {
+            "symbols": ["EURUSD"],
+            "exchange": "FX",
+            "timeframe": "M15",
+            "start_ms": 1714521600000,
+            "end_ms": 1714608000000,
+            "engine": "event_driven",
+            "data_granularity": "bar",
+            "initial_capital": 25000.0,
+            "strategy": {
+                "strategy_id": "sma_crossover",
+                "parameters": {
+                    "fast_window": 5,
+                    "slow_window": 20,
+                    "quantity": 1000.0,
+                },
+            },
+            "execution": {
+                "signal_timing": "close",
+                "fill_timing": "next_open",
+                "price_source": "open",
+                "allow_partial_fills": False,
+                "allowed_directions": "long_and_short",
+                "trade_accounting_policy": "average_cost",
+                "gap_policy": "error",
+                "intrabar_exit_policy": "take_profit_first",
+                "commission_bps": 1.5,
+                "slippage_bps": 0.75,
+            },
+            "persist_result": False,
+            "run_metadata": {"source": "queued-smoke"},
+        },
+        "result_schema_version": None,
+        "metrics": None,
+        "diagnostics": None,
+        "fills": [],
+        "trades": [],
+    }
+
+
+def _completion_payload() -> dict:
+    return {
+        "expected_status": "running",
+        "completed_at": "2026-06-08T12:35:00Z",
+        "result_schema_version": 3,
+        "metrics": {"total_return_pct": 1.25},
+        "diagnostics": {"execution_duration_ms": 240000},
+        "fills": [
+            {
+                "fill_sequence": 0,
+                "timestamp_ms": 1714525200000,
+                "symbol": "EURUSD",
+                "side": "buy",
+                "quantity": 1000.0,
+                "price": 1.0715,
+                "fees": 0.15,
+                "exit_reason": None,
+            }
+        ],
+        "trades": [
+            {
+                "trade_sequence": 0,
+                "trade_id": "trade-1",
+                "symbol": "EURUSD",
+                "trade_direction": "long",
+                "quantity": 1000.0,
+                "entry_timestamp_ms": 1714525200000,
+                "entry_price": 1.0715,
+                "exit_timestamp_ms": 1714532400000,
+                "exit_price": 1.074,
+                "realized_pnl": 2.5,
+                "fees": 0.3,
+                "exit_reason": "take_profit",
+                "stop_loss_price": 1.069,
+                "take_profit_price": 1.081,
+            }
+        ],
+    }
+
+
+def _fill_payload() -> dict:
+    return {
+        "run_id": "run-123",
+        "fill_sequence": 0,
+        "timestamp_ms": 1714525200000,
+        "symbol": "EURUSD",
+        "side": "buy",
+        "quantity": 1000.0,
+        "price": 1.0715,
+        "fees": 0.15,
+        "exit_reason": None,
+    }
+
+
+def _trade_payload() -> dict:
+    return {
+        "run_id": "run-123",
+        "trade_sequence": 0,
+        "trade_id": "trade-1",
+        "symbol": "EURUSD",
+        "trade_direction": "long",
+        "quantity": 1000.0,
+        "entry_timestamp_ms": 1714525200000,
+        "entry_price": 1.0715,
+        "exit_timestamp_ms": 1714532400000,
+        "exit_price": 1.074,
+        "realized_pnl": 2.5,
+        "fees": 0.3,
+        "exit_reason": "take_profit",
+        "stop_loss_price": None,
+        "take_profit_price": 1.081,
+    }
+
+
 class DatabaseAccessorClientTests(unittest.TestCase):
+    def test_rename_passes_name_only_and_authoritative_responses(self) -> None:
+        def handler(request):
+            self.assertEqual(request.method, "PATCH")
+            self.assertIn(request.url.path, ["/backtests/run/name", "/backtest-batches/batch/name"])
+            self.assertEqual(json.loads(request.content), {"name": None})
+            return httpx.Response(200, json={"name": None})
+
+        with DatabaseAccessorClient() as client:
+            client.client.close()
+            client.client = httpx.Client(transport=httpx.MockTransport(handler))
+            self.assertEqual(client.rename_backtest_run("run", None), {"name": None})
+            self.assertEqual(client.rename_backtest_batch("batch", None), {"name": None})
+
     def setUp(self) -> None:
         self._env_patcher = patch.dict(
             os.environ,
@@ -27,6 +166,30 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._env_patcher.stop()
+
+    def test_historical_write_sends_explicit_interval_and_propagates_failure(self):
+        requests = []
+
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(503, text="unavailable")
+
+        with DatabaseAccessorClient() as client:
+            client.client.close()
+            client.client = httpx.Client(transport=httpx.MockTransport(handler))
+            with self.assertRaises(DatabaseAccessorClientError):
+                client.write_historical_candles("EURUSD", [], 60000, 119999, "FX")
+        self.assertEqual(requests[0].url.path, "/candles/historical")
+        self.assertEqual(
+            json.loads(requests[0].content),
+            {
+                "symbol": "EURUSD",
+                "exchange": "FX",
+                "candles": [],
+                "start_ms": 60000,
+                "end_ms": 119999,
+            },
+        )
 
     def test_get_markets_passes_query_params(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -42,6 +205,342 @@ class DatabaseAccessorClientTests(unittest.TestCase):
         finally:
             client.close()
         self.assertEqual(markets[0]["symbol_id"], 1)
+
+    def test_create_backtest_run_posts_versioned_payload(self) -> None:
+        payload = _backtest_run_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "POST")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(json.loads(request.content.decode()), payload)
+            response_payload = {
+                key: value for key, value in payload.items() if key not in {"fills", "trades"}
+            }
+            return httpx.Response(201, json=response_payload)
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            run = client.create_backtest_run(payload)
+        finally:
+            client.close()
+
+        self.assertEqual(run["run_id"], "run-123")
+        self.assertEqual(run["name"], "Queued smoke")
+        self.assertEqual(run["request"]["exchange"], "FX")
+        self.assertEqual(
+            run["request"]["strategy"]["parameters"]["fast_window"],
+            5,
+        )
+
+    def test_get_backtest_run_uses_run_id(self) -> None:
+        payload = _backtest_run_payload()
+        response_payload = {
+            key: value for key, value in payload.items() if key not in {"fills", "trades"}
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-123")
+            return httpx.Response(200, json=response_payload)
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            run = client.get_backtest_run("run-123")
+        finally:
+            client.close()
+
+        self.assertEqual(run, response_payload)
+
+    def test_list_backtest_runs_passes_all_filters_without_pagination(self) -> None:
+        payload = _backtest_run_payload()
+        response_payload = {
+            key: value for key, value in payload.items() if key not in {"fills", "trades"}
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(request.url.params.get("status"), "queued")
+            self.assertEqual(request.url.params.get("symbol"), "EURUSD")
+            self.assertEqual(request.url.params.get("timeframe"), "M15")
+            self.assertEqual(request.url.params.get("strategy"), "sma_crossover")
+            self.assertEqual(request.url.params.get("engine"), "event_driven")
+            self.assertEqual(
+                request.url.params.get("submitted_from"),
+                "2026-06-08T12:00:00+00:00",
+            )
+            self.assertEqual(
+                request.url.params.get("submitted_to"),
+                "2026-06-08T13:00:00+00:00",
+            )
+            self.assertNotIn("limit", request.url.params)
+            self.assertNotIn("offset", request.url.params)
+            return httpx.Response(200, json=[response_payload])
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            runs = client.list_backtest_runs(
+                status="queued",
+                symbol="EURUSD",
+                timeframe="M15",
+                strategy="sma_crossover",
+                engine="event_driven",
+                submitted_from="2026-06-08T12:00:00+00:00",
+                submitted_to="2026-06-08T13:00:00+00:00",
+            )
+        finally:
+            client.close()
+
+        self.assertEqual(runs, [response_payload])
+
+    def test_batch_acceptance_and_inspection_routes(self) -> None:
+        payload = {
+            "batch_id": "batch-1",
+            "submission_id": "submit-1",
+            "name": "Batch name",
+            "members": [],
+        }
+        batch = {"batch_id": "batch-1", "name": "Batch name", "status": "queued"}
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            paths.append(f"{request.method} {request.url.path}")
+            if request.method == "POST":
+                self.assertEqual(json.loads(request.content.decode()), payload)
+                return httpx.Response(201, json=batch)
+            if request.url.path.endswith("/members") or request.url.path.endswith("/events"):
+                return httpx.Response(200, json=[])
+            if request.url.path.endswith("/batch-1"):
+                return httpx.Response(200, json=batch)
+            return httpx.Response(200, json=[batch])
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            self.assertEqual(client.create_backtest_batch(payload), batch)
+            self.assertEqual(client.list_backtest_batches(), [batch])
+            self.assertEqual(client.get_backtest_batch("batch-1"), batch)
+            self.assertEqual(client.list_backtest_batch_members("batch-1"), [])
+            self.assertEqual(client.list_backtest_batch_events("batch-1"), [])
+        finally:
+            client.close()
+        self.assertEqual(
+            paths,
+            [
+                "POST /backtest-batches",
+                "GET /backtest-batches",
+                "GET /backtest-batches/batch-1",
+                "GET /backtest-batches/batch-1/members",
+                "GET /backtest-batches/batch-1/events",
+            ],
+        )
+
+    def test_conditional_update_backtest_run_patches_expected_status(self) -> None:
+        payload = {
+            "expected_status": "queued",
+            "new_status": "running",
+            "started_at": "2026-06-08T12:31:00Z",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "PATCH")
+            self.assertEqual(request.url.path, "/backtests/run-123")
+            self.assertEqual(json.loads(request.content.decode()), payload)
+            return httpx.Response(200, json={"updated": True})
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            updated = client.conditional_update_backtest_run("run-123", payload)
+        finally:
+            client.close()
+
+        self.assertTrue(updated)
+
+    def test_complete_backtest_run_posts_atomic_artifacts(self) -> None:
+        payload = _completion_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "POST")
+            self.assertEqual(request.url.path, "/backtests/run-123/complete")
+            self.assertEqual(json.loads(request.content.decode()), payload)
+            return httpx.Response(200, json={"updated": True})
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            updated = client.complete_backtest_run("run-123", payload)
+        finally:
+            client.close()
+
+        self.assertTrue(updated)
+
+    def test_execution_slot_mutations_use_fenced_storage_routes(self) -> None:
+        calls: list[tuple[str, str, dict | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content.decode()) if request.content else None
+            calls.append((request.method, request.url.path, body))
+            if request.url.path == "/backtest-execution/slot":
+                return httpx.Response(
+                    200,
+                    json={
+                        "owner_token": None,
+                        "run_id": None,
+                        "fault_code": None,
+                        "fault_message": None,
+                    },
+                )
+            if request.url.path == "/backtest-execution/reconcile":
+                return httpx.Response(200, json={"reconciled": 1})
+            return httpx.Response(200, json={"updated": True})
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            self.assertIsNone(client.get_backtest_execution_slot()["owner_token"])
+            self.assertTrue(client.claim_backtest_execution({"run_id": "run-1"}))
+            self.assertTrue(client.settle_backtest_execution({"run_id": "run-1"}))
+            self.assertEqual(client.reconcile_backtest_execution({"completed_at": "now"}), 1)
+            self.assertTrue(client.record_backtest_execution_fault({"code": "fault"}))
+        finally:
+            client.close()
+
+        self.assertEqual(
+            [path for _, path, _ in calls],
+            [
+                "/backtest-execution/slot",
+                "/backtest-execution/claim",
+                "/backtest-execution/settle",
+                "/backtest-execution/reconcile",
+                "/backtest-execution/fault",
+            ],
+        )
+
+    def test_cancel_run_passes_durable_response_through(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(
+                (request.method, request.url.path), ("POST", "/backtests/run-1/cancel")
+            )
+            return httpx.Response(200, json={"run_id": "run-1", "status": "cancelling"})
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            self.assertEqual(client.cancel_backtest_run("run-1")["status"], "cancelling")
+        finally:
+            client.close()
+
+    def test_worker_telemetry_uses_primitive_storage_routes(self) -> None:
+        calls: list[tuple[str, str, dict | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content) if request.content else None
+            calls.append((request.method, request.url.path, body))
+            return httpx.Response(200, json={"snapshot_at": "2026-06-08T12:00:00Z"})
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            self.assertIn("snapshot_at", client.get_backtest_queue_state())
+            client.record_backtest_worker_heartbeat({"worker_id": "worker-1", "owner_token": None})
+        finally:
+            client.close()
+        self.assertEqual(
+            calls,
+            [
+                ("GET", "/backtest-execution/queue-state", None),
+                (
+                    "POST",
+                    "/backtest-execution/heartbeat",
+                    {"worker_id": "worker-1", "owner_token": None},
+                ),
+            ],
+        )
+
+    def test_get_execution_logs_and_delete_backtest_run(self) -> None:
+        fill = _fill_payload()
+        trade = _trade_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/backtests/run-123/fills":
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json=[fill])
+            if request.url.path == "/backtests/run-123/trades":
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json=[trade])
+            if request.url.path == "/backtests/run-123":
+                self.assertEqual(request.method, "DELETE")
+                return httpx.Response(204)
+            if request.url.path == "/backtest-batches/batch-123":
+                self.assertEqual(request.method, "DELETE")
+                return httpx.Response(204)
+            return httpx.Response(404, text="missing")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            fills = client.get_backtest_fills("run-123")
+            trades = client.get_backtest_trades("run-123")
+            client.delete_backtest_run("run-123")
+            client.delete_backtest_batch("batch-123")
+        finally:
+            client.close()
+
+        self.assertEqual(fills, [fill])
+        self.assertEqual(trades, [trade])
+
+    def test_delete_backtest_run_translates_http_failure(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "DELETE")
+            self.assertEqual(request.url.path, "/backtests/run-missing")
+            return httpx.Response(404, text="missing")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                client.delete_backtest_run("run-missing")
+        finally:
+            client.close()
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(ctx.exception.response_text, "missing")
+
+    def test_backtest_run_methods_raise_client_error_on_http_failure(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/backtests/run-missing")
+            return httpx.Response(404, text="missing")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                client.get_backtest_run("run-missing")
+        finally:
+            client.close()
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(ctx.exception.response_text, "missing")
+
+    def test_list_backtest_runs_raises_client_error_on_http_failure(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/backtests")
+            return httpx.Response(503, text="unavailable")
+
+        client = DatabaseAccessorClient()
+        client.client = httpx.Client(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                client.list_backtest_runs(status="queued")
+        finally:
+            client.close()
+
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertEqual(ctx.exception.response_text, "unavailable")
 
     def test_get_latest_candle_m1_uses_latest_endpoint(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -123,6 +622,29 @@ class DatabaseAccessorClientTests(unittest.TestCase):
 
 
 class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_historical_write_preserves_contract_and_failure(self):
+        requests = []
+
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(503, text="unavailable")
+
+        async with AsyncDatabaseAccessorClient() as client:
+            await client.client.aclose()
+            client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            with self.assertRaises(DatabaseAccessorClientError):
+                await client.write_historical_candles("EURUSD", [], 60000, 119999)
+        self.assertEqual(requests[0].url.path, "/candles/historical")
+        self.assertEqual(
+            json.loads(requests[0].content),
+            {
+                "symbol": "EURUSD",
+                "candles": [],
+                "start_ms": 60000,
+                "end_ms": 119999,
+            },
+        )
+
     def setUp(self) -> None:
         self._env_patcher = patch.dict(
             os.environ,
@@ -136,6 +658,246 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self) -> None:
         self._env_patcher.stop()
+
+    async def test_async_rename_passes_name_only_and_authoritative_responses(self) -> None:
+        def handler(request):
+            self.assertEqual(request.method, "PATCH")
+            self.assertIn(request.url.path, ["/backtests/run/name", "/backtest-batches/batch/name"])
+            self.assertEqual(json.loads(request.content), {"name": "saved"})
+            return httpx.Response(200, json={"name": "saved"})
+
+        async with AsyncDatabaseAccessorClient() as client:
+            await client.client.aclose()
+            client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            self.assertEqual(await client.rename_backtest_run("run", "saved"), {"name": "saved"})
+            self.assertEqual(
+                await client.rename_backtest_batch("batch", "saved"), {"name": "saved"}
+            )
+
+    async def test_async_create_backtest_run_posts_versioned_payload(self) -> None:
+        payload = _backtest_run_payload(run_id="run-async-123")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "POST")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(json.loads(request.content.decode()), payload)
+            response_payload = {
+                key: value for key, value in payload.items() if key not in {"fills", "trades"}
+            }
+            return httpx.Response(201, json=response_payload)
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            run = await client.create_backtest_run(payload)
+        finally:
+            await client.aclose()
+
+        self.assertEqual(run["run_id"], "run-async-123")
+        self.assertEqual(run["request"]["exchange"], "FX")
+
+    async def test_async_get_backtest_run_uses_run_id(self) -> None:
+        payload = _backtest_run_payload(run_id="run-async-123")
+        response_payload = {
+            key: value for key, value in payload.items() if key not in {"fills", "trades"}
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests/run-async-123")
+            return httpx.Response(200, json=response_payload)
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            run = await client.get_backtest_run("run-async-123")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(run, response_payload)
+
+    async def test_async_list_backtest_runs_passes_all_filters(self) -> None:
+        payload = _backtest_run_payload(run_id="run-async-123")
+        response_payload = {
+            key: value for key, value in payload.items() if key not in {"fills", "trades"}
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/backtests")
+            self.assertEqual(
+                dict(request.url.params),
+                {
+                    "status": "running",
+                    "symbol": "EURUSD",
+                    "timeframe": "M15",
+                    "strategy": "sma_crossover",
+                    "engine": "event_driven",
+                    "submitted_from": "2026-06-08T12:00:00+00:00",
+                    "submitted_to": "2026-06-08T13:00:00+00:00",
+                },
+            )
+            return httpx.Response(200, json=[response_payload])
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            runs = await client.list_backtest_runs(
+                status="running",
+                symbol="EURUSD",
+                timeframe="M15",
+                strategy="sma_crossover",
+                engine="event_driven",
+                submitted_from="2026-06-08T12:00:00+00:00",
+                submitted_to="2026-06-08T13:00:00+00:00",
+            )
+        finally:
+            await client.aclose()
+
+        self.assertEqual(runs, [response_payload])
+
+    async def test_async_conditional_update_backtest_run_patches_expected_status(
+        self,
+    ) -> None:
+        payload = {
+            "expected_status": "queued",
+            "new_status": "running",
+            "started_at": "2026-06-08T12:31:00Z",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "PATCH")
+            self.assertEqual(request.url.path, "/backtests/run-async-123")
+            self.assertEqual(json.loads(request.content.decode()), payload)
+            return httpx.Response(200, json={"updated": True})
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            updated = await client.conditional_update_backtest_run(
+                "run-async-123",
+                payload,
+            )
+        finally:
+            await client.aclose()
+
+        self.assertTrue(updated)
+
+    async def test_async_complete_backtest_run_posts_atomic_artifacts(self) -> None:
+        payload = _completion_payload()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "POST")
+            self.assertEqual(request.url.path, "/backtests/run-async-123/complete")
+            self.assertEqual(json.loads(request.content.decode()), payload)
+            return httpx.Response(200, json={"updated": True})
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            updated = await client.complete_backtest_run(
+                "run-async-123",
+                payload,
+            )
+        finally:
+            await client.aclose()
+
+        self.assertTrue(updated)
+
+    async def test_async_execution_claim_and_settlement(self) -> None:
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            return httpx.Response(200, json={"updated": True})
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            self.assertTrue(await client.claim_backtest_execution({"run_id": "run-1"}))
+            self.assertTrue(await client.settle_backtest_execution({"run_id": "run-1"}))
+        finally:
+            await client.aclose()
+
+        self.assertEqual(calls, ["/backtest-execution/claim", "/backtest-execution/settle"])
+
+    async def test_async_cancel_run_passes_durable_response_through(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(
+                (request.method, request.url.path), ("POST", "/backtests/run-1/cancel")
+            )
+            return httpx.Response(200, json={"run_id": "run-1", "status": "cancelled"})
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            self.assertEqual((await client.cancel_backtest_run("run-1"))["status"], "cancelled")
+        finally:
+            await client.aclose()
+
+    async def test_async_get_execution_logs_and_delete_backtest_run(self) -> None:
+        fill = {**_fill_payload(), "run_id": "run-async-123"}
+        trade = {**_trade_payload(), "run_id": "run-async-123"}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/backtests/run-async-123/fills":
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json=[fill])
+            if request.url.path == "/backtests/run-async-123/trades":
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json=[trade])
+            if request.url.path == "/backtests/run-async-123":
+                self.assertEqual(request.method, "DELETE")
+                return httpx.Response(204)
+            if request.url.path == "/backtest-batches/batch-async-123":
+                self.assertEqual(request.method, "DELETE")
+                return httpx.Response(204)
+            return httpx.Response(404, text="missing")
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            fills = await client.get_backtest_fills("run-async-123")
+            trades = await client.get_backtest_trades("run-async-123")
+            await client.delete_backtest_run("run-async-123")
+            await client.delete_backtest_batch("batch-async-123")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(fills, [fill])
+        self.assertEqual(trades, [trade])
+
+    async def test_async_backtest_run_methods_raise_client_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/backtests/run-missing")
+            return httpx.Response(500, text="boom")
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                await client.get_backtest_run("run-missing")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(ctx.exception.status_code, 500)
+        self.assertEqual(ctx.exception.response_text, "boom")
+
+    async def test_async_list_backtest_runs_raises_client_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/backtests")
+            return httpx.Response(503, text="unavailable")
+
+        client = AsyncDatabaseAccessorClient()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(DatabaseAccessorClientError) as ctx:
+                await client.list_backtest_runs(status="running")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertEqual(ctx.exception.response_text, "unavailable")
 
     async def test_async_get_candles_returns_payload(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

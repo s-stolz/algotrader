@@ -1,5 +1,7 @@
 {
   "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
   "extraPaths": [
     "../libs/algotrader_logger",
     "../libs/indicator_engine",

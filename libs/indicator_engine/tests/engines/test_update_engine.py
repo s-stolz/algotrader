@@ -1,7 +1,6 @@
 import unittest
 
 import numpy as np
-
 from indicator_engine.core.bars import BarTensor
 from indicator_engine.core.history import HistoryPolicy
 from indicator_engine.core.registry import IndicatorRegistry
@@ -33,6 +32,15 @@ class LastCloseIndicator:
                 "output": np.array(["value"], dtype=object),
             },
         )
+
+    def batch_vectorized(self, *args, **kwargs) -> Tensor:
+        raise NotImplementedError
+
+    def init_state(self, *args, **kwargs) -> None:
+        raise NotImplementedError
+
+    def update(self, *args, **kwargs):
+        raise NotImplementedError
 
 
 class RequiredAssetsIndicator(LastCloseIndicator):

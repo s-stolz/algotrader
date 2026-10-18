@@ -8,5 +8,4 @@ __pycache__
 *.DS_Store
 .claude
 
-# Development artifacts
-indicator_engine_example.ipynb
+config/topology.local.yaml

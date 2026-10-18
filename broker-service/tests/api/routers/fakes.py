@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any, Mapping
 
 from app.domain.models import Account, Deal, Order, Position, Symbol, TradeData, Trendbar
 from app.domain.value_objects import (
@@ -15,7 +16,7 @@ from app.domain.value_objects import (
 
 
 class FakeOrderService:
-    async def place_order(self, account_id: AccountId, payload: dict):
+    async def place_order(self, account_id: AccountId, payload: Mapping[str, Any]):
         return {"status": "accepted", "orderId": 7, "echo": payload}
 
     async def cancel_order(self, account_id: AccountId, order_id: int) -> None:
@@ -133,7 +134,12 @@ class FakeMarketDataService:
         limit: int | None,
     ):
         yield Trendbar(
-            o=Decimal("1.1"), h=Decimal("1.2"), l=Decimal("1.0"), c=Decimal("1.15"), v=10, t=12345
+            o=Decimal("1.1"),
+            h=Decimal("1.2"),
+            l=Decimal("1.0"),
+            c=Decimal("1.15"),
+            v=10,
+            t=12345,
         )
 
     async def start_trendbar_stream(
@@ -160,6 +166,7 @@ class FakeRedis:
 
 
 class FakeContainer:
+    instance_id = "test-broker-instance"
     broker_connected = True
     active_streams = 1
     active_trendbar_streams = 2

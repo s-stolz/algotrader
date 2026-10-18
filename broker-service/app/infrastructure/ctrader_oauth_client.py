@@ -24,6 +24,8 @@ class CtraderOAuthClient:
 
     async def refresh_access_token(self, refresh_token: str) -> RefreshResult:
         payload = await asyncio.to_thread(self._refresh_request, refresh_token)
+        if payload.get("errorCode"):
+            raise RuntimeError(f"Token refresh failed (code {payload['errorCode']})")
         access_token = str(payload.get("access_token", "")).strip()
         if not access_token:
             raise RuntimeError("Refresh response missing access_token")

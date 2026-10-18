@@ -3,13 +3,23 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Protocol
 
-from app.infrastructure.ctrader_oauth_client import CtraderOAuthClient
-from app.infrastructure.token_repository import CtraderTokenState, RedisTokenRepository
+from app.infrastructure.ctrader_oauth_client import RefreshResult
+from app.infrastructure.token_repository import CtraderTokenState
 from app.settings import CtraderCredentials, Settings
 
 logger = logging.getLogger(__name__)
+
+
+class TokenRepository(Protocol):
+    async def get_current_token(self) -> CtraderTokenState | None: ...
+
+    async def set_current_token(self, state: CtraderTokenState) -> None: ...
+
+
+class OAuthClient(Protocol):
+    async def refresh_access_token(self, refresh_token: str) -> RefreshResult: ...
 
 
 class TokenLifecycleManager:
@@ -17,8 +27,8 @@ class TokenLifecycleManager:
         self,
         settings: Settings,
         credentials: CtraderCredentials,
-        repository: RedisTokenRepository,
-        oauth_client: CtraderOAuthClient,
+        repository: TokenRepository,
+        oauth_client: OAuthClient,
     ) -> None:
         self._settings = settings
         self._credentials = credentials

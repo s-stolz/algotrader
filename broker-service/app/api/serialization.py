@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from app.api.contracts import SymbolLightBody, TickStreamStatusBody, TrendbarStreamStatusBody
 from app.domain.models import Symbol
@@ -16,7 +16,7 @@ def to_jsonable(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if is_dataclass(value):
-        return {key: to_jsonable(val) for key, val in asdict(value).items()}
+        return {key: to_jsonable(val) for key, val in asdict(cast(Any, value)).items()}
     if isinstance(value, dict):
         return {key: to_jsonable(val) for key, val in value.items()}
     if isinstance(value, list):

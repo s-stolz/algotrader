@@ -2,7 +2,6 @@ import unittest
 
 import numpy as np
 import pandas as pd
-
 from indicator_engine import list_indicators, run, run_batch
 
 

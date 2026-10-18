@@ -10,6 +10,7 @@ from .fakes import FakeContainer
 class MetaRouterTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_shape(self) -> None:
         response = await meta.health(FakeContainer())
+        self.assertEqual(response["instance_id"], "test-broker-instance")
         self.assertIn("status", response)
         self.assertIn("components", response)
         self.assertIn("ctrader", response["components"])

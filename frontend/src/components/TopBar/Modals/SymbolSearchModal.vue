@@ -1,5 +1,5 @@
 <template>
-  <base-modal ref="baseModal" :modalId="'symbolSearch'" :title="'Symbol'">
+  <BaseModal ref="baseModal" :modalId="'symbolSearch'" :title="'Symbol'">
     <div>
       <span id="search-bar">
         <n-input
@@ -21,7 +21,7 @@
       </span>
       <hr class="separator" />
 
-      <n-scrollbar style="height: 300px">
+      <n-scrollbar v-if="showEmptyMarketPromo || showNoSearchMatches" style="height: 300px">
         <template v-if="showEmptyMarketPromo">
           <div class="empty-market-state">
             <n-button
@@ -77,127 +77,105 @@
           </div>
         </template>
 
-        <table v-else>
-          <tbody>
-            <template v-for="market of filteredMarketList" :key="market.symbol_id">
-              <symbol-row
-                :market="market"
-                @market-click="onMarketClick"
-                @remove-market="$emit('remove-market', $event)"
-                @upload-data="$emit('upload-data', $event)"
-              />
-              <hr class="separator row-separator" />
-            </template>
-
-            <n-button text id="add-market-button" @click.stop="onAddMarketClick()">
-              <n-icon size="24">
-                <AddCircleOutline />
-              </n-icon>
-            </n-button>
-          </tbody>
-        </table>
       </n-scrollbar>
+
+      <template v-else>
+        <BaseDataTable :max-height="290">
+          <tbody>
+            <SymbolRow
+              v-for="market of filteredMarketList"
+              :key="market.symbol_id"
+              :market="market"
+              :is-selected="market.symbol === currentMarketStore.symbol && market.exchange === currentMarketStore.exchange"
+              @market-click="onMarketClick"
+              @remove-market="$emit('remove-market', $event)"
+              @upload-data="$emit('upload-data', $event)"
+            />
+          </tbody>
+        </BaseDataTable>
+        <n-button text id="add-market-button" class="add-market-row" @click.stop="onAddMarketClick()">
+          <n-icon size="24">
+            <AddCircleOutline />
+          </n-icon>
+        </n-button>
+      </template>
     </div>
 
     <template #footer>
       <n-button @click="closeModal" class="button-close">Close</n-button>
     </template>
-  </base-modal>
+  </BaseModal>
 </template>
 
-<script>
-import { useCurrentMarketStore } from "@/stores/currentMarketStore";
-import { useMarketsStore } from "@/stores/marketsStore";
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { NButton, NIcon, NInput, NQrCode, NScrollbar, NSpace, NText } from 'naive-ui';
 
-import { NScrollbar, NInput, NIcon, NButton, NSpace, NText, NQrCode } from "naive-ui";
-import {
-  SearchOutline,
-  AddCircleOutline,
-} from "@/icons";
-import BaseModal from "@/components/Common/BaseModal.vue";
-import SymbolRow from "./SymbolRow.vue";
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
+import BaseModal from '@/components/Common/BaseModal.vue';
+import { AddCircleOutline, SearchOutline } from '@/icons';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { useMarketsStore } from '@/stores/marketsStore';
+import type { Market } from '@/types/contracts';
 
-export default {
-  name: "SymbolSearchModal",
+import SymbolRow from './SymbolRow.vue';
 
-  components: {
-    NScrollbar,
-    NInput,
-    NIcon,
-    NButton,
-    NSpace,
-    NText,
-    NQrCode,
-    SearchOutline,
-    AddCircleOutline,
-    BaseModal,
-    SymbolRow,
-  },
+defineOptions({
+  name: 'SymbolSearchModal',
+});
 
-  emits: ["open-symbol-form-modal", "remove-market", "upload-data"],
+interface BaseModalExpose {
+  close: () => void;
+}
 
-  data() {
-    return {
-      symbolInput: "",
-      affiliateLink: "https://www.ictrading.com?camp=86158",
-      currentMarketStore: useCurrentMarketStore(),
-      marketsStore: useMarketsStore(),
-    };
-  },
+const emit = defineEmits<{
+  (event: 'open-symbol-form-modal'): void;
+  (event: 'remove-market', market: Market): void;
+  (event: 'upload-data', market: Market): void;
+}>();
 
-  computed: {
-    filteredMarketList() {
-      return this.marketsStore.all
-        .filter((market) => {
-          return market.symbol.includes(this.symbolInput.toUpperCase());
-        })
-        .sort((a, b) => {
-          if (a.symbol < b.symbol) return -1;
-          if (a.symbol > b.symbol) return 1;
-          return 0;
-        });
-    },
+const baseModal = ref<BaseModalExpose | null>(null);
+const symbolInput = ref('');
+const affiliateLink = 'https://www.ictrading.com?camp=86158';
+const currentMarketStore = useCurrentMarketStore();
+const marketsStore = useMarketsStore();
 
-    showEmptyMarketPromo() {
-      return this.marketsStore.all.length === 0;
-    },
+const filteredMarketList = computed(() => marketsStore.all
+  .filter((market) => market.symbol.includes(symbolInput.value.toUpperCase()))
+  .sort((a, b) => a.symbol.localeCompare(b.symbol)));
 
-    showNoSearchMatches() {
-      return this.filteredMarketList.length === 0 && this.marketsStore.all.length > 0;
-    },
-  },
+const showEmptyMarketPromo = computed(() => marketsStore.all.length === 0);
+const showNoSearchMatches = computed(() => (
+  filteredMarketList.value.length === 0 && marketsStore.all.length > 0
+));
 
-  methods: {
-    onMarketClick(market) {
-      this.updateCurrentMarket(market);
-      this.closeModal();
-    },
+function closeModal(): void {
+  baseModal.value?.close();
+}
 
-    closeModal() {
-      this.$refs.baseModal.close();
-    },
+function updateCurrentMarket(market: Market): void {
+  currentMarketStore.setMarket(market);
+  closeModal();
+}
 
-    updateCurrentMarket(market) {
-      this.currentMarketStore.setMarket(market);
+function onMarketClick(market: Market): void {
+  updateCurrentMarket(market);
+  closeModal();
+}
 
-      this.closeModal();
-    },
+function onAddMarketClick(): void {
+  emit('open-symbol-form-modal');
+}
 
-    onAddMarketClick() {
-      this.$emit("open-symbol-form-modal");
-    },
+function onKeypressEnter(): void {
+  if (filteredMarketList.value.length === 0) {
+    return;
+  }
 
-    onKeypressEnter() {
-      if (this.filteredMarketList.length === 0) {
-        return;
-      }
+  updateCurrentMarket(filteredMarketList.value[0]);
+}
 
-      this.updateCurrentMarket(this.filteredMarketList[0]);
-    },
-  },
-
-  expose: ["updateCurrentMarket"],
-};
+defineExpose({ updateCurrentMarket });
 </script>
 
 <style scoped>
@@ -210,36 +188,19 @@ export default {
   background-color: #a0a0a029;
 }
 
-table {
-  width: 100%;
-}
-
-tr {
-  padding: 5px 15px;
-  width: calc(100% - 30px);
-  display: flex;
-  justify-content: space-between;
-  cursor: pointer;
-}
-
-td {
-  line-height: 20px;
-}
-
-.market-type {
-  font-size: x-small;
-  vertical-align: middle;
-}
-
-tr:hover,
 #add-market-button:hover {
-  background-color: #36363661;
+  background-color: var(--surface-hover);
 }
 
 #add-market-button {
   margin: auto;
   width: 100%;
   height: 40px;
+}
+
+.add-market-row {
+  background-color: var(--surface-inset);
+  border-top: 1px solid var(--surface-border);
 }
 
 .empty-state-cta {

@@ -1,19 +1,27 @@
 <template>
   <n-config-provider :theme="darkTheme">
-    <main>
-      <router-view />
-    </main>
+    <WorkspaceNavigation>
+      <router-view v-slot="{ Component }">
+        <keep-alive>
+          <component :is="Component" />
+        </keep-alive>
+      </router-view>
+    </WorkspaceNavigation>
   </n-config-provider>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent } from 'vue';
 import { NConfigProvider, darkTheme } from 'naive-ui';
+import WorkspaceNavigation from '@/components/Workspace/WorkspaceNavigation.vue';
+import { wsService } from './utils/websocketService';
 
-export default {
+export default defineComponent({
   name: 'App',
 
   components: {
     NConfigProvider,
+    WorkspaceNavigation,
   },
 
   data() {
@@ -23,15 +31,7 @@ export default {
   },
 
   beforeUnmount() {
-    if (this.$wss) {
-      this.$wss.close();
-    }
+    wsService.close();
   },
-};
+});
 </script>
-
-<style>
-main {
-  padding: 10px;
-}
-</style>

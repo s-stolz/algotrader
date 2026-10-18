@@ -1,0 +1,11 @@
+{
+  "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": [
+    "src",
+    "../libs/db_accessor_client",
+    "../libs/indicator_engine",
+    "../libs/algotrader_logger"
+  ]
+}

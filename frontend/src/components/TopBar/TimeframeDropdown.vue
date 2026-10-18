@@ -1,51 +1,25 @@
-<template>
-  <n-popselect
-    :default-value="timeframes[0].value"
-    scrollable
-    style="width: 80px; height: 150px;"
-    @update:value="onTimeframeChange"
-    :options="timeframes"
-  >
-    <n-button
-      round
-      class="timeframe-button"
-    >
-      {{ currentTimeframeStore.label }}
-    </n-button>
-  </n-popselect>
-</template>
+<script setup lang="ts">
+import BaseGroupedSelect from '@/components/Common/BaseGroupedSelect.vue';
+import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
+import { groupTimeframeOptions, TIMEFRAME_OPTIONS } from '@/utils/timeframes';
+import { isTimeframeCode } from '@/types/contracts';
 
-<script>
-import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
-import { TIMEFRAME_OPTIONS } from "@/utils/timeframes";
+const currentTimeframeStore = useCurrentTimeframeStore();
+const groups = groupTimeframeOptions(TIMEFRAME_OPTIONS);
 
-import { NPopselect, NButton } from "naive-ui";
-
-export default {
-  name: "TimeframeDropdown",
-
-  components: {
-    NPopselect,
-    NButton,
-  },
-
-  data() {
-    return {
-      currentTimeframeStore: useCurrentTimeframeStore(),
-      timeframes: TIMEFRAME_OPTIONS,
-    };
-  },
-
-  methods: {
-    onTimeframeChange(value, option) {
-      this.currentTimeframeStore.setCurrentTimeframe(option);
-    },
-  },
-};
+function selectTimeframe(value: string): void {
+  if (isTimeframeCode(value)) {
+    currentTimeframeStore.setCurrentTimeframe({ label: value, value });
+  }
+}
 </script>
 
-<style scoped>
-.timeframe-button {
-  width: 80px;
-}
-</style>
+<template>
+  <BaseGroupedSelect
+    :value="currentTimeframeStore.value"
+    label="Timeframe"
+    :groups="groups"
+    trigger-width="80px"
+    @update:value="selectTimeframe"
+  />
+</template>

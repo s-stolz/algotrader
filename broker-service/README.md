@@ -1,58 +1,12 @@
 # Broker Service
 
-Async broker microservice that talks to cTrader Open API, exposes FastAPI REST endpoints, and publishes market data/events into Redis Streams. This service runs locally (no Docker) for the first version and follows clean architecture guidance.
+Async broker microservice that talks to cTrader Open API, exposes FastAPI REST endpoints, and publishes market data/events into Redis Streams. Run it locally or through the repository Docker Compose stack.
 
-## High-level architecture
+## Architecture
 
-```
-app/
-  main.py
-  settings.py
-  api/
-    routers/
-      accounts.py
-      orders.py
-      positions.py
-      deals.py
-      market_data.py
-      meta.py
-    contracts.py
-    validation.py
-    serialization.py
-    dependencies.py
-  application/
-    interfaces.py
-    services/
-      account_service.py
-      order_service.py
-      trade_service.py (contains PositionService)
-      market_data_service.py
-  domain/
-    value_objects.py
-    models/
-      account.py
-      order.py
-      trade.py
-      position.py
-      deal.py
-      symbol.py
-      tick.py
-      trendbar.py
-  infrastructure/
-    ctrader_client.py
-    ctrader_mappers.py
-    ctrader_symbol_cache.py
-    redis_streams_publisher.py
-    stream_registry.py
-    trendbar_stream_registry.py
-    logging.py
-    config.py
-```
-
-- **API Layer** – FastAPI routers with dependency injection, request validation helpers, and explicit serializers.
-- **Application Layer** – Stateless services wired to abstract ports defined in `interfaces.py`.
-- **Domain Layer** – Value objects and models describing accounts, orders, positions, deals, trades, ticks, and candles.
-- **Infrastructure Layer** – Async wrappers for cTrader Open API, symbol caching, Redis Streams publishing, and dual-registry for tick and trendbar streaming.
+For module ownership and change guidance, read [CONTEXT.md](CONTEXT.md).
+Routes call application services through ports; infrastructure adapts cTrader
+and Redis, while domain types carry broker concepts.
 
 ## Key features
 
@@ -78,13 +32,10 @@ app/
 - FastAPI dependency injection for clean separation of concerns
 - Proper startup/shutdown lifecycle management
 
-## Market Data Timestamp Contract
+## Market Data Contracts
 
-- Broker-service API uses epoch milliseconds for time bounds (`fromTs`, `toTs`) and payload timestamps.
-- Redis streams use compact one-character payload keys only:
-  - ticks stream (`ticks:{account_id}:{symbol}`): `b`, `a`, `t`
-  - candles stream (`candles:{account_id}:{symbol}:{timeframe}`): `o`, `h`, `l`, `c`, `v`, `t`
-- `t` is always UTC epoch milliseconds.
+Timestamp units, query bounds, and Redis stream shapes are defined in
+[root context](../CONTEXT.md#shared-contracts).
 
 ## Runtime overview
 
@@ -107,7 +58,7 @@ app/
 ## Configuration knobs
 
 Environment variables control connectivity. In this repository they are generated
-centrally in root `.env` via `python scripts/generate_env.py`.
+under `config/` via `make config`; see [configuration context](../config/CONTEXT.md).
 
 | Variable | Description | Default |
 | --- | --- | --- |

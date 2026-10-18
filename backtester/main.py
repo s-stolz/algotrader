@@ -1,22 +1,30 @@
-import logging
-import threading
+"""Backtester FastAPI service entrypoint."""
 
-from websocket_client import WebSocketClient
+from __future__ import annotations
 
-logging.basicConfig(level=logging.INFO, format="%(threadName)s: %(message)s")
+import os
+import sys
+from pathlib import Path
+
+import uvicorn
+
+_SRC_PATH = Path(__file__).resolve().parent / "src"
+_SRC_PATH_TEXT = str(_SRC_PATH)
+if _SRC_PATH_TEXT not in sys.path:
+    sys.path.insert(0, _SRC_PATH_TEXT)
+
+from adapters.api.app import create_app  # noqa: E402
+
+app = create_app()
 
 
-def main():
-    """Main entry point for the backtester."""
-    client = WebSocketClient()
-
-    client_thread = threading.Thread(
-        target=client.run_in_thread,
-        name="WebSocketThread",
+def main() -> None:
+    uvicorn.run(
+        "main:app",
+        host=os.getenv("BACKTESTER_API_BIND_HOST", "0.0.0.0"),
+        port=int(os.getenv("BACKTESTER_API_PORT", "8020")),
+        log_level=os.getenv("BACKTESTER_LOG_LEVEL", "INFO").lower(),
     )
-    client_thread.start()
-    client_thread.join()
-    logging.info("Exiting main thread")
 
 
 if __name__ == "__main__":

@@ -68,7 +68,10 @@ class LoggerCoreTests(unittest.TestCase):
                 "args": ("127.0.0.1", "GET", "/markets", "1.1", 200),
             }
         )
-        log_filter = ServiceContextFilter(service_name="test-service", suppress_healthcheck_logs=True)
+        log_filter = ServiceContextFilter(
+            service_name="test-service",
+            suppress_healthcheck_logs=True,
+        )
         self.assertFalse(log_filter.filter(record_health))
         self.assertTrue(log_filter.filter(record_normal))
 

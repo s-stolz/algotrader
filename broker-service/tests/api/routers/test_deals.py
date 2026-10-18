@@ -11,8 +11,8 @@ from .fakes import FakePositionService
 class DealsRouterTests(unittest.IsolatedAsyncioTestCase):
     async def test_get_deal_history(self) -> None:
         response = await deals.get_deal_history(
-            fromTs=None,
-            toTs=None,
+            from_ts=None,
+            to_ts=None,
             account_id=AccountId(123),
             service=FakePositionService(),
         )

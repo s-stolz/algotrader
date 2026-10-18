@@ -1,78 +1,76 @@
 <template>
   <div>
-    <symbol-search-modal
+    <SymbolSearchModal
       ref="symbolSearchModal"
       v-show="modalStore.isModalOpen('symbolSearch')"
-      @openSymbolFormModal="onOpenSymbolFormModal"
-      @removeMarket="onRemoveMarket"
-      @uploadData="onUploadData"
+      @open-symbol-form-modal="onOpenSymbolFormModal"
+      @remove-market="onRemoveMarket"
+      @upload-data="onUploadData"
     />
-    <indicator-search-modal v-if="modalStore.isModalOpen('indicatorSearch')" />
-    <symbol-form-modal v-if="modalStore.isModalOpen('symbolForm')" />
-    <remove-market-modal
-      v-if="modalStore.isModalOpen('removeMarket')"
+    <IndicatorSearchModal v-if="modalStore.isModalOpen('indicatorSearch')" />
+    <SymbolFormModal v-if="modalStore.isModalOpen('symbolForm')" />
+    <RemoveMarketModal
+      v-if="modalStore.isModalOpen('removeMarket') && marketToRemove"
       :market="marketToRemove"
       @market-removed="onMarketRemoved"
     />
-    <upload-data-modal
-      v-if="modalStore.isModalOpen('uploadData')"
+    <UploadDataModal
+      v-if="modalStore.isModalOpen('uploadData') && marketToUpload"
       :market="marketToUpload"
       @upload-successful="onUploadSuccessful"
     />
   </div>
 </template>
 
-<script>
-import { useModalStore } from "@/stores/modalStore";
+<script setup lang="ts">
+import { ref, type ComponentPublicInstance } from 'vue';
 
-import SymbolSearchModal from "@/components/TopBar/Modals/SymbolSearchModal.vue";
-import IndicatorSearchModal from "@/components/TopBar/Modals/IndicatorSearchModal.vue";
-import SymbolFormModal from "@/components/TopBar/Modals/SymbolFormModal.vue";
-import RemoveMarketModal from "@/components/TopBar/Modals/RemoveMarketModal.vue";
-import UploadDataModal from "@/components/TopBar/Modals/Upload/UploadDataModal.vue";
+import IndicatorSearchModal from '@/components/TopBar/Modals/IndicatorSearchModal.vue';
+import RemoveMarketModal from '@/components/TopBar/Modals/RemoveMarketModal.vue';
+import SymbolFormModal from '@/components/TopBar/Modals/SymbolFormModal.vue';
+import SymbolSearchModal from '@/components/TopBar/Modals/SymbolSearchModal.vue';
+import UploadDataModal from '@/components/TopBar/Modals/Upload/UploadDataModal.vue';
+import { useModalStore } from '@/stores/modalStore';
+import type { Market } from '@/types/contracts';
 
-export default {
-  name: "TopBarModals",
-  components: {
-    SymbolSearchModal,
-    IndicatorSearchModal,
-    SymbolFormModal,
-    RemoveMarketModal,
-    UploadDataModal,
-  },
+defineOptions({
+  name: 'TopBarModals',
+});
 
-  data() {
-    return {
-      modalStore: useModalStore(),
-      marketToRemove: null,
-      marketToUpload: null,
-    };
-  },
-
-  methods: {
-    onOpenSymbolFormModal() {
-      this.modalStore.openModal("symbolForm");
-    },
-
-    onRemoveMarket(market) {
-      this.marketToRemove = market;
-      this.modalStore.openModal("removeMarket");
-    },
-
-    onUploadData(market) {
-      this.marketToUpload = market;
-      this.modalStore.openModal("uploadData");
-    },
-
-    onUploadSuccessful() {
-      this.$refs.symbolSearchModal.updateCurrentMarket(this.marketToUpload);
-      this.marketToUpload = null;
-    },
-
-    onMarketRemoved() {
-      this.$refs.symbolSearchModal.updateCurrentMarket(this.marketToRemove);
-      this.marketToRemove = null;
-    },
-  },
+type SymbolSearchModalInstance = ComponentPublicInstance & {
+  updateCurrentMarket: (market: Market) => void;
 };
+
+const modalStore = useModalStore();
+const symbolSearchModal = ref<SymbolSearchModalInstance | null>(null);
+const marketToRemove = ref<Market | null>(null);
+const marketToUpload = ref<Market | null>(null);
+
+function onOpenSymbolFormModal(): void {
+  modalStore.openModal('symbolForm');
+}
+
+function onRemoveMarket(market: Market): void {
+  marketToRemove.value = market;
+  modalStore.openModal('removeMarket');
+}
+
+function onUploadData(market: Market): void {
+  marketToUpload.value = market;
+  modalStore.openModal('uploadData');
+}
+
+function onUploadSuccessful(): void {
+  if (marketToUpload.value) {
+    symbolSearchModal.value?.updateCurrentMarket(marketToUpload.value);
+  }
+  marketToUpload.value = null;
+}
+
+function onMarketRemoved(): void {
+  if (marketToRemove.value) {
+    symbolSearchModal.value?.updateCurrentMarket(marketToRemove.value);
+  }
+  marketToRemove.value = null;
+}
 </script>

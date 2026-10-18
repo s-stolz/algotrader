@@ -1,4 +1,5 @@
 """Utility functions for the ingestion service."""
+
 from datetime import datetime, timezone
 from typing import Union
 
@@ -26,7 +27,7 @@ def epoch_ms_to_iso(timestamp_ms: int) -> str:
         ISO format string (YYYY-MM-DD HH:MM:SS)
     """
     timestamp = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
-    return timestamp.strftime('%Y-%m-%d %H:%M:%S')
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def normalize_timestamp_to_epoch_ms(timestamp: Union[str, int]) -> int:

@@ -1,6 +1,42 @@
 <template>
   <div id="chart-wrapper">
-    <div ref="chartContainer" id="lightweight-chart" class="chart-container" />
+    <div
+      ref="chartContainer"
+      id="lightweight-chart"
+      class="chart-container"
+      :class="{ 'chart-container--measure-mode': interactionMode === 'measure' }"
+    />
+
+    <Teleport
+      v-if="backtestOverlayStore.selectedRun && backtestOverlayTarget"
+      :to="backtestOverlayTarget"
+    >
+      <div class="backtest-overlay-container">
+        <div
+          class="backtest-overlay-panel"
+        >
+          <div class="backtest-overlay-details">
+            <span class="backtest-overlay-title">{{ activeBacktestRunTitle }}</span>
+            <span class="backtest-overlay-context">{{ activeBacktestRunContext }}</span>
+          </div>
+          <n-button
+            text
+            class="backtest-overlay-remove"
+            data-testid="remove-backtest-overlay"
+            aria-label="Remove Backtest Run overlay"
+            @click="removeBacktestOverlay"
+          >
+            <n-icon size="20">
+              <CloseCircleOutline />
+            </n-icon>
+          </n-button>
+        </div>
+        <div class="backtest-marker-legend">↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div>
+        <div v-if="hoveredBacktestMarker" class="backtest-marker-details" role="tooltip">
+          {{ hoveredBacktestMarker }}
+        </div>
+      </div>
+    </Teleport>
 
     <span class="legend">
       <span class="legend-value">O: <span ref="legendOpen">-</span></span>
@@ -20,40 +56,154 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { markRaw, defineComponent, type PropType } from "vue";
+import type {
+  CandlestickSeriesPartialOptions,
+  MouseEventParams,
+  Point,
+  Time,
+} from "lightweight-charts";
+import { NButton, NIcon } from "naive-ui";
+
 import { useCandlesticksStore } from "@/stores/candlesticksStore";
 import { useIndicatorsStore } from "@/stores/indicatorsStore";
 import { useCurrentMarketStore } from "@/stores/currentMarketStore";
 import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
-import { wsService } from "@/utils/websocketService";
+import { useBacktestOverlayStore } from "@/stores/backtestOverlayStore";
+import { fetchCandles as fetchHistoricalCandles } from "@/api/candleClient";
+import type {
+  CandleUpdateMessage,
+  ChartCandle,
+  IndicatorUpdateMessage,
+} from "@/types/contracts";
+import { wsService, type WebSocketEventHandler } from "@/utils/websocketService";
+import {
+  createChartSession,
+  type ChartSession,
+  type ChartSessionKey,
+  type ChartSessionSubscriptionsAdapter,
+  type ChartSessionKeyInput,
+} from "@/components/Chart/chartSession";
+import {
+  DEFAULT_CHART_INTERACTION_MODE,
+  type ChartInteractionMode,
+} from "@/components/Chart/chartInteractionMode";
+
+import {
+  createChartInfrastructure,
+  type ChartInfrastructure,
+  type ChartLogicalRange,
+  type ChartOhlcPoint,
+  type ManagedSeriesApi,
+} from "@/utils/chart";
+import { buildMeasurementOverlayModel } from "@/utils/chart/measurementOverlay";
+import {
+  buildBacktestProtectiveLineSegments,
+  buildBacktestTradeMarkers,
+  formatBacktestMarkerDetails,
+  type LoadedCandleRange,
+} from "@/utils/chart/backtestOverlay";
+import { getOrCreatePaneOverlayWrapper } from "@/utils/chart/paneOverlay";
 import { timeframeToMinutes } from "@/utils/timeframes";
-
-import { ChartMixin } from "@/utils/chart";
 import Indicator from "@/components/Chart/Indicator/Indicator.vue";
+import { CloseCircleOutline } from "@/icons";
 
-const HISTORY_LOAD_COOLDOWN_MS = 400;
 const WHEEL_SETTLE_MS = 250;
 
-export default {
+type CandlesticksStore = ReturnType<typeof useCandlesticksStore>;
+type IndicatorsStore = ReturnType<typeof useIndicatorsStore>;
+type CurrentMarketStore = ReturnType<typeof useCurrentMarketStore>;
+type CurrentTimeframeStore = ReturnType<typeof useCurrentTimeframeStore>;
+type BacktestOverlayStore = ReturnType<typeof useBacktestOverlayStore>;
+
+interface OhlcLegendPoint {
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+}
+
+interface RenderCandlestickOptions {
+  scrollToRealtime?: boolean;
+}
+
+interface MeasurementEndpoint {
+  price: number;
+  logical: number;
+}
+
+interface MeasurementDragState {
+  anchorPrice: number;
+  anchorLogical: number;
+  minMove: number;
+}
+
+interface ChartAreaData {
+  candlesticksStore: CandlesticksStore;
+  indicatorsStore: IndicatorsStore;
+  currentMarketStore: CurrentMarketStore;
+  currentTimeframeStore: CurrentTimeframeStore;
+  backtestOverlayStore: BacktestOverlayStore;
+  chartInfrastructure: ChartInfrastructure;
+  seriesOptions: CandlestickSeriesPartialOptions;
+  crosshairRafId: number | null;
+  latestCrosshairParam: MouseEventParams<Time> | null;
+  visibleRangeRafId: number | null;
+  latestVisibleRange: ChartLogicalRange | null;
+  indicatorFlushRafId: number | null;
+  pendingIndicatorMessages: Map<string, IndicatorUpdateMessage>;
+  ohlcSeriesRef: ManagedSeriesApi | null;
+  lastWheelTs: number;
+  wheelSettleTimer: ReturnType<typeof setTimeout> | null;
+  candlesFetchLimit: number;
+  indicatorBatchSize: number;
+  shouldScrollToRealTime: boolean;
+  indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
+  chartSession: ChartSession | null;
+  backtestOverlayTarget: HTMLElement | null;
+  backtestMarkerDetails: Map<string, string>;
+  hoveredBacktestMarker: string | null;
+  measurementPaneElement: HTMLElement | null;
+  activeMeasurement: MeasurementDragState | null;
+}
+
+function isOhlcLegendPoint(value: unknown): value is OhlcLegendPoint {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    ("open" in value || "high" in value || "low" in value || "close" in value)
+  );
+}
+
+export default defineComponent({
   name: "ChartArea",
 
   components: {
+    CloseCircleOutline,
     Indicator,
+    NButton,
+    NIcon,
   },
 
-  mixins: [ChartMixin],
+  props: {
+    interactionMode: {
+      type: String as PropType<ChartInteractionMode>,
+      default: DEFAULT_CHART_INTERACTION_MODE,
+    },
+  },
 
-  data() {
+  data(): ChartAreaData {
     return {
       candlesticksStore: useCandlesticksStore(),
       indicatorsStore: useIndicatorsStore(),
       currentMarketStore: useCurrentMarketStore(),
       currentTimeframeStore: useCurrentTimeframeStore(),
+      backtestOverlayStore: useBacktestOverlayStore(),
+      chartInfrastructure: markRaw(createChartInfrastructure()),
       seriesOptions: {
         priceFormat: {
           type: "price",
-          minMove: null,
-          precision: null,
         },
       },
       crosshairRafId: null,
@@ -63,77 +213,111 @@ export default {
       indicatorFlushRafId: null,
       pendingIndicatorMessages: new Map(),
       ohlcSeriesRef: null,
-      isFetchingCandles: false,
-      lastCandlesHistoryLoadTs: 0,
       lastWheelTs: 0,
       wheelSettleTimer: null,
       candlesFetchLimit: 500,
-      isFetchingIndicators: false,
-      lastIndicatorsHistoryLoadTs: 0,
       indicatorBatchSize: 500,
       shouldScrollToRealTime: false,
-      messageHandler: null,
       indicatorMessageHandler: null,
-      candlesFetchPromise: null,
-      candlesFetchKey: null,
+      chartSession: null,
+      backtestOverlayTarget: null,
+      backtestMarkerDetails: markRaw(new Map()),
+      hoveredBacktestMarker: null,
+      measurementPaneElement: null,
+      activeMeasurement: null,
     };
   },
 
   computed: {
-    currentMarketMinMove() {
+    indicatorManager() {
+      return this.chartInfrastructure.indicatorManager;
+    },
+
+    currentMarketMinMove(): number | null {
       return this.currentMarketStore.min_move;
     },
 
-    currentMarketKey() {
+    currentMarketKey(): string {
       const symbol = this.currentMarketStore.symbol || "";
       const exchange = this.currentMarketStore.exchange || "";
       return `${symbol}|${exchange}`;
     },
+
+    activeBacktestRunTitle(): string {
+      const run = this.backtestOverlayStore.selectedRun;
+      if (!run) {
+        return "";
+      }
+
+      return run.request.strategy.strategy_id;
+    },
+
+    activeBacktestRunContext(): string {
+      const run = this.backtestOverlayStore.selectedRun;
+      if (!run) {
+        return "";
+      }
+
+      const symbol = run.request.symbols[0] ?? "unknown";
+      const market = run.request.exchange ? `${run.request.exchange}:${symbol}` : symbol;
+
+      return `${run.request.timeframe} ${market}`;
+    },
   },
 
   watch: {
-    currentMarketMinMove(newMinMove) {
+    currentMarketMinMove(newMinMove: number | null) {
       if (newMinMove && newMinMove > 0) {
         this.setMinMove(newMinMove);
       }
     },
 
     currentMarketKey: {
-      handler(newKey, oldKey) {
-        this.indicatorsStore.unsubscribeAllLive();
-        this.indicatorsStore.resetHistoryFlags();
+      handler(newKey: string, oldKey: string | undefined) {
         this.shouldScrollToRealTime = true;
-        this.fetchCandlesticks();
 
         if (newKey !== oldKey) {
-          this.subscribeToCandles();
+          this.syncChartSession();
         }
       },
       immediate: true,
     },
 
     "currentTimeframeStore.value": {
-      handler(newTimeframe, oldTimeframe) {
-        this.indicatorsStore.unsubscribeAllLive();
-        this.indicatorsStore.resetHistoryFlags();
+      handler(newTimeframe: string, oldTimeframe: string | undefined) {
         this.shouldScrollToRealTime = true;
-        this.fetchCandlesticks();
 
         if (newTimeframe !== oldTimeframe) {
-          this.subscribeToCandles();
+          this.syncChartSession();
         }
       },
       immediate: true,
     },
+
+    "backtestOverlayStore.selectedRunId"() {
+      this.refreshBacktestMarkers();
+    },
+
+    "backtestOverlayStore.closedTrades"() {
+      this.refreshBacktestMarkers();
+    },
+
+    interactionMode() {
+      this.applyInteractionMode();
+    },
   },
 
-  mounted() {
+  created(): void {
+    this.chartSession = markRaw(createChartSession(this.createChartSessionAdapter()));
+    this.syncChartSession();
+  },
+
+  mounted(): void {
     this.initializeChartComponent();
   },
 
-  beforeUnmount() {
-    this.unsubscribeFromCandles();
-    this.indicatorsStore.unsubscribeAllLive();
+  beforeUnmount(): void {
+    void this.chartSession?.stop();
     if (this.crosshairRafId !== null) {
       cancelAnimationFrame(this.crosshairRafId);
       this.crosshairRafId = null;
@@ -155,27 +339,341 @@ export default {
       clearTimeout(this.wheelSettleTimer);
       this.wheelSettleTimer = null;
     }
-    if (this.$refs.chartContainer) {
-      this.$refs.chartContainer.removeEventListener('wheel', this.onWheelPassive);
+    this.cancelMeasurementOverlay();
+    this.setMeasurementPaneElement(null);
+    const chartContainer = this.getChartContainer();
+    if (chartContainer) {
+      chartContainer.removeEventListener("wheel", this.onWheelPassive);
     }
+    this.indicatorsStore.configureHistoryCoverage(null);
+    this.chartInfrastructure.cleanup();
   },
 
   methods: {
-    async initializeChartComponent() {
+    createChartSessionAdapter(): ChartSessionSubscriptionsAdapter {
+      this.indicatorsStore.configureHistoryCoverage({
+        batchSize: this.indicatorBatchSize,
+        getLoadedCandleRange: () => {
+          const key = this.currentChartSessionKey();
+          return key.timeframe ? this.getIndicatorLoadedCandleRange(key.timeframe) : null;
+        },
+      });
+
+      const indicatorCoverageOptions = (key: ChartSessionKey) => ({
+        batchSize: this.indicatorBatchSize,
+        getLoadedCandleRange: () => this.getIndicatorLoadedCandleRange(key.timeframe),
+      });
+
+      return {
+        subscribeCandles: (key) => wsService.send("subscribeCandles", {
+          symbol: key.symbol,
+          timeframe: key.timeframe,
+        }),
+        unsubscribeCandles: (key) => wsService.send("unsubscribeCandles", {
+          symbol: key.symbol,
+          timeframe: key.timeframe,
+        }),
+        onCandleUpdate: (handler) => {
+          wsService.on("candleUpdate", handler);
+        },
+        offCandleUpdate: (handler) => {
+          wsService.off("candleUpdate", handler);
+        },
+        fetchCandles: (key) => fetchHistoricalCandles(key.symbol, key.timeframe, {
+          limit: this.candlesFetchLimit,
+          exchange: key.exchange,
+        }),
+        renderCandles: (_key, candles) => {
+          this.candlesticksStore.replace(candles);
+          this.renderCandlesticks(this.candlesticksStore.data, {
+            scrollToRealtime: this.shouldScrollToRealTime,
+          });
+        },
+        requestIndicators: (key) => {
+          this.indicatorsStore.requestAllIndicators(
+            key.symbol,
+            key.timeframe,
+            key.exchange,
+            indicatorCoverageOptions(key),
+          );
+        },
+        unsubscribeIndicators: () => this.indicatorsStore.unsubscribeAllLive(),
+        getOldestCandleTimestampMs: () => {
+          return this.candlesticksStore.data[0]?.timestamp_ms ?? null;
+        },
+        fetchOlderCandles: (key, endMs) => fetchHistoricalCandles(key.symbol, key.timeframe, {
+          endMs,
+          limit: this.candlesFetchLimit,
+          exchange: key.exchange,
+        }),
+        prependOlderCandles: (_key, candles) => {
+          this.candlesticksStore.prepend(candles);
+        },
+        renderOlderCandles: (key) => {
+          this.renderCandlesticks(this.candlesticksStore.data);
+          void this.indicatorsStore.ensureCoverageForAll(
+            key.symbol,
+            key.timeframe,
+            key.exchange,
+            indicatorCoverageOptions(key),
+          );
+        },
+        requestOlderIndicators: (key) => {
+          return this.indicatorsStore.ensureCoverageForAll(
+            key.symbol,
+            key.timeframe,
+            key.exchange,
+            indicatorCoverageOptions(key),
+          );
+        },
+        resetIndicatorHistory: () => {
+          this.indicatorsStore.resetHistoryFlags();
+        },
+        reportCandleFetchError: (_key, error) => {
+          console.error('Failed to fetch candlestick data:', error);
+        },
+        reportOlderCandleFetchError: (_key, error) => {
+          console.error('Failed to fetch older candlestick data:', error);
+        },
+        reportOlderIndicatorFetchError: (_key, error) => {
+          console.error('Failed to fetch older indicator data:', error);
+        },
+        reportLiveTailBufferOverflow: (key, candle) => {
+          console.error('Live candle tail buffer overflow; refetching chart session.', {
+            candle,
+            key,
+          });
+        },
+        reportSubscriptionError: (operation, _key, error) => {
+          console.error(`Failed to ${operation} candle subscription:`, error);
+        },
+      };
+    },
+
+    initializeChartComponent(): void {
+      this.chartInfrastructure.init(this.getChartContainer());
+      void this.syncBacktestOverlayTarget();
       this.subscribeCrosshairMove(this.onCrosshairMove);
       this.subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChange);
-      if (this.$refs.chartContainer) {
-        this.$refs.chartContainer.addEventListener('wheel', this.onWheelPassive, { passive: true });
+      const chartContainer = this.getChartContainer();
+      if (chartContainer) {
+        chartContainer.addEventListener("wheel", this.onWheelPassive, { passive: true });
       }
+      this.applyInteractionMode();
       this.indicatorMessageHandler = (message) => {
         if (!message?.clientIndicatorId) return;
         this.pendingIndicatorMessages.set(message.clientIndicatorId, message);
         this.scheduleIndicatorFlush();
       };
-      wsService.on('indicatorUpdate', this.indicatorMessageHandler);
+      wsService.on("indicatorUpdate", this.indicatorMessageHandler);
     },
 
-    onWheelPassive() {
+    getChartContainer(): HTMLElement | null {
+      const chartContainer = this.$refs.chartContainer;
+      return chartContainer instanceof HTMLElement ? chartContainer : null;
+    },
+
+    setMeasurementPaneElement(paneElement: HTMLElement | null): void {
+      if (this.measurementPaneElement === paneElement) {
+        return;
+      }
+
+      if (this.measurementPaneElement) {
+        this.measurementPaneElement.removeEventListener(
+          "pointerdown",
+          this.onMeasurementPointerDown,
+          true,
+        );
+      }
+
+      this.measurementPaneElement = paneElement;
+
+      if (paneElement) {
+        paneElement.addEventListener("pointerdown", this.onMeasurementPointerDown, {
+          capture: true,
+        });
+      }
+    },
+
+    applyInteractionMode(): void {
+      this.chartInfrastructure.setMouseDragScrollEnabled(this.interactionMode !== 'measure');
+
+      if (this.interactionMode !== 'measure') {
+        this.cancelMeasurementOverlay();
+      }
+    },
+
+    onMeasurementPointerDown(event: PointerEvent): void {
+      if (!this.canStartMeasurement(event)) {
+        return;
+      }
+
+      const endpoint = this.resolveMeasurementEndpoint(event);
+      if (!endpoint) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      this.activeMeasurement = {
+        anchorPrice: endpoint.price,
+        anchorLogical: endpoint.logical,
+        minMove: this.currentMarketMinMove ?? 0,
+      };
+      this.addMeasurementWindowListeners();
+      this.updateMeasurementOverlay(endpoint);
+    },
+
+    onMeasurementPointerMove(event: PointerEvent): void {
+      if (!this.activeMeasurement) {
+        return;
+      }
+
+      if (event.buttons !== 1) {
+        this.cancelMeasurementOverlay();
+        return;
+      }
+
+      const endpoint = this.resolveMeasurementEndpoint(event);
+      if (endpoint) {
+        this.updateMeasurementOverlay(endpoint);
+      }
+    },
+
+    onMeasurementPointerRelease(): void {
+      this.cancelMeasurementOverlay();
+    },
+
+    onMeasurementKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        this.cancelMeasurementOverlay();
+      }
+    },
+
+    onMeasurementWindowBlur(): void {
+      this.cancelMeasurementOverlay();
+    },
+
+    canStartMeasurement(event: PointerEvent): boolean {
+      return (
+        this.interactionMode === 'measure' &&
+        event.button === 0 &&
+        event.buttons === 1 &&
+        this.activeMeasurement === null &&
+        this.candlesticksStore.data.length > 0 &&
+        this.ohlcSeriesRef !== null &&
+        this.measurementPaneElement !== null
+      );
+    },
+
+    resolveMeasurementEndpoint(event: PointerEvent): MeasurementEndpoint | null {
+      const paneElement = this.measurementPaneElement;
+      if (!paneElement) {
+        return null;
+      }
+
+      const paneRect = paneElement.getBoundingClientRect();
+      const x = event.clientX - paneRect.left;
+      const y = event.clientY - paneRect.top;
+      const price = this.chartInfrastructure.coordinateToCandlestickPrice(y);
+      const logical = this.chartInfrastructure.coordinateToLogical(x);
+
+      if (
+        price === null ||
+        logical === null ||
+        !Number.isFinite(price) ||
+        !Number.isFinite(logical)
+      ) {
+        return null;
+      }
+
+      return { price, logical };
+    },
+
+    updateMeasurementOverlay(endpoint: MeasurementEndpoint): void {
+      const measurement = this.activeMeasurement;
+      if (!measurement) {
+        return;
+      }
+
+      this.chartInfrastructure.setCandlestickMeasurementOverlay(
+        buildMeasurementOverlayModel({
+          anchorPrice: measurement.anchorPrice,
+          endpointPrice: endpoint.price,
+          anchorLogical: measurement.anchorLogical,
+          endpointLogical: endpoint.logical,
+          minMove: measurement.minMove,
+        }),
+      );
+    },
+
+    addMeasurementWindowListeners(): void {
+      window.addEventListener("pointermove", this.onMeasurementPointerMove);
+      window.addEventListener("pointerup", this.onMeasurementPointerRelease);
+      window.addEventListener("pointercancel", this.onMeasurementPointerRelease);
+      window.addEventListener("keydown", this.onMeasurementKeyDown);
+      window.addEventListener("blur", this.onMeasurementWindowBlur);
+    },
+
+    removeMeasurementWindowListeners(): void {
+      window.removeEventListener("pointermove", this.onMeasurementPointerMove);
+      window.removeEventListener("pointerup", this.onMeasurementPointerRelease);
+      window.removeEventListener("pointercancel", this.onMeasurementPointerRelease);
+      window.removeEventListener("keydown", this.onMeasurementKeyDown);
+      window.removeEventListener("blur", this.onMeasurementWindowBlur);
+    },
+
+    cancelMeasurementOverlay(): void {
+      if (!this.activeMeasurement) {
+        return;
+      }
+
+      this.activeMeasurement = null;
+      this.removeMeasurementWindowListeners();
+      this.chartInfrastructure.clearCandlestickMeasurementOverlay();
+    },
+
+    getSeries() {
+      return this.chartInfrastructure.getSeries();
+    },
+
+    async syncBacktestOverlayTarget(): Promise<void> {
+      const paneHtmlElement = await this.chartInfrastructure.chartManager.getPaneHtmlElement(0);
+      this.setMeasurementPaneElement(paneHtmlElement);
+      this.backtestOverlayTarget = paneHtmlElement
+        ? getOrCreatePaneOverlayWrapper(paneHtmlElement)
+        : null;
+    },
+
+    addCandlestickData(
+      data: readonly ChartCandle[],
+      seriesOptions: CandlestickSeriesPartialOptions = {},
+    ): ManagedSeriesApi | null {
+      return this.chartInfrastructure.addCandlestickData(data, seriesOptions);
+    },
+
+    updateCandlestick(candle: ChartOhlcPoint): boolean {
+      return this.chartInfrastructure.updateCandlestick(candle);
+    },
+
+    setMinMove(minMove: number): boolean {
+      return this.chartInfrastructure.setMinMove(minMove);
+    },
+
+    subscribeCrosshairMove(callback: (param: MouseEventParams<Time>) => void): void {
+      this.chartInfrastructure.subscribeCrosshairMove(callback);
+    },
+
+    subscribeVisibleLogicalRangeChange(callback: (range: ChartLogicalRange | null) => void): void {
+      this.chartInfrastructure.subscribeVisibleLogicalRangeChange(callback);
+    },
+
+    scrollToRealTime(): void {
+      this.chartInfrastructure.scrollToRealTime();
+    },
+
+    onWheelPassive(): void {
       this.lastWheelTs = performance.now();
       if (this.wheelSettleTimer !== null) {
         clearTimeout(this.wheelSettleTimer);
@@ -188,7 +686,7 @@ export default {
       }, WHEEL_SETTLE_MS + 20);
     },
 
-    scheduleIndicatorFlush() {
+    scheduleIndicatorFlush(): void {
       if (this.indicatorFlushRafId !== null) return;
       this.indicatorFlushRafId = requestAnimationFrame(() => {
         this.indicatorFlushRafId = null;
@@ -196,7 +694,7 @@ export default {
       });
     },
 
-    flushIndicatorUpdates() {
+    flushIndicatorUpdates(): void {
       if (this.pendingIndicatorMessages.size === 0) return;
 
       for (const [indicatorId, message] of this.pendingIndicatorMessages.entries()) {
@@ -207,42 +705,36 @@ export default {
       this.pendingIndicatorMessages.clear();
     },
 
-    async fetchCandlesticks() {
-      if (!this.currentMarketStore.symbol) return;
-
-      const symbol = this.currentMarketStore.symbol;
-      const exchange = this.currentMarketStore.exchange;
-      const timeframe = this.currentTimeframeStore.value;
-      const fetchKey = `${symbol}:${exchange || ""}:${timeframe}:${this.candlesFetchLimit}`;
-
-      if (this.candlesFetchPromise && this.candlesFetchKey === fetchKey) {
-        await this.candlesFetchPromise;
-        return;
-      }
-
-      this.candlesFetchKey = fetchKey;
-      this.candlesFetchPromise = (async () => {
-        await this.candlesticksStore.fetch(symbol, timeframe, {
-          limit: this.candlesFetchLimit,
-          exchange: exchange,
-        });
-        this.renderCandlesticks(this.candlesticksStore.data, { scrollToRealtime: this.shouldScrollToRealTime });
-        this.indicatorsStore.requestAllIndicators(symbol, timeframe, exchange);
-      })();
-
-      try {
-        await this.candlesFetchPromise;
-      } finally {
-        if (this.candlesFetchKey === fetchKey) {
-          this.candlesFetchPromise = null;
-        }
-      }
+    currentChartSessionKey(): ChartSessionKeyInput {
+      return {
+        symbol: this.currentMarketStore.symbol,
+        exchange: this.currentMarketStore.exchange,
+        timeframe: this.currentTimeframeStore.value,
+      };
     },
 
-    renderCandlesticks(data, { scrollToRealtime = false } = {}) {
-      this.seriesOptions.priceFormat.minMove = this.currentMarketMinMove;
-      this.seriesOptions.priceFormat.precision = Math.log10(1 / this.currentMarketMinMove);
+    syncChartSession(): void {
+      void this.chartSession?.setSession(this.currentChartSessionKey(), (message) => {
+        this.updateCurrentCandle(message);
+      });
+    },
+
+    renderCandlesticks(
+      data: readonly ChartCandle[],
+      { scrollToRealtime = false }: RenderCandlestickOptions = {},
+    ): void {
+      const minMove = this.currentMarketMinMove;
+      if (minMove && minMove > 0) {
+        this.seriesOptions.priceFormat = {
+          type: "price",
+          minMove,
+          precision: Math.log10(1 / minMove),
+        };
+      }
+
       this.ohlcSeriesRef = this.addCandlestickData(data, this.seriesOptions);
+      void this.syncBacktestOverlayTarget();
+      this.refreshBacktestMarkers();
 
       if (scrollToRealtime) {
         this.scrollToRealTime();
@@ -252,53 +744,7 @@ export default {
       }
     },
 
-    async subscribeToCandles() {
-      this.unsubscribeFromCandles();
-
-      const symbol = this.currentMarketStore.symbol;
-      const timeframe = this.currentTimeframeStore.value;
-
-      if (!symbol || timeframe === null) return;
-
-      this.messageHandler = (message) => {
-        if (message.symbol !== symbol) {
-          return;
-        }
-
-        if (message.timeframe === timeframe) {
-          this.updateCurrentCandle(message);
-          return;
-        }
-
-        if (message.timeframe === 'M1') {
-          this.updateCurrentCandleFromM1(message);
-        }
-      };
-
-      wsService.on('candleUpdate', this.messageHandler);
-
-      try {
-        await wsService.send('subscribeCandles', { symbol, timeframe });
-      } catch (error) {
-        console.error('Failed to subscribe:', error);
-      }
-    },
-
-    async unsubscribeFromCandles() {
-      if (this.messageHandler) {
-        wsService.off('candleUpdate', this.messageHandler);
-        this.messageHandler = null;
-      }
-
-      const symbol = this.currentMarketStore.symbol;
-      const timeframe = this.currentTimeframeStore.value;
-
-      if (symbol && timeframe !== null) {
-        await wsService.send('unsubscribeCandles', { symbol, timeframe });
-      }
-    },
-
-    updateCurrentCandle(candle) {
+    updateCurrentCandle(candle: CandleUpdateMessage): void {
       this.candlesticksStore.updateCandle(candle);
       this.updateCandlestick({
         timestamp_ms: candle.timestamp_ms,
@@ -307,53 +753,68 @@ export default {
         high: candle.high,
         low: candle.low,
         close: candle.close,
+        volume: candle.volume,
       });
+      this.refreshBacktestMarkers();
     },
 
-    updateCurrentCandleFromM1(m1Candle) {
-      if (!this.candlesticksStore.data || this.candlesticksStore.data.length === 0) {
+    getBacktestLoadedCandleRange(): LoadedCandleRange | null {
+      if (this.candlesticksStore.data.length === 0) {
+        return null;
+      }
+
+      let startMs = Number.POSITIVE_INFINITY;
+      let endMs = Number.NEGATIVE_INFINITY;
+
+      for (const candle of this.candlesticksStore.data) {
+        startMs = Math.min(startMs, candle.timestamp_ms);
+        endMs = Math.max(endMs, candle.timestamp_ms);
+      }
+
+      return { startMs, endMs };
+    },
+
+    refreshBacktestMarkers(): void {
+      this.hoveredBacktestMarker = null;
+      this.backtestMarkerDetails.clear();
+      const range = this.getBacktestLoadedCandleRange();
+
+      if (!this.backtestOverlayStore.selectedRun || !range) {
+        this.chartInfrastructure.setCandlestickMarkers([]);
+        this.chartInfrastructure.setCandlestickProtectiveLines([]);
         return;
       }
 
-      const timeframeMinutes = timeframeToMinutes(this.currentTimeframeStore.value);
-      const timeframeMs = timeframeMinutes * 60 * 1000;
-      const bucketTimestampMs = Math.floor(m1Candle.timestamp_ms / timeframeMs) * timeframeMs;
-      const candleTimeSeconds = Math.floor(bucketTimestampMs / 1000);
-
-      const lastCandle = this.candlesticksStore.data[this.candlesticksStore.data.length - 1];
-
-      let updatedCandle;
-
-      if (lastCandle.timestamp_ms === bucketTimestampMs) {
-        updatedCandle = {
-          timestamp_ms: bucketTimestampMs,
-          time: candleTimeSeconds,
-          open: lastCandle.open,
-          high: Math.max(lastCandle.high, m1Candle.high),
-          low: Math.min(lastCandle.low, m1Candle.low),
-          close: m1Candle.close,
-        };
-        this.candlesticksStore.data[this.candlesticksStore.data.length - 1] = updatedCandle;
-      } else if (bucketTimestampMs > lastCandle.timestamp_ms) {
-        updatedCandle = {
-          timestamp_ms: bucketTimestampMs,
-          time: candleTimeSeconds,
-          open: m1Candle.open,
-          high: m1Candle.high,
-          low: m1Candle.low,
-          close: m1Candle.close,
-        };
-        this.candlesticksStore.data.push(updatedCandle);
-      } else {
-        return;
+      const trades = this.backtestOverlayStore.getClosedTradesForRange(range.startMs, range.endMs);
+      for (const trade of trades) {
+        for (const kind of ['entry', 'exit'] as const) {
+          this.backtestMarkerDetails.set(
+            `${trade.trade_id}:${kind}`,
+            formatBacktestMarkerDetails(trade, kind, this.currentMarketMinMove),
+          );
+        }
       }
-
-      this.updateCandlestick(updatedCandle);
+      this.chartInfrastructure.setCandlestickMarkers(
+        buildBacktestTradeMarkers(trades, range, this.currentMarketMinMove),
+      );
+      this.chartInfrastructure.setCandlestickProtectiveLines(
+        buildBacktestProtectiveLineSegments(trades),
+      );
     },
 
-    onCrosshairMove(param) {
+    removeBacktestOverlay(): void {
+      this.backtestOverlayStore.clearOverlay();
+      this.refreshBacktestMarkers();
+    },
+
+    onCrosshairMove(param: MouseEventParams<Time>): void {
       try {
         const validCrosshairPoint = this.isValidCrosshairPoint(param);
+        this.hoveredBacktestMarker = validCrosshairPoint &&
+          (param.paneIndex === undefined || param.paneIndex === 0) &&
+          typeof param.hoveredObjectId === 'string'
+          ? this.backtestMarkerDetails.get(param.hoveredObjectId) ?? null
+          : null;
         if (!validCrosshairPoint) {
           return;
         }
@@ -367,7 +828,7 @@ export default {
           if (!current) return;
 
           const bar = this.ohlcSeriesRef ? current.seriesData.get(this.ohlcSeriesRef) : null;
-          if (!bar) return;
+          if (!isOhlcLegendPoint(bar)) return;
 
           this.updateLegend(bar);
         });
@@ -376,15 +837,22 @@ export default {
       }
     },
 
-    updateLegend(bar) {
-      if (this.$refs.legendOpen) this.$refs.legendOpen.textContent = String(bar.open ?? "-");
-      if (this.$refs.legendHigh) this.$refs.legendHigh.textContent = String(bar.high ?? "-");
-      if (this.$refs.legendLow) this.$refs.legendLow.textContent = String(bar.low ?? "-");
-      if (this.$refs.legendClose) this.$refs.legendClose.textContent = String(bar.close ?? "-");
+    updateLegend(bar: OhlcLegendPoint): void {
+      if (this.$refs.legendOpen instanceof HTMLElement) {
+        this.$refs.legendOpen.textContent = String(bar.open ?? "-");
+      }
+      if (this.$refs.legendHigh instanceof HTMLElement) {
+        this.$refs.legendHigh.textContent = String(bar.high ?? "-");
+      }
+      if (this.$refs.legendLow instanceof HTMLElement) {
+        this.$refs.legendLow.textContent = String(bar.low ?? "-");
+      }
+      if (this.$refs.legendClose instanceof HTMLElement) {
+        this.$refs.legendClose.textContent = String(bar.close ?? "-");
+      }
     },
 
-    onVisibleLogicalRangeChange(newVisibleLogicalRange) {
-      if (this.shouldScrollToRealTime) return;
+    onVisibleLogicalRangeChange(newVisibleLogicalRange: ChartLogicalRange | null): void {
       this.latestVisibleRange = newVisibleLogicalRange;
       if (this.visibleRangeRafId !== null) return;
 
@@ -403,69 +871,21 @@ export default {
           return;
         }
 
-        if (
-          barsInfo.barsBefore < 100 &&
-          !this.isFetchingCandles &&
-          (now - this.lastCandlesHistoryLoadTs) >= HISTORY_LOAD_COOLDOWN_MS
-        ) {
-          this.lastCandlesHistoryLoadTs = now;
-          this.isFetchingCandles = true;
-          this.loadMoreBars();
-        }
-
-        if (
-          barsInfo.barsBefore < 100 &&
-          !this.isFetchingIndicators &&
-          (now - this.lastIndicatorsHistoryLoadTs) >= HISTORY_LOAD_COOLDOWN_MS
-        ) {
-          this.lastIndicatorsHistoryLoadTs = now;
-          this.isFetchingIndicators = true;
-          this.loadMoreIndicatorHistory();
-        }
+        this.chartSession?.requestOlderHistory({
+          barsBefore: barsInfo.barsBefore,
+          nowMs: now,
+          scrollToRealtime: this.shouldScrollToRealTime,
+        });
       });
     },
 
-    async loadMoreBars() {
-      const symbol = this.currentMarketStore.symbol;
-      const exchange = this.currentMarketStore.exchange;
-      const timeframe = this.currentTimeframeStore.value;
-      if (!this.candlesticksStore.data.length) {
-        this.isFetchingCandles = false;
-        return;
-      }
-      const firstBarTimestampMs = this.candlesticksStore.data[0].timestamp_ms;
-
-      await this.candlesticksStore.fetch(symbol, timeframe, {
-        endMs: firstBarTimestampMs,
-        limit: this.candlesFetchLimit,
-        append: true,
-        exchange: exchange,
-      });
-      this.renderCandlesticks(this.candlesticksStore.data);
-      this.isFetchingCandles = false;
-    },
-
-    async loadMoreIndicatorHistory() {
-      const symbol = this.currentMarketStore.symbol;
-      const exchange = this.currentMarketStore.exchange;
-      const timeframe = this.currentTimeframeStore.value;
-
-      try {
-        await this.indicatorsStore.fetchOlderForAll(
-          symbol,
-          timeframe,
-          exchange,
-          this.indicatorBatchSize,
-        );
-      } finally {
-        this.isFetchingIndicators = false;
-      }
-    },
-
-    isValidCrosshairPoint(param) {
+    isValidCrosshairPoint(
+      param: MouseEventParams<Time> | undefined,
+    ): param is MouseEventParams<Time> & { time: Time; point: Point } {
       return (
         param !== undefined &&
         param.time !== undefined &&
+        param.point !== undefined &&
         param.point.x >= 0 &&
         param.point.y >= 0
       );
@@ -474,8 +894,20 @@ export default {
     getAllIndicators() {
       return this.indicatorsStore.all;
     },
+
+    getIndicatorLoadedCandleRange(timeframe: string) {
+      const firstCandle = this.candlesticksStore.data[0];
+      const lastCandle = this.candlesticksStore.data[this.candlesticksStore.data.length - 1];
+      if (!firstCandle || !lastCandle) return null;
+
+      return {
+        oldestTimestampMs: firstCandle.timestamp_ms,
+        newestTimestampMs: lastCandle.timestamp_ms,
+        exclusiveEndMs: lastCandle.timestamp_ms + timeframeToMinutes(timeframe) * 60_000,
+      };
+    },
   },
-};
+});
 </script>
 
 <style scoped>
@@ -488,6 +920,78 @@ export default {
 .chart-container {
   width: 100%;
   height: 100%;
+}
+
+.chart-container--measure-mode,
+.chart-container--measure-mode :deep(*) {
+  cursor: crosshair;
+}
+
+.backtest-overlay-container {
+  margin-bottom: 8px;
+}
+
+.backtest-marker-legend,
+.backtest-marker-details {
+  padding: 6px 12px;
+  color: #cbd5e1;
+  font-size: 12px;
+  background: rgba(19, 23, 34, 0.95);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.backtest-marker-details {
+  margin-top: 4px;
+  color: #f8fafc;
+}
+
+.backtest-overlay-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 300px;
+  width: min(350px, calc(100vw - 20px));
+  max-width: 100%;
+  padding: 8px 12px;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.3;
+  background: rgba(19, 23, 34, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+}
+
+.backtest-overlay-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  flex: 1 1 auto;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.backtest-overlay-title {
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.backtest-overlay-context {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  color: #cbd5e1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backtest-overlay-remove {
+  flex: 0 0 auto;
+  color: #f8fafc;
+}
+
+.backtest-overlay-remove:hover {
+  color: #e98b8b;
 }
 
 .legend {

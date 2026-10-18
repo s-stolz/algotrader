@@ -22,73 +22,54 @@
       </div>
       <template v-if="$slots.footer">
         <hr class="separator" />
+        <footer class="modal-footer">
+          <slot name="footer"></slot>
+        </footer>
       </template>
-      <footer class="modal-footer">
-        <slot name="footer"></slot>
-      </footer>
     </div>
   </div>
 </template>
 
-<script>
-import { useModalStore } from "@/stores/modalStore";
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { NButton, NIcon } from 'naive-ui';
 
-import { NButton, NIcon } from "naive-ui";
-import { CloseCircleOutline } from "@/icons";
+import { CloseCircleOutline } from '@/icons';
+import { useModalStore } from '@/stores/modalStore';
 
-export default {
-  name: "BaseModal",
+defineOptions({
+  name: 'BaseModal',
+});
 
-  components: {
-    NButton,
-    NIcon,
-    CloseCircleOutline,
-  },
+const props = withDefaults(defineProps<{
+  closeOnBackdrop?: boolean;
+  modalId: string;
+  title?: string;
+}>(), {
+  closeOnBackdrop: true,
+  title: 'Modal Title',
+});
 
-  props: {
-    modalId: {
-      type: String,
-      required: true,
-    },
-    title: {
-      type: String,
-      default: "Modal Title",
-    },
-    closeOnBackdrop: {
-      type: Boolean,
-      default: true,
-    },
-  },
+const modalStore = useModalStore();
+const isMouseDownInside = ref(false);
+const isModalOpen = computed(() => modalStore.isModalOpen(props.modalId));
 
-  data() {
-    return {
-      isMouseDownInside: false,
-      modalStore: useModalStore(),
-    };
-  },
+function close(): void {
+  modalStore.closeModal();
+}
 
-  computed: {
-    isModalOpen() {
-      return this.modalStore.isModalOpen(this.modalId);
-    },
-  },
+function onMouseDown(event: MouseEvent): void {
+  const target = event.target instanceof Element ? event.target : null;
+  isMouseDownInside.value = target?.closest('.modal') !== null;
+}
 
-  methods: {
-    close() {
-      this.modalStore.closeModal();
-    },
-    onMouseDown(event) {
-      this.isMouseDownInside = event.target.closest(".modal") !== null;
-    },
-    onMouseUp() {
-      if (!this.isMouseDownInside && this.closeOnBackdrop) {
-        this.close();
-      }
-    },
-  },
+function onMouseUp(): void {
+  if (!isMouseDownInside.value && props.closeOnBackdrop) {
+    close();
+  }
+}
 
-  expose: ["close"],
-};
+defineExpose({ close });
 </script>
 
 <style scoped>
@@ -107,12 +88,13 @@ export default {
 
 .modal {
   position: relative;
-  background: #131722;
+  background: var(--surface-panel);
   border-radius: 15px;
-  border: 3px solid rgb(13, 14, 16);
+  border: 1px solid var(--surface-border);
   max-width: 550px;
   width: 100%;
   padding: 0;
+  overflow: hidden;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
@@ -137,8 +119,12 @@ export default {
 .modal .separator {
   border: none;
   height: 1px;
-  background-color: #ddd;
+  background-color: var(--surface-border);
   margin: 0;
+}
+
+.modal :deep(.separator) {
+  background-color: var(--surface-border);
 }
 
 .modal-footer {

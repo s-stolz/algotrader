@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import math
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,7 @@ except ImportError as exc:  # pragma: no cover
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TOPOLOGY_PATH = ROOT_DIR / "config" / "topology.yaml"
+LOCAL_TOPOLOGY_PATH = ROOT_DIR / "config" / "topology.local.yaml"
 SECRETS_PATH = ROOT_DIR / "config" / ".env.secrets.local"
 OUTPUT_SHARED_PATH = ROOT_DIR / "config" / ".env.shared"
 OUTPUT_DB_SECRETS_PATH = ROOT_DIR / "config" / ".env.secrets.db"
@@ -32,6 +35,18 @@ REQUIRED_SECRETS = (
     "CTRADER_HOST_TYPE",
     "ACCOUNT_ID",
 )
+DOCKER_RESOURCE_PATHS = {
+    "database_accessor_api": "services.database_accessor_api.resources",
+    "indicator_api": "services.indicator_api.resources",
+    "backtester_api": "services.backtester.api.resources",
+    "broker_service": "services.broker_service.resources",
+    "webserver": "services.webserver.resources",
+    "frontend": "services.frontend.resources",
+    "backtester_worker": "services.backtester.worker.resources",
+    "ingestion_service": "services.ingestion_service.resources",
+    "redis": "infrastructure.redis.resources",
+    "timescaledb": "infrastructure.timescaledb.resources",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,7 +54,8 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Generate config/.env.shared, config/.env.secrets.db, "
             "config/.env.secrets.runtime, and config/.env.secrets.broker "
-            "from config/topology.yaml and config/.env.secrets.local"
+            "from config/topology.yaml, optional config/topology.local.yaml, "
+            "and config/.env.secrets.local"
         ),
     )
     parser.add_argument(
@@ -63,6 +79,61 @@ def read_yaml(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("Topology root must be a mapping")
     return data
+
+
+def load_topology(
+    path: Path = TOPOLOGY_PATH,
+    local_path: Path = LOCAL_TOPOLOGY_PATH,
+) -> dict[str, Any]:
+    """Load shared defaults and optional partial machine overrides."""
+    topology = read_yaml(path)
+    if local_path.exists():
+        merge_topology(topology, read_yaml(local_path))
+    return topology
+
+
+def merge_topology(topology: dict[str, Any], overrides: dict[str, Any], prefix: str = "") -> None:
+    """Merge known fields recursively, preserving explicit null overrides."""
+    for key, value in overrides.items():
+        field = f"{prefix}.{key}" if prefix else key
+        if key not in topology:
+            raise ValueError(f"Unknown local topology key: {field}")
+        if isinstance(topology[key], dict):
+            if not isinstance(value, dict):
+                raise ValueError(f"{field} must be a mapping")
+            merge_topology(topology[key], value, field)
+        else:
+            if isinstance(value, (dict, list)):
+                raise ValueError(f"{field} must be a scalar value")
+            topology[key] = value
+
+
+def build_history_env(topology: dict[str, Any]) -> dict[str, str]:
+    """Validate the mutually exclusive ingestion history options."""
+    days = required(topology, "services.ingestion_service.history.lookback_days")
+    start = required(topology, "services.ingestion_service.history.start_date")
+    if (days is None) == (start is None):
+        raise ValueError("Ingestion history requires exactly one of lookback_days or start_date")
+    if days is not None:
+        if type(days) is not int or days <= 0:
+            raise ValueError("history.lookback_days must be a positive integer")
+        try:
+            datetime.now(timezone.utc) - timedelta(days=days)
+        except OverflowError as exc:
+            raise ValueError("history.lookback_days exceeds the supported date range") from exc
+    if start is not None:
+        if not isinstance(start, str):
+            raise ValueError("history.start_date must be a quoted YYYY-MM-DD string")
+        try:
+            parsed = date.fromisoformat(start)
+        except ValueError as exc:
+            raise ValueError("history.start_date must use YYYY-MM-DD") from exc
+        if parsed.isoformat() != start or parsed > datetime.now(timezone.utc).date():
+            raise ValueError("history.start_date must use YYYY-MM-DD and cannot be in the future")
+    return {
+        "INGESTION_HISTORY_LOOKBACK_DAYS": stringify(days),
+        "INGESTION_HISTORY_START_DATE": stringify(start),
+    }
 
 
 def read_env(path: Path) -> dict[str, str]:
@@ -98,72 +169,129 @@ def stringify(value: Any) -> str:
     return str(value)
 
 
+def build_docker_resource_env(topology: dict[str, Any]) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for service, path in DOCKER_RESOURCE_PATHS.items():
+        cpus = required(topology, f"{path}.cpus")
+        memory_mb = required(topology, f"{path}.memory_reservation_mb")
+        if type(cpus) not in (int, float) or not math.isfinite(cpus) or cpus <= 0:
+            raise ValueError(f"{path}.cpus must be a finite positive number")
+        if type(memory_mb) is not int or memory_mb <= 0:
+            raise ValueError(f"{path}.memory_reservation_mb must be a positive integer")
+        prefix = f"COMPOSE_{service.upper()}"
+        env[f"{prefix}_CPUS"] = stringify(cpus)
+        env[f"{prefix}_MEMORY_RESERVATION"] = f"{memory_mb}m"
+    return env
+
+
 def build_env(
     topology: dict[str, Any],
     secrets: dict[str, str],
 ) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    history_env = build_history_env(topology)
     mode = required(topology, "mode")
     public_host = required(topology, "public.host")
 
-    db_api_host = required(topology, "services.database_accessor_api.host")
-    db_api_port = required(topology, "services.database_accessor_api.port")
-    db_api_published_port = required(topology, "services.database_accessor_api.published_port")
-    db_api_log_level = required(topology, "services.database_accessor_api.log_level")
-    db_api_log_format = required(topology, "services.database_accessor_api.log_format")
+    db_api_host = required(topology, "services.database_accessor_api.network.host")
+    db_api_port = required(topology, "services.database_accessor_api.network.port")
+    db_api_published_port = required(
+        topology, "services.database_accessor_api.network.published_port"
+    )
+    db_api_log_level = required(topology, "services.database_accessor_api.logging.level")
+    db_api_log_format = required(topology, "services.database_accessor_api.logging.format")
 
-    indicator_host = required(topology, "services.indicator_api.host")
-    indicator_port = required(topology, "services.indicator_api.port")
-    indicator_published_port = required(topology, "services.indicator_api.published_port")
-    indicator_log_level = required(topology, "services.indicator_api.log_level")
-    indicator_log_format = required(topology, "services.indicator_api.log_format")
+    indicator_host = required(topology, "services.indicator_api.network.host")
+    indicator_port = required(topology, "services.indicator_api.network.port")
+    indicator_published_port = required(topology, "services.indicator_api.network.published_port")
+    indicator_log_level = required(topology, "services.indicator_api.logging.level")
+    indicator_log_format = required(topology, "services.indicator_api.logging.format")
 
-    broker_host = required(topology, "services.broker_service.host")
-    broker_port = required(topology, "services.broker_service.port")
-    broker_published_port = required(topology, "services.broker_service.published_port")
-    broker_log_level = required(topology, "services.broker_service.log_level")
-    broker_log_format = required(topology, "services.broker_service.log_format")
+    backtester_host = required(topology, "services.backtester.api.network.host")
+    backtester_port = required(topology, "services.backtester.api.network.port")
+    backtester_published_port = required(topology, "services.backtester.api.network.published_port")
+    backtester_log_level = required(topology, "services.backtester.logging.level")
+    backtester_log_format = required(topology, "services.backtester.logging.format")
 
-    webserver_host = required(topology, "services.webserver.host")
-    webserver_ws_port = required(topology, "services.webserver.ws_port")
-    webserver_ws_published_port = required(topology, "services.webserver.ws_published_port")
-    webserver_health_port = required(topology, "services.webserver.health_port")
-    webserver_health_published_port = required(topology, "services.webserver.health_published_port")
-    webserver_log_level = required(topology, "services.webserver.log_level")
-    webserver_log_format = required(topology, "services.webserver.log_format")
+    broker_host = required(topology, "services.broker_service.network.host")
+    broker_port = required(topology, "services.broker_service.network.port")
+    broker_published_port = required(topology, "services.broker_service.network.published_port")
+    broker_log_level = required(topology, "services.broker_service.logging.level")
+    broker_log_format = required(topology, "services.broker_service.logging.format")
 
-    frontend_host = required(topology, "services.frontend.host")
-    frontend_port = required(topology, "services.frontend.port")
-    frontend_published_port = required(topology, "services.frontend.published_port")
+    webserver_host = required(topology, "services.webserver.network.host")
+    webserver_ws_port = required(topology, "services.webserver.network.websocket.port")
+    webserver_ws_published_port = required(
+        topology, "services.webserver.network.websocket.published_port"
+    )
+    webserver_health_port = required(topology, "services.webserver.network.health.port")
+    webserver_health_published_port = required(
+        topology, "services.webserver.network.health.published_port"
+    )
+    webserver_log_level = required(topology, "services.webserver.logging.level")
+    webserver_log_format = required(topology, "services.webserver.logging.format")
 
-    redis_host = required(topology, "infrastructure.redis.host")
-    redis_port = required(topology, "infrastructure.redis.port")
-    redis_published_port = required(topology, "infrastructure.redis.published_port")
-    redis_db = required(topology, "infrastructure.redis.db")
+    frontend_host = required(topology, "services.frontend.network.host")
+    frontend_port = required(topology, "services.frontend.network.port")
+    frontend_published_port = required(topology, "services.frontend.network.published_port")
 
-    timescaledb_host = required(topology, "infrastructure.timescaledb.host")
-    timescaledb_port = required(topology, "infrastructure.timescaledb.port")
-    timescaledb_published_port = required(topology, "infrastructure.timescaledb.published_port")
-    timescaledb_user = required(topology, "infrastructure.timescaledb.user")
-    timescaledb_db = required(topology, "infrastructure.timescaledb.database")
-    timescaledb_echo = required(topology, "infrastructure.timescaledb.echo")
+    redis_host = required(topology, "infrastructure.redis.network.host")
+    redis_port = required(topology, "infrastructure.redis.network.port")
+    redis_published_port = required(topology, "infrastructure.redis.network.published_port")
+    redis_db = required(topology, "infrastructure.redis.database")
 
-    webserver_redis_block_ms = required(topology, "webserver.redis_block_ms")
-    webserver_redis_batch_size = required(topology, "webserver.redis_batch_size")
-    webserver_stream_queue_size = required(topology, "webserver.stream_queue_size")
-    webserver_max_stream_length = required(topology, "webserver.max_stream_length")
+    timescaledb_host = required(topology, "infrastructure.timescaledb.network.host")
+    timescaledb_port = required(topology, "infrastructure.timescaledb.network.port")
+    timescaledb_published_port = required(
+        topology, "infrastructure.timescaledb.network.published_port"
+    )
+    timescaledb_user = required(topology, "infrastructure.timescaledb.database.user")
+    timescaledb_db = required(topology, "infrastructure.timescaledb.database.name")
+    timescaledb_echo = required(topology, "infrastructure.timescaledb.database.echo")
 
-    ingestion_log_level = required(topology, "ingestion.log_level")
-    ingestion_log_format = required(topology, "ingestion.log_format")
-    ingestion_batch_size = required(topology, "ingestion.consumer_batch_size")
-    ingestion_block_ms = required(topology, "ingestion.consumer_block_ms")
+    webserver_redis_block_ms = required(topology, "services.webserver.consumer.block_ms")
+    webserver_redis_batch_size = required(topology, "services.webserver.consumer.batch_size")
+    webserver_stream_queue_size = required(topology, "services.webserver.streams.queue_size")
+    webserver_max_stream_length = required(topology, "services.webserver.streams.max_length")
 
-    broker_redis_stream_db = required(topology, "broker.redis_stream_db")
-    broker_tick_queue_size = required(topology, "broker.tick_queue_size")
-    broker_tick_stream_maxlen = required(topology, "broker.tick_stream_maxlen")
-    broker_candle_stream_maxlen = required(topology, "broker.candle_stream_maxlen")
-    broker_max_symbol_streams = required(topology, "broker.max_symbol_streams")
-    broker_max_trendbar_streams = required(topology, "broker.max_trendbar_streams")
-    broker_request_timeout = required(topology, "broker.ctrader_request_timeout_seconds")
+    ingestion_log_level = required(topology, "services.ingestion_service.logging.level")
+    ingestion_log_format = required(topology, "services.ingestion_service.logging.format")
+    ingestion_batch_size = required(topology, "services.ingestion_service.consumer.batch_size")
+    ingestion_block_ms = required(topology, "services.ingestion_service.consumer.block_ms")
+
+    backtester_worker_poll_interval = required(
+        topology,
+        "services.backtester.worker.poll_interval_seconds",
+    )
+    backtester_worker_heartbeat_interval = required(
+        topology,
+        "services.backtester.worker.heartbeat.interval_seconds",
+    )
+    backtester_worker_stale_after = required(
+        topology,
+        "services.backtester.worker.heartbeat.stale_after_seconds",
+    )
+    backtester_max_sweep_candidate_count = required(
+        topology,
+        "services.backtester.sweeps.max_candidate_count",
+    )
+
+    broker_redis_stream_db = required(topology, "services.broker_service.streams.redis_db")
+    broker_tick_queue_size = required(topology, "services.broker_service.streams.ticks.queue_size")
+    broker_tick_stream_maxlen = required(
+        topology, "services.broker_service.streams.ticks.max_length"
+    )
+    broker_candle_stream_maxlen = required(
+        topology, "services.broker_service.streams.candles.max_length"
+    )
+    broker_max_symbol_streams = required(
+        topology, "services.broker_service.streams.limits.max_symbol_streams"
+    )
+    broker_max_trendbar_streams = required(
+        topology, "services.broker_service.streams.limits.max_trendbar_streams"
+    )
+    broker_request_timeout = required(
+        topology, "services.broker_service.ctrader.request_timeout_seconds"
+    )
 
     redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
     broker_redis_url = f"redis://{redis_host}:{redis_port}/{broker_redis_stream_db}"
@@ -183,6 +311,18 @@ def build_env(
         "INDICATOR_API_BASE_URL": f"http://{indicator_host}:{indicator_port}",
         "INDICATOR_API_LOG_LEVEL": stringify(indicator_log_level),
         "INDICATOR_API_LOG_FORMAT": stringify(indicator_log_format),
+        "BACKTESTER_API_HOST": stringify(backtester_host),
+        "BACKTESTER_API_PORT": stringify(backtester_port),
+        "BACKTESTER_API_PUBLISHED_PORT": stringify(backtester_published_port),
+        "BACKTESTER_API_BASE_URL": f"http://{backtester_host}:{backtester_port}",
+        "BACKTESTER_LOG_LEVEL": stringify(backtester_log_level),
+        "BACKTESTER_LOG_FORMAT": stringify(backtester_log_format),
+        "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS": stringify(backtester_worker_poll_interval),
+        "BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS": stringify(
+            backtester_worker_heartbeat_interval
+        ),
+        "BACKTESTER_WORKER_STALE_AFTER_SECONDS": stringify(backtester_worker_stale_after),
+        "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT": stringify(backtester_max_sweep_candidate_count),
         "BROKER_SERVICE_HOST": stringify(broker_host),
         "BROKER_SERVICE_PORT": stringify(broker_port),
         "BROKER_SERVICE_PUBLISHED_PORT": stringify(broker_published_port),
@@ -210,9 +350,13 @@ def build_env(
         "TIMESCALEDB_USER": stringify(timescaledb_user),
         "TIMESCALEDB_DB": stringify(timescaledb_db),
         "TIMESCALEDB_ECHO": stringify(timescaledb_echo),
+        "POSTGRES_USER": stringify(timescaledb_user),
+        "POSTGRES_DB": stringify(timescaledb_db),
         "VITE_PROXY_DATA_ACCESSOR_TARGET": f"http://{db_api_host}:{db_api_port}",
+        "VITE_PROXY_BACKTESTER_TARGET": f"http://{backtester_host}:{backtester_port}",
         "VITE_PROXY_INDICATOR_TARGET": f"http://{indicator_host}:{indicator_port}",
         "VITE_WS_URL": f"ws://{public_host}:{webserver_ws_published_port}",
+        **history_env,
         "INGESTION_LOG_LEVEL": stringify(ingestion_log_level),
         "INGESTION_LOG_FORMAT": stringify(ingestion_log_format),
         "LOG_LEVEL": stringify(ingestion_log_level),
@@ -238,6 +382,8 @@ def build_env(
         "CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS": "2628000",
         "CTRADER_TOKEN_REQUEST_TIMEOUT_SECONDS": "10.0",
     }
+
+    shared_env.update(build_docker_resource_env(topology))
 
     db_secrets_env: dict[str, str] = {}
     runtime_secrets_env = {
@@ -294,9 +440,12 @@ def write_output(path: Path, content: str) -> bool:
 
 def main() -> int:
     args = parse_args()
-    topology = read_yaml(TOPOLOGY_PATH)
+    topology = load_topology()
     secrets = read_env(SECRETS_PATH)
-    shared_env, db_secrets_env, runtime_secrets_env, broker_secrets_env = build_env(topology, secrets)
+    shared_env, db_secrets_env, runtime_secrets_env, broker_secrets_env = build_env(
+        topology,
+        secrets,
+    )
     missing = validate(db_secrets_env, runtime_secrets_env, broker_secrets_env)
 
     if missing:
