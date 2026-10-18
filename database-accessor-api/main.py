@@ -3,9 +3,15 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
-from app import crud, historical_candles, market_cache
+from app import crud, historical_candles, market_cache, recovery
 from app.database import get_db
-from app.schemas import CandleBatchIn, HistoricalCandleBatchIn, MarketIn
+from app.schemas import (
+    CandleBatchIn,
+    HistoricalCandleBatchIn,
+    MarketIn,
+    RecoveryAdvance,
+    RecoveryBegin,
+)
 from app.timeframes import TimeframeCode, timeframe_to_minutes
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -241,3 +247,33 @@ async def write_historical_candle_batch(
             db, symbol_id, values[offset : offset + 4000]
         )
     return {"status": "ok", "written_candles": total, "total_candles": len(values)}
+
+
+@app.get("/recoveries/{symbol_id}")
+async def load_pending_recovery(
+    symbol_id: int,
+    account_id: str = Query(..., min_length=1, max_length=128),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"pending": await recovery.load_recovery(db, symbol_id, account_id)}
+
+
+@app.post("/recoveries/begin")
+async def begin_pending_recovery(data: RecoveryBegin, db: AsyncSession = Depends(get_db)):
+    from app.models import markets
+    from sqlalchemy import select
+
+    if (
+        await db.scalar(select(markets.c.symbol_id).where(markets.c.symbol_id == data.symbol_id))
+        is None
+    ):
+        raise HTTPException(status_code=404, detail="Market not found")
+    open_minute = (int(datetime.now(timezone.utc).timestamp() * 1000) // 60000) * 60000
+    if data.target_ms >= open_minute:
+        raise HTTPException(status_code=422, detail="Recovery must exclude open M1")
+    return await recovery.begin_recovery(db, **data.model_dump())
+
+
+@app.post("/recoveries/advance")
+async def advance_pending_recovery(data: RecoveryAdvance, db: AsyncSession = Depends(get_db)):
+    return {"updated": await recovery.advance_recovery(db, data.symbol_id, data.account_id, data)}

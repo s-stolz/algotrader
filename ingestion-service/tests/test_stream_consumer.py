@@ -63,7 +63,9 @@ class StreamConsumerTests(unittest.IsolatedAsyncioTestCase):
         chunk_size = patch.object(self.service, "CHUNK_SIZE", 2)
         chunk_size.start()
         self.addCleanup(chunk_size.stop)
+        self.service._shutdown = False
         self.service._state_by_id = {1: SymbolRuntimeState(1, "EURUSD", "FX", STREAM)}
+        self.service._state_by_id[1].live_ready.set()
 
     def persist(self, request):
         self.write_calls += 1

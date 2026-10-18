@@ -7,3 +7,10 @@ TimescaleDB 2.11+ / PostgreSQL 14+ for this DML. Read
 semantics and isolated live verification. Existing aggregate policies have rolling
 windows: corrections older than those windows need an explicit materialized-bucket
 refresh to appear in higher Timeframes.
+
+## Pending recovery
+
+**Pending recovery** means unfinished history retrieval for a logical
+Market/account/M1 source. It is not general historical completeness. For source
+identity, conditional progress/completion and protected startup obligations, read
+the [recovery contract](../docs/contracts/recovery.md).

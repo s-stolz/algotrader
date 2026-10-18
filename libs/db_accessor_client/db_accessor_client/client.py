@@ -187,6 +187,40 @@ class DatabaseAccessorClient(_BaseClient):
             payload["exchange"] = exchange
         return self._request("POST", "/candles/historical", json=payload)
 
+    def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = self._request("GET", f"/recoveries/{symbol_id}", params={"account_id": account_id})
+        return result["pending"]
+
+    def begin_recovery(
+        self, symbol_id: int, account_id: str, start_ms: int, target_ms: int, trigger: str
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/recoveries/begin",
+            json={
+                "symbol_id": symbol_id,
+                "account_id": account_id,
+                "start_ms": start_ms,
+                "target_ms": target_ms,
+                "trigger": trigger,
+            },
+        )
+
+    def advance_recovery(self, pending: dict[str, Any], next_ms: int) -> bool:
+        result = self._request(
+            "POST",
+            "/recoveries/advance",
+            json={
+                "symbol_id": pending["symbol_id"],
+                "account_id": pending["account_id"],
+                "recovery_id": pending["recovery_id"],
+                "revision": pending["revision"],
+                "expected_start_ms": pending["next_ms"],
+                "next_ms": next_ms,
+            },
+        )
+        return result["updated"]
+
     def close(self) -> None:
         self.client.close()
 
@@ -342,6 +376,42 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         if exchange is not None:
             payload["exchange"] = exchange
         return await self._request("POST", "/candles/historical", json=payload)
+
+    async def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        result = await self._request(
+            "GET", f"/recoveries/{symbol_id}", params={"account_id": account_id}
+        )
+        return result["pending"]
+
+    async def begin_recovery(
+        self, symbol_id: int, account_id: str, start_ms: int, target_ms: int, trigger: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/recoveries/begin",
+            json={
+                "symbol_id": symbol_id,
+                "account_id": account_id,
+                "start_ms": start_ms,
+                "target_ms": target_ms,
+                "trigger": trigger,
+            },
+        )
+
+    async def advance_recovery(self, pending: dict[str, Any], next_ms: int) -> bool:
+        result = await self._request(
+            "POST",
+            "/recoveries/advance",
+            json={
+                "symbol_id": pending["symbol_id"],
+                "account_id": pending["account_id"],
+                "recovery_id": pending["recovery_id"],
+                "revision": pending["revision"],
+                "expected_start_ms": pending["next_ms"],
+                "next_ms": next_ms,
+            },
+        )
+        return result["updated"]
 
     async def aclose(self) -> None:
         await self.client.aclose()

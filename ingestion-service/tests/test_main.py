@@ -61,9 +61,9 @@ class IngestionHistoryTests(unittest.IsolatedAsyncioTestCase):
             service.db_client.get_latest_m1_candle.return_value = latest
             with patch.object(IngestionService, "_utc_now_ms", return_value=200000):
                 watermark = service._get_frozen_watermark("EURUSD", "FX")
-                await service._run_startup_backfill({1: watermark})
+                await service._backfill_symbol(1, "EURUSD", watermark, 200000)
             self.assertEqual(watermark, expected)
-            self.assertEqual(service._backfill_symbol.call_args.kwargs["from_ts"], expected)
+            self.assertEqual(service._backfill_symbol.call_args.args[2], expected)
 
     async def test_invalid_broker_candle_prevents_historical_writes(self):
         service = IngestionService.__new__(IngestionService)

@@ -54,3 +54,42 @@ class HistoricalCandleBatchIn(CandleBatchIn):
             if candle.timestamp_ms % 60000:
                 raise ValueError("Historical M1 timestamps must be minute aligned")
         return self
+
+
+class RecoverySource(BaseModel):
+    symbol_id: int
+    account_id: str
+
+    @field_validator("account_id")
+    @classmethod
+    def validate_account(cls, value: str) -> str:
+        if not value or len(value) > 128:
+            raise ValueError("account_id must contain 1 to 128 characters")
+        return value
+
+
+class RecoveryBegin(RecoverySource):
+    start_ms: int
+    target_ms: int
+    trigger: str
+
+    @model_validator(mode="after")
+    def validate_recovery(self):
+        if self.start_ms < 0 or self.target_ms < self.start_ms - 1:
+            raise ValueError("Recovery requires 0 <= start_ms <= target_ms + 1")
+        if not self.trigger or len(self.trigger) > 64:
+            raise ValueError("trigger must contain 1 to 64 characters")
+        return self
+
+
+class RecoveryAdvance(RecoverySource):
+    recovery_id: str
+    revision: int
+    expected_start_ms: int
+    next_ms: int
+
+    @model_validator(mode="after")
+    def validate_progress(self):
+        if self.revision < 1 or not 0 <= self.expected_start_ms <= self.next_ms:
+            raise ValueError("Recovery progress must advance the expected start")
+        return self

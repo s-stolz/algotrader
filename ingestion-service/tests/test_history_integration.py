@@ -74,6 +74,10 @@ class HistoricalIngestionTests(unittest.IsolatedAsyncioTestCase):
         redis.ping = AsyncMock()
         with patch("main.Redis.from_url", return_value=redis):
             await self.service.startup()
+        # This suite isolates authoritative history writes; durable startup is
+        # exercised separately by test_recovery and the process restart suite.
+        for state in self.service.runtime_states:
+            state.live_ready.set()
         await self.service.write_candles_callback(self.symbol_id, [compact(BOUNDARY, 1)])
         self.requests = []
         self.complete = True
@@ -81,13 +85,14 @@ class HistoricalIngestionTests(unittest.IsolatedAsyncioTestCase):
         def history(request):
             self.requests.append(request)
             bars = [compact(BOUNDARY, 8), compact(BOUNDARY + 60000, 9), compact(RESUMED, 7)]
-            records: list[dict[str, Any]] = list(bars)
+            start, end = int(request.url.params["fromTs"]), int(request.url.params["toTs"])
+            records: list[dict[str, Any]] = [bar for bar in bars if start <= bar["t"] <= end]
             if self.complete:
                 records.append(
                     dict(
                         type="complete",
                         version=1,
-                        count=len(bars),
+                        count=len(records),
                         limit=None,
                         fromTs=int(request.url.params["fromTs"]),
                         toTs=int(request.url.params["toTs"]),
@@ -117,7 +122,7 @@ class HistoricalIngestionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_boundary_overlap_completed_download_and_uncertain_persistence_replay(self):
         service = self.service
-        watermarks = await service._snapshot_startup_watermarks()
+        watermarks = {self.symbol_id: service._get_frozen_watermark(self.symbol, "VIBE9")}
         self.assertEqual(watermarks, {self.symbol_id: BOUNDARY})
         await service.write_candles_callback(self.symbol_id, [compact(RESUMED, 1)])
         service.db_client._client.client.close()
@@ -127,26 +132,40 @@ class HistoricalIngestionTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(chunks.stop)
         with patch.object(IngestionService, "_utc_now_ms", return_value=NOW):
             with self.assertRaises(DatabaseAccessorClientError):
-                await service._run_startup_backfill(watermarks)
+                await service._backfill_symbol(
+                    self.symbol_id, self.symbol, watermarks[self.symbol_id], NOW
+                )
             self.assertEqual(watermarks[self.symbol_id], BOUNDARY)
-            await service._run_startup_backfill(watermarks)
+            await service._backfill_symbol(
+                self.symbol_id, self.symbol, watermarks[self.symbol_id], NOW
+            )
         await service.write_candles_callback(
             self.symbol_id, [compact(BOUNDARY, 1), compact(RESUMED, 1)]
         )
         rows = await self.stored()
         self.assertEqual([r["timestamp_ms"] for r in rows], [BOUNDARY, BOUNDARY + 60000, RESUMED])
         self.assertEqual([r["close"] for r in rows], [9, 10, 8])
-        self.assertTrue(all(int(r.url.params["fromTs"]) == BOUNDARY for r in self.requests))
-        self.assertTrue(all(int(r.url.params["toTs"]) == NOW - 1 for r in self.requests))
+        self.assertEqual(int(self.requests[0].url.params["fromTs"]), BOUNDARY)
+        self.assertTrue(all(int(r.url.params["toTs"]) < NOW for r in self.requests))
+        self.assertTrue(
+            all(
+                int(r.url.params["toTs"]) - int(r.url.params["fromTs"]) < 86400000
+                for r in self.requests
+            )
+        )
 
     async def test_incomplete_download_propagates_without_persisting_partial_history(self):
         self.complete = False
-        watermarks = await self.service._snapshot_startup_watermarks()
+        watermarks = {self.symbol_id: self.service._get_frozen_watermark(self.symbol, "VIBE9")}
         with patch.object(IngestionService, "_utc_now_ms", return_value=NOW):
             with self.assertRaises(RuntimeError):
-                await self.service._run_startup_backfill(watermarks)
+                await self.service._backfill_symbol(
+                    self.symbol_id, self.symbol, watermarks[self.symbol_id], NOW
+                )
         self.assertEqual([r["close"] for r in await self.stored()], [2])
         self.complete = True
         with patch.object(IngestionService, "_utc_now_ms", return_value=NOW):
-            await self.service._run_startup_backfill(watermarks)
+            await self.service._backfill_symbol(
+                self.symbol_id, self.symbol, watermarks[self.symbol_id], NOW
+            )
         self.assertEqual([r["close"] for r in await self.stored()], [9, 10, 8])

@@ -99,5 +99,16 @@ class DatabaseClient:
             )
             raise
 
+    def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
+        return self._client.get_pending_recovery(symbol_id, account_id)
+
+    def begin_recovery(
+        self, symbol_id: int, account_id: str, start_ms: int, target_ms: int, trigger: str
+    ) -> dict[str, Any]:
+        return self._client.begin_recovery(symbol_id, account_id, start_ms, target_ms, trigger)
+
+    def advance_recovery(self, pending: dict[str, Any], next_ms: int) -> bool:
+        return self._client.advance_recovery(pending, next_ms)
+
     def close(self) -> None:
         self._client.close()
