@@ -129,6 +129,14 @@ message. Heartbeats count as protocol traffic; missing Market data does not.
 The watchdog runs on the transport reactor, is cancelled on disconnect, and lets
 the SDK reconnect through the normal authentication and restoration callbacks.
 
+`GET /meta/health` includes an opaque `instance_id`, stable for a service-container
+lifetime and new after a broker process restart. Ingestion detects changes even
+when both health polls report authenticated. On health restoration or instance
+change it protects the stored boundary, idempotently renews each desired M1
+subscription, then extends the closed recovery target through subscription setup.
+Failed renewal keeps live persistence gated and retries with capped backoff.
+Older health responses without this field retain down/up transition detection.
+
 After application authentication, cTrader accounts and spots are restored before
 trendbars. Application/account authentication and subscription errors do not count
 as success. Application authentication and subscription restoration retry actual

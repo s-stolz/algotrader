@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from app.application.services import (
     AccountService,
@@ -23,6 +24,7 @@ class ServiceContainer:
     """Simple service locator stored on FastAPI app state."""
 
     def __init__(self, settings: Settings) -> None:
+        self.instance_id = uuid.uuid4().hex
         self.settings = settings
         credentials = settings.load_credentials()
 

@@ -8,6 +8,8 @@ Candles through database-accessor-api. Shared payloads are in
 
 - `main.py` / `IngestionService` owns startup watermarks, tail IDs, stream-start
   order, chunking, backfill, reconnect recovery, writes, and shutdown.
+- Health restoration or a changed broker instance renews desired subscriptions
+  under durable recovery protection, even when no new Candle has arrived.
 - `app/stream_consumer.py` withholds the latest open Candle. It emits the previous
   Candle only when a newer timestamp arrives; this protects closed-candle storage.
 - Resolve the configured lookback or UTC start date once per service instance.

@@ -221,6 +221,7 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             history_lookback_days=lookback,
             history_start_date=None,
             startup_backfill_concurrency=1,
+            broker_health_poll_seconds=1,
             recovery_backoff_initial_seconds=1,
             recovery_backoff_max_seconds=1,
         )
@@ -239,6 +240,64 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             await service.startup()
         await service.start_consumers()
         return service, redis
+
+    async def test_reconnect_renews_subscription_after_broker_loses_registry(self):
+        storage, broker = Storage(), Broker()
+        subscriptions = set()
+        broker.on_start = lambda: subscriptions.add("BTC")
+        broker.allow_history.set()
+        service, _ = await self.start(storage, broker, now=lambda: BOUNDARY + 120000)
+        await eventually(lambda: bool(broker.requests) and not storage.pending)
+        self.assertEqual(subscriptions, {"BTC"})
+        subscriptions.clear()
+        await service._run_recovery()
+        await eventually(lambda: not storage.pending)
+        self.assertEqual(subscriptions, {"BTC"})
+
+    async def test_instance_change_renews_stream_even_without_health_down_poll(self):
+        storage, broker = Storage(), Broker()
+        starts = []
+        broker.on_start = lambda: starts.append("BTC")
+        broker.allow_history.set()
+        service, _ = await self.start(storage, broker, now=lambda: BOUNDARY + 120000)
+        await eventually(lambda: bool(broker.requests) and not storage.pending)
+        instance = ["before"]
+
+        async def health():
+            return {"instance_id": instance[0], "components": {"ctrader": {"status": "up"}}}
+
+        broker.get_meta_health = health
+        monitor = asyncio.create_task(service._monitor_broker_connectivity())
+        try:
+            await eventually(lambda: service._broker_instance_id == "before")
+            self.assertEqual(len(starts), 1)
+            instance[0] = "after"
+            await eventually(lambda: len(starts) == 2)
+            await eventually(lambda: not storage.pending)
+        finally:
+            monitor.cancel()
+            await asyncio.gather(monitor, return_exceptions=True)
+
+    async def test_renewal_failure_retains_protection_and_retries(self):
+        storage, broker = Storage(), Broker()
+        broker.allow_history.set()
+        service, _ = await self.start(storage, broker, now=lambda: BOUNDARY + 120000)
+        await eventually(lambda: bool(broker.requests) and not storage.pending)
+        state = service.runtime_states[0]
+        attempts = []
+
+        def renew():
+            self.assertTrue(storage.pending)
+            self.assertFalse(state.live_ready.is_set())
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise OSError("subscription unavailable")
+
+        broker.on_start = renew
+        await service._run_recovery()
+        self.assertEqual(len(attempts), 2)
+        self.assertTrue(state.live_ready.is_set())
+        await eventually(lambda: not storage.pending)
 
     async def test_brief_reconnect_and_broker_restart_recover_after_startup_completed(self):
         for session in ("b", "c"):

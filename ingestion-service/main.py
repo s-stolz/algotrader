@@ -91,6 +91,7 @@ class IngestionService:
         self.runtime_states: List[SymbolRuntimeState] = []
         self._state_by_id: Dict[int, SymbolRuntimeState] = {}
         self.consumer_tasks: List[asyncio.Task] = []
+        self._broker_instance_id: str | None = None
         self._health_monitor_task: Optional[asyncio.Task] = None
         self._recovery_task: Optional[asyncio.Task] = None
 
@@ -581,7 +582,11 @@ class IngestionService:
         try:
             health = await self.broker_client.get_meta_health()
             ctrader = health.get("components", {}).get("ctrader", {})
-            return ctrader.get("status") == "up"
+            connected = ctrader.get("status") == "up"
+            instance_id = health.get("instance_id")
+            if connected and isinstance(instance_id, str) and instance_id:
+                self._broker_instance_id = instance_id
+            return connected
         except Exception:
             return False
 
@@ -589,7 +594,18 @@ class IngestionService:
         backoff = max(1, self.config.recovery_backoff_initial_seconds)
         while not self._shutdown:
             try:
-                await self.request_recovery(state, "broker-reconnect")
+                state.live_ready.clear()
+                async with state.protection_lock:
+                    # Persist the old boundary before renewed publication can advance it.
+                    async with self._boundary_semaphore:
+                        await self._save_recovery(state, "broker-reconnect", None)
+                    async with self._stream_semaphore:
+                        await self.broker_client.start_trendbar_stream(state.symbol, timeframe="M1")
+                    # Include all closed minutes elapsed during subscription retries.
+                    async with self._boundary_semaphore:
+                        await self._save_recovery(state, "broker-reconnect", None)
+                    state.recovery_requested.set()
+                    state.live_ready.set()
                 return
             except Exception:
                 self.logger.exception(
@@ -614,12 +630,16 @@ class IngestionService:
         """Monitor broker/cTrader connectivity and trigger recovery on reconnect transitions."""
         poll_seconds = max(1, self.config.broker_health_poll_seconds)
         while not self._shutdown:
+            previous_instance = self._broker_instance_id
             connected = await self._is_broker_connected()
+            restarted = (
+                previous_instance is not None and previous_instance != self._broker_instance_id
+            )
 
             if self._broker_connected is None:
                 self._broker_connected = connected
                 self.logger.info(f"Initial broker connectivity state: connected={connected}")
-            elif connected and not self._broker_connected:
+            elif connected and (not self._broker_connected or restarted):
                 self.logger.warning("Broker connection restored, triggering recovery")
                 self._broker_connected = connected
                 self._trigger_recovery()

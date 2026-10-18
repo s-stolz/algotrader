@@ -10,6 +10,8 @@ router = APIRouter(prefix="/meta", tags=["meta"])
 
 
 class HealthContainer(Protocol):
+    instance_id: str
+
     @property
     def broker_connected(self) -> bool: ...
 
@@ -55,4 +57,4 @@ async def health(container: HealthContainer = Depends(get_container)) -> dict[st
     components["tokenLifecycle"] = dict(container.token_lifecycle_component)
 
     overall = "up" if all(c["status"] == "up" for c in components.values()) else "degraded"
-    return {"status": overall, "components": components}
+    return {"status": overall, "instance_id": container.instance_id, "components": components}

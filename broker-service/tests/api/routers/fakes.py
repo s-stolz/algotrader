@@ -166,6 +166,7 @@ class FakeRedis:
 
 
 class FakeContainer:
+    instance_id = "test-broker-instance"
     broker_connected = True
     active_streams = 1
     active_trendbar_streams = 2
