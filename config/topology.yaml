@@ -56,8 +56,6 @@ webserver:
   max_stream_length: 10000
 
 ingestion:
-  lookback_days: 1825
-  start_date: null
   consumer_batch_size: 100
   consumer_block_ms: 5000
   log_level: INFO

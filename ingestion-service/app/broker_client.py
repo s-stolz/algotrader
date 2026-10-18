@@ -32,8 +32,8 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str = "M1",
-        start_time: Optional[str | int] = None,
-        end_time: Optional[str | int] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Fetch historical trendbars (candles) from the broker-service.
@@ -50,14 +50,14 @@ class BrokerClient:
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbars"
 
-        params: Dict[str, Any] = {
+        params = {
             "timeframe": timeframe,
         }
 
-        if start_time is not None:
+        if start_time:
             params["fromTs"] = normalize_timestamp_to_epoch_ms(start_time)
 
-        if end_time is not None:
+        if end_time:
             params["toTs"] = normalize_timestamp_to_epoch_ms(end_time)
 
         if limit:
@@ -81,8 +81,8 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str = "M1",
-        start_time: Optional[str | int] = None,
-        end_time: Optional[str | int] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
         limit: Optional[int] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream historical trendbars from the broker-service.
@@ -102,14 +102,14 @@ class BrokerClient:
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbars/stream"
 
-        params: Dict[str, Any] = {
+        params = {
             "timeframe": timeframe,
         }
 
-        if start_time is not None:
+        if start_time:
             params["fromTs"] = normalize_timestamp_to_epoch_ms(start_time)
 
-        if end_time is not None:
+        if end_time:
             params["toTs"] = normalize_timestamp_to_epoch_ms(end_time)
 
         if limit:
@@ -122,35 +122,11 @@ class BrokerClient:
             async with self.async_client.stream("GET", url, params=params) as response:
                 response.raise_for_status()
 
-                completed = False
                 async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
-                    record = json.loads(line)
-                    if not isinstance(record, dict) or completed:
-                        raise RuntimeError("Invalid historical stream record")
-                    if record.get("type") == "error":
-                        raise RuntimeError("Broker historical download failed")
-                    if record.get("type") == "complete":
-                        if (
-                            record.get("version") != 1
-                            or type(record.get("count")) is not int
-                            or record["count"] != count
-                            or record.get("limit") != limit
-                            or ("fromTs" in params and record.get("fromTs") != params["fromTs"])
-                            or ("toTs" in params and record.get("toTs") != params["toTs"])
-                        ):
-                            raise RuntimeError("Historical completion does not match request")
-                        completed = True
-                        continue
-                    if "type" in record or not all(
-                        key in record for key in ("o", "h", "l", "c", "v", "t")
-                    ):
-                        raise RuntimeError("Invalid historical Candle record")
-                    count += 1
-                    yield record
-                if not completed:
-                    raise RuntimeError("Historical stream ended without completion")
+                    if line.strip():
+                        trendbar = json.loads(line)
+                        count += 1
+                        yield trendbar
 
             logger.info(f"Streamed {count} trendbars for {symbol} {timeframe}")
 
