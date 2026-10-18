@@ -406,15 +406,12 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 if not page:
                     break
                 timestamps = [bar.t for bar in page]
-                if (
-                    len(set(timestamps)) != len(timestamps)
-                    or min(timestamps) < from_ts
-                    or max(timestamps) > page_to
-                ):
+                if len(set(timestamps)) != len(timestamps) or max(timestamps) > page_to:
                     raise RuntimeError(
                         "cTrader historical pagination did not advance within interval"
                     )
-                bars.extend(page)
+                # Count-based provider pages can extend before fromTimestamp.
+                bars.extend(bar for bar in page if bar.t >= from_ts)
                 page_to = min(timestamps) - 1
             return sorted(bars, key=lambda item: item.t)[-limit:]
         return [
@@ -519,15 +516,12 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 if not page:
                     break
                 timestamps = [bar.t for bar in page]
-                if (
-                    len(set(timestamps)) != len(timestamps)
-                    or min(timestamps) < current_from
-                    or max(timestamps) > page_to
-                ):
+                if len(set(timestamps)) != len(timestamps) or max(timestamps) > page_to:
                     raise RuntimeError(
                         "cTrader historical pagination did not advance within interval"
                     )
-                window_bars.extend(page)
+                # Keep only this window; older count-based bars prove its lower bound.
+                window_bars.extend(bar for bar in page if bar.t >= current_from)
                 # Even a short page can be provider-limited. Query the earlier remainder.
                 page_to = min(timestamps) - 1
 

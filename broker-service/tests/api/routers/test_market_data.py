@@ -83,7 +83,7 @@ consumer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(consumer)
 
 
-def provider_history(timestamps, page_limit=1, fail_after=None):
+def provider_history(timestamps, page_limit=1, fail_after=None, count_ignores_start=False):
     client = CtraderClient(
         CtraderCredentials(
             client_id="test",
@@ -104,7 +104,11 @@ def provider_history(timestamps, page_limit=1, fail_after=None):
         calls.append((request.fromTimestamp, request.toTimestamp))
         if fail_after is not None and len(calls) > fail_after:
             raise RuntimeError("interrupted provider")
-        selected = [t for t in timestamps if request.fromTimestamp <= t <= request.toTimestamp]
+        selected = [
+            t
+            for t in timestamps
+            if t <= request.toTimestamp and (count_ignores_start or t >= request.fromTimestamp)
+        ]
         return ProtoOAGetTrendbarsRes(
             ctidTraderAccountId=123,
             period=request.period,
@@ -189,6 +193,28 @@ class HistoryContractTests(unittest.IsolatedAsyncioTestCase):
         provider, _ = provider_history([60000, 120000, 180000])
         bars = await self.consume(provider)
         self.assertEqual([bar["t"] for bar in bars], [60000, 120000, 180000])
+
+    async def test_count_response_older_than_start_is_clipped(self):
+        provider, calls = provider_history(
+            [0, 60000, 120000, 180000], page_limit=10000, count_ignores_start=True
+        )
+        bars = await self.consume(provider, start=120000, end=180000)
+        self.assertEqual([bar["t"] for bar in bars], [120000, 180000])
+        self.assertEqual(len(calls), 1)
+
+    async def test_closed_interval_with_only_older_provider_bars_completes_empty(self):
+        provider, calls = provider_history([0], count_ignores_start=True)
+        self.assertEqual(await self.consume(provider), [])
+        self.assertEqual(len(calls), 1)
+
+    async def test_limited_count_response_respects_lower_bound(self):
+        provider, _ = provider_history(
+            [0, 60000, 120000], page_limit=10000, count_ignores_start=True
+        )
+        bars = await provider.get_trendbars(
+            AccountId(123), "EURUSD", Timeframe.M1, 120000, 180000, 10
+        )
+        self.assertEqual([bar.t for bar in bars], [120000])
 
     async def test_provider_failure_after_first_page_reaches_ingestion(self):
         provider, _ = provider_history([60000, 120000, 180000], fail_after=1)

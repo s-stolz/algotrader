@@ -39,8 +39,11 @@ Neither a short response nor a requested window's end proves exhaustion.
 Finite time windows bound streaming memory. Within each window the adapter asks
 backwards, moves `toTimestamp` to one millisecond before the earliest returned
 Candle, and continues even after a short page. An empty residual response or
-reaching the inclusive lower bound completes that window. Out-of-range or
-nonadvancing results and incomplete/unexpected protobuf responses fail explicitly.
+reaching the inclusive lower bound completes that window. Nonadvancing results
+and incomplete/unexpected protobuf responses fail explicitly.
+Count-based responses can extend before `fromTimestamp`; those older bars are
+excluded from output and establish that the lower bound has been reached.
+Duplicate timestamps or bars newer than the page end still fail explicitly.
 Empty windows do not stop retrieval of later windows. Unspecified end time is
 frozen once. Limited nonstreaming queries retain the most recent Candle selection.
 
