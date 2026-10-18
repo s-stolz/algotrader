@@ -4,3 +4,4 @@ uvicorn[standard]>=0.40.0
 redis>=7.1.0
 ctrader-open-api>=0.9.2
 service_identity>=24.2.0
+httpx>=0.28.1  # Historical producer/consumer contract tests

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -152,6 +153,17 @@ def build_env(
     webserver_stream_queue_size = required(topology, "webserver.stream_queue_size")
     webserver_max_stream_length = required(topology, "webserver.max_stream_length")
 
+    history_days = required(topology, "ingestion.lookback_days")
+    history_date = required(topology, "ingestion.start_date")
+    if (history_days is None) == (history_date is None):
+        raise ValueError("Choose exactly one ingestion.lookback_days or ingestion.start_date")
+    if history_days is not None and (type(history_days) is not int or history_days < 1):
+        raise ValueError("ingestion.lookback_days must be a positive integer")
+    if history_date is not None:
+        if not isinstance(history_date, str):
+            raise ValueError("ingestion.start_date must be a quoted UTC YYYY-MM-DD string")
+        datetime.strptime(history_date, "%Y-%m-%d")
+
     ingestion_log_level = required(topology, "ingestion.log_level")
     ingestion_log_format = required(topology, "ingestion.log_format")
     ingestion_batch_size = required(topology, "ingestion.consumer_batch_size")
@@ -217,6 +229,8 @@ def build_env(
         "INGESTION_LOG_FORMAT": stringify(ingestion_log_format),
         "LOG_LEVEL": stringify(ingestion_log_level),
         "LOG_FORMAT": stringify(ingestion_log_format),
+        "HISTORY_LOOKBACK_DAYS": stringify(history_days),
+        "HISTORY_START_DATE": stringify(history_date),
         "CONSUMER_BATCH_SIZE": stringify(ingestion_batch_size),
         "CONSUMER_BLOCK_MS": stringify(ingestion_block_ms),
         "WEBSERVER_REDIS_BLOCK_MS": stringify(webserver_redis_block_ms),
@@ -296,7 +310,9 @@ def main() -> int:
     args = parse_args()
     topology = read_yaml(TOPOLOGY_PATH)
     secrets = read_env(SECRETS_PATH)
-    shared_env, db_secrets_env, runtime_secrets_env, broker_secrets_env = build_env(topology, secrets)
+    shared_env, db_secrets_env, runtime_secrets_env, broker_secrets_env = build_env(
+        topology, secrets
+    )
     missing = validate(db_secrets_env, runtime_secrets_env, broker_secrets_env)
 
     if missing:

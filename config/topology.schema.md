@@ -44,3 +44,11 @@
 
 ## Secrets
 Secrets are not stored in `config/topology.yaml`. Put them in `config/.env.secrets.local`.
+
+## Ingestion history
+
+Set exactly one of `ingestion.lookback_days` (positive integer, default 1825) or
+`ingestion.start_date` (quoted UTC `YYYY-MM-DD`), with the other set to `null`.
+They generate `HISTORY_LOOKBACK_DAYS` / `HISTORY_START_DATE`; the unused value is
+empty. Ingestion freezes the boundary once per process. Accepted pending work
+survives a changed policy; see [recovery contract](../docs/contracts/recovery.md).

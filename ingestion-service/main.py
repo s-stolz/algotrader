@@ -3,8 +3,8 @@
 import asyncio
 import signal
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Awaitable, Dict, List, Optional, cast
 
 from app.broker_client import BrokerClient
 from app.config import load_config
@@ -23,6 +23,12 @@ class SymbolRuntimeState:
     exchange: str
     stream_key: str
     recovery_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    protection_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    live_ready: asyncio.Event = field(default_factory=asyncio.Event)
+    recovery_requested: asyncio.Event = field(default_factory=asyncio.Event)
+    handoff_start_ms: int | None = None
+    continuity: str | None = None
+    live_boundary_ms: int | None = None
 
 
 class IngestionService:
@@ -30,9 +36,10 @@ class IngestionService:
 
     TIMEFRAME_M1 = 1
     TIMEFRAME_CODE_M1 = "M1"
-    CHUNK_SIZE = 10000
+    CHUNK_SIZE: int = 10000
     MAX_BACKFILL_DAYS = 365 * 5
     REDIS_STREAM_START = "0-0"
+    HISTORY_WINDOW_MS = 24 * 60 * 60000
 
     @staticmethod
     def _format_candle_for_db(candle: Dict[str, Any]) -> Dict[str, Any]:
@@ -63,6 +70,7 @@ class IngestionService:
     def __init__(self):
         """Initialize the ingestion service."""
         self.config = load_config()
+        self._history_start_ms = self.config.history_start_ms(self._utc_now_ms())
         self.logger = setup_logging(self.config.log_level, self.config.log_format)
 
         self.db_client = DatabaseClient()
@@ -80,8 +88,19 @@ class IngestionService:
         self._health_monitor_task: Optional[asyncio.Task] = None
         self._recovery_task: Optional[asyncio.Task] = None
 
+        self._owned_tasks: set[asyncio.Task] = set()
+        self._history_semaphore = asyncio.Semaphore(
+            max(1, self.config.startup_backfill_concurrency)
+        )
+        self._boundary_semaphore = asyncio.Semaphore(
+            max(1, self.config.startup_watermark_concurrency)
+        )
+        self._stream_semaphore = asyncio.Semaphore(
+            max(1, self.config.startup_stream_start_concurrency)
+        )
         self._shutdown = False
         self._is_shutting_down = False
+        self._shutdown_complete = asyncio.Event()
         self._broker_connected: Optional[bool] = None
 
     async def startup(self) -> None:
@@ -92,17 +111,18 @@ class IngestionService:
             self.config.redis_url,
             decode_responses=False,
         )
-        await self.redis.ping()
-        self.logger.info(f"Connected to Redis at {self.config.redis_url}")
+        self.markets = await self._own_task(self._load_markets())
+        self.logger.info("Connected to Redis and loaded Market sources")
 
         self.consumer = StreamConsumer(
             redis=self.redis,
             account_id=self.config.broker_account_id,
             batch_size=self.config.consumer_batch_size,
             block_ms=self.config.consumer_block_ms,
+            backoff_initial_seconds=self.config.recovery_backoff_initial_seconds,
+            backoff_max_seconds=self.config.recovery_backoff_max_seconds,
         )
 
-        self.markets = self.db_client.get_markets()
         if not self.markets:
             self.logger.warning(
                 "No markets found in database. Waiting for markets to be created..."
@@ -123,45 +143,35 @@ class IngestionService:
             f"Loaded {len(self.markets)} markets: {[m['symbol'] for m in self.markets]}"
         )
 
-    def _needs_backfill(self, latest_ts_ms: int, timeframe_minutes: int) -> bool:
-        expected_gap_ms = int(timedelta(minutes=timeframe_minutes * 2).total_seconds() * 1000)
-        return (self._utc_now_ms() - latest_ts_ms) > expected_gap_ms
+    async def _load_markets(self) -> List[Dict[str, Any]]:
+        """Retry dependency initialization before any Market can admit live writes."""
+        backoff = max(1, self.config.recovery_backoff_initial_seconds)
+        while not self._shutdown:
+            try:
+                assert self.redis is not None
+                await cast(Awaitable[bool], self.redis.ping())
+                return await self._db_call(self.db_client.get_markets)
+            except Exception:
+                self.logger.exception(
+                    "Source initialization failed trigger=dependency retry=%s", backoff
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(max(backoff, self.config.recovery_backoff_max_seconds), backoff * 2)
+        return []
 
     def _get_frozen_watermark(self, symbol: str, exchange: str) -> int:
-        latest_candle = self.db_client.get_latest_m1_candle(
-            symbol, exchange=exchange or None
-        )
+        latest_candle = self.db_client.get_latest_m1_candle(symbol, exchange=exchange or None)
         if not latest_candle:
-            fallback = self._utc_now_ms() - int(
-                timedelta(days=self.MAX_BACKFILL_DAYS).total_seconds() * 1000
-            )
+            fallback = self._history_start_ms
             self.logger.info(
-                f"{symbol} M1: No data in database, using fallback watermark {self._ms_to_iso(fallback)}"
+                f"{symbol} M1: No data in database, using fallback watermark "
+                f"{self._ms_to_iso(fallback)}"
             )
             return fallback
 
-        latest_ts = int(latest_candle["timestamp_ms"])
+        latest_ts = max(int(latest_candle["timestamp_ms"]), self._history_start_ms)
         self.logger.info(f"{symbol} M1: Frozen startup watermark at {self._ms_to_iso(latest_ts)}")
         return latest_ts
-
-    async def _snapshot_startup_watermarks(self) -> Dict[int, int]:
-        if not self.runtime_states:
-            return {}
-
-        concurrency = max(1, self.config.startup_watermark_concurrency)
-        semaphore = asyncio.Semaphore(concurrency)
-
-        async def worker(state: SymbolRuntimeState) -> tuple[int, int]:
-            async with semaphore:
-                watermark = await asyncio.to_thread(
-                    self._get_frozen_watermark,
-                    state.symbol,
-                    state.exchange,
-                )
-                return state.symbol_id, watermark
-
-        pairs = await asyncio.gather(*(worker(state) for state in self.runtime_states))
-        return {symbol_id: watermark for symbol_id, watermark in pairs}
 
     async def _backfill_symbol(
         self,
@@ -174,49 +184,53 @@ class IngestionService:
         if timeframe is None:
             timeframe = self.TIMEFRAME_CODE_M1
 
+        if timeframe != self.TIMEFRAME_CODE_M1:
+            raise ValueError("Historical persistence accepts only M1 Candles")
+        to_ts = min(to_ts, (self._utc_now_ms() // 60000) * 60000 - 1)
+        if from_ts > to_ts:
+            return
+
         self.logger.info(
-            f"Backfilling {symbol} {timeframe} from {self._ms_to_iso(from_ts)} to {self._ms_to_iso(to_ts)}"
+            f"Backfilling {symbol} {timeframe} from {self._ms_to_iso(from_ts)} "
+            f"to {self._ms_to_iso(to_ts)}"
         )
 
+        if to_ts - from_ts >= self.HISTORY_WINDOW_MS:
+            for start in range(from_ts, to_ts + 1, self.HISTORY_WINDOW_MS):
+                await self._backfill_symbol(
+                    symbol_id,
+                    symbol,
+                    start,
+                    min(to_ts, start + self.HISTORY_WINDOW_MS - 1),
+                    timeframe,
+                )
+            return
+
         candles: List[Dict[str, Any]] = []
+        seen: set[int] = set()
         async for candle in self.broker_client.stream_trendbars(
             symbol,
             timeframe=timeframe,
             start_time=from_ts,
             end_time=to_ts,
         ):
+            timestamp = int(candle["t"])
+            if not from_ts <= timestamp <= to_ts or timestamp % 60000:
+                raise ValueError("Broker returned a Candle outside the closed M1 interval")
+            if timestamp in seen or len(candles) >= self.HISTORY_WINDOW_MS // 60000 + 1:
+                raise ValueError("Broker returned duplicate or excessive M1 Candles")
+            seen.add(timestamp)
             candles.append(candle)
 
         if candles:
-            await self.write_candles_callback(symbol_id, candles)
+            state = self._state_by_id[symbol_id]
+            mapped = [self._format_candle_for_db(candle) for candle in candles]
+            await self._write_candles_in_chunks(
+                state.symbol, state.exchange, mapped, historical_interval=(from_ts, to_ts)
+            )
             self.logger.info(f"Backfilled {len(candles)} candles for {symbol} {timeframe}")
         else:
             self.logger.debug(f"No backfill data available for {symbol} {timeframe}")
-
-    async def _run_startup_backfill(self, watermarks: Dict[int, int]) -> None:
-        if not self.runtime_states:
-            return
-
-        self.logger.info("Starting startup backfill phase")
-        concurrency = max(1, self.config.startup_backfill_concurrency)
-        semaphore = asyncio.Semaphore(concurrency)
-
-        async def worker(state: SymbolRuntimeState) -> None:
-            from_ts_ms = watermarks[state.symbol_id]
-            if not self._needs_backfill(from_ts_ms, self.TIMEFRAME_M1):
-                self.logger.info(f"{state.symbol} M1: Backfill skipped, data is up to date")
-                return
-
-            async with semaphore:
-                await self._backfill_symbol(
-                    symbol_id=state.symbol_id,
-                    symbol=state.symbol,
-                    from_ts=from_ts_ms,
-                    to_ts=self._utc_now_ms(),
-                )
-
-        await asyncio.gather(*(worker(state) for state in self.runtime_states))
-        self.logger.info("Startup backfill phase complete")
 
     async def _write_candles_in_chunks(
         self,
@@ -224,6 +238,7 @@ class IngestionService:
         exchange: str | None,
         candles: List[Dict[str, Any]],
         chunk_size: Optional[int] = None,
+        historical_interval: tuple[int, int] | None = None,
     ) -> None:
         if chunk_size is None:
             chunk_size = self.CHUNK_SIZE
@@ -233,16 +248,42 @@ class IngestionService:
             chunk = candles[i : i + chunk_size]
             chunk_num = i // chunk_size + 1
 
-            await asyncio.to_thread(
-                self.db_client.write_candles,
-                symbol,
-                chunk,
-                exchange or None,
-            )
+            if historical_interval is None:
+                await self._db_call(self.db_client.write_candles, symbol, chunk, exchange or None)
+            else:
+                await self._db_call(
+                    self.db_client.write_historical_candles,
+                    symbol,
+                    chunk,
+                    historical_interval[0],
+                    historical_interval[1],
+                    exchange or None,
+                )
             self.logger.info(
-                f"Wrote {len(chunk)} candles for {symbol} "
-                f"(chunk {chunk_num}/{total_chunks})"
+                f"Wrote {len(chunk)} candles for {symbol} " f"(chunk {chunk_num}/{total_chunks})"
             )
+
+    async def observe_continuity(self, symbol_id: int, continuity: str | None) -> None:
+        """Protect a new publication session before its messages can affect storage."""
+        state = self._state_by_id[symbol_id]
+        if continuity is not None and continuity == state.continuity:
+            return
+        await self.request_recovery(
+            state, "continuity-change" if continuity is not None else "invalid-continuity"
+        )
+        state.continuity = continuity
+        # The new session's current open minute needs a later closed target,
+        # including when no subsequent update for that minute is published.
+        state.handoff_start_ms = (self._utc_now_ms() // 60000) * 60000
+
+    async def observe_interruption(self, symbol_id: int, trigger: str) -> None:
+        """Protect dependency loss even when the producer session is unchanged."""
+        state = self._state_by_id[symbol_id]
+        # A partial batch may have moved latest already. Retain the last fully
+        # confirmed live boundary, captured before any writes in that batch.
+        start = state.live_boundary_ms if trigger == "live-write-failure" else None
+        await self.request_recovery(state, trigger, start)
+        state.handoff_start_ms = (self._utc_now_ms() // 60000) * 60000
 
     async def write_candles_callback(self, symbol_id: int, candles: List[Dict[str, Any]]) -> None:
         """Callback to write candles to database."""
@@ -254,7 +295,35 @@ class IngestionService:
         if state is None:
             self.logger.warning("Skipping candles for unknown symbol_id=%s", symbol_id)
             return
-        await self._write_candles_in_chunks(state.symbol, state.exchange, mapped_candles)
+        if state.handoff_start_ms is not None:
+            # The open minute at subscription establishment was excluded from
+            # the first closed target. Cover it once a closed live batch arrives,
+            # before that batch can move the durable latest-Candle boundary.
+            await self.request_recovery(
+                state,
+                "startup-handoff",
+                min(state.handoff_start_ms, min(int(candle["t"]) for candle in candles)),
+            )
+            state.handoff_start_ms = None
+        while not self._shutdown:
+            await state.live_ready.wait()
+            async with state.protection_lock:
+                if not state.live_ready.is_set():
+                    continue
+                assert state.live_boundary_ms is not None
+                guard = await self._db_call(
+                    self.db_client.begin_live_write,
+                    state.symbol_id,
+                    self.config.broker_account_id,
+                    state.live_boundary_ms,
+                )
+                await self._write_candles_in_chunks(state.symbol, state.exchange, mapped_candles)
+                state.live_boundary_ms = max(
+                    state.live_boundary_ms or 0,
+                    max(candle["timestamp_ms"] for candle in mapped_candles),
+                )
+                await self._db_call(self.db_client.finish_live_write, guard)
+                return
 
     async def _get_stream_tail_id(self, stream_key: str) -> str:
         """Get current tail ID of a stream; returns 0-0 if stream is empty."""
@@ -268,81 +337,209 @@ class IngestionService:
         message_id = entries[0][0]
         return self._decode_redis_id(message_id)
 
-    async def _startup_backfill_for_state(
-        self,
-        state: SymbolRuntimeState,
-        watermarks: Dict[int, int],
-        semaphore: asyncio.Semaphore,
-    ) -> None:
-        from_ts_ms = watermarks[state.symbol_id]
-        if not self._needs_backfill(from_ts_ms, self.TIMEFRAME_M1):
-            self.logger.info(f"{state.symbol} M1: Backfill skipped, data is up to date")
-            return
+    async def _db_call(self, operation, *args):
+        # Cancelling an await cannot cancel its synchronous HTTP thread. Drain it
+        # before closing clients so no owned write continues after shutdown.
+        task = asyncio.create_task(asyncio.to_thread(operation, *args))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            try:
+                await task
+            except Exception:
+                # Cleanup must retain cancellation even if the drained HTTP
+                # operation failed; recovery must not enter retry sleep here.
+                pass
+            raise
 
-        async with semaphore:
-            await self._backfill_symbol(
-                symbol_id=state.symbol_id,
-                symbol=state.symbol,
-                from_ts=from_ts_ms,
-                to_ts=self._utc_now_ms(),
+    def _own_task(self, coroutine) -> asyncio.Task:
+        task = asyncio.create_task(coroutine)
+        self._owned_tasks.add(task)
+        task.add_done_callback(self._owned_tasks.discard)
+        return task
+
+    async def _save_recovery(
+        self, state: SymbolRuntimeState, trigger: str, start_ms: int | None = None
+    ) -> dict[str, Any]:
+        account = self.config.broker_account_id
+        pending = await self._db_call(self.db_client.get_pending_recovery, state.symbol_id, account)
+        guard = await self._db_call(self.db_client.get_live_write_guard, state.symbol_id, account)
+        if guard is not None:
+            start_ms = (
+                min(start_ms, guard["boundary_ms"])
+                if start_ms is not None
+                else guard["boundary_ms"]
             )
+        if pending is not None:
+            # Accepted work is never bounded again by a moving history policy.
+            start_ms = (
+                min(pending["next_ms"], start_ms) if start_ms is not None else pending["next_ms"]
+            )
+        elif start_ms is None:
+            start_ms = await self._db_call(self._get_frozen_watermark, state.symbol, state.exchange)
+        target = (self._utc_now_ms() // 60000) * 60000 - 1
+        saved = await self._db_call(
+            self.db_client.begin_recovery, state.symbol_id, account, start_ms, target, trigger
+        )
+        # Only retire a recovered guard after its boundary is durably pending.
+        # Every later live attempt installs its own guard before Candle writes.
+        if guard is not None:
+            await self._db_call(self.db_client.finish_live_write, guard)
+        self.logger.info(
+            "Recovery protected market=%s account=%s M1 interval=[%s,%s] trigger=%s revision=%s",
+            state.symbol,
+            account,
+            saved["next_ms"],
+            saved["target_ms"],
+            trigger,
+            saved["revision"],
+        )
+        return saved
 
-    async def start_consumers(self, startup_watermarks: Optional[Dict[int, int]] = None) -> None:
-        """Start stream consumers and optionally run startup backfill per symbol immediately."""
-        if self.consumer is None:
-            raise RuntimeError("Consumer is not initialized")
+    async def request_recovery(
+        self, state: SymbolRuntimeState, trigger: str, start_ms: int | None = None
+    ) -> None:
+        """Durably merge an interruption before allowing affected live writes."""
+        state.live_ready.clear()
+        async with state.protection_lock:
+            async with self._boundary_semaphore:
+                await self._save_recovery(state, trigger, start_ms)
+            state.recovery_requested.set()
+            state.live_ready.set()
 
-        self.logger.info("Starting stream consumers...")
-        if startup_watermarks is not None:
-            self.logger.info("Starting startup backfill phase")
-
-        concurrency = max(1, self.config.startup_stream_start_concurrency)
-        semaphore = asyncio.Semaphore(concurrency)
-        backfill_tasks: list[asyncio.Task] = []
-        backfill_semaphore = asyncio.Semaphore(max(1, self.config.startup_backfill_concurrency))
-
-        async def worker(state: SymbolRuntimeState) -> asyncio.Task:
-            async with semaphore:
-                tail_id = await self._get_stream_tail_id(state.stream_key)
-
-                await self.broker_client.start_trendbar_stream(
-                    state.symbol,
-                    timeframe=self.TIMEFRAME_CODE_M1,
-                )
-
-                task = asyncio.create_task(
-                    self.consumer.consume_stream(
-                        stream_key=state.stream_key,
-                        symbol_id=state.symbol_id,
-                        callback=self.write_candles_callback,
-                        start_id=tail_id,
-                    )
-                )
-                self.logger.info(f"Started consumer for {state.stream_key} from ID {tail_id}")
-
-                if startup_watermarks is not None:
-                    backfill_tasks.append(
-                        asyncio.create_task(
-                            self._startup_backfill_for_state(
-                                state=state,
-                                watermarks=startup_watermarks,
-                                semaphore=backfill_semaphore,
+    async def _start_market(self, state: SymbolRuntimeState) -> None:
+        backoff = max(1, self.config.recovery_backoff_initial_seconds)
+        while not self._shutdown:
+            try:
+                async with state.protection_lock:
+                    # Load accepted work BEFORE a fresh latest snapshot or stream setup.
+                    async with self._boundary_semaphore:
+                        pending = await self._db_call(
+                            self.db_client.get_pending_recovery,
+                            state.symbol_id,
+                            self.config.broker_account_id,
+                        )
+                        guard = await self._db_call(
+                            self.db_client.get_live_write_guard,
+                            state.symbol_id,
+                            self.config.broker_account_id,
+                        )
+                        boundaries = ([pending["next_ms"]] if pending is not None else []) + (
+                            [guard["boundary_ms"]] if guard is not None else []
+                        )
+                        start = (
+                            min(boundaries)
+                            if boundaries
+                            else await self._db_call(
+                                self._get_frozen_watermark, state.symbol, state.exchange
+                            )
+                        )
+                    async with self._stream_semaphore:
+                        tail_id = await self._get_stream_tail_id(state.stream_key)
+                        await self.broker_client.start_trendbar_stream(state.symbol, timeframe="M1")
+                    # Time is captured after subscription: history bridges the tail/setup interval.
+                    async with self._boundary_semaphore:
+                        saved = await self._save_recovery(state, "startup", start)
+                    state.live_boundary_ms = start
+                    state.handoff_start_ms = saved["target_ms"] + 1
+                    state.recovery_requested.set()
+                    state.live_ready.set()
+                    self._own_task(self._recover_market(state))
+                    assert self.consumer is not None
+                    self.consumer_tasks.append(
+                        self._own_task(
+                            self.consumer.consume_stream(
+                                stream_key=state.stream_key,
+                                symbol_id=state.symbol_id,
+                                callback=self.write_candles_callback,
+                                start_id=tail_id,
+                                continuity_callback=self.observe_continuity,
+                                interruption_callback=self.observe_interruption,
                             )
                         )
                     )
-                return task
+                return
+            except Exception:
+                self.logger.exception(
+                    "Recovery startup protected market=%s account=%s M1 trigger=startup retry=%s",
+                    state.symbol,
+                    self.config.broker_account_id,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(max(backoff, self.config.recovery_backoff_max_seconds), backoff * 2)
 
-        tasks = await asyncio.gather(*(worker(state) for state in self.runtime_states))
-        self.consumer_tasks.extend(tasks)
+    async def _recover_market(self, state: SymbolRuntimeState) -> None:
+        async with state.recovery_lock:
+            while not self._shutdown:
+                await state.recovery_requested.wait()
+                state.recovery_requested.clear()
+                backoff = max(1, self.config.recovery_backoff_initial_seconds)
+                while not self._shutdown:
+                    pending = None
+                    try:
+                        # Release scarce capacity before sleeping, including on persistence failure.
+                        async with self._history_semaphore:
+                            pending = await self._db_call(
+                                self.db_client.get_pending_recovery,
+                                state.symbol_id,
+                                self.config.broker_account_id,
+                            )
+                            if pending is None:
+                                break
+                            start, target = pending["next_ms"], pending["target_ms"]
+                            end = min(target, start + self.HISTORY_WINDOW_MS - 1)
+                            if end >= (self._utc_now_ms() // 60000) * 60000:
+                                raise RuntimeError("Pending historical window is not closed yet")
+                            self.logger.info(
+                                "Recovering market=%s account=%s M1 interval=[%s,%s] "
+                                "trigger=%s revision=%s",
+                                state.symbol,
+                                self.config.broker_account_id,
+                                start,
+                                end,
+                                pending["trigger"],
+                                pending["revision"],
+                            )
+                            await self._backfill_symbol(state.symbol_id, state.symbol, start, end)
+                            updated = await self._db_call(
+                                self.db_client.advance_recovery, pending, end + 1
+                            )
+                        if updated:
+                            self.logger.info(
+                                "Recovery window complete market=%s account=%s M1 "
+                                "interval=[%s,%s] trigger=%s",
+                                state.symbol,
+                                self.config.broker_account_id,
+                                start,
+                                end,
+                                pending["trigger"],
+                            )
+                        backoff = max(1, self.config.recovery_backoff_initial_seconds)
+                        # Give other ready Markets a turn between finite windows.
+                        await asyncio.sleep(0)
+                    except Exception:
+                        self.logger.exception(
+                            "Recovery failed market=%s account=%s M1 pending=%s retry=%s",
+                            state.symbol,
+                            self.config.broker_account_id,
+                            pending,
+                            backoff,
+                        )
+                        await asyncio.sleep(backoff)
+                        backoff = min(
+                            max(backoff, self.config.recovery_backoff_max_seconds), backoff * 2
+                        )
 
-        self.logger.info(f"Started {len(tasks)} stream consumers")
-
-        if backfill_tasks:
-            await asyncio.gather(*backfill_tasks)
-            self.logger.info("Startup backfill phase complete")
+    async def start_consumers(self) -> None:
+        """Start independent protected startup operations; history never blocks the run loop."""
+        if self.consumer is None:
+            raise RuntimeError("Consumer is not initialized")
+        for state in self.runtime_states:
+            self._own_task(self._start_market(state))
 
     async def _is_broker_connected(self) -> bool:
-        """Broker is considered connected only when broker-service is up and cTrader is authenticated."""
+        """Require an available broker-service and authenticated cTrader connection."""
         try:
             health = await self.broker_client.get_meta_health()
             ctrader = health.get("components", {}).get("ctrader", {})
@@ -351,61 +548,29 @@ class IngestionService:
             return False
 
     async def _recover_symbol_after_reconnect(self, state: SymbolRuntimeState) -> None:
-        async with state.recovery_lock:
-            backoff = max(1, self.config.recovery_backoff_initial_seconds)
-            max_backoff = max(backoff, self.config.recovery_backoff_max_seconds)
-
-            while not self._shutdown:
-                if not await self._is_broker_connected():
-                    self.logger.warning(
-                        f"Skipping recovery for {state.symbol}: broker/cTrader not connected"
-                    )
-                    return
-
-                try:
-                    from_ts = self._get_frozen_watermark(state.symbol, state.exchange)
-                    await self.broker_client.start_trendbar_stream(
-                        state.symbol,
-                        timeframe=self.TIMEFRAME_CODE_M1,
-                    )
-                    await self._backfill_symbol(
-                        symbol_id=state.symbol_id,
-                        symbol=state.symbol,
-                        from_ts=from_ts,
-                        to_ts=self._utc_now_ms(),
-                    )
-                    self.logger.info(f"Recovery complete for {state.symbol}")
-                    return
-                except Exception as exc:
-                    self.logger.error(
-                        f"Recovery failed for {state.symbol}: {exc}. Retrying in {backoff}s",
-                        exc_info=True,
-                    )
-                    await asyncio.sleep(backoff)
-                    backoff = min(max_backoff, backoff * 2)
+        backoff = max(1, self.config.recovery_backoff_initial_seconds)
+        while not self._shutdown:
+            try:
+                await self.request_recovery(state, "broker-reconnect")
+                return
+            except Exception:
+                self.logger.exception(
+                    "Recovery protection failed market=%s account=%s M1 "
+                    "trigger=broker-reconnect retry=%s",
+                    state.symbol,
+                    self.config.broker_account_id,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(max(backoff, self.config.recovery_backoff_max_seconds), backoff * 2)
 
     async def _run_recovery(self) -> None:
-        if not self.runtime_states:
-            return
-
-        self.logger.info("Broker reconnect detected, running recovery backfill")
-        concurrency = max(1, self.config.startup_backfill_concurrency)
-        semaphore = asyncio.Semaphore(concurrency)
-
-        async def worker(state: SymbolRuntimeState) -> None:
-            async with semaphore:
-                await self._recover_symbol_after_reconnect(state)
-
         await asyncio.gather(
-            *(worker(state) for state in self.runtime_states), return_exceptions=False
+            *(self._recover_symbol_after_reconnect(state) for state in self.runtime_states)
         )
-        self.logger.info("Reconnect recovery finished")
 
     def _trigger_recovery(self) -> None:
-        if self._recovery_task and not self._recovery_task.done():
-            self.logger.info("Recovery already running, skipping duplicate trigger")
-            return
-        self._recovery_task = asyncio.create_task(self._run_recovery())
+        self._recovery_task = self._own_task(self._run_recovery())
 
     async def _monitor_broker_connectivity(self) -> None:
         """Monitor broker/cTrader connectivity and trigger recovery on reconnect transitions."""
@@ -431,43 +596,44 @@ class IngestionService:
     async def shutdown(self) -> None:
         """Gracefully shutdown the service."""
         if self._is_shutting_down:
+            await self._shutdown_complete.wait()
             return
 
         self._is_shutting_down = True
-        self.logger.info("Shutting down ingestion service...")
-        self._shutdown = True
+        try:
+            self.logger.info("Shutting down ingestion service...")
+            self._shutdown = True
 
-        if self.consumer:
-            self.consumer.stop()
+            if self.consumer:
+                self.consumer.stop()
 
-        if self._health_monitor_task:
-            self._health_monitor_task.cancel()
+            if self._health_monitor_task:
+                self._health_monitor_task.cancel()
 
-        if self._recovery_task:
-            self._recovery_task.cancel()
+            for task in self._owned_tasks:
+                task.cancel()
 
-        for task in self.consumer_tasks:
-            task.cancel()
+            await asyncio.gather(*self._owned_tasks, return_exceptions=True)
 
-        await asyncio.gather(*self.consumer_tasks, return_exceptions=True)
+            if self._health_monitor_task:
+                await asyncio.gather(self._health_monitor_task, return_exceptions=True)
 
-        if self._health_monitor_task:
-            await asyncio.gather(self._health_monitor_task, return_exceptions=True)
+            if self._recovery_task:
+                await asyncio.gather(self._recovery_task, return_exceptions=True)
 
-        if self._recovery_task:
-            await asyncio.gather(self._recovery_task, return_exceptions=True)
+            if self.redis:
+                await self.redis.close()
+                self.logger.info("Closed Redis connection")
 
-        if self.redis:
-            await self.redis.close()
-            self.logger.info("Closed Redis connection")
+            await self.broker_client.aclose()
+            self.logger.info("Closed broker client")
 
-        await self.broker_client.aclose()
-        self.logger.info("Closed broker client")
+            self.db_client.close()
+            self.logger.info("Closed database client")
 
-        self.db_client.close()
-        self.logger.info("Closed database client")
-
-        self.logger.info("Ingestion service stopped")
+            self.logger.info("Ingestion service stopped")
+        finally:
+            self._shutdown_complete.set()
 
     async def run(self) -> None:
         """Main run loop."""
@@ -475,8 +641,7 @@ class IngestionService:
             await self.startup()
 
             if self.runtime_states:
-                startup_watermarks = await self._snapshot_startup_watermarks()
-                await self.start_consumers(startup_watermarks=startup_watermarks)
+                await self.start_consumers()
 
             self._health_monitor_task = asyncio.create_task(self._monitor_broker_connectivity())
 
