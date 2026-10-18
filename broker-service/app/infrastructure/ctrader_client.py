@@ -745,31 +745,52 @@ class CtraderClient(BrokerPort, MarketDataPort):
     async def _restore_subscriptions(self) -> None:
         delay = 1
         while not self._shutting_down and self.is_connected:
-            try:
-                # Registration and restoration share one lock order. Retain handlers
-                # but acknowledge active subscriptions only after upstream success.
-                async with self._trendbar_lock, self._tick_lock:
-                    spot_keys = set(self._tick_handlers) | {
-                        (account_id, symbol_id)
-                        for account_id, symbol_id, _ in self._trendbar_handlers
-                    }
-                    for account_id, symbol_id in sorted(spot_keys):
-                        if (account_id, symbol_id) not in self._active_tick_streams:
+            unfinished = False
+            # Registration and restoration share one lock order. Retain handlers
+            # but acknowledge active subscriptions only after upstream success.
+            async with self._trendbar_lock, self._tick_lock:
+                spot_keys = set(self._tick_handlers) | {
+                    (account_id, symbol_id) for account_id, symbol_id, _ in self._trendbar_handlers
+                }
+                for account_id, symbol_id in sorted(spot_keys):
+                    if (account_id, symbol_id) not in self._active_tick_streams:
+                        try:
                             await self._authorize_account(account_id)
                             await self._subscribe_spots(account_id, symbol_id)
                             self._active_tick_streams.add((account_id, symbol_id))
-                    for key in list(self._trendbar_handlers):
-                        if key not in self._active_trendbar_streams:
-                            account_id, symbol_id, timeframe = key
+                        except Exception:
+                            unfinished = True
+                            logger.exception(
+                                "Failed to restore cTrader spots; account=%s symbol_id=%s retry=%s",
+                                account_id,
+                                symbol_id,
+                                delay,
+                            )
+                for key in list(self._trendbar_handlers):
+                    if key not in self._active_trendbar_streams:
+                        account_id, symbol_id, timeframe = key
+                        # A failed spot subscription blocks only its own trendbars.
+                        if (account_id, symbol_id) not in self._active_tick_streams:
+                            continue
+                        try:
                             await self._subscribe_live_trendbar(
                                 account_id, symbol_id, Timeframe(timeframe)
                             )
                             self._active_trendbar_streams.add(key)
+                        except Exception:
+                            unfinished = True
+                            logger.exception(
+                                "Failed to restore cTrader trendbars; account=%s symbol_id=%s "
+                                "timeframe=%s retry=%s",
+                                account_id,
+                                symbol_id,
+                                timeframe,
+                                delay,
+                            )
+            if not unfinished:
                 return
-            except Exception:
-                logger.exception("Failed to restore cTrader subscriptions; retry=%s", delay)
-                await asyncio.sleep(delay)
-                delay = min(30, delay * 2)
+            await asyncio.sleep(delay)
+            delay = min(30, delay * 2)
 
     def _on_message(self, client: Client, message) -> None:
         if self._loop is None:

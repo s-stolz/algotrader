@@ -205,6 +205,103 @@ class LiveContinuityTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(redis.xadd.await_count, 1)
             await registry.shutdown()
 
+    async def test_healthy_market_publishes_through_another_markets_subscription_retries(self):
+        from ctrader_open_api.messages import OpenApiCommonMessages_pb2
+        from twisted.internet.defer import Deferred
+
+        for rejected_request in (
+            "ProtoOASubscribeSpotsReq",
+            "ProtoOASubscribeLiveTrendbarReq",
+        ):
+            with self.subTest(rejected_request=rejected_request):
+                client = self.client(real_subscriptions=True)
+                client._loop = asyncio.get_running_loop()
+                client._app_authenticated.set()
+                client._symbol_cache.store_descriptor(SymbolDescriptor(SymbolId(2), "GBPUSD", True))
+                client._symbol_cache.store_full_symbol(Symbol(2, "GBPUSD", 5, 4))
+                requests, delays = [], []
+                subscribed = set()
+                failing = False
+                real_sleep = asyncio.sleep
+                redis = Mock(xadd=AsyncMock())
+
+                def wrap(message):
+                    return getattr(OpenApiCommonMessages_pb2, "ProtoMessage")(
+                        payloadType=message.payloadType, payload=message.SerializeToString()
+                    )
+
+                def send(request, **kwargs):
+                    name = type(request).__name__
+                    if name == "ProtoOASubscribeSpotsReq":
+                        symbol_id = getattr(request, "symbolId")[0]
+                    else:
+                        symbol_id = getattr(request, "symbolId", None)
+                    requests.append((name, symbol_id))
+                    if failing and name == rejected_request and symbol_id == 1:
+                        response = getattr(OpenApiMessages_pb2, "ProtoOAErrorRes")(
+                            errorCode="TEMPORARY"
+                        )
+                    else:
+                        subscribed.add((name, symbol_id))
+                        response = getattr(OpenApiMessages_pb2, "ProtoOAAccountAuthRes")(
+                            ctidTraderAccountId=123
+                        )
+                    deferred = Deferred()
+                    asyncio.get_running_loop().call_soon(deferred.callback, wrap(response))
+                    return deferred
+
+                async def retry(delay):
+                    nonlocal failing
+                    delays.append(delay)
+                    self.assertIn(("ProtoOASubscribeSpotsReq", 2), subscribed)
+                    self.assertIn(("ProtoOASubscribeLiveTrendbarReq", 2), subscribed)
+                    event = self.event(len(delays))
+                    event.symbolId = 2
+                    client._on_message(client._client, wrap(event))
+                    async with asyncio.timeout(1):
+                        while redis.xadd.await_count < len(delays):
+                            await real_sleep(0)
+                    if len(delays) == 7:
+                        failing = False
+
+                with patch.object(client._client, "send", side_effect=send):
+                    registry = await self.registry(client, redis)
+                    await registry.start_trendbar_stream(AccountId(123), "GBPUSD", Timeframe.M1)
+                    requests.clear()
+                    subscribed.clear()
+                    failing = True
+                    with patch(
+                        "app.infrastructure.ctrader_client.asyncio.sleep", retry
+                    ), self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"):
+                        client._on_disconnected(client._client, "both Markets interrupted")
+                        client._on_message(
+                            client._client,
+                            getattr(OpenApiMessages_pb2, "ProtoOAApplicationAuthRes")(),
+                        )
+                        await real_sleep(0)
+                        assert client._subscription_restore_task is not None
+                        async with asyncio.timeout(2):
+                            await client._subscription_restore_task
+                    self.assertEqual(delays, [1, 2, 4, 8, 16, 30, 30])
+                    self.assertEqual(requests.count(("ProtoOAAccountAuthReq", None)), 1)
+                    self.assertEqual(requests.count(("ProtoOASubscribeSpotsReq", 2)), 1)
+                    self.assertEqual(requests.count(("ProtoOASubscribeLiveTrendbarReq", 2)), 1)
+                    self.assertEqual(requests.count((rejected_request, 1)), 8)
+                    other_request = (
+                        "ProtoOASubscribeLiveTrendbarReq"
+                        if rejected_request == "ProtoOASubscribeSpotsReq"
+                        else "ProtoOASubscribeSpotsReq"
+                    )
+                    self.assertEqual(requests.count((other_request, 1)), 1)
+                    published = [call.args for call in redis.xadd.call_args_list]
+                    self.assertEqual([key for key, _ in published], ["candles:123:GBPUSD:M1"] * 7)
+                    self.assertEqual(
+                        [fields["t"] for _, fields in published],
+                        ["60000", "120000", "180000", "240000", "300000", "360000", "420000"],
+                    )
+                    self.assertEqual(len({fields["continuity"] for _, fields in published}), 1)
+                    await registry.shutdown()
+
     async def test_direct_live_publication_without_identity_fails_closed(self):
         redis = Mock(xadd=AsyncMock())
         publisher = RedisStreamsPublisher(redis, Settings())
