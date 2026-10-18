@@ -4,8 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-import uuid
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 from typing import Awaitable, Callable, Dict, Tuple
 
 from app.domain.models import Trendbar
@@ -40,9 +39,6 @@ class TrendbarStreamEntry:
     started_at: float
     last_bar_at: float | None = None
     error: str | None = None
-    loss_revision: int = 0
-    source_continuity: str | None = None
-    continuity: str = field(default_factory=lambda: "v1:" + uuid.uuid4().hex)
 
 
 class TrendbarStreamRegistry:
@@ -104,24 +100,9 @@ class TrendbarStreamRegistry:
                 stream_entry = self._streams.get(key)
                 if stream_entry is None:
                     return
-                if bar.continuity != stream_entry.source_continuity:
-                    stream_entry.source_continuity = bar.continuity
-                    stream_entry.continuity = "v1:" + uuid.uuid4().hex
-                # Capture the source session before independent writer tasks run.
-                bar = replace(bar, continuity=stream_entry.continuity)
                 try:
                     stream_entry.queue.put_nowait(bar)
                 except asyncio.QueueFull:
-                    # Keep loss outside the lossy queue. The FIFO writer observes
-                    # it before starting its next publication, including old bars.
-                    stream_entry.loss_revision += 1
-                    logger.warning(
-                        "Candle queue overflow account=%s symbol=%s timeframe=%s revision=%s",
-                        account_id,
-                        normalized_symbol,
-                        timeframe.value,
-                        stream_entry.loss_revision,
-                    )
                     _ = stream_entry.queue.get_nowait()
                     stream_entry.queue.put_nowait(bar)
 
@@ -132,18 +113,12 @@ class TrendbarStreamRegistry:
 
                 await enqueue_bar(bar)
 
-            try:
-                subscription = await self._subscribe_fn(
-                    int(account_id),
-                    normalized_symbol,
-                    timeframe,
-                    on_trendbar,
-                )
-            except BaseException:
-                self._streams.pop(key, None)
-                placeholder_task.cancel()
-                await asyncio.gather(placeholder_task, return_exceptions=True)
-                raise
+            subscription = await self._subscribe_fn(
+                int(account_id),
+                normalized_symbol,
+                timeframe,
+                on_trendbar,
+            )
             entry.subscription = subscription
             entry.writer_task = asyncio.create_task(self._writer(entry))
             entry.writer_task.add_done_callback(lambda task, e=entry: self._writer_done(e, task))
@@ -201,42 +176,19 @@ class TrendbarStreamRegistry:
                 )
 
     async def _writer(self, entry: TrendbarStreamEntry) -> None:
-        publication_source: tuple[str | None, int] | None = None
-        publication_continuity = ""
         while True:
             bar = await entry.queue.get()
-            backoff = 1
-            while True:
-                source = (bar.continuity, entry.loss_revision)
-                if source != publication_source:
-                    publication_source = source
-                    publication_continuity = "v1:" + uuid.uuid4().hex
-                try:
-                    await self._publish_candle(
-                        entry.account_id,
-                        entry.symbol,
-                        entry.timeframe,
-                        replace(bar, continuity=publication_continuity),
-                    )
-                    entry.last_bar_at = time.time()
-                    entry.error = None
-                    break
-                except Exception as exc:
-                    # An uncertain XADD may have committed. Retrying with a new
-                    # identity protects that interval for every consumer.
-                    entry.loss_revision += 1
-                    entry.error = str(exc)
-                    logger.exception(
-                        "Candle publication failed account=%s symbol=%s timeframe=%s "
-                        "revision=%s retry=%s",
-                        entry.account_id,
-                        entry.symbol,
-                        entry.timeframe.value,
-                        entry.loss_revision,
-                        backoff,
-                    )
-                    await asyncio.sleep(backoff)
-                    backoff = min(30, backoff * 2)
+            try:
+                await self._publish_candle(
+                    entry.account_id,
+                    entry.symbol,
+                    entry.timeframe,
+                    bar,
+                )
+                entry.last_bar_at = time.time()
+            except Exception as exc:
+                logger.exception("Failed to publish trendbar to Redis")
+                entry.error = str(exc)
 
     @staticmethod
     def _writer_done(entry: TrendbarStreamEntry, task: asyncio.Task[None]) -> None:

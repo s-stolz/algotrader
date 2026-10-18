@@ -4,7 +4,7 @@ A Python service that consumes market data from Redis streams and persists it to
 
 ## Features
 
-- **Durable Recovery**: Protects a saved boundary before live writes and retrieves broker history
+- **Automatic Backfill**: On startup, detects missing data gaps and backfills from Redis streams
 - **Redis Stream Consumer**: Consumes candle data using XREAD
 - **Dynamic Symbol Loading**: Fetches active symbols from the markets table
 - **Batch Processing**: Efficiently batches candles before writing to database
@@ -55,9 +55,6 @@ Redis Streams → Ingestion Service → Database Accessor API → TimescaleDB
 
 The service:
 1. Fetches active symbols from database-accessor-api
-2. Durably preserves pending recovery before admitting newer live Candles
+2. Checks for data gaps and backfills from Redis streams
 3. Continuously consumes new candle data from Redis
 4. Transforms and batches data before writing via HTTP POST
-
-For history policy, protected startup, forward migration, rollback/restart, and
-reproducible real process acceptance, read the [recovery contract](../docs/contracts/recovery.md).

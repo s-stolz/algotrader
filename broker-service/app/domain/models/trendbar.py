@@ -13,4 +13,3 @@ class Trendbar:
     v: int
     t: int
     digits: int = 5
-    continuity: str | None = None
