@@ -29,8 +29,16 @@ NOW = RESUMED + 180000
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def bar(timestamp, value=1):
-    return dict(t=timestamp, o=value, h=value + 2, l=value - 1, c=value + 1, v=value * 10)
+def bar(timestamp, value=1, session="a"):
+    return dict(
+        t=timestamp,
+        o=value,
+        h=value + 2,
+        l=value - 1,
+        c=value + 1,
+        v=value * 10,
+        continuity="v1:" + session * 32,
+    )
 
 
 @unittest.skipUnless(
@@ -45,7 +53,7 @@ class ProcessRecoveryTests(unittest.TestCase):
         with httpx.Client(base_url=ACCESSOR) as http, Redis.from_url(REDIS) as redis:
             if http.get("/markets").json():
                 raise RuntimeError("Process acceptance requires an empty disposable database")
-            for phase in ("before-save", "protected-live", "after-data"):
+            for phase in ("before-save", "protected-live", "after-data", "sessions"):
                 with self.subTest(phase=phase):
                     self.exercise_phase(http, redis, phase)
 
@@ -71,7 +79,11 @@ class ProcessRecoveryTests(unittest.TestCase):
         response.raise_for_status()
         source = {"account_id": account}
         stream = f"candles:{account}:{symbol}:M1"
-        faults = dict(save=phase == "before-save", history=phase != "after-data", progress=True)
+        faults = dict(
+            save=phase == "before-save",
+            history=phase not in ("after-data", "sessions"),
+            progress=phase != "sessions",
+        )
         attempted = threading.Event()
         history_requests = []
 
@@ -100,7 +112,12 @@ class ProcessRecoveryTests(unittest.TestCase):
                     history_requests.append((start, end))
                     records: list[dict[str, Any]] = [
                         bar(t, 8)
-                        for t in (BOUNDARY, BOUNDARY + 60000, RESUMED)
+                        for t in (
+                            BOUNDARY,
+                            BOUNDARY + 60000,
+                            RESUMED,
+                            *([BOUNDARY + 86400000] if phase == "sessions" else []),
+                        )
                         if start <= t <= end
                     ]
                     records.append(
@@ -157,15 +174,19 @@ class ProcessRecoveryTests(unittest.TestCase):
         )
         child = None
         logs = tempfile.TemporaryFile(mode="w+")
+        clock = tempfile.NamedTemporaryFile(mode="w", delete=False)
+        clock_path = Path(clock.name)
+        clock.write(str(BOUNDARY + 120000 if phase == "sessions" else NOW))
+        clock.close()
 
         def launch():
             return subprocess.Popen(
                 [
                     sys.executable,
                     "-c",
-                    "import asyncio, main; "
+                    "import asyncio, main; from pathlib import Path; "
                     "main.IngestionService._utc_now_ms = staticmethod(lambda: "
-                    f"{NOW}); asyncio.run(main.main())",
+                    f"int(Path({str(clock_path)!r}).read_text())); asyncio.run(main.main())",
                 ],
                 cwd=ROOT,
                 env=environment,
@@ -198,6 +219,54 @@ class ProcessRecoveryTests(unittest.TestCase):
 
         try:
             child = launch()
+            if phase == "sessions":
+                wait_for(lambda: pending() is None and len(stored()) == 2)
+                redis.xadd(stream, bar(BOUNDARY + 60000))
+                redis.xadd(stream, bar(BOUNDARY + 120000))
+                wait_for(lambda: redis.xlen(stream) >= 2)
+                time.sleep(0.2)
+                wait_for(lambda: pending() is None)
+                # No health-down result exists. A brief reconnect followed by
+                # another session (broker restart) must protect both intervals.
+                faults["history"] = True
+                clock_path.write_text(str(NOW))
+                with redis.pipeline() as batch:
+                    batch.xadd(stream, bar(RESUMED, session="b"))
+                    batch.xadd(stream, bar(RESUMED + 60000, session="b"))
+                    batch.execute()
+                wait_for(lambda: any(r["timestamp_ms"] == RESUMED for r in stored()))
+                first = pending()
+                self.assertIsNotNone(first)
+                self.assertLessEqual(first["next_ms"], BOUNDARY + 120000)
+                self.assertEqual(first["target_ms"], NOW - 1)
+                clock_path.write_text(str(NOW + 60000))
+                with redis.pipeline() as batch:
+                    batch.xadd(stream, bar(RESUMED + 120000, session="c"))
+                    batch.xadd(stream, bar(RESUMED + 180000, session="c"))
+                    batch.execute()
+                wait_for(lambda: any(r["timestamp_ms"] == RESUMED + 120000 for r in stored()))
+                second = pending()
+                self.assertEqual(second["next_ms"], first["next_ms"])
+                self.assertGreater(second["revision"], first["revision"])
+                self.assertEqual(second["target_ms"], NOW + 59999)
+                child.kill()
+                child.wait(timeout=5)
+                faults.update(history=False, progress=False)
+                environment["HISTORY_LOOKBACK_DAYS"] = "1"
+                child = launch()
+                wait_for(lambda: pending() is None)
+                rows = {r["timestamp_ms"]: r for r in stored()}
+                self.assertEqual(rows[BOUNDARY + 60000]["close"], 9)
+                self.assertEqual(rows[RESUMED]["close"], 9)
+                self.assertEqual(rows[BOUNDARY + 86400000]["close"], 9)
+                self.assertTrue(any(start < RESUMED for start, _ in history_requests))
+                # A further live update proves delivery after the pending restart.
+                redis.xadd(stream, bar(RESUMED + 180000, session="c"))
+                redis.xadd(stream, bar(RESUMED + 240000, session="c"))
+                wait_for(lambda: any(r["timestamp_ms"] == RESUMED + 180000 for r in stored()))
+                child.terminate()
+                self.assertEqual(child.wait(timeout=5), 0)
+                return
             if phase == "before-save":
                 wait_for(attempted.is_set)
                 self.assertIsNone(pending())
@@ -245,6 +314,7 @@ class ProcessRecoveryTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=5)
             logs.close()
+            clock_path.unlink(missing_ok=True)
             redis.delete(stream)
             response = http.delete(f"/markets/{symbol}", params={"exchange": "VIBE10"})
             response.raise_for_status()

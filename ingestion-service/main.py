@@ -27,6 +27,7 @@ class SymbolRuntimeState:
     live_ready: asyncio.Event = field(default_factory=asyncio.Event)
     recovery_requested: asyncio.Event = field(default_factory=asyncio.Event)
     handoff_start_ms: int | None = None
+    continuity: str | None = None
 
 
 class IngestionService:
@@ -244,6 +245,19 @@ class IngestionService:
                 f"Wrote {len(chunk)} candles for {symbol} " f"(chunk {chunk_num}/{total_chunks})"
             )
 
+    async def observe_continuity(self, symbol_id: int, continuity: str | None) -> None:
+        """Protect a new publication session before its messages can affect storage."""
+        state = self._state_by_id[symbol_id]
+        if continuity is not None and continuity == state.continuity:
+            return
+        await self.request_recovery(
+            state, "continuity-change" if continuity is not None else "invalid-continuity"
+        )
+        state.continuity = continuity
+        # The new session's current open minute needs a later closed target,
+        # including when no subsequent update for that minute is published.
+        state.handoff_start_ms = (self._utc_now_ms() // 60000) * 60000
+
     async def write_candles_callback(self, symbol_id: int, candles: List[Dict[str, Any]]) -> None:
         """Callback to write candles to database."""
         if not candles:
@@ -380,6 +394,7 @@ class IngestionService:
                                 symbol_id=state.symbol_id,
                                 callback=self.write_candles_callback,
                                 start_id=tail_id,
+                                continuity_callback=self.observe_continuity,
                             )
                         )
                     )

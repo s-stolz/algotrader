@@ -24,3 +24,12 @@ configuration, migration and real process acceptance, read the
 compressed storage and partial-write replay, read
 [Candle persistence](../docs/contracts/candles.md). Broker delivery completion is
 owned by the [historical transport contract](../broker-service/HISTORY.md).
+
+**Publication continuity:** per-message identity of uninterrupted live delivery.
+A changed identity requires durable recovery protection before live persistence.
+
+**Untrusted live data:** a Redis Candle with absent or invalid continuity. It can
+be recovered historically, but cannot be admitted as an unprotected live write.
+
+For mixed sessions, retained legacy rows and compatible consumer rollout, read
+[live publication continuity](../docs/contracts/recovery.md#live-publication-continuity).

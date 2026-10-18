@@ -150,6 +150,8 @@ class RedisConsumer:
         numeric_fields = {"t", "o", "h", "l", "c", "v"}
 
         for key, value in fields.items():
+            if key == "continuity":
+                continue
             if key in numeric_fields:
                 if key == "t":
                     data["timestamp_ms"] = int(value)

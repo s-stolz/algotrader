@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+import re
 from collections.abc import Awaitable, Callable
+from itertools import groupby
 from typing import Any, Dict, List, Optional, Union
 
 from redis.asyncio import Redis
@@ -99,6 +101,21 @@ class StreamConsumer:
             "v": float(redis_data[b"v"].decode()),
         }
 
+    @staticmethod
+    def _continuity(data: Dict[bytes, bytes]) -> str | None:
+        raw = data.get(b"continuity")
+        if not isinstance(raw, bytes):
+            return None
+        try:
+            value = raw.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+        return value if re.fullmatch(r"v1:[0-9a-f]{32}", value) else None
+
+    @staticmethod
+    def _id_after(candidate: str, cursor: str) -> bool:
+        return tuple(map(int, candidate.split("-"))) > tuple(map(int, cursor.split("-")))
+
     def _process_stream_messages(
         self,
         stream_key: str,
@@ -153,6 +170,7 @@ class StreamConsumer:
         symbol_id: int,
         callback: Callable[[int, List[Dict[str, Any]]], Awaitable[None]],
         start_id: str = "0-0",
+        continuity_callback: Callable[[int, str | None], Awaitable[None]] | None = None,
     ):
         """Consume messages from a single Redis stream.
 
@@ -181,18 +199,41 @@ class StreamConsumer:
                     messages = None
                     continue
 
-                candles, new_last_id, pending = self._process_stream_messages(stream_key, messages)
-
-                if candles:
-                    logger.debug(f"Consumed {len(candles)} candles from {stream_key}")
-                    logger.debug(f"New Candle for {stream_key}: {candles}")
-                    await callback(symbol_id, candles)
-
-                if pending is not None:
-                    self._pending_open_candles[stream_key] = pending
-                if new_last_id:
-                    self._last_ids[stream_key] = new_last_id
-                    last_id = new_last_id
+                # Process contiguous session runs in Redis order, committing each
+                # run's cursor only after its protection and Candle writes succeed.
+                entries: list[tuple[Any, Any]] = [
+                    entry
+                    for _stream, batch in messages
+                    for entry in batch
+                    if self._id_after(self._decode_bytes(entry[0]), last_id)
+                ]
+                groups = groupby(entries, key=lambda entry: self._continuity(entry[1]))
+                for continuity, run in groups:
+                    batch = list(run)
+                    if continuity_callback is not None:
+                        await continuity_callback(symbol_id, continuity)
+                        pending = self._pending_open_candles.get(stream_key)
+                        if pending is not None and pending.get("continuity") != continuity:
+                            # An old open Candle may be incomplete. History owns
+                            # it after the boundary is durably protected above.
+                            self._pending_open_candles.pop(stream_key, None)
+                        if continuity is None:
+                            # Legacy/invalid rows have no trusted session. Discard
+                            # only after protection, and never persist them live.
+                            last_id = self._decode_bytes(batch[-1][0])
+                            self._last_ids[stream_key] = last_id
+                            continue
+                    candles, new_last_id, pending = self._process_stream_messages(
+                        stream_key, [(stream_key, batch)]
+                    )
+                    if candles:
+                        await callback(symbol_id, candles)
+                    if pending is not None:
+                        pending["continuity"] = continuity
+                        self._pending_open_candles[stream_key] = pending
+                    if new_last_id:
+                        self._last_ids[stream_key] = new_last_id
+                        last_id = new_last_id
                 messages = None
 
             except asyncio.CancelledError:

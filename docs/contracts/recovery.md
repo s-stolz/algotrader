@@ -59,6 +59,64 @@ reconnect recovery share the same pending policy and historical worker. Addition
 interruption triggers use this operation rather than choosing a new latest row
 inside a historical retry.
 
+## Live publication continuity
+
+A **publication session** identifies uninterrupted live Candle delivery on one
+stable `candles:{account_id}:{symbol}:{timeframe}` stream. Every newly published
+Candle has the six existing `o,h,l,c,v,t` fields plus `continuity`, an opaque ASCII
+`v1:` followed by 32 lowercase hexadecimal characters. Consumers must compare the
+whole value, never derive account or Market identity from it. No stream discovery,
+rotating keys, separate continuity stream, or continuity lookup is required.
+Historical responses and public Candle/WebSocket fields retain their existing shape.
+
+Broker transport identity is randomly initialized on each process start and
+changed by the actual cTrader disconnect callback before dispatch to the asyncio
+loop. Live event dispatch captures that identity. A dispatch delayed across the
+change is discarded; subsequent history recovers it. The stream registry assigns
+its own random publication identity at stream creation and after a changed
+transport identity, stamping each Candle before queueing it. Already queued old
+Candles retain their old identity; the FIFO writer publishes them before newer
+queued sessions. A writer must never apply its current identity to an old item.
+Elapsed time, missing Candles, weekends and holidays do not change identity.
+
+After application authentication, cTrader accounts and spots are restored before
+trendbars. Application/account authentication and subscription errors do not count
+as success. Application authentication and subscription restoration retry actual
+failures indefinitely with capped backoff. Another disconnect cancels stale work;
+shutdown awaits it. A failed stream start removes its temporary registration so
+a successful retry cannot duplicate handlers or return a dead placeholder stream.
+
+Ingestion processes contiguous session runs in Redis order, including several
+sessions in one XREAD. Before the first message of a new session can affect live
+storage, it uses the same durable recovery operation as startup: close the write
+gate, preserve/merge the old database boundary, freeze a closed target, then reopen
+the gate. The first closed batch subsequently extends protection over the session
+handoff's open minute. Additional changes during backfill merge a newer revision
+and target while preserving the earliest unfinished cursor. Stale completion
+cannot clear that newer work. Connection-health polling may request the same
+operation, but message identity detects reconnects too brief for polling.
+
+An open Candle from the prior session can contain partial pre-disconnect values.
+After protection is saved, discard it and let authoritative history provide the
+closed value. A failed protection save retains the unacknowledged batch, including
+remaining session runs; no affected live write can precede the successful save.
+A retry does not rewind already acknowledged earlier runs within that batch.
+
+Missing, non-ASCII, unsupported-version or malformed continuity is **untrusted
+live data**. Ingestion durably requests `invalid-continuity` recovery before
+acknowledging/discarding those rows, never writes them as live Candles, and clears
+any old open Candle. Historical retrieval recovers broker-available closed data.
+If storage is unavailable, the cursor stays put and retries. This deliberately
+keeps an old producer from silently bypassing protection. Webserver and Indicator
+consumers accept legacy and enriched rows: they ignore transport continuity and
+expose only their existing Candle/Indicator fields. They do not refresh chart
+history or rebuild an existing live Indicator session.
+
+Authentication, healthy containers and fresh live delivery establish connection
+health only. Historical recovery succeeds only when the finite interval's broker
+completion, authoritative writes and conditional progress all succeed. Empty
+broker history during a closure completes normally; silence alone requests no work.
+
 ## Windows, retries, and shutdown
 
 Recover at most one finite day per historical request. Buffer at most its possible
@@ -105,17 +163,24 @@ immutable; later changes require a new forward migration.
 
 For existing volumes:
 
-1. Stop ingestion before changing its storage API. Keep broker publication running.
+1. Stop ingestion before changing its storage or continuity contract. Preserve
+   Redis streams and all pending rows; do not drain or delete real history.
 2. Deploy the migration assets, then run
    `docker compose --env-file config/.env.shared exec -T timescaledb sh /docker-entrypoint-initdb.d/05-run-migrations.sh`.
    The runner uses `TIMESCALEDB_DB` (legacy default `finance_data`) and
    `POSTGRES_USER`; supply the database explicitly when the container uses another
    name. Fresh volumes run the script after legacy table initialization.
-3. Deploy the compatible accessor and shared client, regenerate history settings,
-   then start ingestion through protected startup. Confirm durable pending state
-   before relying on fresh live delivery; confirm history/progress completion.
-4. For rollback, keep ingestion stopped or use a recovery-aware version. Retain
-   pending rows and the migration ledger. Do not revert the schema or delete real
+3. Deploy the compatible accessor/shared client and the webserver/Indicator
+   consumers. Deploy/restart the continuity-producing broker while ingestion stays
+   stopped. Retained legacy Redis rows may remain: protected startup snapshots the
+   tail and recovers from the database boundary through subscription establishment;
+   any legacy rows arriving after that tail follow the untrusted-data policy above.
+4. Deploy the compatible ingestion consumer, regenerate history settings, and start
+   it through protected startup. Confirm durable pending state before relying on
+   fresh live delivery, then confirm history/progress completion. Do not activate
+   an older ingestion consumer against this rollout: it cannot enforce continuity.
+5. For rollback, keep ingestion stopped or use a continuity/recovery-aware version.
+   Retain pending rows and the migration ledger. Do not revert the schema or delete real
    history. Restarting recovery-aware ingestion replays unfinished windows.
 
 ## Reproduce acceptance
@@ -136,9 +201,13 @@ Timescale database after applying the migration, plus a disposable Redis. Set
 with `PYTHONPATH=ingestion-service:libs/db_accessor_client:libs/algotrader_logger`.
 The test starts controlled broker/dependency HTTP adapters and real child ingestion
 processes. It kills ingestion before boundary save, after a protected live write,
-and after historical writes before progress. Each restart verifies October 5
-history despite October 18 live rows, shortened lookback with accepted work, and
-subsequent Redis live delivery. It removes only its synthetic Market and stream.
+and after historical writes before progress. The sessions phase first completes
+startup, then delivers two rapid changed identities while health always stays up,
+merges their work and kills ingestion with it pending. After restart with a one-day
+lookback, it verifies a previously missing October 6 Candle and authoritative
+October 18 values from supplied broker results, then resumed Redis live delivery.
+Each phase verifies persisted Candles and pending state, without expecting one
+Candle per calendar minute. It removes only its synthetic Market and stream.
 No process or storage test may target real history. Missing environment variables
 produce explicit skips, never evidence of acceptance.
 

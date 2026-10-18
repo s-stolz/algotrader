@@ -4,7 +4,8 @@ import asyncio
 import contextlib
 import logging
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field, replace
 from typing import Awaitable, Callable, Dict, Tuple
 
 from app.domain.models import Trendbar
@@ -39,6 +40,8 @@ class TrendbarStreamEntry:
     started_at: float
     last_bar_at: float | None = None
     error: str | None = None
+    source_continuity: str | None = None
+    continuity: str = field(default_factory=lambda: "v1:" + uuid.uuid4().hex)
 
 
 class TrendbarStreamRegistry:
@@ -100,6 +103,11 @@ class TrendbarStreamRegistry:
                 stream_entry = self._streams.get(key)
                 if stream_entry is None:
                     return
+                if bar.continuity != stream_entry.source_continuity:
+                    stream_entry.source_continuity = bar.continuity
+                    stream_entry.continuity = "v1:" + uuid.uuid4().hex
+                # Stamp at enqueue; the writer must never relabel old queued bars.
+                bar = replace(bar, continuity=stream_entry.continuity)
                 try:
                     stream_entry.queue.put_nowait(bar)
                 except asyncio.QueueFull:
@@ -113,12 +121,18 @@ class TrendbarStreamRegistry:
 
                 await enqueue_bar(bar)
 
-            subscription = await self._subscribe_fn(
-                int(account_id),
-                normalized_symbol,
-                timeframe,
-                on_trendbar,
-            )
+            try:
+                subscription = await self._subscribe_fn(
+                    int(account_id),
+                    normalized_symbol,
+                    timeframe,
+                    on_trendbar,
+                )
+            except BaseException:
+                self._streams.pop(key, None)
+                placeholder_task.cancel()
+                await asyncio.gather(placeholder_task, return_exceptions=True)
+                raise
             entry.subscription = subscription
             entry.writer_task = asyncio.create_task(self._writer(entry))
             entry.writer_task.add_done_callback(lambda task, e=entry: self._writer_done(e, task))

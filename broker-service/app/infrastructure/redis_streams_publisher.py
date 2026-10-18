@@ -31,8 +31,11 @@ class RedisStreamsPublisher(RedisPublisherPort):
         candle: Trendbar,
     ) -> None:
         key = f"candles:{account_id}:{symbol}:{timeframe.value}"
+        if not candle.continuity:
+            raise ValueError("Live Candle publication requires continuity")
         d = candle.digits
         fields = {
+            "continuity": candle.continuity,
             "o": f"{candle.o:.{d}f}",
             "h": f"{candle.h:.{d}f}",
             "l": f"{candle.l:.{d}f}",

@@ -9,3 +9,13 @@ It can contain zero Candles; market inactivity is not a retrieval failure.
 
 **Partial historical delivery:** Candles received before failure or without verified
 completion. Their presence does not establish a completed history interval.
+
+**Publication session:** uninterrupted live Candle delivery on a stable Redis
+stream, identified by restart-safe per-message continuity. Its identity changes
+across transport interruptions and stream recreation, never ordinary silence.
+
+**Connection health:** successful current broker connectivity/authentication. It
+does not establish completed historical recovery.
+
+For subscription restoration, queued-event ordering and consumer compatibility,
+read [live publication continuity](../docs/contracts/recovery.md#live-publication-continuity).

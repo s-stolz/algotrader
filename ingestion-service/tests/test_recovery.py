@@ -17,8 +17,10 @@ RESUMED = 1792281600000  # October 18, 2026 UTC
 NOW = RESUMED + 180000
 
 
-def candle(timestamp, value=1):
-    return dict(t=timestamp, o=value, h=value, l=value, c=value, v=value)
+def candle(timestamp, value=1, session="a"):
+    return dict(
+        t=timestamp, o=value, h=value, l=value, c=value, v=value, continuity="v1:" + session * 32
+    )
 
 
 async def eventually(predicate):
@@ -106,6 +108,7 @@ class Storage:
 class RedisInput:
     def __init__(self):
         self.queues = {}
+        self.next_id = 2
 
     async def ping(self):
         return True
@@ -121,11 +124,12 @@ class RedisInput:
         stream = f"candles:12345:{symbol}:M1"
         entries = [
             (
-                f"{i + 2}-0".encode(),
+                f"{i + self.next_id}-0".encode(),
                 {key.encode(): str(value).encode() for key, value in bar.items()},
             )
             for i, bar in enumerate(bars)
         ]
+        self.next_id += len(bars)
         await self.queues.setdefault(stream, asyncio.Queue()).put([(stream.encode(), entries)])
 
     async def close(self):
@@ -150,7 +154,7 @@ class Broker:
             raise RuntimeError("history unavailable")
         if symbol in self.empty:
             return
-        for timestamp in (BOUNDARY, BOUNDARY + 60000, RESUMED):
+        for timestamp in (BOUNDARY, BOUNDARY + 60000, BOUNDARY + 86400000, RESUMED):
             if start_time <= timestamp <= end_time:
                 yield candle(timestamp, 8)
 
@@ -195,6 +199,181 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             await service.startup()
         await service.start_consumers()
         return service, redis
+
+    async def test_brief_reconnect_and_broker_restart_recover_after_startup_completed(self):
+        for session in ("b", "c"):
+            storage, broker = Storage(), Broker()
+            broker.allow_history.set()
+            clock = [BOUNDARY + 120000]
+            service, redis = await self.start(storage, broker, now=lambda: clock[0])
+            await eventually(lambda: not storage.pending and bool(broker.requests))
+            await redis.publish("BTC", [candle(BOUNDARY + 60000), candle(BOUNDARY + 120000)])
+            await eventually(lambda: service._state_by_id[1].continuity is not None)
+            await eventually(lambda: not storage.pending)
+            broker.allow_history.clear()
+            clock[0] = NOW
+            # Health remains up throughout: only the published identity changes.
+            self.assertTrue(await service._is_broker_connected())
+            await redis.publish(
+                "BTC", [candle(RESUMED, session=session), candle(RESUMED + 60000, session=session)]
+            )
+            await eventually(lambda: RESUMED in storage.rows["BTC"])
+            pending = next(iter(storage.pending.values()))
+            self.assertLessEqual(pending["next_ms"], BOUNDARY + 120000)
+            self.assertEqual(pending["target_ms"], NOW - 1)
+            broker.allow_history.set()
+            await eventually(lambda: not storage.pending)
+            self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
+            self.assertEqual(storage.rows["BTC"][BOUNDARY + 86400000]["close"], 8)
+            self.assertEqual(storage.rows["BTC"][BOUNDARY + 60000]["close"], 8)
+            await service.shutdown()
+
+    async def test_mixed_session_batch_and_another_reconnect_retain_earliest_pending(self):
+        storage, broker = Storage(), Broker()
+        clock = [NOW]
+        service, redis = await self.start(storage, broker, now=lambda: clock[0])
+        await eventually(lambda: bool(broker.requests))
+        await redis.publish(
+            "BTC",
+            [
+                candle(RESUMED),
+                candle(RESUMED + 60000),
+                candle(RESUMED + 60000, session="b"),
+                candle(RESUMED + 120000, session="b"),
+            ],
+        )
+        await eventually(lambda: RESUMED + 60000 in storage.rows["BTC"])
+        before = next(iter(storage.pending.values())).copy()
+        self.assertEqual(before["next_ms"], BOUNDARY)
+        clock[0] += 120000
+        await redis.publish(
+            "BTC", [candle(RESUMED + 180000, session="c"), candle(RESUMED + 240000, session="c")]
+        )
+        await eventually(lambda: RESUMED + 180000 in storage.rows["BTC"])
+        after = next(iter(storage.pending.values()))
+        self.assertEqual(after["next_ms"], BOUNDARY)
+        self.assertGreater(after["revision"], before["revision"])
+        self.assertEqual(after["target_ms"], NOW + 120000 - 1)
+        await service.shutdown()
+        storage.fail_read.add("BTC")
+        await self.start(storage, broker, lookback=1, now=lambda: clock[0])
+        broker.allow_history.set()
+        await eventually(lambda: not storage.pending)
+        self.assertEqual(storage.rows["BTC"][BOUNDARY + 60000]["close"], 8)
+        self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
+
+    async def test_invalid_and_retained_legacy_rows_are_recovered_without_live_commit(self):
+        for invalid in (None, "", "v1:bad", "v2:" + "a" * 32):
+            storage, broker = Storage(), Broker()
+            service, redis = await self.start(storage, broker)
+            await eventually(lambda: bool(broker.requests))
+            bars = [candle(RESUMED), candle(RESUMED + 60000)]
+            for bar in bars:
+                if invalid is None:
+                    del bar["continuity"]
+                else:
+                    bar["continuity"] = invalid
+            await redis.publish("BTC", bars)
+            await eventually(
+                lambda: next(iter(storage.pending.values()))["trigger"] == "invalid-continuity"
+            )
+            self.assertNotIn(RESUMED, storage.rows["BTC"])
+            broker.allow_history.set()
+            await eventually(lambda: not storage.pending)
+            self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
+            await service.shutdown()
+
+    async def test_new_session_save_failure_cannot_write_or_acknowledge_its_batch(self):
+        storage, broker = Storage(), Broker()
+        service, redis = await self.start(storage, broker)
+        await eventually(lambda: bool(broker.requests))
+        storage.fail_save.add(1)
+        await redis.publish(
+            "BTC", [candle(RESUMED, session="b"), candle(RESUMED + 60000, session="b")]
+        )
+        await eventually(lambda: not service._state_by_id[1].live_ready.is_set())
+        self.assertNotIn(RESUMED, storage.rows["BTC"])
+        assert service.consumer is not None
+        self.assertNotIn(service._state_by_id[1].stream_key, service.consumer._last_ids)
+        # Cancel during retry, then protected startup must recover the same old interval.
+        await service.shutdown()
+        storage.fail_save.clear()
+        await self.start(storage, broker, lookback=1)
+        broker.allow_history.set()
+        await eventually(lambda: not storage.pending)
+        self.assertEqual(storage.rows["BTC"][BOUNDARY + 60000]["close"], 8)
+
+    async def test_failed_later_session_in_mixed_batch_replays_only_unacknowledged_run(self):
+        storage, broker = Storage(), Broker()
+        service, redis = await self.start(storage, broker)
+        await eventually(lambda: bool(broker.requests))
+        writes = []
+        original = storage.write_candles
+
+        def write(symbol, candles, exchange=None):
+            writes.extend(c["timestamp_ms"] for c in candles)
+            original(symbol, candles, exchange)
+            if any(c["timestamp_ms"] == RESUMED for c in candles):
+                storage.fail_save.add(1)
+
+        storage.write_candles = write
+        await redis.publish(
+            "BTC",
+            [
+                candle(RESUMED),
+                candle(RESUMED + 60000),
+                candle(RESUMED + 60000, session="b"),
+                candle(RESUMED + 120000, session="b"),
+            ],
+        )
+        await eventually(
+            lambda: RESUMED in storage.rows["BTC"]
+            and not service._state_by_id[1].live_ready.is_set()
+        )
+        self.assertNotIn(RESUMED + 60000, storage.rows["BTC"])
+        storage.fail_save.clear()
+        async with asyncio.timeout(7):
+            while RESUMED + 60000 not in storage.rows["BTC"]:
+                await asyncio.sleep(0.01)
+        self.assertEqual(writes.count(RESUMED), 1)
+        self.assertEqual(writes.count(RESUMED + 60000), 1)
+        self.assertEqual(next(iter(storage.pending.values()))["next_ms"], BOUNDARY)
+        broker.allow_history.set()
+        await eventually(lambda: not storage.pending)
+        self.assertEqual(storage.rows["BTC"][BOUNDARY + 86400000]["close"], 8)
+
+    async def test_old_open_candle_is_recovered_instead_of_committing_partial_values(self):
+        storage, broker = Storage(), Broker()
+        service, redis = await self.start(storage, broker)
+        await eventually(lambda: bool(broker.requests))
+        await redis.publish("BTC", [candle(RESUMED, 99)])
+        await eventually(lambda: service._state_by_id[1].continuity is not None)
+        await redis.publish(
+            "BTC", [candle(RESUMED + 60000, session="b"), candle(RESUMED + 120000, session="b")]
+        )
+        await eventually(lambda: RESUMED + 60000 in storage.rows["BTC"])
+        self.assertNotIn(RESUMED, storage.rows["BTC"])
+        broker.allow_history.set()
+        await eventually(lambda: not storage.pending)
+        self.assertEqual(storage.rows["BTC"][RESUMED]["close"], 8)
+
+    async def test_silent_weekend_does_not_change_session_or_schedule_more_history(self):
+        storage, broker = Storage(), Broker()
+        broker.empty.add("BTC")
+        broker.allow_history.set()
+        clock = [NOW]
+        service, redis = await self.start(storage, broker, now=lambda: clock[0])
+        await eventually(lambda: not storage.pending and bool(broker.requests))
+        await redis.publish("BTC", [candle(RESUMED)])
+        await eventually(lambda: service._state_by_id[1].continuity is not None)
+        await eventually(lambda: not storage.pending)
+        count = len(broker.requests)
+        session = service._state_by_id[1].continuity
+        clock[0] += 7 * 86400000
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(broker.requests), count)
+        self.assertEqual(service._state_by_id[1].continuity, session)
+        self.assertFalse(storage.pending)
 
     async def test_old_boundary_survives_live_writes_shutdown_and_rolling_restart(self):
         storage, broker = Storage(), Broker()
