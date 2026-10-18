@@ -254,6 +254,9 @@ For existing volumes:
 
 ## Reproduce acceptance
 
+For the one-command disposable stack check and release procedure, read the
+[deployment and acceptance guide](../operations/market-data-recovery.md).
+
 Use only isolated loopback services and synthetic data. Real accessor transaction
 checks use `HISTORY_TEST_DATABASE_URL` with a disposable `vibe9_*` Timescale
 database; see [storage setup](candles.md). Run accessor tests from this checkout

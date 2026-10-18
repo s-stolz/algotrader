@@ -105,3 +105,8 @@ test:
 
 backtester ingestion-service broker-service indicator_engine:
 	@:
+
+# Creates disposable loopback Redis/Timescale services; never uses the configured stack.
+.PHONY: smoke-recovery
+smoke-recovery:
+	$(PYTHON) scripts/smoke_recovery.py
