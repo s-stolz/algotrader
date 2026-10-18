@@ -160,7 +160,7 @@ describe('execution-log drawer', () => {
     const timestamp = 1_714_525_200_000;
     let resolveFirst!: (trades: BacktestClosedTrade[]) => void;
     vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
-    vi.mocked(getBacktestRun).mockResolvedValue(first);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => id === first.run_id ? first : second);
     vi.mocked(fetchBacktestClosedTrades).mockImplementation((id) => id === 'first'
       ? new Promise((resolve) => { resolveFirst = resolve; })
       : Promise.resolve([trade(1, 'short', timestamp, timestamp + 60_000)]));
@@ -181,6 +181,8 @@ describe('execution-log drawer', () => {
     await flushPromises();
     expect(document.body.querySelector('[data-testid="execution-log-drawer"]')).toBeNull();
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
+    await wrapper.get('[data-testid="workspace-run-second"]').trigger('click');
+    await flushPromises();
     await wrapper.find('[data-testid="workspace-log-second"]').trigger('click');
     await flushPromises();
 
@@ -191,7 +193,7 @@ describe('execution-log drawer', () => {
     expect(fetchBacktestClosedTrades).toHaveBeenLastCalledWith('second');
     expect(document.body.textContent).toContain('short');
     expect(document.body.textContent).not.toContain('long');
-    expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
+    expect(useBacktestWorkspaceStore().selectedRunId).toBe('second');
     expect(wrapper.find('[data-testid="workspace-current-backtest"]').text()).toContain('1.25%');
     wrapper.unmount();
   });

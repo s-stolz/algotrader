@@ -793,9 +793,8 @@ function executionLogAction(run: BacktestRun, label: string) {
 }
 
 function historyRunCell(run: BacktestRun) {
-  return h('span', { class: 'run-cell' }, [
-    executionLogAction(run, runName(run)),
-    h('span', { class: 'run-identity' }, [cell(runName(run), run.run_id), h('small', run.run_id.slice(0, 8))]),
+  return h('span', { class: 'run-identity' }, [
+    cell(runName(run), run.run_id), h('small', run.run_id.slice(0, 8)),
   ]);
 }
 
@@ -1331,7 +1330,6 @@ onUnmounted(stopPolling);
 .request-details dt { color: #8f9dab; }
 .request-details dd { margin: 0; overflow-wrap: anywhere; }
 .run-error { color: #f1b1a8; padding: 12px 16px; border-radius: 6px; background: #35272b; }
-:deep(.run-cell) { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; }
 :deep(.run-identity) { min-width: 0; font-weight: 500; }
 :deep(.run-status-icon) { display: inline-flex; vertical-align: middle; }
 :deep(.run-identity small) { display: block; color: #8190a0; font-size: 10px; font-family: monospace; margin-top: 3px; }

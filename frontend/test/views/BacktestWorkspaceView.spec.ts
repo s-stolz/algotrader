@@ -958,6 +958,7 @@ describe('production Backtest Workspace', () => {
     vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'buy'), fill(1, 'sell')]);
     const wrapper = mountWorkspace();
     await flushPromises();
+    expect(wrapper.get('[data-testid="workspace-history"]').find('[data-testid^="workspace-log-"]').exists()).toBe(false);
     await wrapper.find('[data-testid="workspace-run-first"]').trigger('click');
     await flushPromises();
 
@@ -1005,7 +1006,9 @@ describe('production Backtest Workspace', () => {
     const wrapper = mountWorkspace();
     await flushPromises();
 
-    for (const id of ['failed', 'legacy']) {
+    for (const id of ['legacy', 'failed']) {
+      await wrapper.get(`[data-testid="workspace-run-${id}"]`).trigger('click');
+      await flushPromises();
       const button = wrapper.get(`[data-testid="workspace-log-${id}"]`);
       expect(button.attributes('disabled')).toBeDefined();
       expect(button.attributes('aria-label')).toContain('Execution log unavailable');
@@ -1018,6 +1021,8 @@ describe('production Backtest Workspace', () => {
     await wrapper.get('[data-testid="workspace-log-failed"]').element.parentElement?.dispatchEvent(new MouseEvent('mouseenter'));
     await vi.waitFor(() => expect(document.body.textContent).toContain('failed run has no completed execution log'));
 
+    await wrapper.get('[data-testid="workspace-run-success"]').trigger('click');
+    await flushPromises();
     await wrapper.find('[data-testid="workspace-log-success"]').trigger('click');
     await flushPromises();
     expect(document.body.textContent).toContain('This successful run has no executions.');
@@ -1054,11 +1059,15 @@ describe('production Backtest Workspace', () => {
     const wrapper = mountWorkspace();
     await flushPromises();
 
+    await wrapper.get('[data-testid="workspace-run-first"]').trigger('click');
+    await flushPromises();
     const firstIcon = wrapper.find('[data-testid="workspace-log-first"]');
     expect(firstIcon.element.tagName).toBe('BUTTON');
     await firstIcon.trigger('keydown', { key: 'Enter' });
-    expect(useBacktestWorkspaceStore().selectedRunId).toBeNull();
+    expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
     await wrapper.find('[data-testid="workspace-log-first"]').trigger('click');
+    await wrapper.get('[data-testid="workspace-run-second"]').trigger('click');
+    await flushPromises();
     await wrapper.find('[data-testid="workspace-log-second"]').trigger('click');
     await flushPromises();
     resolveFirst([trade(0, 'long', 'signal')]);
@@ -1466,9 +1475,11 @@ describe('production Backtest Workspace', () => {
     vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
     vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
     vi.mocked(listBacktestBatchMembers).mockResolvedValue([member]);
-    vi.mocked(getBacktestRun).mockResolvedValue(member);
+    vi.mocked(getBacktestRun).mockImplementation(async (id) => id === saved.run_id ? saved : member);
     vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'sell')]);
     const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-run-standalone"]').trigger('click');
     await flushPromises();
     await wrapper.find('[data-testid="workspace-log-standalone"]').trigger('click');
     await flushPromises();
