@@ -57,10 +57,11 @@ never use `docker compose down -v` or a blanket prune as test cleanup.
 
 The smoke check runs these existing behavioral seams together:
 
-- Eleven real process phases in
+- Fourteen real process phases in
   [test_recovery_process.py](../../ingestion-service/tests/test_recovery_process.py):
   before boundary save, protected live write, after historical writes before
-  progress, rapid session changes, Redis read failure, database read/write failure,
+  progress, rapid session changes, an early startup handoff, delayed session/Redis
+  recovery-save receipts, Redis read failure, database read/write failure,
   publication loss, queue overflow, lost live receipt before failed boundary save,
   and partial live commit before failed boundary save. It seeds October 5 history,
   resumes October 18 live data, kills ingestion with work pending, shortens the
@@ -74,8 +75,9 @@ The smoke check runs these existing behavioral seams together:
   compressed historical correction, duplicate-safe replay, concurrent live writes,
   and refreshed higher-Timeframe values.
 - The shipped forward migration runner, initial application and unchanged replay,
-  plus its real database tests for immutable inventory, drift/gap rejection, and
-  V017-to-V019 upgrade preserving pending work and guards.
+  plus real V017-to-V019 upgrades preserving applied checksums, named experiments,
+  pending work and live-write guards. Migration runner unit checks in
+  `scripts/tests/test_migrate_db.py` separately cover inventory drift and gaps.
 
 The upstream is deterministic; this check does not authenticate a real cTrader
 session or deploy the production stack. Source callback/transport tests complement
