@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import threading
+import time
 import uuid
 from typing import Any, Awaitable, Callable, Dict, Tuple, cast
 
@@ -363,95 +364,41 @@ class CtraderClient(BrokerPort, MarketDataPort):
         to_ts: int | None,
         limit: int | None,
     ) -> list[Trendbar]:
-        """Fetch trendbars with automatic chunking for large requests.
-
-        The cTrader API caps responses at ~14000 bars. This method automatically
-        chunks requests into 10000-bar segments and aggregates results.
-        """
-        info = await self._get_symbol(int(account_id), symbol.upper())
-
-        # If limit is specified and <= 10000, make single request
-        if limit and limit <= 10000:
-            return await self._fetch_trendbar_chunk(
-                int(account_id),
-                info.symbol_id,
-                info.digits,
-                timeframe,
-                from_ts,
-                to_ts,
-                limit
-            )
-
-        # Otherwise, chunk the request
-        all_bars: list[Trendbar] = []
-        chunk_size = 10000
-        timeframe_minutes = _timeframe_to_minutes(timeframe)
-        chunk_time_span_ms = chunk_size * timeframe_minutes * 60 * 1000
-
-        current_from = from_ts
-        final_to = to_ts or (from_ts + (limit * timeframe_minutes * 60 * 1000) if limit else None)
-
-        while True:
-            # Calculate chunk boundaries
-            chunk_to = None
-            if final_to:
-                chunk_to = min(current_from + chunk_time_span_ms, final_to)
-            else:
-                chunk_to = current_from + chunk_time_span_ms
-
-            # Determine how many bars to fetch in this chunk
-            chunk_limit = chunk_size
-            if limit:
-                remaining = limit - len(all_bars)
-                chunk_limit = min(chunk_size, remaining)
-
-            logger.debug(
-                f"Fetching chunk: from_ts={current_from}, to_ts={chunk_to}, "
-                f"limit={chunk_limit}, total_bars={len(all_bars)}"
-            )
-
-            # Fetch chunk
-            chunk_bars = await self._fetch_trendbar_chunk(
-                int(account_id),
-                info.symbol_id,
-                info.digits,
-                timeframe,
-                current_from,
-                chunk_to,
-                chunk_limit
-            )
-
-            if not chunk_bars:
-                break
-
-            all_bars.extend(chunk_bars)
-
-            # Check if we're done
-            if limit and len(all_bars) >= limit:
-                all_bars = all_bars[:limit]
-                break
-
-            # Check if we've reached the end timestamp
-            if final_to and chunk_to >= final_to:
-                break
-
-            # Move to next chunk using the last bar's timestamp
-            last_bar_ts = chunk_bars[-1].t
-            current_from = last_bar_ts + (timeframe_minutes * 60 * 1000)
-
-            # Safety check: if we didn't move forward in time, break to avoid infinite loop
-            if current_from <= chunk_bars[0].t:
-                logger.warning(
-                    f"Timestamp not advancing, breaking loop at {current_from}"
+        """Fetch finite history, retaining newest-first selection for limited queries."""
+        if limit is not None:
+            info = await self._get_symbol(int(account_id), symbol.upper())
+            page_to = to_ts if to_ts is not None else int(time.time() * 1000)
+            bars: list[Trendbar] = []
+            while from_ts <= page_to and len(bars) < limit:
+                page = await self._fetch_trendbar_chunk(
+                    int(account_id),
+                    info.symbol_id,
+                    info.digits,
+                    timeframe,
+                    from_ts,
+                    page_to,
+                    min(10000, limit - len(bars)),
                 )
-                break
-
-        logger.info(
-            f"Fetched {len(all_bars)} trendbars for {symbol} {timeframe.value} "
-            f"(from_ts={from_ts}, to_ts={to_ts}, limit={limit})"
-        )
-
-        return all_bars
+                if not page:
+                    break
+                timestamps = [bar.t for bar in page]
+                if (
+                    len(set(timestamps)) != len(timestamps)
+                    or min(timestamps) < from_ts
+                    or max(timestamps) > page_to
+                ):
+                    raise RuntimeError(
+                        "cTrader historical pagination did not advance within interval"
+                    )
+                bars.extend(page)
+                page_to = min(timestamps) - 1
+            return sorted(bars, key=lambda item: item.t)[-limit:]
+        return [
+            bar
+            async for bar in self.stream_trendbars(
+                account_id, symbol, timeframe, from_ts, to_ts, limit
+            )
+        ]
 
     async def _fetch_trendbar_chunk(
         self,
@@ -474,16 +421,21 @@ class CtraderClient(BrokerPort, MarketDataPort):
                     period=ProtoOATrendbarPeriod.Value(timeframe.value),
                     fromTimestamp=from_ts,
                 )
-                if to_ts:
+                if to_ts is not None:
                     req.toTimestamp = to_ts
                 if limit:
                     req.count = limit
 
                 res = await self._send_request(req)
 
-            if not isinstance(res, ProtoOAErrorRes):
-                res = cast(ProtoOAGetTrendbarsRes, res)
+            if isinstance(res, ProtoOAGetTrendbarsRes):
+                if not res.IsInitialized():
+                    raise RuntimeError("Incomplete cTrader historical response")
+                if not res.trendbar and getattr(res, "hasMore", False):
+                    raise RuntimeError("cTrader reports more history without a pagination cursor")
                 return [map_trendbar(tb, digits=digits) for tb in res.trendbar]
+            if not isinstance(res, ProtoOAErrorRes):
+                raise RuntimeError("Unexpected cTrader historical response")
 
             error_res = cast(ProtoOAErrorRes, res)
             if not self._is_rate_limit_error(error_res.description):
@@ -499,7 +451,8 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
             delay_seconds = TRENDBAR_RETRY_BASE_DELAY_SECONDS * attempt
             logger.warning(
-                "Rate limited while fetching trendbars (attempt=%s/%s, delay=%.2fs, symbol_id=%s, timeframe=%s)",
+                "Rate limited while fetching trendbars "
+                "(attempt=%s/%s, delay=%.2fs, symbol_id=%s, timeframe=%s)",
                 attempt,
                 TRENDBAR_RATE_LIMIT_RETRIES,
                 delay_seconds,
@@ -517,91 +470,48 @@ class CtraderClient(BrokerPort, MarketDataPort):
         to_ts: int | None,
         limit: int | None,
     ):
-        """Stream trendbars in chunks for memory-efficient processing.
-
-        Yields trendbars in chunks of up to 10,000 bars at a time.
-        """
+        """Exhaust finite windows, paging backwards as cTrader's count requires."""
         info = await self._get_symbol(int(account_id), symbol.upper())
-
-        chunk_size = 10000
-        timeframe_minutes = _timeframe_to_minutes(timeframe)
-        chunk_time_span_ms = chunk_size * timeframe_minutes * 60 * 1000
-
+        final_to = to_ts if to_ts is not None else int(time.time() * 1000)
+        window_span = 10000 * _timeframe_to_minutes(timeframe) * 60 * 1000
         current_from = from_ts
-        final_to = to_ts or (from_ts + (limit * timeframe_minutes * 60 * 1000) if limit else None)
         total_yielded = 0
 
-        while True:
-            # Calculate chunk boundaries
-            chunk_to = None
-            if final_to:
-                chunk_to = min(current_from + chunk_time_span_ms, final_to)
-            else:
-                chunk_to = current_from + chunk_time_span_ms
-
-            # Determine how many bars to fetch in this chunk
-            chunk_limit = chunk_size
-            if limit:
-                remaining = limit - total_yielded
-                chunk_limit = min(chunk_size, remaining)
-
-            logger.debug(
-                f"Streaming chunk: from_ts={current_from}, to_ts={chunk_to}, "
-                f"limit={chunk_limit}, total_yielded={total_yielded}"
-            )
-
-            # Fetch chunk
-            chunk_bars = await self._fetch_trendbar_chunk(
-                int(account_id),
-                info.symbol_id,
-                info.digits,
-                timeframe,
-                current_from,
-                chunk_to,
-                chunk_limit
-            )
-
-            if not chunk_bars:
-                # Empty chunk - skip to next chunk instead of breaking
-                # This handles cases where data doesn't exist for early time periods
-                logger.debug(f"Empty chunk from {current_from} to {chunk_to}, continuing...")
-
-                # Check if we've reached the end timestamp
-                if final_to and chunk_to >= final_to:
+        while current_from <= final_to:
+            window_to = min(current_from + window_span - 1, final_to)
+            page_to = window_to
+            window_bars: list[Trendbar] = []
+            while page_to >= current_from:
+                page = await self._fetch_trendbar_chunk(
+                    int(account_id),
+                    info.symbol_id,
+                    info.digits,
+                    timeframe,
+                    current_from,
+                    page_to,
+                    10000,
+                )
+                if not page:
                     break
+                timestamps = [bar.t for bar in page]
+                if (
+                    len(set(timestamps)) != len(timestamps)
+                    or min(timestamps) < current_from
+                    or max(timestamps) > page_to
+                ):
+                    raise RuntimeError(
+                        "cTrader historical pagination did not advance within interval"
+                    )
+                window_bars.extend(page)
+                # Even a short page can be provider-limited. Query the earlier remainder.
+                page_to = min(timestamps) - 1
 
-                # Move to next chunk
-                current_from = chunk_to + 1
-                continue
-
-            # Yield each bar from this chunk
-            for bar in chunk_bars:
+            for bar in sorted(window_bars, key=lambda item: item.t):
                 yield bar
                 total_yielded += 1
-
-            # Check if we're done
-            if limit and total_yielded >= limit:
-                break
-
-            # Check if we've reached the end timestamp
-            if final_to and chunk_to >= final_to:
-                break
-
-            # Move to next chunk using the last bar's timestamp
-            last_bar_ts = chunk_bars[-1].t
-            current_from = last_bar_ts + (timeframe_minutes * 60 * 1000)
-
-            # Safety check: if we didn't move forward in time, break to avoid infinite loop
-            if current_from <= chunk_bars[0].t:
-                logger.warning(
-                    f"Timestamp not advancing, breaking loop at {current_from}"
-                )
-                break
-
-        logger.info(
-            f"Streamed {total_yielded} trendbars for {symbol} {timeframe.value} "
-            f"(from_ts={from_ts}, to_ts={to_ts}, limit={limit})"
-        )
+                if limit is not None and total_yielded >= limit:
+                    return
+            current_from = window_to + 1
 
     async def list_symbols(
         self,

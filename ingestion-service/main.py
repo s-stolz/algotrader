@@ -174,6 +174,11 @@ class IngestionService:
         if timeframe is None:
             timeframe = self.TIMEFRAME_CODE_M1
 
+        if timeframe == self.TIMEFRAME_CODE_M1:
+            to_ts = min(to_ts, (self._utc_now_ms() // 60000) * 60000 - 1)
+        if from_ts > to_ts:
+            return
+
         self.logger.info(
             f"Backfilling {symbol} {timeframe} from {self._ms_to_iso(from_ts)} to {self._ms_to_iso(to_ts)}"
         )
