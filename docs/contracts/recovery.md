@@ -124,6 +124,11 @@ or publication failure cannot remove the pending loss signal. Other streams have
 independent writers; stopping a stream cancels and awaits publication retries.
 Elapsed time, missing Candles, weekends and holidays do not change identity.
 
+The broker resets its transport after 60 seconds without an incoming protocol
+message. Heartbeats count as protocol traffic; missing Market data does not.
+The watchdog runs on the transport reactor, is cancelled on disconnect, and lets
+the SDK reconnect through the normal authentication and restoration callbacks.
+
 After application authentication, cTrader accounts and spots are restored before
 trendbars. Application/account authentication and subscription errors do not count
 as success. Application authentication and subscription restoration retry actual

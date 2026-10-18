@@ -11,6 +11,8 @@ Candle/Tick fields, and stream names are in [root context](../CONTEXT.md).
   changes, inspect both route contracts and this adapter.
 - Order placement shape spans OpenAPI schema, `app/api/validation.py`, route
   code, and cTrader request construction; keep them aligned.
+- `ctrader_protocol.py` bounds protocol-response silence on the Twisted reactor;
+  heartbeats keep closed Markets connected.
 - `stream_registry.py` and `trendbar_stream_registry.py` under infrastructure
   own Tick and Candle stream lifecycles. Webserver owns subscriber reference
   counts; start/stop changes often cross that boundary.

@@ -11,5 +11,10 @@ class Protobuf:
     def extract(cls, message: Any) -> Any: ...
 
 class TcpProtocol:
+    factory: Any
+    transport: Any
+    def connectionMade(self) -> None: ...  # noqa: N802
+    def connectionLost(self, reason: Any) -> None: ...  # noqa: N802
+    def stringReceived(self, data: bytes) -> bytes: ...  # noqa: N802
     def __init__(self, *args: Any, **kwargs: Any) -> None: ...
     def __getattr__(self, name: str) -> Any: ...

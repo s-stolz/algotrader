@@ -24,13 +24,14 @@ from app.infrastructure.ctrader_mappers import (
     map_trendbar,
     resolve_timeframe,
 )
+from app.infrastructure.ctrader_protocol import CtraderProtocol
 from app.infrastructure.ctrader_symbol_cache import SymbolCache
 from app.infrastructure.stream_registry import (
     TickSubscription,
     TrendbarSubscription,
 )
 from app.settings import CtraderCredentials
-from ctrader_open_api import Client, Protobuf, TcpProtocol
+from ctrader_open_api import Client, Protobuf
 from ctrader_open_api.endpoints import EndPoints
 from ctrader_open_api.messages.OpenApiMessages_pb2 import (
     ProtoOAAccountAuthReq,
@@ -193,7 +194,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             if credentials.host_type.lower() == "live"
             else EndPoints.PROTOBUF_DEMO_HOST
         )
-        client = Client(endpoint, EndPoints.PROTOBUF_PORT, TcpProtocol)
+        client = Client(endpoint, EndPoints.PROTOBUF_PORT, CtraderProtocol)
         client.setConnectedCallback(self._on_connected)
         client.setDisconnectedCallback(self._on_disconnected)
         client.setMessageReceivedCallback(self._on_message)
