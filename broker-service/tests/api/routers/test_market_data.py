@@ -15,11 +15,13 @@ from app.domain.models import Symbol, Trendbar
 from app.domain.value_objects import AccountId, SymbolDescriptor, SymbolId, Timeframe
 from app.infrastructure.ctrader_client import CtraderClient
 from app.settings import CtraderCredentials
-from ctrader_open_api.messages.OpenApiMessages_pb2 import ProtoOAGetTrendbarsRes
-from ctrader_open_api.messages.OpenApiModelMessages_pb2 import ProtoOATrendbar
+from ctrader_open_api.messages import OpenApiMessages_pb2, OpenApiModelMessages_pb2
 from fastapi import FastAPI, HTTPException
 
 from .fakes import FakeMarketDataService
+
+ProtoOAGetTrendbarsRes = getattr(OpenApiMessages_pb2, "ProtoOAGetTrendbarsRes")
+ProtoOATrendbar = getattr(OpenApiModelMessages_pb2, "ProtoOATrendbar")
 
 
 class MarketDataRouterTests(unittest.IsolatedAsyncioTestCase):

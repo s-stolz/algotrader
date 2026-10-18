@@ -439,6 +439,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 res = await self._send_request(req)
 
             if isinstance(res, ProtoOAGetTrendbarsRes):
+                res = cast(ProtoOAGetTrendbarsRes, res)
                 if not res.IsInitialized():
                     raise RuntimeError("Incomplete cTrader historical response")
                 if not res.trendbar and getattr(res, "hasMore", False):
