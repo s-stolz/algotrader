@@ -938,27 +938,8 @@ function setDate(field: 'start_ms' | 'end_ms', value: string | null): void {
 async function submit(): Promise<void> {
   fieldErrors.value = {};
   submitError.value = null;
-  if (!marketValue.value) fieldErrors.value.market = 'Select an available Market.';
-  if (draft.value.start_ms <= 0 || draft.value.end_ms <= 0 ||
-      draft.value.start_ms >= draft.value.end_ms) {
-    fieldErrors.value.dates = 'End date must be after start date.';
-  }
-  if (typeof draft.value.initial_capital !== 'number' ||
-      !Number.isFinite(draft.value.initial_capital) || draft.value.initial_capital <= 0) {
-    fieldErrors.value.capital = 'Initial capital must be greater than zero.';
-  }
-  for (const parameter of selectedStrategy.value?.parameters ?? []) {
-    const issue = parameterIssue(parameter, draft.value.strategy.parameters[parameter.name]);
-    if (issue) fieldErrors.value[parameter.name] = issue;
-  }
-  if (selectedStrategy.value?.strategy_version !== draft.value.strategy.strategy_version) {
-    submitError.value = 'Review the current strategy version before submitting.';
-  }
-  if (nameIssue.value) submitError.value = nameIssue.value;
-  if (Object.keys(fieldErrors.value).length || submitError.value) {
-    step.value = fieldErrors.value.market || fieldErrors.value.dates || fieldErrors.value.capital || nameIssue.value ? 0 : 1;
-    return;
-  }
+  if (!validateSetup()) { step.value = 0; return; }
+  if (!validateParameters()) { step.value = 1; return; }
   submitting.value = true;
   try {
     emit('submitted', await submitBacktestRun({ ...draft.value, name: normalizeExperimentName(draft.value.name) }));

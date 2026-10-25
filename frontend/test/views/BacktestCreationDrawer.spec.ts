@@ -105,6 +105,18 @@ describe('standalone creation drawer', () => {
     wrapper.unmount();
   });
 
+  it('rejects non-finite dates at submission as well as step navigation', async () => {
+    const wrapper = openDrawer();
+    await flushPromises();
+    wrapper.findAllComponents(NDatePicker)[0].vm.$emit('update:formatted-value', 'invalid');
+    await flushPromises();
+    (document.querySelector('[data-testid="creation-submit"]') as HTMLElement).click();
+    await flushPromises();
+    expect(submitBacktestRun).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('End date must be after start date.');
+    wrapper.unmount();
+  });
+
   it('uses Naive calendars and converts selected dates to UTC midnight', async () => {
     const wrapper = openDrawer();
     await flushPromises();
