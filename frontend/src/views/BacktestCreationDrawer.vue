@@ -144,17 +144,6 @@
             <div v-for="parameter in selectedStrategy?.parameters ?? []" :key="parameter.name" class="parameter-field">
               <label class="parameter-label" :for="`parameter-${parameter.name}`">
                 <span>{{ parameter.display_name || parameter.name }}<span v-if="parameter.required"> *</span></span>
-                <small
-                  v-if="parameter.minimum !== undefined || parameter.maximum !== undefined"
-                  class="parameter-constraints"
-                >
-                  <span v-if="parameter.minimum !== undefined">
-                    {{ parameter.exclusive_minimum ? '>' : '≥' }} {{ parameter.minimum }}
-                  </span>
-                  <span v-if="parameter.maximum !== undefined">
-                    {{ parameter.exclusive_maximum ? '<' : '≤' }} {{ parameter.maximum }}
-                  </span>
-                </small>
               </label>
               <BaseSelect
                 v-if="isSweep"
@@ -166,36 +155,48 @@
                 :data-testid="`sweep-mode-${parameter.name}`"
                 @update:value="changeParameterMode(parameter, $event)"
               />
-              <BaseSelect
-                v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
-                  (parameter.choices || parameter.type === 'bool')"
-                :id="`parameter-${parameter.name}`"
-                :input-props="{ 'aria-label': parameter.display_name || parameter.name }"
-                :value="selectValue(parameter)"
-                :options="parameterOptions(parameter)"
-                :data-testid="`creation-param-${parameter.name}`"
-                @update:value="setChoice(parameter, $event)"
-              />
-              <n-input-number
-                v-else-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
-                  (parameter.type === 'int' || parameter.type === 'float')"
-                :id="`parameter-${parameter.name}`"
-                :input-props="{ 'aria-label': parameter.display_name || parameter.name }"
-                :value="numberValue(parameter.name)"
-                :min="parameter.minimum"
-                :max="parameter.maximum"
-                :precision="parameter.type === 'int' ? 0 : undefined"
-                :data-testid="`creation-param-${parameter.name}`"
-                @update:value="setParameter(parameter.name, $event)"
-              />
-              <n-input
-                v-else-if="!isSweep || sweepParameter(parameter).mode === 'constant'"
-                :id="`parameter-${parameter.name}`"
-                :input-props="{ 'aria-label': parameter.display_name || parameter.name }"
-                :value="stringValue(parameter.name)"
-                :data-testid="`creation-param-${parameter.name}`"
-                @update:value="setParameter(parameter.name, $event)"
-              />
+              <label v-if="!isSweep || sweepParameter(parameter).mode === 'constant'" class="parameter-value">Value
+                <BaseSelect
+                  v-if="parameter.choices || parameter.type === 'bool'"
+                  :id="`parameter-${parameter.name}`"
+                  :input-props="{ 'aria-label': parameter.display_name || parameter.name }"
+                  :value="selectValue(parameter)"
+                  :options="parameterOptions(parameter)"
+                  :data-testid="`creation-param-${parameter.name}`"
+                  @update:value="setChoice(parameter, $event)"
+                />
+                <n-input-number
+                  v-else-if="parameter.type === 'int' || parameter.type === 'float'"
+                  :id="`parameter-${parameter.name}`"
+                  :input-props="{ 'aria-label': parameter.display_name || parameter.name }"
+                  :value="numberValue(parameter.name)"
+                  :clearable="parameter.nullable"
+                  :placeholder="draft.strategy.parameters[parameter.name] === null ? 'Null' : 'Enter value'"
+                  :min="parameter.minimum"
+                  :max="parameter.maximum"
+                  :precision="parameter.type === 'int' ? 0 : undefined"
+                  :data-testid="`creation-param-${parameter.name}`"
+                  @update:value="setParameter(parameter.name, $event)"
+                />
+                <n-input
+                  v-else
+                  :id="`parameter-${parameter.name}`"
+                  :input-props="{ 'aria-label': parameter.display_name || parameter.name }"
+                  :value="stringValue(parameter.name)"
+                  :placeholder="draft.strategy.parameters[parameter.name] === null ? 'Null' : 'Enter value'"
+                  :data-testid="`creation-param-${parameter.name}`"
+                  @update:value="setParameter(parameter.name, $event)"
+                >
+                  <template v-if="parameter.nullable && draft.strategy.parameters[parameter.name] !== null" #suffix>
+                    <n-button
+                      text
+                      :aria-label="`Clear ${parameter.display_name || parameter.name} to null`"
+                      title="Clear to null"
+                      @click="setParameter(parameter.name, null)"
+                    >×</n-button>
+                  </template>
+                </n-input>
+              </label>
               <template v-else-if="sweepParameter(parameter).mode === 'values'">
                 <BaseSelect
                   v-if="parameter.choices || parameter.type === 'bool'"
@@ -262,16 +263,6 @@
                   :precision="parameter.type === 'int' ? 0 : undefined"
                 /></label>
               </div>
-              <n-button
-                v-if="(!isSweep || sweepParameter(parameter).mode === 'constant') &&
-                  parameter.nullable && !parameter.choices && parameter.type !== 'bool'"
-                size="tiny"
-                class="null-button"
-                @click="setParameter(parameter.name, null)"
-              >Set null</n-button>
-              <small v-if="parameter.nullable && draft.strategy.parameters[parameter.name] === null">
-                Null selected
-              </small>
               <small v-if="parameter.description">{{ parameter.description }}</small>
               <small v-if="fieldErrors[parameter.name]" role="alert">{{ fieldErrors[parameter.name] }}</small>
             </div>
@@ -323,7 +314,7 @@
     <template #footer>
       <div class="creation-footer">
         <n-tag round :bordered="false" :type="isSweep && !preview?.ready_count ? 'warning' : 'success'">
-          {{ isSweep ? `${preview?.raw_count ?? 0} candidates` : '1 run' }}
+          {{ isSweep ? `${preview?.raw_count ?? 0} ${preview?.raw_count === 1 ? 'candidate' : 'candidates'}` : '1 run' }}
         </n-tag>
         <div class="creation-actions">
           <n-button v-if="step > 0" @click="navigateStep(step - 1)">Back</n-button>
@@ -1021,9 +1012,8 @@ onMounted(() => {
 .parameters-grid { display: flex; flex-direction: column; gap: 16px; }
 .parameter-field { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; padding-bottom: 16px; border-bottom: 1px solid var(--surface-border); min-width: 0; }
 .parameter-field > :not(.parameter-label):not(.parameter-mode) { grid-column: 1 / -1; }
-.parameter-label { align-content: center; font-weight: 600; }
+.creation-fields .parameter-label { align-content: center; font-size: 13px; font-weight: 600; }
 .parameter-mode { width: 110px; }
-.parameter-constraints { display: inline-flex; gap: 8px; }
 small { color: #98a5b5; font-size: 12px; }
 [role='alert'] { color: #ffb4b4; }
 .range-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }

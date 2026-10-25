@@ -138,6 +138,32 @@ describe('standalone creation drawer', () => {
     wrapper.unmount();
   });
 
+  it('clears nullable fixed inputs inline while preserving empty strings', async () => {
+    vi.mocked(fetchStrategyCatalog).mockResolvedValue([{
+      ...catalog[0], parameters: [
+        { name: 'threshold', type: 'float', required: false, nullable: true, default: 2 },
+        { name: 'label', type: 'str', required: false, nullable: true, default: '' },
+      ],
+    }]);
+    vi.mocked(submitBacktestRun).mockResolvedValue('nullable-run');
+    const wrapper = openDrawer();
+    await flushPromises();
+    const number = wrapper.findAllComponents(NInputNumber).find(input => input.attributes('data-testid') === 'creation-param-threshold')!;
+    expect(number.props('clearable')).toBe(true);
+    number.vm.$emit('update:value', null);
+    expect(document.body.textContent).not.toContain('Set null');
+    const submit = document.querySelector('[data-testid="creation-submit"]') as HTMLElement;
+    submit.click();
+    await flushPromises();
+    expect(vi.mocked(submitBacktestRun).mock.lastCall?.[0].strategy.parameters).toEqual({ threshold: null, label: '' });
+    (document.querySelector('[aria-label="Clear label to null"]') as HTMLElement).click();
+    await flushPromises();
+    submit.click();
+    await flushPromises();
+    expect(vi.mocked(submitBacktestRun).mock.lastCall?.[0].strategy.parameters).toEqual({ threshold: null, label: null });
+    wrapper.unmount();
+  });
+
   it('uses Naive calendars and converts selected dates to UTC midnight', async () => {
     const wrapper = openDrawer();
     await flushPromises();
