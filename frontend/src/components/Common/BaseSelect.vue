@@ -1,7 +1,8 @@
 <script lang="ts">
 import { computed, defineComponent, h, mergeProps } from 'vue';
-import { NSelect, selectProps } from 'naive-ui';
+import { NPopover, NSelect, selectProps } from 'naive-ui';
 import { baseSelectTheme } from './baseSelectTheme';
+import { selectionColors, selectionPopoverTheme } from './selectionTheme';
 
 export default defineComponent({
   name: 'BaseSelect',
@@ -24,6 +25,22 @@ export default defineComponent({
         },
       },
     }));
+    const ellipsisTagPopoverProps = computed(() => {
+      const overrides = props.ellipsisTagPopoverProps as InstanceType<typeof NPopover>['$props'] | undefined;
+      return {
+        placement: 'bottom-start' as const,
+        overlap: false,
+        showArrow: false,
+        ...overrides,
+        class: ['base-select-overflow', overrides?.class],
+        themeOverrides: {
+          ...selectionPopoverTheme,
+          padding: '8px',
+          boxShadow: `0 0 0 1px ${selectionColors.border}, 0 8px 24px rgba(0, 0, 0, .4)`,
+          ...overrides?.themeOverrides,
+        },
+      };
+    });
     const menuProps = computed(() => ({
       ...props.menuProps,
       class: ['base-select-menu', props.menuProps?.class],
@@ -31,6 +48,7 @@ export default defineComponent({
     return () => h(NSelect, mergeProps(attrs, props, {
       class: 'base-select',
       menuProps: menuProps.value,
+      ellipsisTagPopoverProps: ellipsisTagPopoverProps.value,
       themeOverrides: mergedTheme.value,
     }), slots);
   },
@@ -38,7 +56,7 @@ export default defineComponent({
 </script>
 
 <style>
-.base-select-menu, .base-select-menu * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.base-select-menu, .base-select-menu *, .base-select-overflow, .base-select-overflow * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .base-select-menu {
   border-radius: 6px;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
