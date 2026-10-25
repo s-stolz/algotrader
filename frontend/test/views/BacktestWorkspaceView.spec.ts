@@ -16,10 +16,16 @@ import { useMarketsStore } from '@/stores/marketsStore';
 import type { BacktestBatch, BacktestClosedTrade, BacktestFill, BacktestRun, EquityReplayResponse } from '@/types/backtesterContracts';
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
+import BaseStepModal from '@/components/Common/BaseStepModal.vue';
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
 vi.mock('@/api/backtesterClient', () => ({
+  fetchStrategyCatalog: vi.fn().mockResolvedValue([{
+    strategy_id: 'sma', strategy_version: 1, display_name: 'SMA',
+    parameters: [{ name: 'fast', type: 'int', required: false, nullable: false, default: 5 }],
+  }]),
+  previewParameterSweep: vi.fn().mockImplementation(() => new Promise<never>(() => {})),
   cancelBacktestRun: vi.fn(),
   controlBacktestBatch: vi.fn(),
   renameExperiment: vi.fn(),
@@ -887,6 +893,41 @@ describe('production Backtest Workspace', () => {
     expect(wrapper.getComponent(BacktestCreationDrawer).props('show')).toBe(false);
     await wrapper.get('[data-testid="workspace-create"]').trigger('click');
     expect(wrapper.getComponent(BacktestCreationDrawer).props('show')).toBe(true);
+    wrapper.unmount();
+  });
+
+  it.each(['submitted', 'submitted-batch'] as const)('starts a fresh creation session after %s', async (event) => {
+    const store = useBacktestWorkspaceStore();
+    store.creationDraft = { ...run('draft').request, name: 'Previous experiment', initial_capital: 25000,
+      strategy: { strategy_id: 'sma', strategy_version: 1, parameters: { fast: 42 } } };
+    store.creationSweepDraft = { isSweep: event === 'submitted-batch', marketIds: [1], timeframes: ['H1'],
+      allowedDirections: ['short_only'], parameters: {} };
+    store.reuseSource = { kind: 'run', id: 'copied-source', strategyId: 'sma', strategyVersion: 1,
+      historicalMetadata: null, defaultedParameters: [] };
+    const wrapper = mountWorkspace();
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-create"]').trigger('click');
+    const previous = wrapper.getComponent(BacktestCreationDrawer);
+    previous.getComponent(BaseStepModal).vm.$emit('update:step', 2);
+    await flushPromises();
+    expect(previous.getComponent(BaseStepModal).props('step')).toBe(2);
+    previous.vm.$emit('update:show', false);
+    await flushPromises();
+    await wrapper.get('[data-testid="workspace-create"]').trigger('click');
+    expect(wrapper.getComponent(BacktestCreationDrawer).getComponent(BaseStepModal).props('step')).toBe(2);
+    expect(store.creationDraft?.name).toBe('Previous experiment');
+    previous.vm.$emit(event, 'accepted-experiment');
+    await flushPromises();
+    const fresh = wrapper.getComponent(BacktestCreationDrawer);
+    expect(fresh.props('show')).toBe(false);
+    await wrapper.get('[data-testid="workspace-create"]').trigger('click');
+    expect(fresh.props('show')).toBe(true);
+    expect(fresh.getComponent(BaseStepModal).props('step')).toBe(0);
+    expect(store.creationDraft).toMatchObject({ name: '', initial_capital: 10000, timeframe: 'M1',
+      strategy: { strategy_id: 'sma', strategy_version: 1, parameters: { fast: 5 } },
+      execution: { allowed_directions: 'long_and_short', commission_bps: 0, slippage_bps: 0 } });
+    expect(store.creationSweepDraft).toMatchObject({ isSweep: false, marketIds: [], timeframes: [], parameters: {} });
+    expect(store.reuseSource).toBeNull();
     wrapper.unmount();
   });
 

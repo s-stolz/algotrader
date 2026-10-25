@@ -13,6 +13,7 @@
     </header>
 
     <BacktestCreationDrawer
+      :key="creationSession"
       v-model:show="creationOpen"
       @submitted="createdRun"
       @submitted-batch="createdBatch"
@@ -373,6 +374,7 @@ const chartSeries = computed<ReplaySeries[]>(() => selectedComparisonRuns.value.
     points: curve.equity_curve }] : [];
 }));
 const creationOpen = ref(false);
+const creationSession = ref(0);
 const page = ref<'history' | 'analysis'>('history');
 const historyPagination = ref({ page: 1, pageSize: 15, onChange: (page: number) => {
   historyPagination.value.page = page;
@@ -698,7 +700,14 @@ function createFrom(entry: HistoryEntry): void {
   creationOpen.value = true;
 }
 
+function finishCreation(): void {
+  creationOpen.value = false;
+  workspaceStore.clearCreationDraft();
+  creationSession.value += 1;
+}
+
 async function createdBatch(batchId: string): Promise<void> {
+  finishCreation();
   selectedBatchId.value = batchId;
   batchMembers.value = [];
   workspaceStore.clearSelection();
@@ -709,6 +718,7 @@ async function createdBatch(batchId: string): Promise<void> {
 }
 
 async function createdRun(runId: string): Promise<void> {
+  finishCreation();
   void queueHealth.value?.refresh();
   try {
     selectedBatchId.value = null;

@@ -69,6 +69,12 @@ export const useBacktestWorkspaceStore = defineStore('backtestWorkspace', () => 
     reuseRevision.value += 1;
   }
 
+  function clearCreationDraft(): void {
+    creationDraft.value = null;
+    creationSweepDraft.value = null;
+    reuseSource.value = null;
+  }
+
   function selectRun(run: BacktestRun): void {
     selectedRunId.value = run.run_id;
     selectedRun.value = preserveRunName(run);
@@ -80,5 +86,5 @@ export const useBacktestWorkspaceStore = defineStore('backtestWorkspace', () => 
   }
 
   return { selectedRunId, selectedRun, creationDraft, creationSweepDraft, reuseSource,
-    reuseRevision, nameRevision, saveName, acknowledgeName, preserveRunName, preserveBatchName, createFromSaved, selectRun, clearSelection };
+    reuseRevision, nameRevision, saveName, acknowledgeName, preserveRunName, preserveBatchName, createFromSaved, clearCreationDraft, selectRun, clearSelection };
 });
