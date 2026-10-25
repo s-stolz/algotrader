@@ -1040,5 +1040,9 @@ small { color: #98a5b5; font-size: 12px; }
 .section-description { color: #98a5b5; font-size: 12px; }
 .preview-review :deep(.n-data-table-th) { white-space: nowrap; }
 .creation-footer, .creation-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-@media (max-width: 520px) { .settings-grid, .range-inputs { grid-template-columns: 1fr; } }
+@media (max-width: 520px) {
+  .settings-grid, .range-inputs { grid-template-columns: 1fr; }
+  .creation-footer { flex-wrap: wrap; gap: 8px; }
+  .creation-actions { margin-left: auto; max-width: 100%; }
+}
 </style>
