@@ -173,6 +173,12 @@ Queue positions and worker heartbeat availability are advisory, separate from
 run outcomes. They cannot release capacity. Public queued batch entries identify
 the batch with null `run_id`; primitive queue state retains the next member ID for
 claims. A heartbeat must match a held slot's owner to establish its freshness.
+Workers include their stable process `worker_id` when claiming a run. Storage
+commits the initial owner-matching heartbeat with the claim, using database time;
+periodic heartbeats then maintain freshness. Heartbeat writes serialize with
+claims and cannot replace the current owner's heartbeat with a delayed idle or
+previous-owner update from the same worker. Claims without `worker_id` remain
+accepted for legacy callers but do not establish an initial heartbeat.
 
 ## Equity Replay
 

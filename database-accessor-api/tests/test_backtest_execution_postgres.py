@@ -9,6 +9,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import asyncpg
@@ -195,6 +196,117 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                     )
                 )
             )
+        finally:
+            await engine.dispose()
+
+    async def test_claim_seeds_heartbeat_and_rejects_delayed_previous_ownership(self) -> None:
+        await self._insert_run("first", "queued", "2026-06-08T12:30:00Z")
+        await self._insert_run("second", "queued", "2026-06-08T12:31:00Z")
+        await self._migrate()
+        engine = create_async_engine(
+            URL.create(
+                "postgresql+asyncpg",
+                username=self.connection_options["user"],
+                password=self.connection_options["password"],
+                host=self.connection_options["host"],
+                port=self.connection_options["port"],
+                database=self.connection_options["database"],
+            )
+        )
+        at = datetime.fromisoformat("2026-06-08T12:32:00+00:00")
+        try:
+            async with engine.connect() as connection:
+                await connection.execute(text(f'SET search_path TO "{self.schema}"'))
+                await connection.commit()
+                async with AsyncSession(bind=connection) as session:
+                    execute = session.execute
+
+                    async def fail_initial_heartbeat(statement, *args, **kwargs):
+                        if (
+                            getattr(statement, "is_insert", False)
+                            and statement.table.name == "backtest_worker_heartbeats"
+                        ):
+                            raise RuntimeError("heartbeat write failed")
+                        return await execute(statement, *args, **kwargs)
+
+                    with patch.object(session, "execute", side_effect=fail_initial_heartbeat):
+                        with self.assertRaisesRegex(RuntimeError, "heartbeat write failed"):
+                            await backtest_execution.claim(
+                                session,
+                                run_id="first",
+                                owner_token="failed-owner",
+                                worker_id="worker-a",
+                                started_at=at,
+                            )
+                    rolled_back = await backtest_execution.read_queue_state(session)
+                    self.assertIsNone(rolled_back["slot"]["owner_token"])
+                    self.assertIsNone(rolled_back["active_run"])
+                    self.assertEqual(rolled_back["heartbeats"], [])
+                    self.assertEqual(len(rolled_back["queued_runs"]), 2)
+                    await session.commit()
+                    previous_owner = None
+                    for run_id in ("first", "second"):
+                        owner = f"owner-{run_id}"
+                        self.assertTrue(
+                            await backtest_execution.claim(
+                                session,
+                                run_id=run_id,
+                                owner_token=owner,
+                                worker_id="worker-a",
+                                started_at=at,
+                            )
+                        )
+                        state = await backtest_execution.read_queue_state(session)
+                        heartbeat = state["heartbeats"][0]
+                        self.assertEqual(heartbeat["owner_token"], owner)
+                        self.assertEqual(heartbeat["worker_id"], "worker-a")
+                        self.assertLess(
+                            abs((state["snapshot_at"] - heartbeat["heartbeat_at"]).total_seconds()),
+                            5,
+                        )
+                        await session.commit()
+                        self.assertFalse(
+                            await backtest_execution.claim(
+                                session,
+                                run_id=run_id,
+                                owner_token="competitor",
+                                worker_id="worker-b",
+                                started_at=at,
+                            )
+                        )
+                        # A request sampled before the claim may arrive after it commits.
+                        delayed = await backtest_execution.record_heartbeat(
+                            session,
+                            worker_id="worker-a",
+                            owner_token=previous_owner,
+                            fault_code=None,
+                            fault_message=None,
+                        )
+                        self.assertEqual(delayed, heartbeat)
+                        refreshed = await backtest_execution.record_heartbeat(
+                            session,
+                            worker_id="worker-a",
+                            owner_token=owner,
+                            fault_code=None,
+                            fault_message=None,
+                        )
+                        self.assertGreaterEqual(
+                            refreshed["heartbeat_at"], heartbeat["heartbeat_at"]
+                        )
+                        self.assertTrue(
+                            await backtest_execution.settle(
+                                session,
+                                run_id=run_id,
+                                owner_token=owner,
+                                terminal={
+                                    "status": "failed",
+                                    "completed_at": at,
+                                    "error_code": "test_failure",
+                                    "error_message": "Test",
+                                },
+                            )
+                        )
+                        previous_owner = owner
         finally:
             await engine.dispose()
 

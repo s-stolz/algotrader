@@ -246,7 +246,10 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         self.assertIsNone(adapter.execution_slot()["owner_token"])
         self.assertTrue(
             adapter.claim_execution(
-                run_id="run-123", owner_token="owner-123", started_at_ms=1_780_921_860_000
+                run_id="run-123",
+                owner_token="owner-123",
+                started_at_ms=1_780_921_860_000,
+                worker_id="worker-123",
             )
         )
         self.assertTrue(
@@ -277,6 +280,7 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         assert settle_request is not None
         assert reconcile_request is not None
         self.assertEqual(claim_request["owner_token"], "owner-123")
+        self.assertEqual(claim_request["worker_id"], "worker-123")
         self.assertEqual(settle_request["status"], "failed")
         self.assertEqual(reconcile_request["error_code"], "worker_interrupted")
 

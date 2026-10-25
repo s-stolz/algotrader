@@ -285,11 +285,14 @@ class BacktestRunLifecyclePersistenceAdapter:
             },
         )
 
-    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+    def claim_execution(
+        self, *, run_id: str, owner_token: str, started_at_ms: int, worker_id: str
+    ) -> bool:
         return bool(
             self._call(
                 "claim_backtest_execution",
                 {
+                    "worker_id": worker_id,
                     "run_id": run_id,
                     "owner_token": owner_token,
                     "started_at": _epoch_ms_to_utc_text(started_at_ms),

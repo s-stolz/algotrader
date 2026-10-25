@@ -87,6 +87,7 @@ class _FakeLifecycle:
         self._claim_results = list(claim_results)
         self._completion_results = list(completion_results or [])
         self.claims: list[dict] = []
+        self.worker_ids: list[str] = []
         self.completions: list[dict] = []
         self.faults: list[dict] = []
         self.reconciliations: list[int] = []
@@ -95,7 +96,10 @@ class _FakeLifecycle:
     def execution_slot(self) -> dict:
         return {"owner_token": None, "run_id": None, "fault_code": None, "fault_message": None}
 
-    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+    def claim_execution(
+        self, *, run_id: str, owner_token: str, started_at_ms: int, worker_id: str
+    ) -> bool:
+        self.worker_ids.append(worker_id)
         return self.conditional_update(
             run_id=run_id,
             expected_status=BacktestRunStatus.QUEUED,
@@ -182,9 +186,11 @@ class _SlotTrackingLifecycle(_FakeLifecycle):
             "fault_message": None,
         }
 
-    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+    def claim_execution(
+        self, *, run_id: str, owner_token: str, started_at_ms: int, worker_id: str
+    ) -> bool:
         claimed = super().claim_execution(
-            run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+            run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms, worker_id=worker_id
         )
         if claimed:
             self.owner_token = owner_token
@@ -319,9 +325,12 @@ class TestBacktestWorker(unittest.TestCase):
                     "fault_message": None,
                 }
 
-            def claim_execution(self, *, run_id, owner_token, started_at_ms):
+            def claim_execution(self, *, run_id, owner_token, started_at_ms, worker_id):
                 claimed = super().claim_execution(
-                    run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+                    run_id=run_id,
+                    owner_token=owner_token,
+                    started_at_ms=started_at_ms,
+                    worker_id=worker_id,
                 )
                 if claimed:
                     self.owner_token = owner_token
@@ -376,11 +385,14 @@ class TestBacktestWorker(unittest.TestCase):
                 super().__init__([True, True])
                 self.turns = ["standalone", "member"]
 
-            def claim_execution(self, *, run_id, owner_token, started_at_ms):
+            def claim_execution(self, *, run_id, owner_token, started_at_ms, worker_id):
                 if run_id != self.turns.pop(0):
                     return False
                 return super().claim_execution(
-                    run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+                    run_id=run_id,
+                    owner_token=owner_token,
+                    started_at_ms=started_at_ms,
+                    worker_id=worker_id,
                 )
 
         lifecycle = TurnLifecycle()
@@ -427,9 +439,10 @@ class TestBacktestWorker(unittest.TestCase):
                     raise AssertionError("child was not released")
                 return _compact_result()
 
+        active_lifecycle = _FakeLifecycle([True])
         active = BacktestWorker(
             repository=_FakeRunRepository([[_queued_run("long", submitted_at_ms=1)], []]),
-            lifecycle=_FakeLifecycle([True]),
+            lifecycle=active_lifecycle,
             child_executor=LongChild(),
             heartbeat_publisher=lambda **fields: active_heartbeats.append(fields),
             heartbeat_interval_seconds=0.01,
@@ -447,6 +460,7 @@ class TestBacktestWorker(unittest.TestCase):
         finished.set()
         active_thread.join(timeout=2)
         self.assertFalse(active_thread.is_alive())
+        self.assertEqual(active_lifecycle.worker_ids, [active_heartbeats[0]["worker_id"]])
 
     def test_default_poll_interval_is_one_second(self) -> None:
         self.assertEqual(BacktesterConfig().worker_poll_interval_seconds, 1.0)

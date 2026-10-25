@@ -26,6 +26,8 @@ lifecycle policy; the accessor applies it against locked current state.
   hold it through the read transaction so active ownership and waiting turns
   cannot come from different lifecycle states.
 - Claim verifies the head turn, batch eligibility, and lowest queued member.
+  Worker-identified claims seed the matching heartbeat atomically; heartbeat
+  writes take the slot lock and fence delayed ownership changes.
   Settlement requires the owner token and commits artifacts, outcome, batch
   reconciliation/events, next turn, and slot release together.
 - Cancellation, pause/resume, deletion, and startup reconciliation must preserve

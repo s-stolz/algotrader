@@ -18,7 +18,9 @@ For run/batch commands, queue invariants, versions, or replay format, read
 - Name-only commands use run/batch policy services and return identity plus the
   authoritative name. Renames accept every lifecycle state and reject members.
 - `src/app/backtest_worker.py` owns claim/settlement orchestration;
-  `backtest_child.py` supervises execution. Only the worker parent persists child
+  `backtest_child.py` supervises execution. Claims carry the same process identity
+  as periodic heartbeats so storage can establish freshness atomically.
+  Only the worker parent persists child
   results. `backtest_queue.py` projects advisory availability from storage and
   heartbeat primitives.
 - `src/domain/types.py`, `enums.py`, and `events.py` own shared runtime concepts.

@@ -39,10 +39,41 @@ async def record_heartbeat(
     fault_message: str | None,
 ) -> dict:
     # The database clock is authoritative; a worker cannot claim freshness with its own clock.
+    # Serialize with claims so a delayed heartbeat cannot erase a newly claimed owner.
+    slot = (
+        (
+            await session.execute(
+                select(backtest_execution_slot)
+                .where(backtest_execution_slot.c.slot_id == 1)
+                .with_for_update()
+            )
+        )
+        .mappings()
+        .one()
+    )
+    existing = (
+        (
+            await session.execute(
+                select(backtest_worker_heartbeats).where(
+                    backtest_worker_heartbeats.c.worker_id == worker_id
+                )
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if (
+        existing is not None
+        and slot["owner_token"] is not None
+        and existing["owner_token"] == slot["owner_token"]
+        and owner_token != slot["owner_token"]
+    ):
+        await session.commit()
+        return dict(existing)
     statement = pg_insert(backtest_worker_heartbeats).values(
         worker_id=worker_id,
         owner_token=owner_token,
-        heartbeat_at=func.now(),
+        heartbeat_at=func.clock_timestamp(),
         fault_code=fault_code,
         fault_message=fault_message,
     )
@@ -50,7 +81,7 @@ async def record_heartbeat(
         index_elements=[backtest_worker_heartbeats.c.worker_id],
         set_={
             "owner_token": statement.excluded.owner_token,
-            "heartbeat_at": func.now(),
+            "heartbeat_at": func.clock_timestamp(),
             "fault_code": statement.excluded.fault_code,
             "fault_message": statement.excluded.fault_message,
         },
@@ -190,7 +221,32 @@ async def read_queue_state(session) -> dict:
     }
 
 
-async def claim(session, *, run_id: str, owner_token: str, started_at) -> bool:
+async def _seed_claim_heartbeat(session, *, worker_id: str | None, owner_token: str) -> None:
+    if worker_id is None:
+        return
+    heartbeat = pg_insert(backtest_worker_heartbeats).values(
+        worker_id=worker_id,
+        owner_token=owner_token,
+        heartbeat_at=func.clock_timestamp(),
+        fault_code=None,
+        fault_message=None,
+    )
+    await session.execute(
+        heartbeat.on_conflict_do_update(
+            index_elements=[backtest_worker_heartbeats.c.worker_id],
+            set_={
+                "owner_token": owner_token,
+                "heartbeat_at": func.clock_timestamp(),
+                "fault_code": None,
+                "fault_message": None,
+            },
+        )
+    )
+
+
+async def claim(
+    session, *, run_id: str, owner_token: str, started_at, worker_id: str | None = None
+) -> bool:
     """Serialize global queue selection and slot ownership in one transaction."""
     try:
         slot = (
@@ -282,6 +338,7 @@ async def claim(session, *, run_id: str, owner_token: str, started_at) -> bool:
                 run_id,
                 started_at=started_at,
             )
+        await _seed_claim_heartbeat(session, worker_id=worker_id, owner_token=owner_token)
         await session.commit()
     except Exception:
         await session.rollback()

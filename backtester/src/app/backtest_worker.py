@@ -42,7 +42,9 @@ class QueuedRunRepository(Protocol):
 class RunLifecyclePersistence(Protocol):
     def execution_slot(self) -> Mapping[str, Any]: ...
 
-    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool: ...
+    def claim_execution(
+        self, *, run_id: str, owner_token: str, started_at_ms: int, worker_id: str
+    ) -> bool: ...
 
     def settle_failure(
         self,
@@ -165,6 +167,7 @@ class BacktestWorker:
                 continue
             owner_token = str(uuid4())
             claimed = self._lifecycle.claim_execution(
+                worker_id=self._worker_id,
                 run_id=selected.run_id,
                 owner_token=owner_token,
                 started_at_ms=self._now_ms(),

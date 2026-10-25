@@ -316,6 +316,7 @@ class BacktestRunMutationOut(BacktestContractModel):
 
 
 class BacktestExecutionClaimIn(BacktestContractModel):
+    worker_id: str | None = Field(default=None, min_length=1)
     run_id: str
     owner_token: str
     started_at: datetime
