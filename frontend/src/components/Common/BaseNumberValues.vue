@@ -29,19 +29,19 @@ function updateValues(values: Array<string | number>): void {
     <span class="values-label">Values<n-tag round size="small" :bordered="false" :aria-label="`${value.length} values`">{{ value.length }}</n-tag></span>
     <BaseSelect
       :value="value"
-multiple
-filterable
-tag
-max-tag-count="responsive"
-:show-arrow="false"
+      multiple
+      filterable
+      tag
+      max-tag-count="responsive"
+      :show-arrow="false"
       :options="value.map(number => ({ label: String(number), value: number }))"
       :filter="(pattern, option) => !pattern.trim() || (!issue && Number(pattern) === option.value)"
       :on-create="text => ({ label: String(Number(text)), value: Number(text) })"
       :status="issue ? 'error' : undefined"
       :input-props="{ 'aria-label': label }"
-placeholder="Add value"
+      placeholder="Add value"
       @search="updateSearch"
-@update:value="updateValues"
+      @update:value="updateValues"
     />
     <small v-if="issue" role="alert">{{ issue }}</small>
   </div>

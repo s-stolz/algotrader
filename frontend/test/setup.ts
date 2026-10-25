@@ -42,3 +42,11 @@ if (typeof globalThis.localStorage?.getItem !== 'function') {
     });
   }
 }
+
+// jsdom has no scrolling implementation; keep the DOM position observable to modal tests.
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = function (options: ScrollToOptions | number = {}, y?: number): void {
+    this.scrollTop = typeof options === 'number' ? y ?? 0 : options.top ?? this.scrollTop;
+    this.scrollLeft = typeof options === 'number' ? options : options.left ?? this.scrollLeft;
+  };
+}

@@ -1,31 +1,34 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue';
 import { NModal, NScrollbar, NStep, NSteps } from 'naive-ui';
 
-defineProps<{ show: boolean; title: string; steps: string[]; step: number }>();
+const props = defineProps<{ show: boolean; title: string; steps: string[]; step: number; fillBody?: boolean }>();
 const emit = defineEmits<{ 'update:show': [show: boolean]; 'update:step': [step: number] }>();
+const scrollbar = ref<InstanceType<typeof NScrollbar>>();
+watch(() => props.step, () => scrollbar.value?.scrollTo({ top: 0 }));
 </script>
 <template>
   <n-modal
-:show="show"
-:mask-closable="false"
-:auto-focus="true"
-preset="card"
+    :show="show"
+    :mask-closable="false"
+    :auto-focus="true"
+    preset="card"
     :title="title"
-class="base-step-modal"
-@update:show="emit('update:show', $event)"
->
+    class="base-step-modal"
+    @update:show="emit('update:show', $event)"
+  >
     <nav class="steps-navigation" aria-label="Creation steps">
       <n-steps :current="step + 1" size="small" @update:current="emit('update:step', $event - 1)">
         <n-step v-for="(name, index) in steps" :key="name">
           <template #title><button
-class="step-button"
-:aria-current="step === index ? 'step' : undefined"
+            class="step-button"
+            :aria-current="step === index ? 'step' : undefined"
             @click="emit('update:step', index)"
->{{ name }}</button></template>
+          >{{ name }}</button></template>
         </n-step>
       </n-steps>
     </nav>
-    <n-scrollbar :key="step" class="step-body" :content-style="{ paddingRight: '22px', boxSizing: 'border-box' }">
+    <n-scrollbar ref="scrollbar" class="step-body" :content-style="{ paddingRight: '22px', boxSizing: 'border-box', height: fillBody ? '100%' : undefined }">
       <slot />
     </n-scrollbar>
     <template #footer><slot name="footer" /></template>

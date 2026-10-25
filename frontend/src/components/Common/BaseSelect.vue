@@ -56,6 +56,7 @@ export default defineComponent({
 </script>
 
 <style>
+.base-select { min-width: 0; }
 .base-select-menu, .base-select-menu *, .base-select-overflow, .base-select-overflow * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .base-select-menu {
   border-radius: 6px;

@@ -469,7 +469,7 @@ describe('Parameter Sweep creation review', () => {
     capital!.vm.$emit('update:value', 12_000);
     await advancePreview();
     expect(previewParameterSweep).toHaveBeenCalledWith(expect.objectContaining({
-      markets: [1], timeframes: ['H1', 'M1'], allowed_directions: ['short_only', 'long_and_short'],
+      markets: [1], timeframes: ['H1', 'M1'], allowed_directions: ['short_only'],
       strategy: { strategy_id: 'sma_crossover', strategy_version: 2 },
       parameter_axes: { fast_window: { mode: 'range', start: 3, stop: 5, step: 2 },
         slow_window: { mode: 'constant', value: 30 } },
@@ -557,7 +557,7 @@ describe('Parameter Sweep creation review', () => {
     mode!.vm.$emit('update:value', 'range');
     await flushPromises();
     const inputs = wrapper.findAllComponents(NInputNumber);
-    const range = inputs.filter((input) => input.attributes('data-testid') === undefined);
+    const range = inputs.filter((input) => input.attributes('data-testid')?.startsWith('sweep-'));
     range[0].vm.$emit('update:value', 1);
     range[1].vm.$emit('update:value', 3);
     range[2].vm.$emit('update:value', 1);
@@ -671,10 +671,10 @@ describe('Parameter Sweep creation review', () => {
     const table = wrapper.findComponent(NDataTable);
     const rows = table.props('data') as SweepPreviewCandidate[];
     expect(rows).toHaveLength(22);
-    expect(table.props('pagination')).toEqual({ pageSize: 20 });
+    expect(table.props('pagination')).toEqual({ pageSize: 10 });
     const columns = table.props('columns') as Array<{ title: string; sorter?: (a: unknown, b: unknown) => number }>;
     expect(columns.map((column) => column.title)).toEqual([
-      'Candidate #', 'Market', 'Timeframe', 'fast_window', 'Allowed Directions', 'State',
+      '#', 'Market', 'Timeframe', 'fast_window', 'Allowed Directions', 'State',
     ]);
     expect(columns[3]!.sorter!(rows[0]!, rows[2]!)).toBeLessThan(0);
     const filter = wrapper.findAllComponents(NSelect).find((select) =>
@@ -713,6 +713,64 @@ describe('Parameter Sweep creation review', () => {
     expect(previewParameterSweep).toHaveBeenCalledTimes(2);
     expect(document.body.querySelector('[data-testid="sweep-review"]')).not.toBeNull();
     expect(submitBacktestRun).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+});
+
+describe('creation modal navigation', () => {
+  beforeEach(() => {
+    pinia = createPinia();
+    setActivePinia(pinia);
+    useMarketsStore().all = [{ symbol_id: 1, symbol: 'EURUSD', exchange: 'FX', market_type: 'Forex', min_move: 0.01, timezone: 'UTC' }];
+    vi.mocked(fetchStrategyCatalog).mockResolvedValue(catalog);
+    vi.mocked(fetchSweepCapabilities).mockResolvedValue({ max_sweep_candidate_count: 1000, batch_acceptance_enabled: true });
+  });
+  afterEach(() => { document.body.innerHTML = ''; });
+
+  it('synchronizes steps and footer, validates dates, and keeps drafts after closing', async () => {
+    const wrapper = openDrawer();
+    await flushPromises();
+    const click = async (text: string) => {
+      const button = [...document.body.querySelectorAll('button')].find(button => button.textContent?.trim() === text)!;
+      button.click();
+      await flushPromises();
+    };
+    const activeStep = () => document.querySelector('[aria-current="step"]')?.textContent;
+    expect(activeStep()).toBe('Setup');
+    const dates = wrapper.findAllComponents(NDatePicker);
+    dates[1].vm.$emit('update:formatted-value', '2000-01-01');
+    await click('Review');
+    expect(activeStep()).toBe('Setup');
+    expect(document.body.textContent).toContain('End date must be after start date');
+    dates[1].vm.$emit('update:formatted-value', '2030-01-01');
+    await click('Parameters →');
+    expect(activeStep()).toBe('Parameters');
+    await click('Review candidates →');
+    expect(activeStep()).toBe('Review');
+    await click('Back');
+    expect(activeStep()).toBe('Parameters');
+    await wrapper.setProps({ show: false });
+    await wrapper.setProps({ show: true });
+    expect(useBacktestWorkspaceStore().creationDraft?.end_ms).toBe(Date.UTC(2030, 0, 1));
+    wrapper.unmount();
+  });
+
+  it('clears a numeric Fixed input after switching from Values without losing its sweep list', async () => {
+    const store = useBacktestWorkspaceStore();
+    store.creationSweepDraft = { isSweep: true, marketIds: [1], timeframes: ['M1'], allowedDirections: ['short_only'], parameters: {} };
+    const wrapper = openDrawer();
+    await flushPromises();
+    const mode = wrapper.findAllComponents(NSelect).find(select => select.attributes('data-testid') === 'sweep-mode-fast_window')!;
+    mode.vm.$emit('update:value', 'values');
+    await flushPromises();
+    const { default: BaseNumberValues } = await import('@/components/Common/BaseNumberValues.vue');
+    wrapper.findAllComponents(BaseNumberValues)[0].vm.$emit('update:value', [2, 4]);
+    await flushPromises();
+    mode.vm.$emit('update:value', 'constant');
+    await flushPromises();
+    expect(store.creationDraft?.strategy.parameters.fast_window).toBeUndefined();
+    expect(store.creationSweepDraft?.parameters.fast_window.valuesText).toBe('2\n4');
+    expect(store.creationDraft?.execution.allowed_directions).toBe('short_only');
     wrapper.unmount();
   });
 });
