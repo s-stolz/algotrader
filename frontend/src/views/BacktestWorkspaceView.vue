@@ -18,7 +18,7 @@
       @submitted-batch="createdBatch"
     />
 
-    <BacktestQueueHealth ref="queueHealth" />
+    <BacktestQueueHealth ref="queueHealth" :runs="runs" :batches="batches" @inspect="showAnalysis" />
       <p v-if="readError" role="alert">
         Run history unavailable; current lifecycle status is unknown. {{ readError }}
         <n-button data-testid="workspace-refresh" size="small" quaternary :loading="isRefreshing" @click="refreshWorkspace">

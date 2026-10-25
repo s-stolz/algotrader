@@ -1,126 +1,69 @@
 <template>
-  <section class="queue-health" aria-label="Backtest queue" data-testid="workspace-queue">
-    <div class="queue-summary">
-      <n-icon size="17" class="queue-icon"><server-outline /></n-icon>
-      <h2>Queue and worker</h2>
-      <n-tag :type="healthType" size="small" round :bordered="false" class="health-tag">
-        {{ isUnknown ? 'Status unknown' : snapshot?.availability ?? 'Connecting' }}
-      </n-tag>
-      <span v-if="snapshot" class="queue-summary-count">
-        {{ isUnknown ? 'Last known: ' : '' }}{{ snapshot.active_run ? '1 active run' : 'Idle' }} · {{ snapshot.queued.length }} waiting
-      </span>
-    </div>
-    <n-skeleton v-if="!snapshot && !readError" text :repeat="2" class="queue-loading" aria-label="Loading queue health" />
-    <n-alert v-if="isUnknown" type="warning" class="queue-alert" data-testid="workspace-queue-unknown">
-      Queue and worker status unknown{{ readError ? `: ${readError}` : '; latest snapshot is old' }}.
-    </n-alert>
-    <details v-if="snapshot" class="queue-details">
-      <summary>Activity details</summary>
-      <div class="worker-metrics">
-        <div class="worker-state" data-testid="workspace-worker-status">
-          <span class="metric-label">Worker status</span>
-          <n-tag :type="healthType" :bordered="false">
-            {{ isUnknown ? 'Status unknown' : `Worker ${snapshot.availability}` }}
-          </n-tag>
-        </div>
-        <n-statistic
-:label="isUnknown ? 'Last known heartbeat' : 'Last heartbeat'"
-          :value="snapshot.last_heartbeat_ms === null ? '—' : elapsed(snapshot.last_heartbeat_ms)"
->
-          <template v-if="snapshot.last_heartbeat_ms !== null" #suffix><span class="metric-suffix">ago</span></template>
-          <template v-else #suffix><span class="metric-suffix">No worker heartbeat recorded</span></template>
-        </n-statistic>
-        <n-statistic :label="isUnknown ? 'Last known snapshot' : 'Snapshot age'" :value="elapsed(snapshot.snapshot_at_ms)">
-          <template #suffix><span class="metric-suffix">ago</span></template>
-        </n-statistic>
-      </div>
-      <div v-if="snapshot.operational_faults.length" class="faults" aria-label="Worker faults">
-        <n-alert v-for="fault in snapshot.operational_faults" :key="fault.code" type="error" :title="fault.message">
-          <code>{{ fault.code }}</code>
+  <section v-if="visible" class="floating-pill" aria-label="Backtest queue" data-testid="workspace-queue">
+    <BasePopover v-model:show="expanded" trigger="click" placement="top-end" :show-arrow="false" :width="380" :style="{ maxWidth: 'calc(100vw - 32px)' }">
+      <template #trigger>
+        <button ref="trigger" class="status-pill" :class="{ 'pill-warning': isUnknown || needsAttention }" :aria-expanded="expanded" :aria-controls="panelId" :aria-label="`Backtest activity: ${pillStatus}, ${waitingLabel}`" data-testid="queue-toggle" @keydown.esc.stop="close">
+          <span class="status-dot" :class="{ muted: isUnknown || !snapshot?.active_run, amber: needsAttention && !isUnknown }" />
+          <strong>{{ pillStatus }}</strong><span class="pill-divider" />
+          <span class="secondary">{{ waitingLabel }}</span>
+          <n-icon class="pill-chevron" :class="{ 'is-expanded': expanded }" :size="16" aria-hidden="true"><ChevronUpOutline /></n-icon>
+        </button>
+      </template>
+      <section :id="panelId" class="activity-panel" aria-label="Backtest activity details" @keydown.esc.stop="close">
+        <div class="list-heading"><h3>Backtest activity</h3><n-button text aria-label="Close activity details" @click="close"><n-icon :size="16"><CloseOutline /></n-icon></n-button></div>
+        <n-skeleton v-if="!snapshot && !readError" text :repeat="2" aria-label="Loading backtest activity" />
+        <n-alert v-if="isUnknown" type="warning" class="activity-alert" data-testid="workspace-queue-unknown">
+          {{ readError ? `Activity unavailable: ${readError}` : 'Activity status unknown: latest snapshot is old.' }}
+          <template v-if="snapshot"> Showing last known activity.</template>
+          <n-button size="small" @click="refresh()">Retry</n-button>
         </n-alert>
-      </div>
-      <div class="activity-grid">
-        <section class="activity-card" aria-label="Active execution">
-          <header class="activity-heading">
-            <n-icon size="16"><pulse-outline /></n-icon>
-            <h3>{{ isUnknown ? 'Last known active run' : 'Active run' }}</h3>
-            <n-tag v-if="snapshot.active_run" size="small" :bordered="false" :type="isUnknown ? 'default' : 'info'">
-              {{ isUnknown ? 'Last known' : 'In progress' }}
-            </n-tag>
-          </header>
-          <div v-if="snapshot.active_run" class="active-run" data-testid="workspace-queue-active">
-            <span class="metric-label">{{ isUnknown ? 'Last known active run' : 'Run ID' }}</span>
-            <code class="run-identity">{{ snapshot.active_run.run_id }}</code>
-            <span class="run-duration"><n-icon><time-outline /></n-icon>
-              {{ isUnknown ? 'Started' : 'Active for' }} {{ elapsed(snapshot.active_run.started_at_ms) }}{{ isUnknown ? ' ago' : '' }}
-            </span>
-            <div v-if="snapshot.active_run.batch_id" class="active-batch">
-              <n-tag size="small" :bordered="false">Member #{{ (snapshot.active_run.member_ordinal ?? 0) + 1 }}</n-tag>
-              <span class="metric-label">Batch <code>{{ snapshot.active_run.batch_id }}</code></span>
-            </div>
+        <template v-if="snapshot">
+          <n-alert v-if="needsAttention" type="warning" class="activity-alert" data-testid="workspace-worker-status">{{ isUnknown ? 'Last known worker status' : 'Worker' }}: {{ snapshot.availability }}. Waiting work may not start.</n-alert>
+          <n-alert v-for="fault in snapshot.operational_faults" :key="fault.code" type="error" class="activity-alert" :title="fault.message"><code>{{ fault.code }}</code></n-alert>
+          <div class="active-run" data-testid="workspace-queue-active-section">
+            <span class="eyebrow">{{ isUnknown ? 'Last known active run' : 'Active run' }}</span>
+            <template v-if="snapshot.active_run">
+              <strong data-testid="workspace-queue-active">{{ activeName }}</strong>
+              <div class="list-heading">
+                <span class="secondary"><template v-if="snapshot.active_run.batch_id">Run #{{ (snapshot.active_run.member_ordinal ?? 0) + 1 }} · </template>{{ isUnknown ? 'Started' : 'Active for' }} {{ elapsed(snapshot.active_run.started_at_ms) }}{{ isUnknown ? ' ago' : '' }}</span>
+                <n-button text data-testid="queue-view-active" @click="inspect('run', snapshot.active_run.run_id)">View run →</n-button>
+              </div>
+            </template>
+            <p v-else class="secondary" data-testid="workspace-queue-no-active">{{ isUnknown ? 'Last known active run: none' : 'No backtests running' }}</p>
           </div>
-          <n-empty
-v-else
-size="small"
-class="activity-empty"
-data-testid="workspace-queue-no-active"
-            :description="isUnknown ? 'Last known active run: none' : 'No active run'"
->
-            <template #icon><n-icon><pause-circle-outline /></n-icon></template>
-          </n-empty>
-        </section>
-        <section class="activity-card" aria-label="Waiting queue">
-          <header class="activity-heading">
-            <n-icon size="16"><list-outline /></n-icon>
-            <h3>{{ isUnknown ? 'Last known queue' : 'Waiting queue' }}</h3>
-            <n-tag size="small" round :bordered="false">{{ snapshot.queued.length }}</n-tag>
-          </header>
-          <n-empty
-v-if="snapshot.queued.length === 0"
-size="small"
-class="activity-empty"
-data-testid="workspace-queue-empty"
-            :description="isUnknown ? 'Last known queue had no waiting work' : 'No waiting work'"
->
-            <template #icon><n-icon><checkmark-circle-outline /></n-icon></template>
-          </n-empty>
-          <ol v-else class="waiting-list" aria-label="Waiting backtests">
-            <li
-v-for="entry in snapshot.queued"
-              :key="entry.entry_type === 'batch' ? `batch:${entry.batch_id}` : `run:${entry.run_id}`"
-              :data-testid="entry.entry_type === 'batch' ? `workspace-queue-batch-${entry.batch_id}` : `workspace-queue-run-${entry.run_id}`"
->
-              <div class="waiting-heading">
-                <n-tag size="small" :bordered="false" type="info">Est. #{{ entry.estimated_position }}</n-tag>
-                <span>{{ entry.entry_type === 'batch' ? 'Batch' : 'Run' }}</span>
-                <span class="waiting-time">Waiting {{ elapsed(entry.submitted_at_ms) }}</span>
+          <div class="list-heading"><h3>{{ isUnknown ? 'Last known queue' : 'Waiting' }} · {{ snapshot.queued.length }}</h3></div>
+          <ol v-if="snapshot.queued.length" aria-label="Waiting backtests">
+            <li v-for="entry in snapshot.queued" :key="`${entryIdentity(entry).kind}:${entryIdentity(entry).id}`" :data-testid="`workspace-queue-${entryIdentity(entry).kind}-${entryIdentity(entry).id}`">
+              <span class="position" :aria-label="`Estimated position ${entry.estimated_position}`">{{ entry.estimated_position }}</span>
+              <div><strong>{{ experimentName(entryIdentity(entry).kind, entryIdentity(entry).id) }}</strong>
+                <small v-if="entry.entry_type === 'batch'">Batch · next Run #{{ (entry.next_member_ordinal ?? 0) + 1 }} · {{ entry.outcome_counts?.succeeded ?? 0 }} succeeded<template v-if="entry.outcome_counts?.failed"> · {{ entry.outcome_counts.failed }} failed</template><template v-if="entry.outcome_counts?.cancelled"> · {{ entry.outcome_counts.cancelled }} cancelled</template></small>
+                <small v-else>Standalone run · waiting {{ elapsed(entry.submitted_at_ms) }}</small>
               </div>
-              <code class="run-identity">{{ entry.entry_type === 'batch' ? entry.batch_id : entry.run_id }}</code>
-              <div v-if="entry.entry_type === 'batch'" class="batch-outcomes">
-                <span class="metric-label">Next member #{{ (entry.next_member_ordinal ?? 0) + 1 }}</span>
-                <n-tag size="small" :bordered="false" type="success">{{ entry.outcome_counts?.succeeded ?? 0 }} succeeded</n-tag>
-                <n-tag size="small" :bordered="false" :type="entry.outcome_counts?.failed ? 'error' : 'default'">{{ entry.outcome_counts?.failed ?? 0 }} failed</n-tag>
-                <n-tag size="small" :bordered="false">{{ entry.outcome_counts?.cancelled ?? 0 }} cancelled</n-tag>
-              </div>
+              <n-button text :aria-label="`View ${experimentName(entryIdentity(entry).kind, entryIdentity(entry).id)}`" @click="inspect(entryIdentity(entry).kind, entryIdentity(entry).id)">View</n-button>
             </li>
           </ol>
-        </section>
-      </div>
-      <p class="telemetry-note"><n-icon size="14"><information-circle-outline /></n-icon>
-        Queue positions are estimates and may change; no start time or ETA is promised.
-      </p>
-    </details>
+          <p v-else class="secondary" data-testid="workspace-queue-empty">{{ isUnknown ? 'Last known queue had no waiting work.' : 'No waiting work.' }}</p>
+        </template>
+      </section>
+    </BasePopover>
   </section>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NEmpty, NIcon, NSkeleton, NStatistic, NTag } from 'naive-ui';
-import { CheckmarkCircleOutline, InformationCircleOutline, ListOutline, PauseCircleOutline, PulseOutline, ServerOutline, TimeOutline } from '@vicons/ionicons5';
-import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
-
+import { NAlert, NButton, NIcon, NSkeleton } from 'naive-ui';
+import { ChevronUpOutline, CloseOutline } from '@vicons/ionicons5';
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, useId } from 'vue';
+import BasePopover from '@/components/Common/BasePopover.vue';
 import { fetchBacktestQueue } from '@/api/backtesterClient';
-import type { BacktestQueueSnapshot } from '@/types/backtesterContracts';
+import type { BacktestBatch, BacktestRun, BacktestQueueEntry, BacktestQueueSnapshot } from '@/types/backtesterContracts';
+import { batchName, runName } from '@/views/backtestWorkspaceRuns';
 
+const props = defineProps<{ runs?: BacktestRun[] | null; batches?: BacktestBatch[] | null }>();
+const emit = defineEmits<{ inspect: [kind: 'run' | 'batch', id: string] }>();
+const expanded = ref(false);
+const visible = ref(true);
+const trigger = ref<HTMLButtonElement | null>(null);
+const panelId = useId();
 const POLL_INTERVAL_MS = 5000;
 const CLOCK_INTERVAL_MS = 1000;
 const snapshot = ref<BacktestQueueSnapshot | null>(null);
@@ -129,12 +72,35 @@ const nowMs = ref(Date.now());
 const isUnknown = computed(() => readError.value !== null ||
   (snapshot.value !== null && nowMs.value - snapshot.value.snapshot_at_ms >
     snapshot.value.stale_after_ms));
-const healthType = computed(() => {
-  if (isUnknown.value) return 'warning';
-  if (snapshot.value?.availability === 'healthy') return 'success';
-  if (snapshot.value?.availability === 'faulted') return 'error';
-  return snapshot.value ? 'warning' : 'default';
+const needsAttention = computed(() => snapshot.value !== null &&
+  (snapshot.value.availability !== 'healthy' || snapshot.value.operational_faults.length > 0));
+const pillStatus = computed(() => isUnknown.value ? 'Status unknown' : !snapshot.value ? 'Connecting' :
+  needsAttention.value ? 'Needs attention' : snapshot.value.active_run ? '1 running' : 'Idle');
+const waitingLabel = computed(() => !snapshot.value ? 'Queue unknown' :
+  `${isUnknown.value ? 'Last known: ' : ''}${snapshot.value.queued.length} waiting`);
+const activeName = computed(() => {
+  const active = snapshot.value?.active_run;
+  return active ? experimentName(active.batch_id ? 'batch' : 'run', active.batch_id ?? active.run_id) : '';
 });
+function experimentName(kind: 'run' | 'batch', id: string): string {
+  if (kind === 'batch') {
+    const batch = props.batches?.find((item) => item.batch_id === id);
+    return batch ? batchName(batch) : `Batch ${id}`;
+  }
+  const run = props.runs?.find((item) => item.run_id === id);
+  return run ? runName(run) : `Run ${id}`;
+}
+function entryIdentity(entry: BacktestQueueEntry): { kind: 'run' | 'batch'; id: string } {
+  return entry.entry_type === 'batch' ? { kind: 'batch', id: entry.batch_id! } : { kind: 'run', id: entry.run_id! };
+}
+function close(): void {
+  expanded.value = false;
+  trigger.value?.focus();
+}
+function inspect(kind: 'run' | 'batch', id: string): void {
+  close();
+  emit('inspect', kind, id);
+}
 let generation = 0;
 let readPending = false;
 let isActive = false;
@@ -170,6 +136,7 @@ async function refresh(background = false): Promise<void> {
 function start(): void {
   if (isActive) return;
   isActive = true;
+  visible.value = true;
   nowMs.value = Date.now();
   void refresh();
   pollTimer = setInterval(() => { void refresh(true); }, POLL_INTERVAL_MS);
@@ -178,6 +145,8 @@ function start(): void {
 
 function stop(): void {
   isActive = false;
+  visible.value = false;
+  expanded.value = false;
   ++generation;
   readPending = false;
   if (pollTimer) clearInterval(pollTimer);
@@ -194,55 +163,16 @@ onUnmounted(stop);
 </script>
 
 <style scoped>
-.queue-health { border: 1px solid var(--surface-border); border-radius: 10px; background: var(--surface-panel); padding: 13px 18px; font-variant-numeric: tabular-nums; position: relative; }
-.queue-summary { display: flex; align-items: center; gap: 10px; padding-right: 120px; min-height: 24px; }
-.queue-summary h2 { font-size: 13px; font-weight: 600; margin: 0; }
-.queue-icon { color: #8facbe; flex-shrink: 0; }
-.health-tag { text-transform: capitalize; }
-.queue-summary-count { margin-left: auto; color: #a3b2bf; font-size: 12px; }
-.queue-details summary { position: absolute; right: 18px; top: 17px; color: #92a8b8; font-size: 12px; cursor: pointer; }
-.queue-details summary:hover { color: #dce5ed; }
-.queue-details summary:focus-visible { outline: 2px solid #68ceab; outline-offset: 4px; border-radius: 2px; }
-.queue-details[open] { padding-top: 20px; border-top: 1px solid var(--surface-border); margin-top: 13px; }
-.queue-alert, .queue-loading { margin-top: 14px; }
-.worker-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 20px; gap: 20px; }
-.worker-metrics > :not(:first-child) { border-left: 1px solid var(--surface-border); padding-left: 24px; }
-.worker-state { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-.metric-label, .metric-suffix { font-size: 12px; color: #92a8b8; }
-.worker-metrics :deep(.n-statistic__label) { font-size: 12px; color: #92a8b8; }
-.worker-metrics :deep(.n-statistic-value__content) { font-size: 22px; }
-.activity-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 14px; }
-.activity-card { min-width: 0; border: 1px solid var(--surface-border); border-radius: 8px; background: var(--surface-inset); overflow: hidden; }
-.activity-heading { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--surface-border); color: #9bafbf; }
-.activity-heading h3 { font-size: 12px; font-weight: 500; color: #d0dbe5; margin: 0; flex: 1; }
-.activity-empty { padding: 26px 16px; }
-.active-run { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; font-size: 12px; }
-.run-identity { display: block; font-size: 12px; color: #d0dbe5; overflow-wrap: anywhere; }
-.run-duration { display: flex; align-items: center; gap: 6px; color: #9bafbf; }
-.active-batch { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 4px; overflow-wrap: anywhere; }
-.waiting-list { list-style: none; padding: 0; margin: 0; max-height: 280px; overflow-y: auto; }
-.waiting-list li { display: grid; gap: 10px; padding: 14px 16px; }
-.waiting-list li + li { border-top: 1px solid var(--surface-border); }
-.waiting-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
-.waiting-time { margin-left: auto; color: #92a8b8; }
-.batch-outcomes { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.batch-outcomes .metric-label { margin-right: 4px; }
-.telemetry-note { display: flex; align-items: flex-start; gap: 6px; color: #8798a8; font-size: 11px; margin: 14px 0 0; }
-.telemetry-note .n-icon { flex-shrink: 0; margin-top: 2px; }
-.faults { display: grid; gap: 8px; margin-bottom: 16px; }
-@media (max-width: 700px) {
-  .queue-summary { flex-wrap: wrap; gap: 8px; }
-  .queue-summary-count { margin-left: 0; flex-basis: 100%; }
-  .activity-grid { grid-template-columns: minmax(0, 1fr); }
-  .worker-metrics { gap: 12px; }
-  .worker-metrics > :not(:first-child) { padding-left: 12px; }
-}
-@media (max-width: 460px) {
-  .queue-health { padding: 12px; }
-  .queue-summary { padding-right: 0; }
-  .queue-details summary { position: static; margin-top: 12px; }
-  .queue-details[open] { padding-top: 0; }
-  .worker-metrics { grid-template-columns: minmax(0, 1fr); margin-top: 16px; }
-  .worker-metrics > :not(:first-child) { padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--surface-border); }
-}
+
+.floating-pill { position: fixed; right: 32px; bottom: 16px; z-index: 101; color: #dce4ed; font-size: 13px; }
+.status-pill { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 14px; border: 1px solid #3d5062; border-radius: 22px; background: #18212c; color: #dce4ed; box-shadow: 0 4px 18px #0005; font: inherit; cursor: pointer; font-variant-numeric: tabular-nums; }
+.status-pill:hover { background: #233141; border-color: #6c8aa3; }.status-pill:focus-visible { outline: 2px solid #68ceab; outline-offset: 3px; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #68ceab; flex-shrink: 0; }.status-dot.muted { background: #929baa; }.status-dot.amber { background: #edb96b; }
+.pill-divider { height: 14px; width: 1px; background: #415061; }.pill-chevron { color: #92a8b8; flex: 0 0 16px; width: 16px; height: 16px; transform-origin: center; }.pill-chevron.is-expanded { transform: rotate(180deg); }.pill-warning { border-color: #ba9157; }
+.activity-panel { color: #dce4ed; font-size: 13px; max-height: min(480px, calc(100dvh - 110px)); overflow-y: auto; padding: 6px; font-variant-numeric: tabular-nums; }
+.list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }.activity-panel > .list-heading { margin-bottom: 12px; }h3 { font-size: 13px; margin: 0; font-weight: 500; }strong { font-weight: 500; }
+.secondary, small { color: #92a8b8; font-size: 12px; }.eyebrow { font-size: 10px; letter-spacing: 1.5px; color: #92a8b8; text-transform: uppercase; }
+.active-run { display: grid; gap: 10px; padding: 16px 0; margin-bottom: 18px; border-top: 1px solid #32404e; border-bottom: 1px solid #32404e; overflow-wrap: anywhere; }.active-run p { margin: 0; }.active-run .n-button { flex-shrink: 0; }
+ol { list-style: none; padding: 0; margin: 8px 0; }li { display: flex; align-items: center; gap: 8px; padding: 15px 0; border-bottom: 1px solid #293340; }li:last-child { border: 0; }li > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }li small { display: block; margin-top: 4px; }.position { color: #8393a5; font-size: 12px; min-width: 18px; }.activity-alert { margin: 12px 0; }
+@media(max-width: 420px) { .status-pill { gap: 7px; padding: 0 10px; font-size: 12px; } }
 </style>
