@@ -29,6 +29,10 @@ export function formatUtcDate(timestampMs: number | null | undefined): string {
 
 export function formatSigned(value: number | null | undefined, suffix = ''): string {
   if (value == null) return '—';
+  if (suffix === '%') {
+    const magnitude = formatMagnitude(value, suffix);
+    return `${value > 0 ? '+' : value < 0 ? '-' : ''}${magnitude}`;
+  }
   const rounded = Number(value.toFixed(2));
   const display = rounded === 0 ? value : rounded;
   return `${value > 0 ? '+' : ''}${display}${suffix}`;
@@ -37,6 +41,11 @@ export function formatSigned(value: number | null | undefined, suffix = ''): str
 export function formatMagnitude(value: number | null | undefined, suffix = ''): string {
   if (value == null) return '—';
   const magnitude = Math.abs(value);
+  if (suffix === '%') {
+    const rounded = magnitude > 0 && magnitude < 0.001
+      ? Number(magnitude.toPrecision(2)) : Number(magnitude.toFixed(3));
+    return `${rounded}${suffix}`;
+  }
   const rounded = Number(magnitude.toFixed(2));
   return `${rounded === 0 ? magnitude : rounded}${suffix}`;
 }

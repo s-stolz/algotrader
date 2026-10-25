@@ -91,7 +91,7 @@ describe('saved Backtest Run presentation', () => {
     expect(formatSigned(0)).toBe('0');
   });
 
-  it.each(['%', ''])('preserves nonzero values near the rounding boundary with suffix "%s"', (suffix) => {
+  it('preserves nonzero account-unit values near the rounding boundary', () => {
     for (const [value, expected] of [
       [-0.005001, '-0.01'],
       [-0.005, '-0.01'],
@@ -106,10 +106,29 @@ describe('saved Backtest Run presentation', () => {
       [0.005, '+0.01'],
       [0.005001, '+0.01'],
     ] as const) {
-      expect(formatSigned(value, suffix)).toBe(`${expected}${suffix}`);
+      expect(formatSigned(value)).toBe(expected);
     }
-    expect(formatSigned(null, suffix)).toBe('—');
-    expect(formatSigned(undefined, suffix)).toBe('—');
+    expect(formatSigned(null)).toBe('—');
+    expect(formatSigned(undefined)).toBe('—');
+  });
+
+  it.each([
+    [0.00024690000000004, '+0.00025%', '0.00025%'],
+    [-0.00011819986077591335, '-0.00012%', '0.00012%'],
+    [12.34567, '+12.346%', '12.346%'],
+    [-1.23456, '-1.235%', '1.235%'],
+    [0.004999, '+0.005%', '0.005%'],
+    [0.001, '+0.001%', '0.001%'],
+    [0.0009999, '+0.001%', '0.001%'],
+    [0.1, '+0.1%', '0.1%'],
+    [0, '0%', '0%'],
+    [-0, '0%', '0%'],
+    [Number.MIN_VALUE, '+5e-324%', '5e-324%'],
+    [null, '—', '—'],
+    [undefined, '—', '—'],
+  ])('rounds percentage %s while preserving sign and tiny magnitudes', (value, signed, magnitude) => {
+    expect(formatSigned(value, '%')).toBe(signed);
+    expect(formatMagnitude(value, '%')).toBe(magnitude);
   });
 
   it('shows nonzero drawdown magnitude below display precision without changing zero or missing', () => {
