@@ -628,6 +628,12 @@ function compareRows(a: SweepPreviewCandidate, b: SweepPreviewCandidate,
     collator.compare(String(left ?? ''), String(right ?? ''));
   return compared || a.candidate_ordinal - b.candidate_ordinal;
 }
+function reviewParameterValue(parameter: StrategyParameterSchema, value: unknown): string {
+  if (value === undefined) {
+    return 'default' in parameter ? `${reviewParameterValue(parameter, parameter.default)} (default)` : 'Not set';
+  }
+  return typeof value === 'string' ? JSON.stringify(value) : String(value);
+}
 const standaloneColumns = computed<DataTableColumns<DraftRequest>>(() => [
   { title: '#', key: 'ordinal', width: 55, fixed: 'left', render: () => '1' },
   { title: 'Market', key: 'market', width: 150, render: row => `${row.symbols.join(', ')} · ${row.exchange}` },
@@ -635,7 +641,7 @@ const standaloneColumns = computed<DataTableColumns<DraftRequest>>(() => [
   { title: 'Directions', key: 'direction', width: 145, render: row => row.execution.allowed_directions },
   ...(selectedStrategy.value?.parameters ?? []).map(parameter => ({
     title: parameter.display_name || parameter.name, key: parameter.name, width: 135,
-    render: (row: DraftRequest) => String(row.strategy.parameters[parameter.name] ?? 'null'),
+    render: (row: DraftRequest) => reviewParameterValue(parameter, row.strategy.parameters[parameter.name]),
   })),
 ]);
 const previewColumns = computed<DataTableColumns<SweepPreviewCandidate>>(() => [

@@ -117,6 +117,27 @@ describe('standalone creation drawer', () => {
     wrapper.unmount();
   });
 
+  it('distinguishes omitted defaults from explicit null in standalone review', async () => {
+    const wrapper = openDrawer();
+    await flushPromises();
+    const runType = wrapper.findAllComponents(NSelect).find(select => select.attributes('data-testid') === 'creation-run-type')!;
+    runType.vm.$emit('update:value', 'sweep');
+    await flushPromises();
+    const mode = wrapper.findAllComponents(NSelect).find(select => select.attributes('data-testid') === 'sweep-mode-fast_window')!;
+    mode.vm.$emit('update:value', 'values');
+    await flushPromises();
+    mode.vm.$emit('update:value', 'constant');
+    runType.vm.$emit('update:value', 'standalone');
+    await flushPromises();
+    [...document.body.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Review')!.click();
+    await flushPromises();
+    const table = wrapper.findComponent(NDataTable);
+    expect(table.text()).toContain('5 (default)');
+    expect(table.text()).toContain('null');
+    expect(useBacktestWorkspaceStore().creationDraft?.strategy.parameters).not.toHaveProperty('fast_window');
+    wrapper.unmount();
+  });
+
   it('uses Naive calendars and converts selected dates to UTC midnight', async () => {
     const wrapper = openDrawer();
     await flushPromises();
