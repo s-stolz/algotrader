@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onUnmounted, ref } from 'vue';
 import { NTag } from 'naive-ui';
 import BaseSelect from './BaseSelect.vue';
 
 const props = defineProps<{ value: number[]; label: string; integer?: boolean }>();
 const emit = defineEmits<{ 'update:value': [value: number[]]; 'update:valid': [valid: boolean] }>();
 const search = ref('');
+onUnmounted(() => emit('update:valid', true));
 const issue = computed(() => {
   const text = search.value.trim();
   if (!text) return '';

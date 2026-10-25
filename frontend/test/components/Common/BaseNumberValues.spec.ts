@@ -20,6 +20,10 @@ describe('numeric value entry', () => {
     expect(wrapper.emitted('update:value')?.[0]).toEqual([[1, 2, 3]]);
     select.vm.$emit('update:value', [2]);
     expect(wrapper.emitted('update:value')?.[1]).toEqual([[2]]);
+    select.vm.$emit('search', 'unfinished');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.emitted('update:valid')?.at(-1)).toEqual([false]);
     wrapper.unmount();
+    expect(wrapper.emitted('update:valid')?.at(-1)).toEqual([true]);
   });
 });
