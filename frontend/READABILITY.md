@@ -61,13 +61,18 @@ Request serialization and command availability live beside the coordinator.
 The existing Pinia store retains creation drafts and name acknowledgement order.
 Presentation sections must not recreate these owners when visibility changes.
 
-Ticket #22 leaves the inspection template, comparison column rendering/settings,
-and analysis styles in `BacktestWorkspaceView.vue` for #23. Its inventory entry
-now belongs to #23 and records 1,408 counted lines and four existing long metric
-explanations. The replay-selection/request helper is already separated as a
-bounded prerequisite; comparison presentation still needs extraction. The other
-#23 entries (`BacktestBatches.vue`, `EquityReplayCharts.vue`, and their inspection
-suites) remain visible in the inventory. No new width or size allowance is added.
+The kept-alive View also creates its comparison model once. Inspection sections
+consume the coordinator and that model; conditionally rendered tables and column
+settings never recreate durable sorting, pagination, or visible-column state.
+Comparison cell mapping and coordinated actions live in `workspace/comparison/`.
+Replay presentation derives compatibility, errors, and chart series from the
+existing analysis owner without issuing requests or owning polling.
+
+Batch inspection keeps a single model created by `BacktestBatches.vue`.
+It owns detail generations, polling cleanup, command retry identities, and name
+acknowledgements; progress and saved-definition/activity sections only render it.
+The batch tests retain their exact-name suite plus command and progress behavior
+groups with shared fixtures. All #23 readability inventory entries are retired.
 
 The Workspace suites now use descriptive behavior suffixes with a shared fixture.
 The lifecycle suite mounts the real Workspace inside KeepAlive and checks filters,

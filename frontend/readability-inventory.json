@@ -3,13 +3,6 @@
   "formattedBase": "09bd181088f269e0ab7e961caaf7fae83fb939cc",
   "removeStagingInTicket": 30,
   "files": {
-    "src/components/Backtest/BacktestBatches.vue": {
-      "ticket": 23,
-      "countedLines": 1103,
-      "width": [
-        "          :aria-valuetext=\"`${selectedBatch.settled_count} / ${selectedBatch.total_count} settled; ${selectedBatch.executed_count} executed`\""
-      ]
-    },
     "src/components/Chart/Indicator/IndicatorSettingsModal.vue": {
       "ticket": 26,
       "countedLines": 55,
@@ -34,23 +27,6 @@
       "countedLines": 537,
       "width": []
     },
-    "src/views/BacktestWorkspaceView.vue": {
-      "ticket": 23,
-      "countedLines": 1408,
-      "width": [
-        "        'Saved signed percentage: (ending equity / first recorded equity − 1) × 100. First recorded equity follows the first Candle executions and fees; it can differ from Initial capital.',",
-        "            'Final point of exact Equity Replay, in account units. Unavailable replay leaves this missing.',",
-        "        'Profitable long Closed Trades divided by long Closed Trades, in percent; No trades if count is zero.',",
-        "        'Profitable short Closed Trades divided by short Closed Trades, in percent; No trades if count is zero.',"
-      ]
-    },
-    "src/views/EquityReplayCharts.vue": {
-      "ticket": 23,
-      "countedLines": 304,
-      "width": [
-        "        title=\"Sampled exact replay points, preserving the first and last points and the maximum drawdown peak and trough.\""
-      ]
-    },
     "test/api/backtesterClient.spec.ts": {
       "ticket": 19,
       "countedLines": 737,
@@ -64,24 +40,6 @@
       "countedLines": 131,
       "width": [
         "      '/api/data-accessor/candles/EURUSD?timeframe=M5&start_ms=1000&end_ms=2000&limit=10&exchange=FX',"
-      ]
-    },
-    "test/components/Backtest/BacktestBatches.spec.ts": {
-      "ticket": 23,
-      "countedLines": 637,
-      "width": [
-        "  it('retains a pending Pause identity when member cancellation advances the batch revision', async () => {",
-        "  it('shows one batch summary, saved definition, and actual ordered Ready members after reload', async () => {",
-        "  it('preserves successful results and shows partial failure, ordinals, and transitions after refresh', async () => {"
-      ]
-    },
-    "test/components/Backtest/ExecutionLogDrawer.spec.ts": {
-      "ticket": 23,
-      "countedLines": 310,
-      "width": [
-        "  it('shows one flip Fill closing a long and opening a short without deriving Trade Direction from Fill side', async () => {",
-        "  it('combines the Naive UI trade filters and keeps Fills unfiltered across tab changes', async () => {",
-        "  it('ignores a pending log read after close and leaves a later run and Workspace selection intact', async () => {"
       ]
     },
     "test/components/Chart/Indicator/Indicator.spec.ts": {
