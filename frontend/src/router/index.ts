@@ -1,4 +1,8 @@
-import { createMemoryHistory, createRouter, type RouteRecordRaw } from 'vue-router';
+import {
+  createMemoryHistory,
+  createRouter,
+  type RouteRecordRaw,
+} from 'vue-router';
 
 import ChartView from '@/views/ChartView.vue';
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';

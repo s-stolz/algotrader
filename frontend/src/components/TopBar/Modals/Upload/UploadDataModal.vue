@@ -5,8 +5,15 @@
     :title="`Upload Data for ${market.symbol}`"
   >
     <div class="upload-content">
-      <n-tabs default-value="upload" type="line" :tabs-padding="20">
-        <n-tab-pane name="upload" tab="Upload & Options">
+      <n-tabs
+        default-value="upload"
+        type="line"
+        :tabs-padding="20"
+      >
+        <n-tab-pane
+          name="upload"
+          tab="Upload & Options"
+        >
           <UploadDataSection
             :file-list="fileList"
             @file-change="handleFileChange"
@@ -31,7 +38,11 @@
 
     <template #footer>
       <div class="modal-actions">
-        <n-button @click="closeModal" class="button-cancel">Cancel</n-button>
+        <n-button
+          @click="closeModal"
+          class="button-cancel"
+          >Cancel</n-button
+        >
         <n-button
           type="primary"
           @click="uploadData"
@@ -48,7 +59,13 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { NButton, NTabPane, NTabs, type UploadFileInfo, type UploadOnChange } from 'naive-ui';
+import {
+  NButton,
+  NTabPane,
+  NTabs,
+  type UploadFileInfo,
+  type UploadOnChange,
+} from 'naive-ui';
 
 import BaseModal from '@/components/Common/BaseModal.vue';
 import type { Candle, Market, UploadColumnMapping } from '@/types/contracts';
@@ -87,7 +104,9 @@ const separator = ref<string | null>(null);
 const columnMapping = ref<UploadColumnMapping>({});
 const separatorOptions = [',', '\t', ';', '|'];
 
-const canUpload = computed(() => fileList.value.length > 0 && !isUploading.value);
+const canUpload = computed(
+  () => fileList.value.length > 0 && !isUploading.value,
+);
 
 function resetForm(): void {
   isUploading.value = false;
@@ -108,7 +127,9 @@ function handleFileRemove(): void {
   columnMapping.value = {};
 }
 
-async function handleFileChange(data: Parameters<UploadOnChange>[0]): Promise<void> {
+async function handleFileChange(
+  data: Parameters<UploadOnChange>[0],
+): Promise<void> {
   fileList.value = data.fileList;
   if (fileList.value.length === 0) {
     resetForm();
@@ -139,7 +160,9 @@ async function uploadData(): Promise<void> {
   isUploading.value = true;
 
   try {
-    console.log(`Processing file (${(file.size / 1024 / 1024).toFixed(1)}MB)...`);
+    console.log(
+      `Processing file (${(file.size / 1024 / 1024).toFixed(1)}MB)...`,
+    );
 
     const candleData: Candle[] = await parseCsvToCandles(
       file,
@@ -161,7 +184,9 @@ async function uploadData(): Promise<void> {
       candleData,
       props.market.exchange,
       (progress, uploadedCount) => {
-        console.log(`Upload progress: ${progress.toFixed(1)}% (${uploadedCount} candles)`);
+        console.log(
+          `Upload progress: ${progress.toFixed(1)}% (${uploadedCount} candles)`,
+        );
       },
     );
 

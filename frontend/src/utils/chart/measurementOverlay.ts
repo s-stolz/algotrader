@@ -67,18 +67,16 @@ export function buildMeasurementOverlayModel(
   const anchorLogical = Math.round(input.anchorLogical);
   const endpointLogical = Math.round(input.endpointLogical);
   const priceDelta = input.endpointPrice - input.anchorPrice;
-  const percentDelta = input.anchorPrice === 0
-    ? null
-    : (priceDelta / input.anchorPrice) * 100;
+  const percentDelta =
+    input.anchorPrice === 0 ? null : (priceDelta / input.anchorPrice) * 100;
   const candleCount = Math.abs(endpointLogical - anchorLogical) + 1;
   const direction = measurementDirection(priceDelta);
   const priceDeltaText = formatSignedNumber(
     priceDelta,
     measurementPricePrecision(input.minMove),
   );
-  const percentDeltaText = percentDelta === null
-    ? 'N/A'
-    : `${formatSignedNumber(percentDelta, 2)}%`;
+  const percentDeltaText =
+    percentDelta === null ? 'N/A' : `${formatSignedNumber(percentDelta, 2)}%`;
   const candleCountText = `${candleCount} ${candleCount === 1 ? 'candle' : 'candles'}`;
 
   return {

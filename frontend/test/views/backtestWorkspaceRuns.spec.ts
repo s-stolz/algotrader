@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import type { BacktestRun } from '@/types/backtesterContracts';
 import {
-  compareHistoryRuns, displayWinRate, formatMagnitude, formatSigned, runMarket, runName,
+  compareHistoryRuns,
+  displayWinRate,
+  formatMagnitude,
+  formatSigned,
+  runMarket,
+  runName,
   strategyVersion,
 } from '@/views/backtestWorkspaceRuns';
 
@@ -62,7 +67,9 @@ describe('saved Backtest Run presentation', () => {
   });
 
   it('sorts dates and Timeframe durations numerically with name and identity ties', () => {
-    const base = run('b', { request: { ...run('x').request, timeframe: 'H1' } });
+    const base = run('b', {
+      request: { ...run('x').request, timeframe: 'H1' },
+    });
     const short = run('a', { request: { ...base.request, timeframe: 'M15' } });
     expect(compareHistoryRuns(short, base, 'timeframe')).toBeLessThan(0);
     expect(compareHistoryRuns(base, short, 'timeframe')).toBeGreaterThan(0);
@@ -77,12 +84,18 @@ describe('saved Backtest Run presentation', () => {
       name: 'Same',
     });
     expect(compareHistoryRuns(sameNameA, sameNameB, 'status')).toBeLessThan(0);
-    expect(compareHistoryRuns(sameNameB, sameNameA, 'status')).toBeGreaterThan(0);
+    expect(compareHistoryRuns(sameNameB, sameNameA, 'status')).toBeGreaterThan(
+      0,
+    );
   });
 
   it('keeps signed saved values and separates zero trades from missing results', () => {
     const noTrades = run('none', {
-      metrics: { long_trade_count: 0, long_win_rate_pct: 0, long_realized_pnl: 0 },
+      metrics: {
+        long_trade_count: 0,
+        long_win_rate_pct: 0,
+        long_realized_pnl: 0,
+      },
     });
     expect(displayWinRate(noTrades, 'long')).toBe('No trades');
     expect(displayWinRate(run('missing'), 'long')).toBe('—');
@@ -91,26 +104,29 @@ describe('saved Backtest Run presentation', () => {
     expect(formatSigned(0)).toBe('0');
   });
 
-  it.each(['%', ''])('preserves nonzero values near the rounding boundary with suffix "%s"', (suffix) => {
-    for (const [value, expected] of [
-      [-0.005001, '-0.01'],
-      [-0.005, '-0.01'],
-      [-0.004999, '-0.004999'],
-      [-0.004, '-0.004'],
-      [-Number.MIN_VALUE, '-5e-324'],
-      [0, '0'],
-      [-0, '0'],
-      [Number.MIN_VALUE, '+5e-324'],
-      [0.004, '+0.004'],
-      [0.004999, '+0.004999'],
-      [0.005, '+0.01'],
-      [0.005001, '+0.01'],
-    ] as const) {
-      expect(formatSigned(value, suffix)).toBe(`${expected}${suffix}`);
-    }
-    expect(formatSigned(null, suffix)).toBe('—');
-    expect(formatSigned(undefined, suffix)).toBe('—');
-  });
+  it.each(['%', ''])(
+    'preserves nonzero values near the rounding boundary with suffix "%s"',
+    (suffix) => {
+      for (const [value, expected] of [
+        [-0.005001, '-0.01'],
+        [-0.005, '-0.01'],
+        [-0.004999, '-0.004999'],
+        [-0.004, '-0.004'],
+        [-Number.MIN_VALUE, '-5e-324'],
+        [0, '0'],
+        [-0, '0'],
+        [Number.MIN_VALUE, '+5e-324'],
+        [0.004, '+0.004'],
+        [0.004999, '+0.004999'],
+        [0.005, '+0.01'],
+        [0.005001, '+0.01'],
+      ] as const) {
+        expect(formatSigned(value, suffix)).toBe(`${expected}${suffix}`);
+      }
+      expect(formatSigned(null, suffix)).toBe('—');
+      expect(formatSigned(undefined, suffix)).toBe('—');
+    },
+  );
 
   it('shows nonzero drawdown magnitude below display precision without changing zero or missing', () => {
     expect(formatMagnitude(-2.5, '%')).toBe('2.5%');

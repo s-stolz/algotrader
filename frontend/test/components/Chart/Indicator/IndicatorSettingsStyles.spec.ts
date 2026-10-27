@@ -22,15 +22,16 @@ const NInputNumberStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { attrs, emit }) {
-    return () => h('input', {
-      ...attrs,
-      type: 'number',
-      value: props.value ?? '',
-      onInput: (event: Event) => {
-        const input = event.target as HTMLInputElement;
-        emit('update:value', input.value === '' ? null : Number(input.value));
-      },
-    });
+    return () =>
+      h('input', {
+        ...attrs,
+        type: 'number',
+        value: props.value ?? '',
+        onInput: (event: Event) => {
+          const input = event.target as HTMLInputElement;
+          emit('update:value', input.value === '' ? null : Number(input.value));
+        },
+      });
   },
 });
 
@@ -44,12 +45,14 @@ const NInputStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { attrs, emit }) {
-    return () => h('input', {
-      ...attrs,
-      type: 'text',
-      value: props.value,
-      onInput: (event: Event) => emit('update:value', (event.target as HTMLInputElement).value),
-    });
+    return () =>
+      h('input', {
+        ...attrs,
+        type: 'text',
+        value: props.value,
+        onInput: (event: Event) =>
+          emit('update:value', (event.target as HTMLInputElement).value),
+      });
   },
 });
 
@@ -63,12 +66,14 @@ const NColorPickerStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { emit }) {
-    return () => h('input', {
-      class: 'color-picker',
-      type: 'color',
-      value: props.value,
-      onInput: (event: Event) => emit('update:value', (event.target as HTMLInputElement).value),
-    });
+    return () =>
+      h('input', {
+        class: 'color-picker',
+        type: 'color',
+        value: props.value,
+        onInput: (event: Event) =>
+          emit('update:value', (event.target as HTMLInputElement).value),
+      });
   },
 });
 
@@ -133,17 +138,19 @@ describe('IndicatorSettingsStyles', () => {
     await wrapper.findAll('.n-input-number input')[0].setValue('4');
 
     expect(wrapper.emitted('update-styles')).toEqual([
-      [{
-        outputKey: 'sma',
-        styles: {
-          color: '#3366ff',
-          lineWidth: 4,
-          priceFormat: {
-            precision: 2,
-            minMove: 0.01,
-          },
-        } satisfies JsonObject,
-      }],
+      [
+        {
+          outputKey: 'sma',
+          styles: {
+            color: '#3366ff',
+            lineWidth: 4,
+            priceFormat: {
+              precision: 2,
+              minMove: 0.01,
+            },
+          } satisfies JsonObject,
+        },
+      ],
     ]);
   });
 });

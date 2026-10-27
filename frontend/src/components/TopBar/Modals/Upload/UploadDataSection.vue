@@ -11,14 +11,20 @@
     >
       <n-upload-dragger>
         <div>
-          <n-icon size="48" :depth="3">
+          <n-icon
+            size="48"
+            :depth="3"
+          >
             <CloudUploadOutline />
           </n-icon>
         </div>
         <n-text style="font-size: 16px">
           Click or drag a file to this area to upload
         </n-text>
-        <n-p depth="3" style="margin: 8px 0 0 0">
+        <n-p
+          depth="3"
+          style="margin: 8px 0 0 0"
+        >
           Supported formats: CSV or TSV<br />
           Maximum file size: 100MB
         </n-p>
@@ -28,7 +34,15 @@
 </template>
 
 <script setup lang="ts">
-import { NIcon, NP, NText, NUpload, NUploadDragger, type UploadFileInfo, type UploadOnChange } from 'naive-ui';
+import {
+  NIcon,
+  NP,
+  NText,
+  NUpload,
+  NUploadDragger,
+  type UploadFileInfo,
+  type UploadOnChange,
+} from 'naive-ui';
 
 import { CloudUploadOutline } from '@/icons';
 
@@ -44,11 +58,14 @@ interface BeforeUploadData {
   file: UploadFileWithLegacySize;
 }
 
-withDefaults(defineProps<{
-  fileList?: UploadFileInfo[];
-}>(), {
-  fileList: () => [],
-});
+withDefaults(
+  defineProps<{
+    fileList?: UploadFileInfo[];
+  }>(),
+  {
+    fileList: () => [],
+  },
+);
 
 const emit = defineEmits<{
   (event: 'file-change', data: Parameters<UploadOnChange>[0]): void;

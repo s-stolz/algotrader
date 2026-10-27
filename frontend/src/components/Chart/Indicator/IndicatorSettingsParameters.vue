@@ -1,5 +1,8 @@
 <template>
-  <BaseDataTable :max-height="300" :row-hover="false">
+  <BaseDataTable
+    :max-height="300"
+    :row-hover="false"
+  >
     <tbody>
       <tr
         v-for="(parameter, key) in indicatorParameters"
@@ -17,7 +20,9 @@
             v-if="isStringWithOptions(parameter)"
             v-model:value="parameter.value"
             @update:value="onParameterUpdate"
-            :options="parameter.options.map((opt) => ({ label: opt, value: opt }))"
+            :options="
+              parameter.options.map((opt) => ({ label: opt, value: opt }))
+            "
           />
 
           <n-input
@@ -42,34 +47,34 @@
 
 <script setup lang="ts">
 import BaseSelect from '@/components/Common/BaseSelect.vue';
-import { computed, onBeforeUnmount, ref } from "vue";
-import { NInput, NInputNumber } from "naive-ui";
+import { computed, onBeforeUnmount, ref } from 'vue';
+import { NInput, NInputNumber } from 'naive-ui';
 
-import BaseDataTable from "@/components/Common/BaseDataTable.vue";
-import { useIndicatorsStore } from "@/stores/indicatorsStore";
-import { useCurrentMarketStore } from "@/stores/currentMarketStore";
-import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
+import { useIndicatorsStore } from '@/stores/indicatorsStore';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
 import type {
   IndicatorParameterEntry,
   IndicatorParameterValues,
   IndicatorStoreQuery,
   StoreIndicator,
-} from "@/stores/indicatorsStore";
-import type { IndicatorRequestBody } from "@/types/contracts";
+} from '@/stores/indicatorsStore';
+import type { IndicatorRequestBody } from '@/types/contracts';
 
 interface StringParameterWithOptions extends IndicatorParameterEntry {
-  type: "string";
+  type: 'string';
   value?: string;
   options: string[];
 }
 
 interface StringParameterWithoutOptions extends IndicatorParameterEntry {
-  type: "string";
+  type: 'string';
   value?: string;
 }
 
 interface NumericParameter extends IndicatorParameterEntry {
-  type: "int" | "float";
+  type: 'int' | 'float';
   value?: number | null;
   min?: number;
   max?: number;
@@ -77,7 +82,7 @@ interface NumericParameter extends IndicatorParameterEntry {
 }
 
 defineOptions({
-  name: "IndicatorSettingsParameters",
+  name: 'IndicatorSettingsParameters',
 });
 
 const props = defineProps<{
@@ -96,18 +101,20 @@ const timeframe = computed(() => currentTimeframeStore.value);
 const indicatorParameters = computed(() => props.indicator.parameters);
 
 function replaceUnderscoreWithSpace(str: string): string {
-  return str.replace(/_/g, " ");
+  return str.replace(/_/g, ' ');
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
 }
 
 function isStringWithOptions(
   parameter: IndicatorParameterEntry,
 ): parameter is StringParameterWithOptions {
   return (
-    parameter.type === "string" &&
+    parameter.type === 'string' &&
     isStringArray(parameter.options) &&
     parameter.options.length > 0
   );
@@ -116,11 +123,13 @@ function isStringWithOptions(
 function isStringWithoutOptions(
   parameter: IndicatorParameterEntry,
 ): parameter is StringParameterWithoutOptions {
-  return parameter.type === "string" && !isStringArray(parameter.options);
+  return parameter.type === 'string' && !isStringArray(parameter.options);
 }
 
-function isNumber(parameter: IndicatorParameterEntry): parameter is NumericParameter {
-  return parameter.type === "int" || parameter.type === "float";
+function isNumber(
+  parameter: IndicatorParameterEntry,
+): parameter is NumericParameter {
+  return parameter.type === 'int' || parameter.type === 'float';
 }
 
 function onParameterUpdate(): void {

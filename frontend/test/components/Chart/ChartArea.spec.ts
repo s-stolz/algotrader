@@ -16,7 +16,10 @@ import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
-import type { BacktestClosedTrade, BacktestRun } from '@/types/backtesterContracts';
+import type {
+  BacktestClosedTrade,
+  BacktestRun,
+} from '@/types/backtesterContracts';
 import type { ChartLogicalRange } from '@/utils/chart';
 
 import ChartArea from '@/components/Chart/ChartArea.vue';
@@ -34,16 +37,23 @@ interface MockCrosshairParam {
 }
 
 type MockCrosshairHandler = (param: MockCrosshairParam) => void;
-type MockMessageHandler = (message: CandleUpdateMessage | IndicatorUpdateMessage) => void;
+type MockMessageHandler = (
+  message: CandleUpdateMessage | IndicatorUpdateMessage,
+) => void;
 
 const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: (event: MouseEvent) => emit('click', event),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: (event: MouseEvent) => emit('click', event),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -67,7 +77,9 @@ const chartAreaMocks = vi.hoisted(() => {
     updateMissingPaneHtmlElements: vi.fn(),
   };
   const chartManager = {
-    getPaneHtmlElement: vi.fn(() => Promise.resolve(chartAreaMocks.mainPaneElement)),
+    getPaneHtmlElement: vi.fn(() =>
+      Promise.resolve(chartAreaMocks.mainPaneElement),
+    ),
   };
   const infrastructure = {
     chartManager,
@@ -80,10 +92,14 @@ const chartAreaMocks = vi.hoisted(() => {
     updateCandlestick: vi.fn(() => true),
     setMinMove: vi.fn(() => true),
     setCandlestickMarkers: vi.fn((_markers: readonly unknown[]) => true),
-    setCandlestickProtectiveLines: vi.fn((_segments: readonly unknown[]) => true),
+    setCandlestickProtectiveLines: vi.fn(
+      (_segments: readonly unknown[]) => true,
+    ),
     setCandlestickMeasurementOverlay: vi.fn((_model: unknown) => true),
     clearCandlestickMeasurementOverlay: vi.fn(() => true),
-    coordinateToCandlestickPrice: vi.fn((_coordinate: number) => null as number | null),
+    coordinateToCandlestickPrice: vi.fn(
+      (_coordinate: number) => null as number | null,
+    ),
     coordinateToLogical: vi.fn((_coordinate: number) => null as number | null),
     setMouseDragScrollEnabled: vi.fn((_enabled: boolean) => true),
     subscribeCrosshairMove: vi.fn((handler) => {
@@ -123,7 +139,9 @@ const chartAreaMocks = vi.hoisted(() => {
     mainPaneElement: null as HTMLElement | null,
     ohlcSeries,
     ohlcSeriesInfo,
-    visibleRangeHandler: null as ((range: ChartLogicalRange | null) => void) | null,
+    visibleRangeHandler: null as
+      | ((range: ChartLogicalRange | null) => void)
+      | null,
     wsOff: vi.fn(),
     wsOn: vi.fn(),
     wsSend: vi.fn(),
@@ -173,8 +191,16 @@ const candle = (timestampMs: number, close = 1.5): ChartCandle => ({
   volume: 10,
 });
 
-const eurUsdM5Key: ChartSessionKey = { symbol: 'EURUSD', exchange: 'FX', timeframe: 'M5' };
-const eurUsdM15Key: ChartSessionKey = { symbol: 'EURUSD', exchange: 'FX', timeframe: 'M15' };
+const eurUsdM5Key: ChartSessionKey = {
+  symbol: 'EURUSD',
+  exchange: 'FX',
+  timeframe: 'M5',
+};
+const eurUsdM15Key: ChartSessionKey = {
+  symbol: 'EURUSD',
+  exchange: 'FX',
+  timeframe: 'M15',
+};
 
 const backtestRun = (overrides: Partial<BacktestRun> = {}): BacktestRun => ({
   run_id: 'run-123',
@@ -219,7 +245,9 @@ const backtestRun = (overrides: Partial<BacktestRun> = {}): BacktestRun => ({
   ...overrides,
 });
 
-const closedTrade = (overrides: Partial<BacktestClosedTrade> = {}): BacktestClosedTrade => ({
+const closedTrade = (
+  overrides: Partial<BacktestClosedTrade> = {},
+): BacktestClosedTrade => ({
   sequence: 0,
   trade_id: 'trade-1',
   symbol: 'EURUSD',
@@ -253,13 +281,20 @@ function setupStores(timeframe: TimeframeCode = 'M5') {
     min_move: 0.0001,
     timezone: 'UTC',
   });
-  currentTimeframeStore.setCurrentTimeframe({ label: timeframe, value: timeframe });
+  currentTimeframeStore.setCurrentTimeframe({
+    label: timeframe,
+    value: timeframe,
+  });
   candlesticksStore.data = [candle(300_000)];
   vi.mocked(fetchCandles).mockResolvedValue([candle(300_000)]);
-  vi.spyOn(indicatorsStore, 'requestAllIndicators').mockImplementation(() => undefined);
+  vi.spyOn(indicatorsStore, 'requestAllIndicators').mockImplementation(
+    () => undefined,
+  );
   vi.spyOn(indicatorsStore, 'ensureCoverageForAll').mockResolvedValue();
   vi.spyOn(indicatorsStore, 'unsubscribeAllLive').mockResolvedValue();
-  vi.spyOn(indicatorsStore, 'resetHistoryFlags').mockImplementation(() => undefined);
+  vi.spyOn(indicatorsStore, 'resetHistoryFlags').mockImplementation(
+    () => undefined,
+  );
 
   return {
     candlesticksStore,
@@ -285,7 +320,8 @@ function mountChartArea(props: Record<string, unknown> = {}) {
 }
 
 function latestChartSession(): MockChartSession {
-  const session = chartAreaMocks.chartSessions[chartAreaMocks.chartSessions.length - 1];
+  const session =
+    chartAreaMocks.chartSessions[chartAreaMocks.chartSessions.length - 1];
   if (!session) {
     throw new Error('Expected ChartArea to create a chart session');
   }
@@ -294,9 +330,10 @@ function latestChartSession(): MockChartSession {
 }
 
 function latestChartSessionAdapter(): ChartSessionSubscriptionsAdapter {
-  const adapter = chartAreaMocks.chartSessionAdapters[
-    chartAreaMocks.chartSessionAdapters.length - 1
-  ];
+  const adapter =
+    chartAreaMocks.chartSessionAdapters[
+      chartAreaMocks.chartSessionAdapters.length - 1
+    ];
   if (!adapter) {
     throw new Error('Expected ChartArea to create a chart session adapter');
   }
@@ -353,12 +390,14 @@ describe('ChartArea', () => {
     chartAreaMocks.mainPaneElement = document.createElement('div');
     document.body.appendChild(chartAreaMocks.mainPaneElement);
     chartAreaMocks.infrastructure.chartManager.getPaneHtmlElement.mockClear();
-    chartAreaMocks.infrastructure.chartManager.getPaneHtmlElement.mockImplementation(() => (
-      Promise.resolve(chartAreaMocks.mainPaneElement)
-    ));
-    Object.values(chartAreaMocks.infrastructure.indicatorManager).forEach((mock) => {
-      mock.mockClear();
-    });
+    chartAreaMocks.infrastructure.chartManager.getPaneHtmlElement.mockImplementation(
+      () => Promise.resolve(chartAreaMocks.mainPaneElement),
+    );
+    Object.values(chartAreaMocks.infrastructure.indicatorManager).forEach(
+      (mock) => {
+        mock.mockClear();
+      },
+    );
     chartAreaMocks.infrastructure.init.mockClear();
     chartAreaMocks.infrastructure.getSeries.mockClear();
     chartAreaMocks.infrastructure.addCandlestickData.mockClear();
@@ -369,7 +408,9 @@ describe('ChartArea', () => {
     chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
     chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay.mockClear();
     chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockClear();
-    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(null);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(
+      null,
+    );
     chartAreaMocks.infrastructure.coordinateToLogical.mockClear();
     chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(null);
     chartAreaMocks.infrastructure.setMouseDragScrollEnabled.mockClear();
@@ -382,17 +423,21 @@ describe('ChartArea', () => {
     chartAreaMocks.wsSend.mockReset();
     chartAreaMocks.wsSend.mockResolvedValue(undefined);
     chartAreaMocks.wsOn.mockReset();
-    chartAreaMocks.wsOn.mockImplementation((event: string, handler: MockMessageHandler) => {
-      if (event === 'indicatorUpdate') {
-        chartAreaMocks.indicatorHandlers.add(handler);
-      }
-    });
+    chartAreaMocks.wsOn.mockImplementation(
+      (event: string, handler: MockMessageHandler) => {
+        if (event === 'indicatorUpdate') {
+          chartAreaMocks.indicatorHandlers.add(handler);
+        }
+      },
+    );
     chartAreaMocks.wsOff.mockReset();
-    chartAreaMocks.wsOff.mockImplementation((event: string, handler: MockMessageHandler) => {
-      if (event === 'indicatorUpdate') {
-        chartAreaMocks.indicatorHandlers.delete(handler);
-      }
-    });
+    chartAreaMocks.wsOff.mockImplementation(
+      (event: string, handler: MockMessageHandler) => {
+        if (event === 'indicatorUpdate') {
+          chartAreaMocks.indicatorHandlers.delete(handler);
+        }
+      },
+    );
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -414,18 +459,32 @@ describe('ChartArea', () => {
 
     await flushPromises();
 
-    expect(chartAreaMocks.createChartSession).toHaveBeenCalledWith(expect.any(Object));
-    expect(chartAreaMocks.infrastructure.init).toHaveBeenCalledWith(expect.any(HTMLElement));
-    expect(chartAreaMocks.infrastructure.subscribeCrosshairMove).toHaveBeenCalled();
-    expect(chartAreaMocks.infrastructure.subscribeVisibleLogicalRangeChange).toHaveBeenCalled();
-    expect(chartAreaMocks.wsOn).toHaveBeenCalledWith('indicatorUpdate', expect.any(Function));
+    expect(chartAreaMocks.createChartSession).toHaveBeenCalledWith(
+      expect.any(Object),
+    );
+    expect(chartAreaMocks.infrastructure.init).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+    );
+    expect(
+      chartAreaMocks.infrastructure.subscribeCrosshairMove,
+    ).toHaveBeenCalled();
+    expect(
+      chartAreaMocks.infrastructure.subscribeVisibleLogicalRangeChange,
+    ).toHaveBeenCalled();
+    expect(chartAreaMocks.wsOn).toHaveBeenCalledWith(
+      'indicatorUpdate',
+      expect.any(Function),
+    );
 
     const session = latestChartSession();
     wrapper.unmount();
 
     expect(session.stop).toHaveBeenCalled();
     expect(chartAreaMocks.infrastructure.cleanup).toHaveBeenCalled();
-    expect(chartAreaMocks.wsOff).toHaveBeenCalledWith('indicatorUpdate', expect.any(Function));
+    expect(chartAreaMocks.wsOff).toHaveBeenCalledWith(
+      'indicatorUpdate',
+      expect.any(Function),
+    );
   });
 
   it('applies the measure cursor state to the candlestick pane container', async () => {
@@ -448,19 +507,25 @@ describe('ChartArea', () => {
     setupStores();
     const wrapper = mountChartArea({ interactionMode: 'measure' });
     await flushPromises();
-    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+    ]);
     chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
     chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay.mockClear();
-    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockImplementation((coordinate) => {
-      if (coordinate === 80) return 1.23456;
-      if (coordinate === 40) return 1.23671;
-      return null;
-    });
-    chartAreaMocks.infrastructure.coordinateToLogical.mockImplementation((coordinate) => {
-      if (coordinate === 20) return 10.4;
-      if (coordinate === 140) return 13.6;
-      return null;
-    });
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockImplementation(
+      (coordinate) => {
+        if (coordinate === 80) return 1.23456;
+        if (coordinate === 40) return 1.23671;
+        return null;
+      },
+    );
+    chartAreaMocks.infrastructure.coordinateToLogical.mockImplementation(
+      (coordinate) => {
+        if (coordinate === 20) return 10.4;
+        if (coordinate === 140) return 13.6;
+        return null;
+      },
+    );
 
     const mainPaneElement = stubMainPaneRect();
 
@@ -475,7 +540,9 @@ describe('ChartArea', () => {
       }),
     );
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).toHaveBeenCalledWith(
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         priceDelta: 0,
         percentDelta: 0,
@@ -504,7 +571,9 @@ describe('ChartArea', () => {
       }),
     );
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).toHaveBeenLastCalledWith(
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay,
+    ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         priceDelta: 0.0021499999999998742,
         candleCount: 5,
@@ -527,12 +596,15 @@ describe('ChartArea', () => {
       time: 300,
       point: { x: 1, y: 1 },
       seriesData: new Map([
-        [chartAreaMocks.ohlcSeries, {
-          open: 1.1,
-          high: 1.3,
-          low: 1,
-          close: 1.2,
-        }],
+        [
+          chartAreaMocks.ohlcSeries,
+          {
+            open: 1.1,
+            high: 1.3,
+            low: 1,
+            close: 1.2,
+          },
+        ],
       ]),
     });
 
@@ -547,7 +619,9 @@ describe('ChartArea', () => {
       }),
     );
 
-    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalled();
+    expect(
+      chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay,
+    ).toHaveBeenCalled();
     expect(wrapper.props('interactionMode')).toBe('measure');
   });
 
@@ -555,9 +629,13 @@ describe('ChartArea', () => {
     setupStores();
     mountChartArea({ interactionMode: 'pan' });
     await flushPromises();
-    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+    ]);
     chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
-    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(
+      1.23456,
+    );
     chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
 
     stubMainPaneRect().dispatchEvent(
@@ -571,16 +649,22 @@ describe('ChartArea', () => {
       }),
     );
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay,
+    ).not.toHaveBeenCalled();
   });
 
   it('ignores non-primary pointer holds while Measure mode is active', async () => {
     setupStores();
     mountChartArea({ interactionMode: 'measure' });
     await flushPromises();
-    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+    ]);
     chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
-    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(
+      1.23456,
+    );
     chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
 
     stubMainPaneRect().dispatchEvent(
@@ -594,16 +678,22 @@ describe('ChartArea', () => {
       }),
     );
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay,
+    ).not.toHaveBeenCalled();
   });
 
   it('ignores pointer holds that include non-primary buttons while Measure mode is active', async () => {
     setupStores();
     mountChartArea({ interactionMode: 'measure' });
     await flushPromises();
-    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+    ]);
     chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
-    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(
+      1.23456,
+    );
     chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
 
     stubMainPaneRect().dispatchEvent(
@@ -617,7 +707,9 @@ describe('ChartArea', () => {
       }),
     );
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay,
+    ).not.toHaveBeenCalled();
   });
 
   it('does not start a measurement without candle data', async () => {
@@ -626,7 +718,9 @@ describe('ChartArea', () => {
     await flushPromises();
     await latestChartSessionAdapter().renderCandles(eurUsdM5Key, []);
     chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay.mockClear();
-    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(
+      1.23456,
+    );
     chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
 
     stubMainPaneRect().dispatchEvent(
@@ -640,15 +734,21 @@ describe('ChartArea', () => {
       }),
     );
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay,
+    ).not.toHaveBeenCalled();
   });
 
   it('cancels an active measurement when non-primary buttons join the drag', async () => {
     setupStores();
     mountChartArea({ interactionMode: 'measure' });
     await flushPromises();
-    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
-    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+    ]);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(
+      1.23456,
+    );
     chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
 
     stubMainPaneRect().dispatchEvent(
@@ -674,16 +774,24 @@ describe('ChartArea', () => {
       }),
     );
 
-    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
-    expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).not.toHaveBeenCalled();
+    expect(
+      chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay,
+    ).not.toHaveBeenCalled();
   });
 
   it('cancels active measurements on Escape, pointer cancel, window blur, and mode changes', async () => {
     setupStores();
     const wrapper = mountChartArea({ interactionMode: 'measure' });
     await flushPromises();
-    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
-    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(1.23456);
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+    ]);
+    chartAreaMocks.infrastructure.coordinateToCandlestickPrice.mockReturnValue(
+      1.23456,
+    );
     chartAreaMocks.infrastructure.coordinateToLogical.mockReturnValue(10.4);
 
     const mainPaneElement = stubMainPaneRect();
@@ -700,42 +808,59 @@ describe('ChartArea', () => {
           clientY: 280,
         }),
       );
-      expect(chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay).toHaveBeenCalled();
+      expect(
+        chartAreaMocks.infrastructure.setCandlestickMeasurementOverlay,
+      ).toHaveBeenCalled();
     };
 
     startMeasurement();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
+    expect(
+      chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay,
+    ).toHaveBeenCalledTimes(1);
 
     startMeasurement();
-    window.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true, buttons: 0 }));
-    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(
+      new MouseEvent('pointercancel', { bubbles: true, buttons: 0 }),
+    );
+    expect(
+      chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay,
+    ).toHaveBeenCalledTimes(1);
 
     startMeasurement();
     window.dispatchEvent(new Event('blur'));
-    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
+    expect(
+      chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay,
+    ).toHaveBeenCalledTimes(1);
 
     startMeasurement();
     await wrapper.setProps({ interactionMode: 'pan' });
-    expect(chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay).toHaveBeenCalledTimes(1);
+    expect(
+      chartAreaMocks.infrastructure.clearCandlestickMeasurementOverlay,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('updates the OHLC legend from the chart crosshair callback', async () => {
     setupStores();
     const wrapper = mountChartArea();
     await flushPromises();
-    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000)]);
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+    ]);
 
     chartAreaMocks.crosshairHandler?.({
       time: 300,
       point: { x: 1, y: 1 },
       seriesData: new Map([
-        [chartAreaMocks.ohlcSeries, {
-          open: 1.1,
-          high: 1.3,
-          low: 1,
-          close: 1.2,
-        }],
+        [
+          chartAreaMocks.ohlcSeries,
+          {
+            open: 1.1,
+            high: 1.3,
+            low: 1,
+            close: 1.2,
+          },
+        ],
       ]),
     });
 
@@ -805,7 +930,9 @@ describe('ChartArea', () => {
       candle(300_000),
       expect.objectContaining({ timestamp_ms: 600_000, time: 600, close: 2.5 }),
     ]);
-    expect(chartAreaMocks.infrastructure.updateCandlestick).toHaveBeenCalledWith(
+    expect(
+      chartAreaMocks.infrastructure.updateCandlestick,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({ timestamp_ms: 600_000, time: 600, close: 2.5 }),
     );
   });
@@ -856,7 +983,9 @@ describe('ChartArea', () => {
       candle(900_000),
     ]);
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMarkers,
+    ).toHaveBeenLastCalledWith([
       expect.objectContaining({
         id: 'entry-only:entry',
         time: 300,
@@ -873,13 +1002,17 @@ describe('ChartArea', () => {
       }),
     ]);
     const markersJson = JSON.stringify(
-      chartAreaMocks.infrastructure.setCandlestickMarkers.mock.calls.at(-1)?.[0],
+      chartAreaMocks.infrastructure.setCandlestickMarkers.mock.calls.at(
+        -1,
+      )?.[0],
     );
     expect(markersJson).not.toContain('signal');
     expect(markersJson).not.toContain('stop_loss');
     expect(markersJson).not.toContain('take_profit');
 
-    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
+    ).toHaveBeenLastCalledWith([
       {
         id: 'entry-only:stop-loss',
         startTime: 300,
@@ -930,8 +1063,12 @@ describe('ChartArea', () => {
       candle(600_000),
     ]);
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([]);
-    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMarkers,
+    ).toHaveBeenLastCalledWith([]);
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
+    ).toHaveBeenLastCalledWith([
       expect.objectContaining({
         id: 'range-extension:stop-loss',
         startTime: 60,
@@ -944,17 +1081,23 @@ describe('ChartArea', () => {
       }),
     ]);
 
-    latestChartSessionAdapter().prependOlderCandles(eurUsdM5Key, [candle(60_000)]);
+    latestChartSessionAdapter().prependOlderCandles(eurUsdM5Key, [
+      candle(60_000),
+    ]);
     latestChartSessionAdapter().renderOlderCandles(eurUsdM5Key);
 
-    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMarkers,
+    ).toHaveBeenLastCalledWith([
       expect.objectContaining({
         id: 'range-extension:entry',
         time: 60,
         text: 'Buy @ 99.0000',
       }),
     ]);
-    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
+    ).toHaveBeenLastCalledWith([
       expect.objectContaining({
         id: 'range-extension:stop-loss',
         startTime: 60,
@@ -984,10 +1127,14 @@ describe('ChartArea', () => {
     expect(candlesticksStore.data.at(-1)).toEqual(
       expect.objectContaining({ timestamp_ms: 900_000, time: 900 }),
     );
-    expect(chartAreaMocks.infrastructure.updateCandlestick).toHaveBeenCalledWith(
+    expect(
+      chartAreaMocks.infrastructure.updateCandlestick,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({ timestamp_ms: 900_000, time: 900 }),
     );
-    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenLastCalledWith([
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMarkers,
+    ).toHaveBeenLastCalledWith([
       expect.objectContaining({
         id: 'range-extension:entry',
         time: 60,
@@ -999,7 +1146,9 @@ describe('ChartArea', () => {
         text: 'Sell @ 105.0000',
       }),
     ]);
-    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenLastCalledWith([
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
+    ).toHaveBeenLastCalledWith([
       expect.objectContaining({
         id: 'range-extension:stop-loss',
         startTime: 60,
@@ -1020,25 +1169,48 @@ describe('ChartArea', () => {
     store.selectedRun = backtestRun();
     store.closedTrades = [
       closedTrade({ trade_id: 'long', realized_pnl: -3.25 }),
-      closedTrade({ trade_id: 'short', trade_direction: 'short',
-        entry_timestamp_ms: 600_000, entry_price: 104.5, exit_timestamp_ms: 900_000 }),
+      closedTrade({
+        trade_id: 'short',
+        trade_direction: 'short',
+        entry_timestamp_ms: 600_000,
+        entry_price: 104.5,
+        exit_timestamp_ms: 900_000,
+      }),
     ];
     mountChartArea();
     await flushPromises();
-    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [candle(300_000), candle(600_000)]);
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300_000),
+      candle(600_000),
+    ]);
     const pane = chartAreaMocks.mainPaneElement;
     const hover = async (hoveredObjectId?: unknown, paneIndex = 0, x = 1) => {
-      chartAreaMocks.crosshairHandler?.({ time: 600, point: { x, y: 1 },
-        seriesData: new Map(), hoveredObjectId, paneIndex });
+      chartAreaMocks.crosshairHandler?.({
+        time: 600,
+        point: { x, y: 1 },
+        seriesData: new Map(),
+        hoveredObjectId,
+        paneIndex,
+      });
       await flushPromises();
     };
     await hover('long:exit');
-    expect(pane?.querySelector('[role="tooltip"]')?.textContent)
-      .toContain('Close long @ 104.5000 · Realized PnL: -3.25 account units');
+    expect(pane?.querySelector('[role="tooltip"]')?.textContent).toContain(
+      'Close long @ 104.5000 · Realized PnL: -3.25 account units',
+    );
     await hover('short:entry');
-    expect(pane?.querySelector('[role="tooltip"]')?.textContent).toContain('Open short @ 104.5000');
-    expect(pane?.querySelector('[role="tooltip"]')?.textContent).not.toContain('PnL');
-    for (const args of [[undefined], ['unrelated'], ['long:exit', 1], ['long:exit', 0, -1]] as const) {
+    expect(pane?.querySelector('[role="tooltip"]')?.textContent).toContain(
+      'Open short @ 104.5000',
+    );
+    expect(pane?.querySelector('[role="tooltip"]')?.textContent).not.toContain(
+      'PnL',
+    );
+    for (const args of [
+      [undefined],
+      ['unrelated'],
+      ['long:exit', 1],
+      ['long:exit', 0, -1],
+    ] as const) {
       await hover(...args);
       expect(pane?.querySelector('[role="tooltip"]')).toBeNull();
     }
@@ -1057,7 +1229,9 @@ describe('ChartArea', () => {
     const wrapper = mountChartArea();
     await flushPromises();
 
-    const paneOverlay = chartAreaMocks.mainPaneElement?.querySelector('.indicators-wrapper');
+    const paneOverlay = chartAreaMocks.mainPaneElement?.querySelector(
+      '.indicators-wrapper',
+    );
     const panel = paneOverlay?.querySelector('.backtest-overlay-panel');
     const title = paneOverlay?.querySelector('.backtest-overlay-title');
     expect(paneOverlay).toBeInstanceOf(HTMLDivElement);
@@ -1074,7 +1248,9 @@ describe('ChartArea', () => {
     chartAreaMocks.infrastructure.setCandlestickMarkers.mockClear();
     chartAreaMocks.infrastructure.setCandlestickProtectiveLines.mockClear();
 
-    const removeButton = paneOverlay?.querySelector('[data-testid="remove-backtest-overlay"]');
+    const removeButton = paneOverlay?.querySelector(
+      '[data-testid="remove-backtest-overlay"]',
+    );
     expect(removeButton).toBeInstanceOf(HTMLButtonElement);
     removeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flushPromises();
@@ -1082,8 +1258,12 @@ describe('ChartArea', () => {
     expect(backtestOverlayStore.selectedRunId).toBeNull();
     expect(backtestOverlayStore.selectedRun).toBeNull();
     expect(backtestOverlayStore.closedTrades).toEqual([]);
-    expect(chartAreaMocks.infrastructure.setCandlestickMarkers).toHaveBeenCalledWith([]);
-    expect(chartAreaMocks.infrastructure.setCandlestickProtectiveLines).toHaveBeenCalledWith([]);
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMarkers,
+    ).toHaveBeenCalledWith([]);
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
+    ).toHaveBeenCalledWith([]);
     expect(paneOverlay?.querySelector('.backtest-overlay-panel')).toBeNull();
   });
 
@@ -1126,7 +1306,9 @@ describe('ChartArea', () => {
       exchange: 'FX',
     });
     expect(candlesticksStore.data).toEqual([candle(600_000, 2.5)]);
-    expect(chartAreaMocks.infrastructure.addCandlestickData).toHaveBeenCalledWith(
+    expect(
+      chartAreaMocks.infrastructure.addCandlestickData,
+    ).toHaveBeenCalledWith(
       [candle(600_000, 2.5)],
       expect.objectContaining({
         priceFormat: expect.objectContaining({ minMove: 0.0001, precision: 4 }),
@@ -1154,7 +1336,9 @@ describe('ChartArea', () => {
     expect(indicatorsStore.resetHistoryFlags).toHaveBeenCalled();
     expect(adapter.getOldestCandleTimestampMs()).toBe(600_000);
 
-    const requestCoverageOptions = vi.mocked(indicatorsStore.requestAllIndicators).mock.calls[0][3]!;
+    const requestCoverageOptions = vi.mocked(
+      indicatorsStore.requestAllIndicators,
+    ).mock.calls[0][3]!;
     expect(requestCoverageOptions.getLoadedCandleRange?.()).toEqual({
       oldestTimestampMs: 600_000,
       newestTimestampMs: 600_000,
@@ -1176,7 +1360,10 @@ describe('ChartArea', () => {
       barsAfter: 0,
     });
 
-    chartAreaMocks.visibleRangeHandler?.({ from: 0, to: 10 } as ChartLogicalRange);
+    chartAreaMocks.visibleRangeHandler?.({
+      from: 0,
+      to: 10,
+    } as ChartLogicalRange);
 
     expect(latestChartSession().requestOlderHistory).toHaveBeenCalledWith({
       barsBefore: 99,
@@ -1186,7 +1373,10 @@ describe('ChartArea', () => {
 
     latestChartSession().requestOlderHistory.mockClear();
     vm.onWheelPassive();
-    chartAreaMocks.visibleRangeHandler?.({ from: 0, to: 10 } as ChartLogicalRange);
+    chartAreaMocks.visibleRangeHandler?.({
+      from: 0,
+      to: 10,
+    } as ChartLogicalRange);
 
     expect(latestChartSession().requestOlderHistory).not.toHaveBeenCalled();
   });

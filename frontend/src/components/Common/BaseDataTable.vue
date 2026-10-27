@@ -1,6 +1,12 @@
 <script lang="ts">
 import { computed, defineComponent, h, mergeProps } from 'vue';
-import { NDataTable, NScrollbar, NTable, dataTableProps, type DataTableProps } from 'naive-ui';
+import {
+  NDataTable,
+  NScrollbar,
+  NTable,
+  dataTableProps,
+  type DataTableProps,
+} from 'naive-ui';
 
 const themeOverrides: NonNullable<DataTableProps['themeOverrides']> = {
   tdColor: 'var(--surface-panel)',
@@ -47,30 +53,69 @@ export default defineComponent({
     rowHover: { type: Boolean, default: true },
   },
   setup(props, { attrs, slots }) {
-    const mergedTheme = computed(() => ({ ...themeOverrides, ...props.themeOverrides }));
+    const mergedTheme = computed(() => ({
+      ...themeOverrides,
+      ...props.themeOverrides,
+    }));
 
     return () => {
       const { rowHover: _rowHover, ...tableProps } = props;
-      return slots.default ? h('div', mergeProps(attrs, {
-        class: ['base-data-table', { 'base-data-table--row-hover': props.rowHover }],
-      }), [h(NScrollbar, {
-        ...props.scrollbarProps,
-        xScrollable: true,
-        style: { maxHeight: typeof props.maxHeight === 'number' ? `${props.maxHeight}px` : props.maxHeight },
-      }, {
-        default: () => h(NTable, {
-          bordered: props.bordered ?? false,
-          striped: props.striped,
-          size: props.size,
-          singleLine: props.singleLine,
-          themeOverrides: mergedTheme.value,
-          style: { minWidth: props.scrollX ? `${props.scrollX}px` : '100%' },
-        }, { default: slots.default }),
-      })]) : h(NDataTable, mergeProps(attrs, tableProps, {
-        class: ['base-data-table', { 'base-data-table--row-hover': props.rowHover }],
-        bordered: props.bordered ?? false,
-        themeOverrides: mergedTheme.value,
-      }), slots);
+      return slots.default
+        ? h(
+            'div',
+            mergeProps(attrs, {
+              class: [
+                'base-data-table',
+                { 'base-data-table--row-hover': props.rowHover },
+              ],
+            }),
+            [
+              h(
+                NScrollbar,
+                {
+                  ...props.scrollbarProps,
+                  xScrollable: true,
+                  style: {
+                    maxHeight:
+                      typeof props.maxHeight === 'number'
+                        ? `${props.maxHeight}px`
+                        : props.maxHeight,
+                  },
+                },
+                {
+                  default: () =>
+                    h(
+                      NTable,
+                      {
+                        bordered: props.bordered ?? false,
+                        striped: props.striped,
+                        size: props.size,
+                        singleLine: props.singleLine,
+                        themeOverrides: mergedTheme.value,
+                        style: {
+                          minWidth: props.scrollX
+                            ? `${props.scrollX}px`
+                            : '100%',
+                        },
+                      },
+                      { default: slots.default },
+                    ),
+                },
+              ),
+            ],
+          )
+        : h(
+            NDataTable,
+            mergeProps(attrs, tableProps, {
+              class: [
+                'base-data-table',
+                { 'base-data-table--row-hover': props.rowHover },
+              ],
+              bordered: props.bordered ?? false,
+              themeOverrides: mergedTheme.value,
+            }),
+            slots,
+          );
     };
   },
 });
@@ -83,28 +128,31 @@ export default defineComponent({
 
 .base-data-table :deep(.n-table th) {
   font-size: 11px;
-  letter-spacing: .025em;
+  letter-spacing: 0.025em;
 }
 
 .base-data-table--row-hover :deep(.n-table tbody tr:hover td) {
   background: var(--n-td-color-hover, var(--surface-hover));
 }
 
-.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr:hover .n-data-table-td) {
+.base-data-table:not(.base-data-table--row-hover)
+  :deep(.n-data-table-tr:hover .n-data-table-td) {
   background-color: var(--n-merged-td-color);
 }
 
-.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr--striped:hover .n-data-table-td) {
+.base-data-table:not(.base-data-table--row-hover)
+  :deep(.n-data-table-tr--striped:hover .n-data-table-td) {
   background-color: var(--n-merged-td-color-striped);
 }
 
-.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr:hover .n-data-table-td--sorting) {
+.base-data-table:not(.base-data-table--row-hover)
+  :deep(.n-data-table-tr:hover .n-data-table-td--sorting) {
   background-color: var(--n-merged-td-color-sorting);
 }
 
 .base-data-table :deep(.n-data-table-th) {
   font-size: 11px;
-  letter-spacing: .025em;
+  letter-spacing: 0.025em;
 }
 
 .base-data-table :deep(.n-data-table-td--fixed-left),

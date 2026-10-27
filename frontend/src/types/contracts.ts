@@ -15,7 +15,7 @@ export const TIMEFRAME_CODES = [
   'MN1',
 ] as const;
 
-export type TimeframeCode = typeof TIMEFRAME_CODES[number];
+export type TimeframeCode = (typeof TIMEFRAME_CODES)[number];
 
 export interface TimeframeOption {
   label: TimeframeCode;
@@ -161,9 +161,17 @@ export type UploadColumnField =
   | 'close'
   | 'volume';
 
-export type UploadColumnMapping = Record<number, UploadColumnField | '' | null | undefined>;
-export type UploadFieldToIndexMapping = Partial<Record<UploadColumnField, number>>;
-export type UploadProgressCallback = (progress: number, rowCount: number) => void;
+export type UploadColumnMapping = Record<
+  number,
+  UploadColumnField | '' | null | undefined
+>;
+export type UploadFieldToIndexMapping = Partial<
+  Record<UploadColumnField, number>
+>;
+export type UploadProgressCallback = (
+  progress: number,
+  rowCount: number,
+) => void;
 
 export interface CandleUpdateMessage extends Candle {
   type: 'candleUpdate';
@@ -288,7 +296,9 @@ export function isMarketArray(value: unknown): value is Market[] {
   return Array.isArray(value) && value.every(isMarket);
 }
 
-export function isMarketCreateResponse(value: unknown): value is MarketCreateResponse {
+export function isMarketCreateResponse(
+  value: unknown,
+): value is MarketCreateResponse {
   return (
     isRecord(value) &&
     isFiniteNumber(value.symbol_id) &&
@@ -300,7 +310,8 @@ export function isDeleteResponse(value: unknown): value is DeleteResponse {
   return (
     isRecord(value) &&
     isNonEmptyString(value.status) &&
-    (isFiniteNumber(value.deleted_count) || isMarketDeleteSummary(value.deleted_count))
+    (isFiniteNumber(value.deleted_count) ||
+      isMarketDeleteSummary(value.deleted_count))
   );
 }
 
@@ -350,7 +361,9 @@ export function toChartCandle(candle: Candle): ChartCandle {
   };
 }
 
-export function isCandleBatchResponse(value: unknown): value is CandleBatchResponse {
+export function isCandleBatchResponse(
+  value: unknown,
+): value is CandleBatchResponse {
   return (
     isRecord(value) &&
     isNonEmptyString(value.status) &&
@@ -359,39 +372,59 @@ export function isCandleBatchResponse(value: unknown): value is CandleBatchRespo
   );
 }
 
-export function isAvailableIndicator(value: unknown): value is AvailableIndicator {
+export function isAvailableIndicator(
+  value: unknown,
+): value is AvailableIndicator {
   return (
-    isRecord(value) &&
-    isFiniteNumber(value.id) &&
-    isNonEmptyString(value.name)
+    isRecord(value) && isFiniteNumber(value.id) && isNonEmptyString(value.name)
   );
 }
 
-export function isAvailableIndicatorArray(value: unknown): value is AvailableIndicator[] {
+export function isAvailableIndicatorArray(
+  value: unknown,
+): value is AvailableIndicator[] {
   return Array.isArray(value) && value.every(isAvailableIndicator);
 }
 
-function isIndicatorOutputMetadata(value: unknown): value is IndicatorOutputMetadata {
+function isIndicatorOutputMetadata(
+  value: unknown,
+): value is IndicatorOutputMetadata {
   if (!isRecord(value)) {
     return false;
   }
 
-  if ('type' in value && value.type !== undefined && typeof value.type !== 'string') {
+  if (
+    'type' in value &&
+    value.type !== undefined &&
+    typeof value.type !== 'string'
+  ) {
     return false;
   }
 
-  if ('plotOptions' in value && value.plotOptions !== undefined && !isJsonObject(value.plotOptions)) {
+  if (
+    'plotOptions' in value &&
+    value.plotOptions !== undefined &&
+    !isJsonObject(value.plotOptions)
+  ) {
     return false;
   }
 
-  return Object.values(value).every((entry) => entry === undefined || isJsonValue(entry));
+  return Object.values(value).every(
+    (entry) => entry === undefined || isJsonValue(entry),
+  );
 }
 
-function isIndicatorOutputMap(value: unknown): value is Record<string, IndicatorOutputMetadata> {
-  return isRecord(value) && Object.values(value).every(isIndicatorOutputMetadata);
+function isIndicatorOutputMap(
+  value: unknown,
+): value is Record<string, IndicatorOutputMetadata> {
+  return (
+    isRecord(value) && Object.values(value).every(isIndicatorOutputMetadata)
+  );
 }
 
-function isIndicatorParameterMap(value: unknown): value is Record<string, JsonObject> {
+function isIndicatorParameterMap(
+  value: unknown,
+): value is Record<string, JsonObject> {
   return isRecord(value) && Object.values(value).every(isJsonObject);
 }
 
@@ -409,20 +442,29 @@ export function isIndicatorInfo(value: unknown): value is IndicatorInfo {
   );
 }
 
-export function isIndicatorDataPoint(value: unknown): value is IndicatorDataPoint {
-  if (!isRecord(value) || !isFiniteNumber(value.timestamp_ms) || value.timestamp_ms <= 0) {
+export function isIndicatorDataPoint(
+  value: unknown,
+): value is IndicatorDataPoint {
+  if (
+    !isRecord(value) ||
+    !isFiniteNumber(value.timestamp_ms) ||
+    value.timestamp_ms <= 0
+  ) {
     return false;
   }
 
-  return Object.entries(value).every(([key, entry]) => (
-    key === 'timestamp_ms' ||
-    entry === null ||
-    typeof entry === 'number' ||
-    typeof entry === 'string'
-  ));
+  return Object.entries(value).every(
+    ([key, entry]) =>
+      key === 'timestamp_ms' ||
+      entry === null ||
+      typeof entry === 'number' ||
+      typeof entry === 'string',
+  );
 }
 
-export function isIndicatorResponse(value: unknown): value is IndicatorResponse {
+export function isIndicatorResponse(
+  value: unknown,
+): value is IndicatorResponse {
   if (!isRecord(value) || !isRecord(value.data)) {
     return false;
   }
@@ -434,7 +476,9 @@ export function isIndicatorResponse(value: unknown): value is IndicatorResponse 
   );
 }
 
-export function isStoredCurrentMarket(value: unknown): value is StoredCurrentMarket {
+export function isStoredCurrentMarket(
+  value: unknown,
+): value is StoredCurrentMarket {
   return (
     isRecord(value) &&
     isNullableString(value.exchange) &&
@@ -445,7 +489,9 @@ export function isStoredCurrentMarket(value: unknown): value is StoredCurrentMar
   );
 }
 
-export function isStoredCurrentTimeframe(value: unknown): value is StoredCurrentTimeframe {
+export function isStoredCurrentTimeframe(
+  value: unknown,
+): value is StoredCurrentTimeframe {
   return (
     isRecord(value) &&
     isTimeframeCode(value.label) &&
@@ -453,11 +499,20 @@ export function isStoredCurrentTimeframe(value: unknown): value is StoredCurrent
   );
 }
 
-function isIndicatorValueRecord(value: unknown): value is Record<string, number | null> {
-  return isRecord(value) && Object.values(value).every((entry) => entry === null || isFiniteNumber(entry));
+function isIndicatorValueRecord(
+  value: unknown,
+): value is Record<string, number | null> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      (entry) => entry === null || isFiniteNumber(entry),
+    )
+  );
 }
 
-export function isCandleUpdateMessage(value: unknown): value is CandleUpdateMessage {
+export function isCandleUpdateMessage(
+  value: unknown,
+): value is CandleUpdateMessage {
   return (
     isRecord(value) &&
     value.type === 'candleUpdate' &&
@@ -467,7 +522,9 @@ export function isCandleUpdateMessage(value: unknown): value is CandleUpdateMess
   );
 }
 
-export function isIndicatorUpdateMessage(value: unknown): value is IndicatorUpdateMessage {
+export function isIndicatorUpdateMessage(
+  value: unknown,
+): value is IndicatorUpdateMessage {
   return (
     isRecord(value) &&
     value.type === 'indicatorUpdate' &&
@@ -475,14 +532,24 @@ export function isIndicatorUpdateMessage(value: unknown): value is IndicatorUpda
     isFiniteNumber(value.timestamp_ms) &&
     value.timestamp_ms > 0 &&
     isIndicatorValueRecord(value.values) &&
-    (!('streamId' in value) || value.streamId === undefined || typeof value.streamId === 'string') &&
-    (!('symbol' in value) || value.symbol === undefined || typeof value.symbol === 'string') &&
-    (!('timeframe' in value) || value.timeframe === undefined || typeof value.timeframe === 'string') &&
-    (!('indicatorId' in value) || value.indicatorId === undefined || isFiniteNumber(value.indicatorId))
+    (!('streamId' in value) ||
+      value.streamId === undefined ||
+      typeof value.streamId === 'string') &&
+    (!('symbol' in value) ||
+      value.symbol === undefined ||
+      typeof value.symbol === 'string') &&
+    (!('timeframe' in value) ||
+      value.timeframe === undefined ||
+      typeof value.timeframe === 'string') &&
+    (!('indicatorId' in value) ||
+      value.indicatorId === undefined ||
+      isFiniteNumber(value.indicatorId))
   );
 }
 
-export function isCandleSubscribedMessage(value: unknown): value is CandleSubscribedMessage {
+export function isCandleSubscribedMessage(
+  value: unknown,
+): value is CandleSubscribedMessage {
   return (
     isRecord(value) &&
     value.type === 'subscribed' &&
@@ -491,7 +558,9 @@ export function isCandleSubscribedMessage(value: unknown): value is CandleSubscr
   );
 }
 
-export function isIndicatorSubscribedMessage(value: unknown): value is IndicatorSubscribedMessage {
+export function isIndicatorSubscribedMessage(
+  value: unknown,
+): value is IndicatorSubscribedMessage {
   return (
     isRecord(value) &&
     value.type === 'indicatorSubscribed' &&
@@ -499,15 +568,15 @@ export function isIndicatorSubscribedMessage(value: unknown): value is Indicator
     isNonEmptyString(value.timeframe) &&
     isFiniteNumber(value.indicatorId) &&
     isNonEmptyString(value.clientIndicatorId) &&
-    (
-      !('streamId' in value) ||
+    (!('streamId' in value) ||
       value.streamId === undefined ||
-      isNullableString(value.streamId)
-    )
+      isNullableString(value.streamId))
   );
 }
 
-export function isIndicatorUnsubscribedMessage(value: unknown): value is IndicatorUnsubscribedMessage {
+export function isIndicatorUnsubscribedMessage(
+  value: unknown,
+): value is IndicatorUnsubscribedMessage {
   return (
     isRecord(value) &&
     value.type === 'indicatorUnsubscribed' &&
@@ -518,15 +587,17 @@ export function isIndicatorUnsubscribedMessage(value: unknown): value is Indicat
   );
 }
 
-export function isWebSocketErrorMessage(value: unknown): value is WebSocketErrorMessage {
+export function isWebSocketErrorMessage(
+  value: unknown,
+): value is WebSocketErrorMessage {
   return (
-    isRecord(value) &&
-    value.type === 'error' &&
-    isNonEmptyString(value.error)
+    isRecord(value) && value.type === 'error' && isNonEmptyString(value.error)
   );
 }
 
-export function isWebSocketControlMessage(value: unknown): value is WebSocketControlMessage {
+export function isWebSocketControlMessage(
+  value: unknown,
+): value is WebSocketControlMessage {
   return (
     isCandleSubscribedMessage(value) ||
     isIndicatorSubscribedMessage(value) ||
@@ -535,7 +606,9 @@ export function isWebSocketControlMessage(value: unknown): value is WebSocketCon
   );
 }
 
-export function isWebSocketInboundMessage(value: unknown): value is WebSocketInboundMessage {
+export function isWebSocketInboundMessage(
+  value: unknown,
+): value is WebSocketInboundMessage {
   return (
     isCandleUpdateMessage(value) ||
     isIndicatorUpdateMessage(value) ||

@@ -46,7 +46,8 @@ describe('App', () => {
     const workspace = defineComponent({
       setup() {
         onMounted(workspaceMounted);
-        return () => h('div', { 'data-testid': 'workspace-route' }, 'Workspace');
+        return () =>
+          h('div', { 'data-testid': 'workspace-route' }, 'Workspace');
       },
     });
     const router = createRouter({

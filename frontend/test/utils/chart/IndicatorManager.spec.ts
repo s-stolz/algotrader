@@ -68,9 +68,11 @@ describe('IndicatorManager', () => {
     const chartManager = createChartManager();
     const manager = new IndicatorManager(chartManager);
     const store = manager.indicatorsStore;
-    const indicatorId = store.addIndicator(indicatorInfo, [
-      { timestamp_ms: 1_000, sma: 1.2 },
-    ], 1);
+    const indicatorId = store.addIndicator(
+      indicatorInfo,
+      [{ timestamp_ms: 1_000, sma: 1.2 }],
+      1,
+    );
 
     await manager.addIndicatorSeries(indicatorId);
 
@@ -95,10 +97,14 @@ describe('IndicatorManager', () => {
     const chartManager = createChartManager();
     const manager = new IndicatorManager(chartManager);
     const store = manager.indicatorsStore;
-    const indicatorId = store.addIndicator(indicatorInfo, [
-      { timestamp_ms: 1_000, sma: 1.2, signal: null },
-      { timestamp_ms: 2_000, sma: 1.3, signal: 2.1 },
-    ], 1);
+    const indicatorId = store.addIndicator(
+      indicatorInfo,
+      [
+        { timestamp_ms: 1_000, sma: 1.2, signal: null },
+        { timestamp_ms: 2_000, sma: 1.3, signal: 2.1 },
+      ],
+      1,
+    );
     chartManager.series.set(`${indicatorId}_sma`, {
       series: {
         setData: vi.fn(),
@@ -111,7 +117,9 @@ describe('IndicatorManager', () => {
       options: {},
     });
 
-    expect(manager.updateIndicatorStyles(indicatorId, 'sma', { color: '#0f0' })).toBe(true);
+    expect(
+      manager.updateIndicatorStyles(indicatorId, 'sma', { color: '#0f0' }),
+    ).toBe(true);
     manager.refreshIndicatorSeries(indicatorId);
     manager.updateIndicatorSeriesPoint(indicatorId, {
       timestamp_ms: 3_000,
@@ -120,23 +128,39 @@ describe('IndicatorManager', () => {
     });
     manager.removeIndicatorSeriesAndData(indicatorId);
 
-    expect(chartManager.updateSeriesOptions).toHaveBeenCalledWith(`${indicatorId}_sma`, {
-      color: '#0f0',
-    });
-    expect(chartManager.setSeriesData).toHaveBeenCalledWith(`${indicatorId}_sma`, [
-      { time: 1, value: 1.2 },
-      { time: 2, value: 1.3 },
-    ]);
-    expect(chartManager.updateSeriesPoint).toHaveBeenCalledWith(`${indicatorId}_sma`, {
-      time: 3,
-      value: 1.4,
-    });
-    expect(chartManager.updateSeriesPoint).toHaveBeenCalledWith(`${indicatorId}_signal`, {
-      time: 3,
-      value: 2.2,
-    });
-    expect(chartManager.removeSeries).toHaveBeenCalledWith(`${indicatorId}_sma`);
-    expect(chartManager.removeSeries).toHaveBeenCalledWith(`${indicatorId}_signal`);
+    expect(chartManager.updateSeriesOptions).toHaveBeenCalledWith(
+      `${indicatorId}_sma`,
+      {
+        color: '#0f0',
+      },
+    );
+    expect(chartManager.setSeriesData).toHaveBeenCalledWith(
+      `${indicatorId}_sma`,
+      [
+        { time: 1, value: 1.2 },
+        { time: 2, value: 1.3 },
+      ],
+    );
+    expect(chartManager.updateSeriesPoint).toHaveBeenCalledWith(
+      `${indicatorId}_sma`,
+      {
+        time: 3,
+        value: 1.4,
+      },
+    );
+    expect(chartManager.updateSeriesPoint).toHaveBeenCalledWith(
+      `${indicatorId}_signal`,
+      {
+        time: 3,
+        value: 2.2,
+      },
+    );
+    expect(chartManager.removeSeries).toHaveBeenCalledWith(
+      `${indicatorId}_sma`,
+    );
+    expect(chartManager.removeSeries).toHaveBeenCalledWith(
+      `${indicatorId}_signal`,
+    );
     expect(store.exists(indicatorId)).toBe(false);
   });
 });

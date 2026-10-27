@@ -1,5 +1,8 @@
 <template>
-  <tr :aria-selected="isSelected" @click="onRowClick">
+  <tr
+    :aria-selected="isSelected"
+    @click="onRowClick"
+  >
     <td class="symbol-cell">{{ market.symbol }}</td>
     <td class="actions-cell">
       <span class="market-info">
@@ -31,7 +34,11 @@ import { h } from 'vue';
 import BaseDropdown from '@/components/Common/BaseDropdown.vue';
 import { NButton, NIcon, type DropdownOption } from 'naive-ui';
 
-import { CloudUploadOutline, EllipsisHorizontalCircleOutline, TrashOutline } from '@/icons';
+import {
+  CloudUploadOutline,
+  EllipsisHorizontalCircleOutline,
+  TrashOutline,
+} from '@/icons';
 import type { Market } from '@/types/contracts';
 
 defineOptions({
@@ -111,7 +118,7 @@ td {
   vertical-align: middle;
 }
 
-tr[aria-selected="true"] .symbol-cell {
+tr[aria-selected='true'] .symbol-cell {
   box-shadow: inset 2px 0 var(--selection-accent);
 }
 </style>

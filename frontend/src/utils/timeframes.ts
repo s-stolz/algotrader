@@ -32,9 +32,10 @@ export const TIMEFRAME_TO_MINUTES: Record<TimeframeCode, number> = {
   MN1: 43200,
 };
 
-export const MINUTES_TO_TIMEFRAME: Readonly<Record<number, TimeframeCode>> = Object.fromEntries(
-  TIMEFRAME_CODES.map((code) => [TIMEFRAME_TO_MINUTES[code], code]),
-) as Record<number, TimeframeCode>;
+export const MINUTES_TO_TIMEFRAME: Readonly<Record<number, TimeframeCode>> =
+  Object.fromEntries(
+    TIMEFRAME_CODES.map((code) => [TIMEFRAME_TO_MINUTES[code], code]),
+  ) as Record<number, TimeframeCode>;
 
 export function normalizeTimeframeCode(timeframe: unknown): TimeframeCode {
   if (typeof timeframe === 'number') {
@@ -64,13 +65,21 @@ const timeframeUnits = [
   { code: 'MN', label: 'Months' },
 ] as const;
 
-export function groupTimeframeOptions(options: readonly TimeframeOption[]): { label: string; options: TimeframeOption[] }[] {
-  return timeframeUnits.map(unit => ({
-    label: unit.label,
-    // Match the whole unit: MN is months, never minutes. Do not invent options
-    // for units unsupported by the caller's market or service.
-    options: options
-      .filter(option => option.value.replace(/\d+$/, '') === unit.code)
-      .sort((left, right) => TIMEFRAME_TO_MINUTES[left.value] - TIMEFRAME_TO_MINUTES[right.value]),
-  })).filter(group => group.options.length > 0);
+export function groupTimeframeOptions(
+  options: readonly TimeframeOption[],
+): { label: string; options: TimeframeOption[] }[] {
+  return timeframeUnits
+    .map((unit) => ({
+      label: unit.label,
+      // Match the whole unit: MN is months, never minutes. Do not invent options
+      // for units unsupported by the caller's market or service.
+      options: options
+        .filter((option) => option.value.replace(/\d+$/, '') === unit.code)
+        .sort(
+          (left, right) =>
+            TIMEFRAME_TO_MINUTES[left.value] -
+            TIMEFRAME_TO_MINUTES[right.value],
+        ),
+    }))
+    .filter((group) => group.options.length > 0);
 }

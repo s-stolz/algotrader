@@ -9,16 +9,34 @@ export default defineComponent({
   inheritAttrs: false,
   props: popoverProps,
   setup(props, { attrs, slots }) {
-    const mergedTheme = computed(() => ({ ...selectionPopoverTheme, ...props.themeOverrides }));
-    return () => h(NPopover, mergeProps(attrs, props, {
-      class: 'base-popover',
-      themeOverrides: mergedTheme.value,
-    }), slots);
+    const mergedTheme = computed(() => ({
+      ...selectionPopoverTheme,
+      ...props.themeOverrides,
+    }));
+    return () =>
+      h(
+        NPopover,
+        mergeProps(attrs, props, {
+          class: 'base-popover',
+          themeOverrides: mergedTheme.value,
+        }),
+        slots,
+      );
   },
 });
 </script>
 
 <style>
-.base-popover { border: 1px solid #2b3541; }
-.base-popover, .base-popover * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.base-popover {
+  border: 1px solid #2b3541;
+}
+.base-popover,
+.base-popover * {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
 </style>

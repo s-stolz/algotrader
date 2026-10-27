@@ -9,7 +9,10 @@ export {
   type ChartSeriesMarker,
   type ManagedSeriesApi,
 } from './chartInfrastructure';
-export { IndicatorManager, type IndicatorChartManager } from './IndicatorManager';
+export {
+  IndicatorManager,
+  type IndicatorChartManager,
+} from './IndicatorManager';
 export {
   buildMeasurementOverlayModel,
   measurementPricePrecision,

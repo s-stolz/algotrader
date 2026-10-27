@@ -26,7 +26,9 @@ defineOptions({
 
 const marketsStore = useMarketsStore();
 const currentMarketStore = useCurrentMarketStore();
-const chartInteractionMode = ref<ChartInteractionMode>(DEFAULT_CHART_INTERACTION_MODE);
+const chartInteractionMode = ref<ChartInteractionMode>(
+  DEFAULT_CHART_INTERACTION_MODE,
+);
 
 async function fetchMarketsAndInitCurrent(): Promise<void> {
   await marketsStore.fetch();

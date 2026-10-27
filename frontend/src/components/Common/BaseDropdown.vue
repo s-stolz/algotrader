@@ -20,10 +20,15 @@ export default defineComponent({
         },
       },
     }));
-    return () => h(NDropdown, mergeProps(attrs, props, {
-      class: 'base-dropdown',
-      themeOverrides: mergedTheme.value,
-    }), slots);
+    return () =>
+      h(
+        NDropdown,
+        mergeProps(attrs, props, {
+          class: 'base-dropdown',
+          themeOverrides: mergedTheme.value,
+        }),
+        slots,
+      );
   },
 });
 </script>

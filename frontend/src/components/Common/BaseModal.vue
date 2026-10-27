@@ -5,11 +5,18 @@
     @mousedown="onMouseDown"
     @mouseup="onMouseUp"
   >
-    <div class="modal" @click.stop>
+    <div
+      class="modal"
+      @click.stop
+    >
       <header class="modal-header">
         <div class="header-content">
           <h2 class="title">{{ title }}</h2>
-          <n-button text class="close-button" @click="close">
+          <n-button
+            text
+            class="close-button"
+            @click="close"
+          >
             <n-icon size="24">
               <CloseCircleOutline />
             </n-icon>
@@ -41,14 +48,17 @@ defineOptions({
   name: 'BaseModal',
 });
 
-const props = withDefaults(defineProps<{
-  closeOnBackdrop?: boolean;
-  modalId: string;
-  title?: string;
-}>(), {
-  closeOnBackdrop: true,
-  title: 'Modal Title',
-});
+const props = withDefaults(
+  defineProps<{
+    closeOnBackdrop?: boolean;
+    modalId: string;
+    title?: string;
+  }>(),
+  {
+    closeOnBackdrop: true,
+    title: 'Modal Title',
+  },
+);
 
 const modalStore = useModalStore();
 const isMouseDownInside = ref(false);

@@ -40,7 +40,9 @@ describe('IndicatorSearchModal', () => {
       timezone: 'UTC',
     });
     currentTimeframeStore.setCurrentTimeframe({ label: 'M5', value: 'M5' });
-    const requestIndicator = vi.spyOn(indicatorsStore, 'requestIndicator').mockResolvedValue('indicator-1');
+    const requestIndicator = vi
+      .spyOn(indicatorsStore, 'requestIndicator')
+      .mockResolvedValue('indicator-1');
     const wrapper = mount(IndicatorSearchModal, {
       global: {
         stubs: {
@@ -61,15 +63,22 @@ describe('IndicatorSearchModal', () => {
 
     expect(fetchAvailableIndicators).toHaveBeenCalledOnce();
 
-    (wrapper.vm as unknown as {
-      onApplyIndicator: (indicator: AvailableIndicator) => void;
-    }).onApplyIndicator(sma);
+    (
+      wrapper.vm as unknown as {
+        onApplyIndicator: (indicator: AvailableIndicator) => void;
+      }
+    ).onApplyIndicator(sma);
 
-    expect(requestIndicator).toHaveBeenCalledWith(null, 3, {
-      symbol: 'EURUSD',
-      timeframe: 'M5',
-      limit: 500,
-      exchange: 'FX',
-    }, {});
+    expect(requestIndicator).toHaveBeenCalledWith(
+      null,
+      3,
+      {
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+        limit: 500,
+        exchange: 'FX',
+      },
+      {},
+    );
   });
 });

@@ -15,7 +15,9 @@ import {
   TAKE_PROFIT_LINE_COLOR,
 } from '@/utils/chart/backtestOverlay';
 
-const closedTrade = (overrides: Partial<BacktestClosedTrade> = {}): BacktestClosedTrade => ({
+const closedTrade = (
+  overrides: Partial<BacktestClosedTrade> = {},
+): BacktestClosedTrade => ({
   sequence: 0,
   trade_id: 'trade-1',
   symbol: 'EURUSD',
@@ -112,10 +114,12 @@ describe('backtest chart overlay utilities', () => {
 
     expect(isBacktestRun(run)).toBe(true);
     expect(isBacktestClosedTrade(shortTrade)).toBe(true);
-    expect(buildBacktestTradeMarkers([shortTrade], {
-      startMs: 1_700_000_000_000,
-      endMs: 1_700_000_420_000,
-    })).toEqual([
+    expect(
+      buildBacktestTradeMarkers([shortTrade], {
+        startMs: 1_700_000_000_000,
+        endMs: 1_700_000_420_000,
+      }),
+    ).toEqual([
       {
         id: 'AAPL-trade-1:entry',
         time: 1_700_000_300,
@@ -136,27 +140,30 @@ describe('backtest chart overlay utilities', () => {
   });
 
   it('builds marker actions from closed trade direction', () => {
-    const markers = buildBacktestTradeMarkers([
-      closedTrade({
-        trade_id: 'long-trade',
-        trade_direction: 'long',
-        entry_timestamp_ms: 300_000,
-        entry_price: 101.25,
-        exit_timestamp_ms: 600_000,
-        exit_price: 104.5,
-      }),
-      closedTrade({
-        trade_id: 'short-trade',
-        trade_direction: 'short',
-        entry_timestamp_ms: 360_000,
-        entry_price: 99.75,
-        exit_timestamp_ms: 660_000,
-        exit_price: 96.5,
-      }),
-    ], {
-      startMs: 0,
-      endMs: 900_000,
-    });
+    const markers = buildBacktestTradeMarkers(
+      [
+        closedTrade({
+          trade_id: 'long-trade',
+          trade_direction: 'long',
+          entry_timestamp_ms: 300_000,
+          entry_price: 101.25,
+          exit_timestamp_ms: 600_000,
+          exit_price: 104.5,
+        }),
+        closedTrade({
+          trade_id: 'short-trade',
+          trade_direction: 'short',
+          entry_timestamp_ms: 360_000,
+          entry_price: 99.75,
+          exit_timestamp_ms: 660_000,
+          exit_price: 96.5,
+        }),
+      ],
+      {
+        startMs: 0,
+        endMs: 900_000,
+      },
+    );
 
     expect(markers).toEqual([
       {
@@ -195,28 +202,43 @@ describe('backtest chart overlay utilities', () => {
   });
 
   it('keeps both reversal events but distinguishes the close from the new entry', () => {
-    const markers = buildBacktestTradeMarkers([
-      closedTrade({ trade_id: 'long' }),
-      closedTrade({ trade_id: 'short', trade_direction: 'short',
-        entry_timestamp_ms: 600_000, entry_price: 104.5, exit_timestamp_ms: 900_000 }),
-    ], { startMs: 600_000, endMs: 600_000 }, 0.01);
+    const markers = buildBacktestTradeMarkers(
+      [
+        closedTrade({ trade_id: 'long' }),
+        closedTrade({
+          trade_id: 'short',
+          trade_direction: 'short',
+          entry_timestamp_ms: 600_000,
+          entry_price: 104.5,
+          exit_timestamp_ms: 900_000,
+        }),
+      ],
+      { startMs: 600_000, endMs: 600_000 },
+      0.01,
+    );
     expect(markers).toHaveLength(2);
-    expect(markers.map(({ id, shape, text }) => ({ id, shape, text }))).toEqual([
-      { id: 'long:exit', shape: 'circle', text: 'Sell @ 104.50' },
-      { id: 'short:entry', shape: 'arrowDown', text: 'Sell @ 104.50' },
-    ]);
+    expect(markers.map(({ id, shape, text }) => ({ id, shape, text }))).toEqual(
+      [
+        { id: 'long:exit', shape: 'circle', text: 'Sell @ 104.50' },
+        { id: 'short:entry', shape: 'arrowDown', text: 'Sell @ 104.50' },
+      ],
+    );
   });
 
   it('formats marker prices with precision derived from symbol min move', () => {
-    const markers = buildBacktestTradeMarkers([
-      closedTrade({
-        entry_price: 101.2,
-        exit_price: 104.5,
-      }),
-    ], {
-      startMs: 0,
-      endMs: 900_000,
-    }, 0.01);
+    const markers = buildBacktestTradeMarkers(
+      [
+        closedTrade({
+          entry_price: 101.2,
+          exit_price: 104.5,
+        }),
+      ],
+      {
+        startMs: 0,
+        endMs: 900_000,
+      },
+      0.01,
+    );
 
     expect(markers.map((marker) => marker.text)).toEqual([
       'Buy @ 101.20',

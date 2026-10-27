@@ -1,5 +1,9 @@
 <template>
-  <BaseModal ref="baseModal" :modalId="'symbolSearch'" :title="'Symbol'">
+  <BaseModal
+    ref="baseModal"
+    :modalId="'symbolSearch'"
+    :title="'Symbol'"
+  >
     <div>
       <span id="search-bar">
         <n-input
@@ -21,7 +25,10 @@
       </span>
       <hr class="separator" />
 
-      <n-scrollbar v-if="showEmptyMarketPromo || showNoSearchMatches" style="height: 300px">
+      <n-scrollbar
+        v-if="showEmptyMarketPromo || showNoSearchMatches"
+        style="height: 300px"
+      >
         <template v-if="showEmptyMarketPromo">
           <div class="empty-market-state">
             <n-button
@@ -35,7 +42,11 @@
             </n-button>
             <hr class="separator row-separator" />
             <div class="empty-state-card">
-              <n-space vertical align="center" :size="12">
+              <n-space
+                vertical
+                align="center"
+                :size="12"
+              >
                 <h3 class="empty-state-cta">Don’t have a broker yet?</h3>
                 <n-button
                   tag="a"
@@ -56,7 +67,11 @@
                 />
               </n-space>
             </div>
-            <n-text depth="3" class="affiliate-footnote-bottom">*affiliate link</n-text>
+            <n-text
+              depth="3"
+              class="affiliate-footnote-bottom"
+              >*affiliate link</n-text
+            >
           </div>
         </template>
 
@@ -71,12 +86,15 @@
             </n-icon>
           </n-button>
           <div class="empty-state-card">
-            <n-space vertical align="center" :size="8">
+            <n-space
+              vertical
+              align="center"
+              :size="8"
+            >
               <n-text>No symbols match your search.</n-text>
             </n-space>
           </div>
         </template>
-
       </n-scrollbar>
 
       <template v-else>
@@ -86,14 +104,22 @@
               v-for="market of filteredMarketList"
               :key="market.symbol_id"
               :market="market"
-              :is-selected="market.symbol === currentMarketStore.symbol && market.exchange === currentMarketStore.exchange"
+              :is-selected="
+                market.symbol === currentMarketStore.symbol &&
+                market.exchange === currentMarketStore.exchange
+              "
               @market-click="onMarketClick"
               @remove-market="$emit('remove-market', $event)"
               @upload-data="$emit('upload-data', $event)"
             />
           </tbody>
         </BaseDataTable>
-        <n-button text id="add-market-button" class="add-market-row" @click.stop="onAddMarketClick()">
+        <n-button
+          text
+          id="add-market-button"
+          class="add-market-row"
+          @click.stop="onAddMarketClick()"
+        >
           <n-icon size="24">
             <AddCircleOutline />
           </n-icon>
@@ -102,14 +128,26 @@
     </div>
 
     <template #footer>
-      <n-button @click="closeModal" class="button-close">Close</n-button>
+      <n-button
+        @click="closeModal"
+        class="button-close"
+        >Close</n-button
+      >
     </template>
   </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { NButton, NIcon, NInput, NQrCode, NScrollbar, NSpace, NText } from 'naive-ui';
+import {
+  NButton,
+  NIcon,
+  NInput,
+  NQrCode,
+  NScrollbar,
+  NSpace,
+  NText,
+} from 'naive-ui';
 
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import BaseModal from '@/components/Common/BaseModal.vue';
@@ -140,14 +178,16 @@ const affiliateLink = 'https://www.ictrading.com?camp=86158';
 const currentMarketStore = useCurrentMarketStore();
 const marketsStore = useMarketsStore();
 
-const filteredMarketList = computed(() => marketsStore.all
-  .filter((market) => market.symbol.includes(symbolInput.value.toUpperCase()))
-  .sort((a, b) => a.symbol.localeCompare(b.symbol)));
+const filteredMarketList = computed(() =>
+  marketsStore.all
+    .filter((market) => market.symbol.includes(symbolInput.value.toUpperCase()))
+    .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+);
 
 const showEmptyMarketPromo = computed(() => marketsStore.all.length === 0);
-const showNoSearchMatches = computed(() => (
-  filteredMarketList.value.length === 0 && marketsStore.all.length > 0
-));
+const showNoSearchMatches = computed(
+  () => filteredMarketList.value.length === 0 && marketsStore.all.length > 0,
+);
 
 function closeModal(): void {
   baseModal.value?.close();

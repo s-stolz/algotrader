@@ -12,13 +12,15 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, [
-      slots.icon?.(),
-      slots.default?.(),
-    ]);
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        [slots.icon?.(), slots.default?.()],
+      );
   },
 });
 
@@ -53,7 +55,9 @@ describe('TheTopBar', () => {
     });
 
     const openModal = vi.spyOn(useModalStore(), 'openModal');
-    const marketButton = wrapper.findAll('button').find((button) => button.text() === 'EURUSD');
+    const marketButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'EURUSD');
     expect(marketButton).toBeDefined();
     await marketButton!.trigger('click');
     expect(openModal).toHaveBeenCalledWith('symbolSearch');

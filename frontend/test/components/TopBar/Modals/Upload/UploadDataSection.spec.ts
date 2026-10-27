@@ -22,17 +22,26 @@ const NUploadStub = defineComponent({
   },
   emits: ['change', 'remove'],
   setup(_, { emit, slots }) {
-    return () => h('div', [
-      slots.default?.(),
-      h('button', {
-        class: 'emit-change',
-        onClick: () => emit('change', { fileList: [] }),
-      }, 'Change'),
-      h('button', {
-        class: 'emit-remove',
-        onClick: () => emit('remove'),
-      }, 'Remove'),
-    ]);
+    return () =>
+      h('div', [
+        slots.default?.(),
+        h(
+          'button',
+          {
+            class: 'emit-change',
+            onClick: () => emit('change', { fileList: [] }),
+          },
+          'Change',
+        ),
+        h(
+          'button',
+          {
+            class: 'emit-remove',
+            onClick: () => emit('remove'),
+          },
+          'Remove',
+        ),
+      ]);
   },
 });
 
@@ -59,7 +68,9 @@ describe('UploadDataSection', () => {
     });
 
     const section = wrapper.vm as unknown as {
-      beforeUpload: (data: { file: UploadFileInfo & { size?: number } }) => boolean;
+      beforeUpload: (data: {
+        file: UploadFileInfo & { size?: number };
+      }) => boolean;
       handleFileChange: (data: { fileList: UploadFileInfo[] }) => void;
       handleFileRemove: () => void;
     };
@@ -69,13 +80,15 @@ describe('UploadDataSection', () => {
     expect(wrapper.emitted('file-change')).toEqual([[{ fileList: [] }]]);
     expect(wrapper.emitted('file-remove')).toEqual([[]]);
 
-    expect(section.beforeUpload({
-      file: {
-        id: 'large',
-        name: 'large.csv',
-        status: 'pending',
-        size: 101 * 1024 * 1024,
-      },
-    })).toBe(false);
+    expect(
+      section.beforeUpload({
+        file: {
+          id: 'large',
+          name: 'large.csv',
+          status: 'pending',
+          size: 101 * 1024 * 1024,
+        },
+      }),
+    ).toBe(false);
   });
 });

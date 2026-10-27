@@ -1,14 +1,21 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-import { fetchBacktestClosedTrades, getBacktestRun } from '@/api/backtesterClient';
+import {
+  fetchBacktestClosedTrades,
+  getBacktestRun,
+} from '@/api/backtesterClient';
 import {
   BACKTEST_RESULT_SCHEMA_VERSION,
   type BacktestClosedTrade,
   type BacktestRun,
 } from '@/types/backtesterContracts';
 import type { Market } from '@/types/contracts';
-import { getStoredState, setStoredState, STORAGE_KEYS } from '@/utils/localStorage';
+import {
+  getStoredState,
+  setStoredState,
+  STORAGE_KEYS,
+} from '@/utils/localStorage';
 import { normalizeTimeframeCode } from '@/utils/timeframes';
 
 import { useCurrentMarketStore } from './currentMarketStore';
@@ -42,7 +49,9 @@ function unavailable(reason: string): BacktestRunSelectability {
   };
 }
 
-export function getBacktestRunSelectability(run: BacktestRun): BacktestRunSelectability {
+export function getBacktestRunSelectability(
+  run: BacktestRun,
+): BacktestRunSelectability {
   if (run.status !== 'succeeded') {
     return unavailable('Only succeeded Backtest Runs can be opened.');
   }
@@ -66,17 +75,19 @@ function findMarketForRun(run: BacktestRun, markets: Market[]): Market | null {
   const symbol = run.request.symbols[0];
   const exchange = run.request.exchange;
 
-  return markets.find((market) => {
-    if (market.symbol !== symbol) {
-      return false;
-    }
+  return (
+    markets.find((market) => {
+      if (market.symbol !== symbol) {
+        return false;
+      }
 
-    if (exchange) {
-      return market.exchange === exchange;
-    }
+      if (exchange) {
+        return market.exchange === exchange;
+      }
 
-    return true;
-  }) ?? null;
+      return true;
+    }) ?? null
+  );
 }
 
 function formatMarketMissingReason(run: BacktestRun): string {
@@ -126,11 +137,15 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     error.value = null;
   }
 
-  function getSelectableBacktestRun(run: BacktestRun): BacktestRunSelectability {
+  function getSelectableBacktestRun(
+    run: BacktestRun,
+  ): BacktestRunSelectability {
     return getBacktestRunSelectabilityForMarkets(run, useMarketsStore().all);
   }
 
-  async function selectRun(run: BacktestRun): Promise<BacktestRunSelectability> {
+  async function selectRun(
+    run: BacktestRun,
+  ): Promise<BacktestRunSelectability> {
     const markets = useMarketsStore().all;
     const selectability = getBacktestRunSelectabilityForMarkets(run, markets);
 
@@ -167,9 +182,8 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
 
       return selectability;
     } catch (err) {
-      error.value = err instanceof Error
-        ? err.message
-        : 'Failed to select Backtest.';
+      error.value =
+        err instanceof Error ? err.message : 'Failed to select Backtest.';
       throw err;
     } finally {
       isLoading.value = false;
@@ -197,19 +211,24 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
       return selectability;
     } catch (err) {
       clearOverlay();
-      error.value = err instanceof Error
-        ? err.message
-        : 'Failed to reload selected Backtest.';
+      error.value =
+        err instanceof Error
+          ? err.message
+          : 'Failed to reload selected Backtest.';
       return unavailable(error.value);
     } finally {
       isLoading.value = false;
     }
   }
 
-  function getClosedTradesForRange(startMs: number, endMs: number): BacktestClosedTrade[] {
-    return closedTrades.value.filter((trade) => (
-      trade.exit_timestamp_ms >= startMs && trade.entry_timestamp_ms <= endMs
-    ));
+  function getClosedTradesForRange(
+    startMs: number,
+    endMs: number,
+  ): BacktestClosedTrade[] {
+    return closedTrades.value.filter(
+      (trade) =>
+        trade.exit_timestamp_ms >= startMs && trade.entry_timestamp_ms <= endMs,
+    );
   }
 
   return {

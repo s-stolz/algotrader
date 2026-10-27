@@ -1,19 +1,32 @@
 <template>
   <div id="wrapper-select">
-    <n-button primary round @click="modalStore.openModal('symbolSearch')">
+    <n-button
+      primary
+      round
+      @click="modalStore.openModal('symbolSearch')"
+    >
       {{ currentSymbol }}
     </n-button>
 
     <TimeframeDropdown />
 
-    <n-button round @click="modalStore.openModal('indicatorSearch')">Indicator</n-button>
+    <n-button
+      round
+      @click="modalStore.openModal('indicatorSearch')"
+      >Indicator</n-button
+    >
 
-    <div class="chart-interaction-controls" role="group" aria-label="Chart interaction mode">
+    <div
+      class="chart-interaction-controls"
+      role="group"
+      aria-label="Chart interaction mode"
+    >
       <n-button
         circle
         class="chart-interaction-mode-button"
         :class="{
-          'chart-interaction-mode-button--active': isChartInteractionModeSelected('pan'),
+          'chart-interaction-mode-button--active':
+            isChartInteractionModeSelected('pan'),
         }"
         data-testid="chart-interaction-mode-pan"
         aria-label="Pan mode"
@@ -34,7 +47,8 @@
         circle
         class="chart-interaction-mode-button"
         :class="{
-          'chart-interaction-mode-button--active': isChartInteractionModeSelected('measure'),
+          'chart-interaction-mode-button--active':
+            isChartInteractionModeSelected('measure'),
         }"
         data-testid="chart-interaction-mode-measure"
         aria-label="Measure mode"
@@ -74,11 +88,14 @@ defineOptions({
   name: 'TheTopBar',
 });
 
-const props = withDefaults(defineProps<{
-  chartInteractionMode?: ChartInteractionMode;
-}>(), {
-  chartInteractionMode: DEFAULT_CHART_INTERACTION_MODE,
-});
+const props = withDefaults(
+  defineProps<{
+    chartInteractionMode?: ChartInteractionMode;
+  }>(),
+  {
+    chartInteractionMode: DEFAULT_CHART_INTERACTION_MODE,
+  },
+);
 
 const emit = defineEmits<{
   'update:chartInteractionMode': [mode: ChartInteractionMode];
@@ -93,8 +110,12 @@ function isChartInteractionModeSelected(mode: ChartInteractionMode): boolean {
   return props.chartInteractionMode === mode;
 }
 
-function chartInteractionModeIconColor(mode: ChartInteractionMode): string | undefined {
-  return isChartInteractionModeSelected(mode) ? selectedChartInteractionModeColor : undefined;
+function chartInteractionModeIconColor(
+  mode: ChartInteractionMode,
+): string | undefined {
+  return isChartInteractionModeSelected(mode)
+    ? selectedChartInteractionModeColor
+    : undefined;
 }
 
 function selectChartInteractionMode(mode: ChartInteractionMode): void {

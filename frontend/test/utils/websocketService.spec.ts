@@ -103,26 +103,35 @@ describe('WebSocket service', () => {
     const [socket] = mockSockets;
     socket.open();
 
-    socket.receive(JSON.stringify({
-      type: 'candleUpdate',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-      timestamp_ms: 1_700_000_000_000,
-      open: 1,
-      high: 2,
-      low: 0.5,
-      close: 1.5,
-      volume: 10,
-    }));
-    socket.receive(JSON.stringify({
-      type: 'indicatorUpdate',
-      clientIndicatorId: 'client-1',
-      timestamp_ms: 1_700_000_000_000,
-      values: { sma: 1.2, signal: null },
-    }));
+    socket.receive(
+      JSON.stringify({
+        type: 'candleUpdate',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+        timestamp_ms: 1_700_000_000_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10,
+      }),
+    );
+    socket.receive(
+      JSON.stringify({
+        type: 'indicatorUpdate',
+        clientIndicatorId: 'client-1',
+        timestamp_ms: 1_700_000_000_000,
+        values: { sma: 1.2, signal: null },
+      }),
+    );
 
     socket.receive(JSON.stringify({ type: 'candleUpdate', symbol: 'EURUSD' }));
-    socket.receive(JSON.stringify({ type: 'indicatorUpdate', clientIndicatorId: 'client-1' }));
+    socket.receive(
+      JSON.stringify({
+        type: 'indicatorUpdate',
+        clientIndicatorId: 'client-1',
+      }),
+    );
     socket.receive(JSON.stringify({ type: 'ready' }));
 
     expect(() => socket.receive('not json')).not.toThrow();
@@ -164,26 +173,32 @@ describe('WebSocket service', () => {
     const [socket] = mockSockets;
     socket.open();
 
-    socket.receive(JSON.stringify({
-      type: 'subscribed',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-    }));
-    socket.receive(JSON.stringify({
-      type: 'indicatorSubscribed',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-      indicatorId: 1,
-      clientIndicatorId: 'client-1',
-      streamId: null,
-    }));
-    socket.receive(JSON.stringify({
-      type: 'indicatorUnsubscribed',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-      indicatorId: 1,
-      clientIndicatorId: 'client-1',
-    }));
+    socket.receive(
+      JSON.stringify({
+        type: 'subscribed',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+      }),
+    );
+    socket.receive(
+      JSON.stringify({
+        type: 'indicatorSubscribed',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+        indicatorId: 1,
+        clientIndicatorId: 'client-1',
+        streamId: null,
+      }),
+    );
+    socket.receive(
+      JSON.stringify({
+        type: 'indicatorUnsubscribed',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+        indicatorId: 1,
+        clientIndicatorId: 'client-1',
+      }),
+    );
 
     expect(warn).not.toHaveBeenCalled();
     expect(candleHandler).not.toHaveBeenCalled();
@@ -203,13 +218,18 @@ describe('WebSocket service', () => {
     const [socket] = mockSockets;
     socket.open();
 
-    socket.receive(JSON.stringify({
-      type: 'error',
-      error: 'Missing symbol or timeframe',
-    }));
+    socket.receive(
+      JSON.stringify({
+        type: 'error',
+        error: 'Missing symbol or timeframe',
+      }),
+    );
 
     expect(warn).not.toHaveBeenCalled();
-    expect(error).toHaveBeenCalledWith('WebSocket server error:', 'Missing symbol or timeframe');
+    expect(error).toHaveBeenCalledWith(
+      'WebSocket server error:',
+      'Missing symbol or timeframe',
+    );
     expect(serverErrorHandler).toHaveBeenCalledWith({
       type: 'error',
       error: 'Missing symbol or timeframe',

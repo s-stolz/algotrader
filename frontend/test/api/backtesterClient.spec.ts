@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BACKTEST_BATCH_STATUSES, type BacktestRequestPayload } from '@/types/backtesterContracts';
+import {
+  BACKTEST_BATCH_STATUSES,
+  type BacktestRequestPayload,
+} from '@/types/backtesterContracts';
 import queuedBatchQueue from '../fixtures/queuedBatchQueue.json';
 
 import {
@@ -36,151 +39,322 @@ describe('backtester API client', () => {
   });
 
   it('sends only normalized names and validates rename identity and authoritative values', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse({ run_id: 'run/a', name: 'Saved' }))
       .mockResolvedValueOnce(jsonResponse({ batch_id: 'batch', name: null }))
       .mockResolvedValueOnce(jsonResponse({ run_id: 'wrong', name: 'Saved' }))
-      .mockResolvedValueOnce(jsonResponse({ run_id: 'run/a', name: ' untrimmed ' }));
-    await expect(renameExperiment('run', 'run/a', ' Saved ')).resolves.toBe('Saved');
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/run%2Fa/name', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Saved' }),
-    });
+      .mockResolvedValueOnce(
+        jsonResponse({ run_id: 'run/a', name: ' untrimmed ' }),
+      );
+    await expect(renameExperiment('run', 'run/a', ' Saved ')).resolves.toBe(
+      'Saved',
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/backtester/backtests/run%2Fa/name',
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Saved' }),
+      },
+    );
     await expect(renameExperiment('batch', 'batch', '')).resolves.toBeNull();
-    await expect(renameExperiment('run', 'run/a', 'Saved')).rejects.toThrow('Invalid experiment name response');
-    await expect(renameExperiment('run', 'run/a', 'Saved')).rejects.toThrow('Invalid experiment name response');
-    await expect(renameExperiment('run', 'run/a', 'a\nb')).rejects.toThrow('single-line');
+    await expect(renameExperiment('run', 'run/a', 'Saved')).rejects.toThrow(
+      'Invalid experiment name response',
+    );
+    await expect(renameExperiment('run', 'run/a', 'Saved')).rejects.toThrow(
+      'Invalid experiment name response',
+    );
+    await expect(renameExperiment('run', 'run/a', 'a\nb')).rejects.toThrow(
+      'single-line',
+    );
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('accepts durable cancellation progress and validates the returned run', async () => {
     const cancelling = {
-      ...backtestRun(), status: 'cancelling', started_at_ms: 1_780_000_000_001,
+      ...backtestRun(),
+      status: 'cancelling',
+      started_at_ms: 1_780_000_000_001,
       cancel_requested_at_ms: 1_780_000_000_002,
-      cancellation_source: 'user', cancellation_reason: 'user_requested',
+      cancellation_source: 'user',
+      cancellation_reason: 'user_requested',
     };
-    const cancelled = { ...cancelling, status: 'cancelled', completed_at_ms: 1_780_000_000_003 };
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const cancelled = {
+      ...cancelling,
+      status: 'cancelled',
+      completed_at_ms: 1_780_000_000_003,
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(cancelling))
       .mockResolvedValueOnce(jsonResponse(cancelled))
-      .mockResolvedValueOnce(jsonResponse({ ...cancelled, status: 'succeeded' }));
+      .mockResolvedValueOnce(
+        jsonResponse({ ...cancelled, status: 'succeeded' }),
+      );
 
     await expect(cancelBacktestRun('run-123')).resolves.toEqual(cancelling);
     await expect(cancelBacktestRun('run-123')).resolves.toEqual(cancelled);
-    await expect(cancelBacktestRun('run-123')).rejects.toThrow('Invalid cancelled backtest run response');
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/run-123/cancel', {
-      method: 'POST',
-    });
+    await expect(cancelBacktestRun('run-123')).rejects.toThrow(
+      'Invalid cancelled backtest run response',
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/backtester/backtests/run-123/cancel',
+      {
+        method: 'POST',
+      },
+    );
   });
 
   it('posts stable batch command identity and validates the revision', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({
-      batch_id: 'batch-1', status: 'pausing', lifecycle_revision: 2,
-    }));
-    await expect(controlBacktestBatch('batch-1', 'pause', 'command-1')).resolves.toEqual({
-      batch_id: 'batch-1', status: 'pausing', lifecycle_revision: 2,
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        batch_id: 'batch-1',
+        status: 'pausing',
+        lifecycle_revision: 2,
+      }),
+    );
+    await expect(
+      controlBacktestBatch('batch-1', 'pause', 'command-1'),
+    ).resolves.toEqual({
+      batch_id: 'batch-1',
+      status: 'pausing',
+      lifecycle_revision: 2,
     });
-    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/batches/batch-1/pause',
-      expect.objectContaining({ method: 'POST', body: '{"command_id":"command-1"}' }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/backtester/backtests/batches/batch-1/pause',
+      expect.objectContaining({
+        method: 'POST',
+        body: '{"command_id":"command-1"}',
+      }),
+    );
   });
 
   it('accepts Cancel Batch only with the matching command identity', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(jsonResponse({ batch_id: 'batch-1', command_id: 'cancel-1',
-        status: 'cancelling', lifecycle_revision: 4 }))
-      .mockResolvedValueOnce(jsonResponse({ batch_id: 'batch-1', command_id: 'other',
-        status: 'cancelled', lifecycle_revision: 5 }));
-    await expect(controlBacktestBatch('batch-1', 'cancel', 'cancel-1')).resolves.toEqual({
-      batch_id: 'batch-1', command_id: 'cancel-1', status: 'cancelling', lifecycle_revision: 4,
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        jsonResponse({
+          batch_id: 'batch-1',
+          command_id: 'cancel-1',
+          status: 'cancelling',
+          lifecycle_revision: 4,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          batch_id: 'batch-1',
+          command_id: 'other',
+          status: 'cancelled',
+          lifecycle_revision: 5,
+        }),
+      );
+    await expect(
+      controlBacktestBatch('batch-1', 'cancel', 'cancel-1'),
+    ).resolves.toEqual({
+      batch_id: 'batch-1',
+      command_id: 'cancel-1',
+      status: 'cancelling',
+      lifecycle_revision: 4,
     });
-    await expect(controlBacktestBatch('batch-1', 'cancel', 'cancel-1'))
-      .rejects.toThrow('Invalid Backtest Batch command response');
-    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/batches/batch-1/cancel',
-      expect.objectContaining({ method: 'POST', body: '{"command_id":"cancel-1"}' }));
+    await expect(
+      controlBacktestBatch('batch-1', 'cancel', 'cancel-1'),
+    ).rejects.toThrow('Invalid Backtest Batch command response');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/backtester/backtests/batches/batch-1/cancel',
+      expect.objectContaining({
+        method: 'POST',
+        body: '{"command_id":"cancel-1"}',
+      }),
+    );
   });
 
   it('validates live strategy metadata and accepted submission responses', async () => {
-    const catalog = [{
-      strategy_id: 'sma_crossover', strategy_version: 1, display_name: 'SMA crossover',
-      parameters: [{ name: 'fast_window', type: 'int', nullable: false, required: false,
-        default: 5, minimum: 1 }],
-    }];
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const catalog = [
+      {
+        strategy_id: 'sma_crossover',
+        strategy_version: 1,
+        display_name: 'SMA crossover',
+        parameters: [
+          {
+            name: 'fast_window',
+            type: 'int',
+            nullable: false,
+            required: false,
+            default: 5,
+            minimum: 1,
+          },
+        ],
+      },
+    ];
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(catalog))
-      .mockResolvedValueOnce(jsonResponse({ run_id: 'new-run', status: 'queued' }, { status: 202 }));
+      .mockResolvedValueOnce(
+        jsonResponse({ run_id: 'new-run', status: 'queued' }, { status: 202 }),
+      );
 
     await expect(fetchStrategyCatalog()).resolves.toEqual(catalog);
-    await expect(submitBacktestRun(backtestRun().request as BacktestRequestPayload)).resolves.toBe('new-run');
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/strategies');
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/backtester/backtests', expect.objectContaining({
-      method: 'POST',
-    }));
+    await expect(
+      submitBacktestRun(backtestRun().request as BacktestRequestPayload),
+    ).resolves.toBe('new-run');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/backtester/backtests/strategies',
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/backtester/backtests',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
   });
 
   it('rejects catalog parameters whose runtime type disagrees with metadata', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse([{
-      strategy_id: 'broken', strategy_version: 1, display_name: 'Broken',
-      parameters: [{ name: 'enabled', type: 'bool', required: false,
-        nullable: false, default: 1 }],
-    }]));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse([
+        {
+          strategy_id: 'broken',
+          strategy_version: 1,
+          display_name: 'Broken',
+          parameters: [
+            {
+              name: 'enabled',
+              type: 'bool',
+              required: false,
+              nullable: false,
+              default: 1,
+            },
+          ],
+        },
+      ]),
+    );
 
-    await expect(fetchStrategyCatalog()).rejects.toThrow('Invalid strategy catalog response');
+    await expect(fetchStrategyCatalog()).rejects.toThrow(
+      'Invalid strategy catalog response',
+    );
   });
 
   it('keeps stale-version and field rejections structured for the creation form', async () => {
     vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(jsonResponse({ detail: {
-        code: 'strategy_version_unavailable', message: 'Strategy version is unavailable',
-      } }, { status: 409 }))
-      .mockResolvedValueOnce(jsonResponse({ detail: {
-        code: 'invalid_parameter_combination', fields: ['fast_window', 'slow_window'],
-        message: 'Fast window must be smaller than slow window',
-      } }, { status: 422 }));
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            detail: {
+              code: 'strategy_version_unavailable',
+              message: 'Strategy version is unavailable',
+            },
+          },
+          { status: 409 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            detail: {
+              code: 'invalid_parameter_combination',
+              fields: ['fast_window', 'slow_window'],
+              message: 'Fast window must be smaller than slow window',
+            },
+          },
+          { status: 422 },
+        ),
+      );
 
-    await expect(submitBacktestRun(backtestRun().request as BacktestRequestPayload)).rejects.toMatchObject({
+    await expect(
+      submitBacktestRun(backtestRun().request as BacktestRequestPayload),
+    ).rejects.toMatchObject({
       code: 'strategy_version_unavailable',
     } satisfies Partial<BacktestSubmissionError>);
-    await expect(submitBacktestRun(backtestRun().request as BacktestRequestPayload)).rejects.toMatchObject({
-      code: 'invalid_parameter_combination', fields: ['fast_window', 'slow_window'],
+    await expect(
+      submitBacktestRun(backtestRun().request as BacktestRequestPayload),
+    ).rejects.toMatchObject({
+      code: 'invalid_parameter_combination',
+      fields: ['fast_window', 'slow_window'],
     } satisfies Partial<BacktestSubmissionError>);
   });
 
   it('validates a complete bounded sweep preview and current capability', async () => {
-    const { symbols: _symbols, timeframe: _timeframe, exchange: _exchange,
-      strategy: _strategy, ...shared } = backtestRun().request;
-    const request = { ...shared,
-      strategy: { strategy_id: 'sma_crossover', strategy_version: 1 },
-      markets: [1], timeframes: ['M1'],
-      parameter_axes: { fast_window: { mode: 'constant', value: 5 } },
-      allowed_directions: ['long_and_short'] } as Parameters<typeof previewParameterSweep>[0];
-    const candidate = { candidate_ordinal: 0,
-      market: { symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' }, timeframe: 'M1',
-      parameters: { fast_window: 5 }, allowed_directions: 'long_and_short',
-      status: 'ready', member_ordinal: 0, request: backtestRun().request };
-    const preview = { max_sweep_candidate_count: 1000, raw_count: 1, ready_count: 1,
-      excluded_count: 0, normalized_selections: { markets: [candidate.market],
-        timeframes: ['M1'], parameters: { fast_window: { mode: 'constant', values: [5] } },
-        allowed_directions: ['long_and_short'] }, candidates: [candidate] };
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(jsonResponse({ max_sweep_candidate_count: 1000,
-        batch_acceptance_enabled: false }))
-      .mockResolvedValueOnce(jsonResponse(preview))
-      .mockResolvedValueOnce(jsonResponse({ ...preview, raw_count: 2 }));
-
-    await expect(fetchSweepCapabilities()).resolves.toEqual({ max_sweep_candidate_count: 1000,
-      batch_acceptance_enabled: false });
-    await expect(previewParameterSweep(request)).resolves.toEqual(preview);
-    await expect(previewParameterSweep(request)).rejects.toThrow('Invalid sweep preview response');
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/backtester/backtests/sweeps/preview',
-      expect.objectContaining({ method: 'POST' }));
-  });
-
-  it('accepts the original batch on same-ID retries after lifecycle transitions', async () => {
-    const { symbols: _symbols, timeframe: _timeframe, exchange: _exchange,
-      strategy: _strategy, ...shared } = backtestRun().request;
+    const {
+      symbols: _symbols,
+      timeframe: _timeframe,
+      exchange: _exchange,
+      strategy: _strategy,
+      ...shared
+    } = backtestRun().request;
     const request = {
       ...shared,
       strategy: { strategy_id: 'sma_crossover', strategy_version: 1 },
-      markets: [1], timeframes: ['M1'],
+      markets: [1],
+      timeframes: ['M1'],
+      parameter_axes: { fast_window: { mode: 'constant', value: 5 } },
+      allowed_directions: ['long_and_short'],
+    } as Parameters<typeof previewParameterSweep>[0];
+    const candidate = {
+      candidate_ordinal: 0,
+      market: { symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' },
+      timeframe: 'M1',
+      parameters: { fast_window: 5 },
+      allowed_directions: 'long_and_short',
+      status: 'ready',
+      member_ordinal: 0,
+      request: backtestRun().request,
+    };
+    const preview = {
+      max_sweep_candidate_count: 1000,
+      raw_count: 1,
+      ready_count: 1,
+      excluded_count: 0,
+      normalized_selections: {
+        markets: [candidate.market],
+        timeframes: ['M1'],
+        parameters: { fast_window: { mode: 'constant', values: [5] } },
+        allowed_directions: ['long_and_short'],
+      },
+      candidates: [candidate],
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        jsonResponse({
+          max_sweep_candidate_count: 1000,
+          batch_acceptance_enabled: false,
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(preview))
+      .mockResolvedValueOnce(jsonResponse({ ...preview, raw_count: 2 }));
+
+    await expect(fetchSweepCapabilities()).resolves.toEqual({
+      max_sweep_candidate_count: 1000,
+      batch_acceptance_enabled: false,
+    });
+    await expect(previewParameterSweep(request)).resolves.toEqual(preview);
+    await expect(previewParameterSweep(request)).rejects.toThrow(
+      'Invalid sweep preview response',
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/backtester/backtests/sweeps/preview',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('accepts the original batch on same-ID retries after lifecycle transitions', async () => {
+    const {
+      symbols: _symbols,
+      timeframe: _timeframe,
+      exchange: _exchange,
+      strategy: _strategy,
+      ...shared
+    } = backtestRun().request;
+    const request = {
+      ...shared,
+      strategy: { strategy_id: 'sma_crossover', strategy_version: 1 },
+      markets: [1],
+      timeframes: ['M1'],
       parameter_axes: { fast_window: { mode: 'constant', value: 5 } },
       allowed_directions: ['long_and_short'],
     } as Parameters<typeof submitBacktestBatch>[0];
@@ -188,40 +362,57 @@ describe('backtester API client', () => {
     const batchId = 'original-batch-id';
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     for (const status of BACKTEST_BATCH_STATUSES) {
-      fetchMock.mockResolvedValueOnce(jsonResponse({ batch_id: batchId, status }, { status: 202 }));
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ batch_id: batchId, status }, { status: 202 }),
+      );
     }
 
-    for (let attempt = 0; attempt < BACKTEST_BATCH_STATUSES.length; attempt += 1) {
-      await expect(submitBacktestBatch(request, submissionId)).resolves.toBe(batchId);
+    for (
+      let attempt = 0;
+      attempt < BACKTEST_BATCH_STATUSES.length;
+      attempt += 1
+    ) {
+      await expect(submitBacktestBatch(request, submissionId)).resolves.toBe(
+        batchId,
+      );
     }
     expect(fetchMock).toHaveBeenCalledTimes(BACKTEST_BATCH_STATUSES.length);
     for (const [url, options] of fetchMock.mock.calls) {
       expect(url).toBe('/api/backtester/backtests/batches');
       expect(options).toMatchObject({ method: 'POST' });
-      expect(JSON.parse(String(options?.body))).toMatchObject({ submission_id: submissionId });
+      expect(JSON.parse(String(options?.body))).toMatchObject({
+        submission_id: submissionId,
+      });
     }
-    fetchMock.mockResolvedValueOnce(jsonResponse({ batch_id: batchId, status: 'unknown' },
-      { status: 202 }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ batch_id: batchId, status: 'unknown' }, { status: 202 }),
+    );
     await expect(submitBacktestBatch(request, submissionId)).rejects.toThrow(
       'Invalid batch submission response',
     );
   });
 
   it('lists Backtest Runs through the public backtester proxy', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse([
-      backtestRun({ run_id: 'run-newer' }),
-      backtestRun({ run_id: 'run-older', status: 'failed' }),
-    ]));
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        jsonResponse([
+          backtestRun({ run_id: 'run-newer' }),
+          backtestRun({ run_id: 'run-older', status: 'failed' }),
+        ]),
+      );
 
-    await expect(listBacktestRuns({
-      status: 'succeeded',
-      symbol: 'EURUSD',
-      timeframe: 'M15',
-      strategy: 'sma_crossover',
-      engine: 'event_driven',
-      submittedFromMs: 1_780_921_800_000,
-      submittedToMs: 1_780_922_100_000,
-    })).resolves.toEqual([
+    await expect(
+      listBacktestRuns({
+        status: 'succeeded',
+        symbol: 'EURUSD',
+        timeframe: 'M15',
+        strategy: 'sma_crossover',
+        engine: 'event_driven',
+        submittedFromMs: 1_780_921_800_000,
+        submittedToMs: 1_780_922_100_000,
+      }),
+    ).resolves.toEqual([
       backtestRun({ run_id: 'run-newer' }),
       backtestRun({ run_id: 'run-older', status: 'failed' }),
     ]);
@@ -234,54 +425,117 @@ describe('backtester API client', () => {
   it('reads one validated queue snapshot without treating invalid data as an empty queue', async () => {
     const snapshot = {
       snapshot_at_ms: 1_780_922_100_000,
-      active_run: { run_id: 'active', started_at_ms: 1_780_922_000_000,
-        batch_id: null, member_ordinal: null },
+      active_run: {
+        run_id: 'active',
+        started_at_ms: 1_780_922_000_000,
+        batch_id: null,
+        member_ordinal: null,
+      },
       last_heartbeat_ms: 1_780_922_099_000,
-      availability: 'healthy', stale_after_ms: 30_000, operational_faults: [],
-      queued: [{ entry_type: 'standalone', run_id: 'waiting', batch_id: null,
-        submitted_at_ms: 1_780_921_805_123, estimated_position: 1,
-        next_member_ordinal: null, outcome_counts: null },
-      { entry_type: 'batch', run_id: null, batch_id: 'batch-waiting',
-        submitted_at_ms: 1_780_921_806_123, estimated_position: 2,
-        next_member_ordinal: 1, outcome_counts: { queued: 1, running: 0,
-          cancelling: 0, succeeded: 1, failed: 0, cancelled: 0 } }],
+      availability: 'healthy',
+      stale_after_ms: 30_000,
+      operational_faults: [],
+      queued: [
+        {
+          entry_type: 'standalone',
+          run_id: 'waiting',
+          batch_id: null,
+          submitted_at_ms: 1_780_921_805_123,
+          estimated_position: 1,
+          next_member_ordinal: null,
+          outcome_counts: null,
+        },
+        {
+          entry_type: 'batch',
+          run_id: null,
+          batch_id: 'batch-waiting',
+          submitted_at_ms: 1_780_921_806_123,
+          estimated_position: 2,
+          next_member_ordinal: 1,
+          outcome_counts: {
+            queued: 1,
+            running: 0,
+            cancelling: 0,
+            succeeded: 1,
+            failed: 0,
+            cancelled: 0,
+          },
+        },
+      ],
     };
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(snapshot))
-      .mockResolvedValueOnce(jsonResponse({ ...snapshot, queued: [
-        { ...snapshot.queued[0], estimated_position: 0 },
-      ] }));
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...snapshot,
+          queued: [{ ...snapshot.queued[0], estimated_position: 0 }],
+        }),
+      );
     await expect(fetchBacktestQueue()).resolves.toEqual(snapshot);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/queue');
-    await expect(fetchBacktestQueue()).rejects.toThrow('Invalid Backtest queue response');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/backtester/backtests/queue',
+    );
+    await expect(fetchBacktestQueue()).rejects.toThrow(
+      'Invalid Backtest queue response',
+    );
   });
 
   it('accepts the same queued-batch response emitted by the public backtester route', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(queuedBatchQueue));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(queuedBatchQueue),
+    );
     await expect(fetchBacktestQueue()).resolves.toEqual(queuedBatchQueue);
   });
 
   it('reads automatic batch events with their recorded prior state', async () => {
-    const events = [{ batch_id: 'batch-1', revision: 0, event_type: 'accepted',
-      prior_status: null, status: 'queued', occurred_at_ms: 1_780_000_000_000,
-      trigger_run_id: null, reason: null },
-    { batch_id: 'batch-1', revision: 1, event_type: 'started',
-      prior_status: 'queued', status: 'running', occurred_at_ms: 1_780_000_001_000,
-      trigger_run_id: 'member-0', reason: null }];
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const events = [
+      {
+        batch_id: 'batch-1',
+        revision: 0,
+        event_type: 'accepted',
+        prior_status: null,
+        status: 'queued',
+        occurred_at_ms: 1_780_000_000_000,
+        trigger_run_id: null,
+        reason: null,
+      },
+      {
+        batch_id: 'batch-1',
+        revision: 1,
+        event_type: 'started',
+        prior_status: 'queued',
+        status: 'running',
+        occurred_at_ms: 1_780_000_001_000,
+        trigger_run_id: 'member-0',
+        reason: null,
+      },
+    ];
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(events))
-      .mockResolvedValueOnce(jsonResponse([events[0], { ...events[1], prior_status: undefined }]));
+      .mockResolvedValueOnce(
+        jsonResponse([events[0], { ...events[1], prior_status: undefined }]),
+      );
     await expect(listBacktestBatchEvents('batch-1')).resolves.toEqual(events);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/backtester/backtests/batches/batch-1/events');
-    await expect(listBacktestBatchEvents('batch-1')).rejects.toThrow('Invalid Backtest Batch events response');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/backtester/backtests/batches/batch-1/events',
+    );
+    await expect(listBacktestBatchEvents('batch-1')).rejects.toThrow(
+      'Invalid Backtest Batch events response',
+    );
   });
 
   it('fetches one Backtest Run by run id through the public backtester proxy', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse(backtestRun({ run_id: 'run-123' })),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse(backtestRun({ run_id: 'run-123' })));
 
-    await expect(getBacktestRun('run-123')).resolves.toEqual(backtestRun({ run_id: 'run-123' }));
+    await expect(getBacktestRun('run-123')).resolves.toEqual(
+      backtestRun({ run_id: 'run-123' }),
+    );
     expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123');
   });
 
@@ -304,29 +558,41 @@ describe('backtester API client', () => {
         take_profit_price: 1.075,
       },
     ];
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(trades));
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse(trades));
 
     await expect(fetchBacktestClosedTrades('run-123')).resolves.toEqual(trades);
-    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123/trades');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/backtester/backtests/run-123/trades',
+    );
   });
 
   it('reads exact replay in milliseconds and rejects malformed curves', async () => {
     const curve = {
-      availability: 'exact', reason: null, source_point_count: 2,
-      returned_point_count: 2, sampled: false,
+      availability: 'exact',
+      reason: null,
+      source_point_count: 2,
+      returned_point_count: 2,
+      sampled: false,
       equity_curve: [
         { timestamp_ms: 1_700_000_000_001, equity: 100, drawdown_pct: 0 },
         { timestamp_ms: 1_700_000_060_001, equity: 90, drawdown_pct: -10 },
       ],
     };
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(curve));
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(curve));
     await expect(fetchBacktestEquityCurve('run-123')).resolves.toEqual(curve);
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/backtester/backtests/run-123/equity-curve?max_points=2000',
     );
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...curve, equity_curve: [
-      curve.equity_curve[1], curve.equity_curve[0],
-    ] }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ...curve,
+        equity_curve: [curve.equity_curve[1], curve.equity_curve[0]],
+      }),
+    );
     await expect(fetchBacktestEquityCurve('run-123')).rejects.toThrow(
       'Invalid Equity Replay response',
     );
@@ -334,35 +600,74 @@ describe('backtester API client', () => {
 
   it('fetches ordered Fills through the public backtester resource', async () => {
     const fills = [
-      { sequence: 0, timestamp_ms: 1_714_525_200_000, symbol: 'EURUSD', side: 'buy',
-        quantity: 1000, price: 1.0715, fees: 0.15, exit_reason: null },
-      { sequence: 1, timestamp_ms: 1_714_532_400_000, symbol: 'EURUSD', side: 'sell',
-        quantity: 2000, price: 1.074, fees: 0.3, exit_reason: 'signal' },
+      {
+        sequence: 0,
+        timestamp_ms: 1_714_525_200_000,
+        symbol: 'EURUSD',
+        side: 'buy',
+        quantity: 1000,
+        price: 1.0715,
+        fees: 0.15,
+        exit_reason: null,
+      },
+      {
+        sequence: 1,
+        timestamp_ms: 1_714_532_400_000,
+        symbol: 'EURUSD',
+        side: 'sell',
+        quantity: 2000,
+        price: 1.074,
+        fees: 0.3,
+        exit_reason: 'signal',
+      },
     ];
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(fills));
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse(fills));
 
     await expect(fetchBacktestFills('run/123')).resolves.toEqual(fills);
-    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run%2F123/fills');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/backtester/backtests/run%2F123/fills',
+    );
   });
 
   it('rejects malformed or unordered execution logs', async () => {
-    const fill = { sequence: 1, timestamp_ms: 1_714_525_200_000, symbol: 'EURUSD',
-      side: 'sell', quantity: 2000, price: 1.074, fees: 0.3, exit_reason: null };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse([{ ...fill, side: 'short' }]));
-    await expect(fetchBacktestFills('run')).rejects.toThrow('Invalid backtest fills response');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse([fill, { ...fill, sequence: 0 }]));
-    await expect(fetchBacktestFills('run')).rejects.toThrow('Invalid backtest fills response');
+    const fill = {
+      sequence: 1,
+      timestamp_ms: 1_714_525_200_000,
+      symbol: 'EURUSD',
+      side: 'sell',
+      quantity: 2000,
+      price: 1.074,
+      fees: 0.3,
+      exit_reason: null,
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse([{ ...fill, side: 'short' }]),
+    );
+    await expect(fetchBacktestFills('run')).rejects.toThrow(
+      'Invalid backtest fills response',
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse([fill, { ...fill, sequence: 0 }]),
+    );
+    await expect(fetchBacktestFills('run')).rejects.toThrow(
+      'Invalid backtest fills response',
+    );
   });
 
   it('deletes one Backtest Run through the public backtester proxy', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(null, { status: 204 }),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
 
     await expect(deleteBacktestRun('run-123')).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123', {
-      method: 'DELETE',
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/backtester/backtests/run-123',
+      {
+        method: 'DELETE',
+      },
+    );
   });
 
   it('surfaces delete failures from the public backtester proxy', async () => {
@@ -376,29 +681,48 @@ describe('backtester API client', () => {
   });
 
   it('deletes a whole Batch through the public backtester proxy', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(null, { status: 204 }),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
     await expect(deleteBacktestBatch('batch/123')).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/batches/batch%2F123', {
-      method: 'DELETE',
-    });
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 409, statusText: 'Conflict' }));
-    await expect(deleteBacktestBatch('active')).rejects.toThrow('Failed to delete Backtest Batch: Conflict');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/backtester/backtests/batches/batch%2F123',
+      {
+        method: 'DELETE',
+      },
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 409, statusText: 'Conflict' }),
+    );
+    await expect(deleteBacktestBatch('active')).rejects.toThrow(
+      'Failed to delete Backtest Batch: Conflict',
+    );
   });
 
   it('rejects malformed Backtest Run and closed-trade responses', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse([{ run_id: 'run-123' }]));
-    await expect(listBacktestRuns()).rejects.toThrow('Invalid backtest runs response');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse([{ run_id: 'run-123' }]),
+    );
+    await expect(listBacktestRuns()).rejects.toThrow(
+      'Invalid backtest runs response',
+    );
 
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({ run_id: 'run-123' }));
-    await expect(getBacktestRun('run-123')).rejects.toThrow('Invalid backtest run response');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ run_id: 'run-123' }),
+    );
+    await expect(getBacktestRun('run-123')).rejects.toThrow(
+      'Invalid backtest run response',
+    );
 
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse([{
-      sequence: 0,
-      trade_id: 'trade-1',
-      symbol: 'EURUSD',
-    }]));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse([
+        {
+          sequence: 0,
+          trade_id: 'trade-1',
+          symbol: 'EURUSD',
+        },
+      ]),
+    );
     await expect(fetchBacktestClosedTrades('run-123')).rejects.toThrow(
       'Invalid backtest closed trades response',
     );
@@ -442,7 +766,12 @@ function backtestRun(overrides: Record<string, unknown> = {}) {
       run_metadata: null,
     },
     result_schema_version: 3,
-    metrics: { total_return_pct: 1.25, trade_count: 1, long_trade_count: 1, short_trade_count: 0 },
+    metrics: {
+      total_return_pct: 1.25,
+      trade_count: 1,
+      long_trade_count: 1,
+      short_trade_count: 0,
+    },
     diagnostics: { execution_duration_ms: 240_000 },
     ...overrides,
   };

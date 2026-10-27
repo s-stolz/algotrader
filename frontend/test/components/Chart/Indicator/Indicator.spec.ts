@@ -42,7 +42,9 @@ const indicatorInfo: IndicatorInfo = {
   },
 };
 
-function createIndicator(overrides: Partial<StoreIndicator> = {}): StoreIndicator {
+function createIndicator(
+  overrides: Partial<StoreIndicator> = {},
+): StoreIndicator {
   return {
     _id: 'indicator-1',
     indicatorId: 7,
@@ -113,23 +115,26 @@ describe('Indicator', () => {
             name: 'IndicatorPanel',
             emits: ['remove-indicator'],
             setup(_, { emit }) {
-              return () => h('button', {
-                class: 'remove-indicator',
-                onClick: () => emit('remove-indicator', 'indicator-1'),
-              });
+              return () =>
+                h('button', {
+                  class: 'remove-indicator',
+                  onClick: () => emit('remove-indicator', 'indicator-1'),
+                });
             },
           }),
           IndicatorSettingsModal: defineComponent({
             name: 'IndicatorSettingsModal',
             emits: ['update-styles'],
             setup(_, { emit }) {
-              return () => h('button', {
-                class: 'update-styles',
-                onClick: () => emit('update-styles', {
-                  outputKey: 'sma',
-                  styles: { color: '#ff0000' },
-                }),
-              });
+              return () =>
+                h('button', {
+                  class: 'update-styles',
+                  onClick: () =>
+                    emit('update-styles', {
+                      outputKey: 'sma',
+                      styles: { color: '#ff0000' },
+                    }),
+                });
             },
           }),
         },
@@ -140,9 +145,13 @@ describe('Indicator', () => {
     expect(manager.addIndicatorSeries).toHaveBeenCalledWith('indicator-1');
 
     await wrapper.find('.update-styles').trigger('click');
-    expect(manager.updateIndicatorStyles).toHaveBeenCalledWith('indicator-1', 'sma', {
-      color: '#ff0000',
-    });
+    expect(manager.updateIndicatorStyles).toHaveBeenCalledWith(
+      'indicator-1',
+      'sma',
+      {
+        color: '#ff0000',
+      },
+    );
 
     await wrapper.setProps({
       indicator: createIndicator({ paneHtmlElement: pane, dataVersion: 1 }),
@@ -150,7 +159,9 @@ describe('Indicator', () => {
     expect(manager.refreshIndicatorSeries).toHaveBeenCalledWith('indicator-1');
 
     await wrapper.find('.remove-indicator').trigger('click');
-    expect(manager.removeIndicatorSeriesAndData).toHaveBeenCalledWith('indicator-1');
+    expect(manager.removeIndicatorSeriesAndData).toHaveBeenCalledWith(
+      'indicator-1',
+    );
     expect(manager.updateMissingPaneHtmlElements).toHaveBeenCalled();
     expect(wrapper.emitted('remove-indicator')).toEqual([['indicator-1']]);
 

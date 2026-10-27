@@ -4,7 +4,9 @@
       ref="chartContainer"
       id="lightweight-chart"
       class="chart-container"
-      :class="{ 'chart-container--measure-mode': interactionMode === 'measure' }"
+      :class="{
+        'chart-container--measure-mode': interactionMode === 'measure',
+      }"
     />
 
     <Teleport
@@ -12,12 +14,14 @@
       :to="backtestOverlayTarget"
     >
       <div class="backtest-overlay-container">
-        <div
-          class="backtest-overlay-panel"
-        >
+        <div class="backtest-overlay-panel">
           <div class="backtest-overlay-details">
-            <span class="backtest-overlay-title">{{ activeBacktestRunTitle }}</span>
-            <span class="backtest-overlay-context">{{ activeBacktestRunContext }}</span>
+            <span class="backtest-overlay-title">{{
+              activeBacktestRunTitle
+            }}</span>
+            <span class="backtest-overlay-context">{{
+              activeBacktestRunContext
+            }}</span>
           </div>
           <n-button
             text
@@ -31,8 +35,14 @@
             </n-icon>
           </n-button>
         </div>
-        <div class="backtest-marker-legend">↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div>
-        <div v-if="hoveredBacktestMarker" class="backtest-marker-details" role="tooltip">
+        <div class="backtest-marker-legend"
+          >↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div
+        >
+        <div
+          v-if="hoveredBacktestMarker"
+          class="backtest-marker-details"
+          role="tooltip"
+        >
           {{ hoveredBacktestMarker }}
         </div>
       </div>
@@ -57,38 +67,41 @@
 </template>
 
 <script lang="ts">
-import { markRaw, defineComponent, type PropType } from "vue";
+import { markRaw, defineComponent, type PropType } from 'vue';
 import type {
   CandlestickSeriesPartialOptions,
   MouseEventParams,
   Point,
   Time,
-} from "lightweight-charts";
-import { NButton, NIcon } from "naive-ui";
+} from 'lightweight-charts';
+import { NButton, NIcon } from 'naive-ui';
 
-import { useCandlesticksStore } from "@/stores/candlesticksStore";
-import { useIndicatorsStore } from "@/stores/indicatorsStore";
-import { useCurrentMarketStore } from "@/stores/currentMarketStore";
-import { useCurrentTimeframeStore } from "@/stores/currentTimeframeStore";
-import { useBacktestOverlayStore } from "@/stores/backtestOverlayStore";
-import { fetchCandles as fetchHistoricalCandles } from "@/api/candleClient";
+import { useCandlesticksStore } from '@/stores/candlesticksStore';
+import { useIndicatorsStore } from '@/stores/indicatorsStore';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
+import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
+import { fetchCandles as fetchHistoricalCandles } from '@/api/candleClient';
 import type {
   CandleUpdateMessage,
   ChartCandle,
   IndicatorUpdateMessage,
-} from "@/types/contracts";
-import { wsService, type WebSocketEventHandler } from "@/utils/websocketService";
+} from '@/types/contracts';
+import {
+  wsService,
+  type WebSocketEventHandler,
+} from '@/utils/websocketService';
 import {
   createChartSession,
   type ChartSession,
   type ChartSessionKey,
   type ChartSessionSubscriptionsAdapter,
   type ChartSessionKeyInput,
-} from "@/components/Chart/chartSession";
+} from '@/components/Chart/chartSession';
 import {
   DEFAULT_CHART_INTERACTION_MODE,
   type ChartInteractionMode,
-} from "@/components/Chart/chartInteractionMode";
+} from '@/components/Chart/chartInteractionMode';
 
 import {
   createChartInfrastructure,
@@ -96,18 +109,18 @@ import {
   type ChartLogicalRange,
   type ChartOhlcPoint,
   type ManagedSeriesApi,
-} from "@/utils/chart";
-import { buildMeasurementOverlayModel } from "@/utils/chart/measurementOverlay";
+} from '@/utils/chart';
+import { buildMeasurementOverlayModel } from '@/utils/chart/measurementOverlay';
 import {
   buildBacktestProtectiveLineSegments,
   buildBacktestTradeMarkers,
   formatBacktestMarkerDetails,
   type LoadedCandleRange,
-} from "@/utils/chart/backtestOverlay";
-import { getOrCreatePaneOverlayWrapper } from "@/utils/chart/paneOverlay";
-import { timeframeToMinutes } from "@/utils/timeframes";
-import Indicator from "@/components/Chart/Indicator/Indicator.vue";
-import { CloseCircleOutline } from "@/icons";
+} from '@/utils/chart/backtestOverlay';
+import { getOrCreatePaneOverlayWrapper } from '@/utils/chart/paneOverlay';
+import { timeframeToMinutes } from '@/utils/timeframes';
+import Indicator from '@/components/Chart/Indicator/Indicator.vue';
+import { CloseCircleOutline } from '@/icons';
 
 const WHEEL_SETTLE_MS = 250;
 
@@ -159,7 +172,7 @@ interface ChartAreaData {
   candlesFetchLimit: number;
   indicatorBatchSize: number;
   shouldScrollToRealTime: boolean;
-  indicatorMessageHandler: WebSocketEventHandler<"indicatorUpdate"> | null;
+  indicatorMessageHandler: WebSocketEventHandler<'indicatorUpdate'> | null;
   chartSession: ChartSession | null;
   backtestOverlayTarget: HTMLElement | null;
   backtestMarkerDetails: Map<string, string>;
@@ -170,14 +183,14 @@ interface ChartAreaData {
 
 function isOhlcLegendPoint(value: unknown): value is OhlcLegendPoint {
   return (
-    typeof value === "object" &&
+    typeof value === 'object' &&
     value !== null &&
-    ("open" in value || "high" in value || "low" in value || "close" in value)
+    ('open' in value || 'high' in value || 'low' in value || 'close' in value)
   );
 }
 
 export default defineComponent({
-  name: "ChartArea",
+  name: 'ChartArea',
 
   components: {
     CloseCircleOutline,
@@ -203,7 +216,7 @@ export default defineComponent({
       chartInfrastructure: markRaw(createChartInfrastructure()),
       seriesOptions: {
         priceFormat: {
-          type: "price",
+          type: 'price',
         },
       },
       crosshairRafId: null,
@@ -238,15 +251,15 @@ export default defineComponent({
     },
 
     currentMarketKey(): string {
-      const symbol = this.currentMarketStore.symbol || "";
-      const exchange = this.currentMarketStore.exchange || "";
+      const symbol = this.currentMarketStore.symbol || '';
+      const exchange = this.currentMarketStore.exchange || '';
       return `${symbol}|${exchange}`;
     },
 
     activeBacktestRunTitle(): string {
       const run = this.backtestOverlayStore.selectedRun;
       if (!run) {
-        return "";
+        return '';
       }
 
       return run.request.strategy.strategy_id;
@@ -255,11 +268,13 @@ export default defineComponent({
     activeBacktestRunContext(): string {
       const run = this.backtestOverlayStore.selectedRun;
       if (!run) {
-        return "";
+        return '';
       }
 
-      const symbol = run.request.symbols[0] ?? "unknown";
-      const market = run.request.exchange ? `${run.request.exchange}:${symbol}` : symbol;
+      const symbol = run.request.symbols[0] ?? 'unknown';
+      const market = run.request.exchange
+        ? `${run.request.exchange}:${symbol}`
+        : symbol;
 
       return `${run.request.timeframe} ${market}`;
     },
@@ -283,7 +298,7 @@ export default defineComponent({
       immediate: true,
     },
 
-    "currentTimeframeStore.value": {
+    'currentTimeframeStore.value': {
       handler(newTimeframe: string, oldTimeframe: string | undefined) {
         this.shouldScrollToRealTime = true;
 
@@ -294,11 +309,11 @@ export default defineComponent({
       immediate: true,
     },
 
-    "backtestOverlayStore.selectedRunId"() {
+    'backtestOverlayStore.selectedRunId'() {
       this.refreshBacktestMarkers();
     },
 
-    "backtestOverlayStore.closedTrades"() {
+    'backtestOverlayStore.closedTrades'() {
       this.refreshBacktestMarkers();
     },
 
@@ -308,7 +323,9 @@ export default defineComponent({
   },
 
   created(): void {
-    this.chartSession = markRaw(createChartSession(this.createChartSessionAdapter()));
+    this.chartSession = markRaw(
+      createChartSession(this.createChartSessionAdapter()),
+    );
     this.syncChartSession();
   },
 
@@ -343,7 +360,7 @@ export default defineComponent({
     this.setMeasurementPaneElement(null);
     const chartContainer = this.getChartContainer();
     if (chartContainer) {
-      chartContainer.removeEventListener("wheel", this.onWheelPassive);
+      chartContainer.removeEventListener('wheel', this.onWheelPassive);
     }
     this.indicatorsStore.configureHistoryCoverage(null);
     this.chartInfrastructure.cleanup();
@@ -355,34 +372,40 @@ export default defineComponent({
         batchSize: this.indicatorBatchSize,
         getLoadedCandleRange: () => {
           const key = this.currentChartSessionKey();
-          return key.timeframe ? this.getIndicatorLoadedCandleRange(key.timeframe) : null;
+          return key.timeframe
+            ? this.getIndicatorLoadedCandleRange(key.timeframe)
+            : null;
         },
       });
 
       const indicatorCoverageOptions = (key: ChartSessionKey) => ({
         batchSize: this.indicatorBatchSize,
-        getLoadedCandleRange: () => this.getIndicatorLoadedCandleRange(key.timeframe),
+        getLoadedCandleRange: () =>
+          this.getIndicatorLoadedCandleRange(key.timeframe),
       });
 
       return {
-        subscribeCandles: (key) => wsService.send("subscribeCandles", {
-          symbol: key.symbol,
-          timeframe: key.timeframe,
-        }),
-        unsubscribeCandles: (key) => wsService.send("unsubscribeCandles", {
-          symbol: key.symbol,
-          timeframe: key.timeframe,
-        }),
+        subscribeCandles: (key) =>
+          wsService.send('subscribeCandles', {
+            symbol: key.symbol,
+            timeframe: key.timeframe,
+          }),
+        unsubscribeCandles: (key) =>
+          wsService.send('unsubscribeCandles', {
+            symbol: key.symbol,
+            timeframe: key.timeframe,
+          }),
         onCandleUpdate: (handler) => {
-          wsService.on("candleUpdate", handler);
+          wsService.on('candleUpdate', handler);
         },
         offCandleUpdate: (handler) => {
-          wsService.off("candleUpdate", handler);
+          wsService.off('candleUpdate', handler);
         },
-        fetchCandles: (key) => fetchHistoricalCandles(key.symbol, key.timeframe, {
-          limit: this.candlesFetchLimit,
-          exchange: key.exchange,
-        }),
+        fetchCandles: (key) =>
+          fetchHistoricalCandles(key.symbol, key.timeframe, {
+            limit: this.candlesFetchLimit,
+            exchange: key.exchange,
+          }),
         renderCandles: (_key, candles) => {
           this.candlesticksStore.replace(candles);
           this.renderCandlesticks(this.candlesticksStore.data, {
@@ -401,11 +424,12 @@ export default defineComponent({
         getOldestCandleTimestampMs: () => {
           return this.candlesticksStore.data[0]?.timestamp_ms ?? null;
         },
-        fetchOlderCandles: (key, endMs) => fetchHistoricalCandles(key.symbol, key.timeframe, {
-          endMs,
-          limit: this.candlesFetchLimit,
-          exchange: key.exchange,
-        }),
+        fetchOlderCandles: (key, endMs) =>
+          fetchHistoricalCandles(key.symbol, key.timeframe, {
+            endMs,
+            limit: this.candlesFetchLimit,
+            exchange: key.exchange,
+          }),
         prependOlderCandles: (_key, candles) => {
           this.candlesticksStore.prepend(candles);
         },
@@ -439,10 +463,13 @@ export default defineComponent({
           console.error('Failed to fetch older indicator data:', error);
         },
         reportLiveTailBufferOverflow: (key, candle) => {
-          console.error('Live candle tail buffer overflow; refetching chart session.', {
-            candle,
-            key,
-          });
+          console.error(
+            'Live candle tail buffer overflow; refetching chart session.',
+            {
+              candle,
+              key,
+            },
+          );
         },
         reportSubscriptionError: (operation, _key, error) => {
           console.error(`Failed to ${operation} candle subscription:`, error);
@@ -457,7 +484,9 @@ export default defineComponent({
       this.subscribeVisibleLogicalRangeChange(this.onVisibleLogicalRangeChange);
       const chartContainer = this.getChartContainer();
       if (chartContainer) {
-        chartContainer.addEventListener("wheel", this.onWheelPassive, { passive: true });
+        chartContainer.addEventListener('wheel', this.onWheelPassive, {
+          passive: true,
+        });
       }
       this.applyInteractionMode();
       this.indicatorMessageHandler = (message) => {
@@ -465,7 +494,7 @@ export default defineComponent({
         this.pendingIndicatorMessages.set(message.clientIndicatorId, message);
         this.scheduleIndicatorFlush();
       };
-      wsService.on("indicatorUpdate", this.indicatorMessageHandler);
+      wsService.on('indicatorUpdate', this.indicatorMessageHandler);
     },
 
     getChartContainer(): HTMLElement | null {
@@ -480,7 +509,7 @@ export default defineComponent({
 
       if (this.measurementPaneElement) {
         this.measurementPaneElement.removeEventListener(
-          "pointerdown",
+          'pointerdown',
           this.onMeasurementPointerDown,
           true,
         );
@@ -489,14 +518,20 @@ export default defineComponent({
       this.measurementPaneElement = paneElement;
 
       if (paneElement) {
-        paneElement.addEventListener("pointerdown", this.onMeasurementPointerDown, {
-          capture: true,
-        });
+        paneElement.addEventListener(
+          'pointerdown',
+          this.onMeasurementPointerDown,
+          {
+            capture: true,
+          },
+        );
       }
     },
 
     applyInteractionMode(): void {
-      this.chartInfrastructure.setMouseDragScrollEnabled(this.interactionMode !== 'measure');
+      this.chartInfrastructure.setMouseDragScrollEnabled(
+        this.interactionMode !== 'measure',
+      );
 
       if (this.interactionMode !== 'measure') {
         this.cancelMeasurementOverlay();
@@ -546,7 +581,7 @@ export default defineComponent({
     },
 
     onMeasurementKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
+      if (event.key === 'Escape') {
         this.cancelMeasurementOverlay();
       }
     },
@@ -567,7 +602,9 @@ export default defineComponent({
       );
     },
 
-    resolveMeasurementEndpoint(event: PointerEvent): MeasurementEndpoint | null {
+    resolveMeasurementEndpoint(
+      event: PointerEvent,
+    ): MeasurementEndpoint | null {
       const paneElement = this.measurementPaneElement;
       if (!paneElement) {
         return null;
@@ -609,19 +646,25 @@ export default defineComponent({
     },
 
     addMeasurementWindowListeners(): void {
-      window.addEventListener("pointermove", this.onMeasurementPointerMove);
-      window.addEventListener("pointerup", this.onMeasurementPointerRelease);
-      window.addEventListener("pointercancel", this.onMeasurementPointerRelease);
-      window.addEventListener("keydown", this.onMeasurementKeyDown);
-      window.addEventListener("blur", this.onMeasurementWindowBlur);
+      window.addEventListener('pointermove', this.onMeasurementPointerMove);
+      window.addEventListener('pointerup', this.onMeasurementPointerRelease);
+      window.addEventListener(
+        'pointercancel',
+        this.onMeasurementPointerRelease,
+      );
+      window.addEventListener('keydown', this.onMeasurementKeyDown);
+      window.addEventListener('blur', this.onMeasurementWindowBlur);
     },
 
     removeMeasurementWindowListeners(): void {
-      window.removeEventListener("pointermove", this.onMeasurementPointerMove);
-      window.removeEventListener("pointerup", this.onMeasurementPointerRelease);
-      window.removeEventListener("pointercancel", this.onMeasurementPointerRelease);
-      window.removeEventListener("keydown", this.onMeasurementKeyDown);
-      window.removeEventListener("blur", this.onMeasurementWindowBlur);
+      window.removeEventListener('pointermove', this.onMeasurementPointerMove);
+      window.removeEventListener('pointerup', this.onMeasurementPointerRelease);
+      window.removeEventListener(
+        'pointercancel',
+        this.onMeasurementPointerRelease,
+      );
+      window.removeEventListener('keydown', this.onMeasurementKeyDown);
+      window.removeEventListener('blur', this.onMeasurementWindowBlur);
     },
 
     cancelMeasurementOverlay(): void {
@@ -639,7 +682,8 @@ export default defineComponent({
     },
 
     async syncBacktestOverlayTarget(): Promise<void> {
-      const paneHtmlElement = await this.chartInfrastructure.chartManager.getPaneHtmlElement(0);
+      const paneHtmlElement =
+        await this.chartInfrastructure.chartManager.getPaneHtmlElement(0);
       this.setMeasurementPaneElement(paneHtmlElement);
       this.backtestOverlayTarget = paneHtmlElement
         ? getOrCreatePaneOverlayWrapper(paneHtmlElement)
@@ -661,11 +705,15 @@ export default defineComponent({
       return this.chartInfrastructure.setMinMove(minMove);
     },
 
-    subscribeCrosshairMove(callback: (param: MouseEventParams<Time>) => void): void {
+    subscribeCrosshairMove(
+      callback: (param: MouseEventParams<Time>) => void,
+    ): void {
       this.chartInfrastructure.subscribeCrosshairMove(callback);
     },
 
-    subscribeVisibleLogicalRangeChange(callback: (range: ChartLogicalRange | null) => void): void {
+    subscribeVisibleLogicalRangeChange(
+      callback: (range: ChartLogicalRange | null) => void,
+    ): void {
       this.chartInfrastructure.subscribeVisibleLogicalRangeChange(callback);
     },
 
@@ -697,7 +745,10 @@ export default defineComponent({
     flushIndicatorUpdates(): void {
       if (this.pendingIndicatorMessages.size === 0) return;
 
-      for (const [indicatorId, message] of this.pendingIndicatorMessages.entries()) {
+      for (const [
+        indicatorId,
+        message,
+      ] of this.pendingIndicatorMessages.entries()) {
         const point = this.indicatorsStore.handleLiveUpdate(message);
         if (!point) continue;
         this.indicatorManager.updateIndicatorSeriesPoint(indicatorId, point);
@@ -714,9 +765,12 @@ export default defineComponent({
     },
 
     syncChartSession(): void {
-      void this.chartSession?.setSession(this.currentChartSessionKey(), (message) => {
-        this.updateCurrentCandle(message);
-      });
+      void this.chartSession?.setSession(
+        this.currentChartSessionKey(),
+        (message) => {
+          this.updateCurrentCandle(message);
+        },
+      );
     },
 
     renderCandlesticks(
@@ -726,7 +780,7 @@ export default defineComponent({
       const minMove = this.currentMarketMinMove;
       if (minMove && minMove > 0) {
         this.seriesOptions.priceFormat = {
-          type: "price",
+          type: 'price',
           minMove,
           precision: Math.log10(1 / minMove),
         };
@@ -785,7 +839,10 @@ export default defineComponent({
         return;
       }
 
-      const trades = this.backtestOverlayStore.getClosedTradesForRange(range.startMs, range.endMs);
+      const trades = this.backtestOverlayStore.getClosedTradesForRange(
+        range.startMs,
+        range.endMs,
+      );
       for (const trade of trades) {
         for (const kind of ['entry', 'exit'] as const) {
           this.backtestMarkerDetails.set(
@@ -810,11 +867,12 @@ export default defineComponent({
     onCrosshairMove(param: MouseEventParams<Time>): void {
       try {
         const validCrosshairPoint = this.isValidCrosshairPoint(param);
-        this.hoveredBacktestMarker = validCrosshairPoint &&
+        this.hoveredBacktestMarker =
+          validCrosshairPoint &&
           (param.paneIndex === undefined || param.paneIndex === 0) &&
           typeof param.hoveredObjectId === 'string'
-          ? this.backtestMarkerDetails.get(param.hoveredObjectId) ?? null
-          : null;
+            ? (this.backtestMarkerDetails.get(param.hoveredObjectId) ?? null)
+            : null;
         if (!validCrosshairPoint) {
           return;
         }
@@ -827,32 +885,36 @@ export default defineComponent({
           const current = this.latestCrosshairParam;
           if (!current) return;
 
-          const bar = this.ohlcSeriesRef ? current.seriesData.get(this.ohlcSeriesRef) : null;
+          const bar = this.ohlcSeriesRef
+            ? current.seriesData.get(this.ohlcSeriesRef)
+            : null;
           if (!isOhlcLegendPoint(bar)) return;
 
           this.updateLegend(bar);
         });
       } catch (error) {
-        console.log("Error in crosshair move handler:", error);
+        console.log('Error in crosshair move handler:', error);
       }
     },
 
     updateLegend(bar: OhlcLegendPoint): void {
       if (this.$refs.legendOpen instanceof HTMLElement) {
-        this.$refs.legendOpen.textContent = String(bar.open ?? "-");
+        this.$refs.legendOpen.textContent = String(bar.open ?? '-');
       }
       if (this.$refs.legendHigh instanceof HTMLElement) {
-        this.$refs.legendHigh.textContent = String(bar.high ?? "-");
+        this.$refs.legendHigh.textContent = String(bar.high ?? '-');
       }
       if (this.$refs.legendLow instanceof HTMLElement) {
-        this.$refs.legendLow.textContent = String(bar.low ?? "-");
+        this.$refs.legendLow.textContent = String(bar.low ?? '-');
       }
       if (this.$refs.legendClose instanceof HTMLElement) {
-        this.$refs.legendClose.textContent = String(bar.close ?? "-");
+        this.$refs.legendClose.textContent = String(bar.close ?? '-');
       }
     },
 
-    onVisibleLogicalRangeChange(newVisibleLogicalRange: ChartLogicalRange | null): void {
+    onVisibleLogicalRangeChange(
+      newVisibleLogicalRange: ChartLogicalRange | null,
+    ): void {
       this.latestVisibleRange = newVisibleLogicalRange;
       if (this.visibleRangeRafId !== null) return;
 
@@ -867,7 +929,7 @@ export default defineComponent({
         const barsInfo = ohlc.series.barsInLogicalRange(range);
         if (barsInfo === null) return;
         const now = performance.now();
-        if ((now - this.lastWheelTs) < WHEEL_SETTLE_MS) {
+        if (now - this.lastWheelTs < WHEEL_SETTLE_MS) {
           return;
         }
 
@@ -897,13 +959,15 @@ export default defineComponent({
 
     getIndicatorLoadedCandleRange(timeframe: string) {
       const firstCandle = this.candlesticksStore.data[0];
-      const lastCandle = this.candlesticksStore.data[this.candlesticksStore.data.length - 1];
+      const lastCandle =
+        this.candlesticksStore.data[this.candlesticksStore.data.length - 1];
       if (!firstCandle || !lastCandle) return null;
 
       return {
         oldestTimestampMs: firstCandle.timestamp_ms,
         newestTimestampMs: lastCandle.timestamp_ms,
-        exclusiveEndMs: lastCandle.timestamp_ms + timeframeToMinutes(timeframe) * 60_000,
+        exclusiveEndMs:
+          lastCandle.timestamp_ms + timeframeToMinutes(timeframe) * 60_000,
       };
     },
   },

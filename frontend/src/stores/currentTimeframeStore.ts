@@ -7,7 +7,11 @@ import {
   type TimeframeCode,
   type TimeframeOption,
 } from '@/types/contracts';
-import { getStoredState, setStoredState, STORAGE_KEYS } from '@/utils/localStorage';
+import {
+  getStoredState,
+  setStoredState,
+  STORAGE_KEYS,
+} from '@/utils/localStorage';
 import { normalizeTimeframeCode } from '@/utils/timeframes';
 
 function readStoredTimeframe(): TimeframeCode {
