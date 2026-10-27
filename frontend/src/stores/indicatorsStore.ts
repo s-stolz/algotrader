@@ -5,182 +5,55 @@ import { requestIndicator as requestIndicatorFromApi } from '@/api/indicatorClie
 import type {
   IndicatorDataPoint,
   IndicatorInfo,
-  IndicatorQuery,
   IndicatorRequestBody,
   IndicatorUpdateMessage,
-  JsonObject,
-  JsonValue,
 } from '@/types/contracts';
-import { type WebSocketSendPayload, wsService } from '@/utils/websocketService';
+import { wsService } from '@/utils/websocketService';
 
-const INITIAL_INDICATOR_LIMIT = 500;
-
-export type IndicatorParameterEntry = Record<string, JsonValue | undefined>;
-export type IndicatorParameterMap = Record<string, IndicatorParameterEntry>;
-export type IndicatorParameterUpdate = Record<
-  string,
-  JsonValue | IndicatorParameterEntry
->;
-export type IndicatorParameterValues = JsonObject;
-export type IndicatorStyles = Record<string, JsonObject>;
-
-export interface IndicatorLoadedCandleRange {
-  oldestTimestampMs: number;
-  newestTimestampMs: number;
-  exclusiveEndMs: number;
-}
-
-export interface IndicatorCoverageOptions {
-  batchSize?: number;
-  getLoadedCandleRange?: () => IndicatorLoadedCandleRange | null;
-}
-
-export interface IndicatorStoreQuery {
-  symbol?: string | null;
-  timeframe?: string | null;
-  exchange?: string | null;
-  startMs?: number | null;
-  start_ms?: number | null;
-  endMs?: number | null;
-  end_ms?: number | null;
-  limit?: number | null;
-}
-
-interface IndicatorLiveSubscription {
-  symbol: string;
-  timeframe: string;
-  exchange: string | null;
-  indicatorId: number;
-  parameters: IndicatorParameterValues;
-  clientIndicatorId: string;
-}
-
-type IndicatorLiveSubscriptionInput = Omit<
+import {
+  applyParameterUpdates,
+  createParameterMap,
+  createStyles,
+  extractParameterValues,
+} from './indicators/configuration';
+import {
+  mergeIndicatorData,
+  mergeLivePoint,
+  trimDataToRange,
+} from './indicators/historyData';
+import {
+  INITIAL_INDICATOR_LIMIT,
+  applyCoverageTarget,
+  buildLatestQuery,
+  getBatchSize,
+  getLoadedCandleRange,
+  resetIndicatorHistoryState,
+  runCoverageBackfill,
+} from './indicators/historyCoverage';
+import { toClientQuery, toSubscriptionPayload } from './indicators/requests';
+import type {
+  IndicatorCoverageOptions,
+  IndicatorInfoMessage,
   IndicatorLiveSubscription,
-  'clientIndicatorId'
->;
+  IndicatorLiveSubscriptionInput,
+  IndicatorLoadedCandleRange,
+  IndicatorParameterMap,
+  IndicatorParameterUpdate,
+  IndicatorStoreQuery,
+  StoreIndicator,
+} from './indicators/types';
 
-export interface StoreIndicator {
-  _id: string;
-  indicatorId: number;
-  info: IndicatorInfo;
-  paneIndex: number;
-  paneHtmlElement: HTMLElement | null;
-  data: IndicatorDataPoint[];
-  lastLivePoint: IndicatorDataPoint | null;
-  dataVersion: number;
-  parameters: IndicatorParameterMap;
-  styles: IndicatorStyles;
-  currentLimit: number;
-  hasExpandedHistory: boolean;
-  historyGeneration: number;
-  isBackfilling: boolean;
-  historyExhausted: boolean;
-  targetOldestTimestampMs: number | null;
-  targetNewestTimestampMs: number | null;
-  nextBackfillEndMs: number | null;
-  activeBackfillPromise: Promise<void> | null;
-}
-
-interface IndicatorInfoMessage {
-  _id?: string | null;
-  indicatorId: number;
-  indicator_info: IndicatorInfo;
-  indicator_data: IndicatorDataPoint[];
-}
-
-function isParameterEntry(
-  value: JsonValue | IndicatorParameterEntry,
-): value is IndicatorParameterEntry {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function createParameterMap(
-  info: IndicatorInfo,
-  providedParameters: IndicatorParameterUpdate = {},
-): IndicatorParameterMap {
-  const finalParameters: IndicatorParameterMap = {};
-
-  for (const [key, provided] of Object.entries(providedParameters)) {
-    finalParameters[key] = isParameterEntry(provided)
-      ? { ...provided }
-      : { value: provided };
-  }
-
-  for (const [key, paramInfo] of Object.entries(info.parameters)) {
-    const existing = finalParameters[key];
-
-    if (!existing) {
-      finalParameters[key] = {
-        ...paramInfo,
-        value: paramInfo.default,
-      };
-      continue;
-    }
-
-    finalParameters[key] = {
-      ...paramInfo,
-      ...existing,
-    };
-
-    if (finalParameters[key].value === undefined) {
-      finalParameters[key].value = finalParameters[key].default;
-    }
-  }
-
-  return finalParameters;
-}
-
-function createStyles(outputs: IndicatorInfo['outputs']): IndicatorStyles {
-  const styles: IndicatorStyles = {};
-
-  for (const [outputKey, output] of Object.entries(outputs)) {
-    if (outputKey !== 'timestamp') {
-      styles[outputKey] = output.plotOptions ? { ...output.plotOptions } : {};
-    }
-  }
-
-  return styles;
-}
-
-function toClientQuery(query: IndicatorStoreQuery): IndicatorQuery | null {
-  if (!query.symbol || !query.timeframe) {
-    return null;
-  }
-
-  const clientQuery: IndicatorQuery = {
-    symbol: query.symbol,
-    timeframe: query.timeframe,
-  };
-
-  if (query.exchange !== undefined) {
-    clientQuery.exchange = query.exchange;
-  }
-  if (query.startMs !== undefined || query.start_ms !== undefined) {
-    clientQuery.startMs = query.startMs ?? query.start_ms ?? null;
-  }
-  if (query.endMs !== undefined || query.end_ms !== undefined) {
-    clientQuery.endMs = query.endMs ?? query.end_ms ?? null;
-  }
-  if (query.limit !== undefined) {
-    clientQuery.limit = query.limit;
-  }
-
-  return clientQuery;
-}
-
-function toSubscriptionPayload(
-  subscription: IndicatorLiveSubscription,
-): WebSocketSendPayload {
-  return {
-    symbol: subscription.symbol,
-    timeframe: subscription.timeframe,
-    exchange: subscription.exchange,
-    indicatorId: subscription.indicatorId,
-    parameters: subscription.parameters,
-    clientIndicatorId: subscription.clientIndicatorId,
-  };
-}
+export type {
+  IndicatorParameterEntry,
+  IndicatorParameterMap,
+  IndicatorParameterUpdate,
+  IndicatorParameterValues,
+  IndicatorStyles,
+  IndicatorLoadedCandleRange,
+  IndicatorCoverageOptions,
+  IndicatorStoreQuery,
+  StoreIndicator,
+} from './indicators/types';
 
 export const useIndicatorsStore = defineStore('indicators', () => {
   const indicators = reactive(new Map<string, StoreIndicator>());
@@ -197,22 +70,6 @@ export const useIndicatorsStore = defineStore('indicators', () => {
 
   function exists(_id: string): boolean {
     return indicators.has(_id);
-  }
-
-  function extractParameterValues(
-    parameters: IndicatorParameterMap,
-  ): IndicatorParameterValues {
-    const out: IndicatorParameterValues = {};
-
-    for (const [key, parameter] of Object.entries(parameters)) {
-      const value =
-        parameter.value !== undefined ? parameter.value : parameter.default;
-      if (value !== undefined) {
-        out[key] = value;
-      }
-    }
-
-    return out;
   }
 
   function resetHistoryFlags(): void {
@@ -236,103 +93,6 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     };
   }
 
-  function getBatchSize(options: IndicatorCoverageOptions): number {
-    return options.batchSize ?? INITIAL_INDICATOR_LIMIT;
-  }
-
-  function getLoadedCandleRange(
-    options: IndicatorCoverageOptions,
-  ): IndicatorLoadedCandleRange | null {
-    const range = options.getLoadedCandleRange?.() ?? null;
-    if (!range) return null;
-
-    if (
-      !Number.isFinite(range.oldestTimestampMs) ||
-      !Number.isFinite(range.newestTimestampMs) ||
-      !Number.isFinite(range.exclusiveEndMs)
-    ) {
-      return null;
-    }
-
-    return range;
-  }
-
-  function resetIndicatorHistoryState(
-    indicator: StoreIndicator,
-    invalidateGeneration = false,
-  ): void {
-    indicator.hasExpandedHistory = false;
-    indicator.currentLimit = INITIAL_INDICATOR_LIMIT;
-    indicator.isBackfilling = false;
-    indicator.historyExhausted = false;
-    indicator.targetOldestTimestampMs = null;
-    indicator.targetNewestTimestampMs = null;
-    indicator.nextBackfillEndMs = null;
-    indicator.activeBackfillPromise = null;
-    if (invalidateGeneration) {
-      indicator.historyGeneration += 1;
-    }
-  }
-
-  function applyCoverageTarget(
-    indicator: StoreIndicator,
-    range: IndicatorLoadedCandleRange,
-  ): void {
-    indicator.targetOldestTimestampMs =
-      indicator.targetOldestTimestampMs === null
-        ? range.oldestTimestampMs
-        : Math.min(indicator.targetOldestTimestampMs, range.oldestTimestampMs);
-    indicator.targetNewestTimestampMs =
-      indicator.targetNewestTimestampMs === null
-        ? range.newestTimestampMs
-        : Math.max(indicator.targetNewestTimestampMs, range.newestTimestampMs);
-  }
-
-  function trimDataToRange(
-    data: readonly IndicatorDataPoint[],
-    range: IndicatorLoadedCandleRange | null,
-  ): IndicatorDataPoint[] {
-    if (!range) return [...data];
-
-    return data.filter((point) => {
-      const timestampMs = Number(point.timestamp_ms);
-      return (
-        Number.isFinite(timestampMs) &&
-        timestampMs >= range.oldestTimestampMs &&
-        timestampMs <= range.newestTimestampMs
-      );
-    });
-  }
-
-  function mergeIndicatorData(
-    existingData: readonly IndicatorDataPoint[],
-    incomingData: readonly IndicatorDataPoint[],
-    range: IndicatorLoadedCandleRange | null,
-  ): IndicatorDataPoint[] {
-    const byTimestamp = new Map<number, IndicatorDataPoint>();
-
-    for (const point of incomingData) {
-      const timestampMs = Number(point.timestamp_ms);
-      if (Number.isFinite(timestampMs)) {
-        byTimestamp.set(timestampMs, { ...point, timestamp_ms: timestampMs });
-      }
-    }
-
-    for (const point of existingData) {
-      const timestampMs = Number(point.timestamp_ms);
-      if (Number.isFinite(timestampMs)) {
-        byTimestamp.set(timestampMs, { ...point, timestamp_ms: timestampMs });
-      }
-    }
-
-    return trimDataToRange(
-      Array.from(byTimestamp.values()).sort(
-        (left, right) => left.timestamp_ms - right.timestamp_ms,
-      ),
-      range,
-    );
-  }
-
   function trimIndicatorToRange(
     _id: string,
     range: IndicatorLoadedCandleRange | null,
@@ -341,20 +101,6 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     if (!indicator || !range) return;
 
     updateIndicatorData(_id, trimDataToRange(indicator.data, range));
-  }
-
-  function buildLatestQuery(
-    query: IndicatorStoreQuery,
-    options: IndicatorCoverageOptions,
-  ): IndicatorStoreQuery {
-    const range = getLoadedCandleRange(options);
-    const batchSize = getBatchSize(options);
-
-    return {
-      ...query,
-      endMs: query.endMs ?? query.end_ms ?? range?.exclusiveEndMs ?? null,
-      limit: query.limit ?? batchSize,
-    };
   }
 
   function requestAllIndicators(
@@ -548,6 +294,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     const generation = indicator.historyGeneration;
     indicator.isBackfilling = true;
     const promise = runCoverageBackfill(
+      { getById, updateIndicatorData },
       _id,
       symbol,
       timeframe,
@@ -557,107 +304,6 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     );
     indicator.activeBackfillPromise = promise;
     await promise;
-  }
-
-  async function runCoverageBackfill(
-    _id: string,
-    symbol: string,
-    timeframe: string,
-    exchange: string | null,
-    options: IndicatorCoverageOptions,
-    generation: number,
-  ): Promise<void> {
-    try {
-      while (true) {
-        const indicator = indicators.get(_id);
-        const range = getLoadedCandleRange(options);
-        if (!indicator || !range || indicator.historyGeneration !== generation)
-          return;
-
-        applyCoverageTarget(indicator, range);
-        trimIndicatorToRange(_id, range);
-
-        const current = indicators.get(_id);
-        if (!current || current.historyGeneration !== generation) return;
-        if (current.historyExhausted || !current.data.length) return;
-
-        const earliestTs = current.data[0].timestamp_ms;
-        const targetOldestTs =
-          current.targetOldestTimestampMs ?? range.oldestTimestampMs;
-        if (earliestTs <= targetOldestTs) return;
-
-        const endMs = Math.min(
-          current.nextBackfillEndMs ?? earliestTs,
-          earliestTs,
-        );
-        const queryParams: IndicatorStoreQuery = {
-          symbol,
-          timeframe,
-          endMs,
-          limit: getBatchSize(options),
-        };
-        if (exchange) {
-          queryParams.exchange = exchange;
-        }
-
-        const body: IndicatorRequestBody = {
-          parameters: extractParameterValues(current.parameters),
-        };
-
-        const response = await requestIndicatorFromApi(
-          current.indicatorId,
-          toClientQuery(queryParams)!,
-          body,
-        );
-
-        const afterFetch = indicators.get(_id);
-        const latestRange = getLoadedCandleRange(options);
-        if (
-          !afterFetch ||
-          !latestRange ||
-          afterFetch.historyGeneration !== generation
-        )
-          return;
-
-        const incomingData = response.data.indicator_data;
-        if (!incomingData.length) {
-          afterFetch.historyExhausted = true;
-          return;
-        }
-
-        const previousEarliestTs = afterFetch.data[0]?.timestamp_ms ?? null;
-        const mergedData = mergeIndicatorData(
-          afterFetch.data,
-          incomingData,
-          latestRange,
-        );
-        updateIndicatorData(_id, mergedData);
-
-        const updated = indicators.get(_id);
-        const nextEarliestTs = updated?.data[0]?.timestamp_ms ?? null;
-        if (!updated || updated.historyGeneration !== generation) return;
-
-        updated.hasExpandedHistory = true;
-        updated.nextBackfillEndMs = nextEarliestTs;
-
-        if (
-          previousEarliestTs !== null &&
-          nextEarliestTs !== null &&
-          nextEarliestTs >= previousEarliestTs
-        ) {
-          updated.historyExhausted = true;
-          return;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to backfill indicator data', error);
-    } finally {
-      const indicator = indicators.get(_id);
-      if (indicator && indicator.historyGeneration === generation) {
-        indicator.isBackfilling = false;
-        indicator.activeBackfillPromise = null;
-      }
-    }
   }
 
   function handleMessageIndicatorInfo(
@@ -744,32 +390,9 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     const indicator = indicators.get(_id);
     if (!indicator) return null;
 
-    const timestampMs = Number(message.timestamp_ms);
-    if (!Number.isFinite(timestampMs)) return null;
-
-    const point: IndicatorDataPoint = {
-      timestamp_ms: timestampMs,
-      ...message.values,
-    };
-    const lastLivePoint = indicator.lastLivePoint;
-
-    if (!lastLivePoint) {
-      indicator.lastLivePoint = point;
-      return point;
-    }
-
-    if (Number(lastLivePoint.timestamp_ms) === timestampMs) {
-      const merged: IndicatorDataPoint = { ...lastLivePoint, ...point };
-      indicator.lastLivePoint = merged;
-      return merged;
-    }
-
-    if (Number(lastLivePoint.timestamp_ms) < timestampMs) {
-      indicator.lastLivePoint = point;
-      return point;
-    }
-
-    return null;
+    const point = mergeLivePoint(indicator.lastLivePoint, message);
+    if (point) indicator.lastLivePoint = point;
+    return point;
   }
 
   async function subscribeIndicatorLive(
@@ -870,20 +493,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
 
     if (!indicator) return null;
 
-    for (const [key, paramVal] of Object.entries(newParameters)) {
-      const parameter = indicator.parameters[key];
-      if (!parameter) continue;
-
-      if (isParameterEntry(paramVal)) {
-        if ('value' in paramVal) {
-          parameter.value = paramVal.value;
-        }
-      } else {
-        parameter.value = paramVal;
-      }
-    }
-
-    return indicator.parameters;
+    return applyParameterUpdates(indicator.parameters, newParameters);
   }
 
   function removeIndicator(_id: string): void {
