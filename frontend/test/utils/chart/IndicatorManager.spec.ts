@@ -63,7 +63,7 @@ describe('IndicatorManager', () => {
     ]);
   });
 
-  it('adds chart series for non-timestamp indicator outputs with default chart options', async () => {
+  it('adds non-timestamp Indicator outputs with default options', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(12345);
     const chartManager = createChartManager();
     const manager = new IndicatorManager(chartManager);
@@ -92,7 +92,7 @@ describe('IndicatorManager', () => {
     expect(chartManager.addSeries).toHaveBeenCalledTimes(1);
   });
 
-  it('updates styles, refreshes series data, applies live points, and removes series with store data', () => {
+  it('updates styles and data, applies live points, and removes series', () => {
     vi.spyOn(Date, 'now').mockReturnValue(12345);
     const chartManager = createChartManager();
     const manager = new IndicatorManager(chartManager);
