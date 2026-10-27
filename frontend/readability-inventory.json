@@ -34,13 +34,6 @@
       "countedLines": 537,
       "width": []
     },
-    "src/views/BacktestCreationDrawer.vue": {
-      "ticket": 24,
-      "countedLines": 1770,
-      "width": [
-        "                        :aria-label=\"`${parameter.display_name || parameter.name} value ${index + 1}`\""
-      ]
-    },
     "src/views/BacktestWorkspaceView.vue": {
       "ticket": 23,
       "countedLines": 1408,
@@ -177,16 +170,6 @@
       "countedLines": 61,
       "width": [
         "  it('groups and sorts caller-provided options by their complete units without changing the input', () => {"
-      ]
-    },
-    "test/views/BacktestCreationDrawer.spec.ts": {
-      "ticket": 24,
-      "countedLines": 1232,
-      "width": [
-        "  it('starts with an empty optional name, preserves drafts, and normalizes named and unnamed submissions', async () => {",
-        "  it('refreshes stale catalog and leaves the draft unchanged without retrying submission', async () => {",
-        "  it('previews exact string values including empty, multiline, and whitespace strings', async () => {",
-        "  it('refreshes changed catalog metadata without submitting or accepting stale preview', async () => {"
       ]
     },
     "test/views/ChartView.spec.ts": {
