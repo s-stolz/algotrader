@@ -63,6 +63,9 @@ class BarStrategyModel:
     target_quantity: float
     protective_exit: ProtectiveExitSpec = field(default_factory=ProtectiveExitSpec)
 
+    entry_filters: Tuple[ConditionRule, ...] = field(default_factory=tuple)
+    exit_filters: Tuple[ConditionRule, ...] = field(default_factory=tuple)
+
     def __post_init__(self) -> None:
         if not math.isfinite(float(self.target_quantity)) or float(self.target_quantity) <= 0.0:
             raise ValueError("bar strategy target_quantity must be positive and finite")
@@ -71,6 +74,8 @@ class BarStrategyModel:
 
         object.__setattr__(self, "entry_conditions", tuple(self.entry_conditions))
         object.__setattr__(self, "exit_conditions", tuple(self.exit_conditions))
+        object.__setattr__(self, "entry_filters", tuple(self.entry_filters))
+        object.__setattr__(self, "exit_filters", tuple(self.exit_filters))
         object.__setattr__(self, "target_quantity", float(self.target_quantity))
 
     def build_signals(self, features: FeatureMatrix) -> SignalMatrix:
@@ -87,6 +92,11 @@ class BarStrategyModel:
                 feature_map=feature_map,
                 expected_size=len(features.timestamp_ms),
             )
+
+            for condition in self.entry_filters:
+                entries &= condition.evaluate_vectorized(feature_map)
+            for condition in self.exit_filters:
+                exits &= condition.evaluate_vectorized(feature_map)
 
             signal = np.zeros(len(features.timestamp_ms), dtype=np.int64)
             signal[entries] = 1
@@ -148,11 +158,17 @@ class BarStrategyModel:
         if any(
             condition.evaluate_sequential(previous=previous, current=current)
             for condition in self.exit_conditions
+        ) and all(
+            condition.evaluate_sequential(previous=previous, current=current)
+            for condition in self.exit_filters
         ):
             return -1
         if any(
             condition.evaluate_sequential(previous=previous, current=current)
             for condition in self.entry_conditions
+        ) and all(
+            condition.evaluate_sequential(previous=previous, current=current)
+            for condition in self.entry_filters
         ):
             return 1
         return 0

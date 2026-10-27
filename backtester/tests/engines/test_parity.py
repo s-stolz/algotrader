@@ -66,6 +66,45 @@ class TestBacktestEngineParity(unittest.TestCase):
             data_granularity=data_granularity,
         )
 
+    def test_macd_ema_results_match_across_engines(self) -> None:
+        start_ms = 1_700_000_000_000
+        closes = [10.0] * 8 + [9.0, 8.0, 9.0, 11.0, 12.0, 11.0, 9.0, 8.0] * 3
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + 60_000 * i for i in range(len(closes))],
+                "symbol": ["TEST"] * len(closes),
+                "open": closes,
+                "high": [price + 0.5 for price in closes],
+                "low": [price - 0.5 for price in closes],
+                "close": closes,
+                "volume": [1000.0] * len(closes),
+            }
+        )
+        results = []
+        for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
+            request = BacktestRequest(
+                symbols=["TEST"],
+                timeframe="M1",
+                start_ms=start_ms + 7 * 60_000,
+                end_ms=start_ms + len(closes) * 60_000,
+                strategy=StrategyConfig(
+                    "macd_ema",
+                    {
+                        "fast_window": 2,
+                        "slow_window": 3,
+                        "signal_window": 2,
+                        "ema_window": 5,
+                    },
+                ),
+                execution=ExecutionConfig(),
+                initial_capital=10_000.0,
+                engine=engine,
+                data_granularity=DataGranularity.BAR,
+            )
+            results.append(run_backtest(request=request, bars=bars))
+        self.assertGreater(len(results[0].fills), 0)
+        self._assert_public_results_match(*results)
+
     def test_sma_crossover_public_results_match_across_supported_engines(self) -> None:
         bars = self._build_sma_bars()
         executions = (

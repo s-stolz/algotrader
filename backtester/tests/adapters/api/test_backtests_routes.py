@@ -237,10 +237,10 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
 
         self.assertEqual(catalog_response.status_code, 200)
         catalog = catalog_response.json()
-        self.assertEqual(catalog[0]["strategy_id"], "sma_crossover")
-        self.assertEqual(catalog[0]["strategy_version"], 1)
+        sma = next(item for item in catalog if item["strategy_id"] == "sma_crossover")
+        self.assertEqual(sma["strategy_version"], 1)
         self.assertEqual(
-            [field["name"] for field in catalog[0]["parameters"]][:2],
+            [field["name"] for field in sma["parameters"]][:2],
             [
                 "fast_window",
                 "slow_window",
