@@ -25,7 +25,7 @@
       <span
         v-if="sampled"
         class="sampling-note"
-        title="Sampled exact replay points, preserving the first and last points and the maximum drawdown peak and trough."
+        :title="samplingDescription"
         >Sampled curve</span
       >
     </header>
@@ -60,6 +60,9 @@ import {
 } from 'lightweight-charts';
 import type { ReplaySeries } from './backtestComparison';
 
+const samplingDescription =
+  'Sampled exact replay points, preserving the first and last points ' +
+  'and the maximum drawdown peak and trough.';
 const props = defineProps<{ series: ReplaySeries[]; sampled?: boolean }>();
 const equityContainer = ref<HTMLElement | null>(null);
 const drawdownContainer = ref<HTMLElement | null>(null);
