@@ -1,3 +1,55 @@
+import {
+  type JsonObject,
+  type JsonValue,
+  isRecord,
+  isFiniteNumber,
+  isNonEmptyString,
+  isJsonValue,
+  isJsonObject,
+  isNullableString,
+  isNullableNumber,
+} from './transportValues';
+
+export {
+  type JsonPrimitive,
+  type JsonValue,
+  type JsonObject,
+  isRecord,
+  isFiniteNumber,
+} from './transportValues';
+
+export {
+  type Candle,
+  type ChartCandle,
+  type CandleFetchOptions,
+  type CandleBatchPayload,
+  type CandleBatchResponse,
+  isCandle,
+  isCandleArray,
+  isChartCandle,
+  toChartCandle,
+  isCandleBatchResponse,
+} from './candleContracts';
+
+export {
+  type CandleUpdateMessage,
+  type IndicatorUpdateMessage,
+  type CandleSubscribedMessage,
+  type IndicatorSubscribedMessage,
+  type IndicatorUnsubscribedMessage,
+  type WebSocketErrorMessage,
+  type WebSocketControlMessage,
+  type WebSocketInboundMessage,
+  isCandleUpdateMessage,
+  isIndicatorUpdateMessage,
+  isCandleSubscribedMessage,
+  isIndicatorSubscribedMessage,
+  isIndicatorUnsubscribedMessage,
+  isWebSocketErrorMessage,
+  isWebSocketControlMessage,
+  isWebSocketInboundMessage,
+} from './websocketContracts';
+
 export const TIMEFRAME_CODES = [
   'M1',
   'M2',
@@ -54,47 +106,9 @@ export interface DeleteResponse {
   deleted_count: number | MarketDeleteSummary;
 }
 
-export interface Candle {
-  timestamp_ms: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-export interface ChartCandle extends Candle {
-  time: number;
-}
-
-export interface CandleFetchOptions {
-  startMs?: number | null;
-  endMs?: number | null;
-  limit?: number | null;
-  exchange?: string | null;
-}
-
-export interface CandleBatchPayload {
-  symbol: string;
-  exchange?: string | null;
-  candles: Candle[];
-}
-
-export interface CandleBatchResponse {
-  status: string;
-  added_candles: number;
-  total_candles: number;
-}
-
 export interface AvailableIndicator {
   id: number;
   name: string;
-}
-
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
-export interface JsonObject {
-  [key: string]: JsonValue;
 }
 
 export interface IndicatorOutputMetadata {
@@ -165,119 +179,20 @@ export type UploadColumnMapping = Record<
   number,
   UploadColumnField | '' | null | undefined
 >;
+
 export type UploadFieldToIndexMapping = Partial<
   Record<UploadColumnField, number>
 >;
+
 export type UploadProgressCallback = (
   progress: number,
   rowCount: number,
 ) => void;
 
-export interface CandleUpdateMessage extends Candle {
-  type: 'candleUpdate';
-  symbol: string;
-  timeframe: string;
-}
-
-export interface IndicatorUpdateMessage {
-  type: 'indicatorUpdate';
-  clientIndicatorId: string;
-  streamId?: string;
-  symbol?: string;
-  timeframe?: string;
-  indicatorId?: number;
-  timestamp_ms: number;
-  values: Record<string, number | null>;
-}
-
-export interface CandleSubscribedMessage {
-  type: 'subscribed';
-  symbol: string;
-  timeframe: string;
-}
-
-export interface IndicatorSubscribedMessage {
-  type: 'indicatorSubscribed';
-  symbol: string;
-  timeframe: string;
-  indicatorId: number;
-  clientIndicatorId: string;
-  streamId?: string | null;
-}
-
-export interface IndicatorUnsubscribedMessage {
-  type: 'indicatorUnsubscribed';
-  symbol: string;
-  timeframe: string;
-  indicatorId: number;
-  clientIndicatorId: string;
-}
-
-export interface WebSocketErrorMessage {
-  type: 'error';
-  error: string;
-}
-
-export type WebSocketControlMessage =
-  | CandleSubscribedMessage
-  | IndicatorSubscribedMessage
-  | IndicatorUnsubscribedMessage
-  | WebSocketErrorMessage;
-
-export type WebSocketInboundMessage =
-  | CandleUpdateMessage
-  | IndicatorUpdateMessage
-  | WebSocketControlMessage;
-
 const TIMEFRAME_CODE_SET: ReadonlySet<string> = new Set(TIMEFRAME_CODES);
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export function isTimeframeCode(value: unknown): value is TimeframeCode {
   return typeof value === 'string' && TIMEFRAME_CODE_SET.has(value);
-}
-
-export function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-
-  if (isRecord(value)) {
-    return Object.values(value).every(isJsonValue);
-  }
-
-  return false;
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return isRecord(value) && Object.values(value).every(isJsonValue);
-}
-
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === 'string';
-}
-
-function isNullableNumber(value: unknown): value is number | null {
-  return value === null || isFiniteNumber(value);
 }
 
 export function isMarket(value: unknown): value is Market {
@@ -320,55 +235,6 @@ function isMarketDeleteSummary(value: unknown): value is MarketDeleteSummary {
     isRecord(value) &&
     typeof value.market_deleted === 'boolean' &&
     isFiniteNumber(value.deleted_candles)
-  );
-}
-
-export function isCandle(value: unknown): value is Candle {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (
-    !isFiniteNumber(value.timestamp_ms) ||
-    value.timestamp_ms <= 0 ||
-    !isFiniteNumber(value.open) ||
-    !isFiniteNumber(value.high) ||
-    !isFiniteNumber(value.low) ||
-    !isFiniteNumber(value.close) ||
-    !isFiniteNumber(value.volume)
-  ) {
-    return false;
-  }
-
-  return (
-    value.high >= Math.max(value.low, value.open, value.close) &&
-    value.low <= Math.min(value.open, value.close)
-  );
-}
-
-export function isCandleArray(value: unknown): value is Candle[] {
-  return Array.isArray(value) && value.every(isCandle);
-}
-
-export function isChartCandle(value: unknown): value is ChartCandle {
-  return isCandle(value) && isRecord(value) && isFiniteNumber(value.time);
-}
-
-export function toChartCandle(candle: Candle): ChartCandle {
-  return {
-    ...candle,
-    time: Math.floor(candle.timestamp_ms / 1000),
-  };
-}
-
-export function isCandleBatchResponse(
-  value: unknown,
-): value is CandleBatchResponse {
-  return (
-    isRecord(value) &&
-    isNonEmptyString(value.status) &&
-    isFiniteNumber(value.added_candles) &&
-    isFiniteNumber(value.total_candles)
   );
 }
 
@@ -496,122 +362,5 @@ export function isStoredCurrentTimeframe(
     isRecord(value) &&
     isTimeframeCode(value.label) &&
     isTimeframeCode(value.value)
-  );
-}
-
-function isIndicatorValueRecord(
-  value: unknown,
-): value is Record<string, number | null> {
-  return (
-    isRecord(value) &&
-    Object.values(value).every(
-      (entry) => entry === null || isFiniteNumber(entry),
-    )
-  );
-}
-
-export function isCandleUpdateMessage(
-  value: unknown,
-): value is CandleUpdateMessage {
-  return (
-    isRecord(value) &&
-    value.type === 'candleUpdate' &&
-    isNonEmptyString(value.symbol) &&
-    isNonEmptyString(value.timeframe) &&
-    isCandle(value)
-  );
-}
-
-export function isIndicatorUpdateMessage(
-  value: unknown,
-): value is IndicatorUpdateMessage {
-  return (
-    isRecord(value) &&
-    value.type === 'indicatorUpdate' &&
-    isNonEmptyString(value.clientIndicatorId) &&
-    isFiniteNumber(value.timestamp_ms) &&
-    value.timestamp_ms > 0 &&
-    isIndicatorValueRecord(value.values) &&
-    (!('streamId' in value) ||
-      value.streamId === undefined ||
-      typeof value.streamId === 'string') &&
-    (!('symbol' in value) ||
-      value.symbol === undefined ||
-      typeof value.symbol === 'string') &&
-    (!('timeframe' in value) ||
-      value.timeframe === undefined ||
-      typeof value.timeframe === 'string') &&
-    (!('indicatorId' in value) ||
-      value.indicatorId === undefined ||
-      isFiniteNumber(value.indicatorId))
-  );
-}
-
-export function isCandleSubscribedMessage(
-  value: unknown,
-): value is CandleSubscribedMessage {
-  return (
-    isRecord(value) &&
-    value.type === 'subscribed' &&
-    isNonEmptyString(value.symbol) &&
-    isNonEmptyString(value.timeframe)
-  );
-}
-
-export function isIndicatorSubscribedMessage(
-  value: unknown,
-): value is IndicatorSubscribedMessage {
-  return (
-    isRecord(value) &&
-    value.type === 'indicatorSubscribed' &&
-    isNonEmptyString(value.symbol) &&
-    isNonEmptyString(value.timeframe) &&
-    isFiniteNumber(value.indicatorId) &&
-    isNonEmptyString(value.clientIndicatorId) &&
-    (!('streamId' in value) ||
-      value.streamId === undefined ||
-      isNullableString(value.streamId))
-  );
-}
-
-export function isIndicatorUnsubscribedMessage(
-  value: unknown,
-): value is IndicatorUnsubscribedMessage {
-  return (
-    isRecord(value) &&
-    value.type === 'indicatorUnsubscribed' &&
-    isNonEmptyString(value.symbol) &&
-    isNonEmptyString(value.timeframe) &&
-    isFiniteNumber(value.indicatorId) &&
-    isNonEmptyString(value.clientIndicatorId)
-  );
-}
-
-export function isWebSocketErrorMessage(
-  value: unknown,
-): value is WebSocketErrorMessage {
-  return (
-    isRecord(value) && value.type === 'error' && isNonEmptyString(value.error)
-  );
-}
-
-export function isWebSocketControlMessage(
-  value: unknown,
-): value is WebSocketControlMessage {
-  return (
-    isCandleSubscribedMessage(value) ||
-    isIndicatorSubscribedMessage(value) ||
-    isIndicatorUnsubscribedMessage(value) ||
-    isWebSocketErrorMessage(value)
-  );
-}
-
-export function isWebSocketInboundMessage(
-  value: unknown,
-): value is WebSocketInboundMessage {
-  return (
-    isCandleUpdateMessage(value) ||
-    isIndicatorUpdateMessage(value) ||
-    isWebSocketControlMessage(value)
   );
 }

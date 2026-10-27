@@ -10,24 +10,6 @@
         "export { default as EllipsisHorizontalCircleOutline } from '@vicons/ionicons5/EllipsisHorizontalCircleOutline';"
       ]
     },
-    "src/types/backtesterContracts.ts": {
-      "ticket": 19,
-      "countedLines": 1054,
-      "width": []
-    },
-    "src/types/contracts.ts": {
-      "ticket": 19,
-      "countedLines": 537,
-      "width": []
-    },
-    "test/api/backtesterClient.spec.ts": {
-      "ticket": 19,
-      "countedLines": 737,
-      "width": [
-        "  it('sends only normalized names and validates rename identity and authoritative values', async () => {",
-        "  it('reads one validated queue snapshot without treating invalid data as an empty queue', async () => {"
-      ]
-    },
     "test/api/candleClient.spec.ts": {
       "ticket": 30,
       "countedLines": 131,
@@ -72,13 +54,6 @@
       "countedLines": 89,
       "width": [
         "  it('fetches candles through the typed client and prepends older history when appending', async () => {"
-      ]
-    },
-    "test/types/backtesterContracts.spec.ts": {
-      "ticket": 19,
-      "countedLines": 397,
-      "width": [
-        "  it('validates result schema version 3 Backtest Closed Trade payloads with trade direction', () => {"
       ]
     },
     "test/utils/timeframes.spec.ts": {

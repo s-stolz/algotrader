@@ -213,81 +213,85 @@ describe('backtester contract validators', () => {
     ).toBe(false);
   });
 
-  it('validates result schema version 3 Backtest Closed Trade payloads with trade direction', () => {
-    expect(
-      isBacktestClosedTrade({
-        sequence: 0,
-        trade_id: 'trade-1',
-        symbol: 'EURUSD',
-        trade_direction: 'long',
-        quantity: 1_000,
-        entry_timestamp_ms: 1_714_525_200_000,
-        entry_price: 1.0715,
-        exit_timestamp_ms: 1_714_532_400_000,
-        exit_price: 1.074,
-        realized_pnl: 2.5,
-        fees: 0.3,
-        exit_reason: 'take_profit',
-        stop_loss_price: null,
-        take_profit_price: 1.073,
-      }),
-    ).toBe(true);
+  it(
+    'validates result schema version 3 Backtest Closed Trade payloads ' +
+      'with trade direction',
+    () => {
+      expect(
+        isBacktestClosedTrade({
+          sequence: 0,
+          trade_id: 'trade-1',
+          symbol: 'EURUSD',
+          trade_direction: 'long',
+          quantity: 1_000,
+          entry_timestamp_ms: 1_714_525_200_000,
+          entry_price: 1.0715,
+          exit_timestamp_ms: 1_714_532_400_000,
+          exit_price: 1.074,
+          realized_pnl: 2.5,
+          fees: 0.3,
+          exit_reason: 'take_profit',
+          stop_loss_price: null,
+          take_profit_price: 1.073,
+        }),
+      ).toBe(true);
 
-    expect(
-      isBacktestClosedTrade({
-        sequence: 0,
-        trade_id: 'trade-1',
-        symbol: 'EURUSD',
-        trade_direction: 'short',
-        quantity: 1_000,
-        entry_timestamp_ms: 1_714_525_200_000,
-        entry_price: 1.0715,
-        exit_timestamp_ms: 1_714_532_400_000,
-        exit_price: 1.068,
-        realized_pnl: 3.5,
-        fees: 0.3,
-        exit_reason: 'signal',
-        stop_loss_price: 1.075,
-        take_profit_price: 1.065,
-      }),
-    ).toBe(true);
+      expect(
+        isBacktestClosedTrade({
+          sequence: 0,
+          trade_id: 'trade-1',
+          symbol: 'EURUSD',
+          trade_direction: 'short',
+          quantity: 1_000,
+          entry_timestamp_ms: 1_714_525_200_000,
+          entry_price: 1.0715,
+          exit_timestamp_ms: 1_714_532_400_000,
+          exit_price: 1.068,
+          realized_pnl: 3.5,
+          fees: 0.3,
+          exit_reason: 'signal',
+          stop_loss_price: 1.075,
+          take_profit_price: 1.065,
+        }),
+      ).toBe(true);
 
-    expect(
-      isBacktestClosedTrade({
-        sequence: 0,
-        trade_id: 'trade-1',
-        symbol: 'EURUSD',
-        quantity: 1_000,
-        entry_timestamp_ms: 1_714_525_200_000,
-        entry_price: 1.0715,
-        exit_timestamp_ms: 1_714_532_400_000,
-        exit_price: 1.074,
-        realized_pnl: 2.5,
-        fees: 0.3,
-        exit_reason: 'stop_loss',
-        take_profit_price: null,
-      }),
-    ).toBe(false);
+      expect(
+        isBacktestClosedTrade({
+          sequence: 0,
+          trade_id: 'trade-1',
+          symbol: 'EURUSD',
+          quantity: 1_000,
+          entry_timestamp_ms: 1_714_525_200_000,
+          entry_price: 1.0715,
+          exit_timestamp_ms: 1_714_532_400_000,
+          exit_price: 1.074,
+          realized_pnl: 2.5,
+          fees: 0.3,
+          exit_reason: 'stop_loss',
+          take_profit_price: null,
+        }),
+      ).toBe(false);
 
-    expect(
-      isBacktestClosedTrade({
-        sequence: 0,
-        trade_id: 'trade-1',
-        symbol: 'EURUSD',
-        trade_direction: 'flat',
-        quantity: 1_000,
-        entry_timestamp_ms: 1_714_525_200_000,
-        entry_price: 1.0715,
-        exit_timestamp_ms: 1_714_532_400_000,
-        exit_price: 1.074,
-        realized_pnl: 2.5,
-        fees: 0.3,
-        exit_reason: 'manual',
-        stop_loss_price: null,
-        take_profit_price: null,
-      }),
-    ).toBe(false);
-  });
+      expect(
+        isBacktestClosedTrade({
+          sequence: 0,
+          trade_id: 'trade-1',
+          symbol: 'EURUSD',
+          trade_direction: 'flat',
+          quantity: 1_000,
+          entry_timestamp_ms: 1_714_525_200_000,
+          entry_price: 1.0715,
+          exit_timestamp_ms: 1_714_532_400_000,
+          exit_price: 1.074,
+          realized_pnl: 2.5,
+          fees: 0.3,
+          exit_reason: 'manual',
+          stop_loss_price: null,
+          take_profit_price: null,
+        }),
+      ).toBe(false);
+    },
+  );
 
   it('accepts recorded Strategy Version without fabricating it for older requests', () => {
     const request = backtestRequest();
