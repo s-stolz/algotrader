@@ -11,6 +11,7 @@ INDICATOR_MAP: dict[int, str] = {
     3: "bbands",
     4: "macd",
     5: "currency_strength",
+    6: "ema",
 }
 
 

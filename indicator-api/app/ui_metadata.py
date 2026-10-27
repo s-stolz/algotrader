@@ -1,4 +1,13 @@
 UI_METADATA: dict[str, dict] = {
+    "ema": {
+        "overlay": True,
+        "outputs": {
+            "ema": {
+                "type": "line",
+                "plotOptions": {"lineWidth": 2, "color": "#2962ff"},
+            }
+        },
+    },
     "sma": {
         "overlay": True,
         "outputs": {
