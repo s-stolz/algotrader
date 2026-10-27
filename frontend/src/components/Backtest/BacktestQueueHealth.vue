@@ -255,12 +255,11 @@ import {
   useId,
 } from 'vue';
 import BasePopover from '@/components/Common/BasePopover.vue';
-import { fetchBacktestQueue } from '@/api/backtesterClient';
+import { useBacktestQueueHealth } from './useBacktestQueueHealth';
 import type {
   BacktestBatch,
   BacktestRun,
   BacktestQueueEntry,
-  BacktestQueueSnapshot,
 } from '@/types/backtesterContracts';
 import { batchName, runName } from '@/views/backtestWorkspaceRuns';
 
@@ -273,18 +272,8 @@ const expanded = ref(false);
 const visible = ref(true);
 const trigger = ref<HTMLButtonElement | null>(null);
 const panelId = useId();
-const POLL_INTERVAL_MS = 5000;
-const CLOCK_INTERVAL_MS = 1000;
-const snapshot = ref<BacktestQueueSnapshot | null>(null);
-const readError = ref<string | null>(null);
-const nowMs = ref(Date.now());
-const isUnknown = computed(
-  () =>
-    readError.value !== null ||
-    (snapshot.value !== null &&
-      nowMs.value - snapshot.value.snapshot_at_ms >
-        snapshot.value.stale_after_ms),
-);
+const { snapshot, readError, nowMs, isUnknown, elapsed, refresh } =
+  useBacktestQueueHealth();
 const needsAttention = computed(
   () =>
     snapshot.value !== null &&
@@ -395,70 +384,18 @@ function inspect(kind: 'run' | 'batch', id: string): void {
   close();
   emit('inspect', kind, id);
 }
-let generation = 0;
-let readPending = false;
-let isActive = false;
-let pollTimer: ReturnType<typeof setInterval> | null = null;
-let clockTimer: ReturnType<typeof setInterval> | null = null;
-
-function elapsed(sinceMs: number): string {
-  const seconds = Math.max(0, Math.floor((nowMs.value - sinceMs) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
-
-async function refresh(background = false): Promise<void> {
-  if (!isActive || (background && readPending)) return;
-  readPending = true;
-  const request = ++generation;
-  try {
-    const latest = await fetchBacktestQueue();
-    if (!isActive || request !== generation) return;
-    snapshot.value = latest;
-    readError.value = null;
-    nowMs.value = Date.now();
-  } catch (error) {
-    if (!isActive || request !== generation) return;
-    readError.value =
-      error instanceof Error ? error.message : 'Queue read failed';
-  } finally {
-    if (request === generation) readPending = false;
-  }
-}
-
-function start(): void {
-  if (isActive) return;
-  isActive = true;
+function show(): void {
   visible.value = true;
-  nowMs.value = Date.now();
-  void refresh();
-  pollTimer = setInterval(() => {
-    void refresh(true);
-  }, POLL_INTERVAL_MS);
-  clockTimer = setInterval(() => {
-    nowMs.value = Date.now();
-  }, CLOCK_INTERVAL_MS);
 }
-
-function stop(): void {
-  isActive = false;
+function hide(): void {
   visible.value = false;
   expanded.value = false;
-  ++generation;
-  readPending = false;
-  if (pollTimer) clearInterval(pollTimer);
-  if (clockTimer) clearInterval(clockTimer);
-  pollTimer = null;
-  clockTimer = null;
 }
-
 defineExpose({ refresh });
-onMounted(start);
-onActivated(start);
-onDeactivated(stop);
-onUnmounted(stop);
+onMounted(show);
+onActivated(show);
+onDeactivated(hide);
+onUnmounted(hide);
 </script>
 
 <style scoped>
