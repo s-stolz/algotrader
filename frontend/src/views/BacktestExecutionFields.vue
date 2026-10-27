@@ -164,7 +164,7 @@ const exitOptions: SelectOption[] = [
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--design-text-secondary);
   min-width: 0;
 }
 .policy-label {
@@ -189,11 +189,11 @@ label {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--design-text-secondary);
 }
 h4 {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: var(--design-text-body);
 }
 .full {
   grid-column: 1 / -1;

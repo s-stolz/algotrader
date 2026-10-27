@@ -1,6 +1,10 @@
 <script lang="ts">
 import { computed, defineComponent, h, mergeProps } from 'vue';
 import { NDrawer, drawerProps, type DrawerProps } from 'naive-ui';
+import { useDesignScope } from '@/design/scope';
+import { designCssProperties } from '@/design/cssProperties';
+import { designTokens } from '@/design/tokens';
+import { designDrawerTheme } from '@/design/creationControls';
 
 const themeOverrides: NonNullable<DrawerProps['themeOverrides']> = {
   color: '#171e27',
@@ -15,18 +19,32 @@ export default defineComponent({
   inheritAttrs: false,
   props: drawerProps,
   setup(props, { attrs, slots }) {
+    const migrated = useDesignScope();
     const mergedTheme = computed(() => ({
-      ...themeOverrides,
+      ...(migrated ? designDrawerTheme : themeOverrides),
       ...props.themeOverrides,
     }));
 
     return () =>
       h(
         NDrawer,
-        mergeProps(attrs, props, {
-          class: 'base-drawer',
-          themeOverrides: mergedTheme.value,
-        }),
+        mergeProps(
+          {
+            style: migrated
+              ? {
+                  ...designCssProperties,
+                  fontFamily: designTokens.font.ui,
+                  fontSize: designTokens.text.body,
+                }
+              : undefined,
+          },
+          attrs,
+          props,
+          {
+            class: ['base-drawer', { 'base-drawer-design': migrated }],
+            themeOverrides: mergedTheme.value,
+          },
+        ),
         slots,
       );
   },
@@ -34,8 +52,8 @@ export default defineComponent({
 </script>
 
 <style>
-.base-drawer,
-.base-drawer * {
+.base-drawer:not(.base-drawer-design),
+.base-drawer:not(.base-drawer-design) * {
   font-family:
     Inter,
     -apple-system,

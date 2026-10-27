@@ -88,9 +88,9 @@ function updateValues(values: Array<string | number>): void {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--design-text-secondary);
 }
 small {
-  color: #ffb4b4;
+  color: var(--design-color-error);
 }
 </style>

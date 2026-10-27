@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { designCssProperties } from '@/design/cssProperties';
 import { NModal, NScrollbar, NStep, NSteps } from 'naive-ui';
 
 const props = defineProps<{
@@ -22,6 +23,7 @@ watch(
 <template>
   <n-modal
     :show="show"
+    :style="designCssProperties"
     :mask-closable="false"
     :auto-focus="true"
     preset="card"
@@ -87,7 +89,7 @@ watch(
   cursor: pointer;
 }
 .step-button:focus-visible {
-  outline: 2px solid var(--selection-accent);
+  outline: 2px solid var(--design-color-interactive);
   outline-offset: 4px;
 }
 </style>
@@ -96,9 +98,11 @@ watch(
   width: min(700px, calc(100vw - 32px));
   height: min(800px, calc(100dvh - 110px));
   margin: 24px auto 90px;
-  background: var(--surface-panel);
-  border: 1px solid var(--surface-border);
-  border-radius: 12px;
+  background: var(--design-color-panel);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  font-family: var(--design-font-ui);
+  font-size: var(--design-text-body);
 }
 .base-step-modal.n-card > .n-card__content {
   display: flex;

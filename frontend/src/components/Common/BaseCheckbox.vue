@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { NCheckbox, type CheckboxProps } from 'naive-ui';
+import { useDesignScope } from '@/design/scope';
+import { designCheckboxTheme } from '@/design/creationControls';
+const migrated = useDesignScope();
 
 const themeOverrides: NonNullable<CheckboxProps['themeOverrides']> = {
   color: '#171e27',
@@ -40,10 +43,11 @@ function updateChecked(event: Event): void {
     v-if="indeterminate !== undefined"
     v-bind="$attrs"
     class="base-checkbox"
+    :class="{ 'base-checkbox-design': migrated }"
     :checked="checked"
     :disabled="disabled"
     :indeterminate="indeterminate"
-    :theme-overrides="themeOverrides"
+    :theme-overrides="migrated ? designCheckboxTheme : themeOverrides"
     @update:checked="emit('update:checked', $event)"
     ><slot
   /></n-checkbox>
@@ -51,7 +55,10 @@ function updateChecked(event: Event): void {
     v-else
     :is="$slots.default ? 'label' : 'span'"
     class="base-checkbox"
-    :class="{ 'base-checkbox-disabled': disabled }"
+    :class="{
+      'base-checkbox-disabled': disabled,
+      'base-checkbox-design': migrated,
+    }"
   >
     <input
       v-bind="$attrs"
@@ -141,5 +148,38 @@ function updateChecked(event: Event): void {
 .base-checkbox-input:focus-visible {
   outline: 2px solid #63d2b0;
   outline-offset: 3px;
+}
+
+.base-checkbox-design {
+  gap: var(--design-space-sm);
+  font-family: var(--design-font-ui);
+  font-size: var(--design-text-body);
+  color: var(--design-color-body);
+}
+.base-checkbox-design.base-checkbox-disabled {
+  color: var(--design-color-disabled-text);
+}
+.base-checkbox-design .base-checkbox-input {
+  border-color: var(--design-color-control-border);
+  border-radius: var(--design-space-xs);
+  background: var(--design-color-inset);
+}
+.base-checkbox-design .base-checkbox-input:not(:disabled):hover,
+.base-checkbox-design .base-checkbox-input:checked {
+  border-color: var(--design-color-interactive);
+}
+.base-checkbox-design .base-checkbox-input:checked {
+  background: var(--design-color-interactive);
+}
+.base-checkbox-design .base-checkbox-input:checked::after {
+  border-color: var(--design-color-on-interactive);
+}
+.base-checkbox-design .base-checkbox-input:disabled {
+  background: var(--design-color-disabled);
+  border-color: var(--design-color-disabled-border);
+}
+.base-checkbox-design .base-checkbox-input:focus-visible,
+.base-checkbox-design:deep(.n-checkbox-box--focus) {
+  outline-color: var(--design-color-interactive);
 }
 </style>

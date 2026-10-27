@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { NButton, NDatePicker } from 'naive-ui';
+import BaseDatePicker from './BaseDatePicker.vue';
+import { NButton } from 'naive-ui';
 defineProps<{ start: string; end: string }>();
 const emit = defineEmits<{
   'update:start': [value: string | null];
@@ -37,7 +38,7 @@ function applyDatePreset(months: number) {
     <div class="date-inputs">
       <label
         ><span class="visually-hidden">Start date (UTC)</span
-        ><n-date-picker
+        ><BaseDatePicker
           :formatted-value="start || null"
           data-testid="creation-start"
           @update:formatted-value="emit('update:start', $event)"
@@ -53,7 +54,7 @@ function applyDatePreset(months: number) {
       >
       <label
         ><span class="visually-hidden">End date (UTC)</span
-        ><n-date-picker
+        ><BaseDatePicker
           :formatted-value="end || null"
           data-testid="creation-end"
           @update:formatted-value="emit('update:end', $event)"
@@ -86,7 +87,7 @@ function applyDatePreset(months: number) {
 .date-range legend {
   padding: 0;
   margin-bottom: 7px;
-  font-size: 12px;
+  font-size: var(--design-text-secondary);
 }
 .date-inputs {
   display: grid;
@@ -95,7 +96,7 @@ function applyDatePreset(months: number) {
   gap: 10px;
 }
 .date-divider {
-  color: #98a5b5;
+  color: var(--design-color-muted);
 }
 .preset-buttons {
   display: flex;
@@ -118,6 +119,6 @@ label {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--design-text-secondary);
 }
 </style>

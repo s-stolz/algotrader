@@ -35,13 +35,6 @@
         "      '/api/data-accessor/candles/EURUSD?timeframe=M5&start_ms=1000&end_ms=2000&limit=10&exchange=FX',"
       ]
     },
-    "test/components/Common/BaseCheckbox.spec.ts": {
-      "ticket": 25,
-      "countedLines": 36,
-      "width": [
-        "  it('updates checked state through its labeled native input and forwards input attributes', async () => {"
-      ]
-    },
     "test/components/Common/BaseGroupedSelect.spec.ts": {
       "ticket": 25,
       "countedLines": 81,
