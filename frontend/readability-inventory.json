@@ -120,13 +120,6 @@
         "  it('loads indicators through the typed client and requests indicators with market context', async () => {"
       ]
     },
-    "test/components/TopBar/Modals/Upload/UploadDataModal.spec.ts": {
-      "ticket": 27,
-      "countedLines": 172,
-      "width": [
-        "  it('loads preview mapping from selected files, clears it on remove, and emits after upload', async () => {"
-      ]
-    },
     "test/components/TopBar/TimeframeDropdown.spec.ts": {
       "ticket": 25,
       "countedLines": 33,

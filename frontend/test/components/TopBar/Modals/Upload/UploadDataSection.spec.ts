@@ -90,5 +90,20 @@ describe('UploadDataSection', () => {
         },
       }),
     ).toBe(false);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get('[role="alert"]').text()).toContain('100MB limit');
+    expect(
+      section.beforeUpload({
+        file: {
+          id: 'valid',
+          name: 'valid.csv',
+          status: 'pending',
+          size: 1024,
+        },
+      }),
+    ).toBe(true);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 });

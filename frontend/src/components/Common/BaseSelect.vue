@@ -3,24 +3,29 @@ import { computed, defineComponent, h, mergeProps } from 'vue';
 import { NPopover, NSelect, selectProps } from 'naive-ui';
 import { baseSelectTheme } from './baseSelectTheme';
 import { selectionColors, selectionPopoverTheme } from './selectionTheme';
+import { designSelectTheme } from '@/design/naiveTheme';
+import { designCssProperties } from '@/design/cssProperties';
+import { useDesignScope } from '@/design/scope';
 
 export default defineComponent({
   name: 'BaseSelect',
   inheritAttrs: false,
   props: selectProps,
   setup(props, { attrs, slots }) {
+    const usesDesign = useDesignScope();
+    const theme = usesDesign ? designSelectTheme : baseSelectTheme;
     const mergedTheme = computed(() => ({
-      ...baseSelectTheme,
+      ...theme,
       ...props.themeOverrides,
       peers: {
-        ...baseSelectTheme.peers,
+        ...theme.peers,
         ...props.themeOverrides?.peers,
         InternalSelection: {
-          ...baseSelectTheme.peers?.InternalSelection,
+          ...theme.peers?.InternalSelection,
           ...props.themeOverrides?.peers?.InternalSelection,
         },
         InternalSelectMenu: {
-          ...baseSelectTheme.peers?.InternalSelectMenu,
+          ...theme.peers?.InternalSelectMenu,
           ...props.themeOverrides?.peers?.InternalSelectMenu,
         },
       },
@@ -45,7 +50,13 @@ export default defineComponent({
     });
     const menuProps = computed(() => ({
       ...props.menuProps,
-      class: ['base-select-menu', props.menuProps?.class],
+      class: [
+        usesDesign ? 'base-select-menu--design' : 'base-select-menu',
+        props.menuProps?.class,
+      ],
+      style: usesDesign
+        ? [designCssProperties, props.menuProps?.style]
+        : props.menuProps?.style,
     }));
     return () =>
       h(
@@ -86,7 +97,13 @@ export default defineComponent({
     'Segoe UI',
     sans-serif;
 }
-/* Also covers Naive UI's pagination size selector, which shares baseSelectTheme. */
+.base-select-menu--design,
+.base-select-menu--design * {
+  font-family: var(--design-font-ui);
+}
+/* Naive's input text has no supported hover/focus text theme role.
+   Keep this compatibility override here with its owning control.
+   Also covers Naive UI's pagination size selector, which shares baseSelectTheme. */
 .n-select
   .n-base-selection:not(.n-base-selection--disabled):is(
     :hover,

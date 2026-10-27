@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadFileInfo } from 'naive-ui';
@@ -109,7 +109,7 @@ describe('UploadDataModal', () => {
     vi.mocked(uploadCandlesInBatches).mockResolvedValue();
   });
 
-  it('loads preview mapping from selected files, clears it on remove, and emits after upload', async () => {
+  it('previews selected files, clears removed mapping, and emits after upload', async () => {
     const file = new File(
       [
         'timestamp,open,high,low,close,volume\n2024-01-01T00:00:00Z,1,2,0.5,1.5,100\n',
@@ -185,5 +185,47 @@ describe('UploadDataModal', () => {
       expect.any(Function),
     );
     expect(wrapper.emitted('upload-successful')).toEqual([[market]]);
+  });
+
+  it('shows upload failures in the dialog and retains the file for retry', async () => {
+    const wrapper = mount(UploadDataModal, {
+      props: { market },
+      global: {
+        stubs: {
+          BaseModal: BaseModalStub,
+          NButton: NButtonStub,
+          NTabPane: PassthroughStub,
+          NTabs: PassthroughStub,
+          UploadDataPreview: true,
+          UploadDataSection: true,
+        },
+      },
+    });
+    const file = new File(['timestamp,open'], 'candles.csv');
+    await wrapper
+      .getComponent({ name: 'UploadDataSection' })
+      .vm.$emit('file-change', {
+        file: uploadInfo(file),
+        fileList: [uploadInfo(file)],
+        event: undefined,
+      });
+    await flushPromises();
+    vi.mocked(parseCsvToCandles).mockRejectedValueOnce(
+      new Error('Invalid timestamp'),
+    );
+    await wrapper.get('.button-upload').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'Error uploading data: Invalid timestamp',
+    );
+    expect(
+      wrapper.get('.button-upload').attributes('disabled'),
+    ).toBeUndefined();
+    expect(wrapper.emitted('upload-successful')).toBeUndefined();
+    await wrapper.get('.button-upload').trigger('click');
+    await flushPromises();
+    expect(wrapper.emitted('upload-successful')).toEqual([[market]]);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 });

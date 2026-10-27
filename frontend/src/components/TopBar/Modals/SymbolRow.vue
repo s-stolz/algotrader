@@ -16,6 +16,7 @@
       >
         <n-button
           text
+          circle
           size="small"
           :aria-label="`Actions for ${market.symbol}`"
           @click.stop
@@ -98,27 +99,28 @@ tr {
 .actions-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--design-space-sm);
   line-height: 20px;
 }
 
 .market-info {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--design-space-xs);
 }
 
 td {
-  padding: 12px 15px;
+  padding: var(--design-space-md) var(--design-space-lg);
   line-height: 20px;
 }
 
 .market-type {
-  font-size: x-small;
+  font-size: var(--design-text-secondary);
+  color: var(--design-color-muted);
   vertical-align: middle;
 }
 
 tr[aria-selected='true'] .symbol-cell {
-  box-shadow: inset 2px 0 var(--selection-accent);
+  box-shadow: inset 2px 0 var(--design-color-interactive);
 }
 </style>

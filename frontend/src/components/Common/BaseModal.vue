@@ -2,6 +2,7 @@
   <div
     v-if="isModalOpen"
     class="modal-backdrop"
+    :class="{ 'modal-backdrop--design': usesDesign }"
     @mousedown="onMouseDown"
     @mouseup="onMouseUp"
   >
@@ -14,6 +15,8 @@
           <h2 class="title">{{ title }}</h2>
           <n-button
             text
+            :circle="usesDesign"
+            aria-label="Close dialog"
             class="close-button"
             @click="close"
           >
@@ -42,6 +45,7 @@ import { computed, ref } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
 
 import { CloseCircleOutline } from '@/icons';
+import { useDesignScope } from '@/design/scope';
 import { useModalStore } from '@/stores/modalStore';
 
 defineOptions({
@@ -60,6 +64,7 @@ const props = withDefaults(
   },
 );
 
+const usesDesign = useDesignScope();
 const modalStore = useModalStore();
 const isMouseDownInside = ref(false);
 const isModalOpen = computed(() => modalStore.isModalOpen(props.modalId));
@@ -155,5 +160,56 @@ defineExpose({ close });
 
 .close-button:hover {
   color: #e98b8b;
+}
+
+.modal-backdrop--design {
+  background: var(--design-color-backdrop);
+  box-sizing: border-box;
+  padding: var(--design-space-sm);
+  font-family: var(--design-font-ui);
+  font-size: var(--design-text-body);
+  color: var(--design-color-body);
+}
+
+.modal-backdrop--design .modal {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  background: var(--design-color-panel);
+  border-color: var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  box-shadow: var(--design-shadow-overlay);
+}
+
+.modal-backdrop--design .modal-header,
+.modal-backdrop--design .modal-footer {
+  flex-shrink: 0;
+}
+
+.modal-backdrop--design .modal-header {
+  gap: var(--design-space-sm);
+}
+
+.modal-backdrop--design .title {
+  padding: var(--design-space-md) var(--design-space-lg);
+  padding-right: calc(var(--design-control-medium) + var(--design-space-lg));
+  font-size: var(--design-text-heading);
+}
+
+.modal-backdrop--design .modal-footer {
+  padding: var(--design-space-md) var(--design-space-lg);
+}
+
+.modal-backdrop--design .separator {
+  background: var(--design-color-border);
+}
+
+.modal-backdrop--design .close-button {
+  top: var(--design-space-sm);
+  right: var(--design-space-sm);
+}
+
+.modal-backdrop--design .close-button:hover {
+  color: var(--design-color-error);
 }
 </style>

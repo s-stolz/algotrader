@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useModalStore } from '@/stores/modalStore';
 
+import DesignScope from '@/components/Common/DesignScope.vue';
 import BaseModal from '@/components/Common/BaseModal.vue';
 
 const NButtonStub = defineComponent({
@@ -88,5 +89,34 @@ describe('BaseModal', () => {
 
     expect(wrapper.find('.modal-footer').exists()).toBe(false);
     expect(wrapper.findAll('.separator')).toHaveLength(1);
+  });
+
+  it('preserves backdrop press handling inside the migrated scope', async () => {
+    const modalStore = useModalStore();
+    modalStore.openModal('symbolSearch');
+    const wrapper = mount(DesignScope, {
+      slots: {
+        default: () =>
+          h(
+            BaseModal,
+            {
+              modalId: 'symbolSearch',
+              title: 'Symbol',
+            },
+            { default: () => h('p', 'Body') },
+          ),
+      },
+    });
+    expect(wrapper.get('.modal-backdrop').classes()).toContain(
+      'modal-backdrop--design',
+    );
+    const backdrop = wrapper.get('.modal-backdrop');
+    await wrapper.get('.modal').trigger('mousedown');
+    await backdrop.trigger('mouseup');
+    expect(modalStore.activeModal).toBe('symbolSearch');
+    await backdrop.trigger('mousedown');
+    await backdrop.trigger('mouseup');
+    expect(modalStore.activeModal).toBeNull();
+    wrapper.unmount();
   });
 });

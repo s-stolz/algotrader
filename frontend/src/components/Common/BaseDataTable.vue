@@ -8,6 +8,9 @@ import {
   type DataTableProps,
 } from 'naive-ui';
 
+import { designTableTheme } from '@/design/naiveTheme';
+import { useDesignScope } from '@/design/scope';
+
 const themeOverrides: NonNullable<DataTableProps['themeOverrides']> = {
   tdColor: 'var(--surface-panel)',
   tdColorStriped: 'var(--surface-striped)',
@@ -53,8 +56,9 @@ export default defineComponent({
     rowHover: { type: Boolean, default: true },
   },
   setup(props, { attrs, slots }) {
+    const usesDesign = useDesignScope();
     const mergedTheme = computed(() => ({
-      ...themeOverrides,
+      ...(usesDesign ? designTableTheme : themeOverrides),
       ...props.themeOverrides,
     }));
 
@@ -66,7 +70,10 @@ export default defineComponent({
             mergeProps(attrs, {
               class: [
                 'base-data-table',
-                { 'base-data-table--row-hover': props.rowHover },
+                {
+                  'base-data-table--row-hover': props.rowHover,
+                  'base-data-table--design': usesDesign,
+                },
               ],
             }),
             [
@@ -109,7 +116,10 @@ export default defineComponent({
             mergeProps(attrs, tableProps, {
               class: [
                 'base-data-table',
-                { 'base-data-table--row-hover': props.rowHover },
+                {
+                  'base-data-table--row-hover': props.rowHover,
+                  'base-data-table--design': usesDesign,
+                },
               ],
               bordered: props.bordered ?? false,
               themeOverrides: mergedTheme.value,
@@ -124,10 +134,18 @@ export default defineComponent({
 <style scoped>
 .base-data-table {
   font-variant-numeric: tabular-nums;
+  --table-heading-size: 11px;
+  --table-focus: #63d2b0;
 }
 
+.base-data-table--design {
+  --table-heading-size: var(--design-text-secondary);
+  --table-focus: var(--design-color-interactive);
+}
+
+/* Naive exposes a shared cell font size; headers need the secondary role. */
 .base-data-table :deep(.n-table th) {
-  font-size: 11px;
+  font-size: var(--table-heading-size);
   letter-spacing: 0.025em;
 }
 
@@ -151,7 +169,7 @@ export default defineComponent({
 }
 
 .base-data-table :deep(.n-data-table-th) {
-  font-size: 11px;
+  font-size: var(--table-heading-size);
   letter-spacing: 0.025em;
 }
 
@@ -171,7 +189,7 @@ export default defineComponent({
 }
 
 .base-data-table :deep(.n-data-table-tr:focus-visible) {
-  outline: 2px solid #63d2b0;
+  outline: 2px solid var(--table-focus);
   outline-offset: -2px;
 }
 </style>

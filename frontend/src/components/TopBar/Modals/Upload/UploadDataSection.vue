@@ -1,5 +1,13 @@
 <template>
   <div>
+    <n-alert
+      v-if="fileError"
+      type="error"
+      class="upload-feedback"
+      role="alert"
+    >
+      {{ fileError }}
+    </n-alert>
     <n-upload
       ref="upload"
       :file-list="fileList"
@@ -18,12 +26,12 @@
             <CloudUploadOutline />
           </n-icon>
         </div>
-        <n-text style="font-size: 16px">
+        <n-text class="upload-instruction">
           Click or drag a file to this area to upload
         </n-text>
         <n-p
           depth="3"
-          style="margin: 8px 0 0 0"
+          class="upload-limits"
         >
           Supported formats: CSV or TSV<br />
           Maximum file size: 100MB
@@ -34,7 +42,9 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import {
+  NAlert,
   NIcon,
   NP,
   NText,
@@ -72,12 +82,16 @@ const emit = defineEmits<{
   (event: 'file-remove'): void;
 }>();
 
+const fileError = ref('');
+
 function beforeUpload(data: BeforeUploadData): boolean {
+  fileError.value = '';
   const maxSize = 100 * 1024 * 1024;
   const fileSize = data.file.file?.size ?? data.file.size ?? 0;
 
   if (fileSize > maxSize) {
-    console.error('File size exceeds 100MB limit');
+    fileError.value = 'File size exceeds 100MB limit';
+    console.error(fileError.value);
     return false;
   }
 
@@ -89,6 +103,22 @@ function handleFileChange(data: Parameters<UploadOnChange>[0]): void {
 }
 
 function handleFileRemove(): void {
+  fileError.value = '';
   emit('file-remove');
 }
 </script>
+
+<style scoped>
+.upload-feedback {
+  margin-bottom: var(--design-space-md);
+}
+
+.upload-instruction {
+  font-size: var(--design-text-heading);
+}
+
+.upload-limits {
+  margin: var(--design-space-sm) 0 0;
+  font-size: var(--design-text-secondary);
+}
+</style>
