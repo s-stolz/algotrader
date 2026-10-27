@@ -1,10 +1,59 @@
 import { mount } from '@vue/test-utils';
-import { NButton, NConfigProvider } from 'naive-ui';
+import { darkTheme, NAlert, NButton, NConfigProvider } from 'naive-ui';
 import { h } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import DesignScope from '@/components/Common/DesignScope.vue';
+import { designTokens } from '@/design/tokens';
 
 describe('DesignScope', () => {
+  it('uses the shared error role for alerts while preserving legacy alerts', () => {
+    const wrapper = mount(NConfigProvider, {
+      props: { theme: darkTheme },
+      slots: {
+        default: () => [
+          h(DesignScope, null, {
+            default: () =>
+              h(
+                NAlert,
+                { type: 'error', 'data-feedback': 'scoped' },
+                {
+                  default: () => 'Upload failed',
+                },
+              ),
+          }),
+          h(
+            NAlert,
+            { type: 'error', 'data-feedback': 'legacy' },
+            {
+              default: () => 'Legacy error',
+            },
+          ),
+        ],
+      },
+    });
+    const scoped = wrapper.get('[data-feedback="scoped"]')
+      .element as HTMLElement;
+    const legacy = wrapper.get('[data-feedback="legacy"]')
+      .element as HTMLElement;
+
+    expect(scoped.style.getPropertyValue('--n-icon-color')).toBe(
+      designTokens.color.error,
+    );
+    expect(scoped.style.getPropertyValue('--n-color')).toBe(
+      'rgba(233, 139, 139, 0.25)',
+    );
+    expect(scoped.style.getPropertyValue('--n-border')).toBe(
+      '1px solid rgba(233, 139, 139, 0.35)',
+    );
+    expect(legacy.style.getPropertyValue('--n-icon-color')).toBe(
+      darkTheme.common.errorColorSuppl,
+    );
+    expect(legacy.style.getPropertyValue('--n-color')).toBe(
+      'rgba(208, 58, 82, 0.25)',
+    );
+    wrapper.unmount();
+  });
+
   it('provides the selected visual roles without changing control events', async () => {
     const onClick = vi.fn();
     const wrapper = mount(DesignScope, {

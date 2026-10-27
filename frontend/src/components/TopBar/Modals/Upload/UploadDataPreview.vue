@@ -24,6 +24,7 @@
               :value="columnMapping[index]"
               :options="columnOptions"
               placeholder="Select field"
+              :aria-label="`Field for ${column}`"
               clearable
               @update:value="(value) => updateColumnMapping(index, value)"
             />
@@ -78,7 +79,7 @@ function updateColumnMapping(
 
 <style scoped>
 .upload-data-preview {
-  margin-bottom: 24px;
+  margin-bottom: var(--design-space-xl);
 }
 
 td {

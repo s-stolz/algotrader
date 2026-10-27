@@ -3,6 +3,9 @@ import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h, type PropType } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NInput } from 'naive-ui';
+import BaseSelect from '@/components/Common/BaseSelect.vue';
+import { useModalStore } from '@/stores/modalStore';
 import { createMarket } from '@/api/marketClient';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { MarketCreatePayload } from '@/types/contracts';
@@ -174,5 +177,33 @@ describe('SymbolFormModal', () => {
     };
     expect(createMarket).toHaveBeenCalledWith(expectedPayload);
     expect(marketsStore.fetch).toHaveBeenCalledOnce();
+  });
+
+  it('keeps invalid fields visible and submits the corrected normalized values', async () => {
+    useModalStore().openModal('symbolForm');
+    vi.spyOn(useMarketsStore(), 'fetch').mockResolvedValue();
+    const wrapper = mount(SymbolFormModal);
+    await wrapper.get('.new-symbol-button').trigger('click');
+    expect(createMarket).not.toHaveBeenCalled();
+    expect(
+      wrapper
+        .findAllComponents(NInput)
+        .slice(0, 2)
+        .map((input) => input.props('status')),
+    ).toEqual(['error', 'error']);
+    await wrapper.get('input[placeholder="Symbol"]').setValue(' eurusd ');
+    await wrapper.get('input[placeholder="Exchange"]').setValue(' fx ');
+    wrapper.getComponent(BaseSelect).vm.$emit('update:value', 'Forex');
+    await wrapper.get('.new-symbol-button').trigger('click');
+    await flushPromises();
+    expect(createMarket).toHaveBeenCalledWith({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      min_move: 0.00001,
+      market_type: 'Forex',
+      timezone: 'UTC',
+    });
+    expect(useModalStore().activeModal).toBeNull();
+    wrapper.unmount();
   });
 });

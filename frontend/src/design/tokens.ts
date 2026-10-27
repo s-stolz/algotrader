@@ -2,6 +2,7 @@
 export const designTokens = {
   color: {
     panel: '#131722',
+    backdrop: 'rgba(0, 0, 0, .5)',
     inset: '#171e27',
     border: '#2b3541',
     body: '#dce4ed',
