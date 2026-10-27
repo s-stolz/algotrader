@@ -255,7 +255,7 @@ describe('ChartManager', () => {
     expect(series.detachPrimitive).toHaveBeenCalledWith(primitive);
   });
 
-  it('attaches, updates, and clears a transient measurement overlay without disturbing markers or protective lines', () => {
+  it('updates measurement while retaining markers and protective lines', () => {
     const manager = new ChartManager();
     manager.init(document.createElement('div'));
     const series = chartMocks.createSeriesApi();
@@ -426,7 +426,7 @@ describe('ChartManager', () => {
     expect(chartMocks.chart.remove).toHaveBeenCalled();
   });
 
-  it('disables pressed-drag scroll without dropping wheel options and restores prior options', () => {
+  it('preserves wheel options while toggling pressed-drag scrolling', () => {
     const manager = new ChartManager();
     const previousHandleScroll = {
       mouseWheel: true,

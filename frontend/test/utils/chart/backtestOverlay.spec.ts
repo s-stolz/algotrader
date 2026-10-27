@@ -246,7 +246,7 @@ describe('backtest chart overlay utilities', () => {
     ]);
   });
 
-  it('builds red stop-loss and blue take-profit segments from persisted closed trade fields', () => {
+  it('builds protective segments from saved Closed Trade prices', () => {
     const segments = buildBacktestProtectiveLineSegments([
       closedTrade({
         trade_id: 'signal-with-protection',
