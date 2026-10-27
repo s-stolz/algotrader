@@ -1,8 +1,10 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { NPopover } from 'naive-ui';
+import { h } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 
 import BasePopover from '@/components/Common/BasePopover.vue';
+import DesignScope from '@/components/Common/DesignScope.vue';
 
 describe('BasePopover', () => {
   it('preserves popover slots, sizing, and show updates with the drawer theme', async () => {
@@ -41,5 +43,56 @@ describe('BasePopover', () => {
       }),
     );
     wrapper.unmount();
+  });
+
+  it('keeps legacy overlays separate from an explicitly migrated overlay', async () => {
+    const legacy = mount(BasePopover, {
+      props: { show: true },
+      slots: { trigger: '<button>Legacy</button>', default: 'Legacy content' },
+    });
+    const migrated = mount(DesignScope, {
+      slots: {
+        default: () =>
+          h(
+            BasePopover,
+            { show: true },
+            {
+              trigger: () => h('button', 'Migrated'),
+              default: () => 'Migrated content',
+            },
+          ),
+      },
+    });
+    try {
+      await flushPromises();
+      const overlays = Array.from(
+        document.querySelectorAll<HTMLElement>('.base-popover'),
+      );
+      const legacyOverlay = overlays.find((entry) =>
+        entry.textContent?.includes('Legacy content'),
+      );
+      const migratedOverlay = overlays.find((entry) =>
+        entry.textContent?.includes('Migrated content'),
+      );
+      expect(legacyOverlay?.classList.contains('base-popover--design')).toBe(
+        false,
+      );
+      expect(legacyOverlay?.style.getPropertyValue('--design-font-ui')).toBe(
+        '',
+      );
+      expect(migratedOverlay?.style.getPropertyValue('--design-font-ui')).toBe(
+        'Tektur, sans-serif',
+      );
+      expect(
+        migrated.getComponent(NPopover).props('themeOverrides'),
+      ).toMatchObject({
+        color: '#131722',
+        textColor: '#dce4ed',
+        fontSize: '13px',
+      });
+    } finally {
+      migrated.unmount();
+      legacy.unmount();
+    }
   });
 });

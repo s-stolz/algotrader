@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
+import DesignScope from '@/components/Common/DesignScope.vue';
+
+const backtestIconPath = [
+  'M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1.2 2h13.6',
+  'a1.3 1.3 0 0 0 1.2-2L14 9V3M8 14h8M10 17h.01M14 19h.01',
+].join('');
 
 const route = useRoute();
 const screen = ref<HTMLElement | null>(null);
@@ -21,52 +27,54 @@ watch(
 
 <template>
   <div class="workspace-navigation">
-    <RouterLink
-      :key="destination"
-      :to="destination"
-      :aria-label="destinationLabel"
-      aria-controls="workspace-screen"
-      class="workspace-edge-link"
-      :class="
-        isChart ? 'workspace-edge-link--right' : 'workspace-edge-link--left'
-      "
-    >
-      <span
-        class="workspace-edge-face"
-        aria-hidden="true"
+    <DesignScope>
+      <RouterLink
+        :key="destination"
+        :to="destination"
+        :aria-label="destinationLabel"
+        aria-controls="workspace-screen"
+        class="workspace-edge-link"
+        :class="
+          isChart ? 'workspace-edge-link--right' : 'workspace-edge-link--left'
+        "
       >
-        <svg
-          class="destination-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+        <span
+          class="workspace-edge-face"
+          aria-hidden="true"
         >
-          <path
-            v-if="isChart"
-            d="M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1.2 2h13.6a1.3 1.3 0 0 0 1.2-2L14 9V3M8 14h8M10 17h.01M14 19h.01"
-          />
-          <path
-            v-else
-            d="M3 3v18h18M7 15l4-5 4 3 6-8"
-          />
-        </svg>
-        <span class="icon-divider" />
-        <svg
-          class="direction-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="m9 6 6 6-6 6" />
-        </svg>
-      </span>
-    </RouterLink>
+          <svg
+            class="destination-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              v-if="isChart"
+              :d="backtestIconPath"
+            />
+            <path
+              v-else
+              d="M3 3v18h18M7 15l4-5 4 3 6-8"
+            />
+          </svg>
+          <span class="icon-divider" />
+          <svg
+            class="direction-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m9 6 6 6-6 6" />
+          </svg>
+        </span>
+      </RouterLink>
+    </DesignScope>
     <section
       id="workspace-screen"
       ref="screen"
@@ -116,7 +124,7 @@ watch(
   z-index: 20;
   width: 64px;
   height: 176px;
-  color: #66dfbd;
+  color: var(--design-color-interactive);
 }
 
 .workspace-edge-link::before {
@@ -124,8 +132,8 @@ watch(
   position: absolute;
   inset-block: 0;
   width: 5px;
-  background: #71879b66;
-  border: 1px solid #96b4c833;
+  background: var(--design-color-edge-rail);
+  border: 1px solid var(--design-color-edge-border);
   box-sizing: border-box;
 }
 
@@ -151,10 +159,10 @@ watch(
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: var(--design-space-xl);
   box-sizing: border-box;
-  background: var(--surface-fixed);
-  border: 1px solid #66dfbd60;
+  background: var(--design-color-fixed);
+  border: 1px solid var(--design-color-border);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -162,13 +170,13 @@ watch(
 
 .workspace-edge-link--left .workspace-edge-face {
   border-left: none;
-  border-radius: 0 16px 16px 0;
+  border-radius: 0 var(--design-radius-edge) var(--design-radius-edge) 0;
   transform: translateX(-100%);
 }
 
 .workspace-edge-link--right .workspace-edge-face {
   border-right: none;
-  border-radius: 16px 0 0 16px;
+  border-radius: var(--design-radius-edge) 0 0 var(--design-radius-edge);
   transform: translateX(100%);
 }
 
@@ -209,7 +217,7 @@ watch(
 .icon-divider {
   width: 14px;
   height: 1px;
-  background: #66dfbd45;
+  background: var(--design-color-border);
 }
 
 @keyframes enter-chart {

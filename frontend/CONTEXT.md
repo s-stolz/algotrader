@@ -75,6 +75,8 @@ and behavior that is easy to break when changing them.
 
 ## Shared UI and Transport
 
+- Shared visual values and the temporary migration boundary follow
+  [design ownership](DESIGN.md). Opt in with `DesignScope` after structural work.
 - Use themed `Base*` controls in `src/components/Common/` for tables, drawers,
   selects, grouped selects, dropdowns, popovers, and checkboxes. Shared styling
   lives there and in `src/assets/main.css`; extend these surfaces for consistent

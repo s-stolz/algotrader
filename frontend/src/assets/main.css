@@ -1,17 +1,17 @@
 :root {
-  --selection-accent: #63e2b7;
-  --surface-panel: #131722;
-  --surface-inset: #171e27;
-  --surface-header: #222a38;
-  --surface-header-hover: #2d384b;
-  --surface-striped: #131722;
-  --surface-hover: #253340;
-  --surface-sorted: #131722;
-  --surface-border: #2b3541;
-  --surface-fixed: #1b2230;
-  --surface-fixed-hover: #2b3648;
-  --surface-header-fixed: #2a3445;
-  --surface-header-fixed-hover: #344157;
+  --selection-accent: var(--design-color-interactive);
+  --surface-panel: var(--design-color-panel);
+  --surface-inset: var(--design-color-inset);
+  --surface-header: var(--design-color-header);
+  --surface-header-hover: var(--design-color-header-hover);
+  --surface-striped: var(--design-color-panel);
+  --surface-hover: var(--design-color-hover);
+  --surface-sorted: var(--design-color-panel);
+  --surface-border: var(--design-color-border);
+  --surface-fixed: var(--design-color-fixed);
+  --surface-fixed-hover: var(--design-color-fixed-hover);
+  --surface-header-fixed: var(--design-color-selected);
+  --surface-header-fixed-hover: var(--design-color-selected-hover);
 }
 
 @font-face {
@@ -24,7 +24,7 @@
 }
 
 body {
-  background-color: #131722;
+  background-color: var(--surface-panel);
   color: #ffffffd1;
 }
 
