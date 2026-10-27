@@ -70,8 +70,8 @@ const {
 .filters {
   display: grid;
   grid-template-columns: minmax(220px, 2fr) repeat(6, minmax(110px, 1fr));
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: var(--design-space-sm);
+  margin-bottom: var(--design-space-xl);
 }
 @media (max-width: 1200px) {
   .filters {

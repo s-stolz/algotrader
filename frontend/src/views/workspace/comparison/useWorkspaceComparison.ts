@@ -1,7 +1,7 @@
 import { computed, h, ref, watch } from 'vue';
-import { NCheckbox } from 'naive-ui';
 import type { DataTableColumns, PaginationProps } from 'naive-ui';
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
+import { designTokens } from '@/design/tokens';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import { compareRuns, type ComparisonSortKey } from '../../backtestComparison';
 import { runName as comparisonRunLabel } from '../../backtestWorkspaceRuns';
@@ -61,7 +61,6 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
       { label: '100 rows', value: 100 },
       { label: 'All rows', value: ALL_ANALYSIS_ROWS },
     ],
-    selectProps: { menuProps: { class: 'base-select-menu' } },
     onChange: (page: number) => {
       analysisPage.value = page;
     },
@@ -111,11 +110,18 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
       };
     }),
   );
-  const analysisActionsWidth = computed(() =>
-    currentRows.value.some((run) => ['queued', 'running'].includes(run.status))
-      ? 92
-      : 68,
-  );
+  const analysisActionsWidth = computed(() => {
+    const count = currentRows.value.some((run) =>
+      ['queued', 'running'].includes(run.status),
+    )
+      ? 3
+      : 2;
+    return (
+      count * Number.parseInt(designTokens.control.small) +
+      (count - 1) * Number.parseInt(designTokens.space.xs) +
+      2 * Number.parseInt(designTokens.space.md)
+    );
+  });
   const selectableComparisonIds = computed(() =>
     visibleAnalysisRows.value
       .filter((run) => run.status === 'succeeded')
@@ -130,7 +136,7 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
   const comparisonColumns = computed<DataTableColumns<BacktestRun>>(() => [
     {
       title: () =>
-        h(NCheckbox, {
+        h(BaseCheckbox, {
           checked:
             selectableComparisonIds.value.length > 0 &&
             selectedComparisonCount.value ===
@@ -265,6 +271,7 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
     return {
       'data-testid': `workspace-member-${run.run_id}`,
       'aria-selected': selectedRunId.value === run.run_id,
+      style: { cursor: 'pointer' },
       tabindex: 0,
       onClick: select,
       onKeydown: (event: KeyboardEvent) => {

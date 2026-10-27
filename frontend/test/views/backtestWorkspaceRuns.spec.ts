@@ -128,7 +128,7 @@ describe('saved Backtest Run presentation', () => {
     },
   );
 
-  it('shows nonzero drawdown magnitude below display precision without changing zero or missing', () => {
+  it('shows tiny drawdown magnitude while preserving zero and missing values', () => {
     expect(formatMagnitude(-2.5, '%')).toBe('2.5%');
     expect(formatMagnitude(-0.004, '%')).toBe('0.004%');
     expect(formatMagnitude(0.004, '%')).toBe('0.004%');

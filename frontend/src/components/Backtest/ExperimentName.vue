@@ -178,10 +178,11 @@ async function saveCommittedDraft({
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--design-space-sm);
 }
 button {
   font: inherit;
+  font-family: var(--design-font-ui);
   color: inherit;
   background: none;
   border: none;
@@ -191,23 +192,24 @@ button {
 }
 button:focus-visible,
 input:focus-visible {
-  outline: 2px solid var(--color-primary, #63b3ed);
+  outline: 2px solid var(--design-color-interactive);
   outline-offset: 3px;
 }
 input {
   font: inherit;
+  font-family: var(--design-font-ui);
   color: inherit;
-  background: var(--surface-inset);
-  border: 1px solid var(--surface-border);
-  border-radius: 4px;
-  padding: 2px 6px;
+  background: var(--design-color-inset);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-control);
+  padding: var(--design-space-xs) var(--design-space-sm);
   width: min(32ch, 100%);
 }
 small {
-  font-size: 12px;
+  font-size: var(--design-text-secondary);
   font-weight: normal;
 }
 small[role='alert'] {
-  color: var(--color-error, #e88080);
+  color: var(--design-color-error);
 }
 </style>

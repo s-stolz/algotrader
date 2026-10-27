@@ -85,9 +85,10 @@
         <details class="request-details">
           <summary>Saved request and execution settings</summary>
           <dl>
-            <dt>Run ID</dt><dd>{{ selectedRun.run_id }}</dd>
+            <dt>Run ID</dt
+            ><dd class="technical-value">{{ selectedRun.run_id }}</dd>
             <dt>Strategy parameters</dt>
-            <dd>{{
+            <dd class="technical-value">{{
               JSON.stringify(selectedRun.request.strategy.parameters)
             }}</dd>
             <dt>Engine</dt><dd>{{ selectedRun.request.engine }}</dd>
@@ -96,7 +97,9 @@
             <dt>Allowed Directions</dt>
             <dd>{{ selectedRun.request.execution.allowed_directions }}</dd>
             <dt>Execution settings</dt>
-            <dd>{{ JSON.stringify(selectedRun.request.execution) }}</dd>
+            <dd class="technical-value">{{
+              JSON.stringify(selectedRun.request.execution)
+            }}</dd>
             <dt>Submitted</dt
             ><dd>{{ formatTimestamp(selectedRun.submitted_at_ms) }}</dd>
             <dt>Started</dt
@@ -146,32 +149,32 @@ function formatTimestamp(timestamp: number | null | undefined): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: var(--design-space-xl);
 }
 .section-heading p {
-  margin: 6px 0 0;
-  color: #8f9dab;
-  font-size: 13px;
+  margin: var(--design-space-sm) 0 0;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-body);
   overflow-wrap: anywhere;
 }
 .table-panel {
-  border: 1px solid var(--surface-border);
-  border-radius: 12px;
-  background: var(--surface-panel);
-  padding: 22px;
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  background: var(--design-color-panel);
+  padding: var(--design-space-xl);
   overflow: hidden;
 }
 .section-heading h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--design-text-heading);
   font-weight: 600;
 }
 .current-backtest {
-  margin-top: 24px;
+  margin-top: var(--design-space-xl);
 }
 .run-heading h2 {
-  margin: 0 0 12px;
-  font-size: 20px;
+  margin: 0 0 var(--design-space-md);
+  font-size: var(--design-text-heading);
   font-weight: 600;
   letter-spacing: -0.3px;
   overflow-wrap: anywhere;
@@ -183,43 +186,47 @@ function formatTimestamp(timestamp: number | null | undefined): string {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  color: #9aafbf;
-  font-size: 12px;
+  gap: var(--design-space-md);
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
 }
 .request-details {
-  margin-top: 24px;
-  padding: 16px;
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  background: var(--surface-inset);
+  margin-top: var(--design-space-xl);
+  padding: var(--design-space-lg);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  background: var(--design-color-inset);
 }
 .request-details summary {
   cursor: pointer;
-  color: #b7c8d6;
+  color: var(--design-color-body);
 }
 .request-details dl {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 8px 20px;
-  font-size: 12px;
+  gap: var(--design-space-sm) var(--design-space-xl);
+  font-size: var(--design-text-secondary);
 }
 .request-details dt {
-  color: #8f9dab;
+  color: var(--design-color-muted);
 }
 .request-details dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.technical-value {
+  font-family: var(--design-font-mono);
+  font-size: var(--design-text-id);
+}
 .run-error {
-  color: #f1b1a8;
-  padding: 12px 16px;
-  border-radius: 6px;
-  background: #35272b;
+  color: var(--design-color-error);
+  padding: var(--design-space-md) var(--design-space-lg);
+  border-radius: var(--design-radius-panel);
+  background: var(--design-color-inset);
 }
 @media (max-width: 700px) {
   .table-panel {
-    padding: 14px;
+    padding: var(--design-space-lg);
   }
   .section-heading {
     align-items: flex-start;

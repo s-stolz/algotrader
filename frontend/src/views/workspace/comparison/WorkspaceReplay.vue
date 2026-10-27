@@ -66,13 +66,13 @@ const {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 20px;
+  gap: var(--design-space-sm) var(--design-space-xl);
   padding: 0;
-  font-size: 12px;
-  color: #9aafbf;
+  font-size: var(--design-text-secondary);
+  color: var(--design-color-muted);
 }
 .curve-inspection {
   width: 100%;
-  margin-top: 24px;
+  margin-top: var(--design-space-xl);
 }
 </style>

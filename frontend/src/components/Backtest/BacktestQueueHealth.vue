@@ -268,7 +268,11 @@
         </section>
       </div>
       <p class="telemetry-note"
-        ><n-icon size="14"><information-circle-outline /></n-icon>
+        ><n-icon
+          class="telemetry-icon"
+          size="14"
+          ><information-circle-outline
+        /></n-icon>
         Queue positions are estimates and may change; no start time or ETA is
         promised.
       </p>

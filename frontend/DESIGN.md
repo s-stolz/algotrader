@@ -42,7 +42,7 @@ migration work, not a second theme to extend.
 | Workspace edge navigation and Timeframe picker | #25, explicit `DesignScope` |
 | Chart workflow, Indicator controls, canvas labels | #26 |
 | Market dialogs and their controls | #27, explicit `DesignScope` |
-| Backtest Workspace history/results and overlays | #28 |
+| Backtest Workspace history/results and overlays | #28, explicit `DesignScope` |
 | Backtest creation and its overlays | #29, explicit `DesignScope` |
 | Root compatibility provider and legacy theme branches | #30 removal |
 
@@ -71,3 +71,18 @@ select menus and dropdown roots carry the derived CSS properties through their
 teleports. The provider owns input, upload, selection, and table settings through
 supported Naive themes. Unscoped callers retain the compatibility branch until
 their workflow migrates.
+
+The Backtest Workspace provides one `DesignScope` around history and inspection;
+its coordinator and comparison state retain their existing lifetimes. Batch,
+queue, name, and log presentation use the same semantic roles. Queue statistics,
+execution tabs, tooltips, and loading skeletons use supported provider themes.
+Comparison selection, including the indeterminate header, uses `BaseCheckbox`;
+log overlays inherit the shared drawer and table policy. Technical IDs and saved
+JSON use the monospace role independently from ordinary UI text.
+
+Equity Replay waits for the shared chart font readiness helper before creating
+canvases, renders the latest series after that wait, and cancels deferred work on
+unmount. Replay labels and crosshair surfaces use the authoritative roles; stable
+run hues retain their identity with saturation and lightness owned by chart
+tokens. Fixed action columns account for shared circular control sizes, gaps, and
+table padding so the controls remain reachable in horizontal scroll areas.

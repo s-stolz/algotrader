@@ -279,6 +279,7 @@ export function useBacktestWorkspace() {
       'aria-selected': isRun
         ? selectedRunId.value === entry.run.run_id
         : selectedBatchId.value === entry.batch.batch_id,
+      style: { cursor: 'pointer' },
       tabindex: 0,
       onClick: select,
       onKeydown: (event: KeyboardEvent) => {

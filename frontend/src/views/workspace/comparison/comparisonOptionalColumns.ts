@@ -179,7 +179,6 @@ export function createOptionalColumns(
               h(NSkeleton, {
                 width: 90,
                 height: 16,
-                themeOverrides: { color: '#253340', colorEnd: '#354757' },
               }),
             )
           : cell(

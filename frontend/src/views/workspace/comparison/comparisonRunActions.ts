@@ -29,7 +29,8 @@ export function createComparisonRunActions(workspace: BacktestWorkspace) {
           h(
             NButton,
             {
-              text: true,
+              quaternary: true,
+              circle: true,
               size: 'small',
               'data-testid': `workspace-log-${run.run_id}`,
               'aria-label': available
@@ -72,7 +73,8 @@ export function createComparisonRunActions(workspace: BacktestWorkspace) {
             h(
               NButton,
               {
-                text: true,
+                quaternary: true,
+                circle: true,
                 size: 'small',
                 'data-testid': `workspace-chart-${run.run_id}`,
                 'aria-label': `Open ${comparisonRunLabel(run)} on chart`,
@@ -103,7 +105,8 @@ export function createComparisonRunActions(workspace: BacktestWorkspace) {
                 h(
                   NButton,
                   {
-                    text: true,
+                    quaternary: true,
+                    circle: true,
                     size: 'small',
                     'data-testid': `workspace-cancel-${run.run_id}`,
                     'aria-label': `Cancel ${comparisonRunLabel(run)}`,

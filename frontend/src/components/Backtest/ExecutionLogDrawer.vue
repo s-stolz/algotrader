@@ -317,43 +317,44 @@ function close(): void {
 .log-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--design-space-xl);
 }
 .run-identity {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px 12px;
-  color: #8d9fae;
-  font-size: 12px;
+  gap: var(--design-space-sm) var(--design-space-md);
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
 }
 .run-identity span {
   font-weight: 500;
 }
 .run-identity code {
+  font-family: var(--design-font-mono);
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--design-text-id);
 }
 .log-toolbar {
-  padding: 0 18px 18px;
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  background: var(--surface-panel);
+  padding: 0 var(--design-space-lg) var(--design-space-lg);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  background: var(--design-color-panel);
 }
 .log-filters {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  padding-top: 18px;
+  gap: var(--design-space-lg);
+  padding-top: var(--design-space-lg);
 }
 .log-filter {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--design-space-sm);
   min-width: 0;
-  color: #9bafbe;
-  font-size: 12px;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
   font-weight: 500;
 }
 .table-scroll {
@@ -361,12 +362,12 @@ function close(): void {
 }
 @media (max-width: 600px) {
   .log-toolbar {
-    padding: 0 14px 14px;
+    padding: 0 var(--design-space-lg) var(--design-space-lg);
   }
   .log-filters {
     grid-template-columns: 1fr;
-    gap: 12px;
-    padding-top: 14px;
+    gap: var(--design-space-md);
+    padding-top: var(--design-space-lg);
   }
 }
 </style>

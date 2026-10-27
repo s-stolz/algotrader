@@ -37,6 +37,8 @@ export const designTokens = {
     sell: '#FF5252',
     stopLoss: '#dc2626',
     takeProfit: '#2563eb',
+    replaySaturation: '72%',
+    replayLightness: '62%',
   },
   font: {
     ui: 'Tektur, sans-serif',

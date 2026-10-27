@@ -34,6 +34,7 @@
         </div>
         <n-button
           v-if="canCreate"
+          class="history-create"
           type="primary"
           data-testid="workspace-create"
           @click="actions.create"
@@ -121,74 +122,74 @@ const historyRowProps = props.actions.rowProps;
 .workspace-summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin: 24px 0;
+  gap: var(--design-space-lg);
+  margin: var(--design-space-xl) 0;
 }
 .workspace-summary > div {
-  padding: 18px 22px;
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  background: var(--surface-panel);
+  padding: var(--design-space-lg) var(--design-space-xl);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  background: var(--design-color-panel);
 }
 .workspace-summary span {
   display: block;
-  color: #96a5b4;
-  font-size: 12px;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
 }
 .workspace-summary strong {
   display: block;
-  margin-top: 8px;
-  font-size: 27px;
+  margin-top: var(--design-space-sm);
+  font-size: var(--design-text-metric);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .failure-count {
-  color: #e7ae7b;
+  color: var(--design-color-warning);
 }
 .table-panel {
-  border: 1px solid var(--surface-border);
-  border-radius: 12px;
-  background: var(--surface-panel);
-  padding: 22px;
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  background: var(--design-color-panel);
+  padding: var(--design-space-xl);
   overflow: hidden;
 }
 .section-heading h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--design-text-heading);
   font-weight: 600;
 }
 .history-heading {
-  margin-bottom: 22px;
+  margin-bottom: var(--design-space-xl);
   flex-wrap: wrap;
 }
-.history-heading > .n-button {
+.history-create {
   flex-shrink: 0;
 }
 .history-title {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--design-space-md);
 }
 .section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: var(--design-space-xl);
 }
 .section-heading p {
-  margin: 6px 0 0;
-  color: #8f9dab;
-  font-size: 13px;
+  margin: var(--design-space-sm) 0 0;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-body);
   overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
   .workspace-summary {
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
+    gap: var(--design-space-sm);
   }
   .table-panel {
-    padding: 14px;
+    padding: var(--design-space-lg);
   }
   .section-heading {
     align-items: flex-start;

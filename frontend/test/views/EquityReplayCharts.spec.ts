@@ -1,7 +1,8 @@
-import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import EquityReplayCharts from '@/views/EquityReplayCharts.vue';
+import { designTokens } from '@/design/tokens';
 
 const {
   setData,
@@ -45,7 +46,12 @@ vi.mock('lightweight-charts', () => ({
 }));
 
 describe('EquityReplayCharts', () => {
+  const originalFonts = Object.getOwnPropertyDescriptor(document, 'fonts');
   beforeEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    if (originalFonts) Object.defineProperty(document, 'fonts', originalFonts);
+    else Reflect.deleteProperty(document, 'fonts');
+  });
 
   it('converts millisecond points at the chart boundary and keeps negative drawdown', () => {
     const wrapper = mount(EquityReplayCharts, {
@@ -64,6 +70,30 @@ describe('EquityReplayCharts', () => {
     });
 
     expect(createChart).toHaveBeenCalledTimes(2);
+    for (const call of [1, 2]) {
+      expect(createChart).toHaveBeenNthCalledWith(
+        call,
+        expect.any(HTMLElement),
+        expect.objectContaining({
+          layout: {
+            background: { color: designTokens.color.inset },
+            textColor: designTokens.color.muted,
+            fontFamily: designTokens.font.ui,
+            fontSize: Number.parseInt(designTokens.text.secondary),
+          },
+          crosshair: {
+            vertLine: {
+              color: designTokens.color.muted,
+              labelBackgroundColor: designTokens.color.inset,
+            },
+            horzLine: {
+              color: designTokens.color.muted,
+              labelBackgroundColor: designTokens.color.inset,
+            },
+          },
+        }),
+      );
+    }
     expect(setData).toHaveBeenNthCalledWith(1, [
       { time: 1_700_000_000, value: 100 },
       { time: 1_700_000_060, value: 95 },
@@ -194,5 +224,65 @@ describe('EquityReplayCharts', () => {
       addSeries.mock.calls[2]?.[1].color,
     );
     wrapper.unmount();
+  });
+
+  it('waits for the font and renders the latest series received during loading', async () => {
+    let finishLoad!: (faces: FontFace[]) => void;
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: {
+        check: () => false,
+        load: () =>
+          new Promise<FontFace[]>((resolve) => (finishLoad = resolve)),
+        ready: Promise.resolve(),
+      },
+    });
+    const wrapper = mount(EquityReplayCharts, {
+      props: { series: [{ runId: 'old', name: 'Old', points: [] }] },
+    });
+    expect(createChart).not.toHaveBeenCalled();
+    await wrapper.setProps({
+      series: [
+        {
+          runId: 'latest',
+          name: 'Latest',
+          points: [
+            { timestamp_ms: 1_700_000_060_123, equity: 95, drawdown_pct: -5 },
+          ],
+        },
+      ],
+    });
+    expect(createChart).not.toHaveBeenCalled();
+    finishLoad([]);
+    await flushPromises();
+    expect(createChart).toHaveBeenCalledTimes(2);
+    expect(setData).toHaveBeenNthCalledWith(1, [
+      { time: 1_700_000_060, value: 95 },
+    ]);
+    expect(setData).toHaveBeenNthCalledWith(2, [
+      { time: 1_700_000_060, value: -5 },
+    ]);
+    wrapper.unmount();
+    expect(remove).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels deferred canvas creation when unmounted before the font loads', async () => {
+    let finishLoad!: (faces: FontFace[]) => void;
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: {
+        check: () => false,
+        load: () =>
+          new Promise<FontFace[]>((resolve) => (finishLoad = resolve)),
+        ready: Promise.resolve(),
+      },
+    });
+    const wrapper = mount(EquityReplayCharts, { props: { series: [] } });
+    expect(createChart).not.toHaveBeenCalled();
+    wrapper.unmount();
+    finishLoad([]);
+    await flushPromises();
+    expect(createChart).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 });

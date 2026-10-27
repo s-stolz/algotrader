@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme-overrides="workspaceTheme">
+  <DesignScope>
     <main class="workspace">
       <header
         v-if="page === 'analysis'"
@@ -11,6 +11,7 @@
         >
           <n-button
             text
+            class="history-return"
             data-testid="workspace-history-return"
             @click="backToHistory"
           >
@@ -20,6 +21,7 @@
         </nav>
         <n-button
           type="primary"
+          class="workspace-create"
           data-testid="workspace-create"
           @click="creationOpen = true"
         >
@@ -86,22 +88,17 @@
         @close="logRun = null"
       />
     </main>
-  </n-config-provider>
+  </DesignScope>
 </template>
 
 <script setup lang="ts">
-import {
-  NButton,
-  NConfigProvider,
-  NIcon,
-  type GlobalThemeOverrides,
-} from 'naive-ui';
+import { NButton, NIcon } from 'naive-ui';
 import {
   ArrowBackOutline,
   AddOutline,
   RefreshOutline,
 } from '@vicons/ionicons5';
-import { baseSelectTheme } from '@/components/Common/baseSelectTheme';
+import DesignScope from '@/components/Common/DesignScope.vue';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
@@ -125,60 +122,47 @@ const {
 } = workspace;
 const { isRefreshing, readError } = workspace.history;
 const { cancelError, deleteError } = workspace.commands;
-const workspaceTheme: GlobalThemeOverrides = {
-  common: {
-    fontFamily:
-      'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
-  },
-  Select: baseSelectTheme,
-};
 </script>
 <style scoped>
 .workspace {
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+  font-family: var(--design-font-ui);
+  font-size: var(--design-text-body);
   min-height: 100%;
   box-sizing: border-box;
   max-width: 1800px;
   margin: 0 auto;
-  padding: 24px 30px 48px;
-  color: #dce4ed;
-}
-.workspace :deep(*) {
-  font-family: inherit;
+  padding: var(--design-space-xl) var(--design-space-xxl)
+    var(--design-space-xxl);
+  color: var(--design-color-body);
 }
 .workspace-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: var(--design-space-xl);
   min-height: 36px;
-  margin-bottom: 20px;
+  margin-bottom: var(--design-space-xl);
 }
 .section-heading p {
-  margin: 6px 0 0;
-  color: #8f9dab;
-  font-size: 13px;
+  margin: var(--design-space-sm) 0 0;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-body);
   overflow-wrap: anywhere;
 }
-.workspace-header > .n-button {
+.workspace-create {
   flex-shrink: 0;
   margin-left: auto;
 }
 .analysis-breadcrumb {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--design-space-lg);
   min-width: 0;
-  color: #8291a2;
-  font-size: 12px;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
 }
-.analysis-breadcrumb .n-button {
-  color: #9aafbf;
+.history-return {
+  color: var(--design-color-muted);
 }
 :deep(.run-identity) {
   min-width: 0;
@@ -190,15 +174,15 @@ const workspaceTheme: GlobalThemeOverrides = {
 }
 :deep(.run-identity small) {
   display: block;
-  color: #8190a0;
-  font-size: 10px;
-  font-family: monospace;
-  margin-top: 3px;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-id);
+  font-family: var(--design-font-mono);
+  margin-top: var(--design-space-xs);
 }
 :deep(.row-actions) {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--design-space-xs);
 }
 :deep(.run-chart-action) {
   display: inline-flex;
@@ -223,20 +207,18 @@ const workspaceTheme: GlobalThemeOverrides = {
   pointer-events: none;
 }
 :deep(.negative-metric) {
-  color: #f0aaa2;
+  color: var(--design-color-negative);
 }
 :deep(.positive-metric) {
-  color: #7dd5b4;
-}
-:deep(.n-data-table-tr) {
-  cursor: pointer;
+  color: var(--design-color-positive);
 }
 @media (max-width: 700px) {
   .workspace-header {
     flex-wrap: wrap;
   }
   .workspace {
-    padding: 16px 6px 32px;
+    padding: var(--design-space-lg) var(--design-space-sm)
+      var(--design-space-xxl);
   }
 }
 </style>

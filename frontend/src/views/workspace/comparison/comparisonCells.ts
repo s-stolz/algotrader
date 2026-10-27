@@ -1,4 +1,5 @@
 import { h } from 'vue';
+import { designTokens } from '@/design/tokens';
 import { NIcon, NTooltip } from 'naive-ui';
 import {
   TimeOutline,
@@ -80,16 +81,36 @@ export function directionPnl(run: BacktestRun, direction: 'long' | 'short') {
   );
 }
 const runStatusIcons = {
-  queued: { icon: TimeOutline, label: 'Queued', color: '#9aafbf' },
-  running: { icon: PlayCircleOutline, label: 'Running', color: '#70c0e8' },
-  cancelling: { icon: HourglassOutline, label: 'Cancelling', color: '#e8bc70' },
+  queued: {
+    icon: TimeOutline,
+    label: 'Queued',
+    color: designTokens.color.muted,
+  },
+  running: {
+    icon: PlayCircleOutline,
+    label: 'Running',
+    color: designTokens.color.info,
+  },
+  cancelling: {
+    icon: HourglassOutline,
+    label: 'Cancelling',
+    color: designTokens.color.warning,
+  },
   succeeded: {
     icon: CheckmarkCircleOutline,
     label: 'Succeeded',
-    color: '#7cd8b7',
+    color: designTokens.color.positive,
   },
-  failed: { icon: CloseCircleOutline, label: 'Failed', color: '#e88b8b' },
-  cancelled: { icon: BanOutline, label: 'Cancelled', color: '#9aafbf' },
+  failed: {
+    icon: CloseCircleOutline,
+    label: 'Failed',
+    color: designTokens.color.error,
+  },
+  cancelled: {
+    icon: BanOutline,
+    label: 'Cancelled',
+    color: designTokens.color.muted,
+  },
 } satisfies Record<
   BacktestRunStatus,
   { icon: typeof TimeOutline; label: string; color: string }

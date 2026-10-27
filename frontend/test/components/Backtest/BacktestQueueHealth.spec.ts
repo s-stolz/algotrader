@@ -1,5 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import { fetchBacktestQueue } from '@/api/backtesterClient';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
@@ -44,6 +53,34 @@ describe('Backtest queue health', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('keeps activity disclosure focus interactive and activation native', async () => {
+    const style = document.createElement('style');
+    style.textContent = readFileSync(
+      'src/components/Backtest/backtestQueueHealth.css',
+      'utf8',
+    );
+    document.head.append(style);
+    const wrapper = mount(BacktestQueueHealth, { attachTo: document.body });
+    onTestFinished(() => {
+      wrapper.unmount();
+      style.remove();
+    });
+    await flushPromises();
+    const summary = wrapper.get('summary').element as HTMLElement;
+    summary.focus();
+    expect(document.activeElement).toBe(summary);
+    expect(summary.matches(':focus-visible')).toBe(true);
+    expect(getComputedStyle(summary).outline).toBe(
+      '2px solid var(--design-color-interactive)',
+    );
+    expect(getComputedStyle(summary).outlineOffset).toBe('4px');
+    const details = summary.parentElement as HTMLDetailsElement;
+    summary.click();
+    expect(details.open).toBe(true);
+    summary.click();
+    expect(details.open).toBe(false);
   });
 
   it('polls only while open and computes elapsed times from current clock', async () => {

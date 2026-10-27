@@ -41,7 +41,7 @@ const {
 </script>
 <style scoped>
 .column-count {
-  color: #94a3b8;
+  color: var(--design-color-muted);
   align-self: center;
 }
 </style>
