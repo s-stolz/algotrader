@@ -27,7 +27,7 @@ describe('IndicatorSearchModal', () => {
     vi.mocked(fetchAvailableIndicators).mockResolvedValue([sma]);
   });
 
-  it('loads indicators through the typed client and requests indicators with market context', async () => {
+  it('loads Indicators and requests them with Market context', async () => {
     const currentMarketStore = useCurrentMarketStore();
     const currentTimeframeStore = useCurrentTimeframeStore();
     const indicatorsStore = useIndicatorsStore();
@@ -80,5 +80,24 @@ describe('IndicatorSearchModal', () => {
       },
       {},
     );
+  });
+  it('filters by typed name and applies the visible Indicator once', async () => {
+    vi.mocked(fetchAvailableIndicators).mockResolvedValue([
+      sma,
+      { id: 4, name: 'EMA' },
+    ]);
+    const request = vi
+      .spyOn(useIndicatorsStore(), 'requestIndicator')
+      .mockResolvedValue('indicator-1');
+    const wrapper = mount(IndicatorSearchModal, {
+      global: { stubs: { BaseModal: { template: '<div><slot /></div>' } } },
+    });
+    await flushPromises();
+    await wrapper.get('input').setValue('sm');
+    const choices = wrapper.findAll('button.indicator-choice');
+    expect(choices.map((button) => button.text())).toEqual(['SMA']);
+    await choices[0].trigger('click');
+    expect(request).toHaveBeenCalledOnce();
+    wrapper.unmount();
   });
 });

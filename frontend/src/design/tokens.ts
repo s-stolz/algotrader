@@ -32,6 +32,12 @@ export const designTokens = {
     edgeRail: '#71879b66',
     edgeBorder: '#96b4c833',
   },
+  chart: {
+    buy: '#00E676',
+    sell: '#FF5252',
+    stopLoss: '#dc2626',
+    takeProfit: '#2563eb',
+  },
   font: {
     ui: 'Tektur, sans-serif',
     mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',

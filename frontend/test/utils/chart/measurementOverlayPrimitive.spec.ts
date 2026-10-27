@@ -29,6 +29,7 @@ describe('MeasurementOverlayPrimitive', () => {
     const requestUpdate = vi.fn();
     const fillStyles: string[] = [];
     const strokeStyles: string[] = [];
+    const fonts: string[] = [];
     const context = {
       save: vi.fn(),
       restore: vi.fn(),
@@ -43,7 +44,9 @@ describe('MeasurementOverlayPrimitive', () => {
         strokeStyles.push(value);
       },
       set lineWidth(_value: number) {},
-      set font(_value: string) {},
+      set font(value: string) {
+        fonts.push(value);
+      },
       set textBaseline(_value: CanvasTextBaseline) {},
     } as unknown as CanvasRenderingContext2D;
     const target = {
@@ -67,12 +70,13 @@ describe('MeasurementOverlayPrimitive', () => {
     const renderer = primitive.paneViews()[0]?.renderer();
     renderer?.draw(target as never);
 
+    expect(fonts).toEqual(['12px Tektur, sans-serif']);
     expect(logicalToCoordinate).toHaveBeenCalledWith(1);
     expect(logicalToCoordinate).toHaveBeenCalledWith(4);
     expect(priceToCoordinate).toHaveBeenCalledWith(110);
     expect(priceToCoordinate).toHaveBeenCalledWith(100);
-    expect(fillStyles).toContain('rgba(22, 163, 74, 0.18)');
-    expect(strokeStyles).toContain('#16a34a');
+    expect(fillStyles).toContain('#7dd5b42e');
+    expect(strokeStyles).toContain('#7dd5b4');
     expect(context.fillRect).toHaveBeenNthCalledWith(1, 10, 20, 30, 50);
     expect(context.strokeRect).toHaveBeenCalledWith(10.5, 20.5, 30, 50);
     expect(context.fillText).toHaveBeenCalledWith(

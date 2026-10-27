@@ -26,7 +26,7 @@
             <td>{{ styleKey }}</td>
 
             <td v-if="typeof value === 'string'">
-              <n-color-picker
+              <BaseColorPicker
                 :value="getStringStyleValue(outputKey, styleKey)"
                 @update:value="
                   (newValue) => setStyleValue(outputKey, styleKey, newValue)
@@ -36,6 +36,7 @@
 
             <td v-else-if="typeof value === 'number'">
               <n-input-number
+                round
                 min="1"
                 :value="getNumberStyleValue(outputKey, styleKey)"
                 @update:value="
@@ -61,6 +62,7 @@
 
               <td v-if="typeof subValue === 'number'">
                 <n-input-number
+                  round
                   :min="0"
                   :value="
                     getNestedNumberStyleValue(outputKey, styleKey, subKey)
@@ -74,6 +76,7 @@
 
               <td v-else-if="typeof subValue === 'string'">
                 <n-input
+                  round
                   :value="
                     getNestedStringStyleValue(outputKey, styleKey, subKey)
                   "
@@ -93,8 +96,9 @@
 
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
-import { NH3, NColorPicker, NInput, NInputNumber } from 'naive-ui';
+import { NH3, NInput, NInputNumber } from 'naive-ui';
 
+import BaseColorPicker from '@/components/Common/BaseColorPicker.vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import type { IndicatorInfo, JsonObject, JsonValue } from '@/types/contracts';
 import type { ChartSeriesOptions } from '@/utils/chart';
@@ -236,18 +240,19 @@ watch(() => props.indicatorInfo, initializeStyles, { immediate: true });
 
 <style scoped>
 table tr td {
-  padding: 5px 15px;
+  padding: var(--design-space-sm) var(--design-space-lg);
 }
 
 .output-style-header h3 {
   margin: 0;
+  font-size: var(--design-text-heading);
 }
 
 .output-style-subheader td {
-  padding: 5px 20px;
+  padding: var(--design-space-sm) var(--design-space-xl);
 }
 
 .output-style-option td {
-  padding: 5px 30px;
+  padding: var(--design-space-sm) var(--design-space-xxl);
 }
 </style>

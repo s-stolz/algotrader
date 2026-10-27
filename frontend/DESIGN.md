@@ -44,8 +44,22 @@ migration work, not a second theme to extend.
 
 Do not wrap the entire root before these consumers are migrated. BasePopover
 must preserve legacy typography/defaults outside the scope until its consumers
-move. The final contract ticket #30 owns removing compatibility mode and checking
+move.
+
+The chart opts in at its toolbar, rendering area, and Indicator search boundary.
+Pane overlay targets receive the derived variables explicitly because Vue
+Teleports retain provider context but do not inherit their original DOM ancestry.
+`BaseColorPicker` owns its teleported host and removes it with the control. Naive
+exposes one radius for both color trigger and panel and no panel style hook;
+the control's narrow trigger selector keeps the trigger round while the supported
+theme radius keeps the panel ordinary. Preserve user-selected series colors. The final contract ticket #30 owns removing compatibility mode and checking
 all consumers against the authority, including overlays and chart labels.
+
+Chart options and measurement labels pass the UI face explicitly to canvas.
+Chart rendering waits for the requested bundled face and font readiness before
+creating the chart; sessions keep updating their existing stores while rendering
+waits. Disposing the chart cancels that pending callback. If font loading fails,
+the ordinary font stack remains the fallback so data access stays available.
 
 Market dialogs opt in individually, preserving their existing state lifetime.
 `BaseModal`, `BaseSelect`, `BaseDropdown`, and `BaseDataTable` consume that scope;

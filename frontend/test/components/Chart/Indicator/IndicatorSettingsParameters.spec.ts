@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import IndicatorSettingsParameters from '@/components/Chart/Indicator/IndicatorSettingsParameters.vue';
+import Parameters from '@/components/Chart/Indicator/IndicatorSettingsParameters.vue';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
 import {
@@ -175,7 +175,7 @@ describe('IndicatorSettingsParameters', () => {
       .spyOn(indicatorsStore, 'requestIndicator')
       .mockResolvedValue('indicator-1');
 
-    const wrapper = mount(IndicatorSettingsParameters, {
+    const wrapper = mount(Parameters, {
       props: {
         indicator: createIndicator(),
       },

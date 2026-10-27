@@ -108,6 +108,6 @@ function onUpdateStyles({
 
 <style scoped>
 .indicator-container {
-  margin-bottom: 8px;
+  margin-bottom: var(--design-space-sm);
 }
 </style>

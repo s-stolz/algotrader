@@ -26,12 +26,14 @@
           />
 
           <n-input
+            round
             v-else-if="isStringWithoutOptions(parameter)"
             v-model:value="parameter.value"
             @update:value="onParameterUpdate"
           />
 
           <n-input-number
+            round
             v-else-if="isNumber(parameter)"
             v-model:value="parameter.value"
             :min="parameter.min"
@@ -202,15 +204,14 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.indicator-parameter td,
-.output-style-option td {
-  padding: 5px 15px;
-  border-bottom: 1px solid var(--surface-border);
+.indicator-parameter td {
+  padding: var(--design-space-sm) var(--design-space-lg);
+  border-bottom: 1px solid var(--design-color-border);
 }
 
 .indicator-parameter p {
   margin: 0;
-  color: #ccc;
+  color: var(--design-color-body);
   text-transform: capitalize;
 }
 </style>

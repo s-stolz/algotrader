@@ -123,6 +123,7 @@ describe('IndicatorSettingsStyles', () => {
         stubs: {
           NScrollbar: SlotStub,
           NH3: SlotStub,
+          BaseColorPicker: NColorPickerStub,
           NColorPicker: NColorPickerStub,
           NInput: NInputStub,
           NInputNumber: NInputNumberStub,

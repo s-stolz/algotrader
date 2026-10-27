@@ -1,3 +1,4 @@
+import { designTokens } from '@/design/tokens';
 import type { BacktestClosedTrade } from '@/types/backtesterContracts';
 
 import type {
@@ -11,10 +12,10 @@ export interface LoadedCandleRange {
   endMs: number;
 }
 
-export const BUY_MARKER_COLOR = '#00E676';
-export const SELL_MARKER_COLOR = '#FF5252';
-export const STOP_LOSS_LINE_COLOR = '#dc2626';
-export const TAKE_PROFIT_LINE_COLOR = '#2563eb';
+export const BUY_MARKER_COLOR = designTokens.chart.buy;
+export const SELL_MARKER_COLOR = designTokens.chart.sell;
+export const STOP_LOSS_LINE_COLOR = designTokens.chart.stopLoss;
+export const TAKE_PROFIT_LINE_COLOR = designTokens.chart.takeProfit;
 
 type TradeMarkerAction = 'buy' | 'sell';
 

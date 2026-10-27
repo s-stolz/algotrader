@@ -1,72 +1,76 @@
 <template>
-  <div id="chart-wrapper">
-    <div
-      ref="chartContainer"
-      id="lightweight-chart"
-      class="chart-container"
-      :class="{
-        'chart-container--measure-mode': interactionMode === 'measure',
-      }"
-    />
-
-    <Teleport
-      v-if="backtestOverlayStore.selectedRun && backtestOverlayTarget"
-      :to="backtestOverlayTarget"
-    >
-      <div class="backtest-overlay-container">
-        <div class="backtest-overlay-panel">
-          <div class="backtest-overlay-details">
-            <span class="backtest-overlay-title">{{
-              activeBacktestRunTitle
-            }}</span>
-            <span class="backtest-overlay-context">{{
-              activeBacktestRunContext
-            }}</span>
-          </div>
-          <n-button
-            text
-            class="backtest-overlay-remove"
-            data-testid="remove-backtest-overlay"
-            aria-label="Remove Backtest Run overlay"
-            @click="removeBacktestOverlay"
-          >
-            <n-icon size="20">
-              <CloseCircleOutline />
-            </n-icon>
-          </n-button>
-        </div>
-        <div class="backtest-marker-legend"
-          >↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div
-        >
-        <div
-          v-if="hoveredBacktestMarker"
-          class="backtest-marker-details"
-          role="tooltip"
-        >
-          {{ hoveredBacktestMarker }}
-        </div>
-      </div>
-    </Teleport>
-
-    <span class="legend">
-      <span class="legend-value">O: <span ref="legendOpen">-</span></span>
-      <span class="legend-value">H: <span ref="legendHigh">-</span></span>
-      <span class="legend-value">L: <span ref="legendLow">-</span></span>
-      <span class="legend-value">C: <span ref="legendClose">-</span></span>
-    </span>
-
-    <div>
-      <indicator
-        v-for="indicator in getAllIndicators()"
-        :key="indicator._id"
-        :indicator="indicator"
-        :indicator-manager="indicatorManager"
+  <DesignScope>
+    <div id="chart-wrapper">
+      <div
+        ref="chartContainer"
+        id="lightweight-chart"
+        class="chart-container"
+        :class="{
+          'chart-container--measure-mode': interactionMode === 'measure',
+        }"
       />
+
+      <Teleport
+        v-if="backtestOverlayStore.selectedRun && backtestOverlayTarget"
+        :to="backtestOverlayTarget"
+      >
+        <div class="backtest-overlay-container">
+          <div class="backtest-overlay-panel">
+            <div class="backtest-overlay-details">
+              <span class="backtest-overlay-title">{{
+                activeBacktestRunTitle
+              }}</span>
+              <span class="backtest-overlay-context">{{
+                activeBacktestRunContext
+              }}</span>
+            </div>
+            <n-button
+              text
+              circle
+              class="backtest-overlay-remove"
+              data-testid="remove-backtest-overlay"
+              aria-label="Remove Backtest Run overlay"
+              @click="removeBacktestOverlay"
+            >
+              <n-icon size="20">
+                <CloseCircleOutline />
+              </n-icon>
+            </n-button>
+          </div>
+          <div class="backtest-marker-legend"
+            >↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div
+          >
+          <div
+            v-if="hoveredBacktestMarker"
+            class="backtest-marker-details"
+            role="tooltip"
+          >
+            {{ hoveredBacktestMarker }}
+          </div>
+        </div>
+      </Teleport>
+
+      <span class="legend">
+        <span class="legend-value">O: <span ref="legendOpen">-</span></span>
+        <span class="legend-value">H: <span ref="legendHigh">-</span></span>
+        <span class="legend-value">L: <span ref="legendLow">-</span></span>
+        <span class="legend-value">C: <span ref="legendClose">-</span></span>
+      </span>
+
+      <div v-if="chartReady">
+        <indicator
+          v-for="indicator in getAllIndicators()"
+          :key="indicator._id"
+          :indicator="indicator"
+          :indicator-manager="indicatorManager"
+        />
+      </div>
     </div>
-  </div>
+  </DesignScope>
 </template>
 
 <script lang="ts">
+import DesignScope from '@/components/Common/DesignScope.vue';
 import {
   computed,
   defineComponent,
@@ -99,7 +103,7 @@ import { CloseCircleOutline } from '@/icons';
 
 export default defineComponent({
   name: 'ChartArea',
-  components: { CloseCircleOutline, Indicator, NButton, NIcon },
+  components: { CloseCircleOutline, DesignScope, Indicator, NButton, NIcon },
   props: {
     interactionMode: {
       type: String as PropType<ChartInteractionMode>,
@@ -219,6 +223,7 @@ export default defineComponent({
       hoveredBacktestMarker,
       activeBacktestRunTitle,
       activeBacktestRunContext,
+      chartReady: computed(() => rendering.state.isReady),
       indicatorManager: infrastructure.indicatorManager,
       getAllIndicators: () => indicatorsStore.all,
       removeBacktestOverlay: rendering.removeBacktestOverlay,
@@ -245,38 +250,38 @@ export default defineComponent({
 }
 
 .backtest-overlay-container {
-  margin-bottom: 8px;
+  margin-bottom: var(--design-space-sm);
 }
 
 .backtest-marker-legend,
 .backtest-marker-details {
-  padding: 6px 12px;
-  color: #cbd5e1;
-  font-size: 12px;
-  background: rgba(19, 23, 34, 0.95);
-  border-radius: 4px;
+  padding: var(--design-space-sm) var(--design-space-md);
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
+  background: var(--design-color-panel);
+  border-radius: var(--design-radius-panel);
   pointer-events: none;
 }
 
 .backtest-marker-details {
-  margin-top: 4px;
-  color: #f8fafc;
+  margin-top: var(--design-space-xs);
+  color: var(--design-color-body);
 }
 
 .backtest-overlay-panel {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--design-space-sm);
   min-width: 300px;
   width: min(350px, calc(100vw - 20px));
   max-width: 100%;
-  padding: 8px 12px;
-  color: #cbd5e1;
-  font-size: 14px;
+  padding: var(--design-space-sm) var(--design-space-md);
+  color: var(--design-color-muted);
+  font-size: var(--design-text-body);
   line-height: 1.3;
-  background: rgba(19, 23, 34, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 8px;
+  background: var(--design-color-panel);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
 }
 
 .backtest-overlay-details {
@@ -284,34 +289,37 @@ export default defineComponent({
   flex-wrap: wrap;
   align-items: baseline;
   flex: 1 1 auto;
-  gap: 4px 8px;
+  gap: var(--design-space-xs) var(--design-space-sm);
   min-width: 0;
 }
 
 .backtest-overlay-title {
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--design-color-body);
 }
 
 .backtest-overlay-context {
   flex: 1 1 160px;
   min-width: 0;
   overflow: hidden;
-  color: #cbd5e1;
+  color: var(--design-color-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .backtest-overlay-remove {
   flex: 0 0 auto;
-  color: #f8fafc;
+  color: var(--design-color-body);
 }
 
 .backtest-overlay-remove:hover {
-  color: #e98b8b;
+  color: var(--design-color-error);
 }
 
 .legend {
+  color: var(--design-color-body);
+  font-size: var(--design-text-secondary);
+  font-variant-numeric: tabular-nums;
   position: absolute;
   top: 50px;
   left: 10px;
