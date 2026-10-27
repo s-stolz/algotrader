@@ -41,11 +41,6 @@
         "export { default as EllipsisHorizontalCircleOutline } from '@vicons/ionicons5/EllipsisHorizontalCircleOutline';"
       ]
     },
-    "src/stores/indicatorsStore.ts": {
-      "ticket": 20,
-      "countedLines": 830,
-      "width": []
-    },
     "src/types/backtesterContracts.ts": {
       "ticket": 19,
       "countedLines": 1054,
@@ -212,17 +207,6 @@
       "countedLines": 89,
       "width": [
         "  it('fetches candles through the typed client and prepends older history when appending', async () => {"
-      ]
-    },
-    "test/stores/indicatorsStore.spec.ts": {
-      "ticket": 20,
-      "countedLines": 457,
-      "width": [
-        "  it('requests indicators through the typed client, stores defaults, and subscribes live updates', async () => {",
-        "  it('requests the latest visible batch first and backfills older batches until candles are covered', async () => {",
-        "  it('ignores stale backfill results after a parameter refresh invalidates the generation', async () => {",
-        "  it('trims merged historical data to the loaded candle range and keeps existing duplicates', async () => {",
-        "  it('updates parameters and removes indicator panes without breaking following pane indices', () => {"
       ]
     },
     "test/types/backtesterContracts.spec.ts": {
