@@ -1,5 +1,9 @@
 <template>
-  <BaseModal ref="symbolForm" :modalId="'symbolForm'" :title="'New Symbol'">
+  <BaseModal
+    ref="symbolForm"
+    :modalId="'symbolForm'"
+    :title="'New Symbol'"
+  >
     <div id="new-symbol-input-wrapper">
       <n-input
         class="new-symbol-input text-uppercase"
@@ -26,13 +30,21 @@
         class="new-symbol-input"
         v-model:value="marketType"
         placeholder="Market Type"
-        :status="validMarketType || marketType === undefined ? 'success' : 'error'"
+        :status="
+          validMarketType || marketType === undefined ? 'success' : 'error'
+        "
         :options="options"
       />
     </div>
 
     <template #footer>
-      <n-button round class="new-symbol-button" @click="addSymbol"> Add Symbol </n-button>
+      <n-button
+        round
+        class="new-symbol-button"
+        @click="addSymbol"
+      >
+        Add Symbol
+      </n-button>
     </template>
   </BaseModal>
 </template>
@@ -68,12 +80,18 @@ const options: SelectOption[] = [
   { label: 'Stock', value: 'Stock' },
 ];
 
-const validSymbol = computed(() => typeof symbol.value === 'string' && symbol.value.trim() !== '');
-const validExchange = computed(() => typeof exchange.value === 'string' && exchange.value.trim() !== '');
-const validMinMove = computed(() => typeof minMove.value === 'number' && minMove.value > 0);
-const validMarketType = computed(() => (
-  typeof marketType.value === 'string' && marketType.value.trim() !== ''
-));
+const validSymbol = computed(
+  () => typeof symbol.value === 'string' && symbol.value.trim() !== '',
+);
+const validExchange = computed(
+  () => typeof exchange.value === 'string' && exchange.value.trim() !== '',
+);
+const validMinMove = computed(
+  () => typeof minMove.value === 'number' && minMove.value > 0,
+);
+const validMarketType = computed(
+  () => typeof marketType.value === 'string' && marketType.value.trim() !== '',
+);
 
 function setInvalidInputs(): void {
   if (!validSymbol.value) symbol.value = null;

@@ -38,20 +38,33 @@ const SymbolSearchModalStub = defineComponent({
   emits: ['open-symbol-form-modal', 'remove-market', 'upload-data'],
   setup(_, { emit, expose }) {
     expose({ updateCurrentMarket });
-    return () => h('div', [
-      h('button', {
-        class: 'open-symbol-form',
-        onClick: () => emit('open-symbol-form-modal'),
-      }, 'Add'),
-      h('button', {
-        class: 'remove-market',
-        onClick: () => emit('remove-market', market),
-      }, 'Remove'),
-      h('button', {
-        class: 'upload-data',
-        onClick: () => emit('upload-data', market),
-      }, 'Upload'),
-    ]);
+    return () =>
+      h('div', [
+        h(
+          'button',
+          {
+            class: 'open-symbol-form',
+            onClick: () => emit('open-symbol-form-modal'),
+          },
+          'Add',
+        ),
+        h(
+          'button',
+          {
+            class: 'remove-market',
+            onClick: () => emit('remove-market', market),
+          },
+          'Remove',
+        ),
+        h(
+          'button',
+          {
+            class: 'upload-data',
+            onClick: () => emit('upload-data', market),
+          },
+          'Upload',
+        ),
+      ]);
   },
 });
 
@@ -59,10 +72,15 @@ const RemoveMarketModalStub = defineComponent({
   name: 'RemoveMarketModal',
   emits: ['market-removed'],
   setup(_, { emit }) {
-    return () => h('button', {
-      class: 'market-removed',
-      onClick: () => emit('market-removed', market),
-    }, 'Removed');
+    return () =>
+      h(
+        'button',
+        {
+          class: 'market-removed',
+          onClick: () => emit('market-removed', market),
+        },
+        'Removed',
+      );
   },
 });
 
@@ -70,10 +88,15 @@ const UploadDataModalStub = defineComponent({
   name: 'UploadDataModal',
   emits: ['upload-successful'],
   setup(_, { emit }) {
-    return () => h('button', {
-      class: 'upload-successful',
-      onClick: () => emit('upload-successful', market),
-    }, 'Uploaded');
+    return () =>
+      h(
+        'button',
+        {
+          class: 'upload-successful',
+          onClick: () => emit('upload-successful', market),
+        },
+        'Uploaded',
+      );
   },
 });
 
@@ -82,10 +105,11 @@ const BaseModalStub = defineComponent({
   setup(_, { expose, slots }) {
     expose({ close: () => undefined });
 
-    return () => h('section', { class: 'base-modal' }, [
-      slots.default?.(),
-      slots.footer?.(),
-    ]);
+    return () =>
+      h('section', { class: 'base-modal' }, [
+        slots.default?.(),
+        slots.footer?.(),
+      ]);
   },
 });
 
@@ -93,10 +117,15 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -114,14 +143,15 @@ const NInputStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { attrs, emit }) {
-    return () => h('input', {
-      ...attrs,
-      ...props.inputProps,
-      value: props.value,
-      onInput: (event: Event) => {
-        emit('update:value', (event.target as HTMLInputElement).value);
-      },
-    });
+    return () =>
+      h('input', {
+        ...attrs,
+        ...props.inputProps,
+        value: props.value,
+        onInput: (event: Event) => {
+          emit('update:value', (event.target as HTMLInputElement).value);
+        },
+      });
   },
 });
 
@@ -213,7 +243,9 @@ describe('TopBarModals', () => {
     modalStore.closeModal();
     await flushPromises();
 
-    expect(wrapper.findComponent({ name: 'BacktestRunHistoryModal' }).exists()).toBe(false);
+    expect(
+      wrapper.findComponent({ name: 'BacktestRunHistoryModal' }).exists(),
+    ).toBe(false);
 
     modalStore.openModal('backtestRuns');
     await flushPromises();
@@ -259,7 +291,12 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
       run_metadata: null,
     },
     result_schema_version: 3,
-    metrics: { total_return_pct: 1.25, trade_count: 3, long_trade_count: 2, short_trade_count: 1 },
+    metrics: {
+      total_return_pct: 1.25,
+      trade_count: 3,
+      long_trade_count: 2,
+      short_trade_count: 1,
+    },
     diagnostics: { execution_duration_ms: 240_000 },
     error_code: null,
     error_message: null,

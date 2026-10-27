@@ -45,10 +45,7 @@ const BaseModalStub = defineComponent({
   name: 'BaseModal',
   setup(_, { expose, slots }) {
     expose({ close: vi.fn() });
-    return () => h('div', [
-      slots.default?.(),
-      slots.footer?.(),
-    ]);
+    return () => h('div', [slots.default?.(), slots.footer?.()]);
   },
 });
 
@@ -63,10 +60,15 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -84,7 +86,14 @@ describe('UploadDataModal', () => {
     vi.mocked(getSeparator).mockReset();
     vi.mocked(getSeparator).mockReturnValue(',');
     vi.mocked(getHeaderLine).mockReset();
-    vi.mocked(getHeaderLine).mockReturnValue(['timestamp', 'open', 'high', 'low', 'close', 'volume']);
+    vi.mocked(getHeaderLine).mockReturnValue([
+      'timestamp',
+      'open',
+      'high',
+      'low',
+      'close',
+      'volume',
+    ]);
     vi.mocked(getColumnMapping).mockReset();
     vi.mocked(getColumnMapping).mockReturnValue({
       0: 'timestamp',
@@ -102,7 +111,9 @@ describe('UploadDataModal', () => {
 
   it('loads preview mapping from selected files, clears it on remove, and emits after upload', async () => {
     const file = new File(
-      ['timestamp,open,high,low,close,volume\n2024-01-01T00:00:00Z,1,2,0.5,1.5,100\n'],
+      [
+        'timestamp,open,high,low,close,volume\n2024-01-01T00:00:00Z,1,2,0.5,1.5,100\n',
+      ],
       'candles.csv',
       { type: 'text/csv' },
     );
@@ -142,7 +153,14 @@ describe('UploadDataModal', () => {
     await modal.handleFileChange(fileData);
 
     expect(getSeparator).toHaveBeenCalled();
-    expect(modal.headerLine).toEqual(['timestamp', 'open', 'high', 'low', 'close', 'volume']);
+    expect(modal.headerLine).toEqual([
+      'timestamp',
+      'open',
+      'high',
+      'low',
+      'close',
+      'volume',
+    ]);
     expect(modal.columnMapping[4]).toBe('close');
 
     modal.handleFileRemove();
@@ -160,7 +178,12 @@ describe('UploadDataModal', () => {
       expect.objectContaining({ 0: 'timestamp', 4: 'close' }),
       expect.any(Function),
     );
-    expect(uploadCandlesInBatches).toHaveBeenCalledWith('EURUSD', [candle], 'FX', expect.any(Function));
+    expect(uploadCandlesInBatches).toHaveBeenCalledWith(
+      'EURUSD',
+      [candle],
+      'FX',
+      expect.any(Function),
+    );
     expect(wrapper.emitted('upload-successful')).toEqual([[market]]);
   });
 });

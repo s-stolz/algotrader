@@ -13,10 +13,17 @@ describe('BasePopover', () => {
     });
     const popover = wrapper.getComponent(NPopover);
     expect(popover.props('width')).toBe(500);
-    expect(document.body.querySelector('.base-popover')?.textContent).toContain('Show columns');
-    expect(popover.props('themeOverrides')).toEqual(expect.objectContaining({
-      color: '#131722', textColor: '#dce4ed', borderRadius: '6px', padding: '16px',
-    }));
+    expect(document.body.querySelector('.base-popover')?.textContent).toContain(
+      'Show columns',
+    );
+    expect(popover.props('themeOverrides')).toEqual(
+      expect.objectContaining({
+        color: '#131722',
+        textColor: '#dce4ed',
+        borderRadius: '6px',
+        padding: '16px',
+      }),
+    );
     await wrapper.get('button').trigger('click');
     expect(onUpdateShow).toHaveBeenCalledWith(false);
     wrapper.unmount();
@@ -27,9 +34,12 @@ describe('BasePopover', () => {
       props: { themeOverrides: { color: '#202c38' } },
       slots: { trigger: '<button>Columns</button>' },
     });
-    expect(wrapper.getComponent(NPopover).props('themeOverrides')).toEqual(expect.objectContaining({
-      color: '#202c38', textColor: '#dce4ed',
-    }));
+    expect(wrapper.getComponent(NPopover).props('themeOverrides')).toEqual(
+      expect.objectContaining({
+        color: '#202c38',
+        textColor: '#dce4ed',
+      }),
+    );
     wrapper.unmount();
   });
 });

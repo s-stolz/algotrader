@@ -12,7 +12,10 @@ describe('BaseSelect', () => {
       props: {
         value: ['EURUSD'],
         multiple: true,
-        options: [{ label: 'EURUSD', value: 'EURUSD' }, { label: 'GBPUSD', value: 'GBPUSD' }],
+        options: [
+          { label: 'EURUSD', value: 'EURUSD' },
+          { label: 'GBPUSD', value: 'GBPUSD' },
+        ],
         menuProps: { class: 'custom-menu' },
         themeOverrides: {
           peers: { InternalSelection: { borderRadius: '12px' } },
@@ -26,13 +29,23 @@ describe('BaseSelect', () => {
     expect(select.attributes('aria-label')).toBe('Choose Markets');
     expect(select.attributes('data-testid')).toBe('markets');
     expect(select.classes()).toContain('base-select');
-    expect(select.props('menuProps')?.class).toEqual(['base-select-menu', 'custom-menu']);
-    expect(select.props('themeOverrides')).toEqual(expect.objectContaining({
-      peers: expect.objectContaining({
-        InternalSelection: expect.objectContaining({ borderRadius: '12px', color: '#131722' }),
-        InternalSelectMenu: expect.objectContaining({ optionTextColorActive: '#dce4ed' }),
+    expect(select.props('menuProps')?.class).toEqual([
+      'base-select-menu',
+      'custom-menu',
+    ]);
+    expect(select.props('themeOverrides')).toEqual(
+      expect.objectContaining({
+        peers: expect.objectContaining({
+          InternalSelection: expect.objectContaining({
+            borderRadius: '12px',
+            color: '#131722',
+          }),
+          InternalSelectMenu: expect.objectContaining({
+            optionTextColorActive: '#dce4ed',
+          }),
+        }),
       }),
-    }));
+    );
     select.vm.$emit('update:value', ['GBPUSD']);
     expect(onUpdate).toHaveBeenCalledWith(['GBPUSD']);
     wrapper.unmount();

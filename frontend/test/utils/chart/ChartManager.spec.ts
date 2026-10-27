@@ -66,7 +66,11 @@ vi.mock('lightweight-charts', () => ({
   AreaSeries: { type: 'Area', isBuiltIn: true, defaultOptions: {} },
   BarSeries: { type: 'Bar', isBuiltIn: true, defaultOptions: {} },
   BaselineSeries: { type: 'Baseline', isBuiltIn: true, defaultOptions: {} },
-  CandlestickSeries: { type: 'Candlestick', isBuiltIn: true, defaultOptions: {} },
+  CandlestickSeries: {
+    type: 'Candlestick',
+    isBuiltIn: true,
+    defaultOptions: {},
+  },
   ColorType: { Solid: 'solid' },
   createChart: chartMocks.createChart,
   createSeriesMarkers: chartMocks.createSeriesMarkers,
@@ -85,7 +89,8 @@ const candle = (time: number) => ({
   volume: 100,
 });
 
-const markerTime = (time: number): ChartSeriesMarker['time'] => time as ChartSeriesMarker['time'];
+const markerTime = (time: number): ChartSeriesMarker['time'] =>
+  time as ChartSeriesMarker['time'];
 
 describe('ChartManager', () => {
   beforeEach(() => {
@@ -192,7 +197,10 @@ describe('ChartManager', () => {
     expect(manager.setSeriesMarkers('ohlc', firstMarkers)).toBe(true);
     const markerPlugin = chartMocks.createSeriesMarkers.mock.results[0]?.value;
 
-    expect(chartMocks.createSeriesMarkers).toHaveBeenCalledWith(series, firstMarkers);
+    expect(chartMocks.createSeriesMarkers).toHaveBeenCalledWith(
+      series,
+      firstMarkers,
+    );
 
     expect(manager.setSeriesMarkers('ohlc', nextMarkers)).toBe(true);
 
@@ -321,9 +329,14 @@ describe('ChartManager', () => {
     manager.setSeriesProtectiveLines('ohlc', protectiveLines);
     const protectivePrimitive = series.attachPrimitive.mock.calls[0]?.[0];
 
-    expect(manager.setSeriesMeasurementOverlay('ohlc', firstOverlay)).toBe(true);
+    expect(manager.setSeriesMeasurementOverlay('ohlc', firstOverlay)).toBe(
+      true,
+    );
     const measurementPrimitive = series.attachPrimitive.mock.calls[1]?.[0] as
-      | { setModel?: (model: ChartMeasurementOverlayModel) => void; paneViews?: () => readonly unknown[] }
+      | {
+          setModel?: (model: ChartMeasurementOverlayModel) => void;
+          paneViews?: () => readonly unknown[];
+        }
       | undefined;
 
     expect(series.attachPrimitive).toHaveBeenCalledTimes(2);
@@ -333,12 +346,18 @@ describe('ChartManager', () => {
     expect(manager.setSeriesMeasurementOverlay('ohlc', nextOverlay)).toBe(true);
 
     expect(series.attachPrimitive).toHaveBeenCalledTimes(2);
-    expect(series.detachPrimitive).not.toHaveBeenCalledWith(protectivePrimitive);
-    expect(chartMocks.createSeriesMarkers.mock.results[0]?.value.setMarkers).not.toHaveBeenCalled();
+    expect(series.detachPrimitive).not.toHaveBeenCalledWith(
+      protectivePrimitive,
+    );
+    expect(
+      chartMocks.createSeriesMarkers.mock.results[0]?.value.setMarkers,
+    ).not.toHaveBeenCalled();
 
     expect(manager.clearSeriesMeasurementOverlay('ohlc')).toBe(true);
     expect(series.detachPrimitive).toHaveBeenCalledWith(measurementPrimitive);
-    expect(series.detachPrimitive).not.toHaveBeenCalledWith(protectivePrimitive);
+    expect(series.detachPrimitive).not.toHaveBeenCalledWith(
+      protectivePrimitive,
+    );
   });
 
   it('updates changed series points, skips same-value points, and appends newer points', () => {
@@ -346,7 +365,10 @@ describe('ChartManager', () => {
     manager.init(document.createElement('div'));
     const series = chartMocks.createSeriesApi();
     chartMocks.chart.addSeries.mockReturnValue(series);
-    const point = (time: number, value: number): ChartValuePoint => ({ time, value });
+    const point = (time: number, value: number): ChartValuePoint => ({
+      time,
+      value,
+    });
 
     manager.addSeries('sma', 'line', [point(10, 1)]);
 
@@ -358,7 +380,10 @@ describe('ChartManager', () => {
     expect(series.update).toHaveBeenNthCalledWith(1, point(10, 2));
     expect(series.update).toHaveBeenNthCalledWith(2, point(11, 3));
     expect(series.update).toHaveBeenCalledTimes(2);
-    expect(manager.series.get('sma')?.data).toEqual([point(10, 2), point(11, 3)]);
+    expect(manager.series.get('sma')?.data).toEqual([
+      point(10, 2),
+      point(11, 3),
+    ]);
   });
 
   it('subscribes range handlers, scrolls to realtime, and resolves pane elements', async () => {
@@ -377,16 +402,27 @@ describe('ChartManager', () => {
     manager.scrollToRealTime();
     const resolvedPane = await manager.getPaneHtmlElement(0);
 
-    expect(chartMocks.chart.subscribeCrosshairMove).toHaveBeenCalledWith(crosshairHandler);
-    expect(chartMocks.timeScale.subscribeVisibleLogicalRangeChange).toHaveBeenCalledWith(rangeHandler);
-    expect(chartMocks.timeScale.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 0, to: 2 });
+    expect(chartMocks.chart.subscribeCrosshairMove).toHaveBeenCalledWith(
+      crosshairHandler,
+    );
+    expect(
+      chartMocks.timeScale.subscribeVisibleLogicalRangeChange,
+    ).toHaveBeenCalledWith(rangeHandler);
+    expect(chartMocks.timeScale.setVisibleLogicalRange).toHaveBeenCalledWith({
+      from: 0,
+      to: 2,
+    });
     expect(chartMocks.timeScale.scrollToRealTime).toHaveBeenCalled();
     expect(resolvedPane).toBe(paneElement);
 
     manager.destroy();
 
-    expect(chartMocks.chart.unsubscribeCrosshairMove).toHaveBeenCalledWith(crosshairHandler);
-    expect(chartMocks.timeScale.unsubscribeVisibleLogicalRangeChange).toHaveBeenCalledWith(rangeHandler);
+    expect(chartMocks.chart.unsubscribeCrosshairMove).toHaveBeenCalledWith(
+      crosshairHandler,
+    );
+    expect(
+      chartMocks.timeScale.unsubscribeVisibleLogicalRangeChange,
+    ).toHaveBeenCalledWith(rangeHandler);
     expect(chartMocks.chart.remove).toHaveBeenCalled();
   });
 

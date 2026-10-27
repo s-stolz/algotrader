@@ -31,10 +31,7 @@ const BaseModalStub = defineComponent({
   name: 'BaseModal',
   setup(_, { expose, slots }) {
     expose({ close: () => undefined });
-    return () => h('div', [
-      slots.default?.(),
-      slots.footer?.(),
-    ]);
+    return () => h('div', [slots.default?.(), slots.footer?.()]);
   },
 });
 
@@ -48,10 +45,15 @@ const SymbolRowStub = defineComponent({
   },
   emits: ['market-click', 'remove-market', 'upload-data'],
   setup(props, { emit }) {
-    return () => h('button', {
-      class: `row-${(props.market as Market).symbol}`,
-      onClick: () => emit('market-click', props.market),
-    }, (props.market as Market).symbol);
+    return () =>
+      h(
+        'button',
+        {
+          class: `row-${(props.market as Market).symbol}`,
+          onClick: () => emit('market-click', props.market),
+        },
+        (props.market as Market).symbol,
+      );
   },
 });
 

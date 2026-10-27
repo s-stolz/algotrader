@@ -18,9 +18,12 @@ describe('BaseDropdown', () => {
     const dropdown = wrapper.getComponent(NDropdown);
     expect(wrapper.get('button').text()).toBe('Actions');
     expect(dropdown.props('trigger')).toBe('click');
-    expect(dropdown.props('themeOverrides')?.peers?.Popover).toEqual(expect.objectContaining({
-      padding: '8px', boxShadow: expect.stringContaining('0 0 0 1px'),
-    }));
+    expect(dropdown.props('themeOverrides')?.peers?.Popover).toEqual(
+      expect.objectContaining({
+        padding: '8px',
+        boxShadow: expect.stringContaining('0 0 0 1px'),
+      }),
+    );
     dropdown.vm.$emit('select', 'upload');
     expect(select).toHaveBeenCalledWith('upload');
     wrapper.unmount();

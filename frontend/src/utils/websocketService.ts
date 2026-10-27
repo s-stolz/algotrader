@@ -22,11 +22,12 @@ type MittEvents = WebSocketServiceEventMap & Record<EventType, unknown>;
 type WebSocketServiceEventName = keyof WebSocketServiceEventMap;
 
 export type WebSocketSendPayload = Record<string, JsonValue | undefined>;
-export type WebSocketEventHandler<EventName extends WebSocketServiceEventName> = Handler<
-  WebSocketServiceEventMap[EventName]
->;
+export type WebSocketEventHandler<EventName extends WebSocketServiceEventName> =
+  Handler<WebSocketServiceEventMap[EventName]>;
 
-function parseInboundMessage(data: MessageEvent['data']): WebSocketInboundMessage | null {
+function parseInboundMessage(
+  data: MessageEvent['data'],
+): WebSocketInboundMessage | null {
   if (typeof data !== 'string') {
     console.warn('Ignoring non-text WebSocket message:', data);
     return null;

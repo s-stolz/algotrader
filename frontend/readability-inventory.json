@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "formattedBase": "09bd181088f269e0ab7e961caaf7fae83fb939cc",
+  "removeStagingInTicket": 30,
+  "files": {
+    "src/components/Backtest/BacktestBatches.vue": {
+      "ticket": 23,
+      "countedLines": 1103,
+      "width": [
+        "          :aria-valuetext=\"`${selectedBatch.settled_count} / ${selectedBatch.total_count} settled; ${selectedBatch.executed_count} executed`\""
+      ]
+    },
+    "src/components/Backtest/BacktestQueueHealth.vue": {
+      "ticket": 22,
+      "countedLines": 613,
+      "width": []
+    },
+    "src/components/Chart/ChartArea.vue": {
+      "ticket": 21,
+      "countedLines": 946,
+      "width": []
+    },
+    "src/components/Chart/Indicator/IndicatorSettingsModal.vue": {
+      "ticket": 26,
+      "countedLines": 55,
+      "width": [
+        "import IndicatorSettingsParameters from '@/components/Chart/Indicator/IndicatorSettingsParameters.vue';"
+      ]
+    },
+    "src/components/Workspace/WorkspaceNavigation.vue": {
+      "ticket": 25,
+      "countedLines": 226,
+      "width": [
+        "            d=\"M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1.2 2h13.6a1.3 1.3 0 0 0 1.2-2L14 9V3M8 14h8M10 17h.01M14 19h.01\""
+      ]
+    },
+    "src/icons/index.ts": {
+      "ticket": 30,
+      "countedLines": 11,
+      "width": [
+        "export { default as EllipsisHorizontalCircleOutline } from '@vicons/ionicons5/EllipsisHorizontalCircleOutline';"
+      ]
+    },
+    "src/stores/indicatorsStore.ts": {
+      "ticket": 20,
+      "countedLines": 830,
+      "width": []
+    },
+    "src/types/backtesterContracts.ts": {
+      "ticket": 19,
+      "countedLines": 1054,
+      "width": []
+    },
+    "src/types/contracts.ts": {
+      "ticket": 19,
+      "countedLines": 537,
+      "width": []
+    },
+    "src/utils/chart/ChartManager.ts": {
+      "ticket": 21,
+      "countedLines": 625,
+      "width": []
+    },
+    "src/views/BacktestCreationDrawer.vue": {
+      "ticket": 24,
+      "countedLines": 1770,
+      "width": [
+        "                        :aria-label=\"`${parameter.display_name || parameter.name} value ${index + 1}`\""
+      ]
+    },
+    "src/views/BacktestWorkspaceView.vue": {
+      "ticket": 22,
+      "countedLines": 2622,
+      "width": [
+        "        'Saved signed percentage: (ending equity / first recorded equity \u2212 1) \u00d7 100. First recorded equity follows the first Candle executions and fees; it can differ from Initial capital.',",
+        "            'Final point of exact Equity Replay, in account units. Unavailable replay leaves this missing.',",
+        "        'Profitable long Closed Trades divided by long Closed Trades, in percent; No trades if count is zero.',",
+        "        'Profitable short Closed Trades divided by short Closed Trades, in percent; No trades if count is zero.',",
+        "    selectionNotice.value = `Could not open run ${comparisonRunLabel(run)} on chart: ${errorMessage(error)}`;"
+      ]
+    },
+    "src/views/EquityReplayCharts.vue": {
+      "ticket": 23,
+      "countedLines": 304,
+      "width": [
+        "        title=\"Sampled exact replay points, preserving the first and last points and the maximum drawdown peak and trough.\""
+      ]
+    },
+    "test/api/backtesterClient.spec.ts": {
+      "ticket": 19,
+      "countedLines": 737,
+      "width": [
+        "  it('sends only normalized names and validates rename identity and authoritative values', async () => {",
+        "  it('reads one validated queue snapshot without treating invalid data as an empty queue', async () => {"
+      ]
+    },
+    "test/api/candleClient.spec.ts": {
+      "ticket": 30,
+      "countedLines": 131,
+      "width": [
+        "      '/api/data-accessor/candles/EURUSD?timeframe=M5&start_ms=1000&end_ms=2000&limit=10&exchange=FX',"
+      ]
+    },
+    "test/components/Backtest/BacktestBatches.spec.ts": {
+      "ticket": 23,
+      "countedLines": 637,
+      "width": [
+        "  it('retains a pending Pause identity when member cancellation advances the batch revision', async () => {",
+        "  it('shows one batch summary, saved definition, and actual ordered Ready members after reload', async () => {",
+        "  it('preserves successful results and shows partial failure, ordinals, and transitions after refresh', async () => {"
+      ]
+    },
+    "test/components/Backtest/BacktestQueueHealth.spec.ts": {
+      "ticket": 22,
+      "countedLines": 232,
+      "width": [
+        "  it('shows batch turns, active ordinal, advisory position, and outcome counts on refresh', async () => {"
+      ]
+    },
+    "test/components/Backtest/ExecutionLogDrawer.spec.ts": {
+      "ticket": 23,
+      "countedLines": 310,
+      "width": [
+        "  it('shows one flip Fill closing a long and opening a short without deriving Trade Direction from Fill side', async () => {",
+        "  it('combines the Naive UI trade filters and keeps Fills unfiltered across tab changes', async () => {",
+        "  it('ignores a pending log read after close and leaves a later run and Workspace selection intact', async () => {"
+      ]
+    },
+    "test/components/Chart/ChartArea.spec.ts": {
+      "ticket": 21,
+      "countedLines": 1287,
+      "width": [
+        "  it('measures primary-button drags on the candlestick pane and keeps crosshair legend updates active', async () => {",
+        "  it('ignores pointer holds that include non-primary buttons while Measure mode is active', async () => {",
+        "  it('cancels active measurements on Escape, pointer cancel, window blur, and mode changes', async () => {",
+        "  it('applies live candle receiver updates through the store and chart infrastructure', async () => {",
+        "  it('renders selected Backtest Run markers and protective lines inside the loaded candle range', async () => {",
+        "  it('refreshes Backtest Run overlays after older candles and live candles extend the loaded range', async () => {",
+        "  it('shows distinct reversal hover details and clears them outside markers and on removal', async () => {",
+        "  it('constructs a chart session adapter over stores, websocket, and chart infrastructure', async () => {"
+      ]
+    },
+    "test/components/Chart/Indicator/Indicator.spec.ts": {
+      "ticket": 26,
+      "countedLines": 160,
+      "width": [
+        "  it('delegates wrapper removal, style updates, and data refreshes to the indicator manager seam', async () => {"
+      ]
+    },
+    "test/components/Chart/Indicator/IndicatorSettingsParameters.spec.ts": {
+      "ticket": 26,
+      "countedLines": 211,
+      "width": [
+        "import IndicatorSettingsParameters from '@/components/Chart/Indicator/IndicatorSettingsParameters.vue';"
+      ]
+    },
+    "test/components/Common/BaseCheckbox.spec.ts": {
+      "ticket": 25,
+      "countedLines": 36,
+      "width": [
+        "  it('updates checked state through its labeled native input and forwards input attributes', async () => {"
+      ]
+    },
+    "test/components/Common/BaseGroupedSelect.spec.ts": {
+      "ticket": 25,
+      "countedLines": 81,
+      "width": [
+        "  it('opens at the current selection, skips disabled options, and restores focus on Escape without selecting', async () => {",
+        "  it('disables an empty picker and keeps focus fallback independent of an unavailable current value', async () => {"
+      ]
+    },
+    "test/components/TopBar/Modals/IndicatorSearchModal.spec.ts": {
+      "ticket": 26,
+      "countedLines": 75,
+      "width": [
+        "  it('loads indicators through the typed client and requests indicators with market context', async () => {"
+      ]
+    },
+    "test/components/TopBar/Modals/Upload/UploadDataModal.spec.ts": {
+      "ticket": 27,
+      "countedLines": 172,
+      "width": [
+        "  it('loads preview mapping from selected files, clears it on remove, and emits after upload', async () => {"
+      ]
+    },
+    "test/components/TopBar/TimeframeDropdown.spec.ts": {
+      "ticket": 25,
+      "countedLines": 33,
+      "width": [
+        "  it('keeps the picker synchronized with chart timeframe state and persists a chosen timeframe', async () => {"
+      ]
+    },
+    "test/main.spec.ts": {
+      "ticket": 25,
+      "countedLines": 67,
+      "width": [
+        "  it('connects to the default WebSocket URL, installs app plugins, and mounts without globals', async () => {"
+      ]
+    },
+    "test/stores/backtestOverlayStore.spec.ts": {
+      "ticket": 30,
+      "countedLines": 285,
+      "width": [
+        "  it('selects a supported Backtest Run, switches chart context, caches trades, and persists the run ID', async () => {",
+        "  it('reloads a persisted selected Backtest Run when it still exists and is supported', async () => {",
+        "  it('leaves the chart unchanged and surfaces an error when the run market is missing', async () => {",
+        "  it('classifies supported-shape Backtest Runs as non-selectable when the market is missing', () => {"
+      ]
+    },
+    "test/stores/candlesticksStore.spec.ts": {
+      "ticket": 30,
+      "countedLines": 89,
+      "width": [
+        "  it('fetches candles through the typed client and prepends older history when appending', async () => {"
+      ]
+    },
+    "test/stores/indicatorsStore.spec.ts": {
+      "ticket": 20,
+      "countedLines": 457,
+      "width": [
+        "  it('requests indicators through the typed client, stores defaults, and subscribes live updates', async () => {",
+        "  it('requests the latest visible batch first and backfills older batches until candles are covered', async () => {",
+        "  it('ignores stale backfill results after a parameter refresh invalidates the generation', async () => {",
+        "  it('trims merged historical data to the loaded candle range and keeps existing duplicates', async () => {",
+        "  it('updates parameters and removes indicator panes without breaking following pane indices', () => {"
+      ]
+    },
+    "test/types/backtesterContracts.spec.ts": {
+      "ticket": 19,
+      "countedLines": 397,
+      "width": [
+        "  it('validates result schema version 3 Backtest Closed Trade payloads with trade direction', () => {"
+      ]
+    },
+    "test/utils/chart/ChartManager.spec.ts": {
+      "ticket": 21,
+      "countedLines": 399,
+      "width": [
+        "  it('attaches, updates, and clears a transient measurement overlay without disturbing markers or protective lines', () => {",
+        "  it('disables pressed-drag scroll without dropping wheel options and restores prior options', () => {"
+      ]
+    },
+    "test/utils/chart/IndicatorManager.spec.ts": {
+      "ticket": 21,
+      "countedLines": 152,
+      "width": [
+        "  it('adds chart series for non-timestamp indicator outputs with default chart options', async () => {",
+        "  it('updates styles, refreshes series data, applies live points, and removes series with store data', () => {"
+      ]
+    },
+    "test/utils/chart/backtestOverlay.spec.ts": {
+      "ticket": 21,
+      "countedLines": 285,
+      "width": [
+        "  it('builds red stop-loss and blue take-profit segments from persisted closed trade fields', () => {"
+      ]
+    },
+    "test/utils/timeframes.spec.ts": {
+      "ticket": 30,
+      "countedLines": 61,
+      "width": [
+        "  it('groups and sorts caller-provided options by their complete units without changing the input', () => {"
+      ]
+    },
+    "test/views/BacktestCreationDrawer.spec.ts": {
+      "ticket": 24,
+      "countedLines": 1232,
+      "width": [
+        "  it('starts with an empty optional name, preserves drafts, and normalizes named and unnamed submissions', async () => {",
+        "  it('refreshes stale catalog and leaves the draft unchanged without retrying submission', async () => {",
+        "  it('previews exact string values including empty, multiline, and whitespace strings', async () => {",
+        "  it('refreshes changed catalog metadata without submitting or accepting stale preview', async () => {"
+      ]
+    },
+    "test/views/BacktestWorkspaceView.spec.ts": {
+      "ticket": 22,
+      "countedLines": 3195,
+      "width": [
+        "  it('renames inline with keyboard activation, Enter/blur deduplication, Escape, clearing and validation', async () => {",
+        "  it('retains failed drafts for retry and preserves them and acknowledged names across polling', async () => {",
+        "  it('keeps changes made during a save and isolates responses after navigating to another experiment', async () => {",
+        "  it('renames a batch in detail and updates history search while members remain uneditable', async () => {",
+        "  it('retains a successful predecessor name when its cancelled session has a failed successor', async () => {",
+        "  it('preserves a confirmed rename in comparison and chart legends after delayed Equity Replay', async () => {",
+        "  it('paginates all fetched members with global sorting, page sizes, and an All option', async () => {",
+        "  it('selects and deselects only successful page members while retaining off-page comparisons', async () => {",
+        "  it('shows mixed selection and enables and disables whole column groups without changing other groups or run selection', async () => {",
+        "  it('opens the accessible execution drawer without changing selection and filters trades while showing all fills', async () => {",
+        "  it('disables unavailable execution logs while distinguishing empty, filtered, and failed reads', async () => {",
+        "  it('displays saved names and unnamed fallbacks with UUIDs and searches and sorts the visible names', async () => {",
+        "  it('compares ten successful members while retaining selection, failures, and settings', async () => {",
+        "  it('cancels one queued Batch member from the combined table and refreshes that member', async () => {",
+        "  it('sends one DELETE for rapid duplicate clicks and disables that run while deleting', async () => {",
+        "  it('keeps a Batch visible after delete conflict, then refreshes and clears its selection', async () => {",
+        "  it('opens a batch row directly on the chart while preserving selection and comparison', async () => {",
+        "  it('prevents repeated chart opens during loading and allows retry after a failed read', async () => {",
+        "  it('keeps an unsupported result inspectable with an explanation instead of chart navigation', async () => {"
+      ]
+    },
+    "test/views/ChartView.spec.ts": {
+      "ticket": 30,
+      "countedLines": 203,
+      "width": [
+        "  it('fetches markets and initializes the current market when persisted state is invalid', async () => {"
+      ]
+    },
+    "test/views/backtestWorkspaceRuns.spec.ts": {
+      "ticket": 22,
+      "countedLines": 130,
+      "width": [
+        "  it('shows nonzero drawdown magnitude below display precision without changing zero or missing', () => {"
+      ]
+    }
+  }
+}

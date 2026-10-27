@@ -22,19 +22,29 @@ function timestampToChartTime(timestampMs: number): ChartSeriesMarker['time'] {
   return Math.floor(timestampMs / 1000) as ChartSeriesMarker['time'];
 }
 
-function formatTradePrice(price: number, minMove: number | null | undefined): string {
+function formatTradePrice(
+  price: number,
+  minMove: number | null | undefined,
+): string {
   if (!Number.isFinite(price)) {
     return String(price);
   }
 
-  if (typeof minMove !== 'number' || !Number.isFinite(minMove) || minMove <= 0) {
+  if (
+    typeof minMove !== 'number' ||
+    !Number.isFinite(minMove) ||
+    minMove <= 0
+  ) {
     return String(price);
   }
 
   return price.toFixed(measurementPricePrecision(minMove));
 }
 
-function isTimestampInRange(timestampMs: number, range: LoadedCandleRange): boolean {
+function isTimestampInRange(
+  timestampMs: number,
+  range: LoadedCandleRange,
+): boolean {
   return timestampMs >= range.startMs && timestampMs <= range.endMs;
 }
 
@@ -84,25 +94,29 @@ export function buildBacktestTradeMarkers(
     const exitAction = trade.trade_direction === 'long' ? 'sell' : 'buy';
 
     if (isTimestampInRange(trade.entry_timestamp_ms, range)) {
-      markers.push(markerForAction(
-        trade.trade_id,
-        entryAction,
-        'entry',
-        trade.entry_timestamp_ms,
-        trade.entry_price,
-        minMove,
-      ));
+      markers.push(
+        markerForAction(
+          trade.trade_id,
+          entryAction,
+          'entry',
+          trade.entry_timestamp_ms,
+          trade.entry_price,
+          minMove,
+        ),
+      );
     }
 
     if (isTimestampInRange(trade.exit_timestamp_ms, range)) {
-      markers.push(markerForAction(
-        trade.trade_id,
-        exitAction,
-        'exit',
-        trade.exit_timestamp_ms,
-        trade.exit_price,
-        minMove,
-      ));
+      markers.push(
+        markerForAction(
+          trade.trade_id,
+          exitAction,
+          'exit',
+          trade.exit_timestamp_ms,
+          trade.exit_price,
+          minMove,
+        ),
+      );
     }
   }
 

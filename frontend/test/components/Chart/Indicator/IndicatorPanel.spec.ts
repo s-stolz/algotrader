@@ -12,10 +12,15 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -55,7 +60,9 @@ const indicatorInfo: IndicatorInfo = {
   },
 };
 
-function createIndicator(overrides: Partial<StoreIndicator> = {}): StoreIndicator {
+function createIndicator(
+  overrides: Partial<StoreIndicator> = {},
+): StoreIndicator {
   return {
     _id: 'indicator-1',
     indicatorId: 7,

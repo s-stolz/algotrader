@@ -44,15 +44,20 @@ describe('WorkspaceNavigation', () => {
   });
 
   it.each(['/backtests', '/backtests/run/saved', '/backtests/batch/sweep'])(
-    'returns to Chart from %s without carrying route parameters', async (path) => {
+    'returns to Chart from %s without carrying route parameters',
+    async (path) => {
       const { router, wrapper } = await mountNavigation(path);
       try {
         await wrapper.get('a[aria-label="Return to Chart"]').trigger('click');
         await flushPromises();
 
         expect(router.currentRoute.value.fullPath).toBe('/');
-        expect(wrapper.get('a').attributes('aria-label')).toBe('Open Backtests');
-        expect(document.activeElement).toBe(wrapper.get('[aria-label="Chart workspace"]').element);
+        expect(wrapper.get('a').attributes('aria-label')).toBe(
+          'Open Backtests',
+        );
+        expect(document.activeElement).toBe(
+          wrapper.get('[aria-label="Chart workspace"]').element,
+        );
       } finally {
         wrapper.unmount();
       }

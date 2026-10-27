@@ -9,7 +9,10 @@ interface LegacyTimeframeOption {
 }
 
 export const useTimeframeStore = defineStore('timeframe', () => {
-  const currentTimeframe = ref<LegacyTimeframeOption>({ name: 'M1', value: 'M1' });
+  const currentTimeframe = ref<LegacyTimeframeOption>({
+    name: 'M1',
+    value: 'M1',
+  });
 
   function setCurrentTimeframe(timeframe: LegacyTimeframeOption): void {
     currentTimeframe.value = timeframe;

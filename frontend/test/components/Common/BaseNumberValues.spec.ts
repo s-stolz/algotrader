@@ -5,7 +5,9 @@ import BaseSelect from '@/components/Common/BaseSelect.vue';
 
 describe('numeric value entry', () => {
   it('rejects invalid and fractional integer entries and emits removable numeric values', async () => {
-    const wrapper = mount(BaseNumberValues, { props: { value: [1, 2], label: 'Periods', integer: true } });
+    const wrapper = mount(BaseNumberValues, {
+      props: { value: [1, 2], label: 'Periods', integer: true },
+    });
     const select = wrapper.findComponent(BaseSelect);
     for (const input of ['oops', '1.5', 'Infinity']) {
       select.vm.$emit('search', input);

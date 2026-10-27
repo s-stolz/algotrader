@@ -11,7 +11,9 @@ export const selectionColors = {
   controlBorder: darkTheme.common?.borderColor ?? 'rgba(255, 255, 255, .24)',
 };
 
-export const selectionPopoverTheme: NonNullable<InstanceType<typeof NPopover>['$props']['themeOverrides']> = {
+export const selectionPopoverTheme: NonNullable<
+  InstanceType<typeof NPopover>['$props']['themeOverrides']
+> = {
   color: selectionColors.surface,
   textColor: selectionColors.text,
   borderRadius: '6px',
@@ -19,7 +21,9 @@ export const selectionPopoverTheme: NonNullable<InstanceType<typeof NPopover>['$
   padding: '16px',
 };
 
-export const selectionDropdownTheme: NonNullable<DropdownProps['themeOverrides']> = {
+export const selectionDropdownTheme: NonNullable<
+  DropdownProps['themeOverrides']
+> = {
   color: selectionColors.surface,
   optionColorHover: selectionColors.hover,
   optionColorActive: selectionColors.selected,

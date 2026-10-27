@@ -36,12 +36,18 @@ const CHART_SERIES_TYPES = new Set<ChartSeriesType>([
   'histogram',
 ]);
 
-function isChartSeriesType(value: string | undefined): value is ChartSeriesType {
-  return value !== undefined && CHART_SERIES_TYPES.has(value as ChartSeriesType);
+function isChartSeriesType(
+  value: string | undefined,
+): value is ChartSeriesType {
+  return (
+    value !== undefined && CHART_SERIES_TYPES.has(value as ChartSeriesType)
+  );
 }
 
-function toChartSeriesOptions(options: JsonObject | undefined): ChartSeriesOptions {
-  return options ? { ...options } as ChartSeriesOptions : {};
+function toChartSeriesOptions(
+  options: JsonObject | undefined,
+): ChartSeriesOptions {
+  return options ? ({ ...options } as ChartSeriesOptions) : {};
 }
 
 export class IndicatorManager {
@@ -96,14 +102,21 @@ export class IndicatorManager {
     }
   }
 
-  transformIndicatorData(data: readonly IndicatorDataPoint[], outputKey: string): ChartValuePoint[] {
+  transformIndicatorData(
+    data: readonly IndicatorDataPoint[],
+    outputKey: string,
+  ): ChartValuePoint[] {
     const points: ChartValuePoint[] = [];
 
     for (const item of data) {
       const time = Math.floor(Number(item.timestamp_ms) / 1000);
       const value = item[outputKey];
 
-      if (!Number.isFinite(time) || typeof value !== 'number' || !Number.isFinite(value)) {
+      if (
+        !Number.isFinite(time) ||
+        typeof value !== 'number' ||
+        !Number.isFinite(value)
+      ) {
         continue;
       }
 
@@ -113,7 +126,11 @@ export class IndicatorManager {
     return points;
   }
 
-  updateIndicatorStyles(id: string, outputKey: string, newStyles: ChartSeriesOptions): boolean {
+  updateIndicatorStyles(
+    id: string,
+    outputKey: string,
+    newStyles: ChartSeriesOptions,
+  ): boolean {
     const seriesKey = `${id}_${outputKey}`;
     return this.chartManager.updateSeriesOptions(seriesKey, newStyles);
   }
@@ -143,7 +160,10 @@ export class IndicatorManager {
     }
   }
 
-  updateIndicatorSeriesPoint(id: string, point: IndicatorDataPoint | null): void {
+  updateIndicatorSeriesPoint(
+    id: string,
+    point: IndicatorDataPoint | null,
+  ): void {
     const indicator = this.indicatorsStore.getById(id);
     if (!indicator || !point) {
       return;
@@ -186,8 +206,13 @@ export class IndicatorManager {
   async updateMissingPaneHtmlElements(): Promise<void> {
     for (const indicator of this.indicatorsStore.all) {
       if (indicator.paneHtmlElement === null) {
-        const paneHtmlElement = await this.chartManager.getPaneHtmlElement(indicator.paneIndex);
-        this.indicatorsStore.updateIndicatorPaneElement(indicator._id, paneHtmlElement);
+        const paneHtmlElement = await this.chartManager.getPaneHtmlElement(
+          indicator.paneIndex,
+        );
+        this.indicatorsStore.updateIndicatorPaneElement(
+          indicator._id,
+          paneHtmlElement,
+        );
       }
     }
   }

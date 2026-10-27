@@ -2,7 +2,9 @@ const PANE_OVERLAY_CLASS = 'indicators-wrapper';
 
 export const PANE_OVERLAY_SELECTOR = `.${PANE_OVERLAY_CLASS}`;
 
-export function getOrCreatePaneOverlayWrapper(paneHtmlElement: HTMLElement): HTMLDivElement {
+export function getOrCreatePaneOverlayWrapper(
+  paneHtmlElement: HTMLElement,
+): HTMLDivElement {
   paneHtmlElement.style.position = 'relative';
 
   const existingWrapper = paneHtmlElement.querySelector(PANE_OVERLAY_SELECTOR);

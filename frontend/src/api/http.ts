@@ -22,8 +22,10 @@ export async function parseJsonResponse(
   failureMessage: string,
 ): Promise<unknown> {
   if (!response.ok) {
-    throw new Error(`${failureMessage}: ${response.statusText || response.status}`);
+    throw new Error(
+      `${failureMessage}: ${response.statusText || response.status}`,
+    );
   }
 
-  return await response.json() as unknown;
+  return (await response.json()) as unknown;
 }

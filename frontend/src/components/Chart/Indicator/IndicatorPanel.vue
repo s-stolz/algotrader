@@ -3,12 +3,19 @@
     <div class="indicator-header">
       <span class="indicator-name">{{ indicator.info.name }}</span>
       <div class="indicator-controls">
-        <n-button text @click="onOpenSettings">
+        <n-button
+          text
+          @click="onOpenSettings"
+        >
           <n-icon size="20">
             <SettingsOutline />
           </n-icon>
         </n-button>
-        <n-button text class="remove-button" @click="onRemoveIndicator">
+        <n-button
+          text
+          class="remove-button"
+          @click="onRemoveIndicator"
+        >
           <n-icon size="20">
             <TrashOutline />
           </n-icon>
@@ -19,15 +26,15 @@
 </template>
 
 <script setup lang="ts">
-import { NButton, NIcon } from "naive-ui";
+import { NButton, NIcon } from 'naive-ui';
 
-import { SettingsOutline, TrashOutline } from "@/icons";
-import { useModalStore } from "@/stores/modalStore";
+import { SettingsOutline, TrashOutline } from '@/icons';
+import { useModalStore } from '@/stores/modalStore';
 
-import type { IndicatorInstance } from "./types";
+import type { IndicatorInstance } from './types';
 
 defineOptions({
-  name: "IndicatorPanel",
+  name: 'IndicatorPanel',
 });
 
 const props = defineProps<{
@@ -35,7 +42,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "remove-indicator": [indicatorId: string];
+  'remove-indicator': [indicatorId: string];
 }>();
 
 const modalStore = useModalStore();
@@ -45,7 +52,7 @@ function onOpenSettings(): void {
 }
 
 function onRemoveIndicator(): void {
-  emit("remove-indicator", props.indicator._id);
+  emit('remove-indicator', props.indicator._id);
 }
 </script>
 

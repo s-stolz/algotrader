@@ -6,15 +6,24 @@ import BaseGroupedSelect from '@/components/Common/BaseGroupedSelect.vue';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
 
 describe('TimeframeDropdown', () => {
-  beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()); });
+  beforeEach(() => {
+    localStorage.clear();
+    setActivePinia(createPinia());
+  });
 
   it('keeps the picker synchronized with chart timeframe state and persists a chosen timeframe', async () => {
     const store = useCurrentTimeframeStore();
     store.setCurrentTimeframe({ label: 'H4', value: 'H4' });
-    const wrapper = mount(TimeframeDropdown, { global: { stubs: { BaseGroupedSelect: true } } });
+    const wrapper = mount(TimeframeDropdown, {
+      global: { stubs: { BaseGroupedSelect: true } },
+    });
     const picker = wrapper.getComponent(BaseGroupedSelect);
     expect(picker.props('value')).toBe('H4');
-    expect(picker.props('groups').map(group => group.label)).toEqual(['Minutes', 'Hours', 'Days']);
+    expect(picker.props('groups').map((group) => group.label)).toEqual([
+      'Minutes',
+      'Hours',
+      'Days',
+    ]);
     picker.vm.$emit('update:value', 'M15');
     expect(store.value).toBe('M15');
     await wrapper.vm.$nextTick();

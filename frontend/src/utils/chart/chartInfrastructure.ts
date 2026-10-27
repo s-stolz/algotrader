@@ -1,4 +1,8 @@
-import type { CandlestickSeriesPartialOptions, ChartOptions, DeepPartial } from 'lightweight-charts';
+import type {
+  CandlestickSeriesPartialOptions,
+  ChartOptions,
+  DeepPartial,
+} from 'lightweight-charts';
 
 import type { ChartCandle } from '@/types/contracts';
 
@@ -30,8 +34,12 @@ export interface ChartInfrastructure {
   updateCandlestick(candle: ChartOhlcPoint): boolean;
   setMinMove(minMove: number): boolean;
   setCandlestickMarkers(markers: readonly ChartSeriesMarker[]): boolean;
-  setCandlestickProtectiveLines(segments: readonly ChartProtectiveLineSegment[]): boolean;
-  setCandlestickMeasurementOverlay(model: ChartMeasurementOverlayModel): boolean;
+  setCandlestickProtectiveLines(
+    segments: readonly ChartProtectiveLineSegment[],
+  ): boolean;
+  setCandlestickMeasurementOverlay(
+    model: ChartMeasurementOverlayModel,
+  ): boolean;
   clearCandlestickMeasurementOverlay(): boolean;
   coordinateToCandlestickPrice(coordinate: number): number | null;
   coordinateToLogical(coordinate: number): number | null;
@@ -39,7 +47,9 @@ export interface ChartInfrastructure {
   subscribeCrosshairMove(callback: ChartCrosshairMoveHandler): void;
   unsubscribeCrosshairMove(callback?: ChartCrosshairMoveHandler | null): void;
   subscribeVisibleLogicalRangeChange(callback: ChartVisibleRangeHandler): void;
-  unsubscribeVisibleLogicalRangeChange(callback?: ChartVisibleRangeHandler | null): void;
+  unsubscribeVisibleLogicalRangeChange(
+    callback?: ChartVisibleRangeHandler | null,
+  ): void;
   scrollToRealTime(): void;
   cleanup(): void;
 }
@@ -67,7 +77,8 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
       return this.chartInitialized;
     } catch (error) {
       console.error('Failed to initialize chart:', error);
-      this.chartError = error instanceof Error ? error : new Error(String(error));
+      this.chartError =
+        error instanceof Error ? error : new Error(String(error));
       this.chartInitialized = false;
       return false;
     }
@@ -89,7 +100,12 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
       ...seriesOptions,
     };
 
-    return this.chartManager.addSeries('ohlc', 'candlestick', data, defaultOptions);
+    return this.chartManager.addSeries(
+      'ohlc',
+      'candlestick',
+      data,
+      defaultOptions,
+    );
   }
 
   updateCandlestick(candle: ChartOhlcPoint): boolean {
@@ -110,11 +126,15 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
     return this.chartManager.setSeriesMarkers('ohlc', markers);
   }
 
-  setCandlestickProtectiveLines(segments: readonly ChartProtectiveLineSegment[]): boolean {
+  setCandlestickProtectiveLines(
+    segments: readonly ChartProtectiveLineSegment[],
+  ): boolean {
     return this.chartManager.setSeriesProtectiveLines('ohlc', segments);
   }
 
-  setCandlestickMeasurementOverlay(model: ChartMeasurementOverlayModel): boolean {
+  setCandlestickMeasurementOverlay(
+    model: ChartMeasurementOverlayModel,
+  ): boolean {
     return this.chartManager.setSeriesMeasurementOverlay('ohlc', model);
   }
 
@@ -123,12 +143,16 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
   }
 
   coordinateToCandlestickPrice(coordinate: number): number | null {
-    const price = this.chartManager.series.get('ohlc')?.series.coordinateToPrice(coordinate);
+    const price = this.chartManager.series
+      .get('ohlc')
+      ?.series.coordinateToPrice(coordinate);
     return price === null || price === undefined ? null : Number(price);
   }
 
   coordinateToLogical(coordinate: number): number | null {
-    const logical = this.chartManager.chart?.timeScale().coordinateToLogical(coordinate);
+    const logical = this.chartManager.chart
+      ?.timeScale()
+      .coordinateToLogical(coordinate);
     return logical === null || logical === undefined ? null : Number(logical);
   }
 
@@ -140,7 +164,9 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
     this.chartManager.subscribeCrosshairMove(callback);
   }
 
-  unsubscribeCrosshairMove(callback: ChartCrosshairMoveHandler | null = null): void {
+  unsubscribeCrosshairMove(
+    callback: ChartCrosshairMoveHandler | null = null,
+  ): void {
     this.chartManager.unsubscribeCrosshairMove(callback);
   }
 
@@ -148,7 +174,9 @@ class DefaultChartInfrastructure implements ChartInfrastructure {
     this.chartManager.subscribeVisibleLogicalRangeChange(callback);
   }
 
-  unsubscribeVisibleLogicalRangeChange(callback: ChartVisibleRangeHandler | null = null): void {
+  unsubscribeVisibleLogicalRangeChange(
+    callback: ChartVisibleRangeHandler | null = null,
+  ): void {
     this.chartManager.unsubscribeVisibleLogicalRangeChange(callback);
   }
 

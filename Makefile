@@ -135,6 +135,9 @@ test:
 	fi; \
 	if [ "$(TEST_BACKEND)" = "frontend" ]; then \
 		echo "Running frontend quality gate..."; \
+		npm --prefix frontend run format:check || status=1; \
+		npm --prefix frontend run check:readability || status=1; \
+		npm --prefix frontend run test:tooling || status=1; \
 		npm --prefix frontend run lint || status=1; \
 		npm --prefix frontend run typecheck || status=1; \
 		npm --prefix frontend run test:layout || status=1; \

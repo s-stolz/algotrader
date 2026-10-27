@@ -40,38 +40,54 @@ function walkFiles(directory) {
 }
 
 if (fs.existsSync(sourceTestDirectory)) {
-  failures.push(`src/test must not exist: ${toDisplayPath(sourceTestDirectory)}`);
+  failures.push(
+    `src/test must not exist: ${toDisplayPath(sourceTestDirectory)}`,
+  );
 }
 
 if (fs.existsSync(rootSetupFile)) {
-  failures.push(`Vitest setup must live under test/: ${toDisplayPath(rootSetupFile)}`);
+  failures.push(
+    `Vitest setup must live under test/: ${toDisplayPath(rootSetupFile)}`,
+  );
 }
 
 if (!fs.existsSync(testSetupFile)) {
   failures.push(`Missing Vitest setup file: ${toDisplayPath(testSetupFile)}`);
 }
 
-const sourceSpecs = walkFiles(sourceRoot).filter((filePath) => (
-  misplacedSpecPattern.test(path.basename(filePath))
-));
+const sourceSpecs = walkFiles(sourceRoot).filter((filePath) =>
+  misplacedSpecPattern.test(path.basename(filePath)),
+);
 
 for (const specPath of sourceSpecs) {
-  failures.push(`Spec files must not live under src/: ${toDisplayPath(specPath)}`);
+  failures.push(
+    `Spec files must not live under src/: ${toDisplayPath(specPath)}`,
+  );
 }
 
-const testSpecs = walkFiles(testRoot).filter((filePath) => (
-  mirroredSpecPattern.test(path.basename(filePath))
-));
+const testSpecs = walkFiles(testRoot).filter((filePath) =>
+  mirroredSpecPattern.test(path.basename(filePath)),
+);
 
 for (const specPath of testSpecs) {
   const relativeSpecPath = path.relative(testRoot, specPath);
   const parsed = path.parse(relativeSpecPath);
   const sourceBasename = parsed.name.replace(/\.(?:spec|test)$/, '');
-  const sourceCandidates = sourceExtensions.map((extension) => (
-    path.join(sourceRoot, parsed.dir, `${sourceBasename}${extension}`)
-  ));
+  const behaviorSuite = sourceBasename.match(/^(.+)\.([a-z][a-z0-9-]*)$/);
+  const owners = [sourceBasename];
+  if (behaviorSuite) owners.push(behaviorSuite[1]);
+  const sourceCandidates = owners.flatMap((owner) =>
+    sourceExtensions.map((extension) =>
+      path.join(sourceRoot, parsed.dir, `${owner}${extension}`),
+    ),
+  );
 
-  if (!sourceCandidates.some((candidate) => fs.existsSync(candidate))) {
+  if (
+    !sourceCandidates.some(
+      (candidate) =>
+        fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+    )
+  ) {
     failures.push(
       `Spec file does not map to a source file: ${toDisplayPath(specPath)}`,
     );
@@ -86,4 +102,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Frontend test layout check passed for ${testSpecs.length} spec files.`);
+console.log(
+  `Frontend test layout check passed for ${testSpecs.length} spec files.`,
+);

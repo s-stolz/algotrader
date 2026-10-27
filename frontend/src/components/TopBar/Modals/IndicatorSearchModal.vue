@@ -1,5 +1,8 @@
 <template>
-  <BaseModal :modalId="'indicatorSearch'" :title="'Indicator'">
+  <BaseModal
+    :modalId="'indicatorSearch'"
+    :title="'Indicator'"
+  >
     <div>
       <span id="search-bar-wrapper">
         <n-input
@@ -21,7 +24,11 @@
 
       <BaseDataTable :max-height="300">
         <tbody>
-          <tr v-for="indicator in filteredIndicators" :key="indicator.id" @click="onApplyIndicator(indicator)">
+          <tr
+            v-for="indicator in filteredIndicators"
+            :key="indicator.id"
+            @click="onApplyIndicator(indicator)"
+          >
             <td>{{ indicator.name }}</td>
           </tr>
         </tbody>
@@ -53,9 +60,13 @@ const currentMarketStore = useCurrentMarketStore();
 const currentTimeframeStore = useCurrentTimeframeStore();
 const indicatorsStore = useIndicatorsStore();
 
-const filteredIndicators = computed(() => indicators.value
-  .filter((indicator) => indicator.name.toUpperCase().includes(indicatorInput.value.toUpperCase()))
-  .sort((a, b) => a.name.localeCompare(b.name)));
+const filteredIndicators = computed(() =>
+  indicators.value
+    .filter((indicator) =>
+      indicator.name.toUpperCase().includes(indicatorInput.value.toUpperCase()),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name)),
+);
 
 const symbol = computed(() => currentMarketStore.symbol);
 const exchange = computed(() => currentMarketStore.exchange);

@@ -6,7 +6,11 @@ import {
   type Market,
   type StoredCurrentMarket,
 } from '@/types/contracts';
-import { getStoredState, setStoredState, STORAGE_KEYS } from '@/utils/localStorage';
+import {
+  getStoredState,
+  setStoredState,
+  STORAGE_KEYS,
+} from '@/utils/localStorage';
 
 type CurrentMarketInput = Market | StoredCurrentMarket;
 

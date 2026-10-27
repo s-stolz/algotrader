@@ -26,7 +26,9 @@ export default defineComponent({
       },
     }));
     const ellipsisTagPopoverProps = computed(() => {
-      const overrides = props.ellipsisTagPopoverProps as InstanceType<typeof NPopover>['$props'] | undefined;
+      const overrides = props.ellipsisTagPopoverProps as
+        | InstanceType<typeof NPopover>['$props']
+        | undefined;
       return {
         placement: 'bottom-start' as const,
         overlap: false,
@@ -45,25 +47,52 @@ export default defineComponent({
       ...props.menuProps,
       class: ['base-select-menu', props.menuProps?.class],
     }));
-    return () => h(NSelect, mergeProps(attrs, props, {
-      class: 'base-select',
-      menuProps: menuProps.value,
-      ellipsisTagPopoverProps: ellipsisTagPopoverProps.value,
-      themeOverrides: mergedTheme.value,
-    }), slots);
+    return () =>
+      h(
+        NSelect,
+        mergeProps(attrs, props, {
+          class: 'base-select',
+          menuProps: menuProps.value,
+          ellipsisTagPopoverProps: ellipsisTagPopoverProps.value,
+          themeOverrides: mergedTheme.value,
+        }),
+        slots,
+      );
   },
 });
 </script>
 
 <style>
-.base-select { min-width: 0; }
-.base-select-menu, .base-select-menu *, .base-select-overflow, .base-select-overflow * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.base-select {
+  min-width: 0;
+}
+.base-select-menu,
+.base-select-menu *,
+.base-select-overflow,
+.base-select-overflow * {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
 .base-select-menu {
   border-radius: 6px;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
 }
 /* Also covers Naive UI's pagination size selector, which shares baseSelectTheme. */
-.n-select .n-base-selection:not(.n-base-selection--disabled):is(:hover, .n-base-selection--focus) .n-base-selection-input {
+.n-select
+  .n-base-selection:not(.n-base-selection--disabled):is(
+    :hover,
+    .n-base-selection--focus
+  )
+  .n-base-selection-input {
   color: var(--selection-accent);
 }
 </style>
