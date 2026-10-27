@@ -68,147 +68,12 @@
         >{{ cancelError }}</p
       >
 
-      <section
+      <BacktestHistory
         v-show="page === 'history'"
-        class="history-page"
-        aria-label="Saved Backtest Runs"
-      >
-        <div class="workspace-summary">
-          <div
-            ><span>Saved experiments</span
-            ><strong>{{ historyRows.length }}</strong></div
-          >
-          <div
-            ><span>In progress</span
-            ><strong>{{ activeHistoryCount }}</strong></div
-          >
-          <div
-            ><span>Completed</span
-            ><strong>{{ completedHistoryCount }}</strong></div
-          >
-          <div
-            ><span>With failed runs</span
-            ><strong class="failure-count">{{
-              failedHistoryCount
-            }}</strong></div
-          >
-        </div>
-        <div class="table-panel">
-          <div class="section-heading history-heading">
-            <div>
-              <div class="history-title">
-                <h2>Experiment history</h2>
-                <n-tag
-                  :bordered="false"
-                  size="small"
-                  >{{ filteredHistory.length }} experiments</n-tag
-                >
-              </div>
-              <p
-                >Open a backtest to explore its configuration and
-                performance.</p
-              >
-            </div>
-            <n-button
-              v-if="page === 'history'"
-              type="primary"
-              data-testid="workspace-create"
-              @click="creationOpen = true"
-            >
-              <template #icon><n-icon :component="AddOutline" /></template
-              >Create Backtest
-            </n-button>
-          </div>
-          <div class="filters">
-            <n-input
-              v-model:value="search"
-              data-testid="workspace-search"
-              clearable
-              placeholder="Search saved runs and batches"
-              aria-label="Search saved runs and batches"
-            />
-            <BaseSelect
-              v-model:value="statusFilter"
-              data-testid="workspace-status-filter"
-              aria-label="Filter by status"
-              :options="statusOptions"
-            />
-            <BaseSelect
-              v-model:value="typeFilter"
-              data-testid="workspace-type-filter"
-              aria-label="Filter by type"
-              :options="typeOptions"
-            />
-            <BaseSelect
-              v-model:value="marketFilter"
-              data-testid="workspace-market-filter"
-              aria-label="Filter by Market"
-              :options="marketOptions"
-            />
-            <BaseSelect
-              v-model:value="strategyFilter"
-              data-testid="workspace-strategy-filter"
-              aria-label="Filter by Strategy"
-              :options="strategyOptions"
-            />
-            <BaseSelect
-              v-model:value="timeframeFilter"
-              data-testid="workspace-timeframe-filter"
-              aria-label="Filter by Timeframe"
-              :options="timeframeOptions"
-            />
-            <BaseSelect
-              v-model:value="failedFilter"
-              data-testid="workspace-failed-filter"
-              aria-label="Filter by failed runs"
-              :options="failedOptions"
-            />
-          </div>
-
-          <p
-            v-if="isLoading"
-            role="status"
-            >Loading saved runs…</p
-          >
-
-          <p
-            v-if="
-              runs !== null &&
-              batches !== null &&
-              historyRows.length === 0 &&
-              !readError
-            "
-            role="status"
-          >
-            No saved Backtest Runs or Batches.
-          </p>
-          <p
-            v-else-if="
-              runs !== null &&
-              batches !== null &&
-              filteredHistory.length === 0 &&
-              !readError
-            "
-            role="status"
-          >
-            No Backtest Runs or Batches match these filters.
-          </p>
-
-          <BaseDataTable
-            v-if="runs !== null && batches !== null"
-            data-testid="workspace-history"
-            :columns="historyColumns"
-            :data="filteredHistory"
-            :row-key="rowKey"
-            :row-props="historyRowProps"
-            :pagination="historyPagination"
-            :scroll-x="1470"
-            :max-height="540"
-            size="medium"
-            striped
-          />
-        </div>
-      </section>
+        :history="workspace.history"
+        :actions="workspace.historyActions"
+        :can-create="page === 'history'"
+      />
 
       <section
         v-show="page === 'analysis'"
@@ -465,28 +330,16 @@
 </template>
 
 <script setup lang="ts">
-import {
-  computed,
-  h,
-  onActivated,
-  onDeactivated,
-  onMounted,
-  onUnmounted,
-  ref,
-  shallowRef,
-  watch,
-} from 'vue';
+import { computed, h, ref, watch } from 'vue';
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
-import BaseSelect from '@/components/Common/BaseSelect.vue';
 import { baseSelectTheme } from '@/components/Common/baseSelectTheme';
 import {
   NButton,
   NCheckbox,
   NConfigProvider,
   NIcon,
-  NInput,
   NSkeleton,
   NTag,
   NTooltip,
@@ -495,7 +348,6 @@ import type {
   DataTableColumns,
   GlobalThemeOverrides,
   PaginationProps,
-  SelectOption,
 } from 'naive-ui';
 import {
   DocumentTextOutline,
@@ -504,8 +356,6 @@ import {
   AddOutline,
   RefreshOutline,
   OptionsOutline,
-  CopyOutline,
-  TrashOutline,
   StopCircleOutline,
   TimeOutline,
   PlayCircleOutline,
@@ -514,39 +364,18 @@ import {
   CloseCircleOutline,
   BanOutline,
 } from '@vicons/ionicons5';
-import { useRouter } from 'vue-router';
 
-import {
-  cancelBacktestRun,
-  deleteBacktestBatch,
-  deleteBacktestRun,
-  fetchBacktestEquityCurve,
-  getBacktestRun,
-  listBacktestBatches,
-  listBacktestBatchMembers,
-  listBacktestRuns,
-} from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import ExperimentName from '@/components/Backtest/ExperimentName.vue';
 import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
+
 import {
-  getBacktestRunSelectability,
-  useBacktestOverlayStore,
-} from '@/stores/backtestOverlayStore';
-import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
-import { useMarketsStore } from '@/stores/marketsStore';
-import {
-  BACKTEST_BATCH_STATUSES,
-  BACKTEST_RESULT_SCHEMA_VERSION,
-  BACKTEST_RUN_STATUSES,
-  type BacktestBatch,
   type BacktestRun,
   type BacktestRunStatus,
-  type EquityReplayResponse,
 } from '@/types/backtesterContracts';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
-import { reuseBatch, reuseStandalone } from './backtestReuse';
+
 import EquityReplayCharts from './EquityReplayCharts.vue';
 import {
   compareRuns,
@@ -563,16 +392,51 @@ import {
   formatUtcDate,
   runMarket,
   runName,
-  batchName,
   savedMetric,
   strategyVersion,
-  timeframeDuration,
-  type HistorySortKey,
 } from './backtestWorkspaceRuns';
 
+import BacktestHistory from './workspace/BacktestHistory.vue';
+import { useBacktestWorkspace } from './workspace/useBacktestWorkspace';
+import {
+  executionLogAvailable,
+  executionLogUnavailableReason,
+} from './workspace/workspaceExecution';
 defineOptions({ name: 'BacktestWorkspaceView' });
 
-const POLL_INTERVAL_MS = 5000;
+const workspace = useBacktestWorkspace();
+const {
+  overlayStore,
+  selectedRunId,
+  selectedRun,
+  selectedBatchId,
+  detailError,
+  selectionNotice,
+  creationOpen,
+  page,
+  queueHealth,
+  logRun,
+  openingChartRunId,
+  backToHistory,
+  refreshWorkspace,
+  selectRun,
+  receiveMembers,
+  createdRun,
+  createdBatch,
+  chartUnavailableReason,
+  openOnChart,
+} = workspace;
+const { isRefreshing, readError } = workspace.history;
+const { cancelError, deleteError, cancellingRunIds, cancelRun } =
+  workspace.commands;
+const {
+  analysis,
+  selectedComparisonIds,
+  currentRows,
+  setComparison,
+  toggleComparison,
+} = workspace.inspection;
+
 const ALL_ANALYSIS_ROWS = Number.MAX_SAFE_INTEGER;
 const workspaceTheme: GlobalThemeOverrides = {
   common: {
@@ -581,35 +445,6 @@ const workspaceTheme: GlobalThemeOverrides = {
   },
   Select: baseSelectTheme,
 };
-const router = useRouter();
-const workspaceStore = useBacktestWorkspaceStore();
-const overlayStore = useBacktestOverlayStore();
-const marketsStore = useMarketsStore();
-const queueHealth = ref<InstanceType<typeof BacktestQueueHealth> | null>(null);
-const runs = ref<BacktestRun[] | null>(null);
-const batches = shallowRef<BacktestBatch[] | null>(null);
-type HistoryEntry =
-  | { kind: 'run'; run: BacktestRun }
-  | { kind: 'batch'; batch: BacktestBatch };
-const isLoading = ref(false);
-const isRefreshing = ref(false);
-const readError = ref<string | null>(null);
-const detailError = ref<string | null>(null);
-const deleteError = ref<string | null>(null);
-const selectionNotice = ref<string | null>(null);
-const cancelError = ref<string | null>(null);
-const cancellingRunIds = ref<ReadonlySet<string>>(new Set());
-const deletingRunIds = ref<ReadonlySet<string>>(new Set());
-const deletingBatchIds = ref<ReadonlySet<string>>(new Set());
-type AnalysisState = {
-  loading: boolean;
-  error: string | null;
-  curve: EquityReplayResponse | null;
-  detail: BacktestRun | null;
-};
-const analysis = ref<Record<string, AnalysisState>>({});
-const batchMembers = ref<BacktestRun[]>([]);
-const selectedComparisonIds = ref<string[]>([]);
 const defaultColumns = [
   'status',
   'market',
@@ -627,14 +462,6 @@ const hasDefaultColumns = computed(
     defaultColumns.every((key) =>
       columnSettings.value.visibleKeys.includes(key),
     ),
-);
-const currentRows = computed(() =>
-  (selectedBatchId.value
-    ? batchMembers.value
-    : selectedRun.value
-      ? [selectedRun.value]
-      : []
-  ).map((run) => analysis.value[run.run_id]?.detail ?? run),
 );
 const comparisonSortKey = ref<ComparisonSortKey>('ordinal');
 const comparisonSortOrder = ref<'ascend' | 'descend'>('ascend');
@@ -705,33 +532,6 @@ const chartSeries = computed<ReplaySeries[]>(() =>
       : [];
   }),
 );
-const creationOpen = ref(false);
-const page = ref<'history' | 'analysis'>('history');
-const historyPagination = ref({
-  page: 1,
-  pageSize: 15,
-  onChange: (page: number) => {
-    historyPagination.value.page = page;
-  },
-});
-function backToHistory(): void {
-  page.value = 'history';
-  void router.push('/backtests');
-}
-function showAnalysis(kind: 'run' | 'batch', id: string): void {
-  page.value = 'analysis';
-  void router.push(`/backtests/${kind}/${encodeURIComponent(id)}`);
-}
-const selectedBatchId = ref<string | null>(null);
-const search = ref('');
-const statusFilter = ref('all');
-const typeFilter = ref('all');
-const marketFilter = ref('all');
-const strategyFilter = ref('all');
-const timeframeFilter = ref('all');
-const failedFilter = ref('all');
-const selectedRunId = computed(() => workspaceStore.selectedRunId);
-const selectedRun = computed(() => workspaceStore.selectedRun);
 watch(
   () => currentRows.value.length,
   (count) => {
@@ -747,196 +547,6 @@ watch(
     analysisPage.value = 1;
   },
 );
-const logRun = ref<BacktestRun | null>(null);
-const openingChartRunId = ref<string | null>(null);
-function chartUnavailableReason(run: BacktestRun): string | null {
-  return marketsStore.all.length === 0
-    ? getBacktestRunSelectability(run).reason
-    : overlayStore.getBacktestRunSelectability(run).reason;
-}
-let pollTimer: ReturnType<typeof setInterval> | null = null;
-let readGeneration = 0;
-let activeHistoryRead: Promise<void> | null = null;
-let refreshAfterCurrentRead = false;
-let detailSequence = 0;
-let pendingDetailId: string | null = null;
-let analysisSequence = 0;
-const analysisTokens = new Map<string, number>();
-let isActive = false;
-
-const statusOptions: SelectOption[] = [
-  { label: 'All statuses', value: 'all' },
-  ...[...new Set([...BACKTEST_RUN_STATUSES, ...BACKTEST_BATCH_STATUSES])].map(
-    (status) => ({ label: status, value: status }),
-  ),
-];
-const typeOptions: SelectOption[] = [
-  { label: 'All types', value: 'all' },
-  { label: 'Standalone', value: 'standalone' },
-  { label: 'Parameter Sweep', value: 'batch' },
-];
-const failedOptions: SelectOption[] = [
-  { label: 'All outcomes', value: 'all' },
-  { label: 'With failed runs', value: 'with_failed' },
-];
-function optionsFrom(values: string[], allLabel: string): SelectOption[] {
-  return [
-    { label: allLabel, value: 'all' },
-    ...[...new Set(values)].sort().map((value) => ({ label: value, value })),
-  ];
-}
-function batchMarkets(batch: BacktestBatch): string[] {
-  return batch.market_contexts.map((market) =>
-    market.exchange ? `${market.exchange}:${market.symbol}` : market.symbol,
-  );
-}
-function batchTimeframes(batch: BacktestBatch): string[] {
-  return batch.timeframes;
-}
-const marketOptions = computed(() =>
-  optionsFrom(
-    [
-      ...(runs.value ?? []).map(runMarket),
-      ...(batches.value ?? []).flatMap(batchMarkets),
-    ],
-    'All Markets',
-  ),
-);
-const strategyOptions = computed(() =>
-  optionsFrom(
-    [
-      ...(runs.value ?? []).map((run) => run.request.strategy.strategy_id),
-      ...(batches.value ?? []).map((batch) => batch.strategy_id),
-    ],
-    'All Strategies',
-  ),
-);
-const timeframeOptions = computed(() =>
-  optionsFrom(
-    [
-      ...(runs.value ?? []).map((run) => run.request.timeframe),
-      ...(batches.value ?? []).flatMap(batchTimeframes),
-    ],
-    'All Timeframes',
-  ),
-);
-
-const historyRows = computed<HistoryEntry[]>(() => [
-  ...(runs.value ?? [])
-    .filter((run) => !run.batch_id)
-    .map((run) => ({ kind: 'run' as const, run })),
-  ...(batches.value ?? []).map((batch) => ({ kind: 'batch' as const, batch })),
-]);
-const activeHistoryCount = computed(
-  () =>
-    historyRows.value.filter((entry) =>
-      entry.kind === 'run'
-        ? ['queued', 'running', 'cancelling'].includes(entry.run.status)
-        : !['completed', 'cancelled'].includes(entry.batch.status),
-    ).length,
-);
-const completedHistoryCount = computed(
-  () =>
-    historyRows.value.filter((entry) =>
-      entry.kind === 'run'
-        ? entry.run.status === 'succeeded'
-        : entry.batch.status === 'completed',
-    ).length,
-);
-const failedHistoryCount = computed(
-  () =>
-    historyRows.value.filter((entry) =>
-      entry.kind === 'run'
-        ? entry.run.status === 'failed'
-        : entry.batch.has_failed_members,
-    ).length,
-);
-const filteredHistory = computed(() =>
-  historyRows.value.filter((entry) => {
-    const query = search.value.trim().toLowerCase();
-    if (entry.kind === 'run') {
-      const run = entry.run;
-      return (
-        (statusFilter.value === 'all' || run.status === statusFilter.value) &&
-        (typeFilter.value === 'all' || typeFilter.value === 'standalone') &&
-        (failedFilter.value === 'all' || run.status === 'failed') &&
-        (marketFilter.value === 'all' ||
-          runMarket(run) === marketFilter.value) &&
-        (strategyFilter.value === 'all' ||
-          run.request.strategy.strategy_id === strategyFilter.value) &&
-        (timeframeFilter.value === 'all' ||
-          run.request.timeframe === timeframeFilter.value) &&
-        (!query ||
-          [
-            runName(run),
-            run.run_id,
-            run.status,
-            runMarket(run),
-            run.request.timeframe,
-            run.request.strategy.strategy_id,
-          ].some((value) => value.toLowerCase().includes(query)))
-      );
-    }
-    const batch = entry.batch;
-    return (
-      (statusFilter.value === 'all' || batch.status === statusFilter.value) &&
-      (typeFilter.value === 'all' || typeFilter.value === 'batch') &&
-      (failedFilter.value === 'all' || batch.has_failed_members) &&
-      (marketFilter.value === 'all' ||
-        batchMarkets(batch).includes(marketFilter.value)) &&
-      (strategyFilter.value === 'all' ||
-        batch.strategy_id === strategyFilter.value) &&
-      (timeframeFilter.value === 'all' ||
-        batchTimeframes(batch).includes(timeframeFilter.value)) &&
-      (!query ||
-        [
-          batchName(batch),
-          batch.batch_id,
-          batch.submission_id,
-          batch.status,
-          batch.strategy_id,
-          ...batchMarkets(batch),
-          ...batchTimeframes(batch),
-        ].some((value) => value.toLowerCase().includes(query)))
-    );
-  }),
-);
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : 'The Backtest service could not be read.';
-}
-
-async function loadSelected(runId: string, background = false): Promise<void> {
-  if (background && pendingDetailId === runId) return;
-  pendingDetailId = runId;
-  const sequence = ++detailSequence;
-  const nameReadRevision = workspaceStore.nameRevision;
-  try {
-    const detail = workspaceStore.preserveRunName(
-      await getBacktestRun(runId),
-      nameReadRevision,
-    );
-    if (sequence === detailSequence && workspaceStore.selectedRunId === runId) {
-      if (
-        JSON.stringify(workspaceStore.selectedRun) !== JSON.stringify(detail)
-      ) {
-        workspaceStore.selectRun(detail);
-      }
-      detailError.value = null;
-    }
-  } catch (error) {
-    if (sequence === detailSequence && workspaceStore.selectedRunId === runId) {
-      detailError.value = errorMessage(error);
-    }
-  } finally {
-    if (sequence === detailSequence) {
-      pendingDetailId = null;
-    }
-  }
-}
-
 function analysisRunName(id: string): string {
   const run = currentRows.value.find((candidate) => candidate.run_id === id);
   return run ? comparisonRunLabel(run) : id;
@@ -944,316 +554,6 @@ function analysisRunName(id: string): string {
 
 function comparisonRunLabel(run: BacktestRun): string {
   return runName(run);
-}
-
-function loadAnalysis(refresh = false): void {
-  const ids = [...selectedComparisonIds.value];
-  const kept = new Set(ids);
-  for (const id of analysisTokens.keys()) {
-    if (!kept.has(id)) analysisTokens.delete(id);
-  }
-  analysis.value = Object.fromEntries(
-    ids.flatMap((id) => (analysis.value[id] ? [[id, analysis.value[id]]] : [])),
-  );
-  for (const id of ids) {
-    if (
-      !refresh &&
-      analysis.value[id] &&
-      (!analysis.value[id].loading || analysisTokens.has(id))
-    )
-      continue;
-    const token = ++analysisSequence;
-    const nameReadRevision = workspaceStore.nameRevision;
-    analysisTokens.set(id, token);
-    analysis.value[id] = {
-      loading: true,
-      error: null,
-      curve: analysis.value[id]?.curve ?? null,
-      detail: analysis.value[id]?.detail ?? null,
-    };
-    void (async () => {
-      try {
-        const detail = workspaceStore.preserveRunName(
-          await getBacktestRun(id),
-          nameReadRevision,
-        );
-        if (detail.status !== 'succeeded')
-          throw new Error('Run is no longer successful');
-        if (analysisTokens.get(id) === token)
-          analysis.value[id] = {
-            loading: true,
-            error: null,
-            curve: analysis.value[id]?.curve ?? null,
-            detail,
-          };
-        const curve = await fetchBacktestEquityCurve(id);
-        if (analysisTokens.get(id) === token)
-          analysis.value[id] = {
-            loading: false,
-            error: null,
-            curve,
-            detail: workspaceStore.preserveRunName(detail, nameReadRevision),
-          };
-      } catch (error) {
-        if (analysisTokens.get(id) === token)
-          analysis.value[id] = {
-            loading: false,
-            error: errorMessage(error),
-            curve: analysis.value[id]?.curve ?? null,
-            detail: analysis.value[id]?.detail ?? null,
-          };
-      }
-    })();
-  }
-}
-
-function setComparison(ids: string[], refresh = false): void {
-  const nextIds = [...new Set(ids)].filter((id) =>
-    currentRows.value.some(
-      (run) => run.run_id === id && run.status === 'succeeded',
-    ),
-  );
-  if (
-    !refresh &&
-    nextIds.length === selectedComparisonIds.value.length &&
-    nextIds.every((id, index) => id === selectedComparisonIds.value[index])
-  )
-    return;
-  selectedComparisonIds.value = nextIds;
-  loadAnalysis(refresh);
-}
-
-function toggleComparison(run: BacktestRun): void {
-  if (run.status !== 'succeeded') return;
-  setComparison(
-    selectedComparisonIds.value.includes(run.run_id)
-      ? selectedComparisonIds.value.filter((id) => id !== run.run_id)
-      : [...selectedComparisonIds.value, run.run_id],
-  );
-}
-
-function receiveMembers(batchId: string, members: BacktestRun[]): void {
-  if (batchId !== selectedBatchId.value) return;
-  const changed =
-    JSON.stringify(batchMembers.value) !== JSON.stringify(members);
-  if (changed) batchMembers.value = members;
-  if (logRun.value?.batch_id === batchId) {
-    const updatedLogRun = members.find(
-      (run) => run.run_id === logRun.value?.run_id,
-    );
-    logRun.value =
-      updatedLogRun && executionLogAvailable(updatedLogRun)
-        ? updatedLogRun
-        : null;
-  }
-  const eligible = selectedComparisonIds.value.filter((id) =>
-    members.some((run) => run.run_id === id && run.status === 'succeeded'),
-  );
-  setComparison(eligible);
-  const selected = members.find((run) => run.run_id === selectedRunId.value);
-  if (selected && changed) workspaceStore.selectRun(selected);
-}
-
-watch(
-  () => workspaceStore.nameRevision,
-  () => {
-    if (runs.value)
-      runs.value = runs.value.map((run) =>
-        workspaceStore.preserveRunName(run, -1),
-      );
-    if (batches.value)
-      batches.value = batches.value.map((batch) =>
-        workspaceStore.preserveBatchName(batch, -1),
-      );
-    for (const state of Object.values(analysis.value)) {
-      if (state.detail)
-        state.detail = workspaceStore.preserveRunName(state.detail, -1);
-    }
-  },
-);
-
-async function readRuns(): Promise<void> {
-  const generation = ++readGeneration;
-  const nameReadRevision = workspaceStore.nameRevision;
-  isLoading.value = runs.value === null;
-
-  try {
-    const [readRunRecords, readBatchRecords] = await Promise.all([
-      listBacktestRuns({ membership: 'standalone' }),
-      listBacktestBatches(),
-    ]);
-    if (generation !== readGeneration || !isActive) return;
-    const latest = readRunRecords.map((run) =>
-      workspaceStore.preserveRunName(run, nameReadRevision),
-    );
-    const latestBatches = readBatchRecords.map((batch) =>
-      workspaceStore.preserveBatchName(batch, nameReadRevision),
-    );
-    runs.value = latest;
-    batches.value = latestBatches;
-    readError.value = null;
-    if (logRun.value && !logRun.value.batch_id) {
-      const updatedLogRun = latest.find(
-        (run) => run.run_id === logRun.value?.run_id,
-      );
-      logRun.value =
-        updatedLogRun && executionLogAvailable(updatedLogRun)
-          ? updatedLogRun
-          : null;
-    }
-    if (
-      (overlayStore.selectedRun?.batch_id &&
-        !latestBatches.some(
-          (batch) => batch.batch_id === overlayStore.selectedRun?.batch_id,
-        )) ||
-      (overlayStore.selectedRun &&
-        !overlayStore.selectedRun.batch_id &&
-        !latest.some((run) => run.run_id === overlayStore.selectedRunId))
-    ) {
-      overlayStore.clearOverlay();
-      selectionNotice.value =
-        'The chart overlay was cleared because its saved Backtest is unavailable.';
-    }
-    if (
-      selectedBatchId.value &&
-      !latestBatches.some((batch) => batch.batch_id === selectedBatchId.value)
-    ) {
-      selectedBatchId.value = null;
-      batchMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
-      selectionNotice.value =
-        'The selected Backtest Batch is no longer available.';
-    }
-    const selected = latest.find((run) => run.run_id === selectedRunId.value);
-    if (selected) {
-      const changed =
-        JSON.stringify(selectedRun.value) !== JSON.stringify(selected);
-      if (changed) workspaceStore.selectRun(selected);
-      void loadSelected(selected.run_id, true);
-      if (changed) setComparison(selectedComparisonIds.value);
-    } else if (selectedBatchId.value && selectedRunId.value) {
-      void loadSelected(selectedRunId.value, true);
-    } else if (selectedRunId.value) {
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
-      selectionNotice.value =
-        'The selected Backtest Run is no longer available.';
-    }
-  } catch (error) {
-    if (generation === readGeneration && isActive)
-      readError.value = errorMessage(error);
-  } finally {
-    if (generation !== readGeneration) return;
-    activeHistoryRead = null;
-    if (refreshAfterCurrentRead && isActive) {
-      refreshAfterCurrentRead = false;
-      void loadRuns();
-      return;
-    }
-    isLoading.value = false;
-    isRefreshing.value = false;
-  }
-}
-
-function loadRuns(shouldQueue = true): Promise<void> {
-  if (!isActive) return Promise.resolve();
-  if (activeHistoryRead) {
-    if (shouldQueue) refreshAfterCurrentRead = true;
-    return activeHistoryRead;
-  }
-  activeHistoryRead = readRuns();
-  return activeHistoryRead;
-}
-
-function refreshWorkspace(): Promise<void> {
-  isRefreshing.value = true;
-  if (selectedComparisonIds.value.length) loadAnalysis(true);
-  void queueHealth.value?.refresh();
-  return loadRuns();
-}
-
-function selectRun(run: BacktestRun): void {
-  workspaceStore.selectRun(run);
-  if (
-    selectedBatchId.value === null ||
-    selectedComparisonIds.value.length === 0
-  ) {
-    setComparison(run.status === 'succeeded' ? [run.run_id] : []);
-  }
-  void loadSelected(run.run_id);
-}
-
-function createFrom(entry: HistoryEntry): void {
-  workspaceStore.createFromSaved(
-    entry.kind === 'run' ? reuseStandalone(entry.run) : reuseBatch(entry.batch),
-  );
-  creationOpen.value = true;
-}
-
-async function createdBatch(batchId: string): Promise<void> {
-  selectedBatchId.value = batchId;
-  batchMembers.value = [];
-  workspaceStore.clearSelection();
-  ++detailSequence;
-  setComparison([]);
-  showAnalysis('batch', batchId);
-  await refreshWorkspace();
-}
-
-async function createdRun(runId: string): Promise<void> {
-  void queueHealth.value?.refresh();
-  try {
-    selectedBatchId.value = null;
-    batchMembers.value = [];
-    selectRun(await getBacktestRun(runId));
-    showAnalysis('run', runId);
-    detailError.value = null;
-  } catch (error) {
-    detailError.value = errorMessage(error);
-  }
-  await loadRuns();
-}
-
-function rowKey(entry: HistoryEntry): string {
-  return entry.kind === 'run' ? entry.run.run_id : entry.batch.batch_id;
-}
-
-function historyRowProps(entry: HistoryEntry): Record<string, unknown> {
-  const isRun = entry.kind === 'run';
-  const select = () => {
-    selectionNotice.value = null;
-    showAnalysis(entry.kind, rowKey(entry));
-    if (entry.kind === 'run') {
-      selectedBatchId.value = null;
-      batchMembers.value = [];
-      selectRun(entry.run);
-    } else {
-      selectedBatchId.value = entry.batch.batch_id;
-      batchMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
-    }
-  };
-  return {
-    'data-testid': isRun
-      ? `workspace-run-${entry.run.run_id}`
-      : `workspace-batch-${entry.batch.batch_id}`,
-    'aria-selected': isRun
-      ? selectedRunId.value === entry.run.run_id
-      : selectedBatchId.value === entry.batch.batch_id,
-    tabindex: 0,
-    onClick: select,
-    onKeydown: (event: KeyboardEvent) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        select();
-      }
-    },
-  };
 }
 
 function cell(value: string, explanation?: string) {
@@ -1271,19 +571,6 @@ function cell(value: string, explanation?: string) {
     },
     value,
   );
-}
-
-function executionLogAvailable(run: BacktestRun): boolean {
-  return (
-    run.status === 'succeeded' &&
-    run.result_schema_version === BACKTEST_RESULT_SCHEMA_VERSION
-  );
-}
-
-function executionLogUnavailableReason(run: BacktestRun): string {
-  if (run.status !== 'succeeded')
-    return `This ${run.status} run has no completed execution log.`;
-  return 'A completed execution log is unavailable for this result schema.';
 }
 
 function executionLogAction(run: BacktestRun, label: string) {
@@ -1326,13 +613,6 @@ function executionLogAction(run: BacktestRun, label: string) {
     default: () =>
       available ? 'View execution log' : executionLogUnavailableReason(run),
   });
-}
-
-function historyRunCell(run: BacktestRun) {
-  return h('span', { class: 'run-identity' }, [
-    cell(runName(run), run.run_id),
-    h('small', run.run_id.slice(0, 8)),
-  ]);
 }
 
 function analysisRunActions(run: BacktestRun) {
@@ -1398,269 +678,6 @@ function analysisRunActions(run: BacktestRun) {
       : []),
   ]);
 }
-
-function entrySortValue(
-  entry: HistoryEntry,
-  key: HistorySortKey | 'progress',
-): string | number {
-  if (entry.kind === 'run') {
-    const run = entry.run;
-    const values: Record<HistorySortKey | 'progress', string | number> = {
-      name: runName(run),
-      type: 'Standalone',
-      strategy: `${run.request.strategy.strategy_id} ${strategyVersion(run)}`,
-      market: runMarket(run),
-      timeframe:
-        timeframeDuration(run.request.timeframe) ?? run.request.timeframe,
-      start: run.request.start_ms,
-      end: run.request.end_ms,
-      status: run.status,
-      duration: run.request.end_ms - run.request.start_ms,
-      submitted: run.submitted_at_ms,
-      progress: ['succeeded', 'failed', 'cancelled'].includes(run.status)
-        ? 1
-        : 0,
-    };
-    return values[key];
-  }
-  const batch = entry.batch;
-  const shared = batch.accepted_definition.shared_request;
-  const durations = batchTimeframes(batch)
-    .map(timeframeDuration)
-    .filter((value) => value !== null);
-  const values: Record<HistorySortKey | 'progress', string | number> = {
-    name: batchName(batch),
-    type: 'Parameter Sweep',
-    strategy: `${batch.strategy_id} v${batch.strategy_version}`,
-    market: batchMarkets(batch).join(', '),
-    timeframe: durations.length
-      ? Math.min(...durations)
-      : batchTimeframes(batch).join(', '),
-    start: Number(shared.start_ms ?? 0),
-    end: Number(shared.end_ms ?? 0),
-    status: batch.status,
-    duration: Number(shared.end_ms ?? 0) - Number(shared.start_ms ?? 0),
-    submitted: batch.accepted_at_ms,
-    progress: batch.total_count ? batch.settled_count / batch.total_count : 0,
-  };
-  return values[key];
-}
-function compareHistoryEntries(
-  left: HistoryEntry,
-  right: HistoryEntry,
-  key: HistorySortKey | 'progress',
-): number {
-  const a = entrySortValue(left, key);
-  const b = entrySortValue(right, key);
-  const result =
-    typeof a === 'number' && typeof b === 'number'
-      ? a - b
-      : String(a).localeCompare(String(b), undefined, { numeric: true });
-  return (
-    result ||
-    String(entrySortValue(left, 'name')).localeCompare(
-      String(entrySortValue(right, 'name')),
-      undefined,
-      { numeric: true },
-    ) ||
-    rowKey(left).localeCompare(rowKey(right), undefined, { numeric: true })
-  );
-}
-function historyColumn(
-  title: string,
-  key: HistorySortKey | 'progress',
-  render: (entry: HistoryEntry) => ReturnType<typeof h>,
-): DataTableColumns<HistoryEntry>[number] {
-  return {
-    title,
-    key,
-    width:
-      (
-        {
-          name: 235,
-          type: 145,
-          strategy: 190,
-          market: 175,
-          timeframe: 110,
-          start: 125,
-          end: 125,
-          status: 120,
-          progress: 125,
-        } as Record<string, number>
-      )[key] ?? 120,
-    fixed: key === 'name' ? 'left' : undefined,
-    sorter: (left, right) => compareHistoryEntries(left, right, key),
-    ellipsis: { tooltip: true },
-    render,
-  };
-}
-
-const historyColumns: DataTableColumns<HistoryEntry> = [
-  historyColumn('Name', 'name', (entry) =>
-    entry.kind === 'run'
-      ? historyRunCell(entry.run)
-      : h('span', { class: 'run-identity' }, [
-          cell(batchName(entry.batch), entry.batch.batch_id),
-          h('small', entry.batch.batch_id.slice(0, 8)),
-        ]),
-  ),
-  historyColumn('Type', 'type', (entry) =>
-    cell(entry.kind === 'run' ? 'Standalone' : 'Parameter Sweep'),
-  ),
-  historyColumn('Strategy / version', 'strategy', (entry) =>
-    cell(
-      entry.kind === 'run'
-        ? `${entry.run.request.strategy.strategy_id} · ${strategyVersion(entry.run)}`
-        : `${entry.batch.strategy_id} · v${entry.batch.strategy_version}`,
-    ),
-  ),
-  historyColumn('Market', 'market', (entry) =>
-    cell(
-      entry.kind === 'run'
-        ? runMarket(entry.run)
-        : batchMarkets(entry.batch).join(', '),
-    ),
-  ),
-  historyColumn('Timeframe', 'timeframe', (entry) =>
-    cell(
-      entry.kind === 'run'
-        ? entry.run.request.timeframe
-        : batchTimeframes(entry.batch).join(', '),
-    ),
-  ),
-  historyColumn('Start date', 'start', (entry) =>
-    cell(
-      formatUtcDate(
-        entry.kind === 'run'
-          ? entry.run.request.start_ms
-          : Number(entry.batch.accepted_definition.shared_request.start_ms),
-      ),
-    ),
-  ),
-  historyColumn('End date', 'end', (entry) =>
-    cell(
-      formatUtcDate(
-        entry.kind === 'run'
-          ? entry.run.request.end_ms
-          : Number(entry.batch.accepted_definition.shared_request.end_ms),
-      ),
-    ),
-  ),
-  historyColumn('Status', 'status', (entry) => {
-    const status = entry.kind === 'run' ? entry.run.status : entry.batch.status;
-    return h(
-      NTag,
-      {
-        size: 'small',
-        type:
-          status === 'succeeded' || status === 'completed'
-            ? 'success'
-            : status === 'failed'
-              ? 'error'
-              : 'info',
-        title:
-          status === 'cancelling'
-            ? 'Execution is being stopped; capacity stays held until exit is confirmed.'
-            : undefined,
-      },
-      { default: () => status },
-    );
-  }),
-  historyColumn('Settled', 'progress', (entry) =>
-    cell(
-      entry.kind === 'run'
-        ? '—'
-        : `${entry.batch.settled_count} / ${entry.batch.total_count}` +
-            (entry.batch.has_failed_members
-              ? ` · ${entry.batch.outcome_counts.failed} failed`
-              : ''),
-    ),
-  ),
-  {
-    title: 'Actions',
-    key: 'actions',
-    width: 125,
-    fixed: 'right',
-    render: (entry) =>
-      h(
-        'div',
-        {
-          class: 'row-actions',
-          onKeydown: (event: KeyboardEvent) => event.stopPropagation(),
-        },
-        [
-          h(
-            NButton,
-            {
-              quaternary: true,
-              circle: true,
-              size: 'small',
-              'data-testid': `workspace-create-from-${rowKey(entry)}`,
-              'aria-label': `Create from this ${entry.kind} ${rowKey(entry)}`,
-              title: 'Create from this',
-              onClick: (event: MouseEvent) => {
-                event.stopPropagation();
-                createFrom(entry);
-              },
-            },
-            { icon: () => h(NIcon, { component: CopyOutline }) },
-          ),
-          ...(entry.kind === 'run' &&
-          ['queued', 'running'].includes(entry.run.status)
-            ? [
-                h(
-                  NButton,
-                  {
-                    quaternary: true,
-                    circle: true,
-                    size: 'small',
-                    'data-testid': `workspace-cancel-${entry.run.run_id}`,
-                    'aria-label': 'Cancel run',
-                    title: 'Cancel run',
-                    disabled:
-                      !['queued', 'running'].includes(entry.run.status) ||
-                      cancellingRunIds.value.has(entry.run.run_id),
-                    onClick: (event: MouseEvent) => {
-                      event.stopPropagation();
-                      void cancelRun(entry.run);
-                    },
-                  },
-                  { icon: () => h(NIcon, { component: StopCircleOutline }) },
-                ),
-              ]
-            : []),
-          h(
-            NButton,
-            {
-              quaternary: true,
-              circle: true,
-              size: 'small',
-              type: 'error',
-              'data-testid':
-                entry.kind === 'run'
-                  ? `workspace-delete-${entry.run.run_id}`
-                  : `workspace-delete-batch-${entry.batch.batch_id}`,
-              'aria-label': `Delete ${entry.kind}`,
-              title: `Delete ${entry.kind}`,
-              disabled:
-                entry.kind === 'run'
-                  ? !['succeeded', 'failed', 'cancelled'].includes(
-                      entry.run.status,
-                    ) || deletingRunIds.value.has(entry.run.run_id)
-                  : !['completed', 'cancelled'].includes(entry.batch.status) ||
-                    deletingBatchIds.value.has(entry.batch.batch_id),
-              onClick: (event: MouseEvent) => {
-                event.stopPropagation();
-                if (entry.kind === 'run') void deleteRun(entry.run);
-                else void deleteBatch(entry.batch);
-              },
-            },
-            { icon: () => h(NIcon, { component: TrashOutline }) },
-          ),
-        ],
-      ),
-  },
-];
 
 function metricCell(
   run: BacktestRun,
@@ -2166,212 +1183,6 @@ function currentRowProps(run: BacktestRun): Record<string, unknown> {
 function formatTimestamp(timestamp: number | null | undefined): string {
   return timestamp == null ? '—' : new Date(timestamp).toISOString();
 }
-
-async function cancelRun(run: BacktestRun): Promise<void> {
-  if (
-    !['queued', 'running'].includes(run.status) ||
-    cancellingRunIds.value.has(run.run_id)
-  )
-    return;
-  cancellingRunIds.value = new Set([...cancellingRunIds.value, run.run_id]);
-  cancelError.value = null;
-  try {
-    await cancelBacktestRun(run.run_id);
-    await refreshWorkspace();
-    if (run.batch_id && selectedBatchId.value === run.batch_id) {
-      receiveMembers(
-        run.batch_id,
-        await listBacktestBatchMembers(run.batch_id),
-      );
-    }
-  } catch (error) {
-    cancelError.value = errorMessage(error);
-    await refreshWorkspace();
-  } finally {
-    const pending = new Set(cancellingRunIds.value);
-    pending.delete(run.run_id);
-    cancellingRunIds.value = pending;
-  }
-}
-
-async function deleteRun(run: BacktestRun): Promise<void> {
-  if (
-    !['succeeded', 'failed', 'cancelled'].includes(run.status) ||
-    deletingRunIds.value.has(run.run_id)
-  )
-    return;
-  if (
-    !window.confirm(
-      'Delete this Backtest and all saved results, trades and fills? This cannot be undone.',
-    )
-  )
-    return;
-  deletingRunIds.value = new Set([...deletingRunIds.value, run.run_id]);
-  deleteError.value = null;
-  try {
-    await deleteBacktestRun(run.run_id);
-    if (logRun.value?.run_id === run.run_id) logRun.value = null;
-    if (selectedRunId.value === run.run_id) {
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
-    }
-    if (overlayStore.selectedRunId === run.run_id) {
-      overlayStore.clearOverlay();
-      selectionNotice.value =
-        'The deleted Backtest Run was removed from the chart overlay.';
-    }
-    void queueHealth.value?.refresh();
-    await loadRuns();
-  } catch (error) {
-    deleteError.value = errorMessage(error);
-  } finally {
-    const stillDeleting = new Set(deletingRunIds.value);
-    stillDeleting.delete(run.run_id);
-    deletingRunIds.value = stillDeleting;
-  }
-}
-
-async function deleteBatch(batch: BacktestBatch): Promise<void> {
-  if (
-    !['completed', 'cancelled'].includes(batch.status) ||
-    deletingBatchIds.value.has(batch.batch_id)
-  )
-    return;
-  if (
-    !window.confirm(
-      'Delete this entire Backtest Batch, all members and saved results? This cannot be undone.',
-    )
-  )
-    return;
-  deletingBatchIds.value = new Set([...deletingBatchIds.value, batch.batch_id]);
-  deleteError.value = null;
-  try {
-    await deleteBacktestBatch(batch.batch_id);
-    const overlayBelongsToBatch =
-      overlayStore.selectedRun?.batch_id === batch.batch_id ||
-      batchMembers.value.some(
-        (member) => member.run_id === overlayStore.selectedRunId,
-      );
-    if (selectedBatchId.value === batch.batch_id) {
-      selectedBatchId.value = null;
-      batchMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
-      logRun.value = null;
-      selectionNotice.value =
-        'The deleted Backtest Batch is no longer selected.';
-    }
-    if (overlayBelongsToBatch) {
-      overlayStore.clearOverlay();
-      selectionNotice.value =
-        'The deleted Backtest Batch was removed from the chart overlay.';
-    }
-    void queueHealth.value?.refresh();
-    await loadRuns();
-  } catch (error) {
-    deleteError.value = errorMessage(error);
-  } finally {
-    const stillDeleting = new Set(deletingBatchIds.value);
-    stillDeleting.delete(batch.batch_id);
-    deletingBatchIds.value = stillDeleting;
-  }
-}
-
-async function openOnChart(run: BacktestRun): Promise<void> {
-  if (
-    openingChartRunId.value !== null ||
-    overlayStore.isLoading ||
-    chartUnavailableReason(run)
-  )
-    return;
-  openingChartRunId.value = run.run_id;
-  selectionNotice.value = null;
-  try {
-    if (marketsStore.all.length === 0) await marketsStore.fetch();
-    const selection = await overlayStore.selectRun(run);
-    if (selection.selectable) await router.push('/');
-  } catch (error) {
-    selectionNotice.value = `Could not open run ${comparisonRunLabel(run)} on chart: ${errorMessage(error)}`;
-  } finally {
-    openingChartRunId.value = null;
-  }
-}
-
-function startPolling(): void {
-  if (isActive) return;
-  isActive = true;
-  if (marketsStore.all.length === 0) void marketsStore.fetch();
-  void loadRuns();
-  loadAnalysis();
-  pollTimer = setInterval(() => {
-    void loadRuns(false);
-  }, POLL_INTERVAL_MS);
-}
-
-function stopPolling(): void {
-  isActive = false;
-  ++readGeneration;
-  activeHistoryRead = null;
-  refreshAfterCurrentRead = false;
-  isLoading.value = false;
-  isRefreshing.value = false;
-  ++detailSequence;
-  pendingDetailId = null;
-  analysisTokens.clear();
-  logRun.value = null;
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = null;
-}
-
-watch(
-  () => router.currentRoute?.value.params,
-  async (params) => {
-    if (!params) return;
-    if (!params.id) {
-      page.value = 'history';
-      return;
-    }
-    const id = String(params.id);
-    page.value = 'analysis';
-    if (params.kind === 'batch') {
-      if (selectedBatchId.value === id) return;
-      selectedBatchId.value = id;
-      batchMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
-    } else if (
-      params.kind === 'run' &&
-      (selectedBatchId.value || selectedRunId.value !== id)
-    ) {
-      selectedBatchId.value = null;
-      batchMembers.value = [];
-      workspaceStore.clearSelection();
-      setComparison([]);
-      const sequence = ++detailSequence;
-      const nameReadRevision = workspaceStore.nameRevision;
-      try {
-        const run = workspaceStore.preserveRunName(
-          await getBacktestRun(id),
-          nameReadRevision,
-        );
-        if (sequence !== detailSequence) return;
-        selectRun(run);
-      } catch (error) {
-        if (sequence === detailSequence)
-          detailError.value = errorMessage(error);
-      }
-    }
-  },
-  { immediate: true },
-);
-
-onMounted(startPolling);
-onActivated(startPolling);
-onDeactivated(stopPolling);
-onUnmounted(stopPolling);
 </script>
 
 <style scoped>
@@ -2424,33 +1235,6 @@ onUnmounted(stopPolling);
 .analysis-breadcrumb .n-button {
   color: #9aafbf;
 }
-.workspace-summary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin: 24px 0;
-}
-.workspace-summary > div {
-  padding: 18px 22px;
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  background: var(--surface-panel);
-}
-.workspace-summary span {
-  display: block;
-  color: #96a5b4;
-  font-size: 12px;
-}
-.workspace-summary strong {
-  display: block;
-  margin-top: 8px;
-  font-size: 27px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-.failure-count {
-  color: #e7ae7b;
-}
 .table-panel {
   border: 1px solid var(--surface-border);
   border-radius: 12px;
@@ -2462,25 +1246,6 @@ onUnmounted(stopPolling);
   margin: 0;
   font-size: 17px;
   font-weight: 600;
-}
-.history-heading {
-  margin-bottom: 22px;
-  flex-wrap: wrap;
-}
-.history-heading > .n-button {
-  flex-shrink: 0;
-}
-.history-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.filters {
-  display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(6, minmax(110px, 1fr));
-  gap: 10px;
-  margin-bottom: 20px;
 }
 .current-backtest {
   margin-top: 24px;
@@ -2648,24 +1413,12 @@ onUnmounted(stopPolling);
 :deep(.n-data-table-tr) {
   cursor: pointer;
 }
-@media (max-width: 1200px) {
-  .filters {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
 @media (max-width: 700px) {
   .workspace-header {
     flex-wrap: wrap;
   }
   .workspace {
     padding: 16px 6px 32px;
-  }
-  .workspace-summary {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-  .filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .table-panel {
     padding: 14px;

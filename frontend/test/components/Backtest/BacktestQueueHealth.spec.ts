@@ -73,96 +73,109 @@ describe('Backtest queue health', () => {
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
   });
 
-  it('shows batch turns, active ordinal, advisory position, and outcome counts on refresh', async () => {
-    vi.mocked(fetchBacktestQueue).mockResolvedValueOnce({
-      ...healthySnapshot,
-      active_run: {
-        run_id: 'member-0',
-        batch_id: 'active-batch',
-        member_ordinal: 0,
-        started_at_ms: NOW - 120_000,
-      },
-      queued: [
-        {
-          entry_type: 'batch',
-          run_id: null,
-          batch_id: 'waiting-batch',
-          submitted_at_ms: NOW - 60_000,
-          estimated_position: 1,
-          next_member_ordinal: 2,
-          outcome_counts: {
-            queued: 1,
-            running: 0,
-            cancelling: 0,
-            succeeded: 1,
-            failed: 1,
-            cancelled: 0,
-          },
-        },
-      ],
-    });
-    const wrapper = mount(BacktestQueueHealth);
-    await flushPromises();
-    expect(
-      wrapper.find('[data-testid="workspace-queue-active"]').text(),
-    ).toContain('Member #1');
-    expect(
-      wrapper.find('[data-testid="workspace-queue-active"]').text(),
-    ).toContain('active-batch');
-    expect(
-      wrapper
-        .find('[data-testid="workspace-queue-batch-waiting-batch"]')
-        .text(),
-    ).toContain('Est. #1');
-    expect(wrapper.text()).toContain('Waiting 1m 0s');
-    expect(
-      wrapper
-        .find('[data-testid="workspace-queue-batch-waiting-batch"]')
-        .text(),
-    ).toContain('Next member #3');
-    expect(wrapper.text()).toContain('1 succeeded');
-    expect(wrapper.text()).toContain('1 failed');
-    vi.advanceTimersByTime(5000);
-    await flushPromises();
-    expect(
-      wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists(),
-    ).toBe(true);
-    wrapper.unmount();
-  });
+  it(
+    'shows batch turns, active ordinal, advisory position, and ' +
+      'outcome counts on refresh',
 
-  it('shows absent, stale, and faulted worker signals without changing queue history', async () => {
-    vi.mocked(fetchBacktestQueue)
-      .mockResolvedValueOnce({
+    async () => {
+      vi.mocked(fetchBacktestQueue).mockResolvedValueOnce({
         ...healthySnapshot,
-        active_run: null,
-        last_heartbeat_ms: null,
-        availability: 'unavailable',
-      })
-      .mockResolvedValueOnce({ ...healthySnapshot, availability: 'stale' })
-      .mockResolvedValueOnce({
-        ...healthySnapshot,
-        availability: 'faulted',
-        operational_faults: [
-          { code: 'terminal_persistence_failed', message: 'Settlement failed' },
+        active_run: {
+          run_id: 'member-0',
+          batch_id: 'active-batch',
+          member_ordinal: 0,
+          started_at_ms: NOW - 120_000,
+        },
+        queued: [
+          {
+            entry_type: 'batch',
+            run_id: null,
+            batch_id: 'waiting-batch',
+            submitted_at_ms: NOW - 60_000,
+            estimated_position: 1,
+            next_member_ordinal: 2,
+            outcome_counts: {
+              queued: 1,
+              running: 0,
+              cancelling: 0,
+              succeeded: 1,
+              failed: 1,
+              cancelled: 0,
+            },
+          },
         ],
       });
-    const wrapper = mount(BacktestQueueHealth);
-    await flushPromises();
-    expect(wrapper.text()).toContain('Worker unavailable');
-    expect(wrapper.text()).toContain('No worker heartbeat recorded');
-    expect(
-      wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists(),
-    ).toBe(true);
+      const wrapper = mount(BacktestQueueHealth);
+      await flushPromises();
+      expect(
+        wrapper.find('[data-testid="workspace-queue-active"]').text(),
+      ).toContain('Member #1');
+      expect(
+        wrapper.find('[data-testid="workspace-queue-active"]').text(),
+      ).toContain('active-batch');
+      expect(
+        wrapper
+          .find('[data-testid="workspace-queue-batch-waiting-batch"]')
+          .text(),
+      ).toContain('Est. #1');
+      expect(wrapper.text()).toContain('Waiting 1m 0s');
+      expect(
+        wrapper
+          .find('[data-testid="workspace-queue-batch-waiting-batch"]')
+          .text(),
+      ).toContain('Next member #3');
+      expect(wrapper.text()).toContain('1 succeeded');
+      expect(wrapper.text()).toContain('1 failed');
+      vi.advanceTimersByTime(5000);
+      await flushPromises();
+      expect(
+        wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists(),
+      ).toBe(true);
+      wrapper.unmount();
+    },
+  );
 
-    vi.advanceTimersByTime(5000);
-    await flushPromises();
-    expect(wrapper.text()).toContain('Worker stale');
-    vi.advanceTimersByTime(5000);
-    await flushPromises();
-    expect(wrapper.text()).toContain('Worker faulted');
-    expect(wrapper.text()).toContain('Settlement failed');
-    wrapper.unmount();
-  });
+  it(
+    'shows absent, stale, and faulted worker signals without changing ' +
+      'queue history',
+
+    async () => {
+      vi.mocked(fetchBacktestQueue)
+        .mockResolvedValueOnce({
+          ...healthySnapshot,
+          active_run: null,
+          last_heartbeat_ms: null,
+          availability: 'unavailable',
+        })
+        .mockResolvedValueOnce({ ...healthySnapshot, availability: 'stale' })
+        .mockResolvedValueOnce({
+          ...healthySnapshot,
+          availability: 'faulted',
+          operational_faults: [
+            {
+              code: 'terminal_persistence_failed',
+              message: 'Settlement failed',
+            },
+          ],
+        });
+      const wrapper = mount(BacktestQueueHealth);
+      await flushPromises();
+      expect(wrapper.text()).toContain('Worker unavailable');
+      expect(wrapper.text()).toContain('No worker heartbeat recorded');
+      expect(
+        wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists(),
+      ).toBe(true);
+
+      vi.advanceTimersByTime(5000);
+      await flushPromises();
+      expect(wrapper.text()).toContain('Worker stale');
+      vi.advanceTimersByTime(5000);
+      await flushPromises();
+      expect(wrapper.text()).toContain('Worker faulted');
+      expect(wrapper.text()).toContain('Settlement failed');
+      wrapper.unmount();
+    },
+  );
 
   it('keeps last known context but marks failed and aged snapshots unknown', async () => {
     vi.mocked(fetchBacktestQueue)

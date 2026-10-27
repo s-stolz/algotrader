@@ -51,6 +51,31 @@ chunks.
 Run `npm run test:tooling` for fixtures covering discovery, formatting, strict
 limits, migration debt, and valid/invalid test ownership.
 
+## Workspace extraction checkpoint
+
+The kept-alive `BacktestWorkspaceView.vue` creates the coordinator in
+`src/views/workspace/useBacktestWorkspace.ts` once. It owns navigation,
+selection reconciliation, and lifecycle cleanup. Its history model owns filters
+and pagination; history presentation consumes that model and coordinated actions.
+Request serialization and command availability live beside the coordinator.
+The existing Pinia store retains creation drafts and name acknowledgement order.
+Presentation sections must not recreate these owners when visibility changes.
+
+Ticket #22 leaves the inspection template, comparison column rendering/settings,
+and analysis styles in `BacktestWorkspaceView.vue` for #23. Its inventory entry
+now belongs to #23 and records 1,408 counted lines and four existing long metric
+explanations. The replay-selection/request helper is already separated as a
+bounded prerequisite; comparison presentation still needs extraction. The other
+#23 entries (`BacktestBatches.vue`, `EquityReplayCharts.vue`, and their inspection
+suites) remain visible in the inventory. No new width or size allowance is added.
+
+The Workspace suites now use descriptive behavior suffixes with a shared fixture.
+The lifecycle suite mounts the real Workspace inside KeepAlive and checks filters,
+history pagination, selection, comparison, polling shutdown, reactivation, and
+rejection of a superseded response. Existing test assertions remain intact.
+Fresh populated rendered comparisons remain outstanding under the baseline
+qualification procedure below.
+
 ## Baseline for spec #17
 
 The baseline checkout was `3d9711faf7b5cf7e90204d9296336e513b5d5245`. Before

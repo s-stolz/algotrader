@@ -10,11 +10,6 @@
         "          :aria-valuetext=\"`${selectedBatch.settled_count} / ${selectedBatch.total_count} settled; ${selectedBatch.executed_count} executed`\""
       ]
     },
-    "src/components/Backtest/BacktestQueueHealth.vue": {
-      "ticket": 22,
-      "countedLines": 613,
-      "width": []
-    },
     "src/components/Chart/Indicator/IndicatorSettingsModal.vue": {
       "ticket": 26,
       "countedLines": 55,
@@ -47,14 +42,13 @@
       ]
     },
     "src/views/BacktestWorkspaceView.vue": {
-      "ticket": 22,
-      "countedLines": 2622,
+      "ticket": 23,
+      "countedLines": 1408,
       "width": [
-        "        'Saved signed percentage: (ending equity / first recorded equity \u2212 1) \u00d7 100. First recorded equity follows the first Candle executions and fees; it can differ from Initial capital.',",
+        "        'Saved signed percentage: (ending equity / first recorded equity − 1) × 100. First recorded equity follows the first Candle executions and fees; it can differ from Initial capital.',",
         "            'Final point of exact Equity Replay, in account units. Unavailable replay leaves this missing.',",
         "        'Profitable long Closed Trades divided by long Closed Trades, in percent; No trades if count is zero.',",
-        "        'Profitable short Closed Trades divided by short Closed Trades, in percent; No trades if count is zero.',",
-        "    selectionNotice.value = `Could not open run ${comparisonRunLabel(run)} on chart: ${errorMessage(error)}`;"
+        "        'Profitable short Closed Trades divided by short Closed Trades, in percent; No trades if count is zero.',"
       ]
     },
     "src/views/EquityReplayCharts.vue": {
@@ -86,13 +80,6 @@
         "  it('retains a pending Pause identity when member cancellation advances the batch revision', async () => {",
         "  it('shows one batch summary, saved definition, and actual ordered Ready members after reload', async () => {",
         "  it('preserves successful results and shows partial failure, ordinals, and transitions after refresh', async () => {"
-      ]
-    },
-    "test/components/Backtest/BacktestQueueHealth.spec.ts": {
-      "ticket": 22,
-      "countedLines": 232,
-      "width": [
-        "  it('shows batch turns, active ordinal, advisory position, and outcome counts on refresh', async () => {"
       ]
     },
     "test/components/Backtest/ExecutionLogDrawer.spec.ts": {
@@ -200,31 +187,6 @@
         "  it('refreshes stale catalog and leaves the draft unchanged without retrying submission', async () => {",
         "  it('previews exact string values including empty, multiline, and whitespace strings', async () => {",
         "  it('refreshes changed catalog metadata without submitting or accepting stale preview', async () => {"
-      ]
-    },
-    "test/views/BacktestWorkspaceView.spec.ts": {
-      "ticket": 22,
-      "countedLines": 3195,
-      "width": [
-        "  it('renames inline with keyboard activation, Enter/blur deduplication, Escape, clearing and validation', async () => {",
-        "  it('retains failed drafts for retry and preserves them and acknowledged names across polling', async () => {",
-        "  it('keeps changes made during a save and isolates responses after navigating to another experiment', async () => {",
-        "  it('renames a batch in detail and updates history search while members remain uneditable', async () => {",
-        "  it('retains a successful predecessor name when its cancelled session has a failed successor', async () => {",
-        "  it('preserves a confirmed rename in comparison and chart legends after delayed Equity Replay', async () => {",
-        "  it('paginates all fetched members with global sorting, page sizes, and an All option', async () => {",
-        "  it('selects and deselects only successful page members while retaining off-page comparisons', async () => {",
-        "  it('shows mixed selection and enables and disables whole column groups without changing other groups or run selection', async () => {",
-        "  it('opens the accessible execution drawer without changing selection and filters trades while showing all fills', async () => {",
-        "  it('disables unavailable execution logs while distinguishing empty, filtered, and failed reads', async () => {",
-        "  it('displays saved names and unnamed fallbacks with UUIDs and searches and sorts the visible names', async () => {",
-        "  it('compares ten successful members while retaining selection, failures, and settings', async () => {",
-        "  it('cancels one queued Batch member from the combined table and refreshes that member', async () => {",
-        "  it('sends one DELETE for rapid duplicate clicks and disables that run while deleting', async () => {",
-        "  it('keeps a Batch visible after delete conflict, then refreshes and clears its selection', async () => {",
-        "  it('opens a batch row directly on the chart while preserving selection and comparison', async () => {",
-        "  it('prevents repeated chart opens during loading and allows retry after a failed read', async () => {",
-        "  it('keeps an unsupported result inspectable with an explanation instead of chart navigation', async () => {"
       ]
     },
     "test/views/ChartView.spec.ts": {

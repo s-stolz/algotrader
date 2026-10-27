@@ -1,0 +1,238 @@
+.queue-health {
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface-panel);
+  padding: 13px 18px;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+}
+.queue-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 120px;
+  min-height: 24px;
+}
+.queue-summary h2 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+.queue-icon {
+  color: #8facbe;
+  flex-shrink: 0;
+}
+.health-tag {
+  text-transform: capitalize;
+}
+.queue-summary-count {
+  margin-left: auto;
+  color: #a3b2bf;
+  font-size: 12px;
+}
+.queue-details summary {
+  position: absolute;
+  right: 18px;
+  top: 17px;
+  color: #92a8b8;
+  font-size: 12px;
+  cursor: pointer;
+}
+.queue-details summary:hover {
+  color: #dce5ed;
+}
+.queue-details summary:focus-visible {
+  outline: 2px solid #68ceab;
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+.queue-details[open] {
+  padding-top: 20px;
+  border-top: 1px solid var(--surface-border);
+  margin-top: 13px;
+}
+.queue-alert,
+.queue-loading {
+  margin-top: 14px;
+}
+.worker-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 20px;
+  gap: 20px;
+}
+.worker-metrics > :not(:first-child) {
+  border-left: 1px solid var(--surface-border);
+  padding-left: 24px;
+}
+.worker-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.metric-label,
+.metric-suffix {
+  font-size: 12px;
+  color: #92a8b8;
+}
+.worker-metrics :deep(.n-statistic__label) {
+  font-size: 12px;
+  color: #92a8b8;
+}
+.worker-metrics :deep(.n-statistic-value__content) {
+  font-size: 22px;
+}
+.activity-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 14px;
+}
+.activity-card {
+  min-width: 0;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+.activity-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--surface-border);
+  color: #9bafbf;
+}
+.activity-heading h3 {
+  font-size: 12px;
+  font-weight: 500;
+  color: #d0dbe5;
+  margin: 0;
+  flex: 1;
+}
+.activity-empty {
+  padding: 26px 16px;
+}
+.active-run {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  font-size: 12px;
+}
+.run-identity {
+  display: block;
+  font-size: 12px;
+  color: #d0dbe5;
+  overflow-wrap: anywhere;
+}
+.run-duration {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #9bafbf;
+}
+.active-batch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+  overflow-wrap: anywhere;
+}
+.waiting-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.waiting-list li {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+.waiting-list li + li {
+  border-top: 1px solid var(--surface-border);
+}
+.waiting-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+.waiting-time {
+  margin-left: auto;
+  color: #92a8b8;
+}
+.batch-outcomes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.batch-outcomes .metric-label {
+  margin-right: 4px;
+}
+.telemetry-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: #8798a8;
+  font-size: 11px;
+  margin: 14px 0 0;
+}
+.telemetry-note .n-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.faults {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+@media (max-width: 700px) {
+  .queue-summary {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .queue-summary-count {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .activity-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .worker-metrics {
+    gap: 12px;
+  }
+  .worker-metrics > :not(:first-child) {
+    padding-left: 12px;
+  }
+}
+@media (max-width: 460px) {
+  .queue-health {
+    padding: 12px;
+  }
+  .queue-summary {
+    padding-right: 0;
+  }
+  .queue-details summary {
+    position: static;
+    margin-top: 12px;
+  }
+  .queue-details[open] {
+    padding-top: 0;
+  }
+  .worker-metrics {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 16px;
+  }
+  .worker-metrics > :not(:first-child) {
+    padding: 10px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--surface-border);
+  }
+}
