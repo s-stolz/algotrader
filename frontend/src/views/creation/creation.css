@@ -1,0 +1,147 @@
+:deep(.creation-fields),
+:deep(.setup-fields) {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+:deep(.creation-fields label),
+:deep(.preview-filter) {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+}
+:deep(.strategy-label) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+:deep(.settings-grid) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+:deep(.field-group) {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+:deep(.full-width) {
+  grid-column: 1 / -1;
+}
+:deep(.parameters-grid) {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+:deep(.parameter-field) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--surface-border);
+  min-width: 0;
+}
+:deep(.parameter-field > :not(.parameter-label):not(.parameter-mode)) {
+  grid-column: 1 / -1;
+}
+:deep(.creation-fields .parameter-label) {
+  align-content: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+:deep(.parameter-mode) {
+  width: 110px;
+}
+:deep(small) {
+  color: #98a5b5;
+  font-size: 12px;
+}
+:deep([role='alert']) {
+  color: #ffb4b4;
+}
+:deep(.range-inputs) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+:deep(.string-values) {
+  display: grid;
+  gap: 8px;
+}
+:deep(.string-value) {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+}
+:deep(.string-value .n-input) {
+  flex: 1;
+}
+:deep(.preview-section) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+}
+:deep(.preview-review) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 260px;
+}
+:deep(.preview-table-scroll) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+:deep(.preview-counts) {
+  display: flex;
+  gap: 24px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+:deep(.preview-counts > div) {
+  display: flex;
+  gap: 6px;
+}
+:deep(.preview-counts dd) {
+  margin: 0;
+}
+:deep(.preview-filter) {
+  max-width: 200px;
+  margin: 12px 0;
+}
+:deep(.section-description) {
+  color: #98a5b5;
+  font-size: 12px;
+}
+.preview-review :deep(.n-data-table-th),
+.preview-review :deep(.n-data-table-td) {
+  white-space: nowrap;
+}
+.preview-review :deep(.n-data-table-th:last-child),
+.preview-review :deep(.n-data-table-td:last-child) {
+  padding-right: 16px;
+}
+:deep(.creation-footer),
+:deep(.creation-actions) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+@media (max-width: 520px) {
+  :deep(.settings-grid),
+  :deep(.range-inputs) {
+    grid-template-columns: 1fr;
+  }
+  :deep(.creation-footer) {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  :deep(.creation-actions) {
+    margin-left: auto;
+    max-width: 100%;
+  }
+}
