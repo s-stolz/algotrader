@@ -94,6 +94,7 @@
               class="string-value"
             >
               <n-input
+                class="string-value-input"
                 type="textarea"
                 :value="value"
                 :aria-label="`${parameter.display_name || parameter.name} value ${index + 1}`"

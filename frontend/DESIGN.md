@@ -24,6 +24,10 @@ and attach `designCssProperties` to their teleported root. Keep any necessary
 library-internal selector override in its owning Base control, with a reason;
 prefer supported theme settings first.
 
+Use `BaseDatePicker` for creation calendars: its owned body-level target carries
+the design variables and typography outside scrolling drawers. Numeric controls
+remain Naive `NInputNumber` and inherit the shared Input peer theme.
+
 ## Temporary compatibility boundary
 
 Spec #17 expands the new theme only after each workflow's structural work.
@@ -39,7 +43,7 @@ migration work, not a second theme to extend.
 | Chart workflow, Indicator controls, canvas labels | #26 |
 | Market dialogs and their controls | #27, explicit `DesignScope` |
 | Backtest Workspace history/results and overlays | #28 |
-| Backtest creation and its overlays | #29 |
+| Backtest creation and its overlays | #29, explicit `DesignScope` |
 | Root compatibility provider and legacy theme branches | #30 removal |
 
 Do not wrap the entire root before these consumers are migrated. BasePopover

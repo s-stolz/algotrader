@@ -5,8 +5,9 @@
   >
     Editing a new
     {{ store.reuseSource.kind === 'run' ? 'Backtest' : 'Parameter Sweep' }}
-    from saved {{ store.reuseSource.kind }} {{ store.reuseSource.id }}. The
-    saved history stays unchanged.
+    from saved {{ store.reuseSource.kind }}
+    <span class="technical-id">{{ store.reuseSource.id }}</span
+    >. The saved history stays unchanged.
   </p>
   <p
     v-if="

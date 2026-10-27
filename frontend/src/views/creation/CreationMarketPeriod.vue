@@ -68,7 +68,7 @@
       </div>
       <label
         >Start date (UTC)
-        <n-date-picker
+        <BaseDatePicker
           type="date"
           value-format="yyyy-MM-dd"
           :formatted-value="dateValue(draft.start_ms)"
@@ -80,7 +80,7 @@
       </label>
       <label
         >End date (UTC)
-        <n-date-picker
+        <BaseDatePicker
           type="date"
           value-format="yyyy-MM-dd"
           :formatted-value="dateValue(draft.end_ms)"
@@ -102,7 +102,7 @@
 
 <script setup lang="ts">
 import BaseSelect from '@/components/Common/BaseSelect.vue';
-import { NDatePicker } from 'naive-ui';
+import BaseDatePicker from '@/components/Common/BaseDatePicker.vue';
 import { timeframeOptions } from './creationOptions';
 import { dateValue } from './creationParameters';
 import { useCreation } from './creationContext';
