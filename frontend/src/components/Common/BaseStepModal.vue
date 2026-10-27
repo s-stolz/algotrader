@@ -35,7 +35,8 @@ watch(() => props.step, () => scrollbar.value?.scrollTo({ top: 0 }));
   </n-modal>
 </template>
 <style scoped>
-.steps-navigation { width: 100%; padding-bottom: 20px; flex-shrink: 0; }
+/* Keep the indicators' outer box-shadow borders inside the clipped card content. */
+.steps-navigation { width: 100%; padding-top: 2px; padding-bottom: 20px; flex-shrink: 0; }
 .steps-navigation :deep(.n-step:last-child) { flex: 0 0 auto; }
 .step-button { border: 0; padding: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .step-button:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 4px; }
