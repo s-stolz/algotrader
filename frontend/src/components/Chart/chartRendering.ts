@@ -1,4 +1,5 @@
-import { shallowReactive } from 'vue';
+import { nextTick, shallowReactive } from 'vue';
+import { whenChartFontReady } from '@/utils/chart/chartFonts';
 import type {
   CandlestickSeriesPartialOptions,
   MouseEventParams,
@@ -9,6 +10,7 @@ import type {
   CandleUpdateMessage,
   ChartCandle,
   IndicatorUpdateMessage,
+  IndicatorDataPoint,
 } from '@/types/contracts';
 import {
   wsService,
@@ -43,6 +45,7 @@ interface RenderCandlestickOptions {
   scrollToRealtime?: boolean;
 }
 interface ChartRenderingState {
+  isReady: boolean;
   seriesOptions: CandlestickSeriesPartialOptions;
   crosshairRafId: number | null;
   latestCrosshairParam: MouseEventParams<Time> | null;
@@ -89,7 +92,15 @@ export function createChartRendering({
   getLegendElements,
   requestOlderHistory,
 }: ChartRenderingOptions) {
+  let cancelFontWait = () => {};
+  let pendingRender: RenderCandlestickOptions | null = null;
+  let indicatorPanesReady = false;
+  const deferredIndicatorPoints = new Map<
+    string,
+    { generation: number; points: Map<number, IndicatorDataPoint> }
+  >();
   const state = shallowReactive<ChartRenderingState>({
+    isReady: false,
     seriesOptions: { priceFormat: { type: 'price' } },
     crosshairRafId: null,
     latestCrosshairParam: null,
@@ -107,7 +118,33 @@ export function createChartRendering({
     hoveredBacktestMarker: null,
   });
   function initializeChartComponent(): void {
+    state.indicatorMessageHandler = (message) => {
+      if (!message?.clientIndicatorId) return;
+      if (!indicatorPanesReady) {
+        const indicator = indicatorsStore.getById(message.clientIndicatorId);
+        const point = indicatorsStore.handleLiveUpdate(message);
+        if (!indicator || !point) return;
+        let deferred = deferredIndicatorPoints.get(indicator._id);
+        if (deferred?.generation !== indicator.historyGeneration) {
+          deferred = {
+            generation: indicator.historyGeneration,
+            points: new Map(),
+          };
+          deferredIndicatorPoints.set(indicator._id, deferred);
+        }
+        deferred.points.set(point.timestamp_ms, point);
+        return;
+      }
+      state.pendingIndicatorMessages.set(message.clientIndicatorId, message);
+      scheduleIndicatorFlush();
+    };
+    wsService.on('indicatorUpdate', state.indicatorMessageHandler);
+    cancelFontWait = whenChartFontReady(initializeChart);
+  }
+
+  function initializeChart(): void {
     infrastructure.init(getChartContainer());
+    state.isReady = true;
     void syncBacktestOverlayTarget();
     infrastructure.subscribeCrosshairMove(onCrosshairMove);
     infrastructure.subscribeVisibleLogicalRangeChange(
@@ -120,12 +157,38 @@ export function createChartRendering({
       });
     }
     measurement.applyInteractionMode();
-    state.indicatorMessageHandler = (message) => {
-      if (!message?.clientIndicatorId) return;
-      state.pendingIndicatorMessages.set(message.clientIndicatorId, message);
-      scheduleIndicatorFlush();
-    };
-    wsService.on('indicatorUpdate', state.indicatorMessageHandler);
+    if (pendingRender) {
+      const options = pendingRender;
+      pendingRender = null;
+      renderCandlesticks(candlesticksStore.data, options);
+    }
+    void nextTick(() => {
+      if (!state.isReady) return;
+      for (const indicator of indicatorsStore.all) {
+        const deferred = deferredIndicatorPoints.get(indicator._id);
+        const points =
+          deferred?.generation === indicator.historyGeneration
+            ? [...deferred.points.values()]
+            : [];
+        if (indicator.lastLivePoint) points.push(indicator.lastLivePoint);
+        const latestHistoryTimestamp =
+          indicator.data.at(-1)?.timestamp_ms ?? Number.NEGATIVE_INFINITY;
+        const byTimestamp = new Map(
+          points.map((point) => [point.timestamp_ms, point]),
+        );
+        for (const point of [...byTimestamp.values()].sort(
+          (left, right) => left.timestamp_ms - right.timestamp_ms,
+        )) {
+          if (point.timestamp_ms < latestHistoryTimestamp) continue;
+          infrastructure.indicatorManager.updateIndicatorSeriesPoint(
+            indicator._id,
+            point,
+          );
+        }
+      }
+      deferredIndicatorPoints.clear();
+      indicatorPanesReady = true;
+    });
   }
 
   async function syncBacktestOverlayTarget(): Promise<void> {
@@ -166,7 +229,7 @@ export function createChartRendering({
       message,
     ] of state.pendingIndicatorMessages.entries()) {
       const point = indicatorsStore.handleLiveUpdate(message);
-      if (!point) continue;
+      if (!point || !state.isReady) continue;
       infrastructure.indicatorManager.updateIndicatorSeriesPoint(
         indicatorId,
         point,
@@ -179,6 +242,10 @@ export function createChartRendering({
     data: readonly ChartCandle[],
     { scrollToRealtime = false }: RenderCandlestickOptions = {},
   ): void {
+    if (!state.isReady) {
+      pendingRender = { scrollToRealtime };
+      return;
+    }
     const minMove = getMinMove();
     if (minMove && minMove > 0) {
       state.seriesOptions.priceFormat = {
@@ -205,6 +272,7 @@ export function createChartRendering({
 
   function updateCurrentCandle(candle: CandleUpdateMessage): void {
     candlesticksStore.updateCandle(candle);
+    if (!state.isReady) return;
     infrastructure.updateCandlestick({
       timestamp_ms: candle.timestamp_ms,
       time: Math.floor(candle.timestamp_ms / 1000),
@@ -234,6 +302,7 @@ export function createChartRendering({
   }
 
   function refreshBacktestMarkers(): void {
+    if (!state.isReady) return;
     state.hoveredBacktestMarker = null;
     state.backtestMarkerDetails.clear();
     const range = getBacktestLoadedCandleRange();
@@ -360,6 +429,11 @@ export function createChartRendering({
   }
 
   function dispose() {
+    cancelFontWait();
+    state.isReady = false;
+    indicatorPanesReady = false;
+    deferredIndicatorPoints.clear();
+    pendingRender = null;
     for (const id of [
       state.crosshairRafId,
       state.visibleRangeRafId,

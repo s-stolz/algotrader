@@ -3,9 +3,7 @@ import {
   BarSeries,
   BaselineSeries,
   CandlestickSeries,
-  ColorType,
   createChart,
-  CrosshairMode,
   HistogramSeries,
   LineSeries,
   type AreaData,
@@ -31,6 +29,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 
+import { createDefaultChartOptions } from './chartTheme';
 import type { ChartProtectiveLineSegment } from './protectiveLinesPrimitive';
 import type { ChartMeasurementOverlayModel } from './measurementOverlay';
 import { ChartSeriesOverlays } from './chartSeriesOverlays';
@@ -125,24 +124,7 @@ export class ChartManager {
     null;
 
   constructor(options: DeepPartial<ChartOptions> = {}) {
-    this.defaultOptions = {
-      layout: {
-        textColor: '#d1d4dc',
-        background: { type: ColorType.Solid, color: 'transparent' },
-        panes: {
-          separatorColor: 'rgba(96,96,96,0.3)',
-        },
-      },
-      grid: {
-        vertLines: { color: 'transparent' },
-        horzLines: { color: 'transparent' },
-      },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-      },
-      autoSize: true,
-      ...options,
-    };
+    this.defaultOptions = createDefaultChartOptions(options);
 
     this.timeScaleOptions = {
       timeVisible: true,

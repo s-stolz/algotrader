@@ -118,13 +118,44 @@ describe('ChartManager', () => {
 
     expect(chartMocks.createChart).toHaveBeenCalledWith(
       container,
-      expect.objectContaining({ autoSize: true }),
+      expect.objectContaining({
+        autoSize: true,
+        layout: expect.objectContaining({
+          fontFamily: 'Tektur, sans-serif',
+          fontSize: 12,
+          textColor: '#dce4ed',
+        }),
+      }),
     );
     expect(chartMocks.timeScale.applyOptions).toHaveBeenCalledWith({
       timeVisible: true,
       secondsVisible: false,
       rightOffset: 5,
     });
+  });
+
+  it('retains shared canvas typography with caller layout and series colors', () => {
+    const manager = new ChartManager({ layout: { textColor: '#abcdef' } });
+    manager.init(document.createElement('div'));
+    expect(chartMocks.createChart).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      expect.objectContaining({
+        layout: expect.objectContaining({
+          textColor: '#abcdef',
+          fontFamily: 'Tektur, sans-serif',
+          fontSize: 12,
+        }),
+      }),
+    );
+    manager.addSeries('sma', 'line', [{ time: 300, value: 1.5 }], {
+      color: '#3366ff',
+      lineWidth: 3,
+    });
+    expect(chartMocks.chart.addSeries).toHaveBeenCalledWith(
+      expect.any(Object),
+      { color: '#3366ff', lineWidth: 3 },
+      0,
+    );
   });
 
   it('creates, updates, and removes managed series', () => {

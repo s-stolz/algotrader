@@ -5,6 +5,8 @@
       <div class="indicator-controls">
         <n-button
           text
+          circle
+          aria-label="Indicator settings"
           @click="onOpenSettings"
         >
           <n-icon size="20">
@@ -13,6 +15,8 @@
         </n-button>
         <n-button
           text
+          circle
+          aria-label="Remove Indicator"
           class="remove-button"
           @click="onRemoveIndicator"
         >
@@ -58,17 +62,17 @@ function onRemoveIndicator(): void {
 
 <style scoped>
 .indicator-name {
-  font-size: 14px;
+  font-size: var(--design-text-body);
   white-space: nowrap;
   overflow: ellipsis;
 }
 
 .indicator-panel {
-  background: rgba(19, 23, 34, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  background: var(--design-color-panel);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  padding: var(--design-space-sm) var(--design-space-md);
+  margin-bottom: var(--design-space-sm);
   min-width: 300px;
 }
 
@@ -81,10 +85,10 @@ function onRemoveIndicator(): void {
 .indicator-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--design-space-xs);
 }
 
 .remove-button:hover {
-  color: #e98b8b;
+  color: var(--design-color-error);
 }
 </style>

@@ -3,13 +3,6 @@
   "formattedBase": "09bd181088f269e0ab7e961caaf7fae83fb939cc",
   "removeStagingInTicket": 30,
   "files": {
-    "src/components/Chart/Indicator/IndicatorSettingsModal.vue": {
-      "ticket": 26,
-      "countedLines": 55,
-      "width": [
-        "import IndicatorSettingsParameters from '@/components/Chart/Indicator/IndicatorSettingsParameters.vue';"
-      ]
-    },
     "src/icons/index.ts": {
       "ticket": 30,
       "countedLines": 11,
@@ -42,20 +35,6 @@
         "      '/api/data-accessor/candles/EURUSD?timeframe=M5&start_ms=1000&end_ms=2000&limit=10&exchange=FX',"
       ]
     },
-    "test/components/Chart/Indicator/Indicator.spec.ts": {
-      "ticket": 26,
-      "countedLines": 160,
-      "width": [
-        "  it('delegates wrapper removal, style updates, and data refreshes to the indicator manager seam', async () => {"
-      ]
-    },
-    "test/components/Chart/Indicator/IndicatorSettingsParameters.spec.ts": {
-      "ticket": 26,
-      "countedLines": 211,
-      "width": [
-        "import IndicatorSettingsParameters from '@/components/Chart/Indicator/IndicatorSettingsParameters.vue';"
-      ]
-    },
     "test/components/Common/BaseCheckbox.spec.ts": {
       "ticket": 25,
       "countedLines": 36,
@@ -69,13 +48,6 @@
       "width": [
         "  it('opens at the current selection, skips disabled options, and restores focus on Escape without selecting', async () => {",
         "  it('disables an empty picker and keeps focus fallback independent of an unavailable current value', async () => {"
-      ]
-    },
-    "test/components/TopBar/Modals/IndicatorSearchModal.spec.ts": {
-      "ticket": 26,
-      "countedLines": 75,
-      "width": [
-        "  it('loads indicators through the typed client and requests indicators with market context', async () => {"
       ]
     },
     "test/components/TopBar/TimeframeDropdown.spec.ts": {

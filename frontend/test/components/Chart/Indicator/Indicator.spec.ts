@@ -87,7 +87,7 @@ function createIndicator(
 }
 
 describe('Indicator', () => {
-  it('delegates wrapper removal, style updates, and data refreshes to the indicator manager seam', async () => {
+  it('delegates removal, styles, and refreshes to the Indicator manager', async () => {
     const pane = document.createElement('div');
     const wrapperTarget = document.createElement('div');
     wrapperTarget.className = 'indicators-wrapper';

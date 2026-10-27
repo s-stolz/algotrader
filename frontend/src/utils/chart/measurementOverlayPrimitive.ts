@@ -1,3 +1,4 @@
+import { designTokens } from '@/design/tokens';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import type {
   AutoscaleInfo,
@@ -26,7 +27,8 @@ interface MeasurementOverlayStyle {
 
 const EMPTY_PANE_VIEWS: readonly IPrimitivePaneView[] = [];
 const MIN_BOX_SIZE = 1;
-const LABEL_FONT = '12px sans-serif';
+const { color, font, text } = designTokens;
+const LABEL_FONT = `${text.secondary} ${font.ui}`;
 const LABEL_HEIGHT = 24;
 const LABEL_HORIZONTAL_PADDING = 8;
 const LABEL_OFFSET = 8;
@@ -36,22 +38,22 @@ const MEASUREMENT_OVERLAY_STYLES: Record<
   MeasurementOverlayStyle
 > = {
   positive: {
-    fill: 'rgba(22, 163, 74, 0.18)',
-    border: '#16a34a',
-    labelBackground: 'rgba(22, 163, 74, 0.95)',
-    labelText: '#f0fdf4',
+    fill: `${color.positive}2e`,
+    border: color.positive,
+    labelBackground: color.positive,
+    labelText: color.onInteractive,
   },
   negative: {
-    fill: 'rgba(220, 38, 38, 0.18)',
-    border: '#dc2626',
-    labelBackground: 'rgba(220, 38, 38, 0.95)',
-    labelText: '#fef2f2',
+    fill: `${color.negative}2e`,
+    border: color.negative,
+    labelBackground: color.negative,
+    labelText: color.onInteractive,
   },
   neutral: {
-    fill: 'rgba(148, 163, 184, 0.18)',
-    border: '#94a3b8',
-    labelBackground: 'rgba(51, 65, 85, 0.95)',
-    labelText: '#f8fafc',
+    fill: `${color.muted}2e`,
+    border: color.muted,
+    labelBackground: color.inset,
+    labelText: color.body,
   },
 };
 

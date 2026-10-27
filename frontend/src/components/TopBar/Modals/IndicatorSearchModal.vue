@@ -1,43 +1,52 @@
 <template>
-  <BaseModal
-    :modalId="'indicatorSearch'"
-    :title="'Indicator'"
-  >
-    <div>
-      <span id="search-bar-wrapper">
-        <n-input
-          v-model:value="indicatorInput"
-          id="indicator-input"
-          autocomplete="off"
-          placeholder="Indicator"
-          round
-          clearable
-        >
-          <template #prefix>
-            <n-icon>
-              <SearchOutline />
-            </n-icon>
-          </template>
-        </n-input>
-        <hr class="separator" />
-      </span>
-
-      <BaseDataTable :max-height="300">
-        <tbody>
-          <tr
-            v-for="indicator in filteredIndicators"
-            :key="indicator.id"
-            @click="onApplyIndicator(indicator)"
+  <DesignScope>
+    <BaseModal
+      :modalId="'indicatorSearch'"
+      :title="'Indicator'"
+    >
+      <div>
+        <span id="search-bar-wrapper">
+          <n-input
+            v-model:value="indicatorInput"
+            id="indicator-input"
+            autocomplete="off"
+            placeholder="Indicator"
+            round
+            clearable
           >
-            <td>{{ indicator.name }}</td>
-          </tr>
-        </tbody>
-      </BaseDataTable>
-    </div>
-  </BaseModal>
+            <template #prefix>
+              <n-icon>
+                <SearchOutline />
+              </n-icon>
+            </template>
+          </n-input>
+          <hr class="separator" />
+        </span>
+
+        <BaseDataTable :max-height="300">
+          <tbody>
+            <tr
+              v-for="indicator in filteredIndicators"
+              :key="indicator.id"
+              @click="onApplyIndicator(indicator)"
+            >
+              <td>
+                <button
+                  class="indicator-choice"
+                  @click.stop="onApplyIndicator(indicator)"
+                  >{{ indicator.name }}</button
+                >
+              </td>
+            </tr>
+          </tbody>
+        </BaseDataTable>
+      </div>
+    </BaseModal>
+  </DesignScope>
 </template>
 
 <script setup lang="ts">
+import DesignScope from '@/components/Common/DesignScope.vue';
 import { computed, onMounted, ref } from 'vue';
 import { NIcon, NInput } from 'naive-ui';
 
@@ -111,11 +120,29 @@ onMounted(() => {
 }
 
 #indicator-input {
-  width: calc(100% - 30px);
-  margin: 8px 15px;
+  width: calc(100% - 2 * var(--design-space-lg));
+  margin: var(--design-space-sm) var(--design-space-lg);
 }
 
-tr {
+.indicator-choice {
+  display: block;
+  width: 100%;
+  padding: var(--design-space-sm) var(--design-space-md);
+  border: 0;
+  border-radius: var(--design-radius-control);
+  background: transparent;
+  color: var(--design-color-body);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
+}
+
+.indicator-choice:hover {
+  background: var(--design-color-hover);
+}
+
+.indicator-choice:focus-visible {
+  outline: 2px solid var(--design-color-interactive);
+  outline-offset: -2px;
 }
 </style>
