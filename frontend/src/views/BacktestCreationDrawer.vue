@@ -12,10 +12,6 @@
     <p v-if="catalogError" role="alert">Strategy catalog unavailable. {{ catalogError }}</p>
     <n-button v-if="catalogError" @click="loadCatalog">Retry catalog</n-button>
     <template v-if="draft && catalog.length">
-      <p v-if="store.reuseSource" data-testid="reuse-source">
-        Editing a new {{ store.reuseSource.kind === 'run' ? 'Backtest' : 'Parameter Sweep' }}
-        from saved {{ store.reuseSource.kind }} {{ store.reuseSource.id }}. The saved history stays unchanged.
-      </p>
       <p
         v-if="store.reuseSource && !selectedStrategy &&
           draft.strategy.strategy_id === store.reuseSource.strategyId"
@@ -299,15 +295,16 @@
               data-testid="sweep-filter"
             />
           </label>
-          <BaseDataTable
-            :columns="previewColumns"
-            :data="filteredCandidates"
-            :pagination="{ pageSize: 10 }"
-            size="small"
-            flex-height
-            :scroll-x="previewColumns.length * 150"
-            data-testid="sweep-candidates"
-          />
+          <n-scrollbar class="preview-table-scroll" :content-style="{ paddingRight: '8px', boxSizing: 'border-box' }">
+            <BaseDataTable
+              :columns="previewColumns"
+              :data="filteredCandidates"
+              :pagination="{ pageSize: 10 }"
+              size="small"
+              table-layout="auto"
+              data-testid="sweep-candidates"
+            />
+          </n-scrollbar>
         </section>
       </section>
     </template>
@@ -355,7 +352,7 @@ import BaseNumberValues from '@/components/Common/BaseNumberValues.vue';
 import BaseDateRange from '@/components/Common/BaseDateRange.vue';
 import BacktestExecutionFields from './BacktestExecutionFields.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
-import { NButton, NInput, NInputNumber, NTag } from 'naive-ui';
+import { NButton, NInput, NInputNumber, NScrollbar, NTag } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { BacktestSubmissionError, fetchStrategyCatalog, fetchSweepCapabilities,
   previewParameterSweep, submitBacktestBatch, submitBacktestRun } from '@/api/backtesterClient';
@@ -1022,13 +1019,16 @@ small { color: #98a5b5; font-size: 12px; }
 .string-value .n-input { flex: 1; }
 .preview-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; height: 100%; }
 .preview-review { display: flex; flex-direction: column; flex: 1; min-height: 260px; }
-.preview-review :deep(.base-data-table) { flex: 1; min-height: 0; }
+.preview-table-scroll { flex: 1; min-height: 0; overflow: hidden; }
 .preview-counts { display: flex; gap: 24px; margin: 8px 0; font-size: 12px; }
 .preview-counts > div { display: flex; gap: 6px; }
 .preview-counts dd { margin: 0; }
 .preview-filter { max-width: 200px; margin: 12px 0; }
 .section-description { color: #98a5b5; font-size: 12px; }
-.preview-review :deep(.n-data-table-th) { white-space: nowrap; }
+.preview-review :deep(.n-data-table-th),
+.preview-review :deep(.n-data-table-td) { white-space: nowrap; }
+.preview-review :deep(.n-data-table-th:last-child),
+.preview-review :deep(.n-data-table-td:last-child) { padding-right: 16px; }
 .creation-footer, .creation-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 @media (max-width: 520px) {
   .settings-grid, .range-inputs { grid-template-columns: 1fr; }
