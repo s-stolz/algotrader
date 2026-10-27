@@ -1,14 +1,17 @@
-import { darkTheme, type DropdownProps, NPopover } from 'naive-ui';
+import { type DropdownProps, NPopover } from 'naive-ui';
+import { designTokens } from '@/design/tokens';
+
+const { color } = designTokens;
 
 export const selectionColors = {
-  surface: '#131722',
-  hover: '#222a38',
-  selected: '#2a3445',
-  border: '#2b3541',
-  text: '#dce4ed',
-  muted: '#8f9dab',
-  accent: darkTheme.common?.primaryColor ?? '#63e2b7',
-  controlBorder: darkTheme.common?.borderColor ?? 'rgba(255, 255, 255, .24)',
+  surface: color.panel,
+  hover: color.header,
+  selected: color.selected,
+  border: color.border,
+  text: color.body,
+  muted: color.muted,
+  accent: color.interactive,
+  controlBorder: color.controlBorder,
 };
 
 export const selectionPopoverTheme: NonNullable<

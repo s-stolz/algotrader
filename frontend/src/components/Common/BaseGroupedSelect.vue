@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, useId } from 'vue';
 import { NButton } from 'naive-ui';
 import BasePopover from './BasePopover.vue';
-import { selectionColors } from './selectionTheme';
+import { designTokens } from '@/design/tokens';
 
 const props = withDefaults(
   defineProps<{
@@ -33,20 +33,38 @@ const currentLabel = computed(
     props.value,
 );
 const activeValue = ref(props.value);
+const { color, space, radius, control, text } = designTokens;
 const buttonTheme = {
   color: 'transparent',
-  colorHover: selectionColors.hover,
-  colorPressed: selectionColors.selected,
-  textColor: selectionColors.text,
-  textColorHover: selectionColors.text,
-  textColorPressed: selectionColors.text,
-  textColorFocus: selectionColors.text,
+  colorHover: color.hover,
+  colorPressed: color.selected,
+  colorFocus: 'transparent',
+  textColor: color.body,
+  textColorHover: color.body,
+  textColorPressed: color.body,
+  textColorFocus: color.body,
   border: '1px solid transparent',
-  borderHover: `1px solid ${selectionColors.border}`,
-  borderPressed: `1px solid ${selectionColors.accent}`,
-  borderFocus: `1px solid ${selectionColors.accent}`,
-  rippleColor: selectionColors.accent,
-  borderRadiusSmall: '4px',
+  borderHover: `1px solid ${color.border}`,
+  borderPressed: `1px solid ${color.interactive}`,
+  borderFocus: `1px solid ${color.interactive}`,
+  rippleColor: color.interactive,
+  borderRadiusSmall: radius.control,
+  heightSmall: control.small,
+  fontSizeSmall: text.body,
+  paddingSmall: '0',
+};
+const selectedButtonTheme = {
+  ...buttonTheme,
+  color: color.selected,
+  colorHover: color.selectedHover,
+  colorPressed: color.selected,
+  colorFocus: color.selected,
+  textColor: color.interactive,
+  textColorHover: color.interactive,
+  textColorPressed: color.interactive,
+  textColorFocus: color.interactive,
+  border: `1px solid ${color.interactive}`,
+  borderHover: `1px solid ${color.interactive}`,
 };
 
 function close(restoreFocus = false): void {
@@ -125,7 +143,7 @@ function leaveFocus(event: FocusEvent): void {
     :show-arrow="false"
     :delay="80"
     :duration="150"
-    :theme-overrides="{ padding: '12px' }"
+    :theme-overrides="{ padding: space.md }"
     @update:show="updateShow"
     @clickoutside="close()"
   >
@@ -175,8 +193,10 @@ function leaveFocus(event: FocusEvent): void {
             :disabled="option.disabled"
             :data-value="option.value"
             :tabindex="activeValue === option.value ? 0 : -1"
-            :theme-overrides="buttonTheme"
-            :class="{ 'selected-option': value === option.value }"
+            :theme-overrides="
+              value === option.value ? selectedButtonTheme : buttonTheme
+            "
+            class="selection-option"
             @click="select(option.value)"
             >{{ option.label }}</n-button
           >
@@ -192,39 +212,26 @@ function leaveFocus(event: FocusEvent): void {
   max-width: calc(100vw - 56px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--design-space-md);
 }
 .selection-group h3 {
-  margin: 0 0 6px;
-  color: #8f9dab;
-  font-size: 10px;
+  margin: 0 0 var(--design-space-sm);
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
   font-weight: 500;
   line-height: 14px;
 }
 .selection-group + .selection-group {
-  border-top: 1px solid var(--surface-border);
-  padding-top: 10px;
+  border-top: 1px solid var(--design-color-border);
+  padding-top: var(--design-space-md);
 }
 .selection-options {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
+  gap: var(--design-space-xs);
 }
-.selection-options .n-button {
-  height: 30px;
-  padding: 0;
-}
-.selection-options .selected-option {
-  background: var(--surface-header-fixed);
-  color: var(--selection-accent);
-  box-shadow: inset 0 0 0 1px var(--selection-accent);
-}
-.selection-options .selected-option:hover {
-  background: var(--surface-header);
-  color: var(--selection-accent);
-}
-.selection-options .n-button:focus-visible {
-  outline: 2px solid var(--selection-accent);
+.selection-option:focus-visible {
+  outline: 2px solid var(--design-color-interactive);
   outline-offset: 2px;
 }
 </style>
