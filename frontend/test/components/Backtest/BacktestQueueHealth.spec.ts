@@ -1,6 +1,15 @@
+import { readFileSync } from 'node:fs';
 import { defineComponent, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
 
 import { fetchBacktestQueue } from '@/api/backtesterClient';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
@@ -123,6 +132,34 @@ describe('Backtest queue health', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('keeps the floating activity trigger keyboard-focusable and toggles its popover', async () => {
+    const style = document.createElement('style');
+    style.textContent = readFileSync(
+      'src/components/Backtest/backtestQueueHealth.css',
+      'utf8',
+    );
+    document.head.append(style);
+    const wrapper = mount(BacktestQueueHealth, {
+      attachTo: document.body,
+      global: { stubs: { BasePopover: PopoverStub } },
+    });
+    onTestFinished(() => {
+      wrapper.unmount();
+      style.remove();
+    });
+    await flushPromises();
+    const trigger = wrapper.get('[data-testid="queue-toggle"]');
+    (trigger.element as HTMLElement).focus();
+    expect(document.activeElement).toBe(trigger.element);
+    expect(getComputedStyle(trigger.element).outline).toBe(
+      '2px solid var(--design-color-interactive)',
+    );
+    await trigger.trigger('click');
+    expect(trigger.attributes('aria-expanded')).toBe('true');
+    await trigger.trigger('click');
+    expect(trigger.attributes('aria-expanded')).toBe('false');
   });
 
   it('polls while mounted and computes elapsed times from current clock', async () => {

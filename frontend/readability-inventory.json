@@ -69,13 +69,6 @@
       "width": [
         "  it('fetches markets and initializes the current market when persisted state is invalid', async () => {"
       ]
-    },
-    "test/views/backtestWorkspaceRuns.spec.ts": {
-      "ticket": 22,
-      "countedLines": 130,
-      "width": [
-        "  it('shows nonzero drawdown magnitude below display precision without changing zero or missing', () => {"
-      ]
     }
   }
 }

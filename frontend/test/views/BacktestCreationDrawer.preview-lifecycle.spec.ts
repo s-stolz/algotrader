@@ -99,7 +99,7 @@ describe('preview lifecycle', () => {
     const table = wrapper.findComponent(NDataTable);
     const rows = table.props('data') as SweepPreviewCandidate[];
     expect(rows).toHaveLength(22);
-    expect(table.props('pagination')).toEqual({ pageSize: 10 });
+    expect(table.props('pagination')).toMatchObject({ pageSize: 10 });
     const columns = table.props('columns') as Array<{
       title: string;
       sorter?: (a: unknown, b: unknown) => number;

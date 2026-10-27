@@ -10,6 +10,8 @@ import {
 
 import { designTableTheme } from '@/design/naiveTheme';
 import { useDesignScope } from '@/design/scope';
+import { designCssProperties } from '@/design/cssProperties';
+import { designTokens } from '@/design/tokens';
 
 const themeOverrides: NonNullable<DataTableProps['themeOverrides']> = {
   tdColor: 'var(--surface-panel)',
@@ -61,6 +63,25 @@ export default defineComponent({
       ...(usesDesign ? designTableTheme : themeOverrides),
       ...props.themeOverrides,
     }));
+
+    const pagination = computed(() => {
+      if (!usesDesign || !props.pagination) return props.pagination;
+      return {
+        ...props.pagination,
+        selectProps: {
+          ...props.pagination.selectProps,
+          menuProps: mergeProps(
+            {
+              style: {
+                ...designCssProperties,
+                fontFamily: designTokens.font.ui,
+              },
+            },
+            { ...props.pagination.selectProps?.menuProps },
+          ),
+        },
+      };
+    });
 
     return () => {
       const { rowHover: _rowHover, ...tableProps } = props;
@@ -123,6 +144,7 @@ export default defineComponent({
               ],
               bordered: props.bordered ?? false,
               themeOverrides: mergedTheme.value,
+              pagination: pagination.value,
             }),
             slots,
           );

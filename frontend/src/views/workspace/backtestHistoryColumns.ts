@@ -1,4 +1,5 @@
 import { h } from 'vue';
+import { designTokens } from '@/design/tokens';
 import { NButton, NIcon, NTag, type DataTableColumns } from 'naive-ui';
 import {
   CopyOutline,
@@ -172,7 +173,10 @@ export function createHistoryColumns(
     {
       title: 'Actions',
       key: 'actions',
-      width: 125,
+      width:
+        3 * Number.parseInt(designTokens.control.small) +
+        2 * Number.parseInt(designTokens.space.xs) +
+        2 * Number.parseInt(designTokens.space.lg),
       fixed: 'right',
       render: (entry) =>
         h(

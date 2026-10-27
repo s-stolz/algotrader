@@ -65,6 +65,7 @@
       :class="{ 'is-live': !isTerminal && !detailError }"
     >
       <n-icon
+        class="activity-icon"
         :component="activityIcon"
         size="20"
       />
@@ -123,164 +124,164 @@ p {
   flex-shrink: 0;
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--design-radius-circle);
   background: currentColor;
 }
 .progress-panel {
-  margin: 0 28px 16px;
-  padding: 20px;
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  background: var(--surface-inset);
+  margin: 0 var(--design-space-xl) var(--design-space-lg);
+  padding: var(--design-space-xl);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  background: var(--design-color-inset);
 }
 .progress-heading {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  margin-bottom: 15px;
+  gap: var(--design-space-md);
+  margin-bottom: var(--design-space-lg);
 }
 .progress-heading strong {
-  font-size: 30px;
+  font-size: var(--design-text-metric);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .progress-heading strong span {
-  font-size: 22px;
-  color: #8fa3b5;
+  font-size: var(--design-text-heading);
+  color: var(--design-color-muted);
   font-weight: 400;
 }
 .progress-label {
-  margin-left: 12px;
-  color: #acbdca;
+  margin-left: var(--design-space-md);
+  color: var(--design-color-muted);
 }
 .progress-percent {
-  color: #d9e8f3;
-  font-size: 23px;
+  color: var(--design-color-body);
+  font-size: var(--design-text-metric);
   font-variant-numeric: tabular-nums;
 }
 .progress-percent small {
-  color: #8fa3b5;
-  font-size: 13px;
-  margin-left: 2px;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-body);
+  margin-left: var(--design-space-xs);
 }
 .progress-track {
   height: 8px;
   display: flex;
   overflow: hidden;
-  border-radius: 6px;
-  background: #303e4d;
+  border-radius: var(--design-radius-panel);
+  background: var(--design-color-disabled);
 }
 .progress-track span {
   transition: width 0.35s ease;
 }
 .progress-track .succeeded {
-  background: #68ceab;
+  background: var(--design-color-positive);
 }
 .progress-track .failed {
-  background: #ee9099;
+  background: var(--design-color-error);
 }
 .progress-track .cancelled {
-  background: #8996a7;
+  background: var(--design-color-muted);
 }
 .progress-track .running {
   background: repeating-linear-gradient(
     120deg,
-    #578dba 0,
-    #578dba 5px,
-    #426d92 5px,
-    #426d92 10px
+    var(--design-color-info) 0,
+    var(--design-color-info) 5px,
+    var(--design-color-selected) 5px,
+    var(--design-color-selected) 10px
   );
 }
 .progress-track .cancelling {
-  background: #c8a169;
+  background: var(--design-color-warning);
 }
 .progress-caption {
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-  font-size: 11px;
-  color: #a9bccb;
+  gap: var(--design-space-sm);
+  margin-top: var(--design-space-sm);
+  font-size: var(--design-text-secondary);
+  color: var(--design-color-muted);
 }
 .muted {
-  color: #99adbd;
+  color: var(--design-color-muted);
 }
 .outcome-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
-  margin: 22px 0 0;
+  gap: var(--design-space-md);
+  margin: var(--design-space-xl) 0 0;
 }
 .outcome-grid > div {
-  border-left: 1px solid #304150;
-  padding-left: 16px;
+  border-left: 1px solid var(--design-color-border);
+  padding-left: var(--design-space-lg);
 }
 .outcome-grid > div:first-child {
   border-left: 0;
   padding-left: 0;
 }
 dt {
-  color: #9fb2c2;
-  font-size: 11px;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
 }
 dd {
-  margin: 6px 0 0;
+  margin: var(--design-space-sm) 0 0;
 }
 .outcome-grid dt {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--design-space-sm);
 }
 .outcome-grid dd {
-  font-size: 22px;
+  font-size: var(--design-text-metric);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .succeeded .legend-dot,
 .succeeded dd {
-  color: #7cd8b7;
+  color: var(--design-color-positive);
 }
 .failed .legend-dot,
 .failed dd {
-  color: #ee9ca5;
+  color: var(--design-color-error);
 }
 .cancelled .legend-dot {
-  color: #a2afbf;
+  color: var(--design-color-muted);
 }
 .running .legend-dot,
 .running dd {
-  color: #8dbfe9;
+  color: var(--design-color-info);
 }
 .cancelling .legend-dot {
-  color: #edc791;
+  color: var(--design-color-warning);
 }
 .queued .legend-dot {
-  color: #71899d;
+  color: var(--design-color-muted);
 }
 .activity-panel {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin: 20px 28px;
-  padding: 4px 0;
-  color: #a7bbcb;
+  gap: var(--design-space-lg);
+  margin: var(--design-space-xl) var(--design-space-xl);
+  padding: var(--design-space-xs) 0;
+  color: var(--design-color-muted);
 }
-.activity-panel.is-live > .n-icon {
-  color: #91c4e9;
+.activity-panel.is-live > .activity-icon {
+  color: var(--design-color-info);
 }
 .activity-copy {
   flex: 1;
   min-width: 0;
 }
 .activity-copy > p:first-child {
-  color: #d9e5ed;
+  color: var(--design-color-body);
   font-weight: 500;
 }
 .activity-copy .muted {
-  font-size: 12px;
-  margin-top: 5px;
+  font-size: var(--design-text-secondary);
+  margin-top: var(--design-space-xs);
   line-height: 1.6;
 }
 .active-context {
@@ -295,26 +296,26 @@ dd {
 }
 @media (max-width: 600px) {
   .progress-panel {
-    margin: 0 18px 16px;
-    padding: 16px;
+    margin: 0 var(--design-space-lg) var(--design-space-lg);
+    padding: var(--design-space-lg);
   }
   .outcome-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    row-gap: 20px;
+    row-gap: var(--design-space-xl);
   }
   .outcome-grid > div:nth-child(4) {
     border-left: 0;
     padding-left: 0;
   }
   .activity-panel {
-    margin: 18px;
+    margin: var(--design-space-lg);
     align-items: flex-start;
     flex-wrap: wrap;
   }
   .progress-label {
     display: block;
-    margin: 2px 0 0;
-    font-size: 12px;
+    margin: var(--design-space-xs) 0 0;
+    font-size: var(--design-text-secondary);
   }
   .progress-caption .muted {
     display: none;

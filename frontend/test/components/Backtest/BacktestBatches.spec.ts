@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import savedDetails from '@/components/Backtest/batch/BatchSavedDetails.vue?raw';
 import {
   getBacktestBatch,
   listBacktestBatchEvents,
@@ -65,6 +66,37 @@ describe('accepted batch inspection: inspection', () => {
       wrapper.find('[data-testid="workspace-batch-members"]').exists(),
     ).toBe(false);
     wrapper.unmount();
+  });
+
+  it('keeps saved disclosure focus interactive and activation native', async () => {
+    const style = document.createElement('style');
+    style.textContent = savedDetails
+      .split('<style scoped>')[1]
+      .split('</style>')[0];
+    document.head.append(style);
+    const wrapper = mount(BacktestBatches, {
+      attachTo: document.body,
+      props: { batchId: 'batch-1' },
+    });
+    onTestFinished(() => {
+      wrapper.unmount();
+      style.remove();
+    });
+    await flushPromises();
+    const summary = wrapper.get('.sweep-details summary')
+      .element as HTMLElement;
+    summary.focus();
+    expect(document.activeElement).toBe(summary);
+    expect(summary.matches(':focus-visible')).toBe(true);
+    expect(getComputedStyle(summary).outline).toBe(
+      '2px solid var(--design-color-interactive)',
+    );
+    expect(getComputedStyle(summary).outlineOffset).toBe('5px');
+    const details = summary.parentElement as HTMLDetailsElement;
+    summary.click();
+    expect(details.open).toBe(true);
+    summary.click();
+    expect(details.open).toBe(false);
   });
 
   it('shows the saved experiment name again after reloading detail', async () => {

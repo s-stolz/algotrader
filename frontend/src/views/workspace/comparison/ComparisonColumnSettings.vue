@@ -8,8 +8,8 @@
       placement="bottom-end"
       :width="500"
       :style="{
-        maxWidth: 'calc(100vw - 32px)',
-        marginBottom: '16px',
+        maxWidth: 'calc(100vw - var(--design-space-xxl))',
+        marginBottom: 'var(--design-space-lg)',
       }"
     >
       <template #trigger>
@@ -91,47 +91,47 @@ const {
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  margin: 22px 0 16px;
+  gap: var(--design-space-lg);
+  margin: var(--design-space-xl) 0 var(--design-space-lg);
 }
 .column-count {
-  color: #94a3b8;
+  color: var(--design-color-muted);
   align-self: center;
 }
 .column-popover {
   display: grid;
-  gap: 18px;
+  gap: var(--design-space-lg);
   width: 100%;
-  padding: 4px;
+  padding: var(--design-space-xs);
   box-sizing: border-box;
 }
 .column-popover-footer {
   display: flex;
   justify-content: flex-end;
-  border-top: 1px solid var(--surface-border);
-  padding-top: 16px;
+  border-top: 1px solid var(--design-color-border);
+  padding-top: var(--design-space-lg);
 }
 .column-group + .column-group {
-  border-top: 1px solid var(--surface-border);
-  padding-top: 16px;
+  border-top: 1px solid var(--design-color-border);
+  padding-top: var(--design-space-lg);
 }
 .column-group-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--design-space-md);
 }
 .column-group h3 {
   margin: 0;
-  color: #9aafbf;
-  font-size: 12px;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
   font-weight: 600;
 }
 .column-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 16px;
-  margin-top: 10px;
+  gap: var(--design-space-sm) var(--design-space-lg);
+  margin-top: var(--design-space-sm);
 }
 @media (max-width: 480px) {
   .column-options {

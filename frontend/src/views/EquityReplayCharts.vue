@@ -17,9 +17,9 @@
             class="series-swatch"
             :style="{ background: seriesColor(run) }"
           />
-          {{
+          <span :class="{ 'series-id': run.ordinal == null }">{{
             run.ordinal == null ? run.runId.slice(0, 8) : `#${run.ordinal + 1}`
-          }}
+          }}</span>
         </li>
       </ul>
       <span
@@ -59,6 +59,8 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import type { ReplaySeries } from './backtestComparison';
+import { designTokens } from '@/design/tokens';
+import { whenChartFontReady } from '@/utils/chart/chartFonts';
 
 const samplingDescription =
   'Sampled exact replay points, preserving the first and last points ' +
@@ -69,13 +71,15 @@ const drawdownContainer = ref<HTMLElement | null>(null);
 let equityChart: IChartApi | null = null;
 let drawdownChart: IChartApi | null = null;
 let resizeObserver: ResizeObserver | null = null;
+let cancelFontWait: (() => void) | null = null;
 
 function seriesColor(run: ReplaySeries): string {
   let hash = 0;
   for (const character of run.runId)
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   const hue = run.ordinal == null ? hash % 360 : (run.ordinal * 137.508) % 360;
-  return `hsl(${hue} 72% 62%)`;
+  const { replaySaturation, replayLightness } = designTokens.chart;
+  return `hsl(${hue} ${replaySaturation} ${replayLightness})`;
 }
 
 const rendered = new Map<
@@ -180,12 +184,25 @@ function createCharts(): void {
   if (!equityContainer.value || !drawdownContainer.value) return;
   const options = {
     layout: {
-      background: { color: '#161e28' },
-      textColor: '#93a5b5',
-      fontFamily: 'Inter, -apple-system, sans-serif',
-      fontSize: 11,
+      background: { color: designTokens.color.inset },
+      textColor: designTokens.color.muted,
+      fontFamily: designTokens.font.ui,
+      fontSize: Number.parseInt(designTokens.text.secondary),
     },
-    grid: { vertLines: { visible: false }, horzLines: { color: '#26313d' } },
+    grid: {
+      vertLines: { visible: false },
+      horzLines: { color: designTokens.color.border },
+    },
+    crosshair: {
+      vertLine: {
+        color: designTokens.color.muted,
+        labelBackgroundColor: designTokens.color.inset,
+      },
+      horzLine: {
+        color: designTokens.color.muted,
+        labelBackgroundColor: designTokens.color.inset,
+      },
+    },
     rightPriceScale: {
       visible: true,
       autoScale: true,
@@ -194,7 +211,7 @@ function createCharts(): void {
       scaleMargins: { top: 0.1, bottom: 0.1 },
     },
     timeScale: {
-      borderColor: '#34414e',
+      borderColor: designTokens.color.border,
       timeVisible: true,
       secondsVisible: false,
       rightOffset: 0,
@@ -216,7 +233,7 @@ function createCharts(): void {
   render();
 }
 onMounted(() => {
-  createCharts();
+  cancelFontWait = whenChartFontReady(createCharts);
   if (
     typeof ResizeObserver !== 'undefined' &&
     equityContainer.value &&
@@ -237,6 +254,7 @@ onMounted(() => {
 });
 watch(() => props.series, render);
 onUnmounted(() => {
+  cancelFontWait?.();
   resizeObserver?.disconnect();
   equityChart?.remove();
   drawdownChart?.remove();
@@ -249,66 +267,70 @@ onUnmounted(() => {
   width: 100%;
   display: grid;
   gap: 0;
-  margin-top: 16px;
-  border: 1px solid #303c49;
-  border-radius: 10px;
+  margin-top: var(--design-space-lg);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
   overflow: hidden;
-  background: #161e28;
+  background: var(--design-color-inset);
 }
 .chart-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid #26313d;
+  gap: var(--design-space-md);
+  padding: var(--design-space-lg) var(--design-space-lg);
+  border-bottom: 1px solid var(--design-color-border);
 }
 .series-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 20px;
+  gap: var(--design-space-sm) var(--design-space-xl);
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 12px;
-  color: #cbd5df;
+  font-size: var(--design-text-secondary);
+  color: var(--design-color-body);
 }
 .series-legend li {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--design-space-sm);
+}
+.series-id {
+  font-family: var(--design-font-mono);
+  font-size: var(--design-text-id);
 }
 .series-swatch {
   width: 16px;
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--design-radius-panel);
 }
 .sampling-note {
-  font-size: 11px;
-  color: #93a5b5;
+  font-size: var(--design-text-secondary);
+  color: var(--design-color-muted);
 }
 .replay-charts section {
   min-width: 0;
   width: 100%;
-  padding: 16px 12px 8px;
+  padding: var(--design-space-lg) var(--design-space-md) var(--design-space-sm);
   box-sizing: border-box;
 }
 .replay-charts section + section {
-  border-top: 1px solid #26313d;
+  border-top: 1px solid var(--design-color-border);
 }
 .replay-charts h3 {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  font-size: 14px;
-  margin: 0 6px 12px;
-  color: #dce5ed;
+  gap: var(--design-space-sm);
+  font-size: var(--design-text-heading);
+  margin: 0 var(--design-space-sm) var(--design-space-md);
+  color: var(--design-color-body);
 }
 .replay-charts h3 span {
-  font-size: 11px;
+  font-size: var(--design-text-secondary);
   font-weight: 400;
-  color: #93a5b5;
+  color: var(--design-color-muted);
 }
 .chart {
   width: 100%;
