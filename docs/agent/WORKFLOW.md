@@ -5,10 +5,14 @@ and documentation maintenance.
 
 ## Verification
 
-- Run the relevant target from [commands](COMMANDS.md). Include affected consumer
-  tests when an interface crosses areas.
+- During implementation, run the affected area's target from
+  [commands](COMMANDS.md). Include affected consumer tests when an interface
+  crosses areas.
 - For Python changes, run `make typecheck-python`; repair findings as part of the
-  change. Use `make verify` for the broad implementation handoff gate.
+  change.
+- Run `make verify` at the integration gate before merging. Routine implementation
+  handoff requires the affected-area checks; broaden them when failures or shared
+  behavior changes indicate additional affected areas.
 - For Markdown-only changes, check local links, referenced paths, and task
   routing. Application tests are unnecessary unless executable behavior changes.
 - Report the checks run, their results, and any unverified behavior.

@@ -28,3 +28,20 @@ strategy_version)` pair. A stale pair is rejected; the client refreshes the
 catalog and requires explicit review. Already saved requests remain immutable.
 Queued work with an unavailable exact version fails closed, while historical
 requests and results remain inspectable.
+
+## Scope and verification
+
+A routine strategy addition consists of a registered builder and one focused
+test file. Capture signal, exit/reversal, and filtered-signal behavior in the
+builder docstring and behavioral tests. Keep strategy-specific explanations
+beside the builder; this guide owns the shared authoring process.
+
+Test qualifying and rejected signals, boundary cases, and resulting position
+behavior. Reuse existing registry, direction-mapping, and transport coverage
+rather than repeating it for each strategy. Add tests at a shared component's
+boundary when its behavior changes, representative engine integration coverage
+when execution or feature evaluation changes, and API/storage tests when their
+contracts change. Missing indicators or engine capabilities expand the scope
+beyond a routine strategy addition and need their own regression coverage.
+
+Follow [workflow](../docs/agent/WORKFLOW.md) for selecting verification gates.
