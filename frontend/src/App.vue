@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme="darkTheme">
+  <DesignScope>
     <WorkspaceNavigation>
       <router-view v-slot="{ Component }">
         <keep-alive>
@@ -7,12 +7,12 @@
         </keep-alive>
       </router-view>
     </WorkspaceNavigation>
-  </n-config-provider>
+  </DesignScope>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue';
-import { NConfigProvider, darkTheme } from 'naive-ui';
+import DesignScope from '@/components/Common/DesignScope.vue';
 import WorkspaceNavigation from '@/components/Workspace/WorkspaceNavigation.vue';
 import { wsService } from './utils/websocketService';
 
@@ -20,14 +20,8 @@ export default defineComponent({
   name: 'App',
 
   components: {
-    NConfigProvider,
+    DesignScope,
     WorkspaceNavigation,
-  },
-
-  data() {
-    return {
-      darkTheme,
-    };
   },
 
   beforeUnmount() {

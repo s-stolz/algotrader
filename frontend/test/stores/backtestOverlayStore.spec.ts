@@ -82,7 +82,7 @@ describe('backtestOverlayStore', () => {
     vi.mocked(getBacktestRun).mockReset();
   });
 
-  it('selects a supported Backtest Run, switches chart context, caches trades, and persists the run ID', async () => {
+  it('selects a run with chart context, cached trades, and a persisted ID', async () => {
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
     useMarketsStore().all = [eurUsdMarket, gbpUsdMarket];
     useCurrentMarketStore().setMarket(gbpUsdMarket);
@@ -113,7 +113,7 @@ describe('backtestOverlayStore', () => {
     ).toBe('run-123');
   });
 
-  it('reloads a persisted selected Backtest Run when it still exists and is supported', async () => {
+  it('reloads a supported persisted run', async () => {
     localStorage.setItem(
       STORAGE_KEYS.SELECTED_BACKTEST_RUN,
       JSON.stringify('run-123'),
@@ -167,7 +167,7 @@ describe('backtestOverlayStore', () => {
     expect(localStorage.getItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN)).toBeNull();
   });
 
-  it('leaves the chart unchanged and surfaces an error when the run market is missing', async () => {
+  it('reports a missing run Market without changing the chart', async () => {
     useMarketsStore().all = [gbpUsdMarket];
     useCurrentMarketStore().setMarket(gbpUsdMarket);
     useCurrentTimeframeStore().setCurrentTimeframe({
@@ -226,7 +226,7 @@ describe('backtestOverlayStore', () => {
     });
   });
 
-  it('classifies supported-shape Backtest Runs as non-selectable when the market is missing', () => {
+  it('disables runs with a missing Market', () => {
     useMarketsStore().all = [gbpUsdMarket];
 
     const store = useBacktestOverlayStore();

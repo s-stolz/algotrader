@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils';
 import { NDropdown } from 'naive-ui';
 import { describe, expect, it, vi } from 'vitest';
 import BaseDropdown from '@/components/Common/BaseDropdown.vue';
+import { designTokens } from '@/design/tokens';
 
 describe('BaseDropdown', () => {
   it('preserves menu behavior, trigger slots, and nested local theme overrides', () => {
@@ -23,7 +24,7 @@ describe('BaseDropdown', () => {
     expect(dropdown.props('themeOverrides')?.peers?.Popover).toEqual(
       expect.objectContaining({
         padding: '8px',
-        boxShadow: expect.stringContaining('0 0 0 1px'),
+        boxShadow: designTokens.shadow.overlay,
       }),
     );
     dropdown.vm.$emit('select', 'upload');
@@ -51,9 +52,7 @@ describe('BaseDropdown', () => {
       },
     });
     await wrapper.get('button').trigger('click');
-    const menu = document.querySelector(
-      '.base-dropdown--design',
-    ) as HTMLElement;
+    const menu = document.querySelector('.base-dropdown') as HTMLElement;
     expect(menu).not.toBeNull();
     expect(menu.style.getPropertyValue('--design-font-ui')).toBe(
       'Tektur, sans-serif',

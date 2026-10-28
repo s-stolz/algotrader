@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import DesignScope from '@/components/Common/DesignScope.vue';
 import BaseGroupedSelect from '@/components/Common/BaseGroupedSelect.vue';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
 import { groupTimeframeOptions, TIMEFRAME_OPTIONS } from '@/utils/timeframes';
@@ -16,13 +15,11 @@ function selectTimeframe(value: string): void {
 </script>
 
 <template>
-  <DesignScope>
-    <BaseGroupedSelect
-      :value="currentTimeframeStore.value"
-      label="Timeframe"
-      :groups="groups"
-      trigger-width="80px"
-      @update:value="selectTimeframe"
-    />
-  </DesignScope>
+  <BaseGroupedSelect
+    :value="currentTimeframeStore.value"
+    label="Timeframe"
+    :groups="groups"
+    trigger-width="80px"
+    @update:value="selectTimeframe"
+  />
 </template>

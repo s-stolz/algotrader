@@ -1,31 +1,27 @@
-:root {
-  --selection-accent: var(--design-color-interactive);
-  --surface-panel: var(--design-color-panel);
-  --surface-inset: var(--design-color-inset);
-  --surface-header: var(--design-color-header);
-  --surface-header-hover: var(--design-color-header-hover);
-  --surface-striped: var(--design-color-panel);
-  --surface-hover: var(--design-color-hover);
-  --surface-sorted: var(--design-color-panel);
-  --surface-border: var(--design-color-border);
-  --surface-fixed: var(--design-color-fixed);
-  --surface-fixed-hover: var(--design-color-fixed-hover);
-  --surface-header-fixed: var(--design-color-selected);
-  --surface-header-fixed-hover: var(--design-color-selected-hover);
-}
-
 @font-face {
   font-family: Tektur;
   src: url('./fonts/Tektur/Tektur-VariableFont.ttf');
 }
 
-* {
-  font-family: Tektur;
+:root {
+  font-family: var(--design-font-ui);
+  font-size: var(--design-text-body);
+  color: var(--design-color-body);
+  background-color: var(--design-color-panel);
 }
 
-body {
-  background-color: var(--surface-panel);
-  color: #ffffffd1;
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--design-font-mono);
 }
 
 html,
@@ -38,6 +34,6 @@ body {
 .separator {
   border: none;
   height: 1px;
-  background-color: #ddd;
+  background-color: var(--design-color-border);
   margin: 0;
 }

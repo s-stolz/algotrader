@@ -78,8 +78,9 @@ and behavior that is easy to break when changing them.
 
 ## Shared UI and Transport
 
-- Shared visual values and the temporary migration boundary follow
-  [design ownership](DESIGN.md). Opt in with `DesignScope` after structural work.
+- Shared visual values, root provider, overlay typography, and justified control
+  overrides follow [design ownership](DESIGN.md). `App.vue` provides the theme to
+  every workflow; shared controls have no legacy styling mode.
 - Use themed `Base*` controls in `src/components/Common/` for tables, drawers,
   selects, grouped selects, dropdowns, popovers, and checkboxes. Shared styling
   lives there and in `src/assets/main.css`; extend these surfaces for consistent

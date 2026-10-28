@@ -1,12 +1,8 @@
 <template>
   <section
-    class="settings-section"
-    aria-labelledby="market-period-heading"
+    class="market-period"
+    aria-label="Market and period"
   >
-    <h3 id="market-period-heading">Market &amp; period</h3>
-    <p class="section-description"
-      >Choose the historical data for your backtest. Dates use UTC.</p
-    >
     <div class="settings-grid">
       <div class="field-group">
         <label v-if="!isSweep"
@@ -23,6 +19,7 @@
           <BaseSelect
             v-model:value="sweep.marketIds"
             multiple
+            max-tag-count="responsive"
             :options="marketOptions"
             data-testid="sweep-markets"
           />
@@ -61,35 +58,19 @@
           <BaseSelect
             v-model:value="sweep.timeframes"
             multiple
+            max-tag-count="responsive"
             :options="timeframeOptions"
             data-testid="sweep-timeframes"
           />
         </label>
       </div>
-      <label
-        >Start date (UTC)
-        <BaseDatePicker
-          type="date"
-          value-format="yyyy-MM-dd"
-          :formatted-value="dateValue(draft.start_ms)"
-          :clearable="false"
-          :input-readonly="true"
-          data-testid="creation-start"
-          @update:formatted-value="setDate('start_ms', $event)"
-        />
-      </label>
-      <label
-        >End date (UTC)
-        <BaseDatePicker
-          type="date"
-          value-format="yyyy-MM-dd"
-          :formatted-value="dateValue(draft.end_ms)"
-          :clearable="false"
-          :input-readonly="true"
-          data-testid="creation-end"
-          @update:formatted-value="setDate('end_ms', $event)"
-        />
-      </label>
+      <BaseDateRange
+        class="full-width"
+        :start="dateValue(draft.start_ms)"
+        :end="dateValue(draft.end_ms)"
+        @update:start="setDate('start_ms', $event)"
+        @update:end="setDate('end_ms', $event)"
+      />
       <small
         v-if="fieldErrors.dates"
         class="full-width"
@@ -99,22 +80,21 @@
     </div>
   </section>
 </template>
-
 <script setup lang="ts">
+import BaseDateRange from '@/components/Common/BaseDateRange.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
-import BaseDatePicker from '@/components/Common/BaseDatePicker.vue';
-import { timeframeOptions } from './creationOptions';
 import { dateValue } from './creationParameters';
+import { timeframeOptions } from './creationOptions';
 import { useCreation } from './creationContext';
 const {
-  isSweep,
   draft,
-  sweep,
+  isSweep,
   marketValue,
   marketOptions,
+  selectMarket,
+  sweep,
   missingMarkets,
   fieldErrors,
-  selectMarket,
   setDate,
 } = useCreation();
 </script>

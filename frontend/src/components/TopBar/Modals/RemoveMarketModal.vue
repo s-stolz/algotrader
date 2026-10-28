@@ -1,63 +1,60 @@
 <template>
-  <DesignScope>
-    <BaseModal
-      ref="baseModal"
-      :modalId="'removeMarket'"
-      :title="'Remove Market'"
-    >
-      <div>
-        <div class="confirmation-content">
-          <n-icon
-            size="48"
-            class="warning-icon"
-          >
-            <WarningOutline />
-          </n-icon>
-          <h3>Are you sure you want to remove this market?</h3>
-          <p v-if="market">
-            <strong>{{ market.symbol }}</strong>
-            <br />
-            <span class="market-type">{{ market.market_type }}</span>
-            {{ market.exchange }}
-          </p>
-          <p class="warning-text">
-            This action cannot be undone. All associated data for this market
-            will be permanently deleted.
-          </p>
-        </div>
+  <BaseModal
+    ref="baseModal"
+    :modalId="'removeMarket'"
+    :title="'Remove Market'"
+  >
+    <div>
+      <div class="confirmation-content">
+        <n-icon
+          size="48"
+          class="warning-icon"
+        >
+          <WarningOutline />
+        </n-icon>
+        <h3>Are you sure you want to remove this market?</h3>
+        <p v-if="market">
+          <strong>{{ market.symbol }}</strong>
+          <br />
+          <span class="market-type">{{ market.market_type }}</span>
+          {{ market.exchange }}
+        </p>
+        <p class="warning-text">
+          This action cannot be undone. All associated data for this market will
+          be permanently deleted.
+        </p>
       </div>
+    </div>
 
-      <template #footer>
-        <div class="modal-actions">
-          <n-button
-            @click="closeModal"
-            class="button-cancel"
-            >Cancel</n-button
-          >
-          <n-button
-            type="error"
-            @click="confirmRemoveCandles"
-            :loading="isRemoving"
-            class="button-remove"
-          >
-            Remove Candles
-          </n-button>
-          <n-button
-            type="error"
-            @click="confirmRemove"
-            :loading="isRemoving"
-            class="button-remove"
-          >
-            Remove Market
-          </n-button>
-        </div>
-      </template>
-    </BaseModal>
-  </DesignScope>
+    <template #footer>
+      <div class="modal-actions">
+        <n-button
+          @click="closeModal"
+          class="button-cancel"
+          >Cancel</n-button
+        >
+        <n-button
+          type="error"
+          @click="confirmRemoveCandles"
+          :loading="isRemoving"
+          class="button-remove"
+        >
+          Remove Candles
+        </n-button>
+        <n-button
+          type="error"
+          @click="confirmRemove"
+          :loading="isRemoving"
+          class="button-remove"
+        >
+          Remove Market
+        </n-button>
+      </div>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
-import DesignScope from '@/components/Common/DesignScope.vue';
 import { ref } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
 

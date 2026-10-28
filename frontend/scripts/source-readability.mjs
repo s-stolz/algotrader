@@ -32,7 +32,52 @@ function cssComments(source, offset = 0) {
   return ranges;
 }
 
-function commentRanges(source, extension) {
+function hashComments(source) {
+  const ranges = [];
+  const heredocs = [];
+  let quote = null;
+  let offset = 0;
+  for (const line of source.split(/(?<=\n)/)) {
+    if (heredocs.length) {
+      if (line.trimEnd().replace(/^\t*/, '') === heredocs[0]) heredocs.shift();
+      offset += line.length;
+      continue;
+    }
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (character === '\\' && quote !== "'") {
+        index += 1;
+      } else if (quote) {
+        if (character === quote) quote = null;
+      } else if (character === '#' && !line.slice(0, index).trim()) {
+        ranges.push([offset + index, offset + line.trimEnd().length]);
+        break;
+      } else if (character === '#' && /\s/.test(line[index - 1] ?? '')) {
+        break;
+      } else if (character === '"' || character === "'" || character === '`') {
+        quote = character;
+      } else if (character === '<') {
+        const heredoc = line.slice(index).match(/^<<-?\s*(['"]?)(\w+)\1/);
+        if (heredoc) {
+          heredocs.push(heredoc[2]);
+          index += heredoc[0].length - 1;
+        }
+      }
+    }
+    offset += line.length;
+  }
+  return ranges;
+}
+
+function commentRanges(source, filename) {
+  const extension = path.extname(filename);
+  if (
+    extension === '.sh' ||
+    ['Dockerfile', '.dockerignore', '.gitignore', '.prettierignore'].includes(
+      path.basename(filename),
+    )
+  )
+    return hashComments(source);
   if (extension === '.css') return cssComments(source);
   if (extension === '.json') return [];
   if (extension === '.vue' || extension === '.html') {
@@ -84,7 +129,7 @@ function isIndivisible(line) {
 
 export function measureSource(source, filename) {
   const characters = source.split('');
-  for (const [start, end] of commentRanges(source, path.extname(filename))) {
+  for (const [start, end] of commentRanges(source, filename)) {
     for (let index = start; index < end; index += 1) {
       if (characters[index] !== '\n' && characters[index] !== '\r') {
         characters[index] = ' ';
@@ -105,31 +150,13 @@ export function measureSource(source, filename) {
   return { countedLines, width };
 }
 
-export function migrationFailures(measurements, inventory) {
-  const failures = [];
-  for (const [file, measurement] of Object.entries(measurements)) {
-    const allowance = inventory.files[file];
-    const maximum = allowance?.countedLines ?? limits.lines;
-    if (measurement.countedLines > Math.max(limits.lines, maximum)) {
-      failures.push(`${file}: ${measurement.countedLines} counted lines`);
-    }
-    const remaining = new Map();
-    for (const line of allowance?.width ?? []) {
-      remaining.set(line, (remaining.get(line) ?? 0) + 1);
-    }
-    for (const violation of measurement.width) {
-      const count = remaining.get(violation.text) ?? 0;
-      if (count) remaining.set(violation.text, count - 1);
-      else failures.push(`${file}:${violation.line}: width ${violation.width}`);
-    }
-  }
-  for (const file of Object.keys(inventory.files)) {
-    const measurement = measurements[file];
-    if (
-      !measurement ||
-      (measurement.countedLines <= limits.lines && !measurement.width.length)
-    )
-      failures.push(`${file}: remove resolved migration inventory entry`);
-  }
-  return failures;
+export function readabilityFailures(measurements) {
+  return Object.entries(measurements).flatMap(([file, measurement]) => [
+    ...(measurement.countedLines > limits.lines
+      ? [`${file}: ${measurement.countedLines} counted lines`]
+      : []),
+    ...measurement.width.map(
+      (violation) => `${file}:${violation.line}: width ${violation.width}`,
+    ),
+  ]);
 }

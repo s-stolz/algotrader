@@ -35,7 +35,7 @@ describe('timeframe utilities', () => {
 });
 
 describe('groupTimeframeOptions', () => {
-  it('groups and sorts caller-provided options by their complete units without changing the input', () => {
+  it('groups and sorts complete units without mutating options', () => {
     const options = [
       { label: 'MN1', value: 'MN1' },
       { label: 'H12', value: 'H12' },

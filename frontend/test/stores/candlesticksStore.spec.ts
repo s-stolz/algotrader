@@ -26,7 +26,7 @@ describe('candlesticks store', () => {
     vi.mocked(fetchCandles).mockReset();
   });
 
-  it('fetches candles through the typed client and prepends older history when appending', async () => {
+  it('fetches typed Candles and prepends older history', async () => {
     const newest = candle(2_000);
     const oldest = candle(1_000);
     vi.mocked(fetchCandles)

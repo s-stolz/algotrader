@@ -3,6 +3,7 @@ import { NColorPicker } from 'naive-ui';
 import { describe, expect, it, vi } from 'vitest';
 import BaseColorPicker from '@/components/Common/BaseColorPicker.vue';
 import DesignScope from '@/components/Common/DesignScope.vue';
+import { designTokens } from '@/design/tokens';
 import { defineComponent, h } from 'vue';
 
 const Scope = defineComponent({
@@ -61,7 +62,12 @@ describe('BaseColorPicker', () => {
     expect(control.attributes('tabindex')).toBe('-1');
     expect(control.attributes('aria-expanded')).toBe('false');
     expect(wrapper.getComponent(NColorPicker).props('themeOverrides')).toEqual({
+      color: designTokens.color.panel,
+      textColor: designTokens.color.body,
+      border: `1px solid ${designTokens.color.border}`,
       borderRadius: '9px',
+      boxShadow: designTokens.shadow.overlay,
+      panelFontSize: designTokens.text.body,
     });
     wrapper.unmount();
   });

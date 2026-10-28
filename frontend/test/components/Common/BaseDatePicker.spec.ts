@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import BaseDatePicker from '@/components/Common/BaseDatePicker.vue';
 import DesignScope from '@/components/Common/DesignScope.vue';
 import { designTokens } from '@/design/tokens';
+import { designDatePickerTheme } from '@/design/creationControls';
 
 describe('BaseDatePicker', () => {
   it('themes its calendar outside a scrolling ancestor and cleans up', async () => {
@@ -54,9 +55,14 @@ describe('BaseDatePicker', () => {
     });
     expect(wrapper.get('input').attributes('disabled')).toBeDefined();
     expect(wrapper.findComponent(NDatePicker).props('themeOverrides')).toEqual({
+      ...designDatePickerTheme,
       panelBorderRadius: '9px',
     });
-    expect(document.querySelector('.base-date-picker-portal')).toBeNull();
+    const portal = document.querySelector<HTMLElement>(
+      '.base-date-picker-portal',
+    )!;
+    expect(portal.parentElement).toBe(document.body);
+    expect(portal.style.fontFamily).toBe(designTokens.font.ui);
     await wrapper.setProps({ disabled: false });
     await wrapper.get('input').trigger('focus');
     expect(onFocus).toHaveBeenCalled();
@@ -67,5 +73,6 @@ describe('BaseDatePicker', () => {
       expect.anything(),
     );
     wrapper.unmount();
+    expect(document.body.contains(portal)).toBe(false);
   });
 });

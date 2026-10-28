@@ -1,3 +1,4 @@
+import { useCreationNavigation } from './useCreationNavigation';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { SelectOption } from 'naive-ui';
 import {
@@ -14,8 +15,6 @@ import { normalizeExperimentName } from '@/types/backtesterContracts';
 import type {
   BacktestRequestPayload,
   StrategyCatalogEntry,
-  StrategyParameterSchema,
-  SweepParameterDraft,
   SweepDraftState,
   SweepPreview,
   SweepPreviewRequest,
@@ -23,6 +22,7 @@ import type {
 import type { ReuseSource } from '../backtestReuse';
 import { creationFields } from './creationFields';
 import {
+  experimentNameIssue,
   parameterIssue,
   parameterModeOptions,
   defaults,
@@ -40,77 +40,6 @@ export interface CreationEvents {
   (event: 'update:show', show: boolean): void;
 }
 export function useBacktestCreation(emit: CreationEvents) {
-  const step = ref(0);
-  const numericEntryValid = ref<Record<string, boolean>>({});
-  function navigateStep(next: number): void {
-    if (next > step.value) {
-      fieldErrors.value = {};
-      if (!validateSetup()) {
-        step.value = 0;
-        return;
-      }
-      if (next === 2 && !validateParameters()) {
-        step.value = 1;
-        return;
-      }
-    }
-    step.value = next;
-  }
-  function validateSetup(): boolean {
-    if (nameIssue.value) fieldErrors.value.name = nameIssue.value;
-    if (strategyNeedsReview.value)
-      fieldErrors.value.strategy = 'Review the current Strategy Version.';
-    if (
-      isSweep.value
-        ? !sweep.value.marketIds.length || missingMarkets.value.length
-        : !marketValue.value
-    ) {
-      fieldErrors.value.market = 'Select an available Market.';
-    }
-    if (isSweep.value && !sweep.value.timeframes.length)
-      fieldErrors.value.timeframe = 'Select at least one Timeframe.';
-    if (
-      !Number.isFinite(draft.value.start_ms) ||
-      !Number.isFinite(draft.value.end_ms) ||
-      draft.value.start_ms <= 0 ||
-      draft.value.end_ms <= draft.value.start_ms
-    ) {
-      fieldErrors.value.dates = 'End date must be after start date.';
-    }
-    if (
-      !Number.isFinite(draft.value.initial_capital) ||
-      draft.value.initial_capital <= 0
-    ) {
-      fieldErrors.value.capital = 'Initial capital must be greater than zero.';
-    }
-    return !Object.keys(fieldErrors.value).length;
-  }
-  function validateParameters(): boolean {
-    if (isSweep.value) {
-      try {
-        buildSweepRequest();
-      } catch (error) {
-        submitError.value =
-          error instanceof Error ? error.message : 'Complete parameter values.';
-        return false;
-      }
-      if (hasPendingNumericEntry.value) {
-        submitError.value = 'Finish adding or clear the numeric value.';
-        return false;
-      }
-    }
-    for (const parameter of selectedStrategy.value?.parameters ?? []) {
-      if (isSweep.value && sweepParameter(parameter).mode !== 'constant')
-        continue;
-      const issue = parameterIssue(
-        parameter,
-        draft.value.strategy.parameters[parameter.name],
-      );
-      if (issue) fieldErrors.value[parameter.name] = issue;
-    }
-    return !Object.keys(fieldErrors.value).length;
-  }
-
   const store = useBacktestWorkspaceStore();
   const markets = useMarketsStore();
   const draft = ref<DraftRequest>(
@@ -128,24 +57,8 @@ export function useBacktestCreation(emit: CreationEvents) {
   if (sweep.value.allowedDirections.length) {
     draft.value.execution.allowed_directions = sweep.value.allowedDirections[0];
   }
-  const hasPendingNumericEntry = computed(() =>
-    Object.entries(numericEntryValid.value).some(
-      ([name, valid]) =>
-        !valid && sweep.value.parameters[name]?.mode === 'values',
-    ),
-  );
-
   const isSweep = computed(() => sweep.value.isSweep);
-  const nameIssue = computed(() => {
-    try {
-      normalizeExperimentName(draft.value.name);
-      return null;
-    } catch (error) {
-      return error instanceof Error
-        ? error.message
-        : 'Invalid experiment name.';
-    }
-  });
+  const nameIssue = computed(() => experimentNameIssue(draft.value.name));
   const catalog = shallowRef<StrategyCatalogEntry[]>([]);
   const catalogPending = ref(false);
   const catalogError = ref<string | null>(null);
@@ -225,36 +138,30 @@ export function useBacktestCreation(emit: CreationEvents) {
       strategyNeedsReview.value,
     ),
   );
-  function changeParameterMode(
-    parameter: StrategyParameterSchema,
-    mode: SweepParameterDraft['mode'],
-  ): void {
-    sweepParameter(parameter).mode = mode;
-    numericEntryValid.value[parameter.name] = true;
-    if (
-      mode === 'constant' &&
-      (parameter.type === 'int' || parameter.type === 'float') &&
-      !parameter.choices
-    ) {
-      delete draft.value.strategy.parameters[parameter.name];
-    }
-  }
-
-  function numericValues(parameter: StrategyParameterSchema): number[] {
-    return sweepParameter(parameter)
-      .valuesText.split('\n')
-      .filter(Boolean)
-      .map(Number);
-  }
-
-  function setNumericValues(
-    parameter: StrategyParameterSchema,
-    values: number[],
-  ): void {
-    sweepParameter(parameter).valuesText = values.map(String).join('\n');
-    delete sweepParameter(parameter).selectedChoiceValues;
-  }
-
+  const {
+    step,
+    navigateStep,
+    numericEntryValid,
+    hasPendingNumericEntry,
+    changeParameterMode,
+    numericValues,
+    setNumericValues,
+    validateSetup,
+    validateParameters,
+  } = useCreationNavigation({
+    draft,
+    sweep,
+    isSweep,
+    nameIssue,
+    strategyNeedsReview,
+    missingMarkets,
+    marketValue,
+    selectedStrategy,
+    fieldErrors,
+    submitError,
+    sweepParameter,
+    buildSweepRequest,
+  });
   function buildSweepRequest() {
     return createSweepRequest(
       draft.value,

@@ -1,3 +1,4 @@
+import { normalizeExperimentName } from '@/types/backtesterContracts';
 import type { SelectOption } from 'naive-ui';
 import type {
   StrategyCatalogEntry,
@@ -92,4 +93,13 @@ export function dateValue(timestamp: number): string {
   return Number.isFinite(timestamp)
     ? new Date(timestamp).toISOString().slice(0, 10)
     : '';
+}
+
+export function experimentNameIssue(name: string | undefined): string | null {
+  try {
+    normalizeExperimentName(name);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : 'Invalid experiment name.';
+  }
 }

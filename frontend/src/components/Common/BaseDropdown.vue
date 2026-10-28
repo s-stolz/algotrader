@@ -1,18 +1,15 @@
 <script lang="ts">
 import { computed, defineComponent, h, mergeProps } from 'vue';
 import { NDropdown, dropdownProps } from 'naive-ui';
-import { selectionDropdownTheme } from './selectionTheme';
 import { designDropdownTheme } from '@/design/naiveTheme';
 import { designCssProperties } from '@/design/cssProperties';
-import { useDesignScope } from '@/design/scope';
 
 export default defineComponent({
   name: 'BaseDropdown',
   inheritAttrs: false,
   props: dropdownProps,
   setup(props, { attrs, slots }) {
-    const usesDesign = useDesignScope();
-    const theme = usesDesign ? designDropdownTheme : selectionDropdownTheme;
+    const theme = designDropdownTheme;
     const mergedTheme = computed(() => ({
       ...theme,
       ...props.themeOverrides,
@@ -29,8 +26,8 @@ export default defineComponent({
       h(
         NDropdown,
         mergeProps(attrs, props, {
-          class: ['base-dropdown', { 'base-dropdown--design': usesDesign }],
-          style: usesDesign ? designCssProperties : undefined,
+          class: 'base-dropdown',
+          style: designCssProperties,
           themeOverrides: mergedTheme.value,
         }),
         slots,
@@ -40,8 +37,7 @@ export default defineComponent({
 </script>
 
 <style>
-.base-dropdown--design,
-.base-dropdown--design * {
+.base-dropdown {
   font-family: var(--design-font-ui);
 }
 </style>

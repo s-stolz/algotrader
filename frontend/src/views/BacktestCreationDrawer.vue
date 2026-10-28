@@ -1,169 +1,168 @@
 <template>
-  <DesignScope>
-    <BaseStepModal
-      class="backtest-creation"
-      :show="show"
-      title="Create Backtest"
-      :steps="['Setup', 'Parameters', 'Review']"
-      :step="step"
-      :fill-body="step === 2"
-      @update:step="navigateStep"
-      @update:show="emit('update:show', $event)"
+  <BaseStepModal
+    class="backtest-creation"
+    :show="show"
+    title="Create Backtest"
+    :steps="['Setup', 'Parameters', 'Review']"
+    :step="step"
+    :fill-body="step === 2"
+    @update:step="navigateStep"
+    @update:show="emit('update:show', $event)"
+  >
+    <p
+      v-if="catalogPending"
+      role="status"
+      >Loading strategies…</p
     >
+    <p
+      v-if="catalogError"
+      role="alert"
+      >Strategy catalog unavailable. {{ catalogError }}</p
+    >
+    <n-button
+      v-if="catalogError"
+      @click="loadCatalog"
+      >Retry catalog</n-button
+    >
+    <template v-if="draft && catalog.length">
       <p
-        v-if="catalogPending"
-        role="status"
-        >Loading strategies…</p
-      >
-      <p
-        v-if="catalogError"
+        v-if="
+          store.reuseSource &&
+          !selectedStrategy &&
+          draft.strategy.strategy_id === store.reuseSource.strategyId
+        "
         role="alert"
-        >Strategy catalog unavailable. {{ catalogError }}</p
+        data-testid="reuse-removed-strategy"
       >
-      <n-button
-        v-if="catalogError"
-        @click="loadCatalog"
-        >Retry catalog</n-button
+        Strategy {{ store.reuseSource.strategyId }} is no longer registered.
+        This saved record remains inspectable. Choose a current strategy to
+        create new work.
+      </p>
+      <p
+        v-if="store.reuseSource && selectedStrategy && strategyNeedsReview"
+        role="alert"
+        data-testid="reuse-version-review"
       >
-      <template v-if="draft && catalog.length">
-        <p
-          v-if="
-            store.reuseSource &&
-            !selectedStrategy &&
-            draft.strategy.strategy_id === store.reuseSource.strategyId
-          "
-          role="alert"
-          data-testid="reuse-removed-strategy"
+        Saved {{ store.reuseSource.strategyId }} version
+        {{
+          store.reuseSource.strategyVersion ?? 'unavailable (legacy request)'
+        }}; current version {{ selectedStrategy.strategy_version }}. Review
+        parameter changes and invalid values before submitting. This is a new
+        experiment, not an exact reproduction.
+        <n-button
+          size="small"
+          data-testid="reuse-use-current"
+          @click="useCurrentVersion"
         >
-          Strategy {{ store.reuseSource.strategyId }} is no longer registered.
-          This saved record remains inspectable. Choose a current strategy to
-          create new work.
-        </p>
-        <p
-          v-if="store.reuseSource && selectedStrategy && strategyNeedsReview"
-          role="alert"
-          data-testid="reuse-version-review"
+          Use current version
+        </n-button>
+      </p>
+      <p
+        v-for="change in parameterChanges"
+        :key="change"
+        role="status"
+        >{{ change }}</p
+      >
+      <div
+        v-show="step !== 2"
+        class="creation-fields"
+      >
+        <CreationSetup v-show="step === 0" />
+        <CreationParameters v-show="step === 1" />
+      </div>
+      <p
+        v-if="fieldErrors.timeframe"
+        role="alert"
+        >{{ fieldErrors.timeframe }}</p
+      >
+      <p
+        v-if="fieldErrors.strategy"
+        role="alert"
+        >{{ fieldErrors.strategy }}</p
+      >
+      <p
+        v-if="submitError"
+        role="alert"
+        >{{ submitError }}</p
+      >
+      <CreationReview v-show="step === 2" />
+    </template>
+    <template #footer>
+      <div class="creation-footer">
+        <n-tag
+          round
+          :bordered="false"
+          :type="isSweep && !preview?.ready_count ? 'warning' : 'success'"
         >
-          Saved {{ store.reuseSource.strategyId }} version
           {{
-            store.reuseSource.strategyVersion ?? 'unavailable (legacy request)'
-          }}; current version {{ selectedStrategy.strategy_version }}. Review
-          parameter changes and invalid values before submitting. This is a new
-          experiment, not an exact reproduction.
+            isSweep
+              ? `${preview?.raw_count ?? 0} ${
+                  preview?.raw_count === 1 ? 'candidate' : 'candidates'
+                }`
+              : '1 run'
+          }}
+        </n-tag>
+        <div class="creation-actions">
           <n-button
-            size="small"
-            data-testid="reuse-use-current"
-            @click="useCurrentVersion"
+            v-if="step > 0"
+            @click="navigateStep(step - 1)"
+            >Back</n-button
           >
-            Use current version
+          <n-button
+            v-if="step < 2"
+            type="primary"
+            @click="navigateStep(step + 1)"
+          >
+            {{ step === 0 ? 'Parameters →' : 'Review candidates →' }}
           </n-button>
-        </p>
-        <p
-          v-for="change in parameterChanges"
-          :key="change"
-          role="status"
-          >{{ change }}</p
-        >
-        <div
-          v-show="step !== 2"
-          class="creation-fields"
-        >
-          <CreationSetup v-show="step === 0" />
-          <CreationParameters v-show="step === 1" />
-        </div>
-        <p
-          v-if="fieldErrors.timeframe"
-          role="alert"
-          >{{ fieldErrors.timeframe }}</p
-        >
-        <p
-          v-if="fieldErrors.strategy"
-          role="alert"
-          >{{ fieldErrors.strategy }}</p
-        >
-        <p
-          v-if="submitError"
-          role="alert"
-          >{{ submitError }}</p
-        >
-        <CreationReview v-show="step === 2" />
-      </template>
-      <template #footer>
-        <div class="creation-footer">
-          <n-tag
-            round
-            :bordered="false"
-            :type="isSweep && !preview?.ready_count ? 'warning' : 'success'"
-          >
-            {{
-              isSweep
-                ? `${preview?.raw_count ?? 0} ${preview?.raw_count === 1 ? 'candidate' : 'candidates'}`
-                : '1 run'
-            }}
-          </n-tag>
-          <div class="creation-actions">
+          <div v-show="step === 2">
             <n-button
-              v-if="step > 0"
-              @click="navigateStep(step - 1)"
-              >Back</n-button
-            >
-            <n-button
-              v-if="step < 2"
+              v-if="draft && catalog.length && !isSweep"
               type="primary"
-              @click="navigateStep(step + 1)"
+              :disabled="
+                submitting ||
+                !marketOptions.length ||
+                !!catalogError ||
+                !selectedStrategy ||
+                strategyNeedsReview ||
+                !!nameIssue
+              "
+              :loading="submitting"
+              data-testid="creation-submit"
+              @click="submit"
+              >Create Backtest</n-button
             >
-              {{ step === 0 ? 'Parameters →' : 'Review candidates →' }}
-            </n-button>
-            <div v-show="step === 2">
-              <n-button
-                v-if="draft && catalog.length && !isSweep"
-                type="primary"
-                :disabled="
-                  submitting ||
-                  !marketOptions.length ||
-                  !!catalogError ||
-                  !selectedStrategy ||
-                  strategyNeedsReview ||
-                  !!nameIssue
-                "
-                :loading="submitting"
-                data-testid="creation-submit"
-                @click="submit"
-                >Create Backtest</n-button
-              >
-              <n-button
-                v-else-if="isSweep && sweepAcceptanceEnabled"
-                type="primary"
-                :disabled="
-                  submitting ||
-                  previewPending ||
-                  !preview ||
-                  !!previewError ||
-                  strategyNeedsReview ||
-                  parameterIssues.length > 0 ||
-                  missingMarkets.length > 0 ||
-                  !preview.ready_count ||
-                  hasPendingNumericEntry
-                "
-                :loading="submitting"
-                data-testid="sweep-submit"
-                @click="submitSweep"
-                >Accept Batch</n-button
-              >
-              <span v-else-if="isSweep"
-                >Parameter Sweep submission becomes available with batch
-                execution.</span
-              >
-            </div></div
-          ></div
-        >
-      </template>
-    </BaseStepModal>
-  </DesignScope>
+            <n-button
+              v-else-if="isSweep && sweepAcceptanceEnabled"
+              type="primary"
+              :disabled="
+                submitting ||
+                previewPending ||
+                !preview ||
+                !!previewError ||
+                strategyNeedsReview ||
+                parameterIssues.length > 0 ||
+                missingMarkets.length > 0 ||
+                !preview.ready_count ||
+                hasPendingNumericEntry
+              "
+              :loading="submitting"
+              data-testid="sweep-submit"
+              @click="submitSweep"
+              >Accept Batch</n-button
+            >
+            <span v-else-if="isSweep"
+              >Parameter Sweep submission becomes available with batch
+              execution.</span
+            >
+          </div></div
+        ></div
+      >
+    </template>
+  </BaseStepModal>
 </template>
 
 <script setup lang="ts">
-import DesignScope from '@/components/Common/DesignScope.vue';
 import { provide } from 'vue';
 import { NButton, NTag } from 'naive-ui';
 import BaseStepModal from '@/components/Common/BaseStepModal.vue';

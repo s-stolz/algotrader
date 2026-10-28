@@ -1,52 +1,49 @@
 <template>
-  <DesignScope>
-    <BaseModal
-      :modalId="'indicatorSearch'"
-      :title="'Indicator'"
-    >
-      <div>
-        <span id="search-bar-wrapper">
-          <n-input
-            v-model:value="indicatorInput"
-            id="indicator-input"
-            autocomplete="off"
-            placeholder="Indicator"
-            round
-            clearable
-          >
-            <template #prefix>
-              <n-icon>
-                <SearchOutline />
-              </n-icon>
-            </template>
-          </n-input>
-          <hr class="separator" />
-        </span>
+  <BaseModal
+    :modalId="'indicatorSearch'"
+    :title="'Indicator'"
+  >
+    <div>
+      <span id="search-bar-wrapper">
+        <n-input
+          v-model:value="indicatorInput"
+          id="indicator-input"
+          autocomplete="off"
+          placeholder="Indicator"
+          round
+          clearable
+        >
+          <template #prefix>
+            <n-icon>
+              <SearchOutline />
+            </n-icon>
+          </template>
+        </n-input>
+        <hr class="separator" />
+      </span>
 
-        <BaseDataTable :max-height="300">
-          <tbody>
-            <tr
-              v-for="indicator in filteredIndicators"
-              :key="indicator.id"
-              @click="onApplyIndicator(indicator)"
-            >
-              <td>
-                <button
-                  class="indicator-choice"
-                  @click.stop="onApplyIndicator(indicator)"
-                  >{{ indicator.name }}</button
-                >
-              </td>
-            </tr>
-          </tbody>
-        </BaseDataTable>
-      </div>
-    </BaseModal>
-  </DesignScope>
+      <BaseDataTable :max-height="300">
+        <tbody>
+          <tr
+            v-for="indicator in filteredIndicators"
+            :key="indicator.id"
+            @click="onApplyIndicator(indicator)"
+          >
+            <td>
+              <button
+                class="indicator-choice"
+                @click.stop="onApplyIndicator(indicator)"
+                >{{ indicator.name }}</button
+              >
+            </td>
+          </tr>
+        </tbody>
+      </BaseDataTable>
+    </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
-import DesignScope from '@/components/Common/DesignScope.vue';
 import { computed, onMounted, ref } from 'vue';
 import { NIcon, NInput } from 'naive-ui';
 

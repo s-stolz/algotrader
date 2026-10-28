@@ -79,96 +79,103 @@ describe('sweep parameters', () => {
     wrapper.unmount();
   });
 
-  it('previews exact string values including empty, multiline, and whitespace strings', async () => {
-    vi.mocked(fetchStrategyCatalog).mockResolvedValue([
-      {
-        ...sweepCatalog[0],
-        parameters: [
-          {
-            name: 'label',
-            type: 'str',
-            required: false,
-            nullable: false,
-            default: 'default',
-          },
-        ],
-      },
-    ]);
-    vi.mocked(previewParameterSweep).mockImplementation(async (request) =>
-      previewFor(request, 1),
-    );
-    const wrapper = mount(BacktestCreationDrawer, {
-      props: { show: true },
-      global: { plugins: [pinia] },
-      attachTo: document.body,
-    });
-    await flushPromises();
-    const mode = wrapper
-      .findAllComponents(NSelect)
-      .find(
-        (select) => select.attributes('data-testid') === 'sweep-mode-label',
+  it(
+    'previews exact string values including empty, multiline, and ' +
+      'whitespace strings',
+    async () => {
+      vi.mocked(fetchStrategyCatalog).mockResolvedValue([
+        {
+          ...sweepCatalog[0],
+          parameters: [
+            {
+              name: 'label',
+              type: 'str',
+              required: false,
+              nullable: false,
+              default: 'default',
+            },
+          ],
+        },
+      ]);
+      vi.mocked(previewParameterSweep).mockImplementation(async (request) =>
+        previewFor(request, 1),
       );
-    mode!.vm.$emit('update:value', 'values');
-    await advancePreview();
-    expect(document.body.textContent).toContain(
-      'Select at least one value for label.',
-    );
-
-    (
-      document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
-    ).click();
-    await advancePreview();
-    expect(
-      vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes.label,
-    ).toEqual({
-      mode: 'values',
-      values: [''],
-    });
-
-    (
-      document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
-    ).click();
-    await flushPromises();
-    const multiline = wrapper
-      .findAllComponents(NInput)
-      .find(
-        (input) => input.attributes('data-testid') === 'sweep-string-label-1',
+      const wrapper = mount(BacktestCreationDrawer, {
+        props: { show: true },
+        global: { plugins: [pinia] },
+        attachTo: document.body,
+      });
+      await flushPromises();
+      const mode = wrapper
+        .findAllComponents(NSelect)
+        .find(
+          (select) => select.attributes('data-testid') === 'sweep-mode-label',
+        );
+      mode!.vm.$emit('update:value', 'values');
+      await advancePreview();
+      expect(document.body.textContent).toContain(
+        'Select at least one value for label.',
       );
-    multiline!.vm.$emit('update:value', 'first\nsecond');
-    (
-      document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
-    ).click();
-    await flushPromises();
-    const whitespace = wrapper
-      .findAllComponents(NInput)
-      .find(
-        (input) => input.attributes('data-testid') === 'sweep-string-label-2',
-      );
-    whitespace!.vm.$emit('update:value', ' ');
-    await advancePreview();
-    expect(
-      vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes.label,
-    ).toEqual({
-      mode: 'values',
-      values: ['', 'first\nsecond', ' '],
-    });
-    expect(
-      useBacktestWorkspaceStore().creationSweepDraft?.parameters.label
-        .stringValues,
-    ).toEqual(['', 'first\nsecond', ' ']);
 
-    (
-      document.querySelector(
-        '[data-testid="sweep-remove-label-0"]',
-      ) as HTMLElement
-    ).click();
-    await advancePreview();
-    expect(
-      vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes.label,
-    ).toEqual({
-      mode: 'values',
-      values: ['first\nsecond', ' '],
-    });
-    wrapper.unmount();
-  });
+      (
+        document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
+      ).click();
+      await advancePreview();
+      expect(
+        vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes
+          .label,
+      ).toEqual({
+        mode: 'values',
+        values: [''],
+      });
+
+      (
+        document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
+      ).click();
+      await flushPromises();
+      const multiline = wrapper
+        .findAllComponents(NInput)
+        .find(
+          (input) => input.attributes('data-testid') === 'sweep-string-label-1',
+        );
+      multiline!.vm.$emit('update:value', 'first\nsecond');
+      (
+        document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
+      ).click();
+      await flushPromises();
+      const whitespace = wrapper
+        .findAllComponents(NInput)
+        .find(
+          (input) => input.attributes('data-testid') === 'sweep-string-label-2',
+        );
+      whitespace!.vm.$emit('update:value', ' ');
+      await advancePreview();
+      expect(
+        vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes
+          .label,
+      ).toEqual({
+        mode: 'values',
+        values: ['', 'first\nsecond', ' '],
+      });
+      expect(
+        useBacktestWorkspaceStore().creationSweepDraft?.parameters.label
+          .stringValues,
+      ).toEqual(['', 'first\nsecond', ' ']);
+
+      (
+        document.querySelector(
+          '[data-testid="sweep-remove-label-0"]',
+        ) as HTMLElement
+      ).click();
+      await advancePreview();
+      expect(
+        vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes
+          .label,
+      ).toEqual({
+        mode: 'values',
+        values: ['first\nsecond', ' '],
+      });
+      wrapper.unmount();
+    },
+  );
 });

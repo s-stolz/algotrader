@@ -9,80 +9,72 @@ and `designThemeOverrides` for Naive UI. CSS names follow
 Change the authority rather than maintaining another palette in a feature.
 Feature styles own content layout and chart geometry.
 
-Wrap a migrated workflow in `Common/DesignScope.vue`. It provides the dark Naive
-theme and derived CSS variables without adding layout geometry. Existing Naive
-controls consume supported theme settings directly: ordinary buttons are pills,
-`circle` buttons remain circular, and panels use the panel radius. Use semantic
-financial positive/negative roles independently from interactive selection.
-Technical IDs, code, and raw logs use the monospace role; ordinary text uses the
-bundled Tektur face. Wait for `document.fonts.ready` before rendered comparisons
-or canvas text measurement.
+## Application and controls
+
+`App.vue` owns one `Common/DesignScope.vue` around navigation and the kept-alive
+routes. It provides the dark Naive theme and derived CSS variables without adding
+layout geometry. `main.ts` also installs those variables on the document root for
+body-level overlays. There is one visual policy for every workflow and shared
+control; callers do not opt in through a migration flag or a nested provider.
+
+Supported Naive themes in `src/design/naiveTheme.ts` and `creationControls.ts`
+derive from the tokens. Ordinary buttons and fields are pills, `circle` buttons
+remain circular, and panels use the panel radius. Use semantic financial
+positive/negative roles independently from interactive selection. Feature-specific
+Naive settings may retain purposeful layout geometry, such as Indicator tab gaps,
+while inheriting the shared text and color policy.
+
+Use the themed `Base*` controls in `src/components/Common/` where they centralize
+visual policy or interaction behavior. Extend those surfaces instead of copying
+local palettes or introducing pass-through wrappers. Prefer supported Naive theme
+settings over selectors reaching into library internals. Necessary internal
+selectors stay in the owning shared control with a short reason. Current cases
+are table header roles, fixed-cell surfaces and row states in `BaseDataTable`,
+and the color-picker trigger radius in `BaseColorPicker`.
+
+## Typography and overlays
+
+Ordinary text uses the bundled Tektur face. Technical IDs, code, and raw logs use
+the monospace role. Root CSS uses inherited typography rather than a universal
+descendant font rule, so explicit technical text and secondary roles remain
+intact. Preserve tabular numeric alignment where values are compared.
 
 Teleported content needs both Naive theme context and CSS variables. Shared
-controls that own overlays use `useDesignScope()` to select migrated defaults
-and attach `designCssProperties` to their teleported root. Keep any necessary
-library-internal selector override in its owning Base control, with a reason;
-prefer supported theme settings first.
+select, dropdown, popover, drawer, date-picker, and color-picker controls attach
+the derived properties to their overlays or owned targets. Table pagination also
+styles its real page-size menu. Drawer roots set the body font size explicitly
+because they render outside the provider's DOM ancestry; descendants can still
+use secondary, technical, and heading roles. Caller styles and supported theme
+overrides retain their usual precedence.
 
-Use `BaseDatePicker` for creation calendars: its owned body-level target carries
-the design variables and typography outside scrolling drawers. Numeric controls
-remain Naive `NInputNumber` and inherit the shared Input peer theme.
+`BaseDatePicker` owns a body-level target for creation calendars outside scrolling
+drawers. `BaseColorPicker` owns and removes its teleported host. Pane overlay
+targets receive variables explicitly because Vue Teleports retain provider
+context but do not inherit their original DOM ancestry. Preserve user-selected
+series colors. Numeric controls remain Naive `NInputNumber` and inherit the
+shared Input peer theme.
 
-## Temporary compatibility boundary
-
-Spec #17 expands the new theme only after each workflow's structural work.
-The root `App.vue` dark provider remains the compatibility default. Absence of a
-`DesignScope` is an explicit legacy mode; it must not silently opt into the new
-Naive overrides. Existing shared semantic CSS aliases retain their original
-values while deriving from the authority. Old control-local literals remain
-migration work, not a second theme to extend.
-
-| Consumer | Scope / migration owner |
-| --- | --- |
-| Workspace edge navigation and Timeframe picker | #25, explicit `DesignScope` |
-| Chart workflow, Indicator controls, canvas labels | #26 |
-| Market dialogs and their controls | #27, explicit `DesignScope` |
-| Backtest Workspace history/results and overlays | #28, explicit `DesignScope` |
-| Backtest creation and its overlays | #29, explicit `DesignScope` |
-| Root compatibility provider and legacy theme branches | #30 removal |
-
-Do not wrap the entire root before these consumers are migrated. BasePopover
-must preserve legacy typography/defaults outside the scope until its consumers
-move.
-
-The chart opts in at its toolbar, rendering area, and Indicator search boundary.
-Pane overlay targets receive the derived variables explicitly because Vue
-Teleports retain provider context but do not inherit their original DOM ancestry.
-`BaseColorPicker` owns its teleported host and removes it with the control. Naive
-exposes one radius for both color trigger and panel and no panel style hook;
-the control's narrow trigger selector keeps the trigger round while the supported
-theme radius keeps the panel ordinary. Preserve user-selected series colors. The final contract ticket #30 owns removing compatibility mode and checking
-all consumers against the authority, including overlays and chart labels.
+## Canvas labels and state lifetimes
 
 Chart options and measurement labels pass the UI face explicitly to canvas.
 Chart rendering waits for the requested bundled face and font readiness before
 creating the chart; sessions keep updating their existing stores while rendering
 waits. Disposing the chart cancels that pending callback. If font loading fails,
 the ordinary font stack remains the fallback so data access stays available.
+Equity Replay uses the same readiness helper, renders the latest series after
+that wait, and cancels deferred work on unmount. Stable replay run hues retain
+their identity with saturation and lightness owned by chart tokens.
 
-Market dialogs opt in individually, preserving their existing state lifetime.
-`BaseModal`, `BaseSelect`, `BaseDropdown`, and `BaseDataTable` consume that scope;
-select menus and dropdown roots carry the derived CSS properties through their
-teleports. The provider owns input, upload, selection, and table settings through
-supported Naive themes. Unscoped callers retain the compatibility branch until
-their workflow migrates.
+Keep presentation sections near their feature and reusable controls shared.
+Extract pure mapping, validation, and rendering work separately from state
+owners. Theme consolidation must not recreate chart sessions, Workspace models,
+creation drafts, request generations, or command identities when sections hide.
+See [frontend context](CONTEXT.md) for those owners and
+[readability guidance](READABILITY.md) for source-associated behavior suites.
 
-The Backtest Workspace provides one `DesignScope` around history and inspection;
-its coordinator and comparison state retain their existing lifetimes. Batch,
-queue, name, and log presentation use the same semantic roles. Queue statistics,
-execution tabs, tooltips, and loading skeletons use supported provider themes.
-Comparison selection, including the indeterminate header, uses `BaseCheckbox`;
-log overlays inherit the shared drawer and table policy. Technical IDs and saved
-JSON use the monospace role independently from ordinary UI text.
-
-Equity Replay waits for the shared chart font readiness helper before creating
-canvases, renders the latest series after that wait, and cancels deferred work on
-unmount. Replay labels and crosshair surfaces use the authoritative roles; stable
-run hues retain their identity with saturation and lightness owned by chart
-tokens. Fixed action columns account for shared circular control sizes, gaps, and
-table padding so the controls remain reachable in horizontal scroll areas.
+For rendered comparisons, wait for bundled fonts and stable canvas rendering.
+Capture the same populated states and viewports from identified checkouts;
+separate approved typography/control/color/spacing changes from regressions.
+The standalone comparison prototype stays outside production and is not a
+pixel-exact application baseline. Outstanding baseline evidence is recorded in
+[readability guidance](READABILITY.md#baseline-for-spec-17).

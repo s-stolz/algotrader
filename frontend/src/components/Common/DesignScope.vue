@@ -1,11 +1,7 @@
 <script setup lang="ts">
-import { provide } from 'vue';
 import { NConfigProvider, darkTheme } from 'naive-ui';
 import { designCssProperties } from '@/design/cssProperties';
 import { designThemeOverrides } from '@/design/naiveTheme';
-import { designScopeKey } from '@/design/scope';
-
-provide(designScopeKey, true);
 </script>
 
 <template>

@@ -22,56 +22,62 @@ vi.mock('@/api/backtesterClient', async (importOriginal) => ({
 describe('standalone', () => {
   standaloneSetup();
 
-  it('starts with an empty optional name, preserves drafts, and normalizes named and unnamed submissions', async () => {
-    vi.mocked(submitBacktestRun).mockResolvedValue('run-name');
-    let wrapper = openDrawer();
-    await flushPromises();
-    const input = () =>
-      wrapper
-        .findAllComponents(NInput)
-        .find(
-          (component) =>
-            component.attributes('data-testid') === 'creation-name',
-        )!;
-    expect(input().props('value')).toBe('');
-    expect(input().props('placeholder')).toBe('Enter an experiment name');
-    input().vm.$emit('update:value', '  Research baseline  ');
-    await flushPromises();
-    wrapper.unmount();
-    wrapper = openDrawer();
-    await flushPromises();
-    expect(input().props('value')).toBe('  Research baseline  ');
-    (
-      document.querySelector('[data-testid="creation-submit"]') as HTMLElement
-    ).click();
-    await flushPromises();
-    expect(submitBacktestRun).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: 'Research baseline' }),
-    );
-    expect(
-      vi.mocked(submitBacktestRun).mock.calls[0][0].run_metadata,
-    ).toBeNull();
-    input().vm.$emit('update:value', '   ');
-    await flushPromises();
-    (
-      document.querySelector('[data-testid="creation-submit"]') as HTMLElement
-    ).click();
-    await flushPromises();
-    expect(submitBacktestRun).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: null }),
-    );
-    for (const name of ['a'.repeat(121), 'two\nlines', '\ntrimmed']) {
-      input().vm.$emit('update:value', name);
+  it(
+    'starts with an empty optional name, preserves drafts, and ' +
+      'normalizes named and unnamed submissions',
+    async () => {
+      vi.mocked(submitBacktestRun).mockResolvedValue('run-name');
+      let wrapper = openDrawer();
+      await flushPromises();
+      const input = () =>
+        wrapper
+          .findAllComponents(NInput)
+          .find(
+            (component) =>
+              component.attributes('data-testid') === 'creation-name',
+          )!;
+      expect(input().props('value')).toBe('');
+      expect(input().props('placeholder')).toBe('Enter an experiment name');
+      input().vm.$emit('update:value', '  Research baseline  ');
+      await flushPromises();
+      wrapper.unmount();
+      wrapper = openDrawer();
+      await flushPromises();
+      expect(input().props('value')).toBe('  Research baseline  ');
+      (
+        document.querySelector('[data-testid="creation-submit"]') as HTMLElement
+      ).click();
+      await flushPromises();
+      expect(submitBacktestRun).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'Research baseline' }),
+      );
+      expect(
+        vi.mocked(submitBacktestRun).mock.calls[0][0].run_metadata,
+      ).toBeNull();
+      input().vm.$emit('update:value', '   ');
       await flushPromises();
       (
         document.querySelector('[data-testid="creation-submit"]') as HTMLElement
       ).click();
       await flushPromises();
-      expect(submitBacktestRun).toHaveBeenCalledTimes(2);
-      expect(document.body.textContent).toContain('Experiment name must');
-    }
-    wrapper.unmount();
-  });
+      expect(submitBacktestRun).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: null }),
+      );
+      for (const name of ['a'.repeat(121), 'two\nlines', '\ntrimmed']) {
+        input().vm.$emit('update:value', name);
+        await flushPromises();
+        (
+          document.querySelector(
+            '[data-testid="creation-submit"]',
+          ) as HTMLElement
+        ).click();
+        await flushPromises();
+        expect(submitBacktestRun).toHaveBeenCalledTimes(2);
+        expect(document.body.textContent).toContain('Experiment name must');
+      }
+      wrapper.unmount();
+    },
+  );
 
   it('uses Naive calendars and converts selected dates to UTC midnight', async () => {
     const wrapper = openDrawer();
@@ -168,30 +174,36 @@ describe('standalone', () => {
     wrapper.unmount();
   });
 
-  it('refreshes stale catalog and leaves the draft unchanged without retrying submission', async () => {
-    vi.mocked(submitBacktestRun).mockRejectedValue(
-      new BacktestSubmissionError(
-        'strategy_version_unavailable',
-        [],
-        'Strategy version is unavailable',
-      ),
-    );
-    const wrapper = openDrawer();
-    await flushPromises();
+  it(
+    'refreshes stale catalog and leaves the draft unchanged without ' +
+      'retrying submission',
+    async () => {
+      vi.mocked(submitBacktestRun).mockRejectedValue(
+        new BacktestSubmissionError(
+          'strategy_version_unavailable',
+          [],
+          'Strategy version is unavailable',
+        ),
+      );
+      const wrapper = openDrawer();
+      await flushPromises();
 
-    (
-      document.querySelector('[data-testid="creation-submit"]') as HTMLElement
-    ).click();
-    await flushPromises();
+      (
+        document.querySelector('[data-testid="creation-submit"]') as HTMLElement
+      ).click();
+      await flushPromises();
 
-    expect(submitBacktestRun).toHaveBeenCalledTimes(1);
-    expect(fetchStrategyCatalog).toHaveBeenCalledTimes(2);
-    expect(
-      useBacktestWorkspaceStore().creationDraft?.strategy.strategy_version,
-    ).toBe(1);
-    expect(document.body.textContent).toContain('Review the refreshed catalog');
-    wrapper.unmount();
-  });
+      expect(submitBacktestRun).toHaveBeenCalledTimes(1);
+      expect(fetchStrategyCatalog).toHaveBeenCalledTimes(2);
+      expect(
+        useBacktestWorkspaceStore().creationDraft?.strategy.strategy_version,
+      ).toBe(1);
+      expect(document.body.textContent).toContain(
+        'Review the refreshed catalog',
+      );
+      wrapper.unmount();
+    },
+  );
 
   it('keeps a restricted string that resembles null distinct from explicit null', async () => {
     vi.mocked(fetchStrategyCatalog).mockResolvedValue([

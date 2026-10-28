@@ -41,7 +41,7 @@ function press(key: string) {
 }
 
 describe('BaseGroupedSelect', () => {
-  it('opens at the current selection, skips disabled options, and restores focus on Escape without selecting', async () => {
+  it('skips disabled options and restores focus on Escape', async () => {
     const trigger = await openPicker();
     expect(document.activeElement?.getAttribute('data-value')).toBe('H1');
     press('ArrowLeft');
@@ -74,7 +74,7 @@ describe('BaseGroupedSelect', () => {
     expect(document.activeElement?.getAttribute('data-value')).toBe('M1');
   });
 
-  it('disables an empty picker and keeps focus fallback independent of an unavailable current value', async () => {
+  it('disables empty pickers and falls back from unavailable values', async () => {
     await openPicker('D1');
     expect(document.activeElement?.getAttribute('data-value')).toBe('M1');
     wrapper?.unmount();

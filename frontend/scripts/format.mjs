@@ -8,6 +8,8 @@ const check = process.argv.includes('--check');
 const failures = [];
 for (const file of frontendSourceFiles(root)) {
   const filepath = path.join(root, file);
+  const { inferredParser } = await prettier.getFileInfo(filepath);
+  if (!inferredParser) continue;
   const source = await fs.readFile(filepath, 'utf8');
   const options = { ...(await prettier.resolveConfig(filepath)), filepath };
   if (check) {

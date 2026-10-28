@@ -1,85 +1,82 @@
 <template>
-  <DesignScope>
-    <div id="wrapper-select">
+  <div id="wrapper-select">
+    <n-button
+      primary
+      round
+      @click="modalStore.openModal('symbolSearch')"
+    >
+      {{ currentSymbol }}
+    </n-button>
+
+    <TimeframeDropdown />
+
+    <n-button
+      round
+      @click="modalStore.openModal('indicatorSearch')"
+      >Indicator</n-button
+    >
+
+    <div
+      class="chart-interaction-controls"
+      role="group"
+      aria-label="Chart interaction mode"
+    >
       <n-button
-        primary
-        round
-        @click="modalStore.openModal('symbolSearch')"
+        circle
+        :type="isChartInteractionModeSelected('pan') ? 'primary' : 'default'"
+        :secondary="isChartInteractionModeSelected('pan')"
+        class="chart-interaction-mode-button"
+        :class="{
+          'chart-interaction-mode-button--active':
+            isChartInteractionModeSelected('pan'),
+        }"
+        data-testid="chart-interaction-mode-pan"
+        aria-label="Pan mode"
+        :aria-pressed="isChartInteractionModeSelected('pan')"
+        @click="selectChartInteractionMode('pan')"
       >
-        {{ currentSymbol }}
+        <template #icon>
+          <n-icon
+            size="20"
+            :color="chartInteractionModeIconColor('pan')"
+          >
+            <HandRightOutline />
+          </n-icon>
+        </template>
       </n-button>
 
-      <TimeframeDropdown />
-
       <n-button
-        round
-        @click="modalStore.openModal('indicatorSearch')"
-        >Indicator</n-button
+        circle
+        :type="
+          isChartInteractionModeSelected('measure') ? 'primary' : 'default'
+        "
+        :secondary="isChartInteractionModeSelected('measure')"
+        class="chart-interaction-mode-button"
+        :class="{
+          'chart-interaction-mode-button--active':
+            isChartInteractionModeSelected('measure'),
+        }"
+        data-testid="chart-interaction-mode-measure"
+        aria-label="Measure mode"
+        :aria-pressed="isChartInteractionModeSelected('measure')"
+        @click="selectChartInteractionMode('measure')"
       >
-
-      <div
-        class="chart-interaction-controls"
-        role="group"
-        aria-label="Chart interaction mode"
-      >
-        <n-button
-          circle
-          :type="isChartInteractionModeSelected('pan') ? 'primary' : 'default'"
-          :secondary="isChartInteractionModeSelected('pan')"
-          class="chart-interaction-mode-button"
-          :class="{
-            'chart-interaction-mode-button--active':
-              isChartInteractionModeSelected('pan'),
-          }"
-          data-testid="chart-interaction-mode-pan"
-          aria-label="Pan mode"
-          :aria-pressed="isChartInteractionModeSelected('pan')"
-          @click="selectChartInteractionMode('pan')"
-        >
-          <template #icon>
-            <n-icon
-              size="20"
-              :color="chartInteractionModeIconColor('pan')"
-            >
-              <HandRightOutline />
-            </n-icon>
-          </template>
-        </n-button>
-
-        <n-button
-          circle
-          :type="
-            isChartInteractionModeSelected('measure') ? 'primary' : 'default'
-          "
-          :secondary="isChartInteractionModeSelected('measure')"
-          class="chart-interaction-mode-button"
-          :class="{
-            'chart-interaction-mode-button--active':
-              isChartInteractionModeSelected('measure'),
-          }"
-          data-testid="chart-interaction-mode-measure"
-          aria-label="Measure mode"
-          :aria-pressed="isChartInteractionModeSelected('measure')"
-          @click="selectChartInteractionMode('measure')"
-        >
-          <template #icon>
-            <n-icon
-              size="20"
-              :color="chartInteractionModeIconColor('measure')"
-            >
-              <ResizeOutline />
-            </n-icon>
-          </template>
-        </n-button>
-      </div>
-
-      <TopBarModals />
+        <template #icon>
+          <n-icon
+            size="20"
+            :color="chartInteractionModeIconColor('measure')"
+          >
+            <ResizeOutline />
+          </n-icon>
+        </template>
+      </n-button>
     </div>
-  </DesignScope>
+
+    <TopBarModals />
+  </div>
 </template>
 
 <script setup lang="ts">
-import DesignScope from '@/components/Common/DesignScope.vue';
 import { designTokens } from '@/design/tokens';
 import { computed } from 'vue';
 import { NButton, NIcon } from 'naive-ui';

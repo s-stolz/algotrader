@@ -59,7 +59,7 @@ describe('production Backtest Workspace: comparison-pagination', () => {
         { label: '100 rows', value: 100 },
         { label: 'All rows', value: Number.MAX_SAFE_INTEGER },
       ]);
-      // Load production CSS: the legacy select class must not override this menu.
+      // Exercise the real page-size menu with production typography.
       const style = document.createElement('style');
       style.textContent =
         readFileSync('src/assets/main.css', 'utf8') +

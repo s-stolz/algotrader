@@ -3,7 +3,6 @@ import { computed, defineComponent, h, ref, Teleport } from 'vue';
 import { NColorPicker, colorPickerProps } from 'naive-ui';
 import { designCssProperties } from '@/design/cssProperties';
 import { designTokens } from '@/design/tokens';
-import { useDesignScope } from '@/design/scope';
 
 const { color, radius, shadow, text } = designTokens;
 
@@ -12,21 +11,16 @@ export default defineComponent({
   inheritAttrs: false,
   props: colorPickerProps,
   setup(props, { attrs, slots }) {
-    const isDesigned = useDesignScope();
     const control = ref<HTMLElement | null>(null);
     const isOpen = ref(props.defaultShow ?? false);
     const overlayHost = ref<HTMLElement | null>(null);
     const theme = computed(() => ({
-      ...(isDesigned
-        ? {
-            color: color.panel,
-            textColor: color.body,
-            border: `1px solid ${color.border}`,
-            borderRadius: radius.panel,
-            boxShadow: shadow.overlay,
-            panelFontSize: text.body,
-          }
-        : {}),
+      color: color.panel,
+      textColor: color.body,
+      border: `1px solid ${color.border}`,
+      borderRadius: radius.panel,
+      boxShadow: shadow.overlay,
+      panelFontSize: text.body,
       ...props.themeOverrides,
     }));
 
@@ -59,7 +53,7 @@ export default defineComponent({
         'div',
         {
           ref: control,
-          class: { 'design-color-picker': isDesigned },
+          class: 'design-color-picker',
           tabindex: props.disabled ? -1 : 0,
           role: 'button',
           'aria-label': attrs['aria-label'] ?? 'Choose series color',
@@ -81,20 +75,18 @@ export default defineComponent({
             },
             slots,
           ),
-          isDesigned
-            ? h(Teleport, { to: 'body' }, [
-                h('div', {
-                  ref: overlayHost,
-                  class: 'design-color-picker-overlay',
-                  onKeydown,
-                  style: {
-                    ...designCssProperties,
-                    fontFamily: designTokens.font.ui,
-                    fontVariantNumeric: 'tabular-nums',
-                  },
-                }),
-              ])
-            : null,
+          h(Teleport, { to: 'body' }, [
+            h('div', {
+              ref: overlayHost,
+              class: 'design-color-picker-overlay',
+              onKeydown,
+              style: {
+                ...designCssProperties,
+                fontFamily: designTokens.font.ui,
+                fontVariantNumeric: 'tabular-nums',
+              },
+            }),
+          ]),
         ],
       );
   },

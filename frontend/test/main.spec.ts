@@ -54,7 +54,7 @@ describe('frontend bootstrap', () => {
     bootstrapMock.createPinia.mockClear();
   });
 
-  it('connects to the default WebSocket URL, installs app plugins, and mounts without globals', async () => {
+  it('connects the default socket and mounts with plugins and no globals', async () => {
     vi.stubEnv('VITE_WS_URL', '');
 
     await import('@/main');

@@ -1,66 +1,61 @@
 <template>
-  <DesignScope>
-    <BaseModal
-      ref="symbolForm"
-      :modalId="'symbolForm'"
-      :title="'New Symbol'"
-    >
-      <div id="new-symbol-input-wrapper">
-        <n-input
-          class="new-symbol-input"
-          :input-props="{ style: 'text-transform: uppercase;' }"
-          v-model:value="symbol"
-          :status="validSymbol || symbol === undefined ? 'success' : 'error'"
-          placeholder="Symbol"
-          aria-label="Symbol"
-        />
+  <BaseModal
+    ref="symbolForm"
+    :modalId="'symbolForm'"
+    :title="'New Symbol'"
+  >
+    <div id="new-symbol-input-wrapper">
+      <n-input
+        class="new-symbol-input"
+        :input-props="{ style: 'text-transform: uppercase;' }"
+        v-model:value="symbol"
+        :status="validSymbol || symbol === undefined ? 'success' : 'error'"
+        placeholder="Symbol"
+        aria-label="Symbol"
+      />
 
-        <n-input
-          class="new-symbol-input"
-          :input-props="{ style: 'text-transform: uppercase;' }"
-          v-model:value="exchange"
-          :status="
-            validExchange || exchange === undefined ? 'success' : 'error'
-          "
-          placeholder="Exchange"
-          aria-label="Exchange"
-        />
+      <n-input
+        class="new-symbol-input"
+        :input-props="{ style: 'text-transform: uppercase;' }"
+        v-model:value="exchange"
+        :status="validExchange || exchange === undefined ? 'success' : 'error'"
+        placeholder="Exchange"
+        aria-label="Exchange"
+      />
 
-        <n-input-number
-          class="new-symbol-input"
-          v-model:value="minMove"
-          aria-label="Minimum price move"
-          min="0"
-          step="0.0001"
-        />
+      <n-input-number
+        class="new-symbol-input"
+        v-model:value="minMove"
+        aria-label="Minimum price move"
+        min="0"
+        step="0.0001"
+      />
 
-        <BaseSelect
-          class="new-symbol-input"
-          v-model:value="marketType"
-          placeholder="Market Type"
-          aria-label="Market Type"
-          :status="
-            validMarketType || marketType === undefined ? 'success' : 'error'
-          "
-          :options="options"
-        />
-      </div>
+      <BaseSelect
+        class="new-symbol-input"
+        v-model:value="marketType"
+        placeholder="Market Type"
+        aria-label="Market Type"
+        :status="
+          validMarketType || marketType === undefined ? 'success' : 'error'
+        "
+        :options="options"
+      />
+    </div>
 
-      <template #footer>
-        <n-button
-          round
-          class="new-symbol-button"
-          @click="addSymbol"
-        >
-          Add Symbol
-        </n-button>
-      </template>
-    </BaseModal>
-  </DesignScope>
+    <template #footer>
+      <n-button
+        round
+        class="new-symbol-button"
+        @click="addSymbol"
+      >
+        Add Symbol
+      </n-button>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
-import DesignScope from '@/components/Common/DesignScope.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import { computed, ref } from 'vue';
 import type { SelectOption } from 'naive-ui';

@@ -33,7 +33,7 @@ describe('BaseDrawer', () => {
     ).toContain('Apply');
     const drawer = document.body.querySelector<HTMLElement>('.n-drawer')!;
     expect(drawer.style.width).toBe('600px');
-    expect(drawer.style.fontSize).toBe('');
+    expect(drawer.style.fontSize).toBe(designTokens.text.body);
     expect(getComputedStyle(drawer).getPropertyValue('--n-color').trim()).toBe(
       '#171e27',
     );
@@ -150,7 +150,7 @@ describe('BaseDrawer', () => {
     }
   });
 
-  it('retains caller typography and title overrides in a migrated drawer', () => {
+  it('retains caller typography and title overrides in a shared drawer', () => {
     const wrapper = mount(DesignScope, {
       slots: {
         default: () =>

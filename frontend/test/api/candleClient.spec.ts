@@ -51,7 +51,8 @@ describe('candle API client', () => {
       },
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/data-accessor/candles/EURUSD?timeframe=M5&start_ms=1000&end_ms=2000&limit=10&exchange=FX',
+      '/api/data-accessor/candles/EURUSD?' +
+        'timeframe=M5&start_ms=1000&end_ms=2000&limit=10&exchange=FX',
     );
   });
 

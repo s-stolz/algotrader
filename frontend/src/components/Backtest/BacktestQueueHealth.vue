@@ -171,7 +171,7 @@
             <li
               v-for="entry in snapshot.queued"
               :key="`${entryIdentity(entry).kind}:${entryIdentity(entry).id}`"
-              :data-testid="`workspace-queue-${entryIdentity(entry).kind}-${entryIdentity(entry).id}`"
+              :data-testid="entryTestId(entry)"
             >
               <button
                 class="experiment-entry"
@@ -338,7 +338,9 @@ const recentExperiments = computed(() => {
         kind: 'batch' as const,
         id: batch.batch_id,
         completedAt: batch.completed_at_ms,
-        summary: `${batch.settled_count} / ${batch.total_count} finished · ${batch.status === 'cancelled' ? 'Cancelled' : 'Completed'}${batch.outcome_counts.failed ? ` · ${batch.outcome_counts.failed} failed` : ''}`,
+        summary: `${batch.settled_count} / ${batch.total_count} finished · ${
+          batch.status === 'cancelled' ? 'Cancelled' : 'Completed'
+        }${batch.outcome_counts.failed ? ` · ${batch.outcome_counts.failed} failed` : ''}`,
       })),
   ];
   // Keep fast runs discoverable even when they finish between queue polls.
@@ -367,6 +369,10 @@ function experimentName(kind: 'run' | 'batch', id: string): string {
   }
   const run = props.runs?.find((item) => item.run_id === id);
   return run ? runName(run) : `Run ${id}`;
+}
+function entryTestId(entry: BacktestQueueEntry): string {
+  const { kind, id } = entryIdentity(entry);
+  return `workspace-queue-${kind}-${id}`;
 }
 function entryIdentity(entry: BacktestQueueEntry): {
   kind: 'run' | 'batch';

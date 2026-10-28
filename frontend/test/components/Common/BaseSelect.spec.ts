@@ -40,7 +40,7 @@ describe('BaseSelect', () => {
         peers: expect.objectContaining({
           InternalSelection: expect.objectContaining({
             borderRadius: '12px',
-            color: '#131722',
+            color: '#171e27',
           }),
           InternalSelectMenu: expect.objectContaining({
             optionTextColorActive: '#dce4ed',
@@ -53,7 +53,7 @@ describe('BaseSelect', () => {
     wrapper.unmount();
   });
 
-  it('keeps keyboard selection and scoped typography in the teleported menu', async () => {
+  it('keeps keyboard selection and shared typography in the teleported menu', async () => {
     const onUpdate = vi.fn();
     // jsdom does not implement native element scrolling used by menu navigation.
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
@@ -78,9 +78,7 @@ describe('BaseSelect', () => {
     });
     const combobox = wrapper.get('[tabindex="0"]');
     await combobox.trigger('keydown', { key: 'ArrowDown', code: 'ArrowDown' });
-    const menu = document.querySelector(
-      '.base-select-menu--design',
-    ) as HTMLElement;
+    const menu = document.querySelector('.base-select-menu') as HTMLElement;
     expect(menu).not.toBeNull();
     expect(menu.style.getPropertyValue('--design-font-ui')).toBe(
       'Tektur, sans-serif',
