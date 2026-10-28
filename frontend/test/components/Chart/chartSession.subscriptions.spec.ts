@@ -1,0 +1,211 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createChartSession } from '@/components/Chart/chartSession';
+import { createFakeAdapter } from './chartSession.fixtures';
+
+describe('chart session subscription ownership', () => {
+  it('unsubscribes the previous market key and subscribes the new market key', async () => {
+    const { adapter, subscribes, unsubscribes } = createFakeAdapter();
+    const session = createChartSession(adapter);
+    const receiveLiveCandle = vi.fn();
+
+    await session.setSession(
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+      receiveLiveCandle,
+    );
+    await session.setSession(
+      {
+        symbol: 'GBPUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+      receiveLiveCandle,
+    );
+
+    expect(unsubscribes).toEqual([
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+    ]);
+    expect(subscribes).toEqual([
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+      {
+        symbol: 'GBPUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+    ]);
+  });
+
+  it('unsubscribes the previous timeframe key and subscribes the new timeframe key', async () => {
+    const { adapter, subscribes, unsubscribes } = createFakeAdapter();
+    const session = createChartSession(adapter);
+    const receiveLiveCandle = vi.fn();
+
+    await session.setSession(
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M1',
+      },
+      receiveLiveCandle,
+    );
+    await session.setSession(
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'H1',
+      },
+      receiveLiveCandle,
+    );
+
+    expect(unsubscribes).toEqual([
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M1',
+      },
+    ]);
+    expect(subscribes).toEqual([
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M1',
+      },
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'H1',
+      },
+    ]);
+  });
+
+  it(
+    'does not let a stale pending subscribe unsubscribe a key' +
+      ' that became active again',
+    async () => {
+      const { adapter, subscribes, unsubscribes, handlers } =
+        createFakeAdapter();
+      let resolveFirstSubscribe: (() => void) | undefined;
+      let subscribeCount = 0;
+      vi.mocked(adapter.subscribeCandles).mockImplementation((key) => {
+        subscribes.push({ ...key });
+        subscribeCount += 1;
+
+        if (subscribeCount === 1) {
+          return new Promise<void>((resolve) => {
+            resolveFirstSubscribe = resolve;
+          });
+        }
+
+        return undefined;
+      });
+      const session = createChartSession(adapter);
+      const receiveLiveCandle = vi.fn();
+      const marketA = {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      };
+      const marketB = {
+        symbol: 'GBPUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      };
+
+      const firstSession = session.setSession(marketA, receiveLiveCandle);
+      await session.setSession(marketB, receiveLiveCandle);
+      await session.setSession(marketA, receiveLiveCandle);
+
+      resolveFirstSubscribe?.();
+      await firstSession;
+
+      expect(unsubscribes).toEqual([marketA, marketB]);
+
+      for (const handler of handlers) {
+        handler({
+          type: 'candleUpdate',
+          symbol: 'EURUSD',
+          timeframe: 'M5',
+          timestamp_ms: 300_000,
+          open: 1,
+          high: 2,
+          low: 0.5,
+          close: 1.5,
+          volume: 10,
+        });
+      }
+
+      expect(receiveLiveCandle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          symbol: 'EURUSD',
+          timeframe: 'M5',
+        }),
+        marketA,
+      );
+    },
+  );
+
+  it('applies live candles only when they match the active same-timeframe session', async () => {
+    const { adapter, handlers } = createFakeAdapter();
+    const session = createChartSession(adapter);
+    const receiveLiveCandle = vi.fn();
+
+    await session.setSession(
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+      receiveLiveCandle,
+    );
+
+    for (const handler of handlers) {
+      handler({
+        type: 'candleUpdate',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+        timestamp_ms: 60_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10,
+      });
+      handler({
+        type: 'candleUpdate',
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+        timestamp_ms: 300_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10,
+      });
+    }
+
+    expect(receiveLiveCandle).toHaveBeenCalledOnce();
+    expect(receiveLiveCandle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+        timestamp_ms: 300_000,
+      }),
+      {
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'M5',
+      },
+    );
+  });
+});

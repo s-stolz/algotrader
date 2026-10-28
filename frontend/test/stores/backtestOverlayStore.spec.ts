@@ -1,12 +1,18 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchBacktestClosedTrades, getBacktestRun } from '@/api/backtesterClient';
+import {
+  fetchBacktestClosedTrades,
+  getBacktestRun,
+} from '@/api/backtesterClient';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import type { BacktestClosedTrade, BacktestRun } from '@/types/backtesterContracts';
+import type {
+  BacktestClosedTrade,
+  BacktestRun,
+} from '@/types/backtesterContracts';
 import type { Market } from '@/types/contracts';
 import { STORAGE_KEYS } from '@/utils/localStorage';
 
@@ -76,7 +82,7 @@ describe('backtestOverlayStore', () => {
     vi.mocked(getBacktestRun).mockReset();
   });
 
-  it('selects a supported Backtest Run, switches chart context, caches trades, and persists the run ID', async () => {
+  it('selects a run with chart context, cached trades, and a persisted ID', async () => {
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
     useMarketsStore().all = [eurUsdMarket, gbpUsdMarket];
     useCurrentMarketStore().setMarket(gbpUsdMarket);
@@ -93,20 +99,25 @@ describe('backtestOverlayStore', () => {
     expect(store.selectedRunId).toBe('run-123');
     expect(store.selectedRun).toEqual(backtestRun());
     expect(store.closedTrades).toEqual(closedTrades);
-    expect(store.getClosedTradesForRange(1_714_520_000_000, 1_714_540_000_000)).toEqual([
-      closedTrades[0],
-    ]);
+    expect(
+      store.getClosedTradesForRange(1_714_520_000_000, 1_714_540_000_000),
+    ).toEqual([closedTrades[0]]);
     expect(store.error).toBeNull();
     expect(useCurrentMarketStore().symbol).toBe('EURUSD');
     expect(useCurrentMarketStore().exchange).toBe('FX');
     expect(useCurrentTimeframeStore().value).toBe('M15');
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN) ?? 'null')).toBe(
-      'run-123',
-    );
+    expect(
+      JSON.parse(
+        localStorage.getItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN) ?? 'null',
+      ),
+    ).toBe('run-123');
   });
 
-  it('reloads a persisted selected Backtest Run when it still exists and is supported', async () => {
-    localStorage.setItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN, JSON.stringify('run-123'));
+  it('reloads a supported persisted run', async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.SELECTED_BACKTEST_RUN,
+      JSON.stringify('run-123'),
+    );
     vi.mocked(getBacktestRun).mockResolvedValue(backtestRun());
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
     useMarketsStore().all = [eurUsdMarket];
@@ -129,11 +140,16 @@ describe('backtestOverlayStore', () => {
   });
 
   it('clears a persisted selected Backtest Run when reload finds an unsupported run', async () => {
-    localStorage.setItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN, JSON.stringify('run-incomplete'));
-    vi.mocked(getBacktestRun).mockResolvedValue(backtestRun({
-      run_id: 'run-incomplete',
-      result_schema_version: null,
-    }));
+    localStorage.setItem(
+      STORAGE_KEYS.SELECTED_BACKTEST_RUN,
+      JSON.stringify('run-incomplete'),
+    );
+    vi.mocked(getBacktestRun).mockResolvedValue(
+      backtestRun({
+        run_id: 'run-incomplete',
+        result_schema_version: null,
+      }),
+    );
     useMarketsStore().all = [eurUsdMarket];
 
     const store = useBacktestOverlayStore();
@@ -151,10 +167,13 @@ describe('backtestOverlayStore', () => {
     expect(localStorage.getItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN)).toBeNull();
   });
 
-  it('leaves the chart unchanged and surfaces an error when the run market is missing', async () => {
+  it('reports a missing run Market without changing the chart', async () => {
     useMarketsStore().all = [gbpUsdMarket];
     useCurrentMarketStore().setMarket(gbpUsdMarket);
-    useCurrentTimeframeStore().setCurrentTimeframe({ label: 'H1', value: 'H1' });
+    useCurrentTimeframeStore().setCurrentTimeframe({
+      label: 'H1',
+      value: 'H1',
+    });
 
     const store = useBacktestOverlayStore();
 
@@ -166,7 +185,9 @@ describe('backtestOverlayStore', () => {
     expect(fetchBacktestClosedTrades).not.toHaveBeenCalled();
     expect(store.selectedRunId).toBeNull();
     expect(store.closedTrades).toEqual([]);
-    expect(store.error).toBe('Market FX:EURUSD is not available in the chart market list.');
+    expect(store.error).toBe(
+      'Market FX:EURUSD is not available in the chart market list.',
+    );
     expect(useCurrentMarketStore().symbol).toBe('GBPUSD');
     expect(useCurrentTimeframeStore().value).toBe('H1');
     expect(localStorage.getItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN)).toBeNull();
@@ -175,25 +196,37 @@ describe('backtestOverlayStore', () => {
   it('classifies unsupported Backtest Runs with clear non-selectable reasons', () => {
     const store = useBacktestOverlayStore();
 
-    expect(store.getBacktestRunSelectability(backtestRun({ status: 'running' }))).toEqual({
+    expect(
+      store.getBacktestRunSelectability(backtestRun({ status: 'running' })),
+    ).toEqual({
       selectable: false,
       reason: 'Only succeeded Backtest Runs can be opened.',
     });
-    expect(store.getBacktestRunSelectability(backtestRun({ result_schema_version: null }))).toEqual({
+    expect(
+      store.getBacktestRunSelectability(
+        backtestRun({ result_schema_version: null }),
+      ),
+    ).toEqual({
       selectable: false,
       reason: 'Backtest Run result schema is unsupported.',
     });
-    expect(store.getBacktestRunSelectability(backtestRunWithSymbols([]))).toEqual({
+    expect(
+      store.getBacktestRunSelectability(backtestRunWithSymbols([])),
+    ).toEqual({
       selectable: false,
       reason: 'Backtest Run has no symbol.',
     });
-    expect(store.getBacktestRunSelectability(backtestRunWithSymbols(['EURUSD', 'GBPUSD']))).toEqual({
+    expect(
+      store.getBacktestRunSelectability(
+        backtestRunWithSymbols(['EURUSD', 'GBPUSD']),
+      ),
+    ).toEqual({
       selectable: false,
       reason: 'Backtest Run has multiple symbols.',
     });
   });
 
-  it('classifies supported-shape Backtest Runs as non-selectable when the market is missing', () => {
+  it('disables runs with a missing Market', () => {
     useMarketsStore().all = [gbpUsdMarket];
 
     const store = useBacktestOverlayStore();
@@ -262,7 +295,12 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
       run_metadata: null,
     },
     result_schema_version: 3,
-    metrics: { total_return_pct: 1.25, trade_count: 1, long_trade_count: 1, short_trade_count: 0 },
+    metrics: {
+      total_return_pct: 1.25,
+      trade_count: 1,
+      long_trade_count: 1,
+      short_trade_count: 0,
+    },
     diagnostics: { execution_duration_ms: 240_000 },
     error_code: null,
     error_message: null,

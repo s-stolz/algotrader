@@ -1,43 +1,10 @@
 <script lang="ts">
 import { computed, defineComponent, h, mergeProps } from 'vue';
-import { NDataTable, NScrollbar, NTable, dataTableProps, type DataTableProps } from 'naive-ui';
+import { NDataTable, NScrollbar, NTable, dataTableProps } from 'naive-ui';
 
-const themeOverrides: NonNullable<DataTableProps['themeOverrides']> = {
-  tdColor: 'var(--surface-panel)',
-  tdColorStriped: 'var(--surface-striped)',
-  tdColorHover: 'var(--surface-hover)',
-  tdColorSorting: 'var(--surface-sorted)',
-  thColor: 'var(--surface-header)',
-  thColorHover: 'var(--surface-header-hover)',
-  thColorSorting: 'var(--surface-header-hover)',
-  borderColor: 'var(--surface-border)',
-  tdTextColor: '#dce4ed',
-  thTextColor: '#a5acba',
-  thFontWeight: '600',
-  thIconColor: '#8190a0',
-  thIconColorActive: '#63d2b0',
-  thButtonColorHover: 'var(--surface-hover)',
-  loadingColor: '#63d2b0',
-  borderRadius: '4px',
-  boxShadowBefore: 'inset -12px 0 8px -12px rgba(0, 0, 0, .4)',
-  boxShadowAfter: 'inset 12px 0 8px -12px rgba(0, 0, 0, .4)',
-  tdColorModal: 'var(--surface-panel)',
-  tdColorStripedModal: 'var(--surface-striped)',
-  tdColorHoverModal: 'var(--surface-hover)',
-  tdColorSortingModal: 'var(--surface-sorted)',
-  thColorModal: 'var(--surface-header)',
-  thColorHoverModal: 'var(--surface-header-hover)',
-  thColorSortingModal: 'var(--surface-header-hover)',
-  borderColorModal: 'var(--surface-border)',
-  tdColorPopover: 'var(--surface-panel)',
-  tdColorStripedPopover: 'var(--surface-striped)',
-  tdColorHoverPopover: 'var(--surface-hover)',
-  tdColorSortingPopover: 'var(--surface-sorted)',
-  thColorPopover: 'var(--surface-header)',
-  thColorHoverPopover: 'var(--surface-header-hover)',
-  thColorSortingPopover: 'var(--surface-header-hover)',
-  borderColorPopover: 'var(--surface-border)',
-};
+import { designTableTheme } from '@/design/naiveTheme';
+import { designCssProperties } from '@/design/cssProperties';
+import { designTokens } from '@/design/tokens';
 
 export default defineComponent({
   name: 'BaseDataTable',
@@ -47,30 +14,93 @@ export default defineComponent({
     rowHover: { type: Boolean, default: true },
   },
   setup(props, { attrs, slots }) {
-    const mergedTheme = computed(() => ({ ...themeOverrides, ...props.themeOverrides }));
+    const mergedTheme = computed(() => ({
+      ...designTableTheme,
+      ...props.themeOverrides,
+    }));
+
+    const pagination = computed(() => {
+      if (!props.pagination) return props.pagination;
+      return {
+        ...props.pagination,
+        selectProps: {
+          ...props.pagination.selectProps,
+          menuProps: mergeProps(
+            {
+              style: {
+                ...designCssProperties,
+                fontFamily: designTokens.font.ui,
+              },
+            },
+            { ...props.pagination.selectProps?.menuProps },
+          ),
+        },
+      };
+    });
 
     return () => {
       const { rowHover: _rowHover, ...tableProps } = props;
-      return slots.default ? h('div', mergeProps(attrs, {
-        class: ['base-data-table', { 'base-data-table--row-hover': props.rowHover }],
-      }), [h(NScrollbar, {
-        ...props.scrollbarProps,
-        xScrollable: true,
-        style: { maxHeight: typeof props.maxHeight === 'number' ? `${props.maxHeight}px` : props.maxHeight },
-      }, {
-        default: () => h(NTable, {
-          bordered: props.bordered ?? false,
-          striped: props.striped,
-          size: props.size,
-          singleLine: props.singleLine,
-          themeOverrides: mergedTheme.value,
-          style: { minWidth: props.scrollX ? `${props.scrollX}px` : '100%' },
-        }, { default: slots.default }),
-      })]) : h(NDataTable, mergeProps(attrs, tableProps, {
-        class: ['base-data-table', { 'base-data-table--row-hover': props.rowHover }],
-        bordered: props.bordered ?? false,
-        themeOverrides: mergedTheme.value,
-      }), slots);
+      return slots.default
+        ? h(
+            'div',
+            mergeProps(attrs, {
+              class: [
+                'base-data-table',
+                {
+                  'base-data-table--row-hover': props.rowHover,
+                },
+              ],
+            }),
+            [
+              h(
+                NScrollbar,
+                {
+                  ...props.scrollbarProps,
+                  xScrollable: true,
+                  style: {
+                    maxHeight:
+                      typeof props.maxHeight === 'number'
+                        ? `${props.maxHeight}px`
+                        : props.maxHeight,
+                  },
+                },
+                {
+                  default: () =>
+                    h(
+                      NTable,
+                      {
+                        bordered: props.bordered ?? false,
+                        striped: props.striped,
+                        size: props.size,
+                        singleLine: props.singleLine,
+                        themeOverrides: mergedTheme.value,
+                        style: {
+                          minWidth: props.scrollX
+                            ? `${props.scrollX}px`
+                            : '100%',
+                        },
+                      },
+                      { default: slots.default },
+                    ),
+                },
+              ),
+            ],
+          )
+        : h(
+            NDataTable,
+            mergeProps(attrs, tableProps, {
+              class: [
+                'base-data-table',
+                {
+                  'base-data-table--row-hover': props.rowHover,
+                },
+              ],
+              bordered: props.bordered ?? false,
+              themeOverrides: mergedTheme.value,
+              pagination: pagination.value,
+            }),
+            slots,
+          );
     };
   },
 });
@@ -79,51 +109,59 @@ export default defineComponent({
 <style scoped>
 .base-data-table {
   font-variant-numeric: tabular-nums;
+  --table-heading-size: var(--design-text-secondary);
+  --table-focus: var(--design-color-interactive);
 }
 
+/* Naive exposes a shared cell font size; headers need the secondary role. */
 .base-data-table :deep(.n-table th) {
-  font-size: 11px;
-  letter-spacing: .025em;
+  font-size: var(--table-heading-size);
+  letter-spacing: 0.025em;
 }
 
+/* Slot tables have no row-hover prop; column tables also support disabling it. */
 .base-data-table--row-hover :deep(.n-table tbody tr:hover td) {
-  background: var(--n-td-color-hover, var(--surface-hover));
+  background: var(--n-td-color-hover, var(--design-color-hover));
 }
 
-.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr:hover .n-data-table-td) {
+.base-data-table:not(.base-data-table--row-hover)
+  :deep(.n-data-table-tr:hover .n-data-table-td) {
   background-color: var(--n-merged-td-color);
 }
 
-.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr--striped:hover .n-data-table-td) {
+.base-data-table:not(.base-data-table--row-hover)
+  :deep(.n-data-table-tr--striped:hover .n-data-table-td) {
   background-color: var(--n-merged-td-color-striped);
 }
 
-.base-data-table:not(.base-data-table--row-hover) :deep(.n-data-table-tr:hover .n-data-table-td--sorting) {
+.base-data-table:not(.base-data-table--row-hover)
+  :deep(.n-data-table-tr:hover .n-data-table-td--sorting) {
   background-color: var(--n-merged-td-color-sorting);
 }
 
 .base-data-table :deep(.n-data-table-th) {
-  font-size: 11px;
-  letter-spacing: .025em;
+  font-size: var(--table-heading-size);
+  letter-spacing: 0.025em;
 }
 
+/* Naive has no separate fixed-cell theme; retain the opaque fixed surfaces. */
 .base-data-table :deep(.n-data-table-td--fixed-left),
 .base-data-table :deep(.n-data-table-td--fixed-right) {
-  --n-merged-td-color: var(--surface-fixed);
-  --n-merged-td-color-striped: var(--surface-fixed);
-  --n-merged-td-color-hover: var(--surface-fixed-hover);
-  --n-merged-td-color-sorting: var(--surface-fixed);
+  --n-merged-td-color: var(--design-color-fixed);
+  --n-merged-td-color-striped: var(--design-color-fixed);
+  --n-merged-td-color-hover: var(--design-color-fixed-hover);
+  --n-merged-td-color-sorting: var(--design-color-fixed);
 }
 
 .base-data-table :deep(.n-data-table-th--fixed-left),
 .base-data-table :deep(.n-data-table-th--fixed-right) {
-  --n-merged-th-color: var(--surface-header-fixed);
-  --n-merged-th-color-hover: var(--surface-header-fixed-hover);
-  --n-merged-th-color-sorting: var(--surface-header-fixed-hover);
+  --n-merged-th-color: var(--design-color-selected);
+  --n-merged-th-color-hover: var(--design-color-selected-hover);
+  --n-merged-th-color-sorting: var(--design-color-selected-hover);
 }
 
 .base-data-table :deep(.n-data-table-tr:focus-visible) {
-  outline: 2px solid #63d2b0;
+  outline: 2px solid var(--table-focus);
   outline-offset: -2px;
 }
 </style>

@@ -4,14 +4,14 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import router from './router';
+import { installDesignProperties } from './design/cssProperties';
 import { wsService } from './utils/websocketService';
+
+installDesignProperties(document.documentElement);
 
 const app = createApp(App);
 
 const websocketUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8765';
 wsService.connect(websocketUrl);
 
-app
-  .use(router)
-  .use(createPinia())
-  .mount('#app');
+app.use(router).use(createPinia()).mount('#app');

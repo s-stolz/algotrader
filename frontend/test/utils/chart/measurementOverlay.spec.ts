@@ -72,14 +72,16 @@ describe('measurement overlay model', () => {
     expect(model.direction).toBe('neutral');
     expect(model.candleCount).toBe(1);
     expect(model.label.text).toBe('0.00 (0.00%) 1 candle');
-    expect(model.box).toEqual(expect.objectContaining({
-      topPrice: 42,
-      bottomPrice: 42,
-      anchorLogical: 3,
-      endpointLogical: 3,
-      leftLogical: 3,
-      rightLogical: 3,
-    }));
+    expect(model.box).toEqual(
+      expect.objectContaining({
+        topPrice: 42,
+        bottomPrice: 42,
+        anchorLogical: 3,
+        endpointLogical: 3,
+        leftLogical: 3,
+        rightLogical: 3,
+      }),
+    );
   });
 
   it('displays N/A percent for a zero anchor while preserving signed raw price delta', () => {

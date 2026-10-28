@@ -11,9 +11,9 @@ describe('Vite development proxy configuration', () => {
 
     expect(backtesterProxy.target).toBe('http://backtester-api:8020');
     expect(backtesterProxy.changeOrigin).toBe(true);
-    expect(backtesterProxy.rewrite?.('/api/backtester/backtests/run-123/trades')).toBe(
-      '/backtests/run-123/trades',
-    );
+    expect(
+      backtesterProxy.rewrite?.('/api/backtester/backtests/run-123/trades'),
+    ).toBe('/backtests/run-123/trades');
   });
 
   it('derives the default backtester target from API host and port env', () => {

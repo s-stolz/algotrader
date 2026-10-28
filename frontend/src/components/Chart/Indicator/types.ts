@@ -11,7 +11,11 @@ export interface IndicatorManagerDependency {
   refreshIndicatorSeries(id: string): void;
   removeIndicatorSeriesAndData(id: string): void;
   updateMissingPaneHtmlElements(): Promise<void>;
-  updateIndicatorStyles(id: string, outputKey: string, styles: ChartSeriesOptions): boolean;
+  updateIndicatorStyles(
+    id: string,
+    outputKey: string,
+    styles: ChartSeriesOptions,
+  ): boolean;
 }
 
 export type IndicatorInstance = StoreIndicator;

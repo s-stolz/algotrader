@@ -3,10 +3,13 @@ import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import IndicatorSettingsParameters from '@/components/Chart/Indicator/IndicatorSettingsParameters.vue';
+import Parameters from '@/components/Chart/Indicator/IndicatorSettingsParameters.vue';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
-import { useIndicatorsStore, type StoreIndicator } from '@/stores/indicatorsStore';
+import {
+  useIndicatorsStore,
+  type StoreIndicator,
+} from '@/stores/indicatorsStore';
 import type { IndicatorInfo } from '@/types/contracts';
 
 const SlotStub = defineComponent({
@@ -26,15 +29,16 @@ const NInputNumberStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { attrs, emit }) {
-    return () => h('input', {
-      ...attrs,
-      type: 'number',
-      value: props.value ?? '',
-      onInput: (event: Event) => {
-        const input = event.target as HTMLInputElement;
-        emit('update:value', input.value === '' ? null : Number(input.value));
-      },
-    });
+    return () =>
+      h('input', {
+        ...attrs,
+        type: 'number',
+        value: props.value ?? '',
+        onInput: (event: Event) => {
+          const input = event.target as HTMLInputElement;
+          emit('update:value', input.value === '' ? null : Number(input.value));
+        },
+      });
   },
 });
 
@@ -48,12 +52,14 @@ const NInputStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { attrs, emit }) {
-    return () => h('input', {
-      ...attrs,
-      type: 'text',
-      value: props.value,
-      onInput: (event: Event) => emit('update:value', (event.target as HTMLInputElement).value),
-    });
+    return () =>
+      h('input', {
+        ...attrs,
+        type: 'text',
+        value: props.value,
+        onInput: (event: Event) =>
+          emit('update:value', (event.target as HTMLInputElement).value),
+      });
   },
 });
 
@@ -93,7 +99,9 @@ const indicatorInfo: IndicatorInfo = {
   },
 };
 
-function createIndicator(overrides: Partial<StoreIndicator> = {}): StoreIndicator {
+function createIndicator(
+  overrides: Partial<StoreIndicator> = {},
+): StoreIndicator {
   return {
     _id: 'indicator-1',
     indicatorId: 7,
@@ -167,7 +175,7 @@ describe('IndicatorSettingsParameters', () => {
       .spyOn(indicatorsStore, 'requestIndicator')
       .mockResolvedValue('indicator-1');
 
-    const wrapper = mount(IndicatorSettingsParameters, {
+    const wrapper = mount(Parameters, {
       props: {
         indicator: createIndicator(),
       },
@@ -196,16 +204,21 @@ describe('IndicatorSettingsParameters', () => {
       length: 20,
       source: 'close',
     });
-    expect(requestIndicator).toHaveBeenCalledWith('indicator-1', 7, {
-      symbol: 'EURUSD',
-      timeframe: 'M5',
-      limit: 500,
-      exchange: 'FX',
-    }, {
-      parameters: {
-        length: 20,
-        source: 'close',
+    expect(requestIndicator).toHaveBeenCalledWith(
+      'indicator-1',
+      7,
+      {
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+        limit: 500,
+        exchange: 'FX',
       },
-    });
+      {
+        parameters: {
+          length: 20,
+          source: 'close',
+        },
+      },
+    );
   });
 });

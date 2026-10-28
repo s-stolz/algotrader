@@ -2,15 +2,26 @@
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 
+const backtestIconPath = [
+  'M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1.2 2h13.6',
+  'a1.3 1.3 0 0 0 1.2-2L14 9V3M8 14h8M10 17h.01M14 19h.01',
+].join('');
+
 const route = useRoute();
 const screen = ref<HTMLElement | null>(null);
 const isChart = computed(() => route.path === '/');
-const destination = computed(() => isChart.value ? '/backtests' : '/');
-const destinationLabel = computed(() => isChart.value ? 'Open Backtests' : 'Return to Chart');
+const destination = computed(() => (isChart.value ? '/backtests' : '/'));
+const destinationLabel = computed(() =>
+  isChart.value ? 'Open Backtests' : 'Return to Chart',
+);
 
-watch(isChart, () => {
-  screen.value?.focus({ preventScroll: true });
-}, { flush: 'post' });
+watch(
+  isChart,
+  () => {
+    screen.value?.focus({ preventScroll: true });
+  },
+  { flush: 'post' },
+);
 </script>
 
 <template>
@@ -21,24 +32,54 @@ watch(isChart, () => {
       :aria-label="destinationLabel"
       aria-controls="workspace-screen"
       class="workspace-edge-link"
-      :class="isChart ? 'workspace-edge-link--right' : 'workspace-edge-link--left'"
+      :class="
+        isChart ? 'workspace-edge-link--right' : 'workspace-edge-link--left'
+      "
     >
-      <span class="workspace-edge-face" aria-hidden="true">
-        <svg class="destination-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path v-if="isChart" d="M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1.2 2h13.6a1.3 1.3 0 0 0 1.2-2L14 9V3M8 14h8M10 17h.01M14 19h.01" />
-          <path v-else d="M3 3v18h18M7 15l4-5 4 3 6-8" />
+      <span
+        class="workspace-edge-face"
+        aria-hidden="true"
+      >
+        <svg
+          class="destination-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            v-if="isChart"
+            :d="backtestIconPath"
+          />
+          <path
+            v-else
+            d="M3 3v18h18M7 15l4-5 4 3 6-8"
+          />
         </svg>
         <span class="icon-divider" />
-        <svg class="direction-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          class="direction-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <path d="m9 6 6 6-6 6" />
         </svg>
       </span>
     </RouterLink>
+
     <section
       id="workspace-screen"
       ref="screen"
       class="workspace-screen"
-      :class="isChart ? 'workspace-screen--chart' : 'workspace-screen--backtests'"
+      :class="
+        isChart ? 'workspace-screen--chart' : 'workspace-screen--backtests'
+      "
       :aria-label="isChart ? 'Chart workspace' : 'Backtest workspace'"
       tabindex="-1"
     >
@@ -51,7 +92,7 @@ watch(isChart, () => {
 .workspace-navigation {
   position: fixed;
   inset: 0;
-  padding: 10px;
+  padding: var(--design-space-md);
   box-sizing: border-box;
   overflow: hidden;
   color-scheme: dark;
@@ -67,11 +108,11 @@ watch(isChart, () => {
 
 .workspace-screen--chart {
   overflow: hidden;
-  animation: enter-chart .28s ease-out;
+  animation: enter-chart 0.28s ease-out;
 }
 
 .workspace-screen--backtests {
-  animation: enter-backtests .28s ease-out;
+  animation: enter-backtests 0.28s ease-out;
 }
 
 .workspace-edge-link {
@@ -81,7 +122,7 @@ watch(isChart, () => {
   z-index: 20;
   width: 64px;
   height: 176px;
-  color: #66dfbd;
+  color: var(--design-color-interactive);
 }
 
 .workspace-edge-link::before {
@@ -89,15 +130,25 @@ watch(isChart, () => {
   position: absolute;
   inset-block: 0;
   width: 5px;
-  background: #71879b66;
-  border: 1px solid #96b4c833;
+  background: var(--design-color-edge-rail);
+  border: 1px solid var(--design-color-edge-border);
   box-sizing: border-box;
 }
 
-.workspace-edge-link--left { left: 0; }
-.workspace-edge-link--right { right: 0; }
-.workspace-edge-link--left::before { left: 0; border-radius: 0 5px 5px 0; }
-.workspace-edge-link--right::before { right: 0; border-radius: 5px 0 0 5px; }
+.workspace-edge-link--left {
+  left: 0;
+}
+.workspace-edge-link--right {
+  right: 0;
+}
+.workspace-edge-link--left::before {
+  left: 0;
+  border-radius: 0 5px 5px 0;
+}
+.workspace-edge-link--right::before {
+  right: 0;
+  border-radius: 5px 0 0 5px;
+}
 
 .workspace-edge-face {
   position: absolute;
@@ -106,10 +157,10 @@ watch(isChart, () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: var(--design-space-xl);
   box-sizing: border-box;
-  background: var(--surface-fixed);
-  border: 1px solid #66dfbd60;
+  background: var(--design-color-fixed);
+  border: 1px solid var(--design-color-border);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -117,13 +168,13 @@ watch(isChart, () => {
 
 .workspace-edge-link--left .workspace-edge-face {
   border-left: none;
-  border-radius: 0 16px 16px 0;
+  border-radius: 0 var(--design-radius-edge) var(--design-radius-edge) 0;
   transform: translateX(-100%);
 }
 
 .workspace-edge-link--right .workspace-edge-face {
   border-right: none;
-  border-radius: 16px 0 0 16px;
+  border-radius: var(--design-radius-edge) 0 0 var(--design-radius-edge);
   transform: translateX(100%);
 }
 
@@ -133,35 +184,69 @@ watch(isChart, () => {
   opacity: 1;
   visibility: visible;
   transform: translateX(0);
-  transition: transform .14s ease-out, opacity .14s;
+  transition:
+    transform 0.14s ease-out,
+    opacity 0.14s;
 }
 
 .workspace-edge-link:hover::before,
-.workspace-edge-link:focus-visible::before { opacity: 0; }
-.workspace-edge-link:focus-visible { outline: none; }
+.workspace-edge-link:focus-visible::before {
+  opacity: 0;
+}
+.workspace-edge-link:focus-visible {
+  outline: none;
+}
 .workspace-edge-link:focus-visible .workspace-edge-face {
   outline: 2px solid currentColor;
   outline-offset: -4px;
 }
 
-.destination-icon { width: 23px; height: 23px; }
-.direction-icon { width: 21px; height: 21px; }
-.workspace-edge-link--left .direction-icon { transform: rotate(180deg); }
-.icon-divider { width: 14px; height: 1px; background: #66dfbd45; }
+.destination-icon {
+  width: 23px;
+  height: 23px;
+}
+.direction-icon {
+  width: 21px;
+  height: 21px;
+}
+.workspace-edge-link--left .direction-icon {
+  transform: rotate(180deg);
+}
+.icon-divider {
+  width: 14px;
+  height: 1px;
+  background: var(--design-color-border);
+}
 
 @keyframes enter-chart {
-  from { transform: translateX(-100px); opacity: .4; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(-100px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes enter-backtests {
-  from { transform: translateX(100px); opacity: .4; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(100px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-screen { animation: none; }
+  .workspace-screen {
+    animation: none;
+  }
   .workspace-edge-link:hover .workspace-edge-face,
-  .workspace-edge-link:focus-visible .workspace-edge-face { transition: none; }
+  .workspace-edge-link:focus-visible .workspace-edge-face {
+    transition: none;
+  }
 }
 </style>

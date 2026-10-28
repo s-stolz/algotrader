@@ -1,8 +1,12 @@
+import { installDesignProperties } from '@/design/cssProperties';
+
 const PANE_OVERLAY_CLASS = 'indicators-wrapper';
 
 export const PANE_OVERLAY_SELECTOR = `.${PANE_OVERLAY_CLASS}`;
 
-export function getOrCreatePaneOverlayWrapper(paneHtmlElement: HTMLElement): HTMLDivElement {
+export function getOrCreatePaneOverlayWrapper(
+  paneHtmlElement: HTMLElement,
+): HTMLDivElement {
   paneHtmlElement.style.position = 'relative';
 
   const existingWrapper = paneHtmlElement.querySelector(PANE_OVERLAY_SELECTOR);
@@ -12,7 +16,12 @@ export function getOrCreatePaneOverlayWrapper(paneHtmlElement: HTMLElement): HTM
 
   const wrapper = document.createElement('div');
   wrapper.className = PANE_OVERLAY_CLASS;
-  wrapper.style.cssText = `
+  installDesignProperties(wrapper);
+  wrapper.style.fontFamily = 'var(--design-font-ui)';
+  wrapper.style.fontSize = 'var(--design-text-body)';
+  wrapper.style.color = 'var(--design-color-body)';
+  wrapper.style.fontVariantNumeric = 'tabular-nums';
+  wrapper.style.cssText += `
     position: absolute;
     top: 10px;
     left: 0px;

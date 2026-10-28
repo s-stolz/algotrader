@@ -3,10 +3,7 @@ import {
   BarSeries,
   BaselineSeries,
   CandlestickSeries,
-  ColorType,
   createChart,
-  createSeriesMarkers,
-  CrosshairMode,
   HistogramSeries,
   LineSeries,
   type AreaData,
@@ -16,12 +13,10 @@ import {
   type ChartOptions,
   type DeepPartial,
   type HistogramData,
-  type HandleScrollOptions,
   type HorzScaleOptions,
   type IChartApi,
   type IPaneApi,
   type ISeriesApi,
-  type ISeriesMarkersPluginApi,
   type LineData,
   type LogicalRange,
   type LogicalRangeChangeEventHandler,
@@ -34,16 +29,14 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 
-import {
-  ProtectiveLinesPrimitive,
-  type ChartProtectiveLineSegment,
-} from './protectiveLinesPrimitive';
+import { createDefaultChartOptions } from './chartTheme';
+import type { ChartProtectiveLineSegment } from './protectiveLinesPrimitive';
 import type { ChartMeasurementOverlayModel } from './measurementOverlay';
+import { ChartSeriesOverlays } from './chartSeriesOverlays';
 import {
-  clearMeasurementOverlayPrimitive,
-  setMeasurementOverlayPrimitive,
-} from './measurementOverlayLifecycle';
-import type { MeasurementOverlayPrimitive } from './measurementOverlayPrimitive';
+  cloneHandleScrollOptions,
+  withPressedMouseMove,
+} from './chartScrollOptions';
 
 export type ChartSeriesType =
   | 'line'
@@ -104,13 +97,6 @@ const SERIES_TYPES: Record<ChartSeriesType, SeriesDefinition<SeriesType>> = {
   histogram: HistogramSeries,
 };
 
-const ENABLED_HANDLE_SCROLL_OPTIONS: HandleScrollOptions = {
-  mouseWheel: true,
-  pressedMouseMove: true,
-  horzTouchDrag: true,
-  vertTouchDrag: true,
-};
-
 function toLightweightPoint(point: ChartDataPoint): ManagedSeriesPoint {
   return {
     ...point,
@@ -122,25 +108,6 @@ function toLightweightData(data: readonly ChartDataPoint[]): ManagedSeriesData {
   return data.map((point) => toLightweightPoint(point)) as ManagedSeriesData;
 }
 
-function cloneHandleScrollOptions(
-  handleScroll: ChartOptions['handleScroll'],
-): ChartOptions['handleScroll'] {
-  return typeof handleScroll === 'boolean' ? handleScroll : { ...handleScroll };
-}
-
-function withPressedMouseMove(
-  handleScroll: ChartOptions['handleScroll'],
-  pressedMouseMove: boolean,
-): ChartOptions['handleScroll'] {
-  if (typeof handleScroll === 'boolean') {
-    return handleScroll
-      ? { ...ENABLED_HANDLE_SCROLL_OPTIONS, pressedMouseMove }
-      : false;
-  }
-
-  return { ...handleScroll, pressedMouseMove };
-}
-
 export class ChartManager {
   public chart: IChartApi | null = null;
   public readonly series = new Map<string, ChartSeriesInfo>();
@@ -148,34 +115,16 @@ export class ChartManager {
   public readonly loadedBars = 500;
   public readonly initialVisibleCandles = 50;
 
-  private readonly markerPlugins = new Map<string, ISeriesMarkersPluginApi<Time>>();
-  private readonly protectiveLinePrimitives = new Map<string, ProtectiveLinesPrimitive>();
-  private readonly measurementOverlayPrimitives = new Map<string, MeasurementOverlayPrimitive>();
+  private readonly overlays = new ChartSeriesOverlays(this.series);
   private readonly defaultOptions: DeepPartial<ChartOptions>;
   private readonly timeScaleOptions: DeepPartial<HorzScaleOptions>;
   private crosshairMoveHandler: ChartCrosshairMoveHandler | null = null;
   private visibleLogicalRangeHandler: ChartVisibleRangeHandler | null = null;
-  private pressedMouseMoveRestoreOptions: ChartOptions['handleScroll'] | null = null;
+  private pressedMouseMoveRestoreOptions: ChartOptions['handleScroll'] | null =
+    null;
 
   constructor(options: DeepPartial<ChartOptions> = {}) {
-    this.defaultOptions = {
-      layout: {
-        textColor: '#d1d4dc',
-        background: { type: ColorType.Solid, color: 'transparent' },
-        panes: {
-          separatorColor: 'rgba(96,96,96,0.3)',
-        },
-      },
-      grid: {
-        vertLines: { color: 'transparent' },
-        horzLines: { color: 'transparent' },
-      },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-      },
-      autoSize: true,
-      ...options,
-    };
+    this.defaultOptions = createDefaultChartOptions(options);
 
     this.timeScaleOptions = {
       timeVisible: true,
@@ -219,7 +168,10 @@ export class ChartManager {
       existingSeriesInfo.series.setData(toLightweightData(data));
       existingSeriesInfo.data = [...data];
 
-      if (JSON.stringify(existingSeriesInfo.options) !== JSON.stringify(seriesOptions)) {
+      if (
+        JSON.stringify(existingSeriesInfo.options) !==
+        JSON.stringify(seriesOptions)
+      ) {
         existingSeriesInfo.series.applyOptions(seriesOptions);
         existingSeriesInfo.options = { ...seriesOptions };
       }
@@ -345,7 +297,11 @@ export class ChartManager {
     }
 
     try {
-      return this.chart.addSeries(seriesDefinition, seriesOptions, paneIndex) as ManagedSeriesApi;
+      return this.chart.addSeries(
+        seriesDefinition,
+        seriesOptions,
+        paneIndex,
+      ) as ManagedSeriesApi;
     } catch (error) {
       console.error('Failed to create series:', error);
       return null;
@@ -371,114 +327,37 @@ export class ChartManager {
     }
   }
 
-  setSeriesMarkers(key: string, markers: readonly ChartSeriesMarker[]): boolean {
-    const seriesInfo = this.series.get(key);
-    if (!seriesInfo) {
-      return false;
-    }
-
-    try {
-      const nextMarkers = [...markers];
-      const markerPlugin = this.markerPlugins.get(key);
-
-      if (markerPlugin) {
-        markerPlugin.setMarkers(nextMarkers);
-        return true;
-      }
-
-      this.markerPlugins.set(key, createSeriesMarkers(seriesInfo.series, nextMarkers));
-      return true;
-    } catch (error) {
-      console.error(`Failed to set markers for series '${key}':`, error);
-      return false;
-    }
+  setSeriesMarkers(
+    key: string,
+    markers: readonly ChartSeriesMarker[],
+  ): boolean {
+    return this.overlays.setSeriesMarkers(key, markers);
   }
 
   clearSeriesMarkers(key: string): boolean {
-    const markerPlugin = this.markerPlugins.get(key);
-    if (!markerPlugin) {
-      return false;
-    }
-
-    try {
-      markerPlugin.detach();
-      this.markerPlugins.delete(key);
-      return true;
-    } catch (error) {
-      console.error(`Failed to clear markers for series '${key}':`, error);
-      return false;
-    }
+    return this.overlays.clearSeriesMarkers(key);
   }
 
   setSeriesProtectiveLines(
     key: string,
     segments: readonly ChartProtectiveLineSegment[],
   ): boolean {
-    const seriesInfo = this.series.get(key);
-    if (!seriesInfo) {
-      return false;
-    }
-
-    try {
-      const nextSegments = [...segments];
-
-      if (nextSegments.length === 0) {
-        this.clearSeriesProtectiveLines(key);
-        return true;
-      }
-
-      const primitive = this.protectiveLinePrimitives.get(key);
-      if (primitive) {
-        primitive.setSegments(nextSegments);
-        return true;
-      }
-
-      const nextPrimitive = new ProtectiveLinesPrimitive(nextSegments);
-      seriesInfo.series.attachPrimitive(nextPrimitive);
-      this.protectiveLinePrimitives.set(key, nextPrimitive);
-      return true;
-    } catch (error) {
-      console.error(`Failed to set protective lines for series '${key}':`, error);
-      return false;
-    }
+    return this.overlays.setSeriesProtectiveLines(key, segments);
   }
 
   clearSeriesProtectiveLines(key: string): boolean {
-    const primitive = this.protectiveLinePrimitives.get(key);
-    const seriesInfo = this.series.get(key);
-
-    if (!primitive || !seriesInfo) {
-      return false;
-    }
-
-    try {
-      seriesInfo.series.detachPrimitive(primitive);
-      this.protectiveLinePrimitives.delete(key);
-      return true;
-    } catch (error) {
-      console.error(`Failed to clear protective lines for series '${key}':`, error);
-      return false;
-    }
+    return this.overlays.clearSeriesProtectiveLines(key);
   }
 
   setSeriesMeasurementOverlay(
     key: string,
     model: ChartMeasurementOverlayModel,
   ): boolean {
-    return setMeasurementOverlayPrimitive(
-      this.series,
-      this.measurementOverlayPrimitives,
-      key,
-      model,
-    );
+    return this.overlays.setSeriesMeasurementOverlay(key, model);
   }
 
   clearSeriesMeasurementOverlay(key: string): boolean {
-    return clearMeasurementOverlayPrimitive(
-      this.series,
-      this.measurementOverlayPrimitives,
-      key,
-    );
+    return this.overlays.clearSeriesMeasurementOverlay(key);
   }
 
   setPressedMouseMoveEnabled(enabled: boolean): boolean {
@@ -490,7 +369,8 @@ export class ChartManager {
       if (!enabled) {
         if (this.pressedMouseMoveRestoreOptions === null) {
           const handleScroll = this.chart.options().handleScroll;
-          this.pressedMouseMoveRestoreOptions = cloneHandleScrollOptions(handleScroll);
+          this.pressedMouseMoveRestoreOptions =
+            cloneHandleScrollOptions(handleScroll);
         }
 
         this.chart.applyOptions({
@@ -565,7 +445,9 @@ export class ChartManager {
     const isValid = paneIndex >= 0 && paneIndex < panes.length;
 
     if (!isValid) {
-      console.error(`Invalid pane index: ${paneIndex}. Available panes: ${panes.length}`);
+      console.error(
+        `Invalid pane index: ${paneIndex}. Available panes: ${panes.length}`,
+      );
     }
 
     return isValid;
@@ -593,7 +475,9 @@ export class ChartManager {
     return null;
   }
 
-  tryGetHtmlElement(pane: IPaneApi<Time> | null | undefined): HTMLElement | null {
+  tryGetHtmlElement(
+    pane: IPaneApi<Time> | null | undefined,
+  ): HTMLElement | null {
     try {
       return pane?.getHTMLElement?.() || null;
     } catch {
@@ -611,7 +495,9 @@ export class ChartManager {
     this.chart.subscribeCrosshairMove(callback);
   }
 
-  unsubscribeCrosshairMove(callback: ChartCrosshairMoveHandler | null = null): void {
+  unsubscribeCrosshairMove(
+    callback: ChartCrosshairMoveHandler | null = null,
+  ): void {
     if (!this.chart) {
       this.crosshairMoveHandler = null;
       return;
@@ -639,7 +525,9 @@ export class ChartManager {
     this.chart.timeScale().subscribeVisibleLogicalRangeChange(callback);
   }
 
-  unsubscribeVisibleLogicalRangeChange(callback: ChartVisibleRangeHandler | null = null): void {
+  unsubscribeVisibleLogicalRangeChange(
+    callback: ChartVisibleRangeHandler | null = null,
+  ): void {
     if (!this.chart) {
       this.visibleLogicalRangeHandler = null;
       return;
@@ -672,17 +560,7 @@ export class ChartManager {
       this.pressedMouseMoveRestoreOptions = null;
     }
 
-    for (const key of Array.from(this.markerPlugins.keys())) {
-      this.clearSeriesMarkers(key);
-    }
-
-    for (const key of Array.from(this.protectiveLinePrimitives.keys())) {
-      this.clearSeriesProtectiveLines(key);
-    }
-
-    for (const key of Array.from(this.measurementOverlayPrimitives.keys())) {
-      this.clearSeriesMeasurementOverlay(key);
-    }
+    this.overlays.clearAll();
 
     this.series.clear();
   }

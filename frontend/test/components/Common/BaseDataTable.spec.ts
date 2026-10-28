@@ -19,10 +19,16 @@ describe('BaseDataTable', () => {
     await wrapper.find('.n-data-table-th').trigger('click');
     await wrapper.find('.n-data-table-th').trigger('click');
 
-    expect(onUpdateSorter).toHaveBeenLastCalledWith(expect.objectContaining({
-      columnKey: 'price', order: 'ascend',
-    }));
-    expect(wrapper.findAll('tbody tr').map((row) => row.text())).toEqual(['1', '2']);
+    expect(onUpdateSorter).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        columnKey: 'price',
+        order: 'ascend',
+      }),
+    );
+    expect(wrapper.findAll('tbody tr').map((row) => row.text())).toEqual([
+      '1',
+      '2',
+    ]);
     wrapper.unmount();
   });
 
@@ -32,9 +38,12 @@ describe('BaseDataTable', () => {
       props: { maxHeight: 300, scrollX: 900 },
       attrs: { 'aria-label': 'Settings' },
       slots: {
-        default: () => h('tbody', [h('tr', [h('td', { colspan: 2 }, [
-          h('button', { onClick }, 'Apply'),
-        ])])]),
+        default: () =>
+          h('tbody', [
+            h('tr', [
+              h('td', { colspan: 2 }, [h('button', { onClick }, 'Apply')]),
+            ]),
+          ]),
       },
     });
 

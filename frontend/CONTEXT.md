@@ -34,7 +34,10 @@ and behavior that is easy to break when changing them.
 
 - Start at `src/views/BacktestWorkspaceView.vue` and
   `src/stores/backtestWorkspaceStore.ts`; creation lives in
-  `src/views/BacktestCreationDrawer.vue`. `src/App.vue` keeps routed views alive:
+  `src/views/BacktestCreationDrawer.vue`. Its feature-local `creation/` sections
+  share `useBacktestCreation.ts`, which owns draft/sweep retention, reuse revisions,
+  preview generations/debounce cleanup, and submission identity. `src/App.vue`
+  keeps routed views alive:
   navigation preserves drafts, history filters, and comparison selections.
 - Creation retains an optional experiment name alongside draft fields. Names
   are top-level creation properties; omit them from stateless sweep preview.
@@ -75,6 +78,9 @@ and behavior that is easy to break when changing them.
 
 ## Shared UI and Transport
 
+- Shared visual values, root provider, overlay typography, and justified control
+  overrides follow [design ownership](DESIGN.md). `App.vue` provides the theme to
+  every workflow; shared controls have no legacy styling mode.
 - Use themed `Base*` controls in `src/components/Common/` for tables, drawers,
   selects, grouped selects, dropdowns, popovers, and checkboxes. Shared styling
   lives there and in `src/assets/main.css`; extend these surfaces for consistent

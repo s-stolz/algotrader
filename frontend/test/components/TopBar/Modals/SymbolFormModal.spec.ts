@@ -3,6 +3,9 @@ import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h, type PropType } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NInput } from 'naive-ui';
+import BaseSelect from '@/components/Common/BaseSelect.vue';
+import { useModalStore } from '@/stores/modalStore';
 import { createMarket } from '@/api/marketClient';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { MarketCreatePayload } from '@/types/contracts';
@@ -19,10 +22,7 @@ const BaseModalStub = defineComponent({
     const close = vi.fn();
     expose({ close });
 
-    return () => h('div', [
-      slots.default?.(),
-      slots.footer?.(),
-    ]);
+    return () => h('div', [slots.default?.(), slots.footer?.()]);
   },
 });
 
@@ -34,19 +34,22 @@ const NInputStub = defineComponent({
       default: '',
     },
     value: {
-      type: [String, Number, null] as PropType<string | number | null | undefined>,
+      type: [String, Number, null] as PropType<
+        string | number | null | undefined
+      >,
       default: undefined,
     },
   },
   emits: ['update:value'],
   setup(props, { emit }) {
-    return () => h('input', {
-      placeholder: props.placeholder,
-      value: props.value ?? '',
-      onInput: (event: Event) => {
-        emit('update:value', (event.target as HTMLInputElement).value);
-      },
-    });
+    return () =>
+      h('input', {
+        placeholder: props.placeholder,
+        value: props.value ?? '',
+        onInput: (event: Event) => {
+          emit('update:value', (event.target as HTMLInputElement).value);
+        },
+      });
   },
 });
 
@@ -60,13 +63,17 @@ const NInputNumberStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { emit }) {
-    return () => h('input', {
-      type: 'number',
-      value: props.value ?? '',
-      onInput: (event: Event) => {
-        emit('update:value', Number((event.target as HTMLInputElement).value));
-      },
-    });
+    return () =>
+      h('input', {
+        type: 'number',
+        value: props.value ?? '',
+        onInput: (event: Event) => {
+          emit(
+            'update:value',
+            Number((event.target as HTMLInputElement).value),
+          );
+        },
+      });
   },
 });
 
@@ -84,19 +91,22 @@ const NSelectStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { emit }) {
-    return () => h(
-      'select',
-      {
-        value: props.value ?? '',
-        onChange: (event: Event) => {
-          emit('update:value', (event.target as HTMLSelectElement).value);
+    return () =>
+      h(
+        'select',
+        {
+          value: props.value ?? '',
+          onChange: (event: Event) => {
+            emit('update:value', (event.target as HTMLSelectElement).value);
+          },
         },
-      },
-      [
-        h('option', { value: '' }, ''),
-        ...props.options.map((option) => h('option', { value: option.value }, option.label)),
-      ],
-    );
+        [
+          h('option', { value: '' }, ''),
+          ...props.options.map((option) =>
+            h('option', { value: option.value }, option.label),
+          ),
+        ],
+      );
   },
 });
 
@@ -104,9 +114,14 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { emit, slots }) {
-    return () => h('button', {
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -114,7 +129,10 @@ describe('SymbolFormModal', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.mocked(createMarket).mockReset();
-    vi.mocked(createMarket).mockResolvedValue({ symbol_id: 1, status: 'created' });
+    vi.mocked(createMarket).mockResolvedValue({
+      symbol_id: 1,
+      status: 'created',
+    });
   });
 
   it('creates markets through the typed client and refreshes markets after success', async () => {
@@ -159,5 +177,33 @@ describe('SymbolFormModal', () => {
     };
     expect(createMarket).toHaveBeenCalledWith(expectedPayload);
     expect(marketsStore.fetch).toHaveBeenCalledOnce();
+  });
+
+  it('keeps invalid fields visible and submits the corrected normalized values', async () => {
+    useModalStore().openModal('symbolForm');
+    vi.spyOn(useMarketsStore(), 'fetch').mockResolvedValue();
+    const wrapper = mount(SymbolFormModal);
+    await wrapper.get('.new-symbol-button').trigger('click');
+    expect(createMarket).not.toHaveBeenCalled();
+    expect(
+      wrapper
+        .findAllComponents(NInput)
+        .slice(0, 2)
+        .map((input) => input.props('status')),
+    ).toEqual(['error', 'error']);
+    await wrapper.get('input[placeholder="Symbol"]').setValue(' eurusd ');
+    await wrapper.get('input[placeholder="Exchange"]').setValue(' fx ');
+    wrapper.getComponent(BaseSelect).vm.$emit('update:value', 'Forex');
+    await wrapper.get('.new-symbol-button').trigger('click');
+    await flushPromises();
+    expect(createMarket).toHaveBeenCalledWith({
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      min_move: 0.00001,
+      market_type: 'Forex',
+      timezone: 'UTC',
+    });
+    expect(useModalStore().activeModal).toBeNull();
+    wrapper.unmount();
   });
 });

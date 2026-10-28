@@ -9,7 +9,9 @@ deps_checksum() {
   sha256sum package.json package-lock.json
 }
 
-if [ ! -d node_modules ] || [ ! -f "$checksum_file" ] || ! deps_checksum | cmp -s - "$checksum_file"; then
+if [ ! -d node_modules ] ||
+  [ ! -f "$checksum_file" ] ||
+  ! deps_checksum | cmp -s - "$checksum_file"; then
   echo "Installing frontend dependencies"
   npm ci --include=dev
   deps_checksum > "$checksum_file"

@@ -1,5 +1,8 @@
 <template>
-  <BaseModal :modalId="'indicatorSearch'" :title="'Indicator'">
+  <BaseModal
+    :modalId="'indicatorSearch'"
+    :title="'Indicator'"
+  >
     <div>
       <span id="search-bar-wrapper">
         <n-input
@@ -21,8 +24,18 @@
 
       <BaseDataTable :max-height="300">
         <tbody>
-          <tr v-for="indicator in filteredIndicators" :key="indicator.id" @click="onApplyIndicator(indicator)">
-            <td>{{ indicator.name }}</td>
+          <tr
+            v-for="indicator in filteredIndicators"
+            :key="indicator.id"
+            @click="onApplyIndicator(indicator)"
+          >
+            <td>
+              <button
+                class="indicator-choice"
+                @click.stop="onApplyIndicator(indicator)"
+                >{{ indicator.name }}</button
+              >
+            </td>
           </tr>
         </tbody>
       </BaseDataTable>
@@ -53,9 +66,13 @@ const currentMarketStore = useCurrentMarketStore();
 const currentTimeframeStore = useCurrentTimeframeStore();
 const indicatorsStore = useIndicatorsStore();
 
-const filteredIndicators = computed(() => indicators.value
-  .filter((indicator) => indicator.name.toUpperCase().includes(indicatorInput.value.toUpperCase()))
-  .sort((a, b) => a.name.localeCompare(b.name)));
+const filteredIndicators = computed(() =>
+  indicators.value
+    .filter((indicator) =>
+      indicator.name.toUpperCase().includes(indicatorInput.value.toUpperCase()),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name)),
+);
 
 const symbol = computed(() => currentMarketStore.symbol);
 const exchange = computed(() => currentMarketStore.exchange);
@@ -100,11 +117,29 @@ onMounted(() => {
 }
 
 #indicator-input {
-  width: calc(100% - 30px);
-  margin: 8px 15px;
+  width: calc(100% - 2 * var(--design-space-lg));
+  margin: var(--design-space-sm) var(--design-space-lg);
 }
 
-tr {
+.indicator-choice {
+  display: block;
+  width: 100%;
+  padding: var(--design-space-sm) var(--design-space-md);
+  border: 0;
+  border-radius: var(--design-radius-control);
+  background: transparent;
+  color: var(--design-color-body);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
+}
+
+.indicator-choice:hover {
+  background: var(--design-color-hover);
+}
+
+.indicator-choice:focus-visible {
+  outline: 2px solid var(--design-color-interactive);
+  outline-offset: -2px;
 }
 </style>

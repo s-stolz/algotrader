@@ -4,12 +4,17 @@ export const STORAGE_KEYS = {
   SELECTED_BACKTEST_RUN: 'algotrader_selected_backtest_run',
 } as const;
 
-export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS] | string;
+export type StorageKey =
+  | (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]
+  | string;
 
-export const getStoredState = <T>(key: StorageKey, defaultValue: T | null = null): T | null => {
+export const getStoredState = <T>(
+  key: StorageKey,
+  defaultValue: T | null = null,
+): T | null => {
   try {
     const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) as T : defaultValue;
+    return item ? (JSON.parse(item) as T) : defaultValue;
   } catch (error) {
     console.warn(`Failed to parse localStorage key "${key}":`, error);
     return defaultValue;

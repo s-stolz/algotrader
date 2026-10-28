@@ -31,10 +31,7 @@ const BaseModalStub = defineComponent({
   name: 'BaseModal',
   setup(_, { expose, slots }) {
     expose({ close: vi.fn() });
-    return () => h('div', [
-      slots.default?.(),
-      slots.footer?.(),
-    ]);
+    return () => h('div', [slots.default?.(), slots.footer?.()]);
   },
 });
 
@@ -42,10 +39,15 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -71,9 +73,15 @@ describe('RemoveMarketModal', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.mocked(deleteCandles).mockReset();
-    vi.mocked(deleteCandles).mockResolvedValue({ status: 'deleted', deleted_count: 10 });
+    vi.mocked(deleteCandles).mockResolvedValue({
+      status: 'deleted',
+      deleted_count: 10,
+    });
     vi.mocked(deleteMarket).mockReset();
-    vi.mocked(deleteMarket).mockResolvedValue({ status: 'deleted', deleted_count: 1 });
+    vi.mocked(deleteMarket).mockResolvedValue({
+      status: 'deleted',
+      deleted_count: 1,
+    });
     vi.mocked(fetchMarkets).mockReset();
     vi.mocked(fetchMarkets).mockResolvedValue([]);
   });

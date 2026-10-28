@@ -35,11 +35,14 @@ describe('timeframe utilities', () => {
 });
 
 describe('groupTimeframeOptions', () => {
-  it('groups and sorts caller-provided options by their complete units without changing the input', () => {
+  it('groups and sorts complete units without mutating options', () => {
     const options = [
-      { label: 'MN1', value: 'MN1' }, { label: 'H12', value: 'H12' },
-      { label: 'M30', value: 'M30' }, { label: 'W1', value: 'W1' },
-      { label: 'H1', value: 'H1' }, { label: 'M2', value: 'M2' },
+      { label: 'MN1', value: 'MN1' },
+      { label: 'H12', value: 'H12' },
+      { label: 'M30', value: 'M30' },
+      { label: 'W1', value: 'W1' },
+      { label: 'H1', value: 'H1' },
+      { label: 'M2', value: 'M2' },
     ] as const;
     const before = [...options];
     expect(groupTimeframeOptions(options)).toEqual([
@@ -54,7 +57,11 @@ describe('groupTimeframeOptions', () => {
   it('omits empty groups and preserves exactly the selectable set', () => {
     expect(groupTimeframeOptions([])).toEqual([]);
     const groups = groupTimeframeOptions(TIMEFRAME_OPTIONS);
-    expect(groups.map(group => group.label)).toEqual(['Minutes', 'Hours', 'Days']);
-    expect(groups.flatMap(group => group.options)).toEqual(TIMEFRAME_OPTIONS);
+    expect(groups.map((group) => group.label)).toEqual([
+      'Minutes',
+      'Hours',
+      'Days',
+    ]);
+    expect(groups.flatMap((group) => group.options)).toEqual(TIMEFRAME_OPTIONS);
   });
 });

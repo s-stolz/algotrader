@@ -1,4 +1,5 @@
 import vue from 'eslint-plugin-vue';
+import prettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 import vueParser from 'vue-eslint-parser';
 
@@ -17,74 +18,90 @@ const sharedRules = {
   'no-unused-vars': 'off',
   '@typescript-eslint/no-unused-vars': ['error', unusedVarsOptions],
   'no-unreachable': 'error',
-  'no-unused-expressions': ['error', {
-    allowShortCircuit: false,
-    allowTernary: false,
-    allowTaggedTemplates: false,
-  }],
+  'no-unused-expressions': [
+    'error',
+    {
+      allowShortCircuit: false,
+      allowTernary: false,
+      allowTaggedTemplates: false,
+    },
+  ],
   semi: ['error', 'always'],
-  'max-lines': ['warn', {
-    max: 500,
-    skipBlankLines: true,
-    skipComments: true,
-  }],
   'no-trailing-spaces': 'error',
-  'no-multiple-empty-lines': ['error', {
-    max: 2,
-    maxEOF: 1,
-    maxBOF: 0,
-  }],
+  'no-multiple-empty-lines': [
+    'error',
+    {
+      max: 2,
+      maxEOF: 1,
+      maxBOF: 0,
+    },
+  ],
   'comma-dangle': ['error', 'always-multiline'],
 };
 
 const vueRules = {
-  'vue/order-in-components': ['error', {
-    order: [
-      'name',
-      'components',
-      'directives',
-      'mixins',
-      'extends',
-      'provide',
-      'inject',
-      'props',
-      'emits',
-      'setup',
-      'data',
-      'computed',
-      'watch',
-      'LIFECYCLE_HOOKS',
-      'methods',
-      'expose',
-      'template',
-      'render',
-      'renderError',
-    ],
-  }],
+  'vue/order-in-components': [
+    'error',
+    {
+      order: [
+        'name',
+        'components',
+        'directives',
+        'mixins',
+        'extends',
+        'provide',
+        'inject',
+        'props',
+        'emits',
+        'setup',
+        'data',
+        'computed',
+        'watch',
+        'LIFECYCLE_HOOKS',
+        'methods',
+        'expose',
+        'template',
+        'render',
+        'renderError',
+      ],
+    },
+  ],
   'vue/no-unused-components': 'error',
   'vue/no-unused-vars': 'error',
-  'vue/no-unused-properties': ['error', {
-    groups: ['props', 'data', 'computed', 'methods', 'setup'],
-  }],
+  'vue/no-unused-properties': [
+    'error',
+    {
+      groups: ['props', 'data', 'computed', 'methods', 'setup'],
+    },
+  ],
   'vue/no-empty-component-block': 'error',
   'vue/multi-word-component-names': 'off',
   'vue/custom-event-name-casing': ['error', 'kebab-case'],
-  'vue/html-closing-bracket-newline': ['error', {
-    singleline: 'never',
-    multiline: 'always',
-  }],
-  'vue/max-attributes-per-line': ['error', {
-    singleline: {
-      max: 99,
+  'vue/html-closing-bracket-newline': [
+    'error',
+    {
+      singleline: 'never',
+      multiline: 'always',
     },
-    multiline: {
-      max: 1,
+  ],
+  'vue/max-attributes-per-line': [
+    'error',
+    {
+      singleline: {
+        max: 99,
+      },
+      multiline: {
+        max: 1,
+      },
     },
-  }],
-  'vue/first-attribute-linebreak': ['error', {
-    singleline: 'ignore',
-    multiline: 'below',
-  }],
+  ],
+  'vue/first-attribute-linebreak': [
+    'error',
+    {
+      singleline: 'ignore',
+      multiline: 'below',
+    },
+  ],
 };
 
 export default [
@@ -123,4 +140,5 @@ export default [
       ...vueRules,
     },
   },
+  prettier,
 ];

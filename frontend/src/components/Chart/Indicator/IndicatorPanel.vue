@@ -3,12 +3,23 @@
     <div class="indicator-header">
       <span class="indicator-name">{{ indicator.info.name }}</span>
       <div class="indicator-controls">
-        <n-button text @click="onOpenSettings">
+        <n-button
+          text
+          circle
+          aria-label="Indicator settings"
+          @click="onOpenSettings"
+        >
           <n-icon size="20">
             <SettingsOutline />
           </n-icon>
         </n-button>
-        <n-button text class="remove-button" @click="onRemoveIndicator">
+        <n-button
+          text
+          circle
+          aria-label="Remove Indicator"
+          class="remove-button"
+          @click="onRemoveIndicator"
+        >
           <n-icon size="20">
             <TrashOutline />
           </n-icon>
@@ -19,15 +30,15 @@
 </template>
 
 <script setup lang="ts">
-import { NButton, NIcon } from "naive-ui";
+import { NButton, NIcon } from 'naive-ui';
 
-import { SettingsOutline, TrashOutline } from "@/icons";
-import { useModalStore } from "@/stores/modalStore";
+import { SettingsOutline, TrashOutline } from '@/icons';
+import { useModalStore } from '@/stores/modalStore';
 
-import type { IndicatorInstance } from "./types";
+import type { IndicatorInstance } from './types';
 
 defineOptions({
-  name: "IndicatorPanel",
+  name: 'IndicatorPanel',
 });
 
 const props = defineProps<{
@@ -35,7 +46,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "remove-indicator": [indicatorId: string];
+  'remove-indicator': [indicatorId: string];
 }>();
 
 const modalStore = useModalStore();
@@ -45,23 +56,23 @@ function onOpenSettings(): void {
 }
 
 function onRemoveIndicator(): void {
-  emit("remove-indicator", props.indicator._id);
+  emit('remove-indicator', props.indicator._id);
 }
 </script>
 
 <style scoped>
 .indicator-name {
-  font-size: 14px;
+  font-size: var(--design-text-body);
   white-space: nowrap;
   overflow: ellipsis;
 }
 
 .indicator-panel {
-  background: rgba(19, 23, 34, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  background: var(--design-color-panel);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  padding: var(--design-space-sm) var(--design-space-md);
+  margin-bottom: var(--design-space-sm);
   min-width: 300px;
 }
 
@@ -74,10 +85,10 @@ function onRemoveIndicator(): void {
 .indicator-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--design-space-xs);
 }
 
 .remove-button:hover {
-  color: #e98b8b;
+  color: var(--design-color-error);
 }
 </style>

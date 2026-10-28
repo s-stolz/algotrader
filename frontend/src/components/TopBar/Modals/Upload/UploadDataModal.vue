@@ -5,8 +5,23 @@
     :title="`Upload Data for ${market.symbol}`"
   >
     <div class="upload-content">
-      <n-tabs default-value="upload" type="line" :tabs-padding="20">
-        <n-tab-pane name="upload" tab="Upload & Options">
+      <n-alert
+        v-if="uploadError"
+        type="error"
+        class="upload-feedback"
+        role="alert"
+      >
+        {{ uploadError }}
+      </n-alert>
+      <n-tabs
+        default-value="upload"
+        type="line"
+        :tabs-padding="Number.parseInt(designTokens.space.lg)"
+      >
+        <n-tab-pane
+          name="upload"
+          tab="Upload & Options"
+        >
           <UploadDataSection
             :file-list="fileList"
             @file-change="handleFileChange"
@@ -31,7 +46,11 @@
 
     <template #footer>
       <div class="modal-actions">
-        <n-button @click="closeModal" class="button-cancel">Cancel</n-button>
+        <n-button
+          @click="closeModal"
+          class="button-cancel"
+          >Cancel</n-button
+        >
         <n-button
           type="primary"
           @click="uploadData"
@@ -47,8 +66,16 @@
 </template>
 
 <script setup lang="ts">
+import { designTokens } from '@/design/tokens';
 import { computed, ref } from 'vue';
-import { NButton, NTabPane, NTabs, type UploadFileInfo, type UploadOnChange } from 'naive-ui';
+import {
+  NAlert,
+  NButton,
+  NTabPane,
+  NTabs,
+  type UploadFileInfo,
+  type UploadOnChange,
+} from 'naive-ui';
 
 import BaseModal from '@/components/Common/BaseModal.vue';
 import type { Candle, Market, UploadColumnMapping } from '@/types/contracts';
@@ -81,15 +108,19 @@ const emit = defineEmits<{
 
 const baseModal = ref<BaseModalExpose | null>(null);
 const isUploading = ref(false);
+const uploadError = ref('');
 const fileList = ref<UploadFileInfo[]>([]);
 const headerLine = ref<string[]>([]);
 const separator = ref<string | null>(null);
 const columnMapping = ref<UploadColumnMapping>({});
 const separatorOptions = [',', '\t', ';', '|'];
 
-const canUpload = computed(() => fileList.value.length > 0 && !isUploading.value);
+const canUpload = computed(
+  () => fileList.value.length > 0 && !isUploading.value,
+);
 
 function resetForm(): void {
+  uploadError.value = '';
   isUploading.value = false;
   fileList.value = [];
   headerLine.value = [];
@@ -103,12 +134,16 @@ function closeModal(): void {
 }
 
 function handleFileRemove(): void {
+  uploadError.value = '';
   fileList.value = [];
   headerLine.value = [];
   columnMapping.value = {};
 }
 
-async function handleFileChange(data: Parameters<UploadOnChange>[0]): Promise<void> {
+async function handleFileChange(
+  data: Parameters<UploadOnChange>[0],
+): Promise<void> {
+  uploadError.value = '';
   fileList.value = data.fileList;
   if (fileList.value.length === 0) {
     resetForm();
@@ -136,10 +171,13 @@ async function uploadData(): Promise<void> {
   const file = fileList.value[0]?.file;
   if (!file || !separator.value) return;
 
+  uploadError.value = '';
   isUploading.value = true;
 
   try {
-    console.log(`Processing file (${(file.size / 1024 / 1024).toFixed(1)}MB)...`);
+    console.log(
+      `Processing file (${(file.size / 1024 / 1024).toFixed(1)}MB)...`,
+    );
 
     const candleData: Candle[] = await parseCsvToCandles(
       file,
@@ -161,7 +199,9 @@ async function uploadData(): Promise<void> {
       candleData,
       props.market.exchange,
       (progress, uploadedCount) => {
-        console.log(`Upload progress: ${progress.toFixed(1)}% (${uploadedCount} candles)`);
+        console.log(
+          `Upload progress: ${progress.toFixed(1)}% (${uploadedCount} candles)`,
+        );
       },
     );
 
@@ -170,7 +210,7 @@ async function uploadData(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('Error uploading data:', error);
-    alert(`Error uploading data: ${message}`);
+    uploadError.value = `Error uploading data: ${message}`;
   } finally {
     isUploading.value = false;
   }
@@ -179,17 +219,22 @@ async function uploadData(): Promise<void> {
 
 <style scoped>
 .upload-content {
-  height: 300px;
+  min-height: 300px;
+}
+
+.upload-feedback {
+  margin: var(--design-space-md) var(--design-space-lg);
 }
 
 .upload-data-section,
 .upload-data-preview {
-  padding: 0 20px;
+  padding: 0 var(--design-space-lg);
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: var(--design-space-md);
+  flex-wrap: wrap;
 }
 </style>

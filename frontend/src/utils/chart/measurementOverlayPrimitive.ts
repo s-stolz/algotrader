@@ -1,3 +1,4 @@
+import { designTokens } from '@/design/tokens';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import type {
   AutoscaleInfo,
@@ -26,29 +27,33 @@ interface MeasurementOverlayStyle {
 
 const EMPTY_PANE_VIEWS: readonly IPrimitivePaneView[] = [];
 const MIN_BOX_SIZE = 1;
-const LABEL_FONT = '12px sans-serif';
+const { color, font, text } = designTokens;
+const LABEL_FONT = `${text.secondary} ${font.ui}`;
 const LABEL_HEIGHT = 24;
 const LABEL_HORIZONTAL_PADDING = 8;
 const LABEL_OFFSET = 8;
 
-const MEASUREMENT_OVERLAY_STYLES: Record<MeasurementOverlayDirection, MeasurementOverlayStyle> = {
+const MEASUREMENT_OVERLAY_STYLES: Record<
+  MeasurementOverlayDirection,
+  MeasurementOverlayStyle
+> = {
   positive: {
-    fill: 'rgba(22, 163, 74, 0.18)',
-    border: '#16a34a',
-    labelBackground: 'rgba(22, 163, 74, 0.95)',
-    labelText: '#f0fdf4',
+    fill: `${color.positive}2e`,
+    border: color.positive,
+    labelBackground: color.positive,
+    labelText: color.onInteractive,
   },
   negative: {
-    fill: 'rgba(220, 38, 38, 0.18)',
-    border: '#dc2626',
-    labelBackground: 'rgba(220, 38, 38, 0.95)',
-    labelText: '#fef2f2',
+    fill: `${color.negative}2e`,
+    border: color.negative,
+    labelBackground: color.negative,
+    labelText: color.onInteractive,
   },
   neutral: {
-    fill: 'rgba(148, 163, 184, 0.18)',
-    border: '#94a3b8',
-    labelBackground: 'rgba(51, 65, 85, 0.95)',
-    labelText: '#f8fafc',
+    fill: `${color.muted}2e`,
+    border: color.muted,
+    labelBackground: color.inset,
+    labelText: color.body,
   },
 };
 
@@ -75,7 +80,9 @@ class MeasurementOverlayPaneRenderer implements IPrimitivePaneRenderer {
       const rightX = this.logicalToCoordinate(this.model.box.rightLogical);
       const topY = this.priceToCoordinate(this.model.box.topPrice);
       const bottomY = this.priceToCoordinate(this.model.box.bottomPrice);
-      const endpointX = this.logicalToCoordinate(this.model.box.endpointLogical);
+      const endpointX = this.logicalToCoordinate(
+        this.model.box.endpointLogical,
+      );
       const endpointY = this.priceToCoordinate(this.model.box.endpointPrice);
 
       if (
@@ -92,8 +99,14 @@ class MeasurementOverlayPaneRenderer implements IPrimitivePaneRenderer {
       const style = MEASUREMENT_OVERLAY_STYLES[this.model.direction];
       const left = Math.min(Number(leftX), Number(rightX));
       const top = Math.min(Number(topY), Number(bottomY));
-      const width = Math.max(MIN_BOX_SIZE, Math.abs(Number(rightX) - Number(leftX)));
-      const height = Math.max(MIN_BOX_SIZE, Math.abs(Number(bottomY) - Number(topY)));
+      const width = Math.max(
+        MIN_BOX_SIZE,
+        Math.abs(Number(rightX) - Number(leftX)),
+      );
+      const height = Math.max(
+        MIN_BOX_SIZE,
+        Math.abs(Number(bottomY) - Number(topY)),
+      );
 
       context.save();
       context.fillStyle = style.fill;
@@ -129,7 +142,9 @@ class MeasurementOverlayPaneRenderer implements IPrimitivePaneRenderer {
     context.font = LABEL_FONT;
     context.textBaseline = 'middle';
 
-    const textWidth = Math.ceil(context.measureText(this.model.label.text).width);
+    const textWidth = Math.ceil(
+      context.measureText(this.model.label.text).width,
+    );
     const labelWidth = textWidth + LABEL_HORIZONTAL_PADDING * 2;
     const maxX = Math.max(0, paneWidth - labelWidth);
     const maxY = Math.max(0, paneHeight - LABEL_HEIGHT);
@@ -142,11 +157,7 @@ class MeasurementOverlayPaneRenderer implements IPrimitivePaneRenderer {
       0,
       maxX,
     );
-    const y = clamp(
-      preferredY < 0 ? flippedY : preferredY,
-      0,
-      maxY,
-    );
+    const y = clamp(preferredY < 0 ? flippedY : preferredY, 0, maxY);
 
     context.fillStyle = style.labelBackground;
     context.fillRect(x, y, labelWidth, LABEL_HEIGHT);
@@ -173,8 +184,11 @@ class MeasurementOverlayPaneView implements IPrimitivePaneView {
 
 export class MeasurementOverlayPrimitive implements ISeriesPrimitive<Time> {
   private readonly paneView = new MeasurementOverlayPaneView(this);
-  private readonly paneViewsList: readonly IPrimitivePaneView[] = [this.paneView];
-  private attachedParams: SeriesAttachedParameter<Time, SeriesType> | null = null;
+  private readonly paneViewsList: readonly IPrimitivePaneView[] = [
+    this.paneView,
+  ];
+  private attachedParams: SeriesAttachedParameter<Time, SeriesType> | null =
+    null;
   private model: ChartMeasurementOverlayModel | null;
 
   constructor(model: ChartMeasurementOverlayModel | null = null) {
@@ -190,7 +204,10 @@ export class MeasurementOverlayPrimitive implements ISeriesPrimitive<Time> {
     return this.model ? this.paneViewsList : EMPTY_PANE_VIEWS;
   }
 
-  autoscaleInfo(_startTimePoint: Logical, _endTimePoint: Logical): AutoscaleInfo | null {
+  autoscaleInfo(
+    _startTimePoint: Logical,
+    _endTimePoint: Logical,
+  ): AutoscaleInfo | null {
     return null;
   }
 
