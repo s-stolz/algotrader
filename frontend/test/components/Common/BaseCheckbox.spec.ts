@@ -41,7 +41,7 @@ describe('BaseCheckbox', () => {
     wrapper.unmount();
   });
 
-  it('keeps native and indeterminate selection themed inside a design scope', async () => {
+  it('keeps native and indeterminate selection themed for every caller', async () => {
     const onUpdateChecked = vi.fn();
     const wrapper = mount(DesignScope, {
       slots: {

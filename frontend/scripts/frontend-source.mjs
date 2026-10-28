@@ -11,6 +11,13 @@ const sourceExtensions = new Set([
   '.css',
   '.json',
   '.html',
+  '.sh',
+]);
+const sourceNames = new Set([
+  'Dockerfile',
+  '.dockerignore',
+  '.gitignore',
+  '.prettierignore',
 ]);
 const generatedDirectories = new Set([
   'node_modules',
@@ -20,10 +27,7 @@ const generatedDirectories = new Set([
   '.vite',
   '.vite-temp',
 ]);
-const generatedFiles = new Set([
-  'package-lock.json',
-  'readability-inventory.json',
-]);
+const generatedFiles = new Set(['package-lock.json']);
 
 export function frontendSourceFiles(root) {
   const files = [];
@@ -35,7 +39,8 @@ export function frontendSourceFiles(root) {
         visit(absolute);
       } else if (
         entry.isFile() &&
-        sourceExtensions.has(path.extname(entry.name)) &&
+        (sourceExtensions.has(path.extname(entry.name)) ||
+          sourceNames.has(entry.name)) &&
         !generatedFiles.has(relative)
       ) {
         files.push(relative);

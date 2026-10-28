@@ -1,94 +1,92 @@
 <template>
-  <DesignScope>
-    <main class="workspace">
-      <header
-        v-if="page === 'analysis'"
-        class="workspace-header"
+  <main class="workspace">
+    <header
+      v-if="page === 'analysis'"
+      class="workspace-header"
+    >
+      <nav
+        class="analysis-breadcrumb"
+        aria-label="Backtest location"
       >
-        <nav
-          class="analysis-breadcrumb"
-          aria-label="Backtest location"
-        >
-          <n-button
-            text
-            class="history-return"
-            data-testid="workspace-history-return"
-            @click="backToHistory"
-          >
-            <template #icon><n-icon :component="ArrowBackOutline" /></template
-            >All backtests
-          </n-button>
-        </nav>
         <n-button
-          type="primary"
-          class="workspace-create"
-          data-testid="workspace-create"
-          @click="creationOpen = true"
+          text
+          class="history-return"
+          data-testid="workspace-history-return"
+          @click="backToHistory"
         >
-          <template #icon><n-icon :component="AddOutline" /></template>Create
-          Backtest
+          <template #icon><n-icon :component="ArrowBackOutline" /></template>All
+          backtests
         </n-button>
-      </header>
-
-      <BacktestCreationDrawer
-        v-model:show="creationOpen"
-        @submitted="createdRun"
-        @submitted-batch="createdBatch"
-      />
-
-      <BacktestQueueHealth ref="queueHealth" />
-      <p
-        v-if="readError"
-        role="alert"
+      </nav>
+      <n-button
+        type="primary"
+        class="workspace-create"
+        data-testid="workspace-create"
+        @click="creationOpen = true"
       >
-        Run history unavailable; current lifecycle status is unknown.
-        {{ readError }}
-        <n-button
-          data-testid="workspace-refresh"
-          size="small"
-          quaternary
-          :loading="isRefreshing"
-          @click="refreshWorkspace"
-        >
-          <template #icon><n-icon :component="RefreshOutline" /></template>Retry
-          now
-        </n-button>
-      </p>
-      <p
-        v-if="deleteError"
-        role="alert"
-        >{{ deleteError }}</p
-      >
-      <p
-        v-if="selectionNotice"
-        role="status"
-        >{{ selectionNotice }}</p
-      >
-      <p
-        v-if="cancelError"
-        role="alert"
-        >{{ cancelError }}</p
-      >
+        <template #icon><n-icon :component="AddOutline" /></template>Create
+        Backtest
+      </n-button>
+    </header>
 
-      <BacktestHistory
-        v-show="page === 'history'"
-        :history="workspace.history"
-        :actions="workspace.historyActions"
-        :can-create="page === 'history'"
-      />
+    <BacktestCreationDrawer
+      v-model:show="creationOpen"
+      @submitted="createdRun"
+      @submitted-batch="createdBatch"
+    />
 
-      <BacktestInspection
-        :workspace="workspace"
-        :comparison="comparison"
-      />
-      <ExecutionLogDrawer
-        v-if="logRun"
-        :run="logRun"
-        :show="logRun !== null"
-        @close="logRun = null"
-      />
-    </main>
-  </DesignScope>
+    <BacktestQueueHealth ref="queueHealth" />
+    <p
+      v-if="readError"
+      role="alert"
+    >
+      Run history unavailable; current lifecycle status is unknown.
+      {{ readError }}
+      <n-button
+        data-testid="workspace-refresh"
+        size="small"
+        quaternary
+        :loading="isRefreshing"
+        @click="refreshWorkspace"
+      >
+        <template #icon><n-icon :component="RefreshOutline" /></template>Retry
+        now
+      </n-button>
+    </p>
+    <p
+      v-if="deleteError"
+      role="alert"
+      >{{ deleteError }}</p
+    >
+    <p
+      v-if="selectionNotice"
+      role="status"
+      >{{ selectionNotice }}</p
+    >
+    <p
+      v-if="cancelError"
+      role="alert"
+      >{{ cancelError }}</p
+    >
+
+    <BacktestHistory
+      v-show="page === 'history'"
+      :history="workspace.history"
+      :actions="workspace.historyActions"
+      :can-create="page === 'history'"
+    />
+
+    <BacktestInspection
+      :workspace="workspace"
+      :comparison="comparison"
+    />
+    <ExecutionLogDrawer
+      v-if="logRun"
+      :run="logRun"
+      :show="logRun !== null"
+      @close="logRun = null"
+    />
+  </main>
 </template>
 
 <script setup lang="ts">
@@ -98,7 +96,6 @@ import {
   AddOutline,
   RefreshOutline,
 } from '@vicons/ionicons5';
-import DesignScope from '@/components/Common/DesignScope.vue';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';

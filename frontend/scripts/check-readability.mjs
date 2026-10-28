@@ -4,7 +4,7 @@ import { frontendSourceFiles } from './frontend-source.mjs';
 import {
   limits,
   measureSource,
-  migrationFailures,
+  readabilityFailures,
 } from './source-readability.mjs';
 
 const root = process.cwd();
@@ -23,13 +23,7 @@ const violations = Object.fromEntries(
 if (process.argv.includes('--inventory')) {
   console.log(JSON.stringify(violations, null, 2));
 } else {
-  const strict = process.argv.includes('--strict');
-  const inventory = strict
-    ? { files: {} }
-    : JSON.parse(
-        fs.readFileSync(path.join(root, 'readability-inventory.json'), 'utf8'),
-      );
-  const failures = migrationFailures(measurements, inventory);
+  const failures = readabilityFailures(measurements);
   if (failures.length) {
     console.error(`Frontend readability check failed:\n${failures.join('\n')}`);
     process.exitCode = 1;
@@ -37,9 +31,5 @@ if (process.argv.includes('--inventory')) {
     console.log(
       `Frontend readability passed for ${Object.keys(measurements).length} files.`,
     );
-    if (!strict)
-      console.log(
-        `Migration debt remains in ${Object.keys(violations).length} files.`,
-      );
   }
 }

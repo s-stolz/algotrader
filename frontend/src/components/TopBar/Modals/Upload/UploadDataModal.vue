@@ -1,75 +1,72 @@
 <template>
-  <DesignScope>
-    <BaseModal
-      ref="baseModal"
-      :modalId="'uploadData'"
-      :title="`Upload Data for ${market.symbol}`"
-    >
-      <div class="upload-content">
-        <n-alert
-          v-if="uploadError"
-          type="error"
-          class="upload-feedback"
-          role="alert"
+  <BaseModal
+    ref="baseModal"
+    :modalId="'uploadData'"
+    :title="`Upload Data for ${market.symbol}`"
+  >
+    <div class="upload-content">
+      <n-alert
+        v-if="uploadError"
+        type="error"
+        class="upload-feedback"
+        role="alert"
+      >
+        {{ uploadError }}
+      </n-alert>
+      <n-tabs
+        default-value="upload"
+        type="line"
+        :tabs-padding="Number.parseInt(designTokens.space.lg)"
+      >
+        <n-tab-pane
+          name="upload"
+          tab="Upload & Options"
         >
-          {{ uploadError }}
-        </n-alert>
-        <n-tabs
-          default-value="upload"
-          type="line"
-          :tabs-padding="Number.parseInt(designTokens.space.lg)"
-        >
-          <n-tab-pane
-            name="upload"
-            tab="Upload & Options"
-          >
-            <UploadDataSection
-              :file-list="fileList"
-              @file-change="handleFileChange"
-              @file-remove="handleFileRemove"
-              class="upload-data-section"
-            />
-          </n-tab-pane>
+          <UploadDataSection
+            :file-list="fileList"
+            @file-change="handleFileChange"
+            @file-remove="handleFileRemove"
+            class="upload-data-section"
+          />
+        </n-tab-pane>
 
-          <n-tab-pane
-            name="preview"
-            tab="Preview & Mapping"
-            :disabled="fileList.length === 0"
-          >
-            <UploadDataPreview
-              :header-line="headerLine"
-              v-model:column-mapping="columnMapping"
-              class="upload-data-preview"
-            />
-          </n-tab-pane>
-        </n-tabs>
+        <n-tab-pane
+          name="preview"
+          tab="Preview & Mapping"
+          :disabled="fileList.length === 0"
+        >
+          <UploadDataPreview
+            :header-line="headerLine"
+            v-model:column-mapping="columnMapping"
+            class="upload-data-preview"
+          />
+        </n-tab-pane>
+      </n-tabs>
+    </div>
+
+    <template #footer>
+      <div class="modal-actions">
+        <n-button
+          @click="closeModal"
+          class="button-cancel"
+          >Cancel</n-button
+        >
+        <n-button
+          type="primary"
+          @click="uploadData"
+          :loading="isUploading"
+          :disabled="!canUpload"
+          class="button-upload"
+        >
+          Upload Data
+        </n-button>
       </div>
-
-      <template #footer>
-        <div class="modal-actions">
-          <n-button
-            @click="closeModal"
-            class="button-cancel"
-            >Cancel</n-button
-          >
-          <n-button
-            type="primary"
-            @click="uploadData"
-            :loading="isUploading"
-            :disabled="!canUpload"
-            class="button-upload"
-          >
-            Upload Data
-          </n-button>
-        </div>
-      </template>
-    </BaseModal>
-  </DesignScope>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { designTokens } from '@/design/tokens';
-import DesignScope from '@/components/Common/DesignScope.vue';
 import { computed, ref } from 'vue';
 import {
   NAlert,

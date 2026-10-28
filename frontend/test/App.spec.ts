@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, onMounted } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
+import { NAlert } from 'naive-ui';
+import { designTokens } from '@/design/tokens';
 import { describe, expect, it, vi } from 'vitest';
 
 import App from '@/App.vue';
@@ -40,7 +42,10 @@ describe('App', () => {
     const chart = defineComponent({
       setup() {
         onMounted(chartMounted);
-        return () => h('div', { 'data-testid': 'chart-route' }, 'Chart');
+        return () =>
+          h('div', { 'data-testid': 'chart-route' }, [
+            h(NAlert, { type: 'error' }, () => 'Upload failed'),
+          ]);
       },
     });
     const workspace = defineComponent({
@@ -62,11 +67,18 @@ describe('App', () => {
     const wrapper = mount(App, {
       global: {
         plugins: [router],
-        stubs: { 'n-config-provider': { template: '<div><slot /></div>' } },
       },
     });
     await flushPromises();
     expect(wrapper.find('[data-testid="chart-route"]').exists()).toBe(true);
+
+    const alert = wrapper.get('[role="alert"]').element as HTMLElement;
+    expect(alert.style.getPropertyValue('--n-icon-color')).toBe(
+      designTokens.color.error,
+    );
+    expect(wrapper.get('.design-scope').attributes('style')).toContain(
+      '--design-font-ui: Tektur, sans-serif',
+    );
 
     await wrapper.get('a[aria-label="Open Backtests"]').trigger('click');
     await flushPromises();

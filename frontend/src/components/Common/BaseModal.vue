@@ -2,7 +2,6 @@
   <div
     v-if="isModalOpen"
     class="modal-backdrop"
-    :class="{ 'modal-backdrop--design': usesDesign }"
     @mousedown="onMouseDown"
     @mouseup="onMouseUp"
   >
@@ -15,7 +14,7 @@
           <h2 class="title">{{ title }}</h2>
           <n-button
             text
-            :circle="usesDesign"
+            circle
             aria-label="Close dialog"
             class="close-button"
             @click="close"
@@ -45,7 +44,6 @@ import { computed, ref } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
 
 import { CloseCircleOutline } from '@/icons';
-import { useDesignScope } from '@/design/scope';
 import { useModalStore } from '@/stores/modalStore';
 
 defineOptions({
@@ -64,7 +62,6 @@ const props = withDefaults(
   },
 );
 
-const usesDesign = useDesignScope();
 const modalStore = useModalStore();
 const isMouseDownInside = ref(false);
 const isModalOpen = computed(() => modalStore.isModalOpen(props.modalId));
@@ -94,122 +91,74 @@ defineExpose({ close });
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--design-color-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
-}
-
-.modal {
-  position: relative;
-  background: var(--surface-panel);
-  border-radius: 15px;
-  border: 1px solid var(--surface-border);
-  max-width: 550px;
-  width: 100%;
-  padding: 0;
-  overflow: hidden;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.modal-header {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal-header .title {
-  margin: 0;
-  padding-top: 10px;
-  padding-left: 15px;
-}
-
-.modal .separator {
-  border: none;
-  height: 1px;
-  background-color: var(--surface-border);
-  margin: 0;
-}
-
-.modal :deep(.separator) {
-  background-color: var(--surface-border);
-}
-
-.modal-footer {
-  padding: 10px 15px;
-  text-align: right;
-}
-
-.modal-body {
-  overflow-y: auto;
-  box-sizing: border-box;
-}
-
-.close-button {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-}
-
-.close-button:hover {
-  color: #e98b8b;
-}
-
-.modal-backdrop--design {
-  background: var(--design-color-backdrop);
   box-sizing: border-box;
   padding: var(--design-space-sm);
   font-family: var(--design-font-ui);
   font-size: var(--design-text-body);
   color: var(--design-color-body);
 }
-
-.modal-backdrop--design .modal {
+.modal {
+  position: relative;
   display: flex;
   flex-direction: column;
-  max-height: 100%;
   background: var(--design-color-panel);
-  border-color: var(--design-color-border);
   border-radius: var(--design-radius-panel);
+  border: 1px solid var(--design-color-border);
+  max-width: 550px;
+  max-height: 100%;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
   box-shadow: var(--design-shadow-overlay);
 }
-
-.modal-backdrop--design .modal-header,
-.modal-backdrop--design .modal-footer {
-  flex-shrink: 0;
-}
-
-.modal-backdrop--design .modal-header {
+.modal-header {
+  display: flex;
+  flex-direction: column;
   gap: var(--design-space-sm);
 }
-
-.modal-backdrop--design .title {
+.modal-header,
+.modal-footer {
+  flex-shrink: 0;
+}
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.title {
+  margin: 0;
   padding: var(--design-space-md) var(--design-space-lg);
   padding-right: calc(var(--design-control-medium) + var(--design-space-lg));
   font-size: var(--design-text-heading);
 }
-
-.modal-backdrop--design .modal-footer {
+.modal .separator {
+  border: none;
+  height: 1px;
+  background-color: var(--design-color-border);
+  margin: 0;
+}
+.modal :deep(.separator) {
+  background-color: var(--design-color-border);
+}
+.modal-footer {
   padding: var(--design-space-md) var(--design-space-lg);
+  text-align: right;
 }
-
-.modal-backdrop--design .separator {
-  background: var(--design-color-border);
+.modal-body {
+  overflow-y: auto;
+  box-sizing: border-box;
 }
-
-.modal-backdrop--design .close-button {
+.close-button {
+  position: absolute;
   top: var(--design-space-sm);
   right: var(--design-space-sm);
 }
-
-.modal-backdrop--design .close-button:hover {
+.close-button:hover {
   color: var(--design-color-error);
 }
 </style>

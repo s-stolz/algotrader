@@ -1,39 +1,36 @@
 # Frontend readability and preservation
 
-`npm run format` formats handwritten frontend code. `npm run format:check`
-rejects unformatted equivalents, including compressed CSS and Vue attributes.
-The formatter configuration owns layout settings; ESLint owns semantic checks.
-`scripts/frontend-source.mjs` owns the shared source inventory for formatting and
-readability. It includes application code, tests, nested scripts, and handwritten
-configuration. Dependency/build/coverage directories and generated lock/inventory
-files are excluded; ordinary nested source directories are included.
+`npm run format` formats Prettier-supported handwritten frontend code.
+`npm run format:check` rejects unformatted equivalents, including compressed CSS
+and Vue attributes. The formatter configuration owns layout settings; ESLint owns
+semantic checks. `scripts/frontend-source.mjs` owns the complete source inventory
+for hard limits: application code, tests, nested scripts, handwritten
+configuration, the deployment entrypoint, Dockerfile, and ignore configuration.
+Dependency/build/coverage directories, generated lockfiles, and binary assets
+are excluded; ordinary nested source directories are included.
 
-## Migration checks
+Prettier's bundled parsers cover Vue, TypeScript/JavaScript, CSS, JSON, and HTML.
+Shell, Dockerfile, and ignore syntax have no bundled parser: the formatter leaves
+those inputs intact, and the complete hard-limit check still measures them.
+Preserve readable shell/configuration layout and check shell syntax with `sh -n`
+when changing the entrypoint. No deployment input is exempt from hard limits.
 
-`npm run check:readability:strict` applies the hard limits to the entire source
-inventory. `scripts/source-readability.mjs` owns the limits and comment counting.
-All Vue blocks, standalone CSS, scripts, and tests count. Only blank lines and
-actual comment-only lines are excluded from file size. Width still includes
-comments. Width exceptions cover standalone indivisible URL, regex, and unspaced
-literal content; an ordinary string or attribute does not exempt surrounding
-code. Wrap compressible code around an indivisible token before relying on an
-exception.
+## Mandatory checks
 
-During spec #17, `npm run check:readability` also reads the explicit generated
-`readability-inventory.json`. Each remaining file belongs to an approved ticket.
-The gate rejects new debt files, increased oversized-file counts, changed or
-additional over-width lines, and resolved entries left in the inventory. Existing
-width allowances match exact line contents and occurrence counts, so adding an
-ordinary string or duplicating a violation cannot bypass the gate. Shrinking an
-oversized file is permitted. Remove its inventory entry once all violations are
-resolved. Do not regenerate the inventory to accept new debt.
+`npm run check:readability` applies the hard limits to the entire source inventory.
+`scripts/source-readability.mjs` owns the limits and comment counting. All Vue
+blocks, standalone CSS, scripts, configuration, and tests count. Only blank lines
+and actual comment-only lines are excluded from file size; quoted text and
+heredoc content still count. Width still includes comments. Width exceptions
+cover standalone indivisible URL, regex, and unspaced literal content; an ordinary
+string or attribute does not exempt surrounding code. Wrap compressible code
+around an indivisible token before relying on an exception.
 
-`npm run check:readability:inventory` prints every current violation, including
-line numbers and measured size. This is a reporting command, not a passing gate.
-Ticket #30 removes staging and makes the complete strict check the normal gate.
-No permanent legacy exemptions are part of this migration. `make test frontend`
-already requires formatting, staged readability, tooling fixtures, lint, types,
-test layout, unit tests, and a production build.
+The normal gate has no migration inventory, file allowances, or higher test limit.
+`npm run check:readability:inventory` reports any current violations with line
+numbers and measured size; it is a diagnostic command, not a passing gate.
+`make test frontend` requires formatting, complete readability, tooling fixtures,
+lint, types, test layout, unit tests, and a production build.
 
 ## Behavior-specific test suites
 
@@ -49,9 +46,9 @@ and state ownership when splitting suites; describe behavior rather than numbere
 chunks.
 
 Run `npm run test:tooling` for fixtures covering discovery, formatting, strict
-limits, migration debt, and valid/invalid test ownership.
+limits, deployment inputs, and valid/invalid test ownership.
 
-## Workspace extraction checkpoint
+## Feature organization and preservation
 
 The kept-alive `BacktestWorkspaceView.vue` creates the coordinator in
 `src/views/workspace/useBacktestWorkspace.ts` once. It owns navigation,
@@ -72,7 +69,7 @@ Batch inspection keeps a single model created by `BacktestBatches.vue`.
 It owns detail generations, polling cleanup, command retry identities, and name
 acknowledgements; progress and saved-definition/activity sections only render it.
 The batch tests retain their exact-name suite plus command and progress behavior
-groups with shared fixtures. All #23 readability inventory entries are retired.
+groups with shared fixtures. The complete hard-limit gate covers these source owners and their suites.
 
 The Workspace suites now use descriptive behavior suffixes with a shared fixture.
 The lifecycle suite mounts the real Workspace inside KeepAlive and checks filters,

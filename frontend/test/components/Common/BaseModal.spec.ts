@@ -91,7 +91,7 @@ describe('BaseModal', () => {
     expect(wrapper.findAll('.separator')).toHaveLength(1);
   });
 
-  it('preserves backdrop press handling inside the migrated scope', async () => {
+  it('preserves backdrop press handling inside the shared provider', async () => {
     const modalStore = useModalStore();
     modalStore.openModal('symbolSearch');
     const wrapper = mount(DesignScope, {
@@ -107,9 +107,6 @@ describe('BaseModal', () => {
           ),
       },
     });
-    expect(wrapper.get('.modal-backdrop').classes()).toContain(
-      'modal-backdrop--design',
-    );
     const backdrop = wrapper.get('.modal-backdrop');
     await wrapper.get('.modal').trigger('mousedown');
     await backdrop.trigger('mouseup');

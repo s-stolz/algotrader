@@ -1,24 +1,7 @@
 <script setup lang="ts">
-import { NCheckbox, type CheckboxProps } from 'naive-ui';
-import { useDesignScope } from '@/design/scope';
+import { NCheckbox } from 'naive-ui';
 import { designCheckboxTheme } from '@/design/creationControls';
-const migrated = useDesignScope();
 
-const themeOverrides: NonNullable<CheckboxProps['themeOverrides']> = {
-  color: '#171e27',
-  colorChecked: '#63d2b0',
-  colorDisabled: '#202833',
-  colorDisabledChecked: '#202833',
-  checkMarkColor: '#10231d',
-  border: '1px solid #8190a0',
-  borderChecked: '1px solid #63d2b0',
-  borderFocus: '1px solid #63d2b0',
-  borderDisabled: '1px solid #35414d',
-  borderDisabledChecked: '1px solid #35414d',
-  borderRadius: '4px',
-  textColor: '#dce4ed',
-  textColorDisabled: '#8190a0',
-};
 defineOptions({ inheritAttrs: false });
 withDefaults(
   defineProps<{
@@ -43,11 +26,10 @@ function updateChecked(event: Event): void {
     v-if="indeterminate !== undefined"
     v-bind="$attrs"
     class="base-checkbox"
-    :class="{ 'base-checkbox-design': migrated }"
     :checked="checked"
     :disabled="disabled"
     :indeterminate="indeterminate"
-    :theme-overrides="migrated ? designCheckboxTheme : themeOverrides"
+    :theme-overrides="designCheckboxTheme"
     @update:checked="emit('update:checked', $event)"
     ><slot
   /></n-checkbox>
@@ -57,7 +39,6 @@ function updateChecked(event: Event): void {
     class="base-checkbox"
     :class="{
       'base-checkbox-disabled': disabled,
-      'base-checkbox-design': migrated,
     }"
   >
     <input
@@ -81,21 +62,16 @@ function updateChecked(event: Event): void {
 .base-checkbox {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--design-space-sm);
   vertical-align: middle;
-  color: #dce4ed;
+  color: var(--design-color-body);
   cursor: pointer;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
-  font-size: 14px;
+  font-family: var(--design-font-ui);
+  font-size: var(--design-text-body);
   line-height: 1.5;
 }
 .base-checkbox-disabled {
-  color: #8190a0;
+  color: var(--design-color-disabled-text);
   cursor: not-allowed;
 }
 .base-checkbox-label {
@@ -111,75 +87,34 @@ function updateChecked(event: Event): void {
   height: 16px;
   margin: 0;
   vertical-align: middle;
-  border: 1px solid #8190a0;
-  border-radius: 4px;
-  background: #171e27;
+  border: 1px solid var(--design-color-control-border);
+  border-radius: var(--design-space-xs);
+  background: var(--design-color-inset);
   cursor: pointer;
 }
 .base-checkbox-input:not(:disabled):hover {
-  border-color: #63d2b0;
+  border-color: var(--design-color-interactive);
 }
 .base-checkbox-input:checked {
-  background: #63d2b0;
-  border-color: #63d2b0;
+  background: var(--design-color-interactive);
+  border-color: var(--design-color-interactive);
 }
 .base-checkbox-input:checked::after {
   content: '';
   width: 4px;
   height: 8px;
   margin-top: -2px;
-  border: solid #10231d;
+  border: solid var(--design-color-on-interactive);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 .base-checkbox-input:disabled {
-  background: #202833;
-  border-color: #35414d;
-  cursor: not-allowed;
-}
-.base-checkbox:deep(.n-checkbox-box) {
-  width: 16px;
-  height: 16px;
-}
-.base-checkbox:deep(.n-checkbox-box--focus) {
-  outline: 2px solid #63d2b0;
-  outline-offset: 3px;
-}
-.base-checkbox-input:focus-visible {
-  outline: 2px solid #63d2b0;
-  outline-offset: 3px;
-}
-
-.base-checkbox-design {
-  gap: var(--design-space-sm);
-  font-family: var(--design-font-ui);
-  font-size: var(--design-text-body);
-  color: var(--design-color-body);
-}
-.base-checkbox-design.base-checkbox-disabled {
-  color: var(--design-color-disabled-text);
-}
-.base-checkbox-design .base-checkbox-input {
-  border-color: var(--design-color-control-border);
-  border-radius: var(--design-space-xs);
-  background: var(--design-color-inset);
-}
-.base-checkbox-design .base-checkbox-input:not(:disabled):hover,
-.base-checkbox-design .base-checkbox-input:checked {
-  border-color: var(--design-color-interactive);
-}
-.base-checkbox-design .base-checkbox-input:checked {
-  background: var(--design-color-interactive);
-}
-.base-checkbox-design .base-checkbox-input:checked::after {
-  border-color: var(--design-color-on-interactive);
-}
-.base-checkbox-design .base-checkbox-input:disabled {
   background: var(--design-color-disabled);
   border-color: var(--design-color-disabled-border);
+  cursor: not-allowed;
 }
-.base-checkbox-design .base-checkbox-input:focus-visible,
-.base-checkbox-design:deep(.n-checkbox-box--focus) {
-  outline-color: var(--design-color-interactive);
+.base-checkbox-input:focus-visible {
+  outline: 2px solid var(--design-color-interactive);
+  outline-offset: 3px;
 }
 </style>

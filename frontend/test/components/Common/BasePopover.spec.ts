@@ -45,20 +45,23 @@ describe('BasePopover', () => {
     wrapper.unmount();
   });
 
-  it('keeps legacy overlays separate from an explicitly migrated overlay', async () => {
-    const legacy = mount(BasePopover, {
+  it('themes overlays equally with and without a surrounding provider', async () => {
+    const standalone = mount(BasePopover, {
       props: { show: true },
-      slots: { trigger: '<button>Legacy</button>', default: 'Legacy content' },
+      slots: {
+        trigger: '<button>Standalone</button>',
+        default: 'Standalone content',
+      },
     });
-    const migrated = mount(DesignScope, {
+    const scoped = mount(DesignScope, {
       slots: {
         default: () =>
           h(
             BasePopover,
             { show: true },
             {
-              trigger: () => h('button', 'Migrated'),
-              default: () => 'Migrated content',
+              trigger: () => h('button', 'Scoped'),
+              default: () => 'Scoped content',
             },
           ),
       },
@@ -68,31 +71,28 @@ describe('BasePopover', () => {
       const overlays = Array.from(
         document.querySelectorAll<HTMLElement>('.base-popover'),
       );
-      const legacyOverlay = overlays.find((entry) =>
-        entry.textContent?.includes('Legacy content'),
+      const standaloneOverlay = overlays.find((entry) =>
+        entry.textContent?.includes('Standalone content'),
       );
-      const migratedOverlay = overlays.find((entry) =>
-        entry.textContent?.includes('Migrated content'),
+      const scopedOverlay = overlays.find((entry) =>
+        entry.textContent?.includes('Scoped content'),
       );
-      expect(legacyOverlay?.classList.contains('base-popover--design')).toBe(
-        false,
-      );
-      expect(legacyOverlay?.style.getPropertyValue('--design-font-ui')).toBe(
-        '',
-      );
-      expect(migratedOverlay?.style.getPropertyValue('--design-font-ui')).toBe(
+      expect(
+        standaloneOverlay?.style.getPropertyValue('--design-font-ui'),
+      ).toBe('Tektur, sans-serif');
+      expect(scopedOverlay?.style.getPropertyValue('--design-font-ui')).toBe(
         'Tektur, sans-serif',
       );
       expect(
-        migrated.getComponent(NPopover).props('themeOverrides'),
+        scoped.getComponent(NPopover).props('themeOverrides'),
       ).toMatchObject({
         color: '#131722',
         textColor: '#dce4ed',
         fontSize: '13px',
       });
     } finally {
-      migrated.unmount();
-      legacy.unmount();
+      scoped.unmount();
+      standalone.unmount();
     }
   });
 });

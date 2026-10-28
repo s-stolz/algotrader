@@ -14,7 +14,6 @@
     "format": "node scripts/format.mjs",
     "format:check": "node scripts/format.mjs --check",
     "check:readability": "node scripts/check-readability.mjs",
-    "check:readability:strict": "node scripts/check-readability.mjs --strict",
     "check:readability:inventory": "node scripts/check-readability.mjs --inventory",
     "test:tooling": "node --test scripts/*.test.mjs"
   },

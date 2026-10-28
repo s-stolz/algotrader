@@ -1,4 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { h } from 'vue';
+import DesignScope from '@/components/Common/DesignScope.vue';
 
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
 
@@ -162,7 +164,8 @@ export function batch(id: string, members: number): BacktestBatch {
 }
 
 export function mountWorkspace(includeBatchDetail = false) {
-  return mount(BacktestWorkspaceView, {
+  return mount(DesignScope, {
+    slots: { default: () => h(BacktestWorkspaceView) },
     global: {
       plugins: [pinia],
       stubs: { EquityReplayCharts: true, BacktestBatches: !includeBatchDetail },

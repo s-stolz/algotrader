@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
-import DesignScope from '@/components/Common/DesignScope.vue';
 
 const backtestIconPath = [
   'M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1.2 2h13.6',
@@ -27,54 +26,53 @@ watch(
 
 <template>
   <div class="workspace-navigation">
-    <DesignScope>
-      <RouterLink
-        :key="destination"
-        :to="destination"
-        :aria-label="destinationLabel"
-        aria-controls="workspace-screen"
-        class="workspace-edge-link"
-        :class="
-          isChart ? 'workspace-edge-link--right' : 'workspace-edge-link--left'
-        "
+    <RouterLink
+      :key="destination"
+      :to="destination"
+      :aria-label="destinationLabel"
+      aria-controls="workspace-screen"
+      class="workspace-edge-link"
+      :class="
+        isChart ? 'workspace-edge-link--right' : 'workspace-edge-link--left'
+      "
+    >
+      <span
+        class="workspace-edge-face"
+        aria-hidden="true"
       >
-        <span
-          class="workspace-edge-face"
-          aria-hidden="true"
+        <svg
+          class="destination-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
         >
-          <svg
-            class="destination-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path
-              v-if="isChart"
-              :d="backtestIconPath"
-            />
-            <path
-              v-else
-              d="M3 3v18h18M7 15l4-5 4 3 6-8"
-            />
-          </svg>
-          <span class="icon-divider" />
-          <svg
-            class="direction-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="m9 6 6 6-6 6" />
-          </svg>
-        </span>
-      </RouterLink>
-    </DesignScope>
+          <path
+            v-if="isChart"
+            :d="backtestIconPath"
+          />
+          <path
+            v-else
+            d="M3 3v18h18M7 15l4-5 4 3 6-8"
+          />
+        </svg>
+        <span class="icon-divider" />
+        <svg
+          class="direction-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m9 6 6 6-6 6" />
+        </svg>
+      </span>
+    </RouterLink>
+
     <section
       id="workspace-screen"
       ref="screen"
@@ -94,7 +92,7 @@ watch(
 .workspace-navigation {
   position: fixed;
   inset: 0;
-  padding: 10px;
+  padding: var(--design-space-md);
   box-sizing: border-box;
   overflow: hidden;
   color-scheme: dark;

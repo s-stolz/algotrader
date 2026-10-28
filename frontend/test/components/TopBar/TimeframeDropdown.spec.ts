@@ -20,7 +20,7 @@ describe('TimeframeDropdown', () => {
     setActivePinia(createPinia());
   });
 
-  it('keeps the picker synchronized with chart timeframe state and persists a chosen timeframe', async () => {
+  it('synchronizes and persists the chosen chart timeframe', async () => {
     const store = useCurrentTimeframeStore();
     store.setCurrentTimeframe({ label: 'H4', value: 'H4' });
     const wrapper = mount(TimeframeDropdown, {
@@ -51,7 +51,6 @@ describe('TimeframeDropdown', () => {
     await flushPromises();
     const popup = document.querySelector('.base-popover') as HTMLElement;
     expect(popup).not.toBeNull();
-    expect(popup.classList.contains('base-popover--design')).toBe(true);
     expect(popup.style.getPropertyValue('--design-font-ui')).toBe(
       'Tektur, sans-serif',
     );

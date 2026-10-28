@@ -1,76 +1,73 @@
 <template>
-  <DesignScope>
-    <div id="chart-wrapper">
-      <div
-        ref="chartContainer"
-        id="lightweight-chart"
-        class="chart-container"
-        :class="{
-          'chart-container--measure-mode': interactionMode === 'measure',
-        }"
-      />
+  <div id="chart-wrapper">
+    <div
+      ref="chartContainer"
+      id="lightweight-chart"
+      class="chart-container"
+      :class="{
+        'chart-container--measure-mode': interactionMode === 'measure',
+      }"
+    />
 
-      <Teleport
-        v-if="backtestOverlayStore.selectedRun && backtestOverlayTarget"
-        :to="backtestOverlayTarget"
-      >
-        <div class="backtest-overlay-container">
-          <div class="backtest-overlay-panel">
-            <div class="backtest-overlay-details">
-              <span class="backtest-overlay-title">{{
-                activeBacktestRunTitle
-              }}</span>
-              <span class="backtest-overlay-context">{{
-                activeBacktestRunContext
-              }}</span>
-            </div>
-            <n-button
-              text
-              circle
-              class="backtest-overlay-remove"
-              data-testid="remove-backtest-overlay"
-              aria-label="Remove Backtest Run overlay"
-              @click="removeBacktestOverlay"
-            >
-              <n-icon size="20">
-                <CloseCircleOutline />
-              </n-icon>
-            </n-button>
+    <Teleport
+      v-if="backtestOverlayStore.selectedRun && backtestOverlayTarget"
+      :to="backtestOverlayTarget"
+    >
+      <div class="backtest-overlay-container">
+        <div class="backtest-overlay-panel">
+          <div class="backtest-overlay-details">
+            <span class="backtest-overlay-title">{{
+              activeBacktestRunTitle
+            }}</span>
+            <span class="backtest-overlay-context">{{
+              activeBacktestRunContext
+            }}</span>
           </div>
-          <div class="backtest-marker-legend"
-            >↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div
+          <n-button
+            text
+            circle
+            class="backtest-overlay-remove"
+            data-testid="remove-backtest-overlay"
+            aria-label="Remove Backtest Run overlay"
+            @click="removeBacktestOverlay"
           >
-          <div
-            v-if="hoveredBacktestMarker"
-            class="backtest-marker-details"
-            role="tooltip"
-          >
-            {{ hoveredBacktestMarker }}
-          </div>
+            <n-icon size="20">
+              <CloseCircleOutline />
+            </n-icon>
+          </n-button>
         </div>
-      </Teleport>
-
-      <span class="legend">
-        <span class="legend-value">O: <span ref="legendOpen">-</span></span>
-        <span class="legend-value">H: <span ref="legendHigh">-</span></span>
-        <span class="legend-value">L: <span ref="legendLow">-</span></span>
-        <span class="legend-value">C: <span ref="legendClose">-</span></span>
-      </span>
-
-      <div v-if="chartReady">
-        <indicator
-          v-for="indicator in getAllIndicators()"
-          :key="indicator._id"
-          :indicator="indicator"
-          :indicator-manager="indicatorManager"
-        />
+        <div class="backtest-marker-legend"
+          >↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div
+        >
+        <div
+          v-if="hoveredBacktestMarker"
+          class="backtest-marker-details"
+          role="tooltip"
+        >
+          {{ hoveredBacktestMarker }}
+        </div>
       </div>
+    </Teleport>
+
+    <span class="legend">
+      <span class="legend-value">O: <span ref="legendOpen">-</span></span>
+      <span class="legend-value">H: <span ref="legendHigh">-</span></span>
+      <span class="legend-value">L: <span ref="legendLow">-</span></span>
+      <span class="legend-value">C: <span ref="legendClose">-</span></span>
+    </span>
+
+    <div v-if="chartReady">
+      <indicator
+        v-for="indicator in getAllIndicators()"
+        :key="indicator._id"
+        :indicator="indicator"
+        :indicator-manager="indicatorManager"
+      />
     </div>
-  </DesignScope>
+  </div>
 </template>
 
 <script lang="ts">
-import DesignScope from '@/components/Common/DesignScope.vue';
 import {
   computed,
   defineComponent,
@@ -103,7 +100,7 @@ import { CloseCircleOutline } from '@/icons';
 
 export default defineComponent({
   name: 'ChartArea',
-  components: { CloseCircleOutline, DesignScope, Indicator, NButton, NIcon },
+  components: { CloseCircleOutline, Indicator, NButton, NIcon },
   props: {
     interactionMode: {
       type: String as PropType<ChartInteractionMode>,

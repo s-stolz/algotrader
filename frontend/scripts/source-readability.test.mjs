@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import * as prettier from 'prettier';
 import { frontendSourceFiles } from './frontend-source.mjs';
-import { measureSource, migrationFailures } from './source-readability.mjs';
+import { measureSource, readabilityFailures } from './source-readability.mjs';
 
 function fixture(t, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-readability-'));
@@ -44,6 +44,26 @@ test('counts code while excluding only blank and actual comment-only lines', () 
   assert.equal(measureSource(vue, 'example.vue').countedLines, 9);
 });
 
+test('counts deployment code and quoted/heredoc content, excluding hash comments', () => {
+  const shell = [
+    '#!/bin/sh',
+    '# comment',
+    "printf '%s' 'first",
+    '# literal',
+    "last'",
+    "cat <<'DATA'",
+    '# literal',
+    'DATA',
+  ].join('\n');
+  assert.equal(measureSource(shell, 'entrypoint-frontend.sh').countedLines, 6);
+  const docker = '# comment\nFROM node:20\nRUN <<EOF\n# literal\nEOF';
+  assert.equal(measureSource(docker, 'Dockerfile').countedLines, 4);
+  assert.equal(
+    measureSource('# comment\ndist\n', '.gitignore').countedLines,
+    1,
+  );
+});
+
 test('enforces 500 counted lines for source, tests, CSS, Vue and scripts', () => {
   for (const file of [
     'src/a.ts',
@@ -51,24 +71,20 @@ test('enforces 500 counted lines for source, tests, CSS, Vue and scripts', () =>
     'scripts/a.mjs',
     'src/a.css',
     'src/a.vue',
+    'entrypoint-frontend.sh',
+    'Dockerfile',
   ]) {
     const line = file.endsWith('.css') ? '.a { color: red; }' : 'call();';
     const wrap = (text) =>
       file.endsWith('.vue') ? `<script>\n${text}</script>` : text;
     const boundary = file.endsWith('.vue') ? 498 : 500;
     const accepted = measureSource(wrap(`${line}\n`.repeat(boundary)), file);
-    assert.equal(
-      migrationFailures({ [file]: accepted }, { files: {} }).length,
-      0,
-    );
+    assert.equal(readabilityFailures({ [file]: accepted }).length, 0);
     const rejected = measureSource(
       wrap(`${line}\n`.repeat(boundary + 1)),
       file,
     );
-    assert.equal(
-      migrationFailures({ [file]: rejected }, { files: {} }).length,
-      1,
-    );
+    assert.equal(readabilityFailures({ [file]: rejected }).length, 1);
   }
 });
 
@@ -78,6 +94,8 @@ test('limits width in all Vue blocks, CSS, scripts, and test files', () => {
     ['src/a.ts', `const text = '${long}';`],
     ['test/a.spec.ts', `expect('${long}').toBeTruthy();`],
     ['scripts/a.mjs', `console.log('${long}');`],
+    ['entrypoint-frontend.sh', `printf '%s' '${long}'`],
+    ['Dockerfile', `RUN echo '${long}'`],
     ['src/a.css', `.a { content: '${long}'; }`],
     ['src/a.vue', `<template><div title="${long}" /></template>`],
     ['src/a.vue', `<script>const text = '${long}';</script>`],
@@ -108,47 +126,6 @@ test('allows only standalone indivisible content, not surrounding compressible c
     assert.equal(measureSource(source, 'a.css').width.length, 1);
 });
 
-test('rejects new, changed, duplicated or growing migration debt', () => {
-  const debt = {
-    countedLines: 600,
-    width: [{ text: 'old', line: 1, width: 101 }],
-  };
-  const inventory = {
-    files: { 'src/a.ts': { ticket: 21, countedLines: 600, width: ['old'] } },
-  };
-  assert.deepEqual(migrationFailures({ 'src/a.ts': debt }, inventory), []);
-  assert.equal(
-    migrationFailures({ 'src/a.ts': { ...debt, countedLines: 601 } }, inventory)
-      .length,
-    1,
-  );
-  assert.equal(
-    migrationFailures(
-      { 'src/a.ts': { ...debt, width: [...debt.width, ...debt.width] } },
-      inventory,
-    ).length,
-    1,
-  );
-  assert.equal(
-    migrationFailures(
-      {
-        'src/a.ts': { ...debt, width: [{ text: 'new', line: 2, width: 102 }] },
-      },
-      inventory,
-    ).length,
-    1,
-  );
-  assert.equal(
-    migrationFailures({ 'src/new.ts': debt }, { files: {} }).length,
-    2,
-  );
-  assert.equal(
-    migrationFailures({ 'src/a.ts': { countedLines: 5, width: [] } }, inventory)
-      .length,
-    1,
-  );
-});
-
 test('discovers nested source/configuration and excludes generated artifacts', (t) => {
   const root = fixture(t, {
     'src/a.vue': '',
@@ -159,15 +136,24 @@ test('discovers nested source/configuration and excludes generated artifacts', (
     'eslint.config.mjs': '',
     '.prettierrc.json': '{}',
     'tsconfig.json': '{}',
+    'entrypoint-frontend.sh': '#!/bin/sh\n',
+    Dockerfile: 'FROM node:20\n',
+    '.dockerignore': 'node_modules\n',
+    '.gitignore': 'dist\n',
+    '.prettierignore': 'dist\n',
     'node_modules/pkg/a.ts': '',
     'dist/a.js': '',
     'coverage/a.js': '',
     'src/assets/font.ttf': '',
     'package-lock.json': '{}',
-    'readability-inventory.json': '{}',
   });
   assert.deepEqual(frontendSourceFiles(root), [
+    '.dockerignore',
+    '.gitignore',
+    '.prettierignore',
     '.prettierrc.json',
+    'Dockerfile',
+    'entrypoint-frontend.sh',
     'eslint.config.mjs',
     'src/a.css',
     'src/a.vue',
@@ -178,12 +164,10 @@ test('discovers nested source/configuration and excludes generated artifacts', (
   ]);
 });
 
-test('strict CLI fails while declared migration debt remains visible', (t) => {
+test('normal CLI enforces hard limits without an inventory or exemptions', (t) => {
   const root = fixture(t, {
     'src/a.css': '.a { color: red; }\n'.repeat(501),
-    'readability-inventory.json': JSON.stringify({
-      files: { 'src/a.css': { ticket: 30, countedLines: 501, width: [] } },
-    }),
+    'test/a.spec.ts': `call('${'x'.repeat(110)}');`,
   });
   const checker = fileURLToPath(
     new URL('./check-readability.mjs', import.meta.url),
@@ -193,13 +177,17 @@ test('strict CLI fails while declared migration debt remains visible', (t) => {
       cwd: root,
       encoding: 'utf8',
     });
-  assert.equal(run().status, 0);
-  assert.equal(run('--strict').status, 1);
-  assert.match(run('--strict').stderr, /501 counted lines/);
+  const failed = run();
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /src\/a.css: 501 counted lines/);
+  assert.match(failed.stderr, /test\/a.spec.ts:1: width/);
   assert.equal(
     JSON.parse(run('--inventory').stdout)['src/a.css'].countedLines,
     501,
   );
+  fs.writeFileSync(path.join(root, 'src/a.css'), '.a { color: red; }\n');
+  fs.writeFileSync(path.join(root, 'test/a.spec.ts'), 'call();\n');
+  assert.equal(run().status, 0);
 });
 
 test('formatter rejects compressed CSS and multi-attribute Vue equivalents', async () => {
@@ -218,4 +206,22 @@ test('formatter rejects compressed CSS and multi-attribute Vue equivalents', asy
       true,
     );
   }
+});
+
+test('formatter checks supported source beside deployment inputs', (t) => {
+  const root = fixture(t, {
+    'entrypoint-frontend.sh': '#!/bin/sh\nprintf "%s" "ready"\n',
+    Dockerfile: 'FROM node:20\n',
+    'src/a.ts': 'const value={one:1};',
+  });
+  const formatter = fileURLToPath(new URL('./format.mjs', import.meta.url));
+  const run = () =>
+    spawnSync(process.execPath, [formatter, '--check'], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+  assert.equal(run().status, 1);
+  assert.match(run().stderr, /src\/a.ts/);
+  fs.writeFileSync(path.join(root, 'src/a.ts'), 'const value = { one: 1 };\n');
+  assert.equal(run().status, 0);
 });

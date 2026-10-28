@@ -72,7 +72,7 @@ describe('ChartView startup', () => {
     vi.mocked(fetchMarkets).mockReset();
   });
 
-  it('fetches markets and initializes the current market when persisted state is invalid', async () => {
+  it('fetches Markets and replaces invalid persisted selection', async () => {
     vi.mocked(fetchMarkets).mockResolvedValue([marketA]);
     const currentMarketStore = useCurrentMarketStore();
     currentMarketStore.setMarket(marketB);
