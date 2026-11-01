@@ -101,6 +101,10 @@ source frames explicitly. See [strategy input contracts](STRATEGIES.md#indicator
   availability. Runtime scheduling stays independent between engines; the domain
   schedule shares only boundary validation and UTC arithmetic. See
   [daily execution schedules](STRATEGIES.md#daily-execution-schedule).
+- Optional `ExecutionConfig.max_entries_per_day` counts actual exposure-increasing
+  fills per UTC day and per run, including same-bar stop-outs and reversals.
+  Both independent runtimes enforce the limit before fills; exits remain eligible.
+  See [daily entry limits](STRATEGIES.md#daily-entry-limit).
 - Protective exits activate on the entry fill bar. Gap-through exits fill at open;
   intrabar touches fill at their level. Ambiguous stop/target bars follow
   `intrabar_exit_policy`, defaulting to stop-first. Preserve engine parity for

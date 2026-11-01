@@ -44,6 +44,8 @@ class _FillState:
     expired_delta_count: int = 0
     executed_deferred_count: int = 0
     intrabar_ambiguous_bar_count: int = 0
+    entry_day: int | None = None
+    entries_today: int = 0
 
 
 @dataclass(frozen=True)
@@ -213,6 +215,7 @@ def generate_fills_from_targets_with_protective_exits(
     slippage_bps: float = 0.0,
     commission_bps: float = 0.0,
     daily_schedule: DailyTradingSchedule | None = None,
+    max_entries_per_day: int | None = None,
 ) -> FillGenerationResult:
     """Build fills from signal targets and optional protective exits.
 
@@ -270,6 +273,15 @@ def generate_fills_from_targets_with_protective_exits(
                 schedule=daily_schedule,
             )
 
+        desired_target = _apply_daily_entry_limit(
+            state=state,
+            pending=pending,
+            desired_target=desired_target,
+            actual_position=actual_position,
+            timestamp_ms=int(ts[dst_idx]),
+            maximum=max_entries_per_day,
+        )
+
         pending_total = _pending_total(pending)
         if pending_total != 0.0:
             raw_open = float(opens[dst_idx])
@@ -302,6 +314,10 @@ def generate_fills_from_targets_with_protective_exits(
                     entry_price=entry_price,
                     quantity_delta=pending_total,
                     fill_price=float(fill.price),
+                )
+                state.entries_today += int(
+                    actual_position * previous_position < 0.0
+                    or abs(actual_position) > abs(previous_position)
                 )
                 position_exit_ms = _position_exit_timestamp(
                     schedule=daily_schedule,
@@ -560,6 +576,36 @@ def _execute_pending_fill(
         1 for item in pending if item.deferred and item.quantity != 0.0
     )
     pending.clear()
+
+
+def _apply_daily_entry_limit(
+    *,
+    state: _FillState,
+    pending: list[_PendingDelta],
+    desired_target: float,
+    actual_position: float,
+    timestamp_ms: int,
+    maximum: int | None,
+) -> float:
+    if maximum is None:
+        return desired_target
+    day = timestamp_ms // DAY_MS
+    if state.entry_day != day:
+        state.entry_day = day
+        state.entries_today = 0
+    if state.entries_today < maximum:
+        return desired_target
+    pending_target = actual_position + _pending_total(pending)
+    if pending_target * actual_position < 0.0:
+        allowed_target = 0.0
+    elif abs(pending_target) > abs(actual_position):
+        allowed_target = actual_position
+    else:
+        return desired_target
+    pending.clear()
+    if allowed_target != actual_position:
+        pending.append(_PendingDelta(quantity=allowed_target - actual_position))
+    return allowed_target
 
 
 def _position_exit_timestamp(

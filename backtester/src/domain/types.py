@@ -70,8 +70,15 @@ class ExecutionConfig:
     commission_bps: float = 0.0
     slippage_bps: float = 0.0
     daily_schedule: DailyTradingSchedule | None = None
+    max_entries_per_day: int | None = None
 
     def __post_init__(self) -> None:
+        if self.max_entries_per_day is not None and (
+            isinstance(self.max_entries_per_day, bool)
+            or not isinstance(self.max_entries_per_day, int)
+            or self.max_entries_per_day <= 0
+        ):
+            raise ValueError("max_entries_per_day must be a positive integer or None")
         if self.daily_schedule is not None and not isinstance(
             self.daily_schedule, DailyTradingSchedule
         ):
@@ -396,6 +403,11 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
             "commission_bps": float(execution.commission_bps),
             "slippage_bps": float(execution.slippage_bps),
             **(
+                {"max_entries_per_day": execution.max_entries_per_day}
+                if execution.max_entries_per_day is not None
+                else {}
+            ),
+            **(
                 {"daily_schedule": asdict(execution.daily_schedule)}
                 if execution.daily_schedule is not None
                 else {}
@@ -420,8 +432,7 @@ def _backtest_request_from_payload(
     _validate_payload_fields(
         "Backtest execution",
         execution,
-        _EXECUTION_PAYLOAD_FIELDS
-        | ({"daily_schedule"} if "daily_schedule" in execution else set()),
+        _EXECUTION_PAYLOAD_FIELDS | (set(execution) & {"daily_schedule", "max_entries_per_day"}),
     )
 
     symbols = payload["symbols"]
@@ -465,6 +476,7 @@ def _backtest_request_from_payload(
             commission_bps=float(execution["commission_bps"]),
             slippage_bps=float(execution["slippage_bps"]),
             daily_schedule=DailyTradingSchedule.from_payload(execution.get("daily_schedule")),
+            max_entries_per_day=execution.get("max_entries_per_day"),
         ),
         initial_capital=float(payload["initial_capital"]),
         data_granularity=DataGranularity(payload["data_granularity"]),

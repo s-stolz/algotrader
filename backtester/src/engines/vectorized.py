@@ -55,8 +55,12 @@ def run_vectorized_backtest(
 ) -> BacktestResult:
     """Run a vectorized bar backtest for one symbol."""
     _validate_vectorized_request(request)
-    if request.execution.daily_schedule is not None and strategy.bar_model is None:
-        raise ValueError("Daily schedules require a declarative bar strategy")
+    daily_controls = (
+        request.execution.daily_schedule is not None
+        or request.execution.max_entries_per_day is not None
+    )
+    if daily_controls and strategy.bar_model is None:
+        raise ValueError("Daily execution controls require a declarative bar strategy")
 
     symbol = request.symbols[0]
     normalized = _normalize_bars(bars=bars, symbol=symbol)
@@ -80,7 +84,7 @@ def run_vectorized_backtest(
     close_prices = normalized["close"].to_numpy(dtype="float64")
 
     protective_exit = _protective_exit_for_strategy(strategy)
-    if request.execution.daily_schedule is not None and protective_exit is None:
+    if daily_controls and protective_exit is None:
         protective_exit = ProtectiveExitSpec()
     if protective_exit is None:
         fill_result = generate_fills_from_targets(
@@ -112,6 +116,7 @@ def run_vectorized_backtest(
             stop_loss_pct=protective_exit.stop_loss_pct,
             take_profit_pct=protective_exit.take_profit_pct,
             daily_schedule=request.execution.daily_schedule,
+            max_entries_per_day=request.execution.max_entries_per_day,
             intrabar_exit_policy=request.execution.intrabar_exit_policy,
             gap_policy=request.execution.gap_policy,
             slippage_bps=float(request.execution.slippage_bps),

@@ -117,6 +117,7 @@ class ExecutionRequestSchema(ApiContractModel):
     commission_bps: float = Field(default=0.0, ge=0.0)
     slippage_bps: float = Field(default=0.0, ge=0.0)
     daily_schedule: DailyTradingScheduleRequestSchema | None = None
+    max_entries_per_day: StrictInt | None = Field(default=None, gt=0)
 
 
 class BacktestSubmissionRequestSchema(ApiContractModel):
@@ -167,6 +168,7 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
                 intrabar_exit_policy=IntrabarExitPolicy(execution.intrabar_exit_policy),
                 commission_bps=execution.commission_bps,
                 slippage_bps=execution.slippage_bps,
+                max_entries_per_day=execution.max_entries_per_day,
                 daily_schedule=(
                     DailyTradingSchedule(**execution.daily_schedule.model_dump())
                     if execution.daily_schedule is not None

@@ -114,6 +114,8 @@ class _SequentialRuntimeState:
     actual_position: float = 0.0
     entry_price: float | None = None
     position_exit_ms: int | None = None
+    entry_day: int | None = None
+    entries_today: int = 0
     pending: list[_PendingDelta] = field(default_factory=list)
     executed_delta: list[float] = field(default_factory=list)
     executed_notional: list[float] = field(default_factory=list)
@@ -212,6 +214,11 @@ def _run_event_driven_loop(
                 timestamp_ms=int(bar.timestamp_ms),
                 previous_timestamp_ms=previous_open_ms,
             )
+        _apply_daily_entry_limit_at_open(
+            state=state,
+            timestamp_ms=int(bar.timestamp_ms),
+            maximum=request.execution.max_entries_per_day,
+        )
         previous_position = state.actual_position
 
         _execute_pending_at_open(
@@ -227,6 +234,10 @@ def _run_event_driven_loop(
             commission_bps=float(request.execution.commission_bps),
         )
 
+        state.entries_today += int(
+            state.actual_position * previous_position < 0.0
+            or abs(state.actual_position) > abs(previous_position)
+        )
         _update_scheduled_exit(
             state=state,
             schedule=request.execution.daily_schedule,
@@ -295,6 +306,34 @@ def _run_event_driven_loop(
         feature_snapshot_count=feature_snapshot_count,
         nonzero_signal_count=nonzero_signal_count,
     )
+
+
+def _apply_daily_entry_limit_at_open(
+    *,
+    state: _SequentialRuntimeState,
+    timestamp_ms: int,
+    maximum: int | None,
+) -> None:
+    if maximum is None:
+        return
+    day = timestamp_ms // DAY_MS
+    if state.entry_day != day:
+        state.entry_day = day
+        state.entries_today = 0
+    if state.entries_today < maximum:
+        return
+    pending_target = state.actual_position + _pending_total(state.pending)
+    if pending_target * state.actual_position < 0.0:
+        allowed_target = 0.0
+    elif abs(pending_target) > abs(state.actual_position):
+        allowed_target = state.actual_position
+    else:
+        return
+    state.pending.clear()
+    if allowed_target != state.actual_position:
+        state.pending.append(_PendingDelta(quantity=allowed_target - state.actual_position))
+    state.desired_target = allowed_target
+    state.raw_desired_target = allowed_target
 
 
 def _update_scheduled_exit(

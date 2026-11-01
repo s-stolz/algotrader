@@ -289,6 +289,29 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
         self.assertEqual(response.json()["detail"]["fields"], ["fast_window"])
         self.assertEqual(repository.runs_by_id, {})
 
+    def test_daily_entry_limit_is_saved_and_invalid_limits_are_rejected(self) -> None:
+        repository = _FakeRunRepository()
+        with TestClient(create_app(service=BacktestRunService(repository=repository))) as client:
+            for value in (0, -1, True, 1.5, "2"):
+                payload = _valid_payload()
+                payload["execution"] = {
+                    **payload.get("execution", {}),
+                    "max_entries_per_day": value,
+                }
+                self.assertEqual(client.post("/backtests", json=payload).status_code, 422)
+            payload = _valid_payload()
+            payload["execution"] = {**payload.get("execution", {}), "max_entries_per_day": 2}
+            response = client.post("/backtests", json=payload)
+            self.assertEqual(response.status_code, 202)
+            run_id = response.json()["run_id"]
+            saved = client.get(f"/backtests/{run_id}").json()
+        self.assertEqual(saved["request"]["execution"]["max_entries_per_day"], 2)
+        snapshot = repository.runs_by_id[run_id].request_snapshot
+        self.assertEqual(snapshot.to_request().execution.max_entries_per_day, 2)
+        self.assertEqual(
+            BacktestRequestSnapshot.from_request(snapshot.to_request()).payload, snapshot.payload
+        )
+
     def test_daily_schedule_is_saved_as_execution_configuration(self) -> None:
         repository = _FakeRunRepository()
         payload = _valid_payload()

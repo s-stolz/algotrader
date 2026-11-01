@@ -131,5 +131,19 @@ future prices. Ordinary decisions retain next-open execution.
 
 Scheduled closes use normal fees, slippage, and the `signal` exit reason. Existing
 stop/target gap-through priority remains in effect. Intrabar protection still
-applies to positions that remain open. Schedules do not count entries or enforce
-a daily entry limit.
+applies to positions that remain open. The optional daily entry limit below applies independently.
+
+## Daily entry limit
+
+`ExecutionConfig.max_entries_per_day` is an optional positive integer; omitted or
+null means unlimited. It works independently of the daily schedule for declarative
+bar strategies. The count belongs to the run and resets on the UTC date of the
+executing candle. Shared sweep settings apply independently to each member run.
+
+Each actual fill that opens or increases exposure counts once. A reversal counts
+as one new entry for its opening portion. Signals, cancelled/expired orders,
+reductions, and exits do not count. An entry followed by a protective exit on the
+same candle still counts. At the limit, exposure increases are cancelled and a
+reversal may close the old position without opening the opposite position.
+Protective, scheduled, and explicit exits remain eligible. Deferred entries count
+on their actual fill day, subject to any separately enabled schedule restrictions.

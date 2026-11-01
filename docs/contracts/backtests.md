@@ -111,6 +111,17 @@ failures expose bounded sanitized errors while tracebacks stay in worker logs.
   deletion conflict. Storage rechecks under the slot lock and deletes artifacts,
   members, command receipts, and events atomically with their parent.
 
+## Daily entry limit
+
+`execution.max_entries_per_day` is an optional positive integer, independent of
+`daily_schedule`. Omitted or null means unlimited. It counts actual entries per
+UTC day and per run; see [entry semantics](../../backtester/STRATEGIES.md#daily-entry-limit).
+It is a shared execution setting for sweeps, not a strategy parameter axis.
+Enabled limits survive immutable snapshots, worker reconstruction, inspection,
+and editable reuse. Unlimited values are omitted from canonical snapshots so
+older request representations remain unchanged. No storage/schema migration is
+required. Booleans, fractional values, strings, zero, and negative limits are rejected.
+
 ## Daily execution schedule
 
 `execution.daily_schedule` is optional and defaults to disabled (omitted or null).

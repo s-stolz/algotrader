@@ -197,6 +197,7 @@ class TestBacktestEngineParity(unittest.TestCase):
                                     execution=ExecutionConfig(
                                         gap_policy=gap_policy,
                                         daily_schedule=DailyTradingSchedule(2, 4, 5),
+                                        max_entries_per_day=1,
                                     ),
                                 ),
                                 bars=bars,
@@ -321,6 +322,152 @@ class TestBacktestEngineParity(unittest.TestCase):
                     [fill.timestamp_ms for fill in results[0].fills], [120_000, 240_000]
                 )
                 self.assertEqual([fill.quantity for fill in results[0].fills], [1.0, 1.0])
+                self.assertEqual(results[0].equity_curve[-1].positions, {})
+
+    def test_daily_entry_limit_counts_fills_before_same_bar_stops_and_resets_utc(self) -> None:
+        for short in (False, True):
+            for maximum, expected in (
+                (None, [2, 3, 1441, 1442]),
+                (1, [2, 1441]),
+                (2, [2, 3, 1441, 1442]),
+            ):
+                with self.subTest(short=short, maximum=maximum):
+                    model = BarStrategyModel(
+                        entry_conditions=() if short else (ConditionRule.above("volume", "high"),),
+                        exit_conditions=(ConditionRule.above("volume", "high"),) if short else (),
+                        target_quantity=1.0,
+                        protective_exit=ProtectiveExitSpec(stop_loss_pct=5.0),
+                    )
+                    strategy = StrategyDefinition(
+                        strategy_id="entry_limit_fixture",
+                        feature_specs=("volume", "high"),
+                        decision_model=model.build_signals,
+                        position_builder=model.build_positions,
+                        bar_model=model,
+                    )
+                    minutes = [1, 2, 3, 1441, 1442]
+                    bars = pd.DataFrame(
+                        {
+                            "timestamp_ms": [minute * 60_000 for minute in minutes],
+                            "symbol": ["AAPL"] * 5,
+                            "open": [100.0] * 5,
+                            "high": [110.0] * 5,
+                            "low": [90.0] * 5,
+                            "close": [100.0] * 5,
+                            "volume": [1000.0] * 5,
+                        }
+                    )
+                    results = [
+                        run_backtest(
+                            request=_build_request_for_strategy(
+                                engine=engine,
+                                strategy=strategy,
+                                start_ms=60_000,
+                                end_ms=1443 * 60_000,
+                                execution=ExecutionConfig(max_entries_per_day=maximum),
+                            ),
+                            bars=bars,
+                            strategy=strategy,
+                        )
+                        for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN)
+                    ]
+                    self._assert_public_results_match(*results)
+                    self.assertEqual(
+                        [fill.timestamp_ms // 60_000 for fill in results[0].fills],
+                        [minute for minute in expected for _ in range(2)],
+                    )
+                    self.assertEqual(len(results[0].trades), len(expected))
+
+    def test_daily_entry_limit_does_not_count_cancelled_orders_or_block_exits(self) -> None:
+        model = BarStrategyModel(
+            entry_conditions=(ConditionRule.above("volume", "high"),),
+            exit_conditions=(ConditionRule.below("volume", "low"),),
+            target_quantity=1.0,
+        )
+        strategy = StrategyDefinition(
+            strategy_id="entry_limit_gap_fixture",
+            feature_specs=("volume", "high", "low"),
+            decision_model=model.build_signals,
+            position_builder=model.build_positions,
+            bar_model=model,
+        )
+        for policy in (GapPolicy.SKIP, GapPolicy.EXPIRE):
+            with self.subTest(policy=policy):
+                bars = pd.DataFrame(
+                    {
+                        "timestamp_ms": [minute * 60_000 for minute in range(1, 7)],
+                        "symbol": ["AAPL"] * 6,
+                        "open": [100.0, 0.0, 100.0, 100.0, 100.0, 100.0],
+                        "high": [102.0] * 6,
+                        "low": [98.0] * 6,
+                        "close": [100.0] * 6,
+                        "volume": [1000.0, 0.0, 1000.0, 0.0, 1000.0, 0.0],
+                    }
+                )
+                results = [
+                    run_backtest(
+                        request=_build_request_for_strategy(
+                            engine=engine,
+                            strategy=strategy,
+                            start_ms=60_000,
+                            end_ms=420_000,
+                            execution=ExecutionConfig(
+                                max_entries_per_day=1,
+                                gap_policy=policy,
+                                allowed_directions=AllowedDirections.LONG_ONLY,
+                            ),
+                        ),
+                        bars=bars,
+                        strategy=strategy,
+                    )
+                    for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN)
+                ]
+                self._assert_public_results_match(*results)
+                self.assertEqual([fill.timestamp_ms // 60_000 for fill in results[0].fills], [4, 5])
+                self.assertEqual(results[0].equity_curve[-1].positions, {})
+
+    def test_daily_entry_limit_counts_reversals_but_preserves_the_closing_leg(self) -> None:
+        model = BarStrategyModel(
+            entry_conditions=(ConditionRule.above("volume", "high"),),
+            exit_conditions=(ConditionRule.below("volume", "low"),),
+            target_quantity=1.0,
+        )
+        strategy = StrategyDefinition(
+            strategy_id="entry_limit_reversal_fixture",
+            feature_specs=("volume", "high", "low"),
+            decision_model=model.build_signals,
+            position_builder=model.build_positions,
+            bar_model=model,
+        )
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [minute * 60_000 for minute in range(1, 6)],
+                "symbol": ["AAPL"] * 5,
+                "open": [100.0] * 5,
+                "high": [102.0] * 5,
+                "low": [98.0] * 5,
+                "close": [100.0] * 5,
+                "volume": [1000.0, 0.0, 1000.0, 0.0, 1000.0],
+            }
+        )
+        for maximum, quantities in ((1, [1.0, 1.0]), (2, [1.0, 2.0, 1.0])):
+            with self.subTest(maximum=maximum):
+                results = [
+                    run_backtest(
+                        request=_build_request_for_strategy(
+                            engine=engine,
+                            strategy=strategy,
+                            start_ms=60_000,
+                            end_ms=360_000,
+                            execution=ExecutionConfig(max_entries_per_day=maximum),
+                        ),
+                        bars=bars,
+                        strategy=strategy,
+                    )
+                    for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN)
+                ]
+                self._assert_public_results_match(*results)
+                self.assertEqual([fill.quantity for fill in results[0].fills], quantities)
                 self.assertEqual(results[0].equity_curve[-1].positions, {})
 
     def _build_sma_bars(self) -> pd.DataFrame:

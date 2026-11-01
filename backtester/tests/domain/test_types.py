@@ -38,6 +38,15 @@ from domain.types import (
 
 
 class TestDomainTypes(unittest.TestCase):
+    def test_daily_entry_limit_requires_a_positive_integer_or_none(self) -> None:
+        self.assertIsNone(ExecutionConfig().max_entries_per_day)
+        self.assertEqual(ExecutionConfig(max_entries_per_day=1).max_entries_per_day, 1)
+        for value in (0, -1, True, 1.5, "2"):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                ValueError, "max_entries_per_day"
+            ):
+                ExecutionConfig(max_entries_per_day=cast(Any, value))
+
     def test_backtest_request_defaults(self) -> None:
         request = BacktestRequest(
             symbols=["AAPL"],
@@ -220,6 +229,7 @@ class TestDomainTypes(unittest.TestCase):
         restored = snapshot.to_request()
 
         self.assertNotIn("daily_schedule", snapshot.payload["execution"])
+        self.assertNotIn("max_entries_per_day", snapshot.payload["execution"])
         self.assertIsNone(restored.execution.daily_schedule)
         self.assertEqual(snapshot.schema_version, 2)
         self.assertEqual(snapshot.payload["exchange"], "FX")
