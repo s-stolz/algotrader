@@ -134,10 +134,6 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.indicator-choice:hover {
-  background: var(--design-color-hover);
-}
-
 .indicator-choice:focus-visible {
   outline: 2px solid var(--design-color-interactive);
   outline-offset: -2px;
