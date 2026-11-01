@@ -27,6 +27,14 @@ const issue = computed(() => {
     ? 'Enter a whole number.'
     : '';
 });
+const options = computed(() => {
+  const values = [...props.value];
+  const candidate = Number(search.value.trim());
+  if (search.value.trim() && !issue.value && !values.includes(candidate)) {
+    values.push(candidate);
+  }
+  return values.map((value) => ({ label: String(value), value }));
+});
 function updateSearch(value: string): void {
   search.value = value;
   emit('update:valid', !issue.value && !value.trim());
@@ -52,18 +60,12 @@ function updateValues(values: Array<string | number>): void {
       :value="value"
       multiple
       filterable
-      tag
       max-tag-count="responsive"
       :show-arrow="false"
-      :options="
-        value.map((number) => ({ label: String(number), value: number }))
-      "
+      :options="options"
       :filter="
         (pattern, option) =>
           !pattern.trim() || (!issue && Number(pattern) === option.value)
-      "
-      :on-create="
-        (text) => ({ label: String(Number(text)), value: Number(text) })
       "
       :status="issue ? 'error' : undefined"
       :input-props="{ 'aria-label': label }"

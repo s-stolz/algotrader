@@ -1,9 +1,37 @@
+import { nextTick } from 'vue';
+import { NSelect } from 'naive-ui';
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import BaseNumberValues from '@/components/Common/BaseNumberValues.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 
 describe('numeric value entry', () => {
+  it('shows each created value once after the parent accepts it', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const wrapper = mount(BaseNumberValues, {
+      props: {
+        value: [12, 19],
+        label: 'Periods',
+        'onUpdate:value': (value: number[]) => wrapper.setProps({ value }),
+      },
+    });
+    const select = wrapper.findComponent(NSelect);
+    await select.get('input').setValue('20');
+    await select.get('input').trigger('keydown', { key: 'Enter' });
+    await nextTick();
+    await select.get('.n-base-selection').trigger('click');
+    await nextTick();
+    const menu = (select.vm as unknown as {
+      treeMate: { treeNodes: Array<{ rawNode: { value: number } }> };
+    }).treeMate;
+    expect(wrapper.props('value')).toEqual([12, 19, 20]);
+    expect(menu.treeNodes.map((node) => node.rawNode.value)).toEqual([
+      12, 19, 20,
+    ]);
+    wrapper.unmount();
+    vi.unstubAllGlobals();
+  });
+
   it(
     'rejects invalid and fractional integer entries and emits ' +
       'removable numeric values',
