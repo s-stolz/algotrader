@@ -1,5 +1,5 @@
 from .core.bars import BarBuffer, BarTensor, DataBundle
-from .core.history import HistoryPolicy
+from .core.history import HistoryPolicy, InputHistory, InputHistoryPlan
 from .core.params import ParamGrid, ParamSet
 from .core.registry import IndicatorRegistry
 from .core.results import IndicatorResult, ResultBuffer
@@ -21,6 +21,8 @@ __all__ = [
     "BarTensor",
     "DataBundle",
     "HistoryPolicy",
+    "InputHistory",
+    "InputHistoryPlan",
     "ParamGrid",
     "ParamSet",
     "IndicatorRegistry",

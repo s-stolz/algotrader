@@ -45,6 +45,25 @@ Controls how much history buffers keep:
 - `mode="rolling"`: keep only the last `max_rows` bars.
 - `mode="unbounded"`: grow as needed (for batch research).
 
+### InputHistory
+
+Calculation history is separate from buffer retention and the minimum output
+warmup. `IndicatorSpec.plan_history(start_ms=..., params=...)` returns the
+calculation start and the number of available candles needed strictly before
+that start. Fetch adapters own retrieval and trim results to the original output
+interval only after calculation.
+
+Rolling indicators request `warmup - 1` predecessors before the requested start.
+Currency strength declares a UTC-day anchor with one predecessor: a noon request
+needs candles from midnight and the preceding available close, not merely its
+two-bar minimum warmup. This declaration does not itself fetch or validate data;
+adapters must apply it and their missing-input policy.
+
+`IndicatorSpec.output_assets` declares aggregate output identities when they
+differ from the inputs. Omit it for ordinary per-input-asset outputs. Currency
+strength uses seven input pairs and returns the single output asset `FX` with
+eight currency outputs.
+
 ### ParamGrid
 
 Deterministic parameter grids for fast optimization and reproducibility:
@@ -113,6 +132,11 @@ Notes:
 - Partial asset updates are supported by passing an `asset_mask`.
 - Cross-asset indicators wait until all required assets arrive for the timestamp.
 - Rolling eviction plus TTL prevents unbounded pending input growth.
+- Currency strength accumulates incrementally across chronological complete
+  basket rows, resets at UTC midnight, and replaces same-timestamp corrections.
+  Seed it with the history declared above; a small rolling buffer does not reset
+  the accumulated value. This library support does not enable currency-strength
+  live subscriptions in indicator-api.
 
 ## Indicators Included
 

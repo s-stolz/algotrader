@@ -18,6 +18,7 @@ from ..core.tensor import Tensor
 @dataclass
 class Registration:
     """Internal registration record for an indicator/timeframe pair."""
+
     indicator_id: str
     indicator: Indicator
     timeframe: str
@@ -36,6 +37,7 @@ class UpdateEngine:
     - Supports partial asset updates and cross-asset dependency buffering.
     - Stores vectorized state keyed by (indicator_id, param_id, timeframe).
     """
+
     def __init__(
         self,
         registry: IndicatorRegistry,
@@ -87,7 +89,11 @@ class UpdateEngine:
             )
 
         result_buffer = ResultBuffer(
-            assets=bar_buffer.assets,
+            assets=(
+                indicator.spec.output_assets
+                if indicator.spec.output_assets is not None
+                else bar_buffer.assets
+            ),
             outputs=indicator.spec.outputs or ["value"],
             param_ids=grid.param_ids,
             param_names=grid.param_names,
@@ -174,10 +180,15 @@ class UpdateEngine:
                 self._evict_pending(reg, bar_buffer, timestamp_ms, bar_index)
                 return None
             reg.pending.pop(timestamp_ms, None)
+            assembled = bar_buffer.view()
+            new_row = assembled.data[np.flatnonzero(assembled.time == timestamp_ms)[0]]
+            asset_mask = asset_mask.copy()
+            asset_mask[reg.required_asset_idx] = True
 
         outputs = reg.indicator.spec.outputs or ["value"]
+        output_assets = reg.result_buffer.assets
         values = np.full(
-            (len(bar_buffer.assets), len(outputs), len(reg.param_grid.param_ids)),
+            (len(output_assets), len(outputs), len(reg.param_grid.param_ids)),
             np.nan,
             dtype=np.float64,
         )
@@ -198,17 +209,19 @@ class UpdateEngine:
                     warmup_data = bar_buffer.tail(warmup)
                     state = reg.indicator.init_state(warmup_data, params)
                 state, latest = reg.indicator.update(
-                    state, new_row=new_row, asset_mask=asset_mask, timestamp_ms=timestamp_ms
+                    state,
+                    new_row=new_row,
+                    asset_mask=asset_mask,
+                    timestamp_ms=timestamp_ms,
                 )
                 self._states[state_key] = state
                 latest_values = _unwrap_latest(latest)
             else:
                 warmup_data = bar_buffer.tail(warmup)
                 batch_result = reg.indicator.batch(warmup_data, params)
-                tensor = _ensure_latest_tensor(batch_result, outputs)
-                latest_values = tensor.data[-1, :, :, 0]
+                latest_values = _select_latest_values(batch_result, outputs, output_assets)
 
-            if latest_values.shape != (len(bar_buffer.assets), len(outputs)):
+            if latest_values.shape != (len(output_assets), len(outputs)):
                 raise ValueError("Latest values shape mismatch")
             values[:, :, p_idx] = latest_values
 
@@ -218,7 +231,7 @@ class UpdateEngine:
             dims=("time", "asset", "output", "param"),
             coords={
                 "time": np.array([timestamp_ms], dtype=np.int64),
-                "asset": bar_buffer.assets.copy(),
+                "asset": output_assets.copy(),
                 "output": np.array(outputs, dtype=object),
                 "param": np.array(reg.param_grid.param_ids, dtype=object),
             },
@@ -264,6 +277,13 @@ class UpdateEngine:
         if asset_mask.shape[0] != len(bar_buffer.assets):
             raise ValueError("asset_mask length must match asset dimension")
         return new_row, asset_mask
+
+
+def _select_latest_values(result, outputs: list[str], assets: np.ndarray) -> np.ndarray:
+    tensor = _ensure_latest_tensor(result, outputs)
+    if not np.array_equal(_require_tensor_coord(tensor, "asset"), assets):
+        raise ValueError("Output asset coordinates do not match indicator specification")
+    return tensor.data[-1, :, :, 0]
 
 
 def _unwrap_latest(result) -> np.ndarray:
