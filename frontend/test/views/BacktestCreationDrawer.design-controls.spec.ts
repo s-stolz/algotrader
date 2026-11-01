@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { compileStyle } from '@vue/compiler-sfc';
 import { flushPromises } from '@vue/test-utils';
 import { NInputNumber } from 'naive-ui';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { submitBacktestRun } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { openDrawer, standaloneSetup } from './creationFixtures';
@@ -16,6 +18,32 @@ vi.mock('@/api/backtesterClient', async (importOriginal) => ({
 
 describe('creation design controls', () => {
   standaloneSetup();
+
+  it('lays out the teleported footer with the count left and actions right', async () => {
+    const wrapper = openDrawer();
+    const style = document.createElement('style');
+    onTestFinished(() => {
+      wrapper.unmount();
+      style.remove();
+    });
+    await flushPromises();
+    const footer = document.querySelector<HTMLElement>('.creation-footer')!;
+    const scopeId = footer
+      .getAttributeNames()
+      .find((name) => name.startsWith('data-v-'))!;
+    expect(scopeId).toBeTruthy();
+    style.textContent = compileStyle({
+      source: readFileSync('src/views/creation/creation.css', 'utf8'),
+      filename: 'creation.css',
+      id: scopeId,
+      scoped: true,
+    }).code;
+    document.head.append(style);
+    const actions = footer.querySelector<HTMLElement>('.creation-actions')!;
+    expect(getComputedStyle(footer).display).toBe('flex');
+    expect(getComputedStyle(footer).justifyContent).toBe('space-between');
+    expect(getComputedStyle(actions).display).toBe('flex');
+  });
 
   it('retains numeric keyboard editing and requires explicit submission', async () => {
     vi.mocked(submitBacktestRun).mockResolvedValue('keyboard-run');

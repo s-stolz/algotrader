@@ -124,8 +124,8 @@
 :deep(.preview-review .n-data-table-td:last-child) {
   padding-right: 16px;
 }
-:deep(.creation-footer),
-:deep(.creation-actions) {
+.creation-footer,
+.creation-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -136,11 +136,11 @@
   :deep(.range-inputs) {
     grid-template-columns: 1fr;
   }
-  :deep(.creation-footer) {
+  .creation-footer {
     flex-wrap: wrap;
     gap: 8px;
   }
-  :deep(.creation-actions) {
+  .creation-actions {
     margin-left: auto;
     max-width: 100%;
   }
