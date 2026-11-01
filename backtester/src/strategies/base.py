@@ -7,7 +7,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-from domain.enums import AllowedDirections
+from domain.enums import AllowedDirections, StrategySignal
 from domain.types import ExecutionArrayBundle, FeatureMatrix, ProtectiveExitSpec, SignalMatrix
 
 from strategies.conditions import ConditionRule
@@ -75,6 +75,7 @@ class BarStrategyModel:
 
     entry_filters: Tuple[ConditionRule, ...] = field(default_factory=tuple)
     exit_filters: Tuple[ConditionRule, ...] = field(default_factory=tuple)
+    flat_conditions: Tuple[ConditionRule, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not math.isfinite(float(self.target_quantity)) or float(self.target_quantity) <= 0.0:
@@ -86,6 +87,7 @@ class BarStrategyModel:
         object.__setattr__(self, "exit_conditions", tuple(self.exit_conditions))
         object.__setattr__(self, "entry_filters", tuple(self.entry_filters))
         object.__setattr__(self, "exit_filters", tuple(self.exit_filters))
+        object.__setattr__(self, "flat_conditions", tuple(self.flat_conditions))
         object.__setattr__(self, "target_quantity", float(self.target_quantity))
 
     def build_signals(
@@ -123,6 +125,12 @@ class BarStrategyModel:
             signal = np.zeros(len(features.timestamp_ms), dtype=np.int64)
             signal[entries] = 1
             signal[exits] = -1
+            flatten = _combine_condition_masks(
+                conditions=self.flat_conditions,
+                feature_map=feature_map,
+                expected_size=len(features.timestamp_ms),
+            )
+            signal[flatten] = StrategySignal.FLAT
             signals_by_symbol[symbol] = signal.tolist()
 
         return SignalMatrix(
@@ -152,6 +160,8 @@ class BarStrategyModel:
                 target[signal_arr > 0] = self.target_quantity
                 target[signal_arr < 0] = -self.target_quantity
 
+            target[signal_arr == StrategySignal.FLAT] = 0.0
+
             target_series = pd.Series(target, dtype=np.float64).ffill().fillna(0.0)
             target_by_symbol[symbol] = np.asarray(target_series, dtype=np.float64).tolist()
 
@@ -178,6 +188,11 @@ class BarStrategyModel:
         current: Mapping[str, float],
         allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT,
     ) -> int:
+        if any(
+            condition.evaluate_sequential(previous=previous, current=current)
+            for condition in self.flat_conditions
+        ):
+            return StrategySignal.FLAT
         available = current.get("indicators_available", 1.0) == 1.0
         if (
             (available or allowed_directions == AllowedDirections.LONG_ONLY)

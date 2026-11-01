@@ -23,6 +23,116 @@ from strategies.conditions import ConditionRule
 
 
 class TestBacktestEngineParity(unittest.TestCase):
+    def test_explicit_flat_closes_both_directions_at_next_open(self) -> None:
+        for directions in AllowedDirections:
+            for short in (False, True):
+                if (short and directions == AllowedDirections.LONG_ONLY) or (
+                    not short and directions == AllowedDirections.SHORT_ONLY
+                ):
+                    continue
+                for protected in (False, True):
+                    with self.subTest(directions=directions, short=short, protected=protected):
+                        model = BarStrategyModel(
+                            entry_conditions=(ConditionRule.above("close", "open"),),
+                            exit_conditions=(ConditionRule.below("close", "open"),),
+                            flat_conditions=(ConditionRule.above("volume", "high"),),
+                            target_quantity=1.0,
+                            protective_exit=ProtectiveExitSpec(
+                                stop_loss_pct=20.0 if protected else None
+                            ),
+                        )
+                        strategy = StrategyDefinition(
+                            strategy_id="explicit_flat_fixture",
+                            feature_specs=("open", "high", "close", "volume"),
+                            decision_model=model.build_signals,
+                            position_builder=model.build_positions,
+                            bar_model=model,
+                        )
+                        bars = pd.DataFrame(
+                            {
+                                "timestamp_ms": [0, 60_000, 120_000, 180_000],
+                                "symbol": ["AAPL"] * 4,
+                                "open": [100.0] * 4,
+                                "high": [102.0] * 4,
+                                "low": [98.0] * 4,
+                                "close": [99.0 if short else 101.0] * 2 + [100.0, 100.0],
+                                "volume": [1.0, 200.0, 200.0, 200.0],
+                            }
+                        )
+                        results = [
+                            run_backtest(
+                                request=_build_request_for_strategy(
+                                    engine=engine,
+                                    strategy=strategy,
+                                    start_ms=0,
+                                    end_ms=240_000,
+                                    execution=ExecutionConfig(allowed_directions=directions),
+                                ),
+                                bars=bars,
+                                strategy=strategy,
+                            )
+                            for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN)
+                        ]
+                        self._assert_public_results_match(*results)
+                        self.assertEqual(
+                            [fill.timestamp_ms for fill in results[0].fills], [60_000, 120_000]
+                        )
+                        self.assertEqual([fill.quantity for fill in results[0].fills], [1.0, 1.0])
+                        self.assertEqual(results[0].equity_curve[-1].positions, {})
+                        self.assertEqual(results[0].trades[0].exit_reason, ExitReason.SIGNAL)
+
+    def test_flat_actions_preserve_gap_and_final_decision_rules(self) -> None:
+        model = BarStrategyModel(
+            entry_conditions=(ConditionRule.above("close", "open"),),
+            exit_conditions=(),
+            flat_conditions=(ConditionRule.above("volume", "high"),),
+            target_quantity=1.0,
+        )
+        strategy = StrategyDefinition(
+            strategy_id="flat_gap_fixture",
+            feature_specs=("open", "close", "high", "volume"),
+            decision_model=model.build_signals,
+            position_builder=model.build_positions,
+            bar_model=model,
+        )
+        cases = (
+            ("cancel_deferred_entry", [100.0, 0.0, 100.0], GapPolicy.SKIP, [], 0),
+            ("defer_exit", [100.0, 100.0, 0.0, 100.0], GapPolicy.SKIP, [60_000, 180_000], 0),
+            ("expire_exit", [100.0, 100.0, 0.0, 100.0], GapPolicy.EXPIRE, [60_000], 0),
+            ("final_exit", [100.0, 100.0], GapPolicy.SKIP, [60_000], 1),
+        )
+        for name, opens, gap_policy, fills, tail_expired in cases:
+            with self.subTest(case=name):
+                count = len(opens)
+                bars = pd.DataFrame(
+                    {
+                        "timestamp_ms": [60_000 * index for index in range(count)],
+                        "symbol": ["AAPL"] * count,
+                        "open": opens,
+                        "high": [102.0] * count,
+                        "low": [98.0] * count,
+                        "close": [101.0] + [100.0] * (count - 1),
+                        "volume": [1.0] + [200.0] * (count - 1),
+                    }
+                )
+                results = [
+                    run_backtest(
+                        request=_build_request_for_strategy(
+                            engine=engine,
+                            strategy=strategy,
+                            start_ms=0,
+                            end_ms=60_000 * count,
+                            execution=ExecutionConfig(gap_policy=gap_policy),
+                        ),
+                        bars=bars,
+                        strategy=strategy,
+                    )
+                    for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN)
+                ]
+                self._assert_public_results_match(*results)
+                self.assertEqual([fill.timestamp_ms for fill in results[0].fills], fills)
+                self.assertEqual(results[0].diagnostics["tail_expired_delta_count"], tail_expired)
+
     def _build_sma_bars(self) -> pd.DataFrame:
         start_ms = 1_700_000_000_000
         minute = 60_000

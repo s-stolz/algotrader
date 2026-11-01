@@ -85,3 +85,18 @@ direction-restricted runs, exit signals based on still-available features remain
 eligible. Protective exits continue independently. This does not yet provide a
 scheduled flat action. Source bootstrap initializes calculations without emitting
 signals; crossover decisions use only in-window snapshots in both engines.
+
+## Explicit exits
+
+`BarStrategyModel.flat_conditions` is an optional tuple of conditions combined
+with OR. A matching condition emits `StrategySignal.FLAT`, distinct from hold
+(`0`) and the directional signals (`1` and `-1`). It takes priority over both
+directional conditions and their filters, even when `indicators_available` is
+false. Its own operands must still be available and finite.
+
+The action sets the raw target to zero in all direction modes. Normal sizing and
+risk transforms still apply. It cancels a deferred entry when the resulting
+target is flat, closes existing exposure at the next executable open, and does
+nothing when already flat. Gap policies, final-bar expiry, and protective exit
+priority remain unchanged; completed exits retain the `signal` reason. A flat
+condition is not yet a wall-clock schedule or an execution-time entry cutoff.

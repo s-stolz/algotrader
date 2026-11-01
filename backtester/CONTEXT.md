@@ -42,6 +42,10 @@ For run/batch commands, queue invariants, versions, or replay format, read
   SMA signals map bullish/bearish to long/short in `long_and_short`, to long/flat
   in `long_only`, and flat/short in `short_only`. An already-flat exit emits nothing.
 - **Flat Target:** an explicit exit to cash, distinct from a zero hold signal.
+  Declarative `flat_conditions` emit `StrategySignal.FLAT` independently of
+  indicator availability and directional filters, taking priority over long/short
+  signals. Both engines map this action to a zero target in every direction mode;
+  normal target transforms, next-open fills, and gap policies still apply.
 - **Position Reduction:** reduce without reversing; the requested delta still
   fills completely or not at all.
 - **Short Cover:** a buy that reduces/closes a short position.

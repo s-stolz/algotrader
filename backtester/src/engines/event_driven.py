@@ -21,6 +21,7 @@ from domain.enums import (
     OrderSide,
     PriceSource,
     SignalTiming,
+    StrategySignal,
     TradeAccountingPolicy,
 )
 from domain.types import (
@@ -612,6 +613,8 @@ def _target_quantity_for_signal(
     target_quantity: float,
     allowed_directions: AllowedDirections,
 ) -> float:
+    if signal == StrategySignal.FLAT:
+        return 0.0
     if signal > 0:
         if allowed_directions == AllowedDirections.SHORT_ONLY:
             return 0.0

@@ -1,6 +1,13 @@
 """Domain-level enums for execution and event policies."""
 
-from enum import Enum
+from enum import Enum, IntEnum
+
+
+class StrategySignal(IntEnum):
+    SHORT = -1
+    HOLD = 0
+    LONG = 1
+    FLAT = 2
 
 
 class AllowedDirections(str, Enum):
