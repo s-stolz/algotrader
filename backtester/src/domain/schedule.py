@@ -1,5 +1,6 @@
 """UTC daily trading boundaries for declarative bar strategies."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 DAY_MS = 86_400_000
@@ -33,3 +34,12 @@ class DailyTradingSchedule:
 
     def exit_timestamp(self, entry_timestamp_ms: int) -> int:
         return (entry_timestamp_ms // DAY_MS) * DAY_MS + self.exit_minute_utc * MINUTE_MS
+
+    @classmethod
+    def from_payload(cls, value: object) -> "DailyTradingSchedule | None":
+        if value is None:
+            return None
+        fields = {"entry_start_minute_utc", "last_entry_minute_utc", "exit_minute_utc"}
+        if not isinstance(value, Mapping) or set(value) != fields:
+            raise ValueError("daily_schedule must contain exactly the three UTC minute boundaries")
+        return cls(**dict(value))

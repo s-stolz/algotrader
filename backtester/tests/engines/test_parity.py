@@ -163,7 +163,6 @@ class TestBacktestEngineParity(unittest.TestCase):
                                 (ConditionRule.above("volume", "high"),) if short else ()
                             ),
                             target_quantity=1.0,
-                            daily_schedule=DailyTradingSchedule(2, 4, 5),
                         )
                         strategy = StrategyDefinition(
                             strategy_id="daily_schedule_fixture",
@@ -195,7 +194,10 @@ class TestBacktestEngineParity(unittest.TestCase):
                                     strategy=strategy,
                                     start_ms=minutes[0] * 60_000,
                                     end_ms=(minutes[-1] + 1) * 60_000,
-                                    execution=ExecutionConfig(gap_policy=gap_policy),
+                                    execution=ExecutionConfig(
+                                        gap_policy=gap_policy,
+                                        daily_schedule=DailyTradingSchedule(2, 4, 5),
+                                    ),
                                 ),
                                 bars=bars,
                                 strategy=strategy,
@@ -220,7 +222,6 @@ class TestBacktestEngineParity(unittest.TestCase):
             entry_conditions=(ConditionRule.above("volume", "high"),),
             exit_conditions=(),
             target_quantity=1.0,
-            daily_schedule=DailyTradingSchedule(2, 4, 5),
             protective_exit=ProtectiveExitSpec(stop_loss_pct=5.0, take_profit_pct=5.0),
         )
         strategy = StrategyDefinition(
@@ -257,6 +258,7 @@ class TestBacktestEngineParity(unittest.TestCase):
                         end_ms=360_000,
                         execution=ExecutionConfig(
                             gap_policy=GapPolicy.ERROR,
+                            daily_schedule=DailyTradingSchedule(2, 4, 5),
                             allowed_directions=AllowedDirections.LONG_ONLY,
                             commission_bps=1.0,
                             slippage_bps=1.0,
@@ -277,7 +279,6 @@ class TestBacktestEngineParity(unittest.TestCase):
             entry_conditions=(ConditionRule.above("volume", "high"),),
             exit_conditions=(ConditionRule.below("volume", "low"),),
             target_quantity=1.0,
-            daily_schedule=DailyTradingSchedule(2, 4, 5),
         )
         strategy = StrategyDefinition(
             strategy_id="scheduled_reversal_fixture",
@@ -304,7 +305,11 @@ class TestBacktestEngineParity(unittest.TestCase):
                 results = [
                     run_backtest(
                         request=_build_request_for_strategy(
-                            engine=engine, strategy=strategy, start_ms=60_000, end_ms=360_000
+                            engine=engine,
+                            strategy=strategy,
+                            start_ms=60_000,
+                            end_ms=360_000,
+                            execution=ExecutionConfig(daily_schedule=DailyTradingSchedule(2, 4, 5)),
                         ),
                         bars=bars,
                         strategy=strategy,

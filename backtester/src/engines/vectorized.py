@@ -55,6 +55,8 @@ def run_vectorized_backtest(
 ) -> BacktestResult:
     """Run a vectorized bar backtest for one symbol."""
     _validate_vectorized_request(request)
+    if request.execution.daily_schedule is not None and strategy.bar_model is None:
+        raise ValueError("Daily schedules require a declarative bar strategy")
 
     symbol = request.symbols[0]
     normalized = _normalize_bars(bars=bars, symbol=symbol)
@@ -78,6 +80,8 @@ def run_vectorized_backtest(
     close_prices = normalized["close"].to_numpy(dtype="float64")
 
     protective_exit = _protective_exit_for_strategy(strategy)
+    if request.execution.daily_schedule is not None and protective_exit is None:
+        protective_exit = ProtectiveExitSpec()
     if protective_exit is None:
         fill_result = generate_fills_from_targets(
             symbol=symbol,
@@ -107,7 +111,7 @@ def run_vectorized_backtest(
             signal_values=signal_values,
             stop_loss_pct=protective_exit.stop_loss_pct,
             take_profit_pct=protective_exit.take_profit_pct,
-            daily_schedule=strategy.require_v1_parity_model().daily_schedule,
+            daily_schedule=request.execution.daily_schedule,
             intrabar_exit_policy=request.execution.intrabar_exit_policy,
             gap_policy=request.execution.gap_policy,
             slippage_bps=float(request.execution.slippage_bps),
@@ -237,11 +241,7 @@ def _protective_exit_for_strategy(strategy: StrategyDefinition) -> ProtectiveExi
     if strategy.bar_model is None:
         return None
     protective_exit = strategy.bar_model.protective_exit
-    if (
-        protective_exit.stop_loss_pct is None
-        and protective_exit.take_profit_pct is None
-        and strategy.bar_model.daily_schedule is None
-    ):
+    if protective_exit.stop_loss_pct is None and protective_exit.take_profit_pct is None:
         return None
     return protective_exit
 

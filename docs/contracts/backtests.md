@@ -111,6 +111,22 @@ failures expose bounded sanitized errors while tracebacks stay in worker logs.
   deletion conflict. Storage rechecks under the slot lock and deletes artifacts,
   members, command receipts, and events atomically with their parent.
 
+## Daily execution schedule
+
+`execution.daily_schedule` is optional and defaults to disabled (omitted or null).
+When enabled it contains integer `entry_start_minute_utc`,
+`last_entry_minute_utc`, and `exit_minute_utc`, with
+`0 <= entry_start < last_entry <= exit < 1440`. These are shared execution controls,
+not strategy parameters or sweep axes. Every sweep member retains the same
+schedule. See [engine timing rules](../../backtester/STRATEGIES.md#daily-execution-schedule).
+
+Enabled schedules survive request snapshots, worker reconstruction, historical
+inspection, and editable reuse. Disabled schedules are omitted from canonical
+snapshots, preserving existing request representations. Older requests without
+the field retain unrestricted execution; request/result schema versions and
+storage layout are unchanged. Unknown schedule fields and invalid boundaries
+are rejected before submission.
+
 ## Saved chart indicators
 
 Successful runs produced by the application runner include a **Chart Indicator

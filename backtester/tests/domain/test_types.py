@@ -219,6 +219,8 @@ class TestDomainTypes(unittest.TestCase):
         snapshot = BacktestRequestSnapshot.from_request(request)
         restored = snapshot.to_request()
 
+        self.assertNotIn("daily_schedule", snapshot.payload["execution"])
+        self.assertIsNone(restored.execution.daily_schedule)
         self.assertEqual(snapshot.schema_version, 2)
         self.assertEqual(snapshot.payload["exchange"], "FX")
         self.assertEqual(

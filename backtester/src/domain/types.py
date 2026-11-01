@@ -2,7 +2,7 @@
 
 import math
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 from domain.enums import (
@@ -21,6 +21,7 @@ from domain.enums import (
     TradeAccountingPolicy,
     TradeDirection,
 )
+from domain.schedule import DailyTradingSchedule
 
 BACKTEST_REQUEST_SCHEMA_VERSION = 3
 BACKTEST_RESULT_SCHEMA_VERSION = 3
@@ -68,8 +69,13 @@ class ExecutionConfig:
     intrabar_exit_policy: IntrabarExitPolicy = IntrabarExitPolicy.CONSERVATIVE
     commission_bps: float = 0.0
     slippage_bps: float = 0.0
+    daily_schedule: DailyTradingSchedule | None = None
 
     def __post_init__(self) -> None:
+        if self.daily_schedule is not None and not isinstance(
+            self.daily_schedule, DailyTradingSchedule
+        ):
+            raise ValueError("execution daily_schedule must be a DailyTradingSchedule")
         try:
             allowed_directions = AllowedDirections(self.allowed_directions)
         except ValueError as exc:
@@ -389,6 +395,11 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
             "intrabar_exit_policy": _enum_value(execution.intrabar_exit_policy),
             "commission_bps": float(execution.commission_bps),
             "slippage_bps": float(execution.slippage_bps),
+            **(
+                {"daily_schedule": asdict(execution.daily_schedule)}
+                if execution.daily_schedule is not None
+                else {}
+            ),
         },
         "persist_result": bool(request.persist_result),
         "run_metadata": deepcopy(request.run_metadata),
@@ -406,7 +417,12 @@ def _backtest_request_from_payload(
         strategy,
         _STRATEGY_PAYLOAD_FIELDS | ({"strategy_version"} if schema_version == 3 else set()),
     )
-    _validate_payload_fields("Backtest execution", execution, _EXECUTION_PAYLOAD_FIELDS)
+    _validate_payload_fields(
+        "Backtest execution",
+        execution,
+        _EXECUTION_PAYLOAD_FIELDS
+        | ({"daily_schedule"} if "daily_schedule" in execution else set()),
+    )
 
     symbols = payload["symbols"]
     if not isinstance(symbols, (list, tuple)) or not all(
@@ -448,6 +464,7 @@ def _backtest_request_from_payload(
             intrabar_exit_policy=IntrabarExitPolicy(execution["intrabar_exit_policy"]),
             commission_bps=float(execution["commission_bps"]),
             slippage_bps=float(execution["slippage_bps"]),
+            daily_schedule=DailyTradingSchedule.from_payload(execution.get("daily_schedule")),
         ),
         initial_capital=float(payload["initial_capital"]),
         data_granularity=DataGranularity(payload["data_granularity"]),

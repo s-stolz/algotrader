@@ -18,6 +18,7 @@ from domain.enums import (
     TradeAccountingPolicy,
 )
 from domain.experiment_names import normalize_experiment_name
+from domain.schedule import DailyTradingSchedule
 from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
@@ -34,6 +35,7 @@ from pydantic import (
     StrictInt,
     field_validator,
     model_serializer,
+    model_validator,
 )
 
 _PUBLIC_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,100}$")
@@ -87,6 +89,17 @@ class SweepStrategyRequestSchema(ApiContractModel):
     strategy_version: StrictInt = Field(gt=0)
 
 
+class DailyTradingScheduleRequestSchema(ApiContractModel):
+    entry_start_minute_utc: StrictInt = Field(ge=0, lt=1440)
+    last_entry_minute_utc: StrictInt = Field(ge=0, lt=1440)
+    exit_minute_utc: StrictInt = Field(ge=0, lt=1440)
+
+    @model_validator(mode="after")
+    def validate_boundaries(self) -> "DailyTradingScheduleRequestSchema":
+        DailyTradingSchedule(**self.model_dump())
+        return self
+
+
 class ExecutionRequestSchema(ApiContractModel):
     signal_timing: Literal["close"] = "close"
     fill_timing: Literal["next_open"] = "next_open"
@@ -103,6 +116,7 @@ class ExecutionRequestSchema(ApiContractModel):
     ] = "conservative"
     commission_bps: float = Field(default=0.0, ge=0.0)
     slippage_bps: float = Field(default=0.0, ge=0.0)
+    daily_schedule: DailyTradingScheduleRequestSchema | None = None
 
 
 class BacktestSubmissionRequestSchema(ApiContractModel):
@@ -153,6 +167,11 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
                 intrabar_exit_policy=IntrabarExitPolicy(execution.intrabar_exit_policy),
                 commission_bps=execution.commission_bps,
                 slippage_bps=execution.slippage_bps,
+                daily_schedule=(
+                    DailyTradingSchedule(**execution.daily_schedule.model_dump())
+                    if execution.daily_schedule is not None
+                    else None
+                ),
             ),
             persist_result=self.persist_result,
             run_metadata=(dict(self.run_metadata) if self.run_metadata is not None else None),

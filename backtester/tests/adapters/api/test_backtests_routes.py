@@ -289,6 +289,54 @@ class TestBacktestSubmissionRoute(unittest.TestCase):
         self.assertEqual(response.json()["detail"]["fields"], ["fast_window"])
         self.assertEqual(repository.runs_by_id, {})
 
+    def test_daily_schedule_is_saved_as_execution_configuration(self) -> None:
+        repository = _FakeRunRepository()
+        payload = _valid_payload()
+        schedule = {
+            "entry_start_minute_utc": 60,
+            "last_entry_minute_utc": 120,
+            "exit_minute_utc": 180,
+        }
+        payload["execution"] = {**payload.get("execution", {}), "daily_schedule": schedule}
+        with TestClient(create_app(service=BacktestRunService(repository=repository))) as client:
+            response = client.post("/backtests", json=payload)
+            self.assertEqual(response.status_code, 202)
+            run_id = response.json()["run_id"]
+            saved = client.get(f"/backtests/{run_id}").json()
+        self.assertEqual(saved["request"]["execution"]["daily_schedule"], schedule)
+        snapshot = repository.runs_by_id[run_id].request_snapshot
+        restored_schedule = snapshot.to_request().execution.daily_schedule
+        assert restored_schedule is not None
+        self.assertEqual(restored_schedule.exit_minute_utc, 180)
+        self.assertEqual(
+            BacktestRequestSnapshot.from_request(snapshot.to_request()).payload, snapshot.payload
+        )
+
+    def test_daily_schedule_rejects_invalid_boundaries_before_submission(self) -> None:
+        repository = _FakeRunRepository()
+        with TestClient(create_app(service=BacktestRunService(repository=repository))) as client:
+            for schedule in (
+                {
+                    "entry_start_minute_utc": 120,
+                    "last_entry_minute_utc": 60,
+                    "exit_minute_utc": 180,
+                },
+                {
+                    "entry_start_minute_utc": True,
+                    "last_entry_minute_utc": 120,
+                    "exit_minute_utc": 180,
+                },
+                {"entry_start_minute_utc": 60, "last_entry_minute_utc": 120},
+            ):
+                with self.subTest(schedule=schedule):
+                    payload = _valid_payload()
+                    payload["execution"] = {
+                        **payload.get("execution", {}),
+                        "daily_schedule": schedule,
+                    }
+                    self.assertEqual(client.post("/backtests", json=payload).status_code, 422)
+        self.assertFalse(repository.runs_by_id)
+
     def test_submit_returns_accepted_queued_resource_location(self) -> None:
         repository = _FakeRunRepository()
         service = BacktestRunService(

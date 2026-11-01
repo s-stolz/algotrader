@@ -103,13 +103,16 @@ condition alone is not a wall-clock schedule or an execution-time entry cutoff.
 
 ## Daily execution schedule
 
-Set `BarStrategyModel.daily_schedule` to a `DailyTradingSchedule` from
+Set `ExecutionConfig.daily_schedule` to a `DailyTradingSchedule` from
 `domain.schedule` to constrain actual fills. Its integer UTC minutes define an
 inclusive entry start, an exclusive last-entry cutoff, and a same-day exit time.
 The required ordering is `0 <= start < last_entry <= exit < 1440`; omitted
-schedules preserve unrestricted execution. Builders can expose these boundaries
-as ordinary saved strategy parameters. No separate request or result schema is
-required.
+schedules preserve unrestricted execution. The schedule belongs to the run
+execution configuration, not the strategy builder. It is saved and reused with
+the request, and is shared by all members of a parameter sweep. The public API
+accepts `execution.daily_schedule` as an optional object or null; omitted values
+remain disabled. Declarative bar strategies support schedules in both engines;
+callback-only vectorized strategies reject an enabled schedule.
 
 Both engines check the destination bar's open timestamp, including for deferred
 orders. Outside the entry window, exposure increases are cancelled; a direction

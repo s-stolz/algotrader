@@ -205,10 +205,10 @@ def _run_event_driven_loop(
         bar_index = state.start_bar()
         protective_exit = bar_model.protective_exit
 
-        if bar_model.daily_schedule is not None:
+        if request.execution.daily_schedule is not None:
             _apply_daily_schedule_at_open(
                 state=state,
-                schedule=bar_model.daily_schedule,
+                schedule=request.execution.daily_schedule,
                 timestamp_ms=int(bar.timestamp_ms),
                 previous_timestamp_ms=previous_open_ms,
             )
@@ -229,7 +229,7 @@ def _run_event_driven_loop(
 
         _update_scheduled_exit(
             state=state,
-            schedule=bar_model.daily_schedule,
+            schedule=request.execution.daily_schedule,
             previous_position=previous_position,
             timestamp_ms=int(bar.timestamp_ms),
         )
