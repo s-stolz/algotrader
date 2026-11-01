@@ -49,7 +49,7 @@ describe('creation design controls', () => {
     const label = strategyLabel.parentElement!;
     expect(getComputedStyle(fields).display).toBe('grid');
     expect(getComputedStyle(label).display).toBe('grid');
-    expect(getComputedStyle(label).gap).toBe('var(--design-space-sm)');
+    expect(getComputedStyle(label).gap).toBe('var(--design-space-xs)');
     expect(getComputedStyle(strategyLabel).alignItems).toBe('center');
   });
 

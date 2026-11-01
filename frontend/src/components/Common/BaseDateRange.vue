@@ -86,7 +86,7 @@ function applyDatePreset(months: number) {
 }
 .date-range legend {
   padding: 0;
-  margin-bottom: var(--design-space-sm);
+  margin-bottom: var(--design-space-xs);
   font-size: var(--design-text-secondary);
 }
 .date-inputs {
