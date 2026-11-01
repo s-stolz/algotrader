@@ -15,6 +15,7 @@ export type ReuseSource = {
   strategyVersion: number | null;
   historicalMetadata: StrategyCatalogEntry | null;
   defaultedParameters: string[];
+  appliedParameterChanges?: Record<string, { saved: string; current: string }>;
 };
 
 export type ReuseDraft = {

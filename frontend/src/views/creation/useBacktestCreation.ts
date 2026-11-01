@@ -20,6 +20,7 @@ import type {
   SweepPreviewRequest,
 } from '@/types/backtesterContracts';
 import type { ReuseSource } from '../backtestReuse';
+import { applyCurrentStrategy } from './creationStrategyMigration';
 import { creationFields } from './creationFields';
 import {
   experimentNameIssue,
@@ -341,23 +342,12 @@ export function useBacktestCreation(emit: CreationEvents) {
   function useCurrentVersion(): void {
     const selected = selectedStrategy.value;
     if (!selected) return;
-    const retained = Object.fromEntries(
-      selected.parameters
-        .filter(
-          (parameter) =>
-            Object.hasOwn(draft.value.strategy.parameters, parameter.name) &&
-            !store.reuseSource?.defaultedParameters.includes(parameter.name),
-        )
-        .map((parameter) => [
-          parameter.name,
-          draft.value.strategy.parameters[parameter.name],
-        ]),
+    applyCurrentStrategy(
+      selected,
+      draft.value,
+      sweep.value,
+      store.reuseSource as ReuseSource | null,
     );
-    draft.value.strategy = {
-      strategy_id: selected.strategy_id,
-      strategy_version: selected.strategy_version,
-      parameters: { ...defaults(selected), ...retained },
-    };
     submitError.value = null;
   }
 

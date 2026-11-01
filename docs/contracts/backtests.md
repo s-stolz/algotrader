@@ -27,9 +27,10 @@ API; the accessor owns atomic storage, and shared clients pass documents through
   Already executing children retain loaded code; saved history remains readable.
 - **Create from this** opens an editable draft against the current catalog from a
   saved request or batch definition. Submission creates independent history;
-  reuse applies the current Strategy Version automatically, retaining explicit
-  saved parameter values and resolving previously defaulted parameters against
-  current defaults. The Workspace shows the version switch and parameter changes;
+  when versions differ, reuse applies the available Strategy Version and its
+  defaults to fixed parameters automatically. Explicit sweep ranges/value lists
+  and parameters without defaults retain their copied values. The Workspace shows
+  the version switch and records old/new values for automatically changed fields;
   invalid copied values block submission. Named
   sources propose their saved top-level name plus ` (copy)` in the editable
   creation draft; shorten the source portion by Unicode characters to retain

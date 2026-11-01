@@ -8,6 +8,7 @@
       <button
         type="button"
         class="change-info"
+        :class="{ 'automatically-changed': automaticallyChanged }"
         :aria-label="`${name} changes: ${notes.join('; ')}`"
         @mouseenter="open = true"
         @mouseleave="open = false"
@@ -15,7 +16,7 @@
         @blur="open = false"
         @click.prevent="open = true"
         @keydown.esc="open = false"
-        >ⓘ</button
+        >{{ automaticallyChanged ? '!' : 'ⓘ' }}</button
       >
     </template>
     <div
@@ -32,6 +33,12 @@ import { useCreation } from './creationContext';
 const props = defineProps<{ name: string }>();
 const { parameterChanges } = useCreation();
 const open = ref(false);
+const automaticallyChanged = computed(() =>
+  parameterChanges.value.some(
+    (item) =>
+      item.parameter === props.name && item.change === 'Automatically changed',
+  ),
+);
 const notes = computed(() =>
   parameterChanges.value
     .filter((item) => item.parameter === props.name)
@@ -51,6 +58,13 @@ const notes = computed(() =>
   color: var(--design-color-muted);
   font: inherit;
   cursor: help;
+}
+.automatically-changed {
+  width: 20px;
+  height: 20px;
+  border: 1px solid currentColor;
+  border-radius: var(--design-radius-circle);
+  color: var(--design-color-warning);
 }
 .change-info:hover,
 .change-info:focus-visible {

@@ -111,7 +111,7 @@ describe('standalone reuse', () => {
         document
           .querySelector('[data-testid="reuse-version-review"]')
           ?.getAttribute('aria-label'),
-      ).toBe('Saved v1; available v2. This copy uses v2.');
+      ).toBe('Saved v1; available v2. This copy uses v2 and its defaults.');
       expect(
         document.querySelector('[data-testid="reuse-use-current"]'),
       ).toBeNull();
@@ -122,20 +122,10 @@ describe('standalone reuse', () => {
         document
           .querySelector('[aria-label^="fast_window changes"]')
           ?.getAttribute('aria-label'),
-      ).toContain('Value / default: 4 → 5');
-      expect(document.body.textContent).toContain('label:');
-      (
-        document.querySelector('[data-testid="creation-submit"]') as HTMLElement
-      ).click();
-      await flushPromises();
-      expect(submitBacktestRun).not.toHaveBeenCalled();
-      const label = wrapper
-        .findAllComponents(NSelect)
-        .find(
-          (select) =>
-            select.attributes('data-testid') === 'creation-param-label',
-        );
-      label!.vm.$emit('update:value', 1);
+      ).toContain('Automatically changed: 4 → 5');
+      expect(
+        useBacktestWorkspaceStore().creationDraft?.strategy.parameters,
+      ).toMatchObject({ fast_window: 5, label: 'c' });
       nameInput().vm.$emit('update:value', 'invalid\nname');
       await flushPromises();
       (
@@ -160,7 +150,7 @@ describe('standalone reuse', () => {
         expect.objectContaining({
           strategy: expect.objectContaining({
             strategy_version: 2,
-            parameters: expect.objectContaining({ label: 'c', fast_window: 4 }),
+            parameters: expect.objectContaining({ label: 'c', fast_window: 5 }),
           }),
         }),
       );
