@@ -135,6 +135,16 @@ def load_market_data_bundle(
             start_ms=int(request.start_ms), params=dict(requirement.parameters)
         )
         start = min(start, plan.start_ms)
+        if requirement.capture_at_utc_minute is not None:
+            day_start = int(request.start_ms) // 86_400_000 * 86_400_000
+            start = min(
+                start,
+                compute_fetch_start_ms(
+                    start_ms=day_start,
+                    timeframe=request.timeframe,
+                    warmup_bars=compute_required_warmup_bars(strategy) + 1,
+                ),
+            )
         predecessor_count = max(predecessor_count, plan.predecessor_bars)
     frames = {}
     for source in sorted(sources):

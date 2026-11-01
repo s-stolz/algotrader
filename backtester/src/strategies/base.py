@@ -24,8 +24,10 @@ class IndicatorFeatureRequirement:
     output_key: str | None
     parameters: Mapping[str, Any] = field(default_factory=dict)
     output_asset: str | None = None
+    capture_at_utc_minute: int | None = None
 
     def __post_init__(self) -> None:
+        _validate_capture_minute(self.capture_at_utc_minute)
         if not isinstance(self.feature_name, str):
             raise ValueError(
                 "indicator feature requirement feature_name must be a non-empty string"
@@ -285,3 +287,8 @@ def _combine_condition_masks(
             )
         combined |= mask
     return combined
+
+
+def _validate_capture_minute(value: int | None) -> None:
+    if value is not None and (type(value) is not int or not 0 < value < 1440):
+        raise ValueError("capture_at_utc_minute must be an integer between 1 and 1439")

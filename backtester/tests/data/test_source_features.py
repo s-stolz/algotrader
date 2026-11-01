@@ -2,6 +2,7 @@
 
 import unittest
 from dataclasses import replace
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -303,3 +304,126 @@ class SourceLoaderTests(unittest.TestCase):
         )
         self.assertEqual(len(calls), len(ASSETS) * 2)
         self.assertEqual(bundle.traded_bars.symbol.unique().tolist(), [ASSETS[0]])
+
+
+class DailyFeatureCaptureTests(unittest.TestCase):
+    def model(self, minute=15):
+        model = strategy()
+        return replace(
+            model,
+            feature_specs=("captured",),
+            indicator_requirements=(
+                IndicatorFeatureRequirement(
+                    "captured", "sma", None, {"window": 1}, capture_at_utc_minute=minute
+                ),
+            ),
+        )
+
+    def compare(self, bars, model=None):
+        model = model or self.model()
+        expected = build_feature_frame(bars=bars, strategy=model, timeframe="M5")
+        stream = SourceFeatureStream(bars=bars, strategy=model, timeframe="M5", feature_bars={})
+        actual = [stream.update(int(t)) for t in bars.timestamp_ms]
+        np.testing.assert_allclose([row["captured"] for row in actual], expected.captured)
+        self.assertEqual(
+            [row["indicators_available"] for row in actual], expected.indicators_available.tolist()
+        )
+        return expected
+
+    def test_capture_is_causal_and_resets_each_day(self):
+        times = START + np.array([0, 1, 2, 3, 4, 288, 289, 290, 291]) * STEP
+        bars = candles("TEST", times, np.arange(len(times)) + 10.0)
+        result = self.compare(bars)
+        np.testing.assert_allclose(
+            result.captured, [np.nan, np.nan, 12, 12, 12, np.nan, np.nan, 17, 17]
+        )
+        changed = bars.copy()
+        changed.loc[changed.timestamp_ms > START + 2 * STEP, "close"] = 999
+        np.testing.assert_allclose(
+            self.compare(changed).captured.iloc[:5], result.captured.iloc[:5]
+        )
+
+    def test_missing_or_invalid_cutoff_does_not_capture_a_later_value(self):
+        for close in ([10, 11, np.nan, 13], [10, 11, np.inf, 13]):
+            with self.subTest(close=close):
+                bars = candles("TEST", START + np.arange(4) * STEP, close)
+                self.assertTrue(self.compare(bars).captured.isna().all())
+        bars = candles("TEST", START + np.array([0, 1, 3, 4]) * STEP, [10, 11, 13, 14])
+        self.assertTrue(self.compare(bars).captured.isna().all())
+
+    def test_invalid_input_after_capture_does_not_change_captured_value(self):
+        bars = candles("TEST", START + np.arange(5) * STEP, [10, 11, 12, np.nan, 14])
+        np.testing.assert_allclose(self.compare(bars).captured, [np.nan, np.nan, 12, 12, 12])
+
+    def test_capture_must_align_with_timeframe(self):
+        bars, _ = fixture()
+        with self.assertRaisesRegex(ValueError, "align"):
+            self.compare(bars, self.model(16))
+        for value in (0, 1440, True, 1.5):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "capture_at"):
+                self.model(cast(int, value))
+
+    def test_both_engines_wait_for_capture_then_fill_at_next_open(self):
+        bars = candles("TEST", START + np.arange(8) * STEP, 2.0)
+        results = [
+            run_backtest(request=request(engine), bars=bars, strategy=self.model())
+            for engine in BacktestEngine
+        ]
+        self.assertEqual(results[0].fills, results[1].fills)
+        self.assertEqual(results[0].equity_curve, results[1].equity_curve)
+        self.assertEqual([fill.timestamp_ms for fill in results[0].fills], [START + 3 * STEP])
+
+    def test_midday_loader_includes_capture_history(self):
+        bars = candles("TEST", START + np.arange(-2, 8) * STEP, 2.0)
+        calls = []
+
+        class Adapter:
+            def fetch_bars(self, *, start_ms, end_ms, **kwargs):
+                calls.append(start_ms)
+                return bars.loc[(bars.timestamp_ms >= start_ms) & (bars.timestamp_ms < end_ms)]
+
+        for engine in BacktestEngine:
+            result = run_backtest_with_market_data(
+                request=replace(request(engine), start_ms=START + 5 * STEP),
+                strategy=self.model(),
+                data_adapter=Adapter(),
+            )
+            self.assertEqual(result.fills[0].timestamp_ms, START + 6 * STEP)
+        self.assertTrue(all(start < START for start in calls))
+
+    def test_aggregate_capture_uses_history_before_first_execution_bar(self):
+        bars, sources = fixture()
+        original = strategy()
+        captured = replace(
+            original,
+            indicator_requirements=(
+                replace(original.indicator_requirements[0], capture_at_utc_minute=15),
+            ),
+        )
+        raw = build_feature_frame(
+            bars=bars, strategy=original, timeframe="M5", feature_bars=sources
+        )
+        expected_value = raw.loc[raw.timestamp_ms == START + 2 * STEP, "strength"].iloc[0]
+        later = bars.loc[bars.timestamp_ms >= START + 4 * STEP]
+        batch = build_feature_frame(
+            bars=later, strategy=captured, timeframe="M5", feature_bars=sources
+        )
+        stream = SourceFeatureStream(
+            bars=later, strategy=captured, timeframe="M5", feature_bars=sources
+        )
+        np.testing.assert_allclose(batch.strength, expected_value)
+        np.testing.assert_allclose(
+            [stream.update(int(t))["strength"] for t in later.timestamp_ms], expected_value
+        )
+
+    def test_capture_does_not_change_chart_indicator_configuration(self):
+        from strategies.chart import snapshot_chart_indicators
+
+        captured = self.model()
+        ordinary = replace(
+            captured,
+            indicator_requirements=(
+                replace(captured.indicator_requirements[0], capture_at_utc_minute=None),
+            ),
+        )
+        self.assertEqual(snapshot_chart_indicators(captured), snapshot_chart_indicators(ordinary))

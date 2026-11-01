@@ -13,7 +13,8 @@ from strategies.base import IndicatorFeatureRequirement, StrategyDefinition
 def needs_source_inputs(strategy: StrategyDefinition) -> bool:
     registry = get_registry()
     return any(
-        registry.get(item.indicator_id).spec.required_assets
+        item.capture_at_utc_minute is not None
+        or registry.get(item.indicator_id).spec.required_assets
         or registry.get(item.indicator_id).spec.resolve_input_history(dict(item.parameters)).anchor
         != "rolling"
         for item in strategy.indicator_requirements
@@ -30,6 +31,10 @@ def prepare_indicator_inputs(
 ) -> list[IndicatorInput]:
     spec = get_registry().get(requirement.indicator_id).spec
     history = spec.resolve_input_history(dict(requirement.parameters))
+    if requirement.capture_at_utc_minute is not None:
+        minutes = timeframe_to_minutes(timeframe)
+        if 1440 % minutes or requirement.capture_at_utc_minute % minutes:
+            raise ValueError("Daily feature capture must align with the timeframe")
     if history.anchor != "rolling" and not spec.supports_update:
         raise ValueError("Anchored backtest indicators require incremental updates")
     assets = spec.required_assets or [symbol]

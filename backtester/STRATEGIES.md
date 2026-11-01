@@ -122,6 +122,23 @@ eligible. Protective and scheduled exits continue independently. Source bootstra
 initializes calculations without emitting signals; crossover decisions use only
 in-window snapshots in both engines.
 
+### Daily feature capture
+
+An `IndicatorFeatureRequirement` can set `capture_at_utc_minute` to an integer
+from 1 through 1439. The feature captures the output of the candle closing at
+that UTC minute, then holds it for the rest of that candle's UTC day. Before
+capture it is unavailable. Missing or invalid cutoff output leaves it unavailable
+for that day; a later value never substitutes for the cutoff. A new day resets
+the capture. Timeframes must divide the UTC day and align with the cutoff.
+
+Capture is an optional strategy feature transformation; it does not change the
+indicator calculation or its saved chart configuration. Omitted capture settings
+retain ordinary continuously updated features. A captured value remains valid
+when subsequent inputs are missing; declare an uncaptured requirement as well
+when decisions also need current input availability. Both engines consume only
+completed candles. The loader includes the current day's capture history and
+indicator warmup even when a run starts after the cutoff.
+
 ## Explicit exits
 
 `BarStrategyModel.flat_conditions` is an optional tuple of conditions combined

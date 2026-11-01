@@ -4,6 +4,7 @@ from typing import Mapping
 
 import numpy as np
 import pandas as pd
+from db_accessor_client.timeframes import timeframe_to_minutes
 from indicator_engine import BatchEngine, HistoryPolicy, ParamGrid, UpdateEngine, get_registry
 from strategies.base import IndicatorFeatureRequirement, StrategyDefinition
 
@@ -44,11 +45,18 @@ def build_source_features(
                 if timestamp in values and not ready:
                     continue  # A daily seed must not overwrite the preceding day's final output.
                 values[int(timestamp)] = float(value) if ready else np.nan
-        column = (
-            bars["timestamp_ms"]
-            .map(lambda t: values.get(int(t), np.nan))
-            .to_numpy(dtype=np.float64)
-        )
+        if requirement.capture_at_utc_minute is not None:
+            offset = (requirement.capture_at_utc_minute - timeframe_to_minutes(timeframe)) * 60_000
+            timestamps = bars["timestamp_ms"].to_numpy(dtype=np.int64)
+            capture_times = timestamps // 86_400_000 * 86_400_000 + offset
+            captured = pd.Series(capture_times).map(values).to_numpy(dtype=np.float64)
+            column = np.where(timestamps >= capture_times, captured, np.nan)
+        else:
+            column = (
+                bars["timestamp_ms"]
+                .map(lambda t: values.get(int(t), np.nan))
+                .to_numpy(dtype=np.float64)
+            )
         featured[requirement.feature_name] = column
         available &= np.isfinite(column)
     featured["indicators_available"] = available.astype(float)
@@ -105,6 +113,13 @@ class _SourceFeature:
         self._blocks = iter(blocks)
         self._block: IndicatorInput | None = None
         self._row = 0
+        self._capture_offset = (
+            None
+            if requirement.capture_at_utc_minute is None
+            else (requirement.capture_at_utc_minute - timeframe_to_minutes(timeframe)) * 60_000
+        )
+        self._captured_day: int | None = None
+        self._captured_value = np.nan
         self._engine: UpdateEngine | None = None
 
     def _advance_block(self) -> bool:
@@ -129,6 +144,12 @@ class _SourceFeature:
         return True
 
     def update(self, timestamp_ms: int) -> float:
+        value = self._advance(timestamp_ms)
+        if self._capture_offset is None:
+            return value
+        return self._captured_value if self._captured_day == timestamp_ms // 86_400_000 else np.nan
+
+    def _advance(self, timestamp_ms: int) -> float:
         value = np.nan
         while True:
             if self._block is None or self._row == len(self._block.bars.time):
@@ -141,6 +162,18 @@ class _SourceFeature:
             tensor = self._engine.on_bar(
                 self._timeframe, timestamp, self._block.bars.data[self._row]
             )[self.requirement.indicator_id]
+            if self._capture_offset is not None and timestamp % 86_400_000 == self._capture_offset:
+                self._captured_day = timestamp // 86_400_000
+                self._captured_value = (
+                    float(
+                        tensor.latest_value(
+                            asset=self.requirement.output_asset or self._symbol,
+                            output=self.requirement.output_key,
+                        )
+                    )
+                    if self._block.available[self._row]
+                    else np.nan
+                )
             if timestamp == timestamp_ms:
                 if self._block.available[self._row]:
                     value = float(
