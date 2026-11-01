@@ -111,7 +111,7 @@ describe('standalone reuse', () => {
         document
           .querySelector('[data-testid="reuse-version-review"]')
           ?.getAttribute('aria-label'),
-      ).toBe('Saved v1; available v2. This copy uses v2.');
+      ).toBe('Copied from v1. Now using v2 because v1 is unavailable.');
       expect(
         document.querySelector('[data-testid="reuse-use-current"]'),
       ).toBeNull();
