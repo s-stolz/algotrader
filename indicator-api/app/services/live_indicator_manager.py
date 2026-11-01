@@ -270,8 +270,8 @@ class LiveIndicatorManager:
         return redis
 
     def _validate_live_indicator(self, spec: LiveStreamSpec) -> None:
-        if spec.engine_id == "currency_strength":
-            raise ValueError("currency_strength is not supported for live streaming in v1")
+        if spec.engine_id in {"currency_strength", "opening_range"}:
+            raise ValueError(f"{spec.engine_id} is not supported for live streaming in v1")
 
     def _build_warmup_info(
         self,

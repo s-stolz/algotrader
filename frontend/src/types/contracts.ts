@@ -118,6 +118,7 @@ export interface IndicatorOutputMetadata {
 }
 
 export interface IndicatorInfo {
+  supports_live?: boolean;
   id: number;
   indicator_id: string;
   name: string;
@@ -301,6 +302,8 @@ export function isIndicatorInfo(value: unknown): value is IndicatorInfo {
     isNonEmptyString(value.indicator_id) &&
     isNonEmptyString(value.name) &&
     typeof value.overlay === 'boolean' &&
+    (value.supports_live === undefined ||
+      typeof value.supports_live === 'boolean') &&
     Array.isArray(value.inputs) &&
     value.inputs.every((input) => typeof input === 'string') &&
     isIndicatorOutputMap(value.outputs) &&

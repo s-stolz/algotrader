@@ -23,7 +23,11 @@ parameters, response formatting, and live-stream lifecycle.
   must check both; common formatting helpers live in `app/utils.py`.
 - Live output uses the Indicator stream name in [root context](../CONTEXT.md),
   with fields `t`, `s`, `i`, `d`. Consumers are webserver and frontend.
-- `currency_strength` is unsupported for live streaming.
+- `currency_strength` and `opening_range` are unsupported for live streaming.
+  Catalog metadata declares `supports_live: false`; clients must avoid subscribing
+  these historical-only indicators. Opening range is catalog ID 7; its dedicated
+  `opening_range` output renderer consumes bounds, readiness, and timestamp
+  coordinates together rather than plotting each numeric field as a price.
 - Keep UI metadata and transport formatting here or in frontend; shared compute
   belongs to [indicator_engine](../libs/CONTEXT.md#indicator-engine).
 

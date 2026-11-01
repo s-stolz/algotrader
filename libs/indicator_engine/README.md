@@ -87,7 +87,8 @@ Outputs also include `range_start_ms`, `range_end_ms`, and `extension_end_ms`
 for rendering. Extension time is display metadata; it does not change formation
 or erase frozen values. Nonexistent daylight-saving boundary times are rejected;
 ambiguous boundary times use their first occurrence. The shared calculation is
-registered in the engine; chart catalog exposure requires its range renderer.
+registered in the engine; the historical chart catalog exposes it through a
+dedicated range renderer with optional extension lines.
 
 `IndicatorSpec.output_assets` declares aggregate output identities when they
 differ from the inputs. Omit it for ordinary per-input-asset outputs. Currency

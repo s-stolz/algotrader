@@ -3,7 +3,8 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-from app.services.anchored_indicator_service import calculate_anchored_indicator
+from app.services.candle_cache import CandleCache
+from app.services.historical_indicator_service import run_historical_indicator
 
 
 class OpeningRangeHistoryTests(unittest.IsolatedAsyncioTestCase):
@@ -37,21 +38,25 @@ class OpeningRangeHistoryTests(unittest.IsolatedAsyncioTestCase):
             return result.tail(kwargs["limit"]) if kwargs["limit"] is not None else result
 
         with patch("app.services.anchored_indicator_service.get_candles", side_effect=fetch):
-            result = await calculate_anchored_indicator(
-                engine_id="opening_range",
+            response = await run_historical_indicator(
+                indicator_id=7,
                 symbol="TEST",
                 exchange=None,
                 timeframe="M5",
                 start_ms=start + 6 * step,
                 end_ms=start + 8 * step,
                 limit=None,
-                parameters={
+                candle_cache=CandleCache(),
+                custom_parameters={
                     "start_time": "09:30",
                     "end_time": "10:00",
                     "extension_end_time": "11:00",
                     "timezone": zone,
                 },
             )
+        self.assertEqual(response["data"]["indicator_info"]["indicator_id"], "opening_range")
+        self.assertFalse(response["data"]["indicator_info"]["supports_live"])
+        result = pd.DataFrame(response["data"]["indicator_data"])
         self.assertEqual(result.range_high.tolist(), [14, 14])
         self.assertEqual(result.range_low.tolist(), [2, 2])
         self.assertEqual(result.ready.tolist(), [1, 1])

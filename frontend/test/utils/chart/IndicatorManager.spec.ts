@@ -43,6 +43,50 @@ const createChartManager = () => ({
 });
 
 describe('IndicatorManager', () => {
+  it('attaches range drawings once, refreshes them, and detaches on removal', async () => {
+    const chart = createChartManager();
+    const series = { attachPrimitive: vi.fn(), detachPrimitive: vi.fn() };
+    chart.series.set('ohlc', { series });
+    const manager = new IndicatorManager(chart);
+    const id = manager.indicatorsStore.addIndicator(
+      {
+        ...indicatorInfo,
+        indicator_id: 'opening_range',
+        overlay: true,
+        outputs: {
+          range_high: {
+            type: 'opening_range',
+            plotOptions: { showExtensions: true },
+          },
+        },
+      },
+      [
+        {
+          timestamp_ms: 3000,
+          range_start_ms: 1000,
+          range_end_ms: 2000,
+          extension_end_ms: 5000,
+          range_high: 12,
+          range_low: 8,
+          ready: 1,
+        },
+      ],
+      7,
+    );
+    await manager.addIndicatorSeries(id);
+    const primitive = series.attachPrimitive.mock.calls[0][0];
+    const update = vi.spyOn(primitive, 'setData');
+    manager.refreshIndicatorSeries(id);
+    manager.updateIndicatorStyles(id, 'range_high', { color: '#ff0000' });
+    expect(series.attachPrimitive).toHaveBeenCalledOnce();
+    expect(chart.addSeries).not.toHaveBeenCalled();
+    expect(update.mock.calls[1][1]).toMatchObject({ color: '#ff0000' });
+    manager.indicatorsStore.updateIndicatorData(id, []);
+    manager.refreshIndicatorSeries(id);
+    expect(primitive.paneViews()).toEqual([]);
+    manager.removeIndicatorSeriesAndData(id);
+    expect(series.detachPrimitive).toHaveBeenCalledWith(primitive);
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.mocked(wsService.send).mockReset();

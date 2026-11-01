@@ -40,6 +40,20 @@ function deferred<T>() {
 }
 
 describe('Indicator configuration and request lifecycle', () => {
+  it('does not subscribe historical-only indicators, including on reconnect', async () => {
+    const store = useIndicatorsStore();
+    const id = store.addIndicator({ ...info, supports_live: false }, [], 7);
+    await store.subscribeIndicatorLive(id, {
+      symbol: 'TEST',
+      timeframe: 'M5',
+      indicatorId: 7,
+      exchange: null,
+      parameters: {},
+    });
+    await store.resubscribeAllLive('TEST', 'M5');
+    expect(wsService.send).not.toHaveBeenCalled();
+    expect(store.liveSubscriptions.size).toBe(0);
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.mocked(requestIndicator).mockReset();

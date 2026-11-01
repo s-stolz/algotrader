@@ -14,6 +14,11 @@ and behavior that is easy to break when changing them.
   `src/utils/chart/ChartManager.ts`.
 - Historical Indicators cover the loaded Candle range: load the latest batch
   first, backfill older batches, and trim points outside that range.
+- Opening ranges render as per-session primitives on the Candle series through
+  `src/utils/chart/openingRange/`. Calculation coordinates are not plotted as
+  price series. Style changes redraw without recalculation; extension visibility
+  does not change the range. Historical-only indicators declare `supports_live:
+  false`, skip live subscriptions, and display a Historical label.
 - Backtest overlays use Closed Trades with explicit direction and saved planned
   protective prices. Selecting a run changes Market/Timeframe but preserves the
   normal latest-Candles, live-update, and lazy-history workflow. Render overlays

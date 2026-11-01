@@ -12,6 +12,7 @@ INDICATOR_MAP: dict[int, str] = {
     4: "macd",
     5: "currency_strength",
     6: "ema",
+    7: "opening_range",
 }
 
 
@@ -35,6 +36,7 @@ def get_indicator_metadata(indicator_id: int) -> dict:
         "indicator_id": engine_id,
         "name": spec.name,
         "overlay": ui.get("overlay", False),
+        "supports_live": ui.get("supports_live", True),
         "outputs": outputs,
         "parameters": spec.parameters,
         "inputs": spec.required_assets or [],

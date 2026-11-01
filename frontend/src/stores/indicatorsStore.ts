@@ -409,8 +409,8 @@ export const useIndicatorsStore = defineStore('indicators', () => {
       !_id ||
       !symbol ||
       !timeframe ||
-      indicatorId === null ||
-      indicatorId === undefined
+      indicatorId == null ||
+      indicators.get(_id)?.info.supports_live === false
     )
       return;
 

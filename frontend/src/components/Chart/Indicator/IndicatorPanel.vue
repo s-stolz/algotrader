@@ -1,7 +1,15 @@
 <template>
   <div class="indicator-panel">
     <div class="indicator-header">
-      <span class="indicator-name">{{ indicator.info.name }}</span>
+      <span class="indicator-name"
+        >{{ indicator.info.name }}
+        <small
+          v-if="indicator.info.supports_live === false"
+          title="Historical data only"
+        >
+          · Historical</small
+        >
+      </span>
       <div class="indicator-controls">
         <n-button
           text

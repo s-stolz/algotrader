@@ -72,6 +72,7 @@ UI_METADATA: dict[str, dict] = {
         },
     },
     "currency_strength": {
+        "supports_live": False,
         "overlay": False,
         "outputs": {
             "EUR": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#FF5252"}},
@@ -82,6 +83,22 @@ UI_METADATA: dict[str, dict] = {
             "CAD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#9C27B0"}},
             "CHF": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#880E4F"}},
             "USD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#FF9800"}},
+        },
+    },
+    "opening_range": {
+        "overlay": True,
+        "supports_live": False,
+        "outputs": {
+            "range_high": {
+                "type": "opening_range",
+                "label": "Range",
+                "plotOptions": {
+                    "color": "#2962ff",
+                    "fillColor": "rgba(41, 98, 255, 0.12)",
+                    "lineWidth": 1,
+                    "showExtensions": True,
+                },
+            },
         },
     },
 }

@@ -114,6 +114,29 @@ const indicatorInfo: IndicatorInfo = {
 };
 
 describe('IndicatorSettingsStyles', () => {
+  it('exposes a labeled extension toggle and omits calculation-only outputs', async () => {
+    const wrapper = mount(IndicatorSettingsStyles, {
+      props: {
+        indicatorInfo: {
+          ...indicatorInfo,
+          outputs: {
+            range_high: {
+              label: 'Range',
+              plotOptions: { showExtensions: true },
+            },
+            ready: {},
+            range_start_ms: {},
+          },
+        },
+      },
+    });
+    expect(wrapper.text()).not.toContain('range_start_ms');
+    expect(wrapper.text()).not.toContain('ready');
+    await wrapper.get('input[aria-label="Show extensions"]').setValue(false);
+    expect(wrapper.emitted('update-styles')).toEqual([
+      [{ outputKey: 'range_high', styles: { showExtensions: false } }],
+    ]);
+  });
   it('emits style updates with the changed output styles', async () => {
     const wrapper = mount(IndicatorSettingsStyles, {
       props: {

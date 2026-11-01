@@ -1,5 +1,6 @@
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { IndicatorDataPoint, JsonObject } from '@/types/contracts';
+import { OpeningRangeOverlays } from './openingRange/lifecycle';
 
 import type {
   ChartSeriesInfo,
@@ -53,10 +54,12 @@ function toChartSeriesOptions(
 export class IndicatorManager {
   public readonly indicatorsStore: IndicatorsStore;
   private readonly chartManager: IndicatorChartManager;
+  private readonly ranges: OpeningRangeOverlays;
 
   constructor(chartManager: IndicatorChartManager) {
     this.indicatorsStore = useIndicatorsStore();
     this.chartManager = chartManager;
+    this.ranges = new OpeningRangeOverlays(chartManager.series);
   }
 
   async addIndicatorSeries(id: string): Promise<void> {
@@ -66,6 +69,10 @@ export class IndicatorManager {
     }
 
     const { info, data, paneIndex } = indicator;
+    if (info.indicator_id === 'opening_range') {
+      this.ranges.update(indicator);
+      return;
+    }
 
     if (!data.length) {
       return;
@@ -131,6 +138,12 @@ export class IndicatorManager {
     outputKey: string,
     newStyles: ChartSeriesOptions,
   ): boolean {
+    const indicator = this.indicatorsStore.getById(id);
+    if (indicator?.info.indicator_id === 'opening_range') {
+      indicator.styles[outputKey] = { ...newStyles } as JsonObject;
+      this.ranges.update(indicator);
+      return true;
+    }
     const seriesKey = `${id}_${outputKey}`;
     return this.chartManager.updateSeriesOptions(seriesKey, newStyles);
   }
@@ -146,6 +159,10 @@ export class IndicatorManager {
     if (!indicator) return;
 
     const { info, data } = indicator;
+    if (info.indicator_id === 'opening_range') {
+      this.ranges.update(indicator);
+      return;
+    }
 
     for (const outputKey of Object.keys(info.outputs)) {
       if (outputKey === 'timestamp') continue;
@@ -190,6 +207,7 @@ export class IndicatorManager {
   }
 
   removeIndicatorSeries(id: string): void {
+    this.ranges.remove(id);
     const indicator = this.indicatorsStore.getById(id);
     if (!indicator) return;
 

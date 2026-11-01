@@ -5,12 +5,12 @@
   >
     <tbody>
       <template
-        v-for="(output, outputKey) in indicatorInfo.outputs"
+        v-for="(output, outputKey) in editableOutputs"
         :key="outputKey"
       >
         <tr class="output-style-header">
           <td colspan="2">
-            <n-h3 prefix="bar">{{ outputKey }}</n-h3>
+            <n-h3 prefix="bar">{{ output.label || outputKey }}</n-h3>
           </td>
         </tr>
 
@@ -23,9 +23,19 @@
             v-if="typeof value !== 'object' || value === null"
             class="output-style-option"
           >
-            <td>{{ styleKey }}</td>
+            <td>{{ styleLabel(styleKey) }}</td>
 
-            <td v-if="typeof value === 'string'">
+            <td v-if="typeof value === 'boolean'">
+              <BaseCheckbox
+                :aria-label="styleLabel(styleKey)"
+                :checked="getOutputPlotOptions(outputKey)[styleKey] === true"
+                @update:checked="
+                  (newValue) => setStyleValue(outputKey, styleKey, newValue)
+                "
+              />
+            </td>
+
+            <td v-else-if="typeof value === 'string'">
               <BaseColorPicker
                 :value="getStringStyleValue(outputKey, styleKey)"
                 @update:value="
@@ -95,10 +105,11 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { NH3, NInput, NInputNumber } from 'naive-ui';
 
 import BaseColorPicker from '@/components/Common/BaseColorPicker.vue';
+import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import type { IndicatorInfo, JsonObject, JsonValue } from '@/types/contracts';
 import type { ChartSeriesOptions } from '@/utils/chart';
@@ -106,7 +117,7 @@ import type { ChartSeriesOptions } from '@/utils/chart';
 import type { IndicatorStyleUpdatePayload } from './types';
 
 type StyleKey = string | number;
-type EditableStyleValue = string | number | null;
+type EditableStyleValue = string | number | boolean | null;
 
 interface OutputStyleState {
   plotOptions: JsonObject;
@@ -125,6 +136,23 @@ const emit = defineEmits<{
 }>();
 
 const styles = reactive<Record<string, OutputStyleState>>({});
+const editableOutputs = computed(() =>
+  Object.fromEntries(
+    Object.entries(props.indicatorInfo.outputs).filter(
+      ([, output]) => output.plotOptions,
+    ),
+  ),
+);
+
+function styleLabel(key: StyleKey): string {
+  const labels: Record<string, string> = {
+    showExtensions: 'Show extensions',
+    fillColor: 'Fill color',
+    color: 'Color',
+    lineWidth: 'Line width',
+  };
+  return labels[String(key)] ?? String(key);
+}
 
 function toStyleKey(key: StyleKey): string {
   return String(key);
