@@ -12,10 +12,10 @@ import { wsService } from '@/utils/websocketService';
 
 import {
   applyParameterUpdates,
-  createParameterMap,
   createStyles,
   extractParameterValues,
 } from './indicators/configuration';
+import { createIndicator } from './indicators/creation';
 import {
   mergeIndicatorData,
   mergeLivePoint,
@@ -338,27 +338,14 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     providedParameters: IndicatorParameterUpdate = {},
   ): string {
     const _id = String(Date.now());
-    const indicator: StoreIndicator = {
+    const indicator = createIndicator(
       _id,
+      info,
+      indicatorData,
       indicatorId,
-      info: { ...info },
-      paneIndex: info.overlay ? 0 : paneCount.value++,
-      paneHtmlElement: null,
-      data: markRaw([...indicatorData]),
-      lastLivePoint: null,
-      dataVersion: 0,
-      parameters: createParameterMap(info, providedParameters),
-      styles: createStyles(info.outputs || {}),
-      currentLimit: indicatorData.length || INITIAL_INDICATOR_LIMIT,
-      hasExpandedHistory: false,
-      historyGeneration: 0,
-      isBackfilling: false,
-      historyExhausted: false,
-      targetOldestTimestampMs: null,
-      targetNewestTimestampMs: null,
-      nextBackfillEndMs: null,
-      activeBackfillPromise: null,
-    };
+      info.overlay ? 0 : paneCount.value++,
+      providedParameters,
+    );
 
     indicators.set(_id, indicator);
 
