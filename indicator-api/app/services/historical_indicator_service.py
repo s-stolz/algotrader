@@ -117,7 +117,7 @@ async def run_historical_indicator(
 
     engine_id = get_engine_id(indicator_id)
     indicator = ENGINE_REGISTRY.get(engine_id)
-    if indicator.spec.input_history.anchor != "rolling":
+    if indicator.spec.resolve_input_history(indicator_params).anchor != "rolling":
         indicator_data = await calculate_anchored_indicator(
             engine_id=engine_id,
             parameters=indicator_params,

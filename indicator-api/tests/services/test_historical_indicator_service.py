@@ -129,7 +129,7 @@ class HistoricalIndicatorTests(unittest.IsolatedAsyncioTestCase):
     async def test_paged_history_matches_the_same_full_day_slice(self):
         end = START + 16 * 3_600_000
         latest = await self._run(start=None, end=end, limit=20)
-        earlier = await self._run(start=None, end=int(latest.index[0]), limit=20)
+        earlier = await self._run(start=None, end=int(latest.index.to_numpy()[0]), limit=20)
         combined = pd.concat([earlier, latest])
         expected = self.expected.loc[self.expected.index < end].tail(40)
         self.assertEqual(combined.index.tolist(), expected.index.tolist())

@@ -30,6 +30,9 @@ formatting belong to indicator-api/frontend. Both engines share registry definit
 - `Tensor`: outputs shaped `(time, asset, output, param)`.
 - `ParamGrid`: deterministic parameter combinations.
 - `HistoryPolicy`: rolling or unbounded streaming history.
+- `InputHistory`: calculation anchor and predecessor requirements, resolved from
+  parameters separately from buffer retention. `SessionWindow` supplies local-day
+  boundaries and the window in which source completeness is required.
 - NaNs propagate; the engine does not forward-fill.
 
 For usage and shape examples, read [indicator engine README](indicator_engine/README.md).

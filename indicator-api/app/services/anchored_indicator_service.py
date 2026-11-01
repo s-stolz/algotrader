@@ -26,6 +26,7 @@ async def calculate_anchored_indicator(
     limit: int | None,
 ) -> pd.DataFrame:
     spec = ENGINE_REGISTRY.get(engine_id).spec
+    history = spec.resolve_input_history(parameters)
     assets = spec.required_assets or [symbol]
     fields = list(spec.required_fields)
     source = parameters.get("source")
@@ -67,7 +68,8 @@ async def calculate_anchored_indicator(
         fields,
         timestamps,
         interval,
-        spec.input_history.predecessor_bars,
+        history.predecessor_bars,
+        session=history.session,
     )
     results = []
     for block in blocks:

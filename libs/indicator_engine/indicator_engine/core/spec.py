@@ -29,10 +29,18 @@ class IndicatorSpec:
     warmup_fn: Optional[Callable[[Dict[str, Any]], int]] = None
     output_assets: Optional[List[str]] = None
     input_history: InputHistory = field(default_factory=InputHistory)
+    input_history_fn: Optional[Callable[[Dict[str, Any]], InputHistory]] = None
+
+    def resolve_input_history(self, params: Dict[str, Any]) -> InputHistory:
+        return (
+            self.input_history if self.input_history_fn is None else self.input_history_fn(params)
+        )
 
     def plan_history(self, *, start_ms: int, params: Dict[str, Any]) -> InputHistoryPlan:
         """Resolve required input history before an adapter fetches candles."""
-        return self.input_history.plan(start_ms=start_ms, warmup_bars=self.warmup(params))
+        return self.resolve_input_history(params).plan(
+            start_ms=start_ms, warmup_bars=self.warmup(params)
+        )
 
     def warmup(self, params: Dict[str, Any]) -> int:
         if self.warmup_fn is None:

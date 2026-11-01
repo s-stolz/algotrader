@@ -14,7 +14,8 @@ def needs_source_inputs(strategy: StrategyDefinition) -> bool:
     registry = get_registry()
     return any(
         registry.get(item.indicator_id).spec.required_assets
-        or registry.get(item.indicator_id).spec.input_history.anchor != "rolling"
+        or registry.get(item.indicator_id).spec.resolve_input_history(dict(item.parameters)).anchor
+        != "rolling"
         for item in strategy.indicator_requirements
     )
 
@@ -28,7 +29,8 @@ def prepare_indicator_inputs(
     feature_bars: Mapping[str, pd.DataFrame],
 ) -> list[IndicatorInput]:
     spec = get_registry().get(requirement.indicator_id).spec
-    if spec.input_history.anchor != "rolling" and not spec.supports_update:
+    history = spec.resolve_input_history(dict(requirement.parameters))
+    if history.anchor != "rolling" and not spec.supports_update:
         raise ValueError("Anchored backtest indicators require incremental updates")
     assets = spec.required_assets or [symbol]
     sources = {**feature_bars, symbol: bars}
@@ -40,14 +42,15 @@ def prepare_indicator_inputs(
     if source_field is not None and source_field not in fields:
         fields.append(str(source_field))
     frames = [_source_frame(sources[asset], fields, asset) for asset in assets]
-    if spec.input_history.anchor == "utc_day":
+    if history.anchor != "rolling":
         return prepare_daily_inputs(
             frames,
             assets,
             fields,
             bars["timestamp_ms"].to_numpy(dtype=np.int64),
             timeframe_to_minutes(timeframe) * 60_000,
-            spec.input_history.predecessor_bars,
+            history.predecessor_bars,
+            session=history.session,
         )
     timestamps = np.unique(np.concatenate([frame.index.to_numpy() for frame in frames]))
     data = np.stack([frame.reindex(timestamps).to_numpy() for frame in frames], axis=1)

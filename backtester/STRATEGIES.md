@@ -61,11 +61,15 @@ Caller-supplied `run_backtest` calls provide additional sources through
 fetch missing data. An omitted source is a configuration error; a supplied empty
 source makes its features unavailable.
 
-Daily anchored inputs require timeframe-aligned candles on a complete UTC grid
-from midnight through each decision. The preceding available close seeds each
-source independently, including across closures. Missing or nonfinite required
-inputs invalidate the remainder of that day causally, without changing earlier
-values. Each new day evaluates completeness again. No input is forward-filled.
+Daily anchored inputs require timeframe-aligned candles within the indicator's
+declared session window and timezone. Session boundaries must align with the
+Timeframe. Currency strength requires the full UTC day through each decision,
+with the preceding available close seeding each source independently, including
+across closures. Opening ranges require only their formation window and no
+predecessor. Missing or nonfinite required inputs invalidate the remainder of
+that local day causally, without changing earlier values. Gaps outside the
+required window do not invalidate a completed range. Each new day evaluates
+completeness again. No input is forward-filled.
 
 `indicators_available` is a reserved feature: unavailable values suppress entry
 signals, including short entries, without deleting executable candles. In

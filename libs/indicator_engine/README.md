@@ -59,11 +59,35 @@ needs candles from midnight and the preceding available close, not merely its
 two-bar minimum warmup. This declaration does not itself fetch or validate data;
 adapters must apply it and their missing-input policy.
 
-The shared `adapters.history.prepare_daily_inputs` adapter builds complete UTC-day
+Daily history can also declare a `SessionWindow` with an IANA timezone and a
+required formation window. Parameter-dependent declarations use
+`IndicatorSpec.resolve_input_history(params)`. The calculation starts at local
+midnight; completeness is required only within the declared window.
+
+The shared `adapters.history.prepare_daily_inputs` adapter builds daily candle
 grids with per-source predecessor seeds and causal availability. It accepts sorted
 source frames indexed by integer epoch milliseconds and aligned output timestamps.
 Backtester and historical indicator API adapters use it to keep daily calculations
 consistent. Seed rows are calculation-only and are marked unavailable as outputs.
+Window boundaries must align with the candle timeframe. Missing required inputs
+invalidate subsequent outputs for that local day; gaps outside the required
+window do not invalidate completed calculations.
+
+### Opening range
+
+`opening_range` uses `start_time`, `end_time`, `extension_end_time` (HH:MM), and
+`timezone`. Windows stay within one local day; `24:00` denotes its end. Candles
+are identified by their opening timestamps: the range includes `[start, end)`.
+High and low develop causally, freeze at the cutoff, and reset each local day.
+`ready` becomes 1 at or after the cutoff when the range has valid formation
+prices and its start candle. Before formation, bounds are zero and `ready` is 0;
+consumers must check readiness and adapter availability before using a range.
+
+Outputs also include `range_start_ms`, `range_end_ms`, and `extension_end_ms`
+for rendering. Extension time is display metadata; it does not change formation
+or erase frozen values. Nonexistent daylight-saving boundary times are rejected;
+ambiguous boundary times use their first occurrence. The shared calculation is
+registered in the engine; chart catalog exposure requires its range renderer.
 
 `IndicatorSpec.output_assets` declares aggregate output identities when they
 differ from the inputs. Omit it for ordinary per-input-asset outputs. Currency

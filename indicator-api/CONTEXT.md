@@ -10,9 +10,10 @@ parameters, response formatting, and live-stream lifecycle.
   Responses wrap `indicator_info` and `indicator_data` under `data`.
 - Daily anchored history uses `app/services/anchored_indicator_service.py` and
   the shared indicator-engine daily input adapter. Resolve the requested output
-  timestamps before expanding a limited request to its UTC anchor; fetch each
-  source's available predecessor separately. Missing inputs invalidate subsequent
-  same-day outputs causally. Unavailable output is omitted, never replaced with
+  timestamps before expanding a limited request to its declared local-day anchor;
+  fetch each source's required predecessor separately. Missing inputs within the
+  declared session window invalidate subsequent same-day outputs causally.
+  Currency strength retains its full UTC-day requirement. Unavailable output is omitted, never replaced with
   older values outside the selected output window. Ordinary rolling indicators
   retain their existing warmup path.
 - `app/services/live_indicator_manager.py` owns live specs, Redis input, warmup

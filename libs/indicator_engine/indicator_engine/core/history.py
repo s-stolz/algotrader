@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
+
+from .session import SessionWindow
 
 UTC_DAY_MS = 86_400_000
 
@@ -24,14 +26,19 @@ class InputHistoryPlan:
 class InputHistory:
     """Calculation history, independent of output warmup and buffer retention."""
 
-    anchor: Literal["rolling", "utc_day"] = "rolling"
+    anchor: Literal["rolling", "utc_day", "daily"] = "rolling"
     predecessor_bars: int = 0
+    session: SessionWindow = field(default_factory=SessionWindow)
 
     def __post_init__(self) -> None:
-        if self.anchor not in ("rolling", "utc_day"):
+        if self.anchor not in ("rolling", "utc_day", "daily"):
             raise ValueError(f"Invalid history anchor: {self.anchor}")
         if self.predecessor_bars < 0:
             raise ValueError("predecessor_bars must be nonnegative")
+        if self.anchor == "utc_day" and self.session != SessionWindow():
+            raise ValueError(
+                "utc_day history requires the full UTC day; use daily for custom sessions"
+            )
 
     def plan(self, *, start_ms: int, warmup_bars: int) -> InputHistoryPlan:
         """Resolve a fetch anchor without guessing across market closures."""
@@ -40,6 +47,11 @@ class InputHistory:
         if self.anchor == "utc_day":
             return InputHistoryPlan(
                 start_ms=(start_ms // UTC_DAY_MS) * UTC_DAY_MS,
+                predecessor_bars=self.predecessor_bars,
+            )
+        if self.anchor == "daily":
+            return InputHistoryPlan(
+                start_ms=self.session.bounds(start_ms).day_start_ms,
                 predecessor_bars=self.predecessor_bars,
             )
         return InputHistoryPlan(
