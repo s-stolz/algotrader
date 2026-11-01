@@ -51,6 +51,10 @@ describe('creation design controls', () => {
     expect(getComputedStyle(label).display).toBe('grid');
     expect(getComputedStyle(label).gap).toBe('var(--design-space-xs)');
     expect(getComputedStyle(strategyLabel).alignItems).toBe('center');
+    const parameterLabel =
+      document.querySelector<HTMLElement>('.parameter-label')!;
+    expect(getComputedStyle(parameterLabel).display).toBe('flex');
+    expect(getComputedStyle(parameterLabel).alignItems).toBe('center');
   });
 
   it('keeps the strategy menu open without activating its version hint', async () => {

@@ -4,7 +4,7 @@
   gap: var(--design-space-lg);
   min-width: 0;
 }
-.creation-fields :deep(label:not(.base-checkbox)),
+.creation-fields :deep(label:not(.base-checkbox):not(.parameter-label)),
 :deep(.strategy-field),
 :deep(.preview-filter) {
   display: grid;
