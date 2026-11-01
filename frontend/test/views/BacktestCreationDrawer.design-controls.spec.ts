@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { compileStyle } from '@vue/compiler-sfc';
 import { flushPromises } from '@vue/test-utils';
-import { NInputNumber } from 'naive-ui';
+import { NInputNumber, NSelect } from 'naive-ui';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { submitBacktestRun } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
@@ -51,6 +51,53 @@ describe('creation design controls', () => {
     expect(getComputedStyle(label).display).toBe('grid');
     expect(getComputedStyle(label).gap).toBe('var(--design-space-xs)');
     expect(getComputedStyle(strategyLabel).alignItems).toBe('center');
+  });
+
+  it('keeps the strategy menu open without activating its version hint', async () => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal('matchMedia', () => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    useBacktestWorkspaceStore().reuseSource = {
+      kind: 'run',
+      id: 'saved',
+      strategyId: 'sma_crossover',
+      strategyVersion: 2,
+      historicalMetadata: null,
+      defaultedParameters: [],
+    };
+    const wrapper = openDrawer();
+    await flushPromises();
+    const hint = document.querySelector<HTMLElement>(
+      '[data-testid="reuse-version-review"]',
+    )!;
+    const hintClick = vi.fn();
+    hint.addEventListener('click', hintClick);
+    const select = wrapper
+      .findAllComponents(NSelect)
+      .find(
+        (control) => control.attributes('data-testid') === 'creation-strategy',
+      )!;
+    const trigger = select.get('.n-base-selection').element as HTMLElement;
+    trigger.click();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await flushPromises();
+    expect(hintClick).not.toHaveBeenCalled();
+    expect(trigger.classList.contains('n-base-selection--active')).toBe(true);
+    expect(document.querySelector('.n-select-menu')).not.toBeNull();
+    wrapper.unmount();
   });
 
   it('retains numeric keyboard editing and requires explicit submission', async () => {

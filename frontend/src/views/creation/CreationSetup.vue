@@ -23,8 +23,10 @@
         @update:value="setRunType"
       />
     </label>
-    <label>
-      <span class="strategy-label"
+    <div class="strategy-field">
+      <span
+        id="creation-strategy-label"
+        class="strategy-label"
         >Strategy
         <n-tag
           v-if="selectedStrategy"
@@ -37,12 +39,13 @@
         <CreationStrategyReview />
       </span>
       <BaseSelect
+        :input-props="{ 'aria-labelledby': 'creation-strategy-label' }"
         :value="draft.strategy.strategy_id"
         :options="strategyOptions"
         data-testid="creation-strategy"
         @update:value="selectStrategy"
       />
-    </label>
+    </div>
     <p
       v-if="!store.reuseSource && selectedStrategy && strategyNeedsReview"
       role="alert"

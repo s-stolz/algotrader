@@ -5,6 +5,7 @@
   min-width: 0;
 }
 .creation-fields :deep(label:not(.base-checkbox)),
+:deep(.strategy-field),
 :deep(.preview-filter) {
   display: grid;
   gap: var(--design-space-xs);
