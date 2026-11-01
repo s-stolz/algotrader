@@ -16,6 +16,8 @@ class ConditionOperator(str, Enum):
     CROSSUNDER = "crossunder"
     ABOVE = "above"
     BELOW = "below"
+    AT_LEAST = "at_least"
+    AT_MOST = "at_most"
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,14 @@ class ConditionRule:
             right_feature=right_feature,
         )
 
+    @classmethod
+    def at_least(cls, left_feature: str, right_feature: str) -> "ConditionRule":
+        return cls(left_feature, ConditionOperator.AT_LEAST, right_feature)
+
+    @classmethod
+    def at_most(cls, left_feature: str, right_feature: str) -> "ConditionRule":
+        return cls(left_feature, ConditionOperator.AT_MOST, right_feature)
+
     def evaluate_vectorized(
         self,
         feature_map: Mapping[str, ArrayLike],
@@ -85,6 +95,10 @@ class ConditionRule:
             return above(left, right)
         if self.operator == ConditionOperator.BELOW:
             return below(left, right)
+        if self.operator == ConditionOperator.AT_LEAST:
+            return at_least(left, right)
+        if self.operator == ConditionOperator.AT_MOST:
+            return at_most(left, right)
         raise ValueError(f"Unsupported condition operator: {self.operator}")
 
     def evaluate_sequential(
@@ -102,6 +116,11 @@ class ConditionRule:
             return current_left > current_right
         if self.operator == ConditionOperator.BELOW:
             return current_left < current_right
+
+        if self.operator == ConditionOperator.AT_LEAST:
+            return current_left >= current_right
+        if self.operator == ConditionOperator.AT_MOST:
+            return current_left <= current_right
 
         if previous is None:
             return False
@@ -198,3 +217,15 @@ def below(left: ArrayLike, right: ArrayLike) -> NDArray[np.bool_]:
     left_arr, right_arr = _as_comparable_arrays(left, right)
     valid = np.isfinite(left_arr) & np.isfinite(right_arr)
     return (left_arr < right_arr) & valid
+
+
+def at_least(left: ArrayLike, right: ArrayLike) -> NDArray[np.bool_]:
+    left_arr, right_arr = _as_comparable_arrays(left, right)
+    valid = np.isfinite(left_arr) & np.isfinite(right_arr)
+    return (left_arr >= right_arr) & valid
+
+
+def at_most(left: ArrayLike, right: ArrayLike) -> NDArray[np.bool_]:
+    left_arr, right_arr = _as_comparable_arrays(left, right)
+    valid = np.isfinite(left_arr) & np.isfinite(right_arr)
+    return (left_arr <= right_arr) & valid

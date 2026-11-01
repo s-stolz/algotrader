@@ -134,6 +134,36 @@ class TestConditionHelpers(unittest.TestCase):
             )
         )
 
+    def test_inclusive_comparisons_include_ties_and_reject_nonfinite_operands(self):
+        left = [1.0, 2.0, 3.0, np.nan, np.inf, 2.0, 2.0]
+        right = [2.0, 2.0, 2.0, 2.0, np.inf, np.nan, -np.inf]
+        for rule, expected in (
+            (
+                ConditionRule.at_least("left", "right"),
+                [False, True, True, False, False, False, False],
+            ),
+            (
+                ConditionRule.at_most("left", "right"),
+                [True, True, False, False, False, False, False],
+            ),
+        ):
+            with self.subTest(operator=rule.operator):
+                self.assertEqual(
+                    rule.evaluate_vectorized({"left": left, "right": right}).tolist(), expected
+                )
+                self.assertEqual(
+                    [
+                        rule.evaluate_sequential(
+                            previous=None, current={"left": left_value, "right": right_value}
+                        )
+                        for left_value, right_value in zip(left, right)
+                    ],
+                    expected,
+                )
+                self.assertEqual(rule.evaluate_vectorized({"left": [], "right": []}).tolist(), [])
+                with self.assertRaisesRegex(ValueError, "same shape"):
+                    rule.evaluate_vectorized({"left": [1.0], "right": []})
+
     def test_condition_rule_rejects_missing_features(self) -> None:
         rule = ConditionRule.above("fast", "slow")
 
