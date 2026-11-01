@@ -14,3 +14,8 @@
 config/.env*
 frontend/node_modules
 frontend/dist
+
+# Local strategies are mounted at runtime, never baked into images.
+backtester/src/strategies/custom/*
+!backtester/src/strategies/custom/__init__.py
+backtester/private/

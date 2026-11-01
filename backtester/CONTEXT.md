@@ -26,6 +26,10 @@ For run/batch commands, queue invariants, versions, or replay format, read
 - `src/domain/types.py`, `enums.py`, and `events.py` own shared runtime concepts.
   `src/adapters/` maps external APIs and persistence into these contracts.
 - Strategy authoring or parameter changes: read [STRATEGIES.md](STRATEGIES.md).
+  Local modules belong in the ignored `src/strategies/custom/` package; their
+  supporting artifacts belong in ignored `private/`. Docker build contexts exclude
+  both; local API/worker Compose mounts supply them at runtime. See the
+  [private workspace contract](STRATEGIES.md#private-strategy-workspace).
 - Replay changes: start at `src/app/equity_replay.py` and the shared fingerprint
   contract. Persist descriptors and Fills, reconstruct curves on read.
 

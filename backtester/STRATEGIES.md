@@ -1,8 +1,9 @@
 # Registering a backtest strategy
 
-Put one strategy builder in a single Python file under `src/strategies/examples/`
-or `src/strategies/custom/`. Decorate it with `register_strategy(strategy_id,
-strategy_version)` from `strategies.registry`. The identifier stays stable;
+Put public strategy builders under `src/strategies/examples/` and local-only
+builders under `src/strategies/custom/`, one builder per Python file. Decorate it
+with `register_strategy(strategy_id, strategy_version)` from
+`strategies.registry`. The identifier stays stable;
 increase the positive integer version whenever the public parameters **or
 executable behavior** change. The live catalog publishes only the current
 version. Retired code is not retained for future execution.
@@ -28,6 +29,41 @@ strategy_version)` pair. A stale pair is rejected; the client refreshes the
 catalog and requires explicit review. Already saved requests remain immutable.
 Queued work with an unavailable exact version fails closed, while historical
 requests and results remain inspectable.
+
+## Private strategy workspace
+
+`src/strategies/custom/` is ignored by Git and Docker build contexts, except for
+its tracked package initializer. Keep that initializer generic; place local
+builders in separate `.py` files. The registry discovers direct modules in this
+package using the same decorator, version, parameter validation, and catalog as
+public examples. No manifest or registry edit is needed. Duplicate IDs are
+rejected rather than replacing a public strategy.
+
+Keep strategy-specific tests, notes, documentation, presets, and exports under
+`backtester/private/` (relative to the repository root). This whole workspace is
+also excluded from Git and Docker build contexts. Suggested subdirectories are
+`tests/`, `notes/`, `docs/`, `presets/`, and `outputs/`. Generic framework changes
+and synthetic framework tests remain in the normal tracked directories.
+
+From `backtester/`, run private tests explicitly with:
+
+```sh
+PYTHONPATH=src .venv/bin/python -m unittest discover -s private/tests -p 'test_*.py'
+```
+
+Local Compose mounts the same `backtester/` directory into the API and worker,
+so both can load local modules without including them in the image. Standalone
+images contain only public strategies unless a private workspace is mounted at
+runtime. Discovery is cached per process: after adding or changing a local
+builder, reload the API and worker together while idle, following the
+[worker restart safeguards](../docs/operations/backtest-worker-recovery.md).
+
+Git ignores prevent ordinary staging; they do not remove already tracked files
+or prevent forced staging. Check `git ls-files src/strategies/custom private`
+from `backtester/`: only the generic package initializer should be tracked.
+Names and parameters of installed local strategies remain visible to clients of
+the local API, and saved runs remain in the local database. Export those records
+only into the ignored workspace when they contain private strategy details.
 
 ## Scope and verification
 
