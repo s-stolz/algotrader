@@ -85,7 +85,10 @@ Follow [workflow](../docs/agent/WORKFLOW.md) for selecting verification gates.
 ## Indicator inputs
 
 `IndicatorFeatureRequirement` selects an indicator output and may name an
-`output_asset` for aggregate outputs. Required input Markets and calculation
+`output_asset` for aggregate outputs. Instead of a fixed `output_key`, it may
+provide `output_key_by_symbol`, an explicit mapping from traded Symbol to output
+key. Unlisted Symbols fail closed; selection does not add executable Markets or
+change the indicator's chart configuration. Required input Markets and calculation
 history come from the installed indicator specification. They do not expand the
 run's single traded Market. All input candles use the run's exchange and Timeframe.
 

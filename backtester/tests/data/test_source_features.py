@@ -427,3 +427,70 @@ class DailyFeatureCaptureTests(unittest.TestCase):
             ),
         )
         self.assertEqual(snapshot_chart_indicators(captured), snapshot_chart_indicators(ordinary))
+
+
+class SymbolOutputSelectionTests(unittest.TestCase):
+    def test_symbol_mapping_selects_same_aggregate_output_in_both_engines(self):
+        bars, sources = fixture()
+        original = strategy()
+        requirement = original.indicator_requirements[0]
+        mapped = replace(
+            original,
+            indicator_requirements=(
+                replace(requirement, output_key=None, output_key_by_symbol={"TEST": "EUR"}),
+            ),
+        )
+        for engine in BacktestEngine:
+            expected = run_backtest(
+                request=request(engine), bars=bars, strategy=original, feature_bars=sources
+            )
+            actual = run_backtest(
+                request=request(engine), bars=bars, strategy=mapped, feature_bars=sources
+            )
+            self.assertEqual(actual.fills, expected.fills)
+            self.assertEqual(actual.equity_curve, expected.equity_curve)
+        batch = build_feature_frame(
+            bars=bars, strategy=mapped, timeframe="M5", feature_bars=sources
+        )
+        stream = SourceFeatureStream(
+            bars=bars, strategy=mapped, timeframe="M5", feature_bars=sources
+        )
+        np.testing.assert_allclose(
+            [stream.update(int(t))["strength"] for t in bars.timestamp_ms], batch.strength
+        )
+
+    def test_unsupported_symbol_fails_in_each_engine(self):
+        bars, sources = fixture()
+        original = strategy()
+        mapped = replace(
+            original,
+            indicator_requirements=(
+                replace(
+                    original.indicator_requirements[0],
+                    output_key=None,
+                    output_key_by_symbol={"OTHER": "EUR"},
+                ),
+            ),
+        )
+        for engine in BacktestEngine:
+            with self.subTest(engine=engine), self.assertRaisesRegex(
+                ValueError, "no output configured"
+            ):
+                run_backtest(
+                    request=request(engine), bars=bars, strategy=mapped, feature_bars=sources
+                )
+
+    def test_output_mapping_is_copied_and_validated(self):
+        mapping = {"TEST": "EUR"}
+        requirement = IndicatorFeatureRequirement(
+            "value", "currency_strength", None, output_key_by_symbol=mapping
+        )
+        mapping["TEST"] = "USD"
+        self.assertEqual(requirement.resolve_output_key("TEST"), "EUR")
+        for invalid in ({"": "EUR"}, {"TEST": ""}, {" TEST": "EUR"}, {"TEST": " EUR"}):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                ValueError, "output_key_by_symbol"
+            ):
+                replace(requirement, output_key_by_symbol=invalid)
+        with self.assertRaisesRegex(ValueError, "not both"):
+            replace(requirement, output_key="EUR")

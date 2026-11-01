@@ -25,9 +25,15 @@ class IndicatorFeatureRequirement:
     parameters: Mapping[str, Any] = field(default_factory=dict)
     output_asset: str | None = None
     capture_at_utc_minute: int | None = None
+    output_key_by_symbol: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         _validate_capture_minute(self.capture_at_utc_minute)
+        object.__setattr__(
+            self,
+            "output_key_by_symbol",
+            _validate_output_keys(self.output_key_by_symbol, self.output_key),
+        )
         if not isinstance(self.feature_name, str):
             raise ValueError(
                 "indicator feature requirement feature_name must be a non-empty string"
@@ -66,6 +72,15 @@ class IndicatorFeatureRequirement:
         object.__setattr__(
             self, "output_asset", None if self.output_asset is None else self.output_asset.strip()
         )
+
+    def resolve_output_key(self, symbol: str) -> str | None:
+        if not self.output_key_by_symbol:
+            return self.output_key
+        if symbol not in self.output_key_by_symbol:
+            raise ValueError(
+                f"Feature {self.feature_name!r} has no output configured for symbol {symbol!r}"
+            )
+        return self.output_key_by_symbol[symbol]
 
 
 @dataclass(frozen=True)
@@ -292,3 +307,17 @@ def _combine_condition_masks(
 def _validate_capture_minute(value: int | None) -> None:
     if value is not None and (type(value) is not int or not 0 < value < 1440):
         raise ValueError("capture_at_utc_minute must be an integer between 1 and 1439")
+
+
+def _validate_output_keys(values: Mapping[str, str], output_key: str | None) -> dict[str, str]:
+    if not isinstance(values, MappingABC):
+        raise ValueError("output_key_by_symbol must be a mapping")
+    if values and output_key is not None:
+        raise ValueError("Use output_key or output_key_by_symbol, not both")
+    if any(
+        not isinstance(value, str) or not value or value != value.strip()
+        for pair in values.items()
+        for value in pair
+    ):
+        raise ValueError("output_key_by_symbol keys and values must be non-empty trimmed strings")
+    return dict(values)

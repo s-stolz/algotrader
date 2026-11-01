@@ -52,7 +52,7 @@ def build_feature_frame(
 
         resolved_key = _resolve_output_key(
             result_df.columns,
-            output_key=requirement.output_key,
+            output_key=requirement.resolve_output_key(str(bars["symbol"].iloc[0])),
             indicator_id=indicator_id,
         )
         feature_values = np.asarray(

@@ -37,7 +37,9 @@ def build_source_features(
             )
             asset = requirement.output_asset or str(bars["symbol"].iloc[0])
             asset_idx = list(tensor.coords["asset"]).index(asset)
-            output_idx = _output_index(tensor.coords["output"], requirement.output_key)
+            output_idx = _output_index(
+                tensor.coords["output"], requirement.resolve_output_key(str(bars["symbol"].iloc[0]))
+            )
             output = tensor.data[:, asset_idx, output_idx, 0]
             for timestamp, value, ready in zip(
                 block.bars.time, output, block.available, strict=True
@@ -168,7 +170,7 @@ class _SourceFeature:
                     float(
                         tensor.latest_value(
                             asset=self.requirement.output_asset or self._symbol,
-                            output=self.requirement.output_key,
+                            output=self.requirement.resolve_output_key(self._symbol),
                         )
                     )
                     if self._block.available[self._row]
@@ -179,7 +181,7 @@ class _SourceFeature:
                     value = float(
                         tensor.latest_value(
                             asset=self.requirement.output_asset or self._symbol,
-                            output=self.requirement.output_key,
+                            output=self.requirement.resolve_output_key(self._symbol),
                         )
                     )
                 self._row += 1

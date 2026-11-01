@@ -166,7 +166,7 @@ def _extract_feature_value(
     return float(
         tensor.latest_value(
             asset=symbol,
-            output=requirement.output_key,
+            output=requirement.resolve_output_key(symbol),
         )
     )
 
