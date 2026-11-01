@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, NoReturn
+from typing import Any, Mapping, NoReturn
 
 import numpy as np
 import pandas as pd
 from data.feature_stream import EventDrivenFeatureStream
+from data.indicator_inputs import needs_source_inputs
 from data.normalization import normalize_bar_data
 from domain.enums import (
     AllowedDirections,
@@ -41,6 +42,7 @@ def run_event_driven_backtest(
     request: BacktestRequest,
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
+    feature_bars: Mapping[str, pd.DataFrame] | None = None,
 ) -> BacktestResult:
     """Run a single-symbol event-driven bar backtest."""
 
@@ -59,6 +61,7 @@ def run_event_driven_backtest(
         bars=normalized,
         strategy=strategy,
         symbol=symbol,
+        feature_bars=feature_bars,
     )
 
     equity_curve = run_result.equity_curve
@@ -148,12 +151,15 @@ def _run_event_driven_loop(
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
     symbol: str,
+    feature_bars: Mapping[str, pd.DataFrame] | None = None,
 ) -> _SequentialRunResult:
     bar_model = strategy.require_v1_parity_model()
     stream = EventDrivenFeatureStream(
         strategy=strategy,
         symbol=symbol,
         timeframe=request.timeframe,
+        bars=bars if needs_source_inputs(strategy) else None,
+        feature_bars=feature_bars,
     )
 
     start_ms = int(request.start_ms)
@@ -175,13 +181,20 @@ def _run_event_driven_loop(
         feature_snapshot_count += 1
         previous_features = dict(snapshot.features)
 
-    if strategy.indicator_requirements and previous_features is None:
+    if (
+        strategy.indicator_requirements
+        and previous_features is None
+        and not needs_source_inputs(strategy)
+    ):
         required_features = _format_required_indicator_features(strategy)
         raise ValueError(
             "Event-driven bar bootstrap has insufficient warmup before start_ms "
             f"{start_ms} for strategy '{strategy.strategy_id}'; required feature(s): "
             f"{required_features}"
         )
+
+    if needs_source_inputs(strategy):
+        previous_features = None
 
     for row in tradable_bars.itertuples(index=False):
         bar = _bar_from_row(row)
@@ -227,6 +240,7 @@ def _run_event_driven_loop(
         signal = bar_model.evaluate_sequential_signal(
             previous=previous_features,
             current=snapshot.features,
+            allowed_directions=request.execution.allowed_directions,
         )
         previous_features = dict(snapshot.features)
         if signal != 0:

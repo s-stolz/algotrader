@@ -81,9 +81,12 @@ def trim_bars_for_execution(
             missing_text = ", ".join(missing)
             raise ValueError(f"bars is missing required feature columns: {missing_text}")
 
-        feature_frame = trimmed.loc[:, list(required_features)].replace([np.inf, -np.inf], np.nan)
-        valid_rows = feature_frame.notna().all(axis=1)
-        trimmed = trimmed.loc[valid_rows].copy()
+        if "indicators_available" not in bars.columns:
+            feature_frame = trimmed.loc[:, list(required_features)].replace(
+                [np.inf, -np.inf], np.nan
+            )
+            valid_rows = feature_frame.notna().all(axis=1)
+            trimmed = trimmed.loc[valid_rows].copy()
 
     trimmed = trimmed.loc[
         (trimmed["timestamp_ms"] >= int(start_ms)) & (trimmed["timestamp_ms"] < int(end_ms))

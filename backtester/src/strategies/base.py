@@ -23,6 +23,7 @@ class IndicatorFeatureRequirement:
     indicator_id: str
     output_key: str | None
     parameters: Mapping[str, Any] = field(default_factory=dict)
+    output_asset: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.feature_name, str):
@@ -32,6 +33,8 @@ class IndicatorFeatureRequirement:
         feature_name = self.feature_name.strip()
         if not feature_name:
             raise ValueError("indicator feature requirement feature_name must be non-empty")
+        if feature_name == "indicators_available":
+            raise ValueError("indicators_available is reserved for feature availability")
 
         if not isinstance(self.indicator_id, str):
             raise ValueError(
@@ -49,11 +52,18 @@ class IndicatorFeatureRequirement:
 
         if not isinstance(self.parameters, MappingABC):
             raise ValueError("indicator feature requirement parameters must be a mapping")
+        if self.output_asset is not None and (
+            not isinstance(self.output_asset, str) or not self.output_asset.strip()
+        ):
+            raise ValueError("indicator feature requirement output_asset must be non-empty")
 
         object.__setattr__(self, "feature_name", feature_name)
         object.__setattr__(self, "indicator_id", indicator_id)
         object.__setattr__(self, "output_key", output_key)
         object.__setattr__(self, "parameters", dict(self.parameters))
+        object.__setattr__(
+            self, "output_asset", None if self.output_asset is None else self.output_asset.strip()
+        )
 
 
 @dataclass(frozen=True)
@@ -78,7 +88,12 @@ class BarStrategyModel:
         object.__setattr__(self, "exit_filters", tuple(self.exit_filters))
         object.__setattr__(self, "target_quantity", float(self.target_quantity))
 
-    def build_signals(self, features: FeatureMatrix) -> SignalMatrix:
+    def build_signals(
+        self,
+        features: FeatureMatrix,
+        *,
+        allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT,
+    ) -> SignalMatrix:
         signals_by_symbol: dict[str, list[int]] = {}
 
         for symbol, feature_map in features.features_by_symbol.items():
@@ -98,6 +113,13 @@ class BarStrategyModel:
             for condition in self.exit_filters:
                 exits &= condition.evaluate_vectorized(feature_map)
 
+            available = (
+                np.asarray(feature_map.get("indicators_available", np.ones(len(entries)))) == 1.0
+            )
+            if allowed_directions != AllowedDirections.SHORT_ONLY:
+                entries &= available
+            if allowed_directions != AllowedDirections.LONG_ONLY:
+                exits &= available
             signal = np.zeros(len(features.timestamp_ms), dtype=np.int64)
             signal[entries] = 1
             signal[exits] = -1
@@ -145,7 +167,7 @@ class BarStrategyModel:
         allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT,
     ) -> ExecutionArrayBundle:
         return self.build_positions(
-            self.build_signals(features),
+            self.build_signals(features, allowed_directions=allowed_directions),
             allowed_directions=allowed_directions,
         )
 
@@ -154,21 +176,31 @@ class BarStrategyModel:
         *,
         previous: Mapping[str, float] | None,
         current: Mapping[str, float],
+        allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT,
     ) -> int:
-        if any(
-            condition.evaluate_sequential(previous=previous, current=current)
-            for condition in self.exit_conditions
-        ) and all(
-            condition.evaluate_sequential(previous=previous, current=current)
-            for condition in self.exit_filters
+        available = current.get("indicators_available", 1.0) == 1.0
+        if (
+            (available or allowed_directions == AllowedDirections.LONG_ONLY)
+            and any(
+                condition.evaluate_sequential(previous=previous, current=current)
+                for condition in self.exit_conditions
+            )
+            and all(
+                condition.evaluate_sequential(previous=previous, current=current)
+                for condition in self.exit_filters
+            )
         ):
             return -1
-        if any(
-            condition.evaluate_sequential(previous=previous, current=current)
-            for condition in self.entry_conditions
-        ) and all(
-            condition.evaluate_sequential(previous=previous, current=current)
-            for condition in self.entry_filters
+        if (
+            (available or allowed_directions == AllowedDirections.SHORT_ONLY)
+            and any(
+                condition.evaluate_sequential(previous=previous, current=current)
+                for condition in self.entry_conditions
+            )
+            and all(
+                condition.evaluate_sequential(previous=previous, current=current)
+                for condition in self.entry_filters
+            )
         ):
             return 1
         return 0

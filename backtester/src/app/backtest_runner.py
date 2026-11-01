@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 from time import perf_counter
-from typing import Protocol
+from typing import Mapping, Protocol
 
 import pandas as pd
 from adapters.db_accessor import HistoricalBarDataAdapter
 from adapters.persistence import BacktestRunPersistenceAdapter
+from data.indicator_inputs import needs_source_inputs
 from data.indicators import build_feature_frame
-from data.market_data import load_market_data, load_raw_market_data
+from data.market_data import load_market_data, load_market_data_bundle, load_raw_market_data
 from data.normalization import normalize_bar_data
 from data.warmup import trim_bars_for_execution
 from domain.enums import BacktestEngine, DataGranularity
@@ -40,6 +41,7 @@ def run_backtest(
     bars: pd.DataFrame,
     strategy: StrategyDefinition | None = None,
     persistence_adapter: BacktestPersistenceAdapter | None = None,
+    feature_bars: Mapping[str, pd.DataFrame] | None = None,
 ) -> BacktestResult:
     """Execute one backtest request using caller-provided bar data."""
 
@@ -47,6 +49,7 @@ def run_backtest(
         request=request,
         bars=bars,
         strategy=strategy,
+        feature_bars=feature_bars,
     )
     return _persist_result_if_requested(
         result=result,
@@ -60,6 +63,7 @@ def _run_backtest_without_persistence(
     request: BacktestRequest,
     bars: pd.DataFrame,
     strategy: StrategyDefinition | None = None,
+    feature_bars: Mapping[str, pd.DataFrame] | None = None,
 ) -> tuple[BacktestResult, int]:
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
 
@@ -69,6 +73,7 @@ def _run_backtest_without_persistence(
                 request=request,
                 bars=bars,
                 strategy=resolved_strategy,
+                feature_bars=feature_bars,
             )
             started_at = perf_counter()
             result = run_vectorized_backtest(
@@ -92,6 +97,7 @@ def _run_backtest_without_persistence(
                 request=request,
                 bars=bars,
                 strategy=resolved_strategy,
+                feature_bars=feature_bars,
             )
             return _attach_replay_descriptor(request, bars, result), _elapsed_ms_since(started_at)
 
@@ -134,6 +140,20 @@ def _run_backtest_with_market_data_without_persistence(
     data_adapter: HistoricalBarDataAdapter | None = None,
 ) -> tuple[BacktestResult, int]:
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
+
+    if needs_source_inputs(resolved_strategy):
+        bundle = load_market_data_bundle(
+            request=request,
+            strategy=resolved_strategy,
+            exchange=exchange,
+            data_adapter=data_adapter,
+        )
+        return _run_backtest_without_persistence(
+            request=request,
+            bars=bundle.traded_bars,
+            strategy=resolved_strategy,
+            feature_bars=bundle.feature_bars,
+        )
 
     if request.engine == BacktestEngine.VECTORIZED:
         if request.data_granularity == DataGranularity.BAR:
@@ -218,6 +238,7 @@ def prepare_bars_for_vectorized_execution(
     request: BacktestRequest,
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
+    feature_bars: Mapping[str, pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     """Normalize, feature-enrich, and trim bars for deterministic vectorized execution."""
 
@@ -226,7 +247,12 @@ def prepare_bars_for_vectorized_execution(
 
     symbol = str(request.symbols[0])
     normalized = normalize_bar_data(bars=bars, symbol=symbol)
-    featured = build_feature_frame(bars=normalized, strategy=strategy)
+    featured = build_feature_frame(
+        bars=normalized,
+        strategy=strategy,
+        timeframe=request.timeframe,
+        feature_bars=feature_bars,
+    )
     return trim_bars_for_execution(
         bars=featured,
         required_features=strategy.feature_specs,

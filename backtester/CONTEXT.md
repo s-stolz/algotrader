@@ -66,14 +66,23 @@ partial fills are rejected by the API and both engines. Event-driven mode accept
 declarative bar strategies; placeholder domain types do not establish support for
 callback strategies or richer order simulation.
 
+Additional indicator input Markets do not become executable Markets. The loader
+discovers them from indicator specifications; caller-supplied runs provide their
+source frames explicitly. See [strategy input contracts](STRATEGIES.md#indicator-inputs).
+
 - `src/engines/vectorized.py` evaluates feature arrays, condition/signal masks,
-  targets, fills, and portfolio arrays. Trim feature-incomplete rows before
-  decisions; preserve the array-based runtime instead of per-bar interpretation.
+  targets, fills, and portfolio arrays. Ordinary single-source indicators retain
+  feature trimming. Multi-source/anchored indicators retain execution rows and
+  expose causal availability instead. Preserve the array-based runtime instead
+  of per-bar interpretation.
 - `src/engines/event_driven.py` bootstraps indicators from bars before `start_ms`,
   then executes sequentially over `[start_ms, end_ms)`. Bootstrap emits no trading
   artifacts. Indicator strategies require complete pre-start warmup; strategies
-  without indicators may begin at the first in-window bar. Invalid features after
-  bootstrap fail execution instead of silently skipping bars.
+  without indicators may begin at the first in-window bar. Ordinary indicator
+  features invalid after bootstrap fail execution. Multi-source/anchored inputs
+  instead suppress directional entry signals while preserving position management.
+  Their bootstrap initializes calculations only; crossover decisions begin with
+  in-window snapshots in both engines.
 - Each tradable bar executes prior pending deltas at open, updates features and
   evaluates the completed bar, queues future deltas, then marks actual positions
   at close. The final decision expires without a next in-window open. Keep this

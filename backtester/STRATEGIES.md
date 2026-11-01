@@ -45,3 +45,31 @@ contracts change. Missing indicators or engine capabilities expand the scope
 beyond a routine strategy addition and need their own regression coverage.
 
 Follow [workflow](../docs/agent/WORKFLOW.md) for selecting verification gates.
+
+## Indicator inputs
+
+`IndicatorFeatureRequirement` selects an indicator output and may name an
+`output_asset` for aggregate outputs. Required input Markets and calculation
+history come from the installed indicator specification. They do not expand the
+run's single traded Market. All input candles use the run's exchange and Timeframe.
+
+Multi-source and anchored indicators require a declarative bar model. Anchored
+indicators must provide incremental updates for sequential execution. Real-data
+runs load each source once per requested interval and predecessor query.
+Caller-supplied `run_backtest` calls provide additional sources through
+`feature_bars`, keyed by the indicator's exact asset names; these calls never
+fetch missing data. An omitted source is a configuration error; a supplied empty
+source makes its features unavailable.
+
+Daily anchored inputs require timeframe-aligned candles on a complete UTC grid
+from midnight through each decision. The preceding available close seeds each
+source independently, including across closures. Missing or nonfinite required
+inputs invalidate the remainder of that day causally, without changing earlier
+values. Each new day evaluates completeness again. No input is forward-filled.
+
+`indicators_available` is a reserved feature: unavailable values suppress entry
+signals, including short entries, without deleting executable candles. In
+direction-restricted runs, exit signals based on still-available features remain
+eligible. Protective exits continue independently. This does not yet provide a
+scheduled flat action. Source bootstrap initializes calculations without emitting
+signals; crossover decisions use only in-window snapshots in both engines.

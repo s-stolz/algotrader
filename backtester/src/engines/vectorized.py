@@ -89,7 +89,9 @@ def run_vectorized_backtest(
             commission_bps=float(request.execution.commission_bps),
         )
     else:
-        signal_matrix = strategy.require_v1_parity_model().build_signals(feature_matrix)
+        signal_matrix = strategy.require_v1_parity_model().build_signals(
+            feature_matrix, allowed_directions=request.execution.allowed_directions
+        )
         signal_values = _extract_signal_values(
             signal_matrix=signal_matrix,
             symbol=symbol,
