@@ -1,3 +1,4 @@
+import { dailyEntryLimitIssue } from './entryLimit';
 import { isDailyTradingSchedule, type DailyTradingSchedule } from './schedule';
 import {
   type JsonObject,
@@ -33,6 +34,7 @@ export interface BacktestStrategyPayload {
 
 export interface BacktestExecutionPayload {
   daily_schedule?: DailyTradingSchedule | null;
+  max_entries_per_day?: number | null;
   signal_timing: 'close';
   fill_timing: 'next_open';
   price_source: 'open' | 'close';
@@ -207,6 +209,7 @@ function isBacktestExecutionPayload(
 ): value is BacktestExecutionPayload {
   return (
     isRecord(value) &&
+    dailyEntryLimitIssue(value.max_entries_per_day) === null &&
     (value.daily_schedule == null ||
       isDailyTradingSchedule(value.daily_schedule)) &&
     value.signal_timing === 'close' &&

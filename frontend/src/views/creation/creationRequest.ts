@@ -1,3 +1,4 @@
+import { dailyEntryLimitIssue } from '@/types/backtest/entryLimit';
 import { dailyScheduleIssue } from '@/types/backtest/schedule';
 import type {
   BacktestRequestPayload,
@@ -52,8 +53,10 @@ export function buildSweepRequest(
   ) {
     throw new Error('Enter valid dates and initial capital.');
   }
-  const scheduleIssue = dailyScheduleIssue(draft.execution.daily_schedule);
-  if (scheduleIssue) throw new Error(scheduleIssue);
+  const executionIssue =
+    dailyScheduleIssue(draft.execution.daily_schedule) ??
+    dailyEntryLimitIssue(draft.execution.max_entries_per_day);
+  if (executionIssue) throw new Error(executionIssue);
   const parameter_axes: Record<string, SweepParameterAxis> = {};
   for (const parameter of selected.parameters) {
     const input = sweepParameter(parameter);

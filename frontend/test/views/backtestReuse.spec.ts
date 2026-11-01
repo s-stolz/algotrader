@@ -28,6 +28,7 @@ const request = {
     intrabar_exit_policy: 'conservative',
     commission_bps: 1,
     slippage_bps: 2,
+    max_entries_per_day: 2,
     daily_schedule: {
       entry_start_minute_utc: 60,
       last_entry_minute_utc: 120,
@@ -68,11 +69,13 @@ describe('saved configuration reuse', () => {
         strategy: { parameters: { fast: 3, slow: 10 } },
         execution: {
           allowed_directions: 'short_only',
+          max_entries_per_day: 2,
           daily_schedule: request.execution.daily_schedule,
         },
         run_metadata: null,
       });
       reuse.request.strategy.parameters.fast = 99;
+      reuse.request.execution.max_entries_per_day = 1;
       reuse.request.execution.daily_schedule!.exit_minute_utc = 240;
       expect(run).toEqual(before);
     },

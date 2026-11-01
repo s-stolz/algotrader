@@ -89,6 +89,9 @@ and behavior that is easy to break when changing them.
   positive magnitude; replay charts display nonpositive drawdown. Preserve
   backend sampling and expose replay unavailability separately from read errors.
   Comparison helpers live in `src/views/backtestComparison.ts`.
+- `BacktestEntryLimitField.vue` edits the independent daily entry cap; empty means
+  unlimited. It counts actual entries, not signals, with a UTC reset per run.
+  Validation, draft retention, and reuse follow the shared execution contract.
 - `BacktestScheduleFields.vue` edits optional UTC daily execution boundaries in
   the shared creation execution controls. Omitted/null schedules are disabled;
   enabled settings survive draft retention and saved-run/batch reuse. Validation

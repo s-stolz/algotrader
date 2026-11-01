@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import BacktestScheduleFields from './BacktestScheduleFields.vue';
+import BacktestEntryLimitField from './BacktestEntryLimitField.vue';
 import { NButton, NIcon, NInputNumber } from 'naive-ui';
 import type { SelectOption } from 'naive-ui';
 import InformationCircleOutline from '@vicons/ionicons5/InformationCircleOutline';
@@ -49,6 +50,10 @@ const exitOptions: SelectOption[] = [
         v-model:value="engine"
         :options="engineOptions"
     /></label>
+    <BacktestEntryLimitField
+      v-model:execution="execution"
+      class="full"
+    />
     <BacktestScheduleFields
       v-model:execution="execution"
       class="full"

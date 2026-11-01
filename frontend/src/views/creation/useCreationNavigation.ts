@@ -1,3 +1,4 @@
+import { dailyEntryLimitIssue } from '@/types/backtest/entryLimit';
 import { dailyScheduleIssue } from '@/types/backtest/schedule';
 import { computed, ref, type Ref } from 'vue';
 import type {
@@ -84,11 +85,11 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     return !Object.keys(fieldErrors.value).length;
   }
   function validateParameters(): boolean {
-    const scheduleIssue = dailyScheduleIssue(
-      draft.value.execution.daily_schedule,
-    );
-    if (scheduleIssue) {
-      submitError.value = scheduleIssue;
+    const executionIssue =
+      dailyScheduleIssue(draft.value.execution.daily_schedule) ??
+      dailyEntryLimitIssue(draft.value.execution.max_entries_per_day);
+    if (executionIssue) {
+      submitError.value = executionIssue;
       return false;
     }
     if (isSweep.value) {
