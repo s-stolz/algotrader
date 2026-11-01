@@ -162,6 +162,90 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
     def db(self) -> AsyncSession:
         return cast(AsyncSession, self.session)
 
+    async def test_execution_controls_round_trip_through_storage_http(self):
+        async def database():
+            yield self.db
+
+        schedule = {
+            "entry_start_minute_utc": 0,
+            "last_entry_minute_utc": 720,
+            "exit_minute_utc": 1020,
+        }
+        main.app.dependency_overrides[main.get_db] = database
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=main.app), base_url="http://test"
+            ) as client:
+                for index, controls in enumerate(
+                    (
+                        {},
+                        {"daily_schedule": schedule},
+                        {"max_entries_per_day": 1},
+                        {"daily_schedule": schedule, "max_entries_per_day": 2},
+                    )
+                ):
+                    with self.subTest(controls=controls):
+                        payload = _run_payload(run_id=f"execution-controls-{index}")
+                        payload["submitted_at"] = payload["submitted_at"].isoformat()
+                        payload["request"]["execution"].update(controls)
+                        if controls:
+                            payload["request_schema_version"] = 3
+                            payload["request"]["strategy"]["strategy_version"] = 1
+                        response = await client.post("/backtests", json=payload)
+                        self.assertEqual(response.status_code, 201, response.text)
+                        saved = await client.get(f"/backtests/execution-controls-{index}")
+                        self.assertEqual(saved.status_code, 200)
+                        self.assertEqual(
+                            saved.json()["request"]["execution"], payload["request"]["execution"]
+                        )
+        finally:
+            main.app.dependency_overrides.pop(main.get_db, None)
+
+    def test_execution_controls_reject_invalid_values_and_omit_unlimited_defaults(self):
+        for controls in (
+            {"max_entries_per_day": 0},
+            {"max_entries_per_day": True},
+            {"max_entries_per_day": 1.5},
+            {"max_entries_per_day": "2"},
+            {
+                "daily_schedule": {
+                    "entry_start_minute_utc": 100,
+                    "last_entry_minute_utc": 99,
+                    "exit_minute_utc": 200,
+                }
+            },
+            {
+                "daily_schedule": {
+                    "entry_start_minute_utc": 0,
+                    "last_entry_minute_utc": 99,
+                    "exit_minute_utc": 1440,
+                }
+            },
+            {
+                "daily_schedule": {
+                    "entry_start_minute_utc": False,
+                    "last_entry_minute_utc": 99,
+                    "exit_minute_utc": 200,
+                }
+            },
+            {
+                "daily_schedule": {
+                    "entry_start_minute_utc": 0,
+                    "last_entry_minute_utc": 99,
+                    "exit_minute_utc": 200,
+                    "unknown": 1,
+                }
+            },
+        ):
+            with self.subTest(controls=controls), self.assertRaises(ValueError):
+                payload = _request_payload()
+                payload["execution"].update(controls)
+                BacktestRequestPayload(**payload)
+        original = _request_payload()
+        payload = _request_payload()
+        payload["execution"].update(daily_schedule=None, max_entries_per_day=None)
+        self.assertEqual(BacktestRequestPayload(**payload).model_dump(), original)
+
     async def test_name_routes_validate_persist_clear_and_reject_members(self):
         await main.create_backtest_run(BacktestRunCreateIn(**_run_payload()), db=self.db)
         await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)

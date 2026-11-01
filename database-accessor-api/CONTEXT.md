@@ -21,6 +21,10 @@ semantics live in [backtest contracts](../docs/contracts/backtests.md).
 `app/schemas.py` define storage and transport shapes. Backtester supplies
 lifecycle policy; the accessor applies it against locked current state.
 
+- `BacktestExecutionPayload` validates persisted execution settings separately
+  from the public backtester schema. Keep optional controls coordinated across
+  both boundaries: daily schedules and entry limits must survive storage HTTP
+  round trips, while disabled controls stay omitted for legacy representations.
 - Lock the execution slot before batch/run rows for control transactions.
   Submission turn insertion and queue snapshots use that same lock. Queue reads
   hold it through the read transaction so active ownership and waiting turns

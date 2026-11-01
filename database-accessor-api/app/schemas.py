@@ -67,6 +67,18 @@ class BacktestStrategyPayload(BacktestContractModel):
         return payload
 
 
+class BacktestDailySchedulePayload(BacktestContractModel):
+    entry_start_minute_utc: StrictInt = Field(ge=0, lt=1440)
+    last_entry_minute_utc: StrictInt = Field(ge=0, lt=1440)
+    exit_minute_utc: StrictInt = Field(ge=0, lt=1440)
+
+    @model_validator(mode="after")
+    def validate_boundaries(self) -> "BacktestDailySchedulePayload":
+        if not self.entry_start_minute_utc < self.last_entry_minute_utc <= self.exit_minute_utc:
+            raise ValueError("daily schedule requires entry start < last entry <= exit")
+        return self
+
+
 class BacktestExecutionPayload(BacktestContractModel):
     signal_timing: Literal["close"]
     fill_timing: Literal["next_open"]
@@ -83,6 +95,16 @@ class BacktestExecutionPayload(BacktestContractModel):
     ]
     commission_bps: float
     slippage_bps: float
+    daily_schedule: BacktestDailySchedulePayload | None = None
+    max_entries_per_day: StrictInt | None = Field(default=None, gt=0)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload: dict[str, Any] = handler(self)
+        for field in ("daily_schedule", "max_entries_per_day"):
+            if getattr(self, field) is None:
+                payload.pop(field, None)
+        return payload
 
 
 class BacktestRequestPayload(BacktestContractModel):
