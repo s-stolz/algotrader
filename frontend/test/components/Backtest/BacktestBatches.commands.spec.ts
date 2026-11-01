@@ -135,7 +135,7 @@ describe('accepted batch inspection: commands', () => {
     expect(
       wrapper.get('[role="progressbar"]').attributes('aria-valuetext'),
     ).toContain('1 / 2 settled');
-    expect(wrapper.text()).toContain('0 executed');
+    expect(wrapper.text()).not.toContain('0 executed');
     expect(wrapper.text()).toContain('Cancellation will finish after cleanup');
     expect(wrapper.text()).toContain('Cancellation accepted:');
     expect(

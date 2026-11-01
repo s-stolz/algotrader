@@ -34,19 +34,6 @@
           }"
         />
       </div>
-      <div class="progress-caption">
-        <span
-          >{{ selectedBatch.executed_count }} executed
-          <span class="muted">· Successes and failures</span></span
-        >
-        <span>{{
-          detailError
-            ? 'Updates interrupted'
-            : isTerminal
-              ? 'Final results'
-              : 'Updates every 5 seconds'
-        }}</span>
-      </div>
       <dl class="outcome-grid">
         <div
           v-for="outcome in outcomes"
@@ -196,15 +183,6 @@ p {
 .progress-track .cancelling {
   background: var(--design-color-warning);
 }
-.progress-caption {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--design-space-sm);
-  margin-top: var(--design-space-sm);
-  font-size: var(--design-text-secondary);
-  color: var(--design-color-muted);
-}
 .muted {
   color: var(--design-color-muted);
 }
@@ -316,9 +294,6 @@ dd {
     display: block;
     margin: var(--design-space-xs) 0 0;
     font-size: var(--design-text-secondary);
-  }
-  .progress-caption .muted {
-    display: none;
   }
 }
 </style>

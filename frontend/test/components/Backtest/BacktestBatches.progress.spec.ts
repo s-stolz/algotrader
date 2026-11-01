@@ -221,7 +221,7 @@ describe('accepted batch inspection: progress', () => {
     expect(
       wrapper.get('[role="progressbar"]').attributes('aria-valuemax'),
     ).toBe('2');
-    expect(wrapper.text()).toContain('Updates interrupted');
+    expect(wrapper.text()).not.toContain('Updates interrupted');
     vi.advanceTimersByTime(5000);
     await flushPromises();
     expect(wrapper.get('.status-badge').text()).toBe('Queued');

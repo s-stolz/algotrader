@@ -144,7 +144,7 @@ describe('accepted batch inspection: inspection', () => {
       expect(
         reloaded.get('[role="progressbar"]').attributes('aria-valuetext'),
       ).toContain('0 / 2 settled');
-      expect(reloaded.text()).toContain('0 executed');
+      expect(reloaded.text()).not.toContain('0 executed');
       expect(reloaded.emitted('members')?.[0]).toEqual([
         'batch-1',
         [member(0), member(1)],
