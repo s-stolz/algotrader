@@ -115,6 +115,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     const batchSize = getBatchSize(coverageOptions);
 
     for (const indicator of all.value) {
+      if (indicator.ownerRunId) continue;
       const queryParams: IndicatorStoreQuery = {
         symbol,
         timeframe,
@@ -336,8 +337,9 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     indicatorData: IndicatorDataPoint[],
     indicatorId: number,
     providedParameters: IndicatorParameterUpdate = {},
+    ownerRunId?: string,
   ): string {
-    const _id = String(Date.now());
+    const _id = ownerRunId ? crypto.randomUUID() : String(Date.now());
     const indicator = createIndicator(
       _id,
       info,
@@ -347,6 +349,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
       providedParameters,
     );
 
+    indicator.ownerRunId = ownerRunId;
     indicators.set(_id, indicator);
 
     return _id;
@@ -478,7 +481,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
   ): IndicatorParameterMap | null {
     const indicator = indicators.get(_id);
 
-    if (!indicator) return null;
+    if (!indicator || indicator.ownerRunId) return null;
 
     return applyParameterUpdates(indicator.parameters, newParameters);
   }

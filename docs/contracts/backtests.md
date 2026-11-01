@@ -133,6 +133,15 @@ parameters. The snapshot contains no prices, decision annotations, chart styles,
 or executable strategy code. Its market and timeframe come from the saved run
 request; auxiliary indicator input markets remain calculation inputs.
 
+Applying a run to the chart loads its snapshot as a run-owned indicator group,
+separate from manual indicators. Calculations use the saved parameters and are
+locked; styling remains editable. Changing the chart Market or Timeframe hides
+the run group and trade/protective overlays without clearing run selection.
+Restore returns to the saved context, reloads the group, and preserves its styles.
+Overlays wait for matching Candle history before rendering. Missing installed
+indicators or invalid snapshots produce a chart error rather than a guessed
+configuration; legacy runs without snapshots still show their saved trades.
+
 ## Batches and Sweeps
 
 A **Backtest Batch** preserves why a fixed, nonempty collection of runs belongs

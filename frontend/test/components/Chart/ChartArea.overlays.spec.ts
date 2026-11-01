@@ -15,9 +15,52 @@ import { flushPromises } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import { type CandleUpdateMessage } from '@/types/contracts';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
+import { useMarketsStore } from '@/stores/marketsStore';
 
 describe('ChartArea overlays', () => {
   setupChartAreaTests();
+
+  it('hides mismatched overlays and offers a compact restore control', async () => {
+    const { currentTimeframeStore } = setupStores('M15');
+    useMarketsStore().all = [
+      {
+        symbol_id: 1,
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        market_type: 'forex',
+        min_move: 0.0001,
+        timezone: 'UTC',
+      },
+    ];
+    const store = useBacktestOverlayStore();
+    store.selectedRun = backtestRun();
+    store.selectedRunId = store.selectedRun.run_id;
+    store.closedTrades = [closedTrade()];
+    mountChartArea();
+    await flushPromises();
+    currentTimeframeStore.setCurrentTimeframe({ label: 'M5', value: 'M5' });
+    await flushPromises();
+    expect(store.selectedRunId).toBe('run-123');
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickMarkers,
+    ).toHaveBeenLastCalledWith([]);
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
+    ).toHaveBeenLastCalledWith([]);
+    const restore =
+      chartAreaMocks.mainPaneElement?.querySelector<HTMLButtonElement>(
+        '[aria-label="Restore backtest view"]',
+      );
+    expect(restore).toBeTruthy();
+    restore?.click();
+    await flushPromises();
+    expect(currentTimeframeStore.value).toBe('M15');
+    expect(
+      chartAreaMocks.mainPaneElement?.querySelector(
+        '[aria-label="Restore backtest view"]',
+      ),
+    ).toBeNull();
+  });
 
   it('renders loaded-range Backtest Run markers and protective lines', async () => {
     setupStores('M15');
@@ -123,7 +166,9 @@ describe('ChartArea overlays', () => {
     const { candlesticksStore } = setupStores('M5');
     const backtestOverlayStore = useBacktestOverlayStore();
     backtestOverlayStore.selectedRunId = 'run-123';
-    backtestOverlayStore.selectedRun = backtestRun();
+    backtestOverlayStore.selectedRun = backtestRun({
+      request: { ...backtestRun().request, timeframe: 'M5' },
+    });
     backtestOverlayStore.closedTrades = [
       closedTrade({
         trade_id: 'range-extension',
@@ -248,7 +293,9 @@ describe('ChartArea overlays', () => {
     setupStores();
     const store = useBacktestOverlayStore();
     store.selectedRunId = 'run-123';
-    store.selectedRun = backtestRun();
+    store.selectedRun = backtestRun({
+      request: { ...backtestRun().request, timeframe: 'M5' },
+    });
     store.closedTrades = [
       closedTrade({ trade_id: 'long', realized_pnl: -3.25 }),
       closedTrade({

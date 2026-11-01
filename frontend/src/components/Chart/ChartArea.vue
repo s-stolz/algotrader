@@ -24,6 +24,15 @@
             }}</span>
           </div>
           <n-button
+            v-if="!backtestOverlayStore.matchesChart || runIndicatorError"
+            text
+            circle
+            title="Restore backtest view"
+            aria-label="Restore backtest view"
+            @click="restoreBacktestView"
+            ><n-icon size="20"><SyncOutline /></n-icon
+          ></n-button>
+          <n-button
             text
             circle
             class="backtest-overlay-remove"
@@ -36,7 +45,15 @@
             </n-icon>
           </n-button>
         </div>
-        <div class="backtest-marker-legend"
+        <div
+          v-if="runIndicatorError"
+          class="backtest-marker-details"
+          role="alert"
+          >{{ runIndicatorError }}</div
+        >
+        <div
+          v-if="backtestOverlayStore.matchesChart"
+          class="backtest-marker-legend"
           >↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div
         >
         <div
@@ -91,16 +108,18 @@ import { createChartSession, type ChartSessionKeyInput } from './chartSession';
 import { createChartSessionAdapter } from './chartSessionAdapter';
 import { createChartRendering } from './chartRendering';
 import { createChartMeasurement } from './chartMeasurement';
+import { createBacktestIndicators } from './backtestIndicators';
+import { timeframeToMinutes } from '@/utils/timeframes';
 import {
   DEFAULT_CHART_INTERACTION_MODE,
   type ChartInteractionMode,
 } from './chartInteractionMode';
 import Indicator from './Indicator/Indicator.vue';
-import { CloseCircleOutline } from '@/icons';
+import { CloseCircleOutline, SyncOutline } from '@/icons';
 
 export default defineComponent({
   name: 'ChartArea',
-  components: { CloseCircleOutline, Indicator, NButton, NIcon },
+  components: { CloseCircleOutline, SyncOutline, Indicator, NButton, NIcon },
   props: {
     interactionMode: {
       type: String as PropType<ChartInteractionMode>,
@@ -132,6 +151,7 @@ export default defineComponent({
       getChartContainer: () => chartContainer.value,
       getMinMove: () => currentMarketStore.min_move,
       getLegendElements: () => instance?.refs ?? {},
+      canShowBacktest: () => loadedSession.value === sessionIdentity(),
       requestOlderHistory: (request) => session.requestOlderHistory(request),
     });
     function currentChartSessionKey(): ChartSessionKeyInput {
@@ -141,6 +161,50 @@ export default defineComponent({
         timeframe: currentTimeframeStore.value,
       };
     }
+    const loadedSession = ref<string | null>(null);
+    const sessionIdentity = (key = currentChartSessionKey()) =>
+      JSON.stringify([key.symbol, key.exchange ?? null, key.timeframe]);
+    const runIndicators = createBacktestIndicators({
+      store: indicatorsStore,
+      manager: infrastructure.indicatorManager,
+      getRange: () => {
+        const first = candlesticksStore.data[0];
+        const last = candlesticksStore.data.at(-1);
+        const timeframe = currentTimeframeStore.value;
+        return first && last && timeframe
+          ? {
+              oldestTimestampMs: first.timestamp_ms,
+              newestTimestampMs: last.timestamp_ms,
+              exclusiveEndMs:
+                last.timestamp_ms + timeframeToMinutes(timeframe) * 60_000,
+            }
+          : null;
+      },
+    });
+    function syncRunIndicators() {
+      const run = backtestOverlayStore.selectedRun;
+      runIndicators.invalidate(run?.run_id ?? null);
+      rendering.refreshBacktestMarkers();
+      const key = currentChartSessionKey();
+      if (
+        run &&
+        backtestOverlayStore.matchesChart &&
+        rendering.state.isReady &&
+        loadedSession.value === sessionIdentity() &&
+        key.symbol &&
+        key.timeframe
+      ) {
+        void runIndicators.load(run, {
+          symbol: key.symbol,
+          timeframe: key.timeframe,
+          exchange: key.exchange ?? null,
+        });
+      }
+    }
+    function restoreBacktestView() {
+      backtestOverlayStore.restoreChartView();
+      syncRunIndicators();
+    }
     const session = markRaw(
       createChartSession(
         createChartSessionAdapter({
@@ -149,6 +213,9 @@ export default defineComponent({
           currentChartSessionKey,
           renderCandlesticks: rendering.renderCandlesticks,
           shouldScrollToRealTime: () => rendering.state.shouldScrollToRealTime,
+          onCandlesLoaded: (key) => {
+            loadedSession.value = sessionIdentity(key);
+          },
         }),
       ),
     );
@@ -165,6 +232,7 @@ export default defineComponent({
       },
     );
     function syncNavigation() {
+      loadedSession.value = null;
       rendering.state.shouldScrollToRealTime = true;
       syncChartSession();
     }
@@ -176,6 +244,16 @@ export default defineComponent({
     watch(() => currentTimeframeStore.value, syncNavigation);
     syncNavigation();
     watch(
+      () => [
+        backtestOverlayStore.selectedRun,
+        sessionIdentity(),
+        loadedSession.value,
+        rendering.state.isReady,
+      ],
+      syncRunIndicators,
+      { immediate: true, flush: 'sync' },
+    );
+    watch(
       () => backtestOverlayStore.selectedRunId,
       rendering.refreshBacktestMarkers,
     );
@@ -186,6 +264,7 @@ export default defineComponent({
     watch(() => props.interactionMode, measurement.applyInteractionMode);
     onMounted(rendering.initializeChartComponent);
     onBeforeUnmount(() => {
+      runIndicators.dispose();
       void session.stop();
       rendering.dispose();
       indicatorsStore.configureHistoryCoverage(null);
@@ -215,6 +294,8 @@ export default defineComponent({
     });
     return {
       chartContainer,
+      restoreBacktestView,
+      runIndicatorError: runIndicators.error,
       backtestOverlayStore,
       backtestOverlayTarget,
       hoveredBacktestMarker,

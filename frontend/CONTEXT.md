@@ -28,6 +28,15 @@ and behavior that is easy to break when changing them.
 - Chart overlay eligibility requires a successful, single-symbol run, an
   available Market, and supported version 3 Closed Trades. The selected run ID
   persists in local storage; validate it again on reload.
+- `components/Chart/backtestIndicators.ts` coordinates the selected run's saved
+  indicator group after matching Candle history loads. Run-owned indicators use
+  distinct local identities, locked calculation parameters, and editable styles;
+  manual indicators remain independent. Changing Market/Timeframe removes the
+  run-owned group and hides trade/protective overlays while retaining selection.
+  Restore returns to the saved context and reloads the group with its styles.
+  Superseded loads cannot install indicators. Legacy runs without a snapshot
+  retain trade overlays without inferred indicators; see
+  [saved chart indicators](../docs/contracts/backtests.md#saved-chart-indicators).
 - Measurement Overlays are transient pointer-held comparisons on the main pane:
   exact pointer prices, nearest logical bar slots, inclusive Candle count, and
   signed price/percent deltas relative to the anchor. They clear on release,

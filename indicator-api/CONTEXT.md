@@ -28,6 +28,9 @@ parameters, response formatting, and live-stream lifecycle.
   these historical-only indicators. Opening range is catalog ID 7; its dedicated
   `opening_range` output renderer consumes bounds, readiness, and timestamp
   coordinates together rather than plotting each numeric field as a price.
+- The indicator catalog includes the stable engine `indicator_id` alongside its
+  numeric API `id`. Saved chart configurations resolve through this mapping;
+  consumers must not infer an API ID from a display name or hardcoded ID table.
 - Keep UI metadata and transport formatting here or in frontend; shared compute
   belongs to [indicator_engine](../libs/CONTEXT.md#indicator-engine).
 

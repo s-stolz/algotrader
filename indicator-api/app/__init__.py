@@ -18,7 +18,11 @@ INDICATOR_MAP: dict[int, str] = {
 
 def get_available_indicators() -> list[dict]:
     return [
-        {"id": indicator_id, "name": ENGINE_REGISTRY.get(engine_id).spec.name}
+        {
+            "id": indicator_id,
+            "indicator_id": engine_id,
+            "name": ENGINE_REGISTRY.get(engine_id).spec.name,
+        }
         for indicator_id, engine_id in INDICATOR_MAP.items()
     ]
 

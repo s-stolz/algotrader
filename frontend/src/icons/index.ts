@@ -10,3 +10,4 @@ export { default as WarningOutline } from '@vicons/ionicons5/WarningOutline';
 export { default as ListOutline } from '@vicons/ionicons5/ListOutline';
 export { default as HandRightOutline } from '@vicons/ionicons5/HandRightOutline';
 export { default as ResizeOutline } from '@vicons/ionicons5/ResizeOutline';
+export { default as SyncOutline } from '@vicons/ionicons5/SyncOutline';

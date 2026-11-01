@@ -70,6 +70,7 @@ interface ChartRenderingOptions {
   measurement: ReturnType<typeof createChartMeasurement>;
   getChartContainer: () => HTMLElement | null;
   getMinMove: () => number | null;
+  canShowBacktest?: () => boolean;
   getLegendElements: () => Record<string, unknown>;
   requestOlderHistory: ChartSession['requestOlderHistory'];
 }
@@ -89,6 +90,7 @@ export function createChartRendering({
   measurement,
   getChartContainer,
   getMinMove,
+  canShowBacktest = () => true,
   getLegendElements,
   requestOlderHistory,
 }: ChartRenderingOptions) {
@@ -307,7 +309,12 @@ export function createChartRendering({
     state.backtestMarkerDetails.clear();
     const range = getBacktestLoadedCandleRange();
 
-    if (!backtestOverlayStore.selectedRun || !range) {
+    if (
+      !backtestOverlayStore.selectedRun ||
+      !backtestOverlayStore.matchesChart ||
+      !canShowBacktest() ||
+      !range
+    ) {
       infrastructure.setCandlestickMarkers([]);
       infrastructure.setCandlestickProtectiveLines([]);
       return;

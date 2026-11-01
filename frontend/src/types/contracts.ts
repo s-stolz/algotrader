@@ -107,6 +107,7 @@ export interface DeleteResponse {
 }
 
 export interface AvailableIndicator {
+  indicator_id?: string;
   id: number;
   name: string;
 }
@@ -243,7 +244,10 @@ export function isAvailableIndicator(
   value: unknown,
 ): value is AvailableIndicator {
   return (
-    isRecord(value) && isFiniteNumber(value.id) && isNonEmptyString(value.name)
+    isRecord(value) &&
+    isFiniteNumber(value.id) &&
+    isNonEmptyString(value.name) &&
+    (value.indicator_id === undefined || isNonEmptyString(value.indicator_id))
   );
 }
 

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 import {
   fetchBacktestClosedTrades,
@@ -124,8 +124,38 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
   const closedTrades = ref<BacktestClosedTrade[]>([]);
   const isLoading = ref(false);
   const error = ref<string | null>(null);
+  let selectionRevision = 0;
+  const matchesChart = computed(() => {
+    const run = selectedRun.value;
+    const market = useCurrentMarketStore();
+    return (
+      !!run &&
+      run.request.symbols[0] === market.symbol &&
+      (!run.request.exchange || run.request.exchange === market.exchange) &&
+      normalizeTimeframeCode(run.request.timeframe) ===
+        useCurrentTimeframeStore().value
+    );
+  });
+
+  function restoreChartView(): void {
+    const run = selectedRun.value;
+    if (!run) return;
+    const market = findMarketForRun(run, useMarketsStore().all);
+    if (!market) {
+      error.value = formatMarketMissingReason(run);
+      return;
+    }
+    useCurrentMarketStore().setMarket(market);
+    const timeframe = normalizeTimeframeCode(run.request.timeframe);
+    useCurrentTimeframeStore().setCurrentTimeframe({
+      label: timeframe,
+      value: timeframe,
+    });
+  }
 
   function clearSelectionData(): void {
+    selectionRevision += 1;
+    isLoading.value = false;
     selectedRunId.value = null;
     selectedRun.value = null;
     closedTrades.value = [];
@@ -146,6 +176,8 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
   async function selectRun(
     run: BacktestRun,
   ): Promise<BacktestRunSelectability> {
+    const revision = ++selectionRevision;
+    isLoading.value = false;
     const markets = useMarketsStore().all;
     const selectability = getBacktestRunSelectabilityForMarkets(run, markets);
 
@@ -167,6 +199,8 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
 
     try {
       const trades = await fetchBacktestClosedTrades(run.run_id);
+      if (revision !== selectionRevision)
+        return unavailable('Selection changed.');
       const timeframe = normalizeTimeframeCode(run.request.timeframe);
 
       useCurrentMarketStore().setMarket(market);
@@ -182,15 +216,18 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
 
       return selectability;
     } catch (err) {
+      if (revision !== selectionRevision)
+        return unavailable('Selection changed.');
       error.value =
         err instanceof Error ? err.message : 'Failed to select Backtest.';
       throw err;
     } finally {
-      isLoading.value = false;
+      if (revision === selectionRevision) isLoading.value = false;
     }
   }
 
   async function restorePersistedSelection(): Promise<BacktestRunSelectability | null> {
+    let revision = selectionRevision;
     const runId = readStoredRunId();
 
     if (!runId) {
@@ -202,7 +239,11 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
 
     try {
       const run = await getBacktestRun(runId);
-      const selectability = await selectRun(run);
+      if (revision !== selectionRevision) return null;
+      const selection = selectRun(run);
+      revision = selectionRevision;
+      const selectability = await selection;
+      if (revision !== selectionRevision) return null;
 
       if (!selectability.selectable) {
         clearSelectionData();
@@ -210,6 +251,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
 
       return selectability;
     } catch (err) {
+      if (revision !== selectionRevision) return null;
       clearOverlay();
       error.value =
         err instanceof Error
@@ -217,7 +259,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
           : 'Failed to reload selected Backtest.';
       return unavailable(error.value);
     } finally {
-      isLoading.value = false;
+      if (revision === selectionRevision) isLoading.value = false;
     }
   }
 
@@ -232,6 +274,8 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
   }
 
   return {
+    matchesChart,
+    restoreChartView,
     selectedRunId,
     selectedRun,
     closedTrades,

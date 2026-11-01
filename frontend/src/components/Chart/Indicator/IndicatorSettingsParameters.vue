@@ -17,6 +17,7 @@
 
         <td>
           <BaseSelect
+            :disabled="!!indicator.ownerRunId"
             v-if="isStringWithOptions(parameter)"
             v-model:value="parameter.value"
             @update:value="onParameterUpdate"
@@ -26,6 +27,7 @@
           />
 
           <n-input
+            :disabled="!!indicator.ownerRunId"
             round
             v-else-if="isStringWithoutOptions(parameter)"
             v-model:value="parameter.value"
@@ -33,6 +35,7 @@
           />
 
           <n-input-number
+            :disabled="!!indicator.ownerRunId"
             round
             v-else-if="isNumber(parameter)"
             v-model:value="parameter.value"
@@ -135,6 +138,7 @@ function isNumber(
 }
 
 function onParameterUpdate(): void {
+  if (props.indicator.ownerRunId) return;
   if (updateTimeout.value) {
     clearTimeout(updateTimeout.value);
   }

@@ -94,7 +94,9 @@ export class IndicatorManager {
           crosshairMarkerVisible: false,
           lastValueVisible: false,
           priceLineVisible: false,
-          ...toChartSeriesOptions(outputInfo.plotOptions),
+          ...toChartSeriesOptions(
+            indicator.styles[outputKey] ?? outputInfo.plotOptions,
+          ),
         };
         const seriesKey = `${id}_${outputKey}`;
 
@@ -139,8 +141,8 @@ export class IndicatorManager {
     newStyles: ChartSeriesOptions,
   ): boolean {
     const indicator = this.indicatorsStore.getById(id);
+    if (indicator) indicator.styles[outputKey] = { ...newStyles } as JsonObject;
     if (indicator?.info.indicator_id === 'opening_range') {
-      indicator.styles[outputKey] = { ...newStyles } as JsonObject;
       this.ranges.update(indicator);
       return true;
     }

@@ -144,6 +144,13 @@ function createIndicator(
 }
 
 describe('IndicatorSettingsParameters', () => {
+  it('disables calculation controls for a run-owned indicator', () => {
+    const indicator = createIndicator({ ownerRunId: 'run-one' });
+    const wrapper = mount(Parameters, { props: { indicator } });
+    const inputs = wrapper.findAll('input');
+    expect(inputs.length).toBeGreaterThan(0);
+    expect(inputs.every((input) => input.element.disabled)).toBe(true);
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
     localStorage.clear();

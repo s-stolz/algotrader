@@ -19,6 +19,7 @@ interface ChartSessionAdapterOptions {
     options?: { scrollToRealtime?: boolean },
   ) => void;
   shouldScrollToRealTime: () => boolean;
+  onCandlesLoaded?: (key: ChartSessionKey) => void;
 }
 
 export function createChartSessionAdapter({
@@ -27,6 +28,7 @@ export function createChartSessionAdapter({
   currentChartSessionKey,
   renderCandlesticks,
   shouldScrollToRealTime,
+  onCandlesLoaded,
 }: ChartSessionAdapterOptions): ChartSessionSubscriptionsAdapter {
   const indicatorBatchSize = 500;
   const candlesFetchLimit = 500;
@@ -68,8 +70,9 @@ export function createChartSessionAdapter({
         limit: candlesFetchLimit,
         exchange: key.exchange,
       }),
-    renderCandles: (_key, candles) => {
+    renderCandles: (key, candles) => {
       candlesticksStore.replace(candles);
+      onCandlesLoaded?.(key);
       renderCandlesticks(candlesticksStore.data, {
         scrollToRealtime: shouldScrollToRealTime(),
       });

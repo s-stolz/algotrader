@@ -2,6 +2,7 @@
   <div class="indicator-panel">
     <div class="indicator-header">
       <span class="indicator-name"
+        ><small v-if="indicator.ownerRunId">Backtest · </small
         >{{ indicator.info.name }}
         <small
           v-if="indicator.info.supports_live === false"
@@ -25,6 +26,7 @@
           text
           circle
           aria-label="Remove Indicator"
+          v-if="!indicator.ownerRunId"
           class="remove-button"
           @click="onRemoveIndicator"
         >

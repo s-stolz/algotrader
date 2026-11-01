@@ -51,6 +51,7 @@ export type IndicatorLiveSubscriptionInput = Omit<
 >;
 
 export interface StoreIndicator {
+  ownerRunId?: string;
   _id: string;
   indicatorId: number;
   info: IndicatorInfo;

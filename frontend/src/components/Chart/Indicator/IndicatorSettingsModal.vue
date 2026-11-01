@@ -59,7 +59,20 @@ const emit = defineEmits<{
   'update-styles': [payload: IndicatorStyleUpdatePayload];
 }>();
 
-const indicatorInfo = computed(() => props.indicator.info);
+const indicatorInfo = computed(() => ({
+  ...props.indicator.info,
+  outputs: Object.fromEntries(
+    Object.entries(props.indicator.info.outputs).map(([key, output]) => [
+      key,
+      {
+        ...output,
+        ...(output.plotOptions
+          ? { plotOptions: props.indicator.styles[key] ?? output.plotOptions }
+          : {}),
+      },
+    ]),
+  ),
+}));
 
 function onUpdateStyles(payload: IndicatorStyleUpdatePayload): void {
   emit('update-styles', payload);

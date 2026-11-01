@@ -3,11 +3,18 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+from app import get_available_indicators, get_indicator_metadata
 from app.services.candle_cache import CandleCache
 from app.services.historical_indicator_service import run_historical_indicator
 
 
 class OpeningRangeHistoryTests(unittest.IsolatedAsyncioTestCase):
+    def test_catalog_exposes_stable_engine_ids_for_saved_chart_configurations(self):
+        for item in get_available_indicators():
+            self.assertEqual(
+                item["indicator_id"], get_indicator_metadata(item["id"])["indicator_id"]
+            )
+
     async def test_after_cutoff_request_loads_formation_without_requiring_earlier_candles(self):
         await self._check_window("UTC", "2026-01-05T09:30", "2026-01-05T00:00")
 

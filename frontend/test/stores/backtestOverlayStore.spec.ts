@@ -75,6 +75,40 @@ const closedTrades: BacktestClosedTrade[] = [
 ];
 
 describe('backtestOverlayStore', () => {
+  it('retains selection on chart mismatch and restores without re-fetching trades', async () => {
+    useMarketsStore().all = [eurUsdMarket, gbpUsdMarket];
+    vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
+    const store = useBacktestOverlayStore();
+    await store.selectRun(backtestRun());
+    expect(store.matchesChart).toBe(true);
+    useCurrentMarketStore().setMarket(gbpUsdMarket);
+    useCurrentTimeframeStore().setCurrentTimeframe({
+      label: 'M1',
+      value: 'M1',
+    });
+    expect(store.matchesChart).toBe(false);
+    expect(store.selectedRunId).toBe('run-123');
+    store.restoreChartView();
+    expect(store.matchesChart).toBe(true);
+    expect(fetchBacktestClosedTrades).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a pending selection after removing its overlay', async () => {
+    useMarketsStore().all = [eurUsdMarket];
+    let resolve!: (value: BacktestClosedTrade[]) => void;
+    vi.mocked(fetchBacktestClosedTrades).mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const store = useBacktestOverlayStore();
+    const selecting = store.selectRun(backtestRun());
+    store.clearOverlay();
+    resolve(closedTrades);
+    await selecting;
+    expect(store.selectedRun).toBeNull();
+    expect(store.isLoading).toBe(false);
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
     localStorage.clear();
