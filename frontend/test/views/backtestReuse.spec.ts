@@ -28,6 +28,11 @@ const request = {
     intrabar_exit_policy: 'conservative',
     commission_bps: 1,
     slippage_bps: 2,
+    daily_schedule: {
+      entry_start_minute_utc: 60,
+      last_entry_minute_utc: 120,
+      exit_minute_utc: 180,
+    },
   },
   persist_result: true,
   run_metadata: { name: 'Original' },
@@ -61,10 +66,14 @@ describe('saved configuration reuse', () => {
         timeframe: 'M15',
         initial_capital: 25_000,
         strategy: { parameters: { fast: 3, slow: 10 } },
-        execution: { allowed_directions: 'short_only' },
+        execution: {
+          allowed_directions: 'short_only',
+          daily_schedule: request.execution.daily_schedule,
+        },
         run_metadata: null,
       });
       reuse.request.strategy.parameters.fast = 99;
+      reuse.request.execution.daily_schedule!.exit_minute_utc = 240;
       expect(run).toEqual(before);
     },
   );

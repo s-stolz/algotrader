@@ -1,3 +1,4 @@
+import { dailyScheduleIssue } from '@/types/backtest/schedule';
 import type {
   BacktestRequestPayload,
   StrategyCatalogEntry,
@@ -51,6 +52,8 @@ export function buildSweepRequest(
   ) {
     throw new Error('Enter valid dates and initial capital.');
   }
+  const scheduleIssue = dailyScheduleIssue(draft.execution.daily_schedule);
+  if (scheduleIssue) throw new Error(scheduleIssue);
   const parameter_axes: Record<string, SweepParameterAxis> = {};
   for (const parameter of selected.parameters) {
     const input = sweepParameter(parameter);

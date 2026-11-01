@@ -89,6 +89,11 @@ and behavior that is easy to break when changing them.
   positive magnitude; replay charts display nonpositive drawdown. Preserve
   backend sampling and expose replay unavailability separately from read errors.
   Comparison helpers live in `src/views/backtestComparison.ts`.
+- `BacktestScheduleFields.vue` edits optional UTC daily execution boundaries in
+  the shared creation execution controls. Omitted/null schedules are disabled;
+  enabled settings survive draft retention and saved-run/batch reuse. Validation
+  blocks invalid ordering before submission or sweep preview. These are shared
+  sweep settings rather than strategy parameter axes.
 - Creation calendar dates convert explicitly to UTC midnight. Chart timestamp
   conversion follows the root transport contract.
 

@@ -1,4 +1,9 @@
-import type { CheckboxProps, DatePickerProps, DrawerProps } from 'naive-ui';
+import type {
+  CheckboxProps,
+  DatePickerProps,
+  DrawerProps,
+  TimePickerProps,
+} from 'naive-ui';
 import { designTokens } from './tokens';
 
 const { color, text, space, radius, shadow } = designTokens;
@@ -80,5 +85,22 @@ export const designDatePickerTheme: NonNullable<
   calendarDividerColor: color.border,
   panelActionDividerColor: color.border,
   panelExtraFooterPadding: space.md,
+  panelActionPadding: space.md,
+};
+
+export const designTimePickerTheme: NonNullable<
+  TimePickerProps['themeOverrides']
+> = {
+  panelColor: color.panel,
+  panelBoxShadow: shadow.overlay,
+  panelDividerColor: color.border,
+  itemTextColor: color.body,
+  itemTextColorActive: color.interactive,
+  itemColorHover: color.hover,
+  itemBorderRadius: radius.panel,
+  borderRadius: radius.panel,
+  iconColor: color.icon,
+  iconColorDisabled: color.disabledText,
+  itemFontSize: text.body,
   panelActionPadding: space.md,
 };

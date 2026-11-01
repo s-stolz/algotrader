@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import BacktestScheduleFields from './BacktestScheduleFields.vue';
 import { NButton, NIcon, NInputNumber } from 'naive-ui';
 import type { SelectOption } from 'naive-ui';
 import InformationCircleOutline from '@vicons/ionicons5/InformationCircleOutline';
@@ -48,6 +49,10 @@ const exitOptions: SelectOption[] = [
         v-model:value="engine"
         :options="engineOptions"
     /></label>
+    <BacktestScheduleFields
+      v-model:execution="execution"
+      class="full"
+    />
     <section class="full"
       ><h4>Trading costs</h4
       ><div class="fields costs">

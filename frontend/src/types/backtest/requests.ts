@@ -1,3 +1,4 @@
+import { isDailyTradingSchedule, type DailyTradingSchedule } from './schedule';
 import {
   type JsonObject,
   type JsonValue,
@@ -31,6 +32,7 @@ export interface BacktestStrategyPayload {
 }
 
 export interface BacktestExecutionPayload {
+  daily_schedule?: DailyTradingSchedule | null;
   signal_timing: 'close';
   fill_timing: 'next_open';
   price_source: 'open' | 'close';
@@ -205,6 +207,8 @@ function isBacktestExecutionPayload(
 ): value is BacktestExecutionPayload {
   return (
     isRecord(value) &&
+    (value.daily_schedule == null ||
+      isDailyTradingSchedule(value.daily_schedule)) &&
     value.signal_timing === 'close' &&
     value.fill_timing === 'next_open' &&
     typeof value.price_source === 'string' &&

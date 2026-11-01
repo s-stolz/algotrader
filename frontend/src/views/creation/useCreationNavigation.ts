@@ -1,3 +1,4 @@
+import { dailyScheduleIssue } from '@/types/backtest/schedule';
 import { computed, ref, type Ref } from 'vue';
 import type {
   StrategyCatalogEntry,
@@ -83,6 +84,13 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     return !Object.keys(fieldErrors.value).length;
   }
   function validateParameters(): boolean {
+    const scheduleIssue = dailyScheduleIssue(
+      draft.value.execution.daily_schedule,
+    );
+    if (scheduleIssue) {
+      submitError.value = scheduleIssue;
+      return false;
+    }
     if (isSweep.value) {
       try {
         buildSweepRequest();
