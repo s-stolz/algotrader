@@ -191,23 +191,19 @@ describe('batch reuse', () => {
       });
       await advancePreview();
       expect(nameInput().props('value')).toBe(chosen);
-      expect(document.body.textContent).toContain(
-        'Saved sma_crossover version 1',
-      );
-      expect(document.body.textContent).toContain(
-        'slow_window default changed: 20 → 30',
-      );
+      expect(document.body.textContent).toContain('Using current strategy v2');
+      expect(
+        document.querySelector('[data-testid="reuse-use-current"]'),
+      ).toBeNull();
+      expect(
+        document
+          .querySelector('[aria-label^="slow_window changes"]')
+          ?.getAttribute('aria-label'),
+      ).toContain('Default: 20 → 30');
       expect(document.body.textContent).toContain(
         'Saved Market ID 9 unavailable',
       );
       expect(previewParameterSweep).not.toHaveBeenCalled();
-
-      (
-        document.querySelector(
-          '[data-testid="reuse-use-current"]',
-        ) as HTMLElement
-      ).click();
-      await flushPromises();
       const market = wrapper
         .findAllComponents(NSelect)
         .find((select) => select.attributes('data-testid') === 'sweep-markets');

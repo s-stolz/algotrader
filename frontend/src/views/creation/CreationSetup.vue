@@ -53,6 +53,7 @@
         >Use current version</n-button
       >
     </p>
+    <CreationStrategyReview />
     <CreationMarketPeriod />
     <label
       >Initial capital
@@ -71,6 +72,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import CreationStrategyReview from './CreationStrategyReview.vue';
 import { NInput, NInputNumber, NTag, NButton } from 'naive-ui';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import CreationMarketPeriod from './CreationMarketPeriod.vue';

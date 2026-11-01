@@ -27,7 +27,10 @@ API; the accessor owns atomic storage, and shared clients pass documents through
   Already executing children retain loaded code; saved history remains readable.
 - **Create from this** opens an editable draft against the current catalog from a
   saved request or batch definition. Submission creates independent history;
-  changing Strategy Version requires explicit review in the Workspace. Named
+  reuse applies the current Strategy Version automatically, retaining explicit
+  saved parameter values and resolving previously defaulted parameters against
+  current defaults. The Workspace shows the version switch and parameter changes;
+  invalid copied values block submission. Named
   sources propose their saved top-level name plus ` (copy)` in the editable
   creation draft; shorten the source portion by Unicode characters to retain
   the suffix within 120 characters. Unnamed sources leave the draft empty.

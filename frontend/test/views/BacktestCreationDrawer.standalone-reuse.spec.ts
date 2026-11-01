@@ -107,30 +107,19 @@ describe('standalone reuse', () => {
       runType.vm.$emit('update:value', 'standalone');
       await flushPromises();
       expect(nameInput().props('value')).toBe(proposed);
-      expect(document.body.textContent).toContain(
-        'Saved sma_crossover version 1',
-      );
-      expect(document.body.textContent).toContain('current version 2');
-      expect(document.body.textContent).toContain(
-        'Invalid copied value: label',
-      );
-      expect(document.body.textContent).toContain(
-        'fast_window: saved value 4; current default 5',
-      );
+      expect(document.body.textContent).toContain('Using current strategy v2');
       expect(
-        (
-          document.querySelector(
-            '[data-testid="creation-submit"]',
-          ) as HTMLButtonElement
-        ).disabled,
-      ).toBe(true);
-
-      (
-        document.querySelector(
-          '[data-testid="reuse-use-current"]',
-        ) as HTMLElement
-      ).click();
-      await flushPromises();
+        document.querySelector('[data-testid="reuse-use-current"]'),
+      ).toBeNull();
+      expect(
+        useBacktestWorkspaceStore().creationDraft?.strategy.strategy_version,
+      ).toBe(2);
+      expect(
+        document
+          .querySelector('[aria-label^="fast_window changes"]')
+          ?.getAttribute('aria-label'),
+      ).toContain('Value / default: 4 → 5');
+      expect(document.body.textContent).toContain('label:');
       (
         document.querySelector('[data-testid="creation-submit"]') as HTMLElement
       ).click();

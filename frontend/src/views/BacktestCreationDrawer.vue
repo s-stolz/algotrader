@@ -38,31 +38,6 @@
         This saved record remains inspectable. Choose a current strategy to
         create new work.
       </p>
-      <p
-        v-if="store.reuseSource && selectedStrategy && strategyNeedsReview"
-        role="alert"
-        data-testid="reuse-version-review"
-      >
-        Saved {{ store.reuseSource.strategyId }} version
-        {{
-          store.reuseSource.strategyVersion ?? 'unavailable (legacy request)'
-        }}; current version {{ selectedStrategy.strategy_version }}. Review
-        parameter changes and invalid values before submitting. This is a new
-        experiment, not an exact reproduction.
-        <n-button
-          size="small"
-          data-testid="reuse-use-current"
-          @click="useCurrentVersion"
-        >
-          Use current version
-        </n-button>
-      </p>
-      <p
-        v-for="change in parameterChanges"
-        :key="change"
-        role="status"
-        >{{ change }}</p
-      >
       <div
         v-show="step !== 2"
         class="creation-fields"
@@ -190,8 +165,6 @@ const {
   store,
   selectedStrategy,
   strategyNeedsReview,
-  useCurrentVersion,
-  parameterChanges,
   fieldErrors,
   submitError,
   isSweep,

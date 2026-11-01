@@ -134,8 +134,8 @@ export function useBacktestCreation(emit: CreationEvents) {
       store.reuseSource as ReuseSource | null,
       selectedStrategy.value,
       draft.value,
-      parameterIssues.value,
-      strategyNeedsReview.value,
+      store.reuseSource?.strategyVersion !==
+        selectedStrategy.value?.strategy_version,
     ),
   );
   const {
@@ -215,6 +215,7 @@ export function useBacktestCreation(emit: CreationEvents) {
             allowedDirections: [],
             parameters: {},
           };
+      if (store.reuseSource && strategyNeedsReview.value) useCurrentVersion();
       step.value = 0;
       numericEntryValid.value = {};
       if (sweep.value.allowedDirections.length)
@@ -314,6 +315,7 @@ export function useBacktestCreation(emit: CreationEvents) {
         throw new Error('No registered strategies are available.');
       if (!draft.value.strategy.strategy_id)
         selectStrategy(catalog.value[0].strategy_id);
+      if (store.reuseSource && strategyNeedsReview.value) useCurrentVersion();
     } catch (error) {
       catalogError.value =
         error instanceof Error ? error.message : 'Unknown catalog error';

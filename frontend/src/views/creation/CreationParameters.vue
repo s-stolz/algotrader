@@ -3,6 +3,12 @@
     class="parameters-section"
     aria-label="Strategy parameters"
   >
+    <p
+      v-if="removedParameters.length"
+      class="removed-parameters"
+    >
+      No longer used: {{ removedParameters.join(', ') }}
+    </p>
     <div class="parameters-grid">
       <div
         v-for="parameter in selectedStrategy?.parameters ?? []"
@@ -17,6 +23,7 @@
             >{{ parameter.display_name || parameter.name
             }}<span v-if="parameter.required"> *</span></span
           >
+          <CreationParameterChange :name="parameter.name" />
         </label>
         <BaseSelect
           v-if="isSweep"
@@ -192,15 +199,17 @@
         </div>
         <small v-if="parameter.description">{{ parameter.description }}</small>
         <small
-          v-if="fieldErrors[parameter.name]"
+          v-if="parameterError(parameter.name)"
           role="alert"
-          >{{ fieldErrors[parameter.name] }}</small
+          >{{ parameterError(parameter.name) }}</small
         >
       </div>
     </div>
   </section>
 </template>
 <script setup lang="ts">
+import { computed } from 'vue';
+import CreationParameterChange from './CreationParameterChange.vue';
 import { NButton, NInput, NInputNumber } from 'naive-ui';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
@@ -209,6 +218,8 @@ import { parameterModeOptions, parameterOptions } from './creationParameters';
 import { useCreation } from './creationContext';
 const {
   selectedStrategy,
+  parameterChanges,
+  parameterIssues,
   isSweep,
   draft,
   fieldErrors,
@@ -226,4 +237,15 @@ const {
   setNumericValues,
   numericEntryValid,
 } = useCreation();
+function parameterError(name: string): string | undefined {
+  return (
+    fieldErrors.value[name] ??
+    parameterIssues.value.find((issue) => issue.startsWith(`${name}:`))
+  );
+}
+const removedParameters = computed(() =>
+  parameterChanges.value
+    .filter((item) => item.change === 'Removed')
+    .map((item) => item.parameter),
+);
 </script>
