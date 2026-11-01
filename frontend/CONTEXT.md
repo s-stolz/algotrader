@@ -60,11 +60,9 @@ and behavior that is easy to break when changing them.
   Ignore superseded responses after changing the inspected run, batch, or draft.
   Background refresh preserves settled charts and inspection state.
 - Creation uses the current strategy catalog; historical inspection uses saved
-  requests and metadata. On a version mismatch, reuse applies the available
-  Strategy Version and its defaults to fixed parameters. Preserve explicit sweep
-  axes and values without declared defaults. Keep migration notes with the reuse
-  source across drawer remounts. Show version and automatic value changes beside
-  the affected fields;
+  requests and metadata. Reuse applies the current Strategy Version automatically,
+  retains explicit saved values, and updates previously defaulted parameters. Show
+  version changes beside the strategy and schema changes beside parameter fields;
   invalid values still block submission. Keep submission/command identities across retries;
   submission follows explicit user action and advertised backend capability.
   `src/views/backtestReuse.ts` proposes editable names from saved top-level names

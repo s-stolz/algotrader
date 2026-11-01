@@ -30,13 +30,6 @@ export function parameterChanges(
     Object.keys(draft.strategy.parameters);
   const newNames = selected.parameters.map((parameter) => parameter.name);
   const changes: ParameterChange[] = [
-    ...Object.entries(source.appliedParameterChanges ?? {}).map(
-      ([parameter, values]) => ({
-        parameter,
-        change: 'Automatically changed',
-        ...values,
-      }),
-    ),
     ...newNames
       .filter((name) => !oldNames.includes(name))
       .map((parameter) => ({
@@ -63,13 +56,6 @@ export function parameterChanges(
       ] as const;
       let described = false;
       for (const [key, change] of fields) {
-        if (
-          key === 'default' &&
-          source.appliedParameterChanges?.[parameter.name]
-        ) {
-          described = true;
-          continue;
-        }
         if (JSON.stringify(previous[key]) === JSON.stringify(parameter[key]))
           continue;
         changes.push({
@@ -84,7 +70,7 @@ export function parameterChanges(
         changes.push({ parameter: parameter.name, change: 'Schema changed' });
     }
   }
-  if (!old && needsReview && !source.appliedParameterChanges) {
+  if (!old && needsReview) {
     for (const parameter of selected.parameters) {
       const saved = draft.strategy.parameters[parameter.name];
       if (

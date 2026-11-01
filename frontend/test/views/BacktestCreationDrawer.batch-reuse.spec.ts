@@ -195,7 +195,7 @@ describe('batch reuse', () => {
         document
           .querySelector('[data-testid="reuse-version-review"]')
           ?.getAttribute('aria-label'),
-      ).toBe('Saved v1; available v2. This copy uses v2 and its defaults.');
+      ).toBe('Saved v1; available v2. This copy uses v2.');
       expect(
         document.querySelector('[data-testid="reuse-use-current"]'),
       ).toBeNull();
@@ -203,7 +203,7 @@ describe('batch reuse', () => {
         document
           .querySelector('[aria-label^="slow_window changes"]')
           ?.getAttribute('aria-label'),
-      ).toContain('Automatically changed: 20 → 30');
+      ).toContain('Default: 20 → 30');
       expect(document.body.textContent).toContain(
         'Saved Market ID 9 unavailable',
       );

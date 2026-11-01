@@ -40,7 +40,7 @@ const note = computed(() => {
   const saved = store.reuseSource?.strategyVersion;
   const current = selectedStrategy.value?.strategy_version;
   const source = saved == null ? 'Saved version unknown' : `Saved v${saved}`;
-  return `${source}; available v${current}. This copy uses v${current} and its defaults.`;
+  return `${source}; available v${current}. This copy uses v${current}.`;
 });
 </script>
 <style scoped>
