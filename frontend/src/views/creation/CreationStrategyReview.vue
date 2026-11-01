@@ -1,20 +1,32 @@
 <template>
-  <p
+  <BasePopover
     v-if="changed"
-    class="version-note"
-    data-testid="reuse-version-review"
+    trigger="hover"
+    :show="open"
   >
-    Using current strategy v{{ selectedStrategy?.strategy_version }} (saved
-    {{
-      store.reuseSource?.strategyVersion == null
-        ? 'version unknown'
-        : `v${store.reuseSource.strategyVersion}`
-    }}).
-  </p>
+    <template #trigger>
+      <button
+        type="button"
+        class="version-info"
+        data-testid="reuse-version-review"
+        :aria-label="note"
+        @mouseenter="open = true"
+        @mouseleave="open = false"
+        @focus="open = true"
+        @blur="open = false"
+        @click.prevent="open = true"
+        @keydown.esc="open = false"
+        >!</button
+      >
+    </template>
+    {{ note }}
+  </BasePopover>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import BasePopover from '@/components/Common/BasePopover.vue';
 import { useCreation } from './creationContext';
+const open = ref(false);
 const { store, selectedStrategy } = useCreation();
 const changed = computed(
   () =>
@@ -24,11 +36,28 @@ const changed = computed(
     store.reuseSource.strategyVersion !==
       selectedStrategy.value.strategy_version,
 );
+const note = computed(() => {
+  const saved = store.reuseSource?.strategyVersion;
+  const current = selectedStrategy.value?.strategy_version;
+  const source = saved == null ? 'Saved version unknown' : `Saved v${saved}`;
+  return `${source}; available v${current}. This copy uses v${current}.`;
+});
 </script>
 <style scoped>
-.version-note {
-  margin: 0 0 var(--design-space-md);
-  color: var(--design-color-muted);
+.version-info {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: var(--design-radius-circle);
+  background: transparent;
+  color: var(--design-color-warning);
+  font: inherit;
   font-size: var(--design-text-secondary);
+  cursor: help;
+}
+.version-info:focus-visible {
+  outline: 2px solid var(--design-color-interactive);
+  outline-offset: 2px;
 }
 </style>

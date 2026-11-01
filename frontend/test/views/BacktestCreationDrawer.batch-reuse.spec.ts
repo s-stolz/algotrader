@@ -191,7 +191,11 @@ describe('batch reuse', () => {
       });
       await advancePreview();
       expect(nameInput().props('value')).toBe(chosen);
-      expect(document.body.textContent).toContain('Using current strategy v2');
+      expect(
+        document
+          .querySelector('[data-testid="reuse-version-review"]')
+          ?.getAttribute('aria-label'),
+      ).toBe('Saved v1; available v2. This copy uses v2.');
       expect(
         document.querySelector('[data-testid="reuse-use-current"]'),
       ).toBeNull();

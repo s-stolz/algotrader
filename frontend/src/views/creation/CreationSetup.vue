@@ -34,6 +34,7 @@
         >
           Version {{ selectedStrategy.strategy_version }}
         </n-tag>
+        <CreationStrategyReview />
       </span>
       <BaseSelect
         :value="draft.strategy.strategy_id"
@@ -53,7 +54,6 @@
         >Use current version</n-button
       >
     </p>
-    <CreationStrategyReview />
     <CreationMarketPeriod />
     <label
       >Initial capital
