@@ -43,6 +43,14 @@ describe('creation design controls', () => {
     expect(getComputedStyle(footer).display).toBe('flex');
     expect(getComputedStyle(footer).justifyContent).toBe('space-between');
     expect(getComputedStyle(actions).display).toBe('flex');
+    const fields = document.querySelector<HTMLElement>('.creation-fields')!;
+    const strategyLabel =
+      document.querySelector<HTMLElement>('.strategy-label')!;
+    const label = strategyLabel.parentElement!;
+    expect(getComputedStyle(fields).display).toBe('grid');
+    expect(getComputedStyle(label).display).toBe('grid');
+    expect(getComputedStyle(label).gap).toBe('var(--design-space-sm)');
+    expect(getComputedStyle(strategyLabel).alignItems).toBe('center');
   });
 
   it('retains numeric keyboard editing and requires explicit submission', async () => {

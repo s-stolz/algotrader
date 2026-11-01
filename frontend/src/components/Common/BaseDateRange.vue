@@ -86,22 +86,22 @@ function applyDatePreset(months: number) {
 }
 .date-range legend {
   padding: 0;
-  margin-bottom: 7px;
+  margin-bottom: var(--design-space-sm);
   font-size: var(--design-text-secondary);
 }
 .date-inputs {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: var(--design-space-sm);
 }
 .date-divider {
   color: var(--design-color-muted);
 }
 .preset-buttons {
   display: flex;
-  gap: 5px;
-  margin-top: 7px;
+  gap: var(--design-space-xs);
+  margin-top: var(--design-space-sm);
   overflow-x: auto;
 }
 .visually-hidden {
@@ -118,7 +118,7 @@ label {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: var(--design-space-sm);
   font-size: var(--design-text-secondary);
 }
 </style>

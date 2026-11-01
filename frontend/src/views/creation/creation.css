@@ -1,25 +1,25 @@
-:deep(.creation-fields),
+.creation-fields,
 :deep(.setup-fields) {
   display: grid;
-  gap: 18px;
+  gap: var(--design-space-lg);
   min-width: 0;
 }
-:deep(.creation-fields label:not(.base-checkbox)),
+.creation-fields :deep(label:not(.base-checkbox)),
 :deep(.preview-filter) {
   display: grid;
-  gap: 7px;
+  gap: var(--design-space-sm);
   min-width: 0;
   font-size: var(--design-text-secondary);
 }
 :deep(.strategy-label) {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--design-space-sm);
 }
 :deep(.settings-grid) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: var(--design-space-lg);
 }
 :deep(.field-group) {
   display: grid;
@@ -45,8 +45,9 @@
 :deep(.parameter-field > :not(.parameter-label):not(.parameter-mode)) {
   grid-column: 1 / -1;
 }
-:deep(.creation-fields .parameter-label) {
-  align-content: center;
+.creation-fields :deep(.parameter-label) {
+  display: flex;
+  align-items: center;
   font-size: var(--design-text-body);
   font-weight: 600;
 }
