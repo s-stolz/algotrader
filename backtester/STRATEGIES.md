@@ -53,6 +53,14 @@ Follow [workflow](../docs/agent/WORKFLOW.md) for selecting verification gates.
 history come from the installed indicator specification. They do not expand the
 run's single traded Market. All input candles use the run's exchange and Timeframe.
 
+The application runner also derives the saved Chart Indicator Snapshot from
+these requirements. Declare each calculation used for features here; multiple
+outputs with identical resolved parameters are displayed as one indicator.
+Snapshots include installed parameter defaults and use engine string IDs,
+independently of numeric chart catalog IDs. See
+[saved chart indicators](../docs/contracts/backtests.md#saved-chart-indicators)
+for persistence and legacy-result behavior.
+
 Multi-source and anchored indicators require a declarative bar model. Anchored
 indicators must provide incremental updates for sequential execution. Real-data
 runs load each source once per requested interval and predecessor query.

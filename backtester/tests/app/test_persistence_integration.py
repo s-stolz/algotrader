@@ -5,6 +5,7 @@ from typing import cast
 from unittest.mock import patch
 
 import pandas as pd
+from adapters.api.schemas import BacktestRunResponseSchema
 from adapters.persistence import (
     BacktestRunPersistenceAdapter,
     DatabaseAccessorBacktestRunRepository,
@@ -171,6 +172,16 @@ class TestBacktestPersistenceIntegration(unittest.TestCase):
             )
 
         saved_run = client.saved_runs[0]
+        self.assertEqual(
+            saved_run["diagnostics"]["chart_indicators"],
+            {
+                "schema_version": 1,
+                "items": [
+                    {"indicator_id": "sma", "parameters": {"window": 2, "source": "close"}},
+                    {"indicator_id": "sma", "parameters": {"window": 3, "source": "close"}},
+                ],
+            },
+        )
         self.assertEqual(result.backtest_run_id, "run-short-acceptance")
         self.assertEqual(saved_run["request_schema_version"], 2)
         self.assertEqual(
@@ -223,6 +234,11 @@ class TestBacktestPersistenceIntegration(unittest.TestCase):
         )
         self.assertEqual(run_record.result_schema_version, 3)
         self.assertEqual(run_record.metrics, saved_run["metrics"])
+        public_run = BacktestRunResponseSchema.from_domain(run_record).model_dump(mode="json")
+        self.assertEqual(
+            public_run["diagnostics"]["chart_indicators"],
+            saved_run["diagnostics"]["chart_indicators"],
+        )
         self.assertEqual(
             [(fill.side, fill.exit_reason) for fill in fetched_fills],
             [(OrderSide.SELL, None), (OrderSide.BUY, result.fills[1].exit_reason)],

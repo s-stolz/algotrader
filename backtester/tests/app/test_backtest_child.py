@@ -159,6 +159,11 @@ class TestBacktestChildExecution(unittest.TestCase):
                 self.assertFalse(hasattr(compact, "equity_curve"))
                 self.assertIsNotNone(compact.replay_descriptor)
                 self.assertEqual(compact.to_result().replay_descriptor, compact.replay_descriptor)
+                chart = compact.diagnostics["chart_indicators"]
+                assert isinstance(chart, dict)
+                self.assertEqual(compact.to_result().diagnostics["chart_indicators"], chart)
+                self.assertIsNot(compact.to_result().diagnostics["chart_indicators"], chart)
+                self.assertEqual(len(chart["items"]), 2)
 
     def test_missing_candles_explain_how_to_correct_the_request(self) -> None:
         outcome = execute_backtest_child(

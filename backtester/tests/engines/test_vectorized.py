@@ -66,6 +66,7 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
                 [
                     "engine",
                     "bars",
+                    "chart_indicators",
                     "symbol",
                     "strategy_id",
                     "fill_timing",

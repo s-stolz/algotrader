@@ -111,6 +111,28 @@ failures expose bounded sanitized errors while tracebacks stay in worker logs.
   deletion conflict. Storage rechecks under the slot lock and deletes artifacts,
   members, command receipts, and events atomically with their parent.
 
+## Saved chart indicators
+
+Successful runs produced by the application runner include a **Chart Indicator
+Snapshot** in `diagnostics.chart_indicators`. The snapshot has `schema_version: 1`
+and an ordered `items` array. Each item contains the indicator engine's stable
+string `indicator_id` and its resolved `parameters`, including defaults from the
+installed indicator at execution time. It describes the calculations used by the
+executed strategy, not a reconstruction from the current strategy catalog.
+
+Multiple feature outputs using the same indicator and parameters share one item;
+different parameter sets remain separate. An empty array means the strategy
+declared no indicator calculations. Absence means a legacy or lower-level result
+has no saved chart configuration; consumers must not infer one from current code.
+The snapshot is copied through worker handoff and persisted with the other result
+diagnostics. It requires no separate storage migration or change to result v3.
+
+This versions the snapshot format only. Indicator implementations are not
+versioned or archived: the chart uses installed indicator code with saved
+parameters. The snapshot contains no prices, decision annotations, chart styles,
+or executable strategy code. Its market and timeframe come from the saved run
+request; auxiliary indicator input markets remain calculation inputs.
+
 ## Batches and Sweeps
 
 A **Backtest Batch** preserves why a fixed, nonempty collection of runs belongs
