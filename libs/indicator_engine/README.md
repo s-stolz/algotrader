@@ -59,6 +59,12 @@ needs candles from midnight and the preceding available close, not merely its
 two-bar minimum warmup. This declaration does not itself fetch or validate data;
 adapters must apply it and their missing-input policy.
 
+The shared `adapters.history.prepare_daily_inputs` adapter builds complete UTC-day
+grids with per-source predecessor seeds and causal availability. It accepts sorted
+source frames indexed by integer epoch milliseconds and aligned output timestamps.
+Backtester and historical indicator API adapters use it to keep daily calculations
+consistent. Seed rows are calculation-only and are marked unavailable as outputs.
+
 `IndicatorSpec.output_assets` declares aggregate output identities when they
 differ from the inputs. Omit it for ordinary per-input-asset outputs. Currency
 strength uses seven input pairs and returns the single output asset `FX` with

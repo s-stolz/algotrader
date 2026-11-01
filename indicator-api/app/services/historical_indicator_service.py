@@ -14,6 +14,7 @@ from app import (
     get_indicator_metadata,
 )
 from app.candles import get_candles
+from app.services.anchored_indicator_service import calculate_anchored_indicator
 from app.services.candle_cache import CandleCache
 from app.utils import (
     adjust_fetch_bounds,
@@ -116,6 +117,18 @@ async def run_historical_indicator(
 
     engine_id = get_engine_id(indicator_id)
     indicator = ENGINE_REGISTRY.get(engine_id)
+    if indicator.spec.input_history.anchor != "rolling":
+        indicator_data = await calculate_anchored_indicator(
+            engine_id=engine_id,
+            parameters=indicator_params,
+            symbol=symbol,
+            exchange=exchange,
+            timeframe=timeframe_code,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            limit=limit,
+        )
+        return format_indicator_response(indicator_data, metadata)
     warmup = indicator.spec.warmup(indicator_params)
     required_assets = metadata.get("inputs", [])
 

@@ -8,6 +8,13 @@ parameters, response formatting, and live-stream lifecycle.
 - `app/services/historical_indicator_service.py` fetches Candles, prepares
   parameters/warmup, invokes the batch engine, and formats the response.
   Responses wrap `indicator_info` and `indicator_data` under `data`.
+- Daily anchored history uses `app/services/anchored_indicator_service.py` and
+  the shared indicator-engine daily input adapter. Resolve the requested output
+  timestamps before expanding a limited request to its UTC anchor; fetch each
+  source's available predecessor separately. Missing inputs invalidate subsequent
+  same-day outputs causally. Unavailable output is omitted, never replaced with
+  older values outside the selected output window. Ordinary rolling indicators
+  retain their existing warmup path.
 - `app/services/live_indicator_manager.py` owns live specs, Redis input, warmup
   seeding, update-engine calls, and Redis output. `app/services/candle_cache.py`
   supplies recent warmup data.
