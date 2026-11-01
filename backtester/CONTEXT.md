@@ -94,6 +94,13 @@ source frames explicitly. See [strategy input contracts](STRATEGIES.md#indicator
 - Invalid opens follow `gap_policy`: `skip` defers, `expire` drops, `error` raises.
   Deferred deltas net before execution. Fill timestamps identify the executing bar;
   sizing/risk apply before execution, with desired targets distinct from positions.
+- Optional `DailyTradingSchedule` boundaries constrain fills at the destination
+  open in both engines. Entry windows are UTC and exclude the last-entry cutoff;
+  positions retain their entry day's exit deadline through gaps. Overdue exits
+  retry until a valid in-range open. Calendar actions do not depend on indicator
+  availability. Runtime scheduling stays independent between engines; the domain
+  schedule shares only boundary validation and UTC arithmetic. See
+  [daily execution schedules](STRATEGIES.md#daily-execution-schedule).
 - Protective exits activate on the entry fill bar. Gap-through exits fill at open;
   intrabar touches fill at their level. Ambiguous stop/target bars follow
   `intrabar_exit_policy`, defaulting to stop-first. Preserve engine parity for

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from domain.enums import ExitReason, GapPolicy, IntrabarExitPolicy, OrderSide
+from domain.schedule import DAY_MS, DailyTradingSchedule
 from domain.types import Fill
 from numpy.typing import ArrayLike, NDArray
 
@@ -211,6 +212,7 @@ def generate_fills_from_targets_with_protective_exits(
     gap_policy: GapPolicy = GapPolicy.SKIP,
     slippage_bps: float = 0.0,
     commission_bps: float = 0.0,
+    daily_schedule: DailyTradingSchedule | None = None,
 ) -> FillGenerationResult:
     """Build fills from signal targets and optional protective exits.
 
@@ -245,6 +247,7 @@ def generate_fills_from_targets_with_protective_exits(
     desired_target = 0.0
     actual_position = 0.0
     entry_price: float | None = None
+    position_exit_ms: int | None = None
 
     for dst_idx in range(1, ts.size):
         src_idx = dst_idx - 1
@@ -255,6 +258,17 @@ def generate_fills_from_targets_with_protective_exits(
             signal=int(signals[src_idx]),
             signal_target=float(target[src_idx]),
         )
+
+        if daily_schedule is not None:
+            desired_target = _apply_daily_schedule(
+                pending=pending,
+                desired_target=desired_target,
+                actual_position=actual_position,
+                timestamp_ms=int(ts[dst_idx]),
+                previous_timestamp_ms=int(ts[src_idx]),
+                position_exit_ms=position_exit_ms,
+                schedule=daily_schedule,
+            )
 
         pending_total = _pending_total(pending)
         if pending_total != 0.0:
@@ -282,11 +296,19 @@ def generate_fills_from_targets_with_protective_exits(
                     stop_loss_pct=stop_loss_pct,
                     take_profit_pct=take_profit_pct,
                 )
+                previous_position = actual_position
                 actual_position, entry_price = _apply_position_fill(
                     actual_position=actual_position,
                     entry_price=entry_price,
                     quantity_delta=pending_total,
                     fill_price=float(fill.price),
+                )
+                position_exit_ms = _position_exit_timestamp(
+                    schedule=daily_schedule,
+                    previous_position=previous_position,
+                    actual_position=actual_position,
+                    current_exit_ms=position_exit_ms,
+                    timestamp_ms=int(ts[dst_idx]),
                 )
                 state.executed_deferred_count += sum(
                     1 for item in pending if item.deferred and item.quantity != 0.0
@@ -334,6 +356,7 @@ def generate_fills_from_targets_with_protective_exits(
                 fill_price=float(fill.price),
             )
             desired_target = 0.0
+            position_exit_ms = None
             pending.clear()
 
     desired_target = _queue_signal_target_delta(
@@ -537,6 +560,49 @@ def _execute_pending_fill(
         1 for item in pending if item.deferred and item.quantity != 0.0
     )
     pending.clear()
+
+
+def _position_exit_timestamp(
+    *,
+    schedule: DailyTradingSchedule | None,
+    previous_position: float,
+    actual_position: float,
+    current_exit_ms: int | None,
+    timestamp_ms: int,
+) -> int | None:
+    if schedule is None or actual_position == 0.0:
+        return None
+    if previous_position * actual_position <= 0.0:
+        return schedule.exit_timestamp(timestamp_ms)
+    return current_exit_ms
+
+
+def _apply_daily_schedule(
+    *,
+    pending: list[_PendingDelta],
+    desired_target: float,
+    actual_position: float,
+    timestamp_ms: int,
+    previous_timestamp_ms: int,
+    position_exit_ms: int | None,
+    schedule: DailyTradingSchedule,
+) -> float:
+    pending_target = actual_position + _pending_total(pending)
+    allowed_target = pending_target
+    new_day = timestamp_ms // DAY_MS != previous_timestamp_ms // DAY_MS
+    if position_exit_ms is not None and timestamp_ms >= position_exit_ms:
+        allowed_target = 0.0
+    elif not schedule.allows_entry(timestamp_ms) or new_day:
+        if pending_target * actual_position < 0.0:
+            allowed_target = 0.0
+        elif abs(pending_target) > abs(actual_position):
+            allowed_target = actual_position
+    if allowed_target != pending_target or (new_day and desired_target != allowed_target):
+        pending.clear()
+        if allowed_target != actual_position:
+            pending.append(_PendingDelta(quantity=allowed_target - actual_position))
+        return allowed_target
+    return desired_target
 
 
 def _queue_signal_target_delta(

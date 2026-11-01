@@ -24,6 +24,7 @@ from domain.enums import (
     StrategySignal,
     TradeAccountingPolicy,
 )
+from domain.schedule import DAY_MS, DailyTradingSchedule
 from domain.types import (
     BacktestRequest,
     BacktestResult,
@@ -112,6 +113,7 @@ class _SequentialRuntimeState:
     desired_target: float = 0.0
     actual_position: float = 0.0
     entry_price: float | None = None
+    position_exit_ms: int | None = None
     pending: list[_PendingDelta] = field(default_factory=list)
     executed_delta: list[float] = field(default_factory=list)
     executed_notional: list[float] = field(default_factory=list)
@@ -173,6 +175,7 @@ def _run_event_driven_loop(
     feature_snapshot_count = 0
     nonzero_signal_count = 0
     state = _SequentialRuntimeState(initial_capital=float(request.initial_capital))
+    previous_open_ms: int | None = None
 
     for row in bootstrap_bars.itertuples(index=False):
         bar = _bar_from_row(row)
@@ -202,6 +205,15 @@ def _run_event_driven_loop(
         bar_index = state.start_bar()
         protective_exit = bar_model.protective_exit
 
+        if bar_model.daily_schedule is not None:
+            _apply_daily_schedule_at_open(
+                state=state,
+                schedule=bar_model.daily_schedule,
+                timestamp_ms=int(bar.timestamp_ms),
+                previous_timestamp_ms=previous_open_ms,
+            )
+        previous_position = state.actual_position
+
         _execute_pending_at_open(
             state=state,
             symbol=symbol,
@@ -214,6 +226,14 @@ def _run_event_driven_loop(
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
         )
+
+        _update_scheduled_exit(
+            state=state,
+            schedule=bar_model.daily_schedule,
+            previous_position=previous_position,
+            timestamp_ms=int(bar.timestamp_ms),
+        )
+        previous_open_ms = int(bar.timestamp_ms)
 
         _execute_protective_exit_if_triggered(
             state=state,
@@ -275,6 +295,47 @@ def _run_event_driven_loop(
         feature_snapshot_count=feature_snapshot_count,
         nonzero_signal_count=nonzero_signal_count,
     )
+
+
+def _update_scheduled_exit(
+    *,
+    state: _SequentialRuntimeState,
+    schedule: DailyTradingSchedule | None,
+    previous_position: float,
+    timestamp_ms: int,
+) -> None:
+    if schedule is None or state.actual_position == 0.0:
+        state.position_exit_ms = None
+    elif previous_position * state.actual_position <= 0.0:
+        state.position_exit_ms = schedule.exit_timestamp(timestamp_ms)
+
+
+def _apply_daily_schedule_at_open(
+    *,
+    state: _SequentialRuntimeState,
+    schedule: DailyTradingSchedule,
+    timestamp_ms: int,
+    previous_timestamp_ms: int | None,
+) -> None:
+    pending_target = state.actual_position + _pending_total(state.pending)
+    allowed_target = pending_target
+    new_day = (
+        previous_timestamp_ms is not None
+        and timestamp_ms // DAY_MS != previous_timestamp_ms // DAY_MS
+    )
+    if state.position_exit_ms is not None and timestamp_ms >= state.position_exit_ms:
+        allowed_target = 0.0
+    elif not schedule.allows_entry(timestamp_ms) or new_day:
+        if pending_target * state.actual_position < 0.0:
+            allowed_target = 0.0
+        elif abs(pending_target) > abs(state.actual_position):
+            allowed_target = state.actual_position
+    if allowed_target != pending_target or (new_day and state.desired_target != allowed_target):
+        state.pending.clear()
+        if allowed_target != state.actual_position:
+            state.pending.append(_PendingDelta(quantity=allowed_target - state.actual_position))
+        state.desired_target = allowed_target
+        state.raw_desired_target = allowed_target
 
 
 def _execute_pending_at_open(
@@ -404,6 +465,7 @@ def _execute_protective_exit_if_triggered(
     )
     state.raw_desired_target = 0.0
     state.desired_target = 0.0
+    state.position_exit_ms = None
     state.pending.clear()
 
 

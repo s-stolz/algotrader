@@ -107,6 +107,7 @@ def run_vectorized_backtest(
             signal_values=signal_values,
             stop_loss_pct=protective_exit.stop_loss_pct,
             take_profit_pct=protective_exit.take_profit_pct,
+            daily_schedule=strategy.require_v1_parity_model().daily_schedule,
             intrabar_exit_policy=request.execution.intrabar_exit_policy,
             gap_policy=request.execution.gap_policy,
             slippage_bps=float(request.execution.slippage_bps),
@@ -236,7 +237,11 @@ def _protective_exit_for_strategy(strategy: StrategyDefinition) -> ProtectiveExi
     if strategy.bar_model is None:
         return None
     protective_exit = strategy.bar_model.protective_exit
-    if protective_exit.stop_loss_pct is None and protective_exit.take_profit_pct is None:
+    if (
+        protective_exit.stop_loss_pct is None
+        and protective_exit.take_profit_pct is None
+        and strategy.bar_model.daily_schedule is None
+    ):
         return None
     return protective_exit
 

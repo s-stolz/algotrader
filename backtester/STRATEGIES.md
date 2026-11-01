@@ -82,9 +82,9 @@ completeness again. No input is forward-filled.
 `indicators_available` is a reserved feature: unavailable values suppress entry
 signals, including short entries, without deleting executable candles. In
 direction-restricted runs, exit signals based on still-available features remain
-eligible. Protective exits continue independently. This does not yet provide a
-scheduled flat action. Source bootstrap initializes calculations without emitting
-signals; crossover decisions use only in-window snapshots in both engines.
+eligible. Protective and scheduled exits continue independently. Source bootstrap
+initializes calculations without emitting signals; crossover decisions use only
+in-window snapshots in both engines.
 
 ## Explicit exits
 
@@ -99,4 +99,34 @@ risk transforms still apply. It cancels a deferred entry when the resulting
 target is flat, closes existing exposure at the next executable open, and does
 nothing when already flat. Gap policies, final-bar expiry, and protective exit
 priority remain unchanged; completed exits retain the `signal` reason. A flat
-condition is not yet a wall-clock schedule or an execution-time entry cutoff.
+condition alone is not a wall-clock schedule or an execution-time entry cutoff.
+
+## Daily execution schedule
+
+Set `BarStrategyModel.daily_schedule` to a `DailyTradingSchedule` from
+`domain.schedule` to constrain actual fills. Its integer UTC minutes define an
+inclusive entry start, an exclusive last-entry cutoff, and a same-day exit time.
+The required ordering is `0 <= start < last_entry <= exit < 1440`; omitted
+schedules preserve unrestricted execution. Builders can expose these boundaries
+as ordinary saved strategy parameters. No separate request or result schema is
+required.
+
+Both engines check the destination bar's open timestamp, including for deferred
+orders. Outside the entry window, exposure increases are cancelled; a direction
+flip may close existing exposure but cannot open the opposite position. Pending
+entries from a previous UTC day are discarded, and expired desired targets reset
+at the day boundary so new signals can trade again.
+
+Each entered position retains its entry day's exit deadline. At or after that
+deadline the engine requires a flat target, independently of feature availability
+or sizing transforms. It uses the first available open, including after missing
+candles or an overnight gap. Invalid opens follow `gap_policy`; a still-open
+overdue position requests an exit again on each subsequent bar, even when the
+previous attempt expired. Nothing is filled beyond the run's data/end boundary.
+These clock-triggered actions use known calendar boundaries and do not inspect
+future prices. Ordinary decisions retain next-open execution.
+
+Scheduled closes use normal fees, slippage, and the `signal` exit reason. Existing
+stop/target gap-through priority remains in effect. Intrabar protection still
+applies to positions that remain open. Schedules do not count entries or enforce
+a daily entry limit.
