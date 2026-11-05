@@ -26,6 +26,55 @@ describe('queue health events', () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it.each([0, -120_000, 120_000])(
+    'expires an aged heartbeat with browser clock offset %i',
+    async (clockOffset) => {
+      vi.setSystemTime(NOW + clockOffset);
+      vi.mocked(fetchBacktestQueue).mockResolvedValue({
+        ...healthySnapshot,
+        last_heartbeat_ms: NOW - 29_000,
+      });
+      const host = mount(Host);
+      await flushPromises();
+      expect(host.vm.healthType).toBe('success');
+      vi.advanceTimersByTime(2000);
+      expect(host.vm.isUnknown).toBe(true);
+      expect(host.vm.healthType).toBe('warning');
+      expect(fetchBacktestQueue).toHaveBeenCalledOnce();
+      host.unmount();
+    },
+  );
+
+  it('ages delayed health events against the snapshot clock', async () => {
+    vi.mocked(fetchBacktestQueue).mockResolvedValue({
+      ...healthySnapshot,
+      last_heartbeat_ms: NOW - 29_000,
+    });
+    const host = mount(Host);
+    await flushPromises();
+    vi.advanceTimersByTime(2000);
+    emitBacktestEvent({
+      type: 'backtestHealth',
+      run_id: 'long-run',
+      heartbeat_at_ms: NOW - 10_000,
+      fault_code: null,
+      fault_message: null,
+    });
+    expect(host.vm.isUnknown).toBe(false);
+    vi.advanceTimersByTime(19_000);
+    expect(host.vm.isUnknown).toBe(true);
+    emitBacktestEvent({
+      type: 'backtestHealth',
+      run_id: 'long-run',
+      heartbeat_at_ms: NOW + 21_000,
+      fault_code: null,
+      fault_message: null,
+    });
+    expect(host.vm.isUnknown).toBe(false);
+    expect(fetchBacktestQueue).toHaveBeenCalledOnce();
+    host.unmount();
+  });
+
   it('keeps health fresh from matching heartbeats without reading the queue again', async () => {
     const host = mount(Host);
     await flushPromises();

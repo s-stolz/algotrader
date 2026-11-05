@@ -26,12 +26,20 @@ export function useBacktestQueueHealth() {
       (connected.value ? null : 'Live updates disconnected'),
   );
   const nowMs = ref(Date.now());
-  const isUnknown = computed(
-    () =>
-      readError.value !== null ||
-      (snapshot.value !== null &&
-        nowMs.value - receivedAtMs.value > snapshot.value.stale_after_ms),
-  );
+  const isUnknown = computed(() => {
+    if (readError.value !== null) return true;
+    const current = snapshot.value;
+    if (!current) return false;
+    // A healthy snapshot cannot renew the heartbeat it reports. Keep its clock
+    // anchor separate so later WebSocket messages retain their actual age.
+    const heartbeatAge =
+      current.availability === 'healthy' && current.last_heartbeat_ms !== null
+        ? Math.max(0, current.snapshot_at_ms - current.last_heartbeat_ms)
+        : 0;
+    return (
+      heartbeatAge + nowMs.value - receivedAtMs.value > current.stale_after_ms
+    );
+  });
   const healthType = computed(() => {
     if (isUnknown.value) return 'warning';
     if (snapshot.value?.availability === 'healthy') return 'success';
