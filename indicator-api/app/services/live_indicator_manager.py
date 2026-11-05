@@ -16,7 +16,7 @@ from algotrader_logger import get_logger
 from db_accessor_client import normalize_timeframe_code
 from indicator_engine import HistoryPolicy, ParamGrid, get_update_engine
 
-from app import ENGINE_REGISTRY, get_engine_id
+from app import ENGINE_REGISTRY, get_engine_id, supports_live
 from app.candles import get_candles
 from app.schemas_live import (
     LiveIndicatorStartResponse,
@@ -270,7 +270,7 @@ class LiveIndicatorManager:
         return redis
 
     def _validate_live_indicator(self, spec: LiveStreamSpec) -> None:
-        if spec.engine_id in {"currency_strength", "opening_range"}:
+        if not supports_live(spec.indicator_id):
             raise ValueError(f"{spec.engine_id} is not supported for live streaming in v1")
 
     def _build_warmup_info(

@@ -23,8 +23,11 @@ and shared Python Timeframe helpers. Centralize reusable Timeframe behavior here
 
 ## Indicator Engine
 
-`indicator_engine` owns NumPy batch/streaming computation. UI metadata and transport
-formatting belong to indicator-api/frontend. Both engines share registry definitions.
+`indicator_engine` owns NumPy batch/streaming computation and a separate application
+catalog for built-in registration identities, live eligibility and presentation.
+Numerical specifications own calculation semantics; indicator-api owns transport
+formatting and frontend owns renderers. Both engines share registry definitions.
+See [ADR-0009](../docs/adr/0009-shared-indicator-registration-catalog.md).
 
 - `BarTensor`: aligned data shaped `(time, asset, field)`.
 - `Tensor`: outputs shaped `(time, asset, output, param)`.

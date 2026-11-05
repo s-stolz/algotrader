@@ -11,7 +11,8 @@ computation library.
 - Streaming updates with bounded memory via rolling history.
 - Strict, aligned time index per timeframe.
 - Deterministic parameter grids for reproducible research.
-- Separation of compute metadata (library) and UI metadata (API/frontend).
+- Separation of numerical specifications, application registration/presentation,
+  API transport formatting and frontend renderers.
 
 ## Core Concepts
 
@@ -183,3 +184,35 @@ Notes:
 
 The library intentionally propagates NaN values and does not forward-fill or interpolate.
 This keeps data integrity explicit and reproducible.
+
+## Adding an indicator
+
+Implement the numerical indicator under `indicator_engine/indicators/`. Its
+`IndicatorSpec` owns the engine string ID, display name, parameters, outputs and
+input/history requirements. Add one `IndicatorRegistration` to
+`indicator_engine/builtin_catalog.py`, importing the implementation module directly:
+
+```python
+IndicatorRegistration(
+    public_id=8,  # Choose an unused stable ID; never reuse a persisted ID.
+    implementation=MyIndicator,
+    supports_live=True,
+    overlay=False,
+    outputs={"value": {"type": "line", "plotOptions": {"color": "#2962ff"}}},
+)
+```
+
+This one entry supplies default engine registration, public API identity and
+metadata, and live-stream eligibility. No additional export or API list is needed.
+Preserve existing entry order and numeric IDs. Implementations must have a no-argument
+constructor and a stable specification; each registry receives fresh instances.
+Presentation keys must match spec outputs. Outputs without individual styles remain
+in metadata with empty styles, supporting compound renderers such as opening range.
+A new renderer type still requires a corresponding frontend renderer.
+
+Live eligibility is a service capability, not `supports_update`: the live adapter
+supports batch fallback, but some multi-input/history requirements are unsupported.
+Declare eligibility explicitly and test the live adapter before enabling it.
+Optional entry-point plugins remain computational registrations only; discovery
+does not assign a public ID or expose a plugin to chart clients. See
+[ADR-0009](../../docs/adr/0009-shared-indicator-registration-catalog.md).

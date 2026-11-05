@@ -31,8 +31,11 @@ parameters, response formatting, and live-stream lifecycle.
 - The indicator catalog includes the stable engine `indicator_id` alongside its
   numeric API `id`. Saved chart configurations resolve through this mapping;
   consumers must not infer an API ID from a display name or hardcoded ID table.
-- Keep UI metadata and transport formatting here or in frontend; shared compute
-  belongs to [indicator_engine](../libs/CONTEXT.md#indicator-engine).
+- The shared [indicator catalog](../libs/indicator_engine/README.md#adding-an-indicator)
+  owns public identities, presentation and live eligibility. Keep transport
+  formatting here and renderer implementations in frontend; shared numerical
+  computation remains independent of presentation. See
+  [ADR-0009](../docs/adr/0009-shared-indicator-registration-catalog.md).
 
 ## Verification
 

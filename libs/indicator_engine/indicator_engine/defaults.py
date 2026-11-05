@@ -6,6 +6,7 @@ from typing import Optional, cast
 
 import pandas as pd
 
+from .builtin_catalog import BUILTIN_CATALOG
 from .core.bars import BarTensor, DataBundle
 from .core.history import HistoryPolicy
 from .core.params import ParamGrid, ParamSet
@@ -13,25 +14,13 @@ from .core.registry import IndicatorRegistry
 from .core.results import IndicatorResult
 from .engines.batch import BatchEngine
 from .engines.update import UpdateEngine
-from .indicators import BBANDS, EMA, MACD, RSI, SMA, CurrencyStrength, OpeningRange
 
 _REGISTRY: Optional[IndicatorRegistry] = None
 _BATCH_ENGINE: Optional[BatchEngine] = None
 
 
 def _create_registry() -> IndicatorRegistry:
-    registry = IndicatorRegistry()
-    registry.register_many(
-        [
-            SMA(),
-            EMA(),
-            RSI(),
-            BBANDS(),
-            MACD(),
-            CurrencyStrength(),
-            OpeningRange(),
-        ]
-    )
+    registry = BUILTIN_CATALOG.create_registry()
     try:
         registry.load_entry_points()
     except Exception:

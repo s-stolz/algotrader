@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import get_available_indicators, get_indicator_metadata
-
 from app.routes.indicators import router
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
