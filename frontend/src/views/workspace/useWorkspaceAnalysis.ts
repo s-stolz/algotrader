@@ -8,12 +8,7 @@ import type {
   EquityReplayResponse,
 } from '@/types/backtesterContracts';
 import { errorMessage } from './workspaceErrors';
-export function useWorkspaceAnalysis(selection: {
-  selectedBacktestId: Ref<string | null>;
-  backtestMembers: Ref<BacktestRun[]>;
-  selectedRun: Ref<BacktestRun | null>;
-}) {
-  const { backtestMembers } = selection;
+export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
   type AnalysisState = {
     loading: boolean;
     error: string | null;

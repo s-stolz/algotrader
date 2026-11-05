@@ -42,11 +42,7 @@ export function useBacktestWorkspace() {
   const selectedBacktestId = ref<string | null>(null);
   const selectedRunId = computed(() => workspaceStore.selectedRunId);
   const selectedRun = computed(() => workspaceStore.selectedRun);
-  const inspection = useWorkspaceAnalysis({
-    selectedBacktestId,
-    backtestMembers,
-    selectedRun,
-  });
+  const inspection = useWorkspaceAnalysis(backtestMembers);
   const { selectedComparisonIds, loadAnalysis, setComparison } = inspection;
   const historyRefresh = useBacktestHistoryRefresh(reconcileHistory);
   const { backtests, isLoading, isRefreshing, readError, loadHistory } =
