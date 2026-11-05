@@ -14,10 +14,9 @@ migrations. Runtime query behavior belongs to
 - The image installs migrations and bootstrap tooling; `01-run-migrations.sh`
   applies them on fresh volumes. The upstream entrypoint creates the generated
   `POSTGRES_DB` first. Existing volumes use `make migrate-db`.
-- Legacy baseline detection may record only V001–V002. V003/V004 must execute:
-  compression, policy, and historical-refresh effects cannot all be inferred
-  from catalog state. V005 upgrades compatible legacy closed-trade tables and
-  rejects populated directionless tables; V006 audits the complete structure.
+- Fresh databases run the complete migration chain. Existing databases require
+  a valid ledger; automatic adoption of pre-ledger installations is unsupported.
+  Keep V005/V006 and their checks: ledgered upgrades still use the immutable chain.
 - For rationale or runner changes, read [ADR-0006](../docs/adr/0006-ledgered-timescaledb-migrations.md).
   For upgrades with queued/running backtests, follow
   [worker cutover](../docs/operations/backtest-worker-recovery.md#upgrade-with-queued-or-running-work).

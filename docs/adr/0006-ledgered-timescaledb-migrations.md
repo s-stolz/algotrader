@@ -2,6 +2,10 @@
 
 Status: Accepted
 
+Scope update (2026-11-05): automatic pre-ledger baselining described below has
+been retired. Fresh databases and ledgered upgrades remain supported; applied
+migration files and checksums remain immutable.
+
 Date: 2026-07-08
 
 ## Context

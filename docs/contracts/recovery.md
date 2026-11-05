@@ -239,7 +239,7 @@ Fresh volumes use `01-run-migrations.sh`; existing volumes use `make migrate-db`
 Replay skips identical migrations; missing/renamed files, duplicate versions,
 gaps and checksum drift fail before pending SQL. Applied SQL is immutable;
 later changes require a new forward migration. See the
-[Timescale context](../../timescaledb-init/CONTEXT.md) for legacy baselining.
+[Timescale context](../../timescaledb-init/CONTEXT.md) for database initialization and ledgered upgrades.
 
 For existing volumes:
 
