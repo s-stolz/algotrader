@@ -295,6 +295,34 @@ class BacktestAcceptanceRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         self.assertEqual(len(self.client_store.backtests), 1)
 
+    def test_schedule_selections_survive_acceptance_reads_and_retry(self) -> None:
+        schedules = [
+            {"entry_start_minute_utc": 480, "last_entry_minute_utc": 720, "exit_minute_utc": 1020},
+            {"entry_start_minute_utc": 540, "last_entry_minute_utc": 900, "exit_minute_utc": 1080},
+        ]
+        definition = _definition()
+        definition["markets"] = [1]
+        payload = {**definition, "submission_id": "schedules", "daily_schedules": schedules}
+        preview = self.client.post(
+            "/backtests/preview", json={**definition, "daily_schedules": schedules}
+        ).json()
+        accepted = self.client.post("/backtests", json=payload)
+        self.assertEqual(accepted.status_code, 202, accepted.text)
+        backtest_id = accepted.json()["backtest_id"]
+        detail = self.client.get(f"/backtests/{backtest_id}").json()
+        saved = detail["accepted_definition"]
+        self.assertEqual(saved["normalized_selections"]["daily_schedules"], schedules)
+        self.assertNotIn("daily_schedule", saved["shared_request"]["execution"])
+        members = self.client.get(f"/backtests/{backtest_id}/runs").json()
+        self.assertEqual(
+            [member["request"] for member in members],
+            [row["request"] for row in preview["candidates"] if row["status"] == "ready"],
+        )
+        payload["daily_schedules"] = [*schedules, schedules[0]]
+        self.assertEqual(self.client.post("/backtests", json=payload).json(), accepted.json())
+        payload["daily_schedules"] = list(reversed(schedules))
+        self.assertEqual(self.client.post("/backtests", json=payload).status_code, 409)
+
     def test_pause_resume_public_commands_and_conflict(self) -> None:
         created = self.client.post(
             "/backtests", json={**_definition(), "submission_id": "control-submit"}

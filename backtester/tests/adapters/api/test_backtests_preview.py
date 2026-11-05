@@ -120,6 +120,78 @@ class TestBacktestPreviewRoutes(unittest.TestCase):
         self.assertIn("no Ready", empty.text)
         self.assertEqual(self.repository.runs_by_id, {})
 
+    def test_schedule_alternatives_keep_triples_and_expand_after_directions(self) -> None:
+        definition = _definition()
+        definition["markets"] = [1]
+        schedules = [
+            {"entry_start_minute_utc": 480, "last_entry_minute_utc": 720, "exit_minute_utc": 1020},
+            {"entry_start_minute_utc": 540, "last_entry_minute_utc": 900, "exit_minute_utc": 1080},
+        ]
+        definition["daily_schedules"] = [*schedules, schedules[0]]
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        preview = response.json()
+        self.assertEqual(preview["normalized_selections"]["daily_schedules"], schedules)
+        self.assertEqual((preview["raw_count"], preview["ready_count"]), (144, 96))
+        rows = preview["candidates"]
+        self.assertEqual([row["daily_schedule"] for row in rows[:4]], schedules * 2)
+        self.assertEqual(
+            [row["allowed_directions"] for row in rows[:4]],
+            ["long_only", "long_only", "short_only", "short_only"],
+        )
+        for row in rows:
+            self.assertIn(row["daily_schedule"], schedules)
+            if row["status"] == "ready":
+                self.assertEqual(
+                    row["request"]["execution"]["daily_schedule"], row["daily_schedule"]
+                )
+        self.assertEqual(self.repository.runs_by_id, {})
+        definition["markets"] = [1, 2]
+        oversized = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(oversized.status_code, 422)
+        self.assertIn("Raw candidate count 288", oversized.text)
+
+    def test_schedule_axis_rejects_invalid_and_ambiguous_values(self) -> None:
+        valid = {
+            "entry_start_minute_utc": 480,
+            "last_entry_minute_utc": 720,
+            "exit_minute_utc": 1020,
+        }
+        for schedules in [
+            [],
+            [None],
+            [valid, {**valid, "last_entry_minute_utc": 480}],
+            [{**valid, "entry_start_minute_utc": True}],
+            [{**valid, "entry_start_minute_utc": "480"}],
+            [{**valid, "exit_minute_utc": 1440}],
+        ]:
+            with self.subTest(schedules=schedules):
+                response = self.client.post(
+                    "/backtests/preview", json={**_definition(), "daily_schedules": schedules}
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+        definition = _definition()
+        definition["execution"]["daily_schedule"] = valid
+        definition["daily_schedules"] = [valid]
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("not both", response.text)
+
+    def test_legacy_shared_schedule_remains_a_single_axis(self) -> None:
+        definition = _definition()
+        schedule = {
+            "entry_start_minute_utc": 0,
+            "last_entry_minute_utc": 720,
+            "exit_minute_utc": 720,
+        }
+        definition["execution"]["daily_schedule"] = schedule
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        preview = response.json()
+        self.assertEqual(preview["raw_count"], 144)
+        self.assertNotIn("daily_schedules", preview["normalized_selections"])
+        self.assertTrue(all(row["daily_schedule"] == schedule for row in preview["candidates"]))
+
     def test_unreachable_decimal_stop_and_limit_before_pruning(self) -> None:
         definition = _definition()
         definition["markets"] = [1]

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from decimal import Decimal, InvalidOperation
 from itertools import product
 from typing import Callable, Iterable, Mapping, TypeVar, cast
 
 from db_accessor_client import normalize_timeframe_code
 from domain.enums import AllowedDirections
+from domain.schedule import DailyTradingSchedule
 from domain.types import BacktestRequest, BacktestRequestSnapshot, StrategyConfig
 from strategies.registry import (
     InvalidParameterCombinationError,
@@ -35,6 +36,7 @@ class BacktestDefinition:
     timeframes: tuple[str, ...]
     parameters: Mapping[str, Mapping[str, object]]
     allowed_directions: tuple[str, ...]
+    daily_schedules: tuple[DailyTradingSchedule, ...] | None = None
 
 
 class BacktestPreviewService:
@@ -55,11 +57,12 @@ class BacktestPreviewService:
         shared = definition.shared_request
         schema = _strategy_schema(definition)
         selected_markets, timeframes, directions = _selection_axes(definition, self._markets)
+        schedules = _schedule_axis(definition)
         parameter_axes, normalized_parameters = _parameter_axes(
             definition, schema, self.max_candidate_count
         )
 
-        raw_count = len(selected_markets) * len(timeframes) * len(directions)
+        raw_count = len(selected_markets) * len(timeframes) * len(directions) * len(schedules)
         for _, values in parameter_axes:
             raw_count *= len(values)
         if raw_count > self.max_candidate_count:
@@ -84,7 +87,7 @@ class BacktestPreviewService:
         _validate_request_shape(probe)
         _validate_execution(probe)
         candidates, ready_count = _candidate_rows(
-            shared, selected_markets, timeframes, parameter_axes, directions
+            shared, selected_markets, timeframes, parameter_axes, directions, schedules
         )
         if ready_count == 0:
             raise InvalidBacktestRequestError("Backtest has no Ready candidates")
@@ -95,12 +98,33 @@ class BacktestPreviewService:
                 "timeframes": timeframes,
                 "parameters": normalized_parameters,
                 "allowed_directions": directions,
+                **(
+                    {"daily_schedules": [asdict(schedule) for schedule in schedules if schedule]}
+                    if definition.daily_schedules is not None
+                    else {}
+                ),
             },
             "raw_count": raw_count,
             "ready_count": ready_count,
             "excluded_count": raw_count - ready_count,
             "candidates": candidates,
         }
+
+
+def _schedule_axis(definition: BacktestDefinition) -> list[DailyTradingSchedule | None]:
+    if definition.daily_schedules is None:
+        return [definition.shared_request.execution.daily_schedule]
+    if definition.shared_request.execution.daily_schedule is not None:
+        raise InvalidBacktestRequestError(
+            "Use daily_schedules or execution.daily_schedule, not both"
+        )
+    if not definition.daily_schedules or any(
+        not isinstance(schedule, DailyTradingSchedule) for schedule in definition.daily_schedules
+    ):
+        raise InvalidBacktestRequestError(
+            "Daily schedules must contain valid schedule alternatives"
+        )
+    return list(_unique(definition.daily_schedules))
 
 
 def _strategy_schema(definition: BacktestDefinition) -> list[dict[str, object]]:
@@ -197,15 +221,17 @@ def _candidate_rows(
     timeframes: list[str],
     parameter_axes: list[tuple[str, list[object]]],
     directions: list[str],
+    schedules: list[DailyTradingSchedule | None],
 ) -> tuple[list[dict[str, object]], int]:
     candidates: list[dict[str, object]] = []
     ready_count = 0
-    axes = [markets, timeframes, *(values for _, values in parameter_axes), directions]
+    axes = [markets, timeframes, *(values for _, values in parameter_axes), directions, schedules]
     for ordinal, combination in enumerate(product(*axes)):
         market, timeframe, *tail = combination
         assert isinstance(market, dict)
-        parameters = dict(zip((name for name, _ in parameter_axes), tail[:-1]))
-        direction = str(tail[-1])
+        parameters = dict(zip((name for name, _ in parameter_axes), tail[:-2]))
+        direction = str(tail[-2])
+        schedule = cast(DailyTradingSchedule | None, tail[-1])
         request = replace(
             shared,
             symbols=[str(market["symbol"])],
@@ -214,7 +240,11 @@ def _candidate_rows(
             strategy=StrategyConfig(
                 shared.strategy.strategy_id, parameters, shared.strategy.strategy_version
             ),
-            execution=replace(shared.execution, allowed_directions=AllowedDirections(direction)),
+            execution=replace(
+                shared.execution,
+                allowed_directions=AllowedDirections(direction),
+                daily_schedule=schedule,
+            ),
         )
         row: dict[str, object] = {
             "candidate_ordinal": ordinal,
@@ -222,6 +252,7 @@ def _candidate_rows(
             "timeframe": timeframe,
             "parameters": parameters,
             "allowed_directions": direction,
+            **({"daily_schedule": asdict(schedule)} if schedule is not None else {}),
         }
         try:
             resolved = _validate_submission(request)

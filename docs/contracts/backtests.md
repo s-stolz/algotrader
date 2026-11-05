@@ -13,7 +13,8 @@ has a contiguous zero-based `run_ordinal`, displayed as `Run #N` starting at one
 Fixed inputs produce one Run through the same creation, scheduling, inspection,
 comparison, and control flow as multiple combinations.
 
-Creation selects Markets, Timeframes, Allowed Directions, and parameter axes.
+Creation selects Markets, Timeframes, Allowed Directions, optional daily schedule
+alternatives, and parameter axes.
 Each parameter uses a fixed value, explicit values, or a numeric range.
 Preview deduplicates typed values and bounds the Cartesian product before
 validation. Invalid independent values reject the definition; cross-parameter
@@ -71,8 +72,8 @@ The draft adopts the current Strategy Version and shows the existing version and
 schema change indicators. Removed parameters are omitted; newly introduced
 parameters use current defaults. Invalid retained values block preview/submission.
 A fresh draft or deliberate strategy selection resets all parameter values and
-modes to current defaults. Daily schedule optimization and a larger creation-form
-redesign are separate work.
+modes to current defaults. Copying a Backtest preserves schedule alternatives;
+copying a Run fixes the schedule to that Run's resolved triple.
 
 ## Experiment Names
 
@@ -141,9 +142,20 @@ values, strings, zero, and negative limits are invalid. See
 
 `execution.daily_schedule` is optional. Enabled schedules contain integer
 `entry_start_minute_utc`, `last_entry_minute_utc`, and `exit_minute_utc`, satisfying
-`0 <= entry_start < last_entry <= exit < 1440`. These settings are shared by every
-Run, survive snapshots and copying, and are not optimization axes. Disabled
-controls are omitted from canonical snapshots. See
+`0 <= entry_start < last_entry <= exit < 1440`. Each Run keeps exactly one resolved
+schedule; disabled controls are omitted from its canonical snapshot.
+
+Creation and preview may supply `daily_schedules`, a nonempty list of complete
+schedule triples. Each triple is one alternative, not another session within a Run
+or independently varying time fields. Triples are deduplicated in first-seen order
+and expand after Allowed Directions in the Cartesian product. The candidate limit
+applies before exclusions and includes this axis. Preview rows expose the resolved
+`daily_schedule`, including excluded rows. Acceptance saves the normalized list
+in `normalized_selections.daily_schedules`, while each Run request contains only
+its resolved `execution.daily_schedule`. Definition v1 and request v3 remain
+compatible: absence of the list uses the legacy shared schedule (or no schedule).
+Supplying both a list and a non-null shared schedule is rejected as ambiguous.
+An omitted/null list does not change legacy normalization or retry identity. See
 [engine timing](../../backtester/STRATEGIES.md#daily-execution-schedule).
 
 ## Saved chart indicators

@@ -205,6 +205,9 @@ class BacktestPreviewRequestSchema(ApiContractModel):
     execution: ExecutionRequestSchema = Field(default_factory=ExecutionRequestSchema)
     run_metadata: dict[str, Any] | None = None
     parameter_axes: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    daily_schedules: list[DailyTradingScheduleRequestSchema] | None = Field(
+        default=None, min_length=1
+    )
     allowed_directions: list[Literal["long_only", "short_only", "long_and_short"]] = Field(
         min_length=1
     )
@@ -220,6 +223,7 @@ class BacktestPreviewRequestSchema(ApiContractModel):
                 "timeframes",
                 "parameter_axes",
                 "allowed_directions",
+                "daily_schedules",
             }
         )
         shared_fields["symbols"] = ["_preview_"]
@@ -231,6 +235,14 @@ class BacktestPreviewRequestSchema(ApiContractModel):
             timeframes=tuple(self.timeframes),
             parameters=self.parameter_axes,
             allowed_directions=tuple(self.allowed_directions),
+            daily_schedules=(
+                tuple(
+                    DailyTradingSchedule(**schedule.model_dump())
+                    for schedule in self.daily_schedules
+                )
+                if self.daily_schedules is not None
+                else None
+            ),
         )
 
 

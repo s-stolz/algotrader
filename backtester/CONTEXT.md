@@ -11,6 +11,9 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
   Candles or running an engine.
 - `src/app/backtest_runs.py`, `backtests.py`, and `backtest_definitions.py` own
   Run reads/cancellation, Backtest acceptance/commands, and stateless expansion.
+- `backtest_definitions.py` expands optional schedule alternatives as whole UTC
+  triples after direction choices. API selection lists become individual existing
+  execution schedules before worker execution; engine timing semantics are unchanged.
 - Backtest acceptance takes the optional name separately from execution requests
   and accepted definitions. Preview stays name-free. Names belong to Backtests;
   all Runs are accepted and deleted with their parent. See
