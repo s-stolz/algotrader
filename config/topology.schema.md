@@ -50,7 +50,7 @@ targets use the internal host and port. The local backtester CLI uses `public.ho
 and `services.database_accessor_api.network.published_port`, falling back to
 `network.port` when the published port is absent.
 
-Webserver shares one hostname across two named endpoints:
+Realtime service shares one hostname across two named endpoints:
 
 ```yaml
 network:
@@ -97,8 +97,9 @@ runtime-specific constraints. Backtester API/worker tuning is grouped under
 `services.backtester`; stream limits and cTrader settings belong to
 `services.broker_service`.
 
-Worker polling and heartbeat intervals are positive; the stale threshold must
-exceed the heartbeat interval. The sweep candidate limit is a positive integer.
+Worker heartbeat intervals are positive; the stale threshold must exceed the
+heartbeat interval. The legacy poll interval is still validated as positive but
+does not schedule worker reads. The sweep candidate limit is a positive integer.
 Broker stream `max_length: null` preserves the existing unlimited retention and
 omits the corresponding `BROKER_*_STREAM_MAXLEN` variable from the generated file.
 Broker `streams.redis_db` selects its Redis database independently of the shared

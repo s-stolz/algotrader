@@ -1,39 +1,72 @@
 # AlgoTrader
 
-AlgoTrader is an experimental trading project that uses the [Lightweight Charts](https://tradingview.github.io/lightweight-charts/) library to visualize historical market data.
-
-## Documentation Ownership
-
-- Human-facing overview and setup live in this README and area README files.
-- Agent-facing vocabulary, system flow, and cross-service contracts live in
-  [CONTEXT.md](CONTEXT.md) and its focused references.
-- Task-specific context routing lives in [the context map](docs/CONTEXT-MAP.md).
-- Durable architecture decisions live in `docs/adr/`.
+AlgoTrader is an experimental trading project for collecting market data,
+visualizing live and historical charts with
+[Lightweight Charts](https://tradingview.github.io/lightweight-charts/), and running
+historical backtests and parameter sweeps.
 
 ## Architecture
 
+The frontend reads saved data and submits commands over HTTP. One shared
+WebSocket connection to `realtime-service` carries live chart updates, backtest
+change notifications, and worker health.
+
 ```mermaid
-flowchart LR
-    Broker[Broker service / cTrader] -->|Ticks and Candles| Redis[Redis streams]
-    Redis --> Ingestion[Ingestion service]
-    Ingestion -->|Backfill requests| Broker
-    Ingestion -->|Closed Candles| DB[Database accessor API]
-    DB <--> Timescale[TimescaleDB]
-    DB -->|Historical Candles| Indicators[Indicator API]
-    Redis -->|Live Candles| Indicators
-    Indicators -->|Live Indicators| Redis
-    Redis --> Bridge[WebSocket bridge]
-    Bridge <-->|Subscriptions and updates| UI[Frontend]
-    Bridge -->|Stream control| Broker
-    Bridge -->|Stream control| Indicators
-    UI -->|History queries| DB
-    UI -->|Indicator queries| Indicators
-    UI -->|Backtests and history| Backtests[Backtester API / worker]
-    Backtests <-->|Candles and durable runs| DB
+flowchart TB
+    User([User]) --> UI[Frontend]
+    UI <-->|WebSocket| Realtime[Realtime service]
+
+    subgraph External[External market data]
+        CTrader[cTrader Open API]
+    end
+
+    CTrader -->|Open API| Broker[Broker service]
+    Realtime <-->|Stream reads and updates| Redis[(Redis Streams)]
+    Broker -->|Ticks and candles| Redis
+
+    subgraph Services[Processing services]
+        Ingestion[Ingestion service]
+        Indicators[Indicator API]
+        Backtests[Backtester<br/>API + worker]
+    end
+
+    Redis -->|Closed candles| Ingestion
+    Redis <-->|Candles / indicators| Indicators
+    Redis <-->|Notifications / changes and health| Backtests
+
+    UI -.->|Indicators| Indicators
+    UI -.->|Backtest commands and history| Backtests
+    UI -.->|Markets and candles| DB[Database accessor API]
+
+    Ingestion -->|Store candles| DB
+    Indicators <-->|Historical candles| DB
+    Backtests <-->|Candles, runs and results| DB
+    DB <--> Timescale[(TimescaleDB / PostgreSQL)]
 ```
 
-Shared Python libraries provide data access, indicator computation, and logging.
-For ownership and transport contracts, see [root context](CONTEXT.md).
+Dotted arrows are frontend HTTP requests; the WebSocket carries live updates.
+The backtester box contains separate API and worker processes.
+
+The broker supplies live market data. Ingestion saves closed candles and fills
+historical gaps by requesting data from the broker. The realtime service starts
+and stops broker and indicator streams as chart subscriptions change. The
+indicator API calculates chart series. Backtests use the shared indicator library
+during simulation. Database access goes through the
+database accessor API.
+
+Backtests run separately from the API, one at a time in the worker. PostgreSQL
+stores their state and results. After saving a change, the API publishes a Redis
+notification that wakes the worker and tells open workspaces to refresh their
+saved data. Worker changes follow the same notification path. Heartbeats update
+the displayed worker health without repeatedly fetching the queue.
+
+Redis notifications prompt a check of saved state; PostgreSQL remains the source
+of truth. Failed publications are retried, and startup and reconnection checks
+recover missed notifications. An active backtest can continue during a Redis
+outage; cancellation takes effect after communication recovers. See the
+[worker recovery guide](docs/operations/backtest-worker-recovery.md) for restart
+and recovery procedures, and the [architecture decisions](docs/adr/README.md)
+for the design rationale.
 
 ## Development Disclaimer
 
@@ -109,10 +142,15 @@ Compose starts two processes from the same backtester image:
 - `backtester-worker` is a singleton worker that claims and executes one durable
   run at a time.
 
-The API port, logging settings, and worker poll interval come from
-`services.backtester` in `config/topology.yaml`. The tracked worker default is
-one second. After the stack
-is healthy, run the fixture-backed success and failure smoke paths:
+The worker waits for Redis Stream notifications to discover queued work and
+cancellation requests. It checks saved state on startup and reconnection and
+recovers unacknowledged messages after a restart. A running backtest stays
+`cancelling` until its processes have stopped and the final state has been saved.
+
+The API port, logging settings, and worker heartbeat intervals come from
+`services.backtester` in `config/topology.yaml`. The legacy worker poll interval
+is accepted for configuration compatibility but is unused. After the stack is
+healthy, run the fixture-backed success and failure smoke paths:
 
 ```sh
 make smoke-backtester
@@ -134,7 +172,7 @@ Topology groups all settings by their owner under `services` or `infrastructure`
 Each component has `network`, `logging`, `resources`, and runtime tuning groups
 where applicable. Backtester groups its `api` and `worker` beneath
 `services.backtester`; shared logging and sweep settings live alongside them.
-Webserver, broker, and ingestion tuning live inside their service entries.
+Realtime service, broker, and ingestion tuning live inside their service entries.
 See [the topology schema](config/topology.schema.md) for the complete structure.
 
 ### Validation and overwrite

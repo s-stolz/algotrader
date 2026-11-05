@@ -302,7 +302,11 @@ on-demand loading rules. Health updates require no recurring queue read.
 
 HTTP commands and reads remain on backtester-api. The browser retains last-good
 data when disconnected, restores subscriptions automatically, and marks missing
-health evidence stale locally. Browser elapsed-time clocks do not make HTTP calls.
+health evidence stale locally. For a healthy snapshot, heartbeat age is
+`snapshot_at_ms - last_heartbeat_ms`; receiving that snapshot does not restart
+the freshness window.
+The browser adds locally elapsed time to that age, avoiding comparisons between
+absolute browser and server clocks. Browser elapsed-time clocks do not make HTTP calls.
 There is no normal periodic backtest-state polling or separate recovery scan.
 
 See [ADR-0008](../adr/0008-backtest-stream-notifications.md) for the deliberate

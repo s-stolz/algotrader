@@ -45,7 +45,12 @@ source subscriptions and fans Redis updates out to the frontend over WebSocket.
 `backtester` loads historical candles through `libs/db_accessor_client`; its API
 queues requests and its worker executes them. It owns lifecycle policy and the
 public history API; `database-accessor-api` supplies persistence primitives.
-Frontend backtest consumers go through the backtester API.
+Frontend backtest commands and saved reads go through the backtester API.
+Redis Streams wake workers for queue/cancellation checks and carry change and
+health events through `realtime-service` on the shared browser WebSocket. Startup
+and reconnection reconcile durable state; normal operation does not poll it.
+Delivery and recovery details live in the
+[backtest contract](docs/contracts/backtests.md#real-time-delivery-and-recovery).
 
 ## Shared Contracts
 

@@ -1,34 +1,41 @@
-# WebSocket Server
+# Realtime Service
 
-WebSocket server for streaming real-time market data from Redis to frontend clients.
+The shared WebSocket service delivers live chart updates, backtest change
+notifications, and worker health to frontend clients.
 
 ## Overview
 
-This WebSocket server acts as a bridge between Redis streams, broker-service,
-indicator-api, and frontend clients. It manages subscriptions, controls source
-stream lifecycle, and multiplexes live updates to connected clients.
+The service reads Redis Streams and distributes updates to subscribed browsers.
+It also starts and stops broker and indicator streams as chart subscriptions
+change. Backtest commands and saved-data queries use the backtester HTTP API;
+this service delivers the notifications that tell the browser when to refresh.
 
 ## Architecture
 
-```
-Frontend (WebSocket Client)
-    ↓
-WebSocket Server (port 8765)
-    ↓
-├─→ Broker Service API (start/stop streams)
-├─→ Indicator API (start/stop live indicator streams)
-└─→ Redis Streams (consume live candles and indicators)
-         ↑
-    Broker Service / Indicator API (publish data)
+```mermaid
+flowchart LR
+    Broker[Broker service] -->|Market data| Redis[Redis Streams]
+    Indicators[Indicator API] -->|Live indicators| Redis
+    API[Backtester API] -->|Changes| Redis
+    Worker[Backtester worker] -->|Changes and health| Redis
+    Redis -->|Subscribed updates| Realtime[Realtime service]
+    Realtime <-->|Shared WebSocket| UI[Frontend]
+    Realtime -->|Start and stop streams| Broker
+    Realtime -->|Start and stop streams| Indicators
+    UI -->|Backtest commands and saved data| API
 ```
 
 ## Features
 
-- **WebSocket bridge** - WebSocket server plus lightweight health endpoint
-- **Subscription Management** - Clients subscribe/unsubscribe to candle and indicator streams
-- **Reference Counting** - Source streams start when first client subscribes and stop when last client unsubscribes
-- **Redis Stream Consumption** - Consumes live candle and indicator streams
-- **Graceful Shutdown** - Properly closes all connections and streams on SIGTERM/SIGINT
+- **Shared connection** — Chart and backtest subscriptions use the same socket.
+- **Stream management** — Broker and indicator streams start with the first
+  subscriber and stop when the last subscriber leaves.
+- **Backtest updates** — Change notifications refresh saved workspace data;
+  heartbeat messages update worker health without queue polling.
+- **Recovery** — Browsers refresh saved backtest data on subscription and
+  reconnection. Redis outages are reported even while the browser socket is open.
+- **Health endpoint and graceful shutdown** — The service exposes its health and
+  closes connections and streams on shutdown.
 
 ## Configuration
 
@@ -41,7 +48,12 @@ python scripts/generate_env.py
 cd realtime-service
 ```
 
+Settings live under `services.realtime_service` in `config/topology.yaml`.
+Generated environment variables retain the `WEBSERVER_*` prefix for compatibility
+with existing configurations.
+
 Key settings:
+
 - `WEBSERVER_WS_PORT` / `WEBSERVER_HEALTH_PORT`
 - `BROKER_SERVICE_HOST` / `BROKER_SERVICE_PORT`
 - `ACCOUNT_ID`
@@ -52,7 +64,9 @@ Key settings:
 
 The flat JSON subscription/update protocol is defined in
 [service context](CONTEXT.md#contracts). Timestamp and Redis payload rules live in
-[root context](../CONTEXT.md#shared-contracts).
+[root context](../CONTEXT.md#shared-contracts). Backtest subscriptions, change
+notifications, and health messages are described in the
+[backtest delivery contract](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
 
 ## Running Locally
 
