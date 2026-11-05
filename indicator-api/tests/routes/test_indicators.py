@@ -1,7 +1,11 @@
+import json
 import unittest
 from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 from unittest.mock import patch
+
+from app import get_available_indicators, get_indicator_metadata
 
 from app.routes.indicators import router
 from fastapi import FastAPI
@@ -10,6 +14,19 @@ from indicator_engine import IndicatorRegistry, get_registry
 
 
 class IndicatorCatalogTests(unittest.TestCase):
+    def test_public_catalog_and_all_metadata_remain_compatible(self):
+        expected = json.loads(
+            (Path(__file__).parent / "fixtures" / "indicator_catalog.json").read_text()
+        )
+        actual = {
+            "catalog": get_available_indicators(),
+            "metadata": {
+                str(item["id"]): get_indicator_metadata(item["id"])
+                for item in get_available_indicators()
+            },
+        }
+        self.assertEqual(actual, expected)
+
     def test_catalog_preserves_api_ids_and_uses_registered_names(self):
         exposed = [
             (1, "sma"),
