@@ -165,40 +165,6 @@ def generate_fills_from_targets(  # noqa: C901
     )
 
 
-def generate_fills_from_targets_with_stop_loss(
-    *,
-    symbol: str,
-    timestamp_ms: ArrayLike,
-    open_prices: ArrayLike,
-    target_quantity: ArrayLike,
-    signal_values: ArrayLike,
-    stop_loss_pct: float,
-    high_prices: ArrayLike | None = None,
-    low_prices: ArrayLike | None = None,
-    gap_policy: GapPolicy = GapPolicy.SKIP,
-    slippage_bps: float = 0.0,
-    commission_bps: float = 0.0,
-) -> FillGenerationResult:
-    """Build fills from signal targets and a percent stop loss.
-
-    Long stop checks use ``low_prices``. Short stop checks use ``high_prices``.
-    """
-
-    return generate_fills_from_targets_with_protective_exits(
-        symbol=symbol,
-        timestamp_ms=timestamp_ms,
-        open_prices=open_prices,
-        high_prices=high_prices,
-        low_prices=low_prices,
-        target_quantity=target_quantity,
-        signal_values=signal_values,
-        stop_loss_pct=stop_loss_pct,
-        gap_policy=gap_policy,
-        slippage_bps=slippage_bps,
-        commission_bps=commission_bps,
-    )
-
-
 def generate_fills_from_targets_with_protective_exits(
     *,
     symbol: str,
@@ -798,72 +764,6 @@ def _apply_position_fill(
 
 def _same_direction(left: float, right: float) -> bool:
     return (left > 0.0 and right > 0.0) or (left < 0.0 and right < 0.0)
-
-
-def _stop_loss_fill_price(
-    *,
-    raw_open: float,
-    low_price: float | None,
-    entry_price: float | None,
-    stop_loss_pct: float,
-    actual_position: float,
-) -> float | None:
-    if actual_position == 0.0 or entry_price is None:
-        return None
-
-    stop_price = _stop_loss_price(
-        entry_price=entry_price,
-        stop_loss_pct=stop_loss_pct,
-        actual_position=actual_position,
-    )
-    gap_fill_price = _stop_loss_gap_fill_price(
-        raw_open=raw_open,
-        stop_price=stop_price,
-        actual_position=actual_position,
-    )
-    if gap_fill_price is not None:
-        return gap_fill_price
-    if _stop_loss_touched(
-        high_price=None,
-        low_price=low_price,
-        stop_price=stop_price,
-        actual_position=actual_position,
-    ):
-        return float(stop_price)
-    return None
-
-
-def _take_profit_fill_price(
-    *,
-    raw_open: float,
-    high_price: float | None,
-    entry_price: float | None,
-    take_profit_pct: float,
-    actual_position: float,
-) -> float | None:
-    if actual_position == 0.0 or entry_price is None:
-        return None
-
-    target_price = _take_profit_price(
-        entry_price=entry_price,
-        take_profit_pct=take_profit_pct,
-        actual_position=actual_position,
-    )
-    gap_fill_price = _take_profit_gap_fill_price(
-        raw_open=raw_open,
-        target_price=target_price,
-        actual_position=actual_position,
-    )
-    if gap_fill_price is not None:
-        return gap_fill_price
-    if _take_profit_touched(
-        high_price=high_price,
-        low_price=None,
-        target_price=target_price,
-        actual_position=actual_position,
-    ):
-        return float(target_price)
-    return None
 
 
 def _protective_exit_fill_price(
