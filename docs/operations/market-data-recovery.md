@@ -9,22 +9,17 @@ owns historical corrections and aggregate behavior.
 
 ## Run the controlled smoke check
 
-Use Python 3.12+, Docker with a running daemon, and a **combined** Python environment
+Use Python 3.12, Docker with a running daemon, and a **combined** Python environment
 containing ingestion, accessor, broker, and backtester dependencies. Child processes use that
 same interpreter; setting only a parent's `PYTHONPATH` to another environment's
 packages is insufficient. From this checkout, one possible setup is:
 
 ```sh
 python3.12 -m venv /tmp/algotrader-recovery-env
-cd ingestion-service
-/tmp/algotrader-recovery-env/bin/pip install -r requirements.txt
-cd ../database-accessor-api
-/tmp/algotrader-recovery-env/bin/pip install -r requirements.txt
-cd ../broker-service
-/tmp/algotrader-recovery-env/bin/pip install -r requirements.txt
-cd ../backtester
-/tmp/algotrader-recovery-env/bin/pip install -r requirements.txt
-cd ..
+for service in ingestion-service database-accessor-api broker-service backtester; do
+  /tmp/algotrader-recovery-env/bin/python scripts/python_environment.py \
+    install "$service" --dependencies-only
+done
 make smoke-recovery PYTHON=/tmp/algotrader-recovery-env/bin/python
 ```
 
@@ -109,9 +104,6 @@ make typecheck-python
 make test
 ```
 
-Some repository revisions lack the first two targets; a missing target is an
-unavailable gate, never a pass. Use the release's explicitly approved baseline
-exception if one exists, with affected-code lint/types and no-new-failure evidence.
 `make test` covers only the suites listed in the Makefile. Also run the accessor,
 shared client, broker infrastructure/API, realtime-service, Indicator service,
 configuration, and migration suites using their service environments. Realtime service

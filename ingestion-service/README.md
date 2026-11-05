@@ -34,10 +34,17 @@ Key settings:
 ## Running
 
 ### Local Development
+Create the service environment with `make venv SERVICE=ingestion-service`.
+A direct launch requires the generated shared and runtime-secret variables in
+the process environment, with Redis, broker, and accessor addresses reachable
+from the host. Generating files does not load them.
+
 ```bash
-python -m pip install -r requirements.txt
-python main.py
+cd ingestion-service
+.venv/bin/python main.py
 ```
+
+Use Compose below to load the generated environment and service networking automatically.
 
 ### Docker
 ```bash

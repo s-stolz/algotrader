@@ -2,8 +2,8 @@
 
 A lightweight, NumPy-first indicator library designed for fast batch calculations and streaming updates.
 
-This library is used by services such as `indicator-api` and is intended to scale to backtests, live
-indicator streams, and ML feature generation.
+The historical and live indicator API and the backtester use this shared
+computation library.
 
 ## Goals
 
@@ -172,6 +172,8 @@ Notes:
 ## Indicators Included
 
 - `sma`
+- `ema`
+- `opening_range`
 - `rsi`
 - `macd`
 - `bbands`

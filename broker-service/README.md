@@ -23,7 +23,7 @@ and Redis, while domain types carry broker concepts.
 - **Symbol lookups** – Fast symbol info retrieval with support for both symbol names and IDs
 
 ### Configuration via dataclass settings
-- Environment-based configuration with `.env` support
+- Process-environment configuration; Compose loads the generated env files
 - Separate credential loading for cTrader API
 - Typed parsing/validation in `app/settings.py`
 
@@ -71,7 +71,7 @@ under `config/` via `make config`; see [configuration context](../config/CONTEXT
 | `CTRADER_TOKEN_URL` | OAuth token refresh URL | `https://openapi.ctrader.com/apps/token` |
 | `CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS` | Fallback TTL if refresh response omits `expires_in` | `2628000` |
 | `CTRADER_TOKEN_REQUEST_TIMEOUT_SECONDS` | HTTP timeout for token refresh request | `10.0` |
-| `BROKER_REDIS_URL` | Redis connection string | `redis://localhost:6379/0` |
+| `BROKER_REDIS_URL` | Redis connection string | `redis://redis:6379/0` |
 | `BROKER_TOKEN_REDIS_KEY` | Redis hash key storing current OAuth token state | `broker:auth:ctrader:current` |
 | `BROKER_TOKEN_REFRESH_EARLY_SECONDS` | Refresh lead time before expiry | `604800` |
 | `BROKER_TOKEN_REFRESH_RETRY_DELAY_SECONDS` | Delay between refresh retries | `30` |
@@ -88,29 +88,31 @@ under `config/` via `make config`; see [configuration context](../config/CONTEXT
 
 ## Local development
 
-1. Create a Python 3.10+ virtual environment and install the service in editable mode:
+1. From the repository root, install the service and shared library dependencies:
 
 ```bash
-cd broker-service
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
+make venv SERVICE=broker-service
 ```
 
-2. From repository root, create secrets + generated env:
+2. From the repository root, create secrets and generate the environment:
 
 ```bash
-cd ..
 cp config/.env.secrets.example config/.env.secrets.local
 python scripts/generate_env.py
 cd broker-service
 ```
 
-3. Start the API using the CLI command or Uvicorn:
+3. For a direct host launch, supply the generated shared, runtime-secret, and
+broker-secret variables to the process environment first. Configuration generation
+does not load them. Set `BROKER_REDIS_URL` to the host-reachable Redis address.
+Then start the API from `broker-service/`:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8050
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8050
 ```
+
+Alternatively, `make up-build` from the repository root loads configuration and
+service networking through Compose.
 
 4. Check health status at `GET http://localhost:8050/meta/health` and explore the API:
    - `/accounts` – List trading accounts
@@ -127,20 +129,19 @@ Run all tests:
 
 ```bash
 cd broker-service
-python -m unittest discover -s tests -p "test_*.py"
+.venv/bin/python -m unittest discover -s tests -p "test_*.py"
 ```
 
 Run via helper module:
 
 ```bash
 cd broker-service
-python -m tests.run_tests
+.venv/bin/python -m tests.run_tests
 ```
 
-Run via script entrypoint (after editable install):
+Run via the package entrypoint installed by `make venv SERVICE=broker-service`:
 
 ```bash
 cd broker-service
-pip install -e .
-broker-service-test
+.venv/bin/broker-service-test
 ```

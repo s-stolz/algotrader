@@ -75,38 +75,3 @@ The Workspace suites now use descriptive behavior suffixes with a shared fixture
 The lifecycle suite mounts the real Workspace inside KeepAlive and checks filters,
 history pagination, selection, comparison, subscription shutdown, reactivation, and
 rejection of a superseded response. Existing test assertions remain intact.
-Fresh populated rendered comparisons remain outstanding under the baseline
-qualification procedure below.
-
-## Baseline for spec #17
-
-The baseline checkout was `3d9711faf7b5cf7e90204d9296336e513b5d5245`. Before
-formatting, lint, types, layout (62 suites), and production build passed. Ten
-existing file-size warnings were present. All 327 unit tests passed with a
-checkout-specific temporary runner override described below. No unprotected
-behavior gap requiring new application characterization tests was identified.
-The pure normalization commit is `09bd181088f269e0ab7e961caaf7fae83fb939cc`.
-Its 32 changed Vue templates compile to equivalent render-function ASTs; all 327
-application tests pass after formatting. Existing text and behavior assertions
-were preserved.
-
-Vite's default `**/.git/**` filesystem denial prevents Vitest from loading setup
-files in the Vibe worktree. The initial unmodified gate failed all suites with
-`Cannot find module '/test/setup.ts'`. A temporary, untracked configuration
-imports the existing Vite configuration and removes only that denial for local
-checks, retaining `.env`, `.env.*`, and certificate/private-key restrictions.
-It does not change production configuration. The baseline then passed all suites.
-A post-format concurrent run hit Workspace timeouts; the isolated Workspace suite
-(65 tests) and the complete serial suite passed unchanged. Preserve these runner
-details when reproducing checks in a `.git`-hosted checkout.
-
-Fresh populated charting and Workspace screenshots remain qualification work.
-The browser connector reached an app, but its source identity could not be bound
-to this checkout. Automatic approval review rejected private-source hash binding
-through that external connector as unapproved sensitive egress. No image from that
-unverified app is claimed as a production baseline. Before accepting visible
-changes, serve an identified checkout with representative data, wait for bundled
-fonts and stable chart rendering, and capture chart/history/results, creation
-steps, menus/dialogs, and wide/narrow viewports. Record source identity, input data,
-viewport, and reproducible navigation; compare the same states after styling.
-Historical acceptance reports and the HTML prototype do not replace these images.

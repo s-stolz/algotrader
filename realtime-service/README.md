@@ -56,7 +56,6 @@ Key settings:
 - `BROKER_SERVICE_HOST` / `BROKER_SERVICE_PORT`
 - `ACCOUNT_ID`
 - `REALTIME_SERVICE_REDIS_BLOCK_MS` / `REALTIME_SERVICE_REDIS_BATCH_SIZE`
-- `REALTIME_SERVICE_STREAM_QUEUE_SIZE` / `REALTIME_SERVICE_MAX_STREAM_LENGTH`
 
 ## Message Protocol
 
@@ -68,14 +67,20 @@ notifications, and health messages are described in the
 
 ## Running Locally
 
-From the repository root:
+Create the service environment with `make venv SERVICE=realtime-service`.
+Before a direct process launch, supply the generated shared and runtime-secret
+variables to the process environment. Generating files does not load them.
+Host launches also need reachable Redis, broker, and indicator addresses rather
+than Compose-only hostnames.
+
+With that environment configured:
 
 ```bash
-cp config/.env.secrets.example config/.env.secrets.local
-python scripts/generate_env.py
 cd realtime-service
-python main.py
+.venv/bin/python main.py
 ```
+
+For automatic environment loading and service networking, use Compose below.
 
 ## Running with Docker
 

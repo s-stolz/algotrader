@@ -39,7 +39,18 @@ RUN_MIGRATION_INTEGRATION_TESTS=1 .venv/bin/python -m unittest scripts.tests.tes
 
 Accessor execution/deletion tests opt in with
 `RUN_BACKTEST_EXECUTION_INTEGRATION_TESTS=1`; batch tests use
-`BACKTEST_BATCH_TEST_DATABASE_URL`. For isolated database setup and worker
-interpreter requirements, see the
-[acceptance procedure](../operations/backtest-workspace-v1-acceptance.md#reproduce-the-gates).
+`BACKTEST_BATCH_TEST_DATABASE_URL` pointing to a disposable local Timescale database.
+Set `BACKTEST_INTEGRATION_ENV_DIR` to generated configuration containing its
+published Timescale port, and `BACKTESTER_TEST_PYTHON` to a Python 3.12 environment
+with backtester dependencies. Set `PYTHONPATH` to the accessor directory, then run
+from `database-accessor-api/`:
+
+```sh
+RUN_BACKTEST_EXECUTION_INTEGRATION_TESTS=1 \
+  .venv/bin/python -m unittest discover -s tests -p 'test_backtest*postgres.py'
+```
+
+Use a separate Compose project with alternate localhost ports and a fresh volume
+for deployment acceptance. Supply both `--backtester-url` and `--storage-url`
+to `backtester/smoke.py` when published ports differ from the defaults.
 Check suite skip conditions before claiming live coverage.

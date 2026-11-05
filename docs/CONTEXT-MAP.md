@@ -29,6 +29,5 @@ interface reaches them; paths in this table are relative to the repository root.
   identify the seams to inspect before changing behavior.
 - Strategy authoring: [STRATEGIES.md](../backtester/STRATEGIES.md).
 - Engine semantics and supported scope: [backtester context](../backtester/CONTEXT.md#engine-invariants).
-- Workspace acceptance evidence: [2026-09-27 acceptance](operations/backtest-workspace-v1-acceptance.md)
-  and [review](operations/backtest-workspace-review-2026-09-27.md). These record
-  past checks; use the recovery guide for current operating procedures.
+
+- Known SMA crossover divergence: [reproduction and acceptance criteria](known-issues/sma-crossover-parity.md).

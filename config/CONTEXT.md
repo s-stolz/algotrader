@@ -51,3 +51,11 @@ lookback or a quoted UTC start date. Accepted pending recovery retains its earli
 boundary when this policy changes. For configuration and deployment obligations,
 read the [recovery contract](../docs/contracts/recovery.md); field types and
 runtime mappings are in [topology schema](topology.schema.md).
+
+## Python environments
+
+Service package metadata owns direct dependencies. The root shared constraints
+and optional service replacements own installed versions. Host and Docker
+installations use `scripts/python_environment.py`; see the
+[installation workflow](../README.md#shared-constraints-and-service-packages).
+Services use separate Python 3.12 environments because several own an `app` package.

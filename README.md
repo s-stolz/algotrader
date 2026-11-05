@@ -60,7 +60,7 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 
 - [Docker](https://docs.docker.com/get-started/get-docker/) with the Compose v2 plugin (`docker compose`).
 - GNU Make (`make`).
-- Python 3 (`python3`) and PyYAML for host-side config generation.
+- Python 3.12 (`python3.12`) and PyYAML for host-side config generation.
 
 On Debian/Ubuntu, install the host setup tools (install Docker separately using the link above):
 
@@ -185,11 +185,21 @@ make up-detached
 
 Use a root virtual environment for shared library/test tooling and per-service virtual environments for service runtime dependencies.
 
-### Shared constraints + service requirements
+### Shared constraints and service packages
 
 - Shared versions live in `constraints-shared.txt`.
-- Each service keeps its own `requirements.txt`.
-- If a service must diverge, add `<service>/constraints.override.txt` with a short rationale comment.
+- Each service's `pyproject.toml` owns its direct dependencies and package metadata.
+- Services install into separate environments from this checkout; shared libraries
+  are resolved from `libs/`, not a public package index.
+- If a service must diverge, add `<service>/constraints.override.txt` with a
+  rationale comment followed by an exact `package==version` replacement for a
+  shared pin. Overrides must satisfy the service's declared dependency ranges.
+- `scripts/python_environment.py` merges pins before a single pip resolution.
+  Host setup and Docker builds use the same policy. Bare `pip install` does not
+  apply repository constraints; use the setup command below.
+- Python services and local tooling require Python 3.12. Set `PYTHON` to a specific
+  3.12 executable if `python3.12` is not on PATH. Use `--recreate` when replacing
+  an environment created with another Python version.
 
 ### Bootstrap all service venvs
 
@@ -205,7 +215,7 @@ Equivalent direct command:
 
 This now creates:
 - root environment: `.venv` using `requirements.root.txt`
-- service environments: `<service>/.venv` using each service `requirements.txt`
+- service environments: `<service>/.venv` using each service package and the effective shared constraints
 
 ### Bootstrap only root venv
 
@@ -226,6 +236,10 @@ make venvs-recreate
 ```
 
 ### Validate existing environments
+
+Checks verify Python 3.12, installed service packages, effective shared pins, and
+`pip check`. Only packages actually installed in that environment are compared
+with the shared pins.
 
 ```sh
 make venvs-check
