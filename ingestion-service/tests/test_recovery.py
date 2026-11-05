@@ -234,7 +234,6 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
         service.db_client.close()
         service.db_client = storage
         await service.broker_client.aclose()
-        service.broker_client.close()
         service.broker_client = broker
         self.services.append(service)
         with patch("main.Redis.from_url", return_value=redis):

@@ -108,7 +108,6 @@ class HistoricalIngestionTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         self.service.db_client.close()
-        self.service.broker_client.close()
         await self.service.broker_client.aclose()
         response = await self.http.delete(f"/markets/{self.symbol}", params={"exchange": "VIBE9"})
         response.raise_for_status()

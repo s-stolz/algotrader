@@ -23,10 +23,7 @@ class BrokerClient:
             timeout: Request timeout in seconds
         """
         self.base_url = base_url.rstrip("/")
-        self.account_id = account_id
-        self.timeout = timeout
         headers = {"X-Account-Id": account_id}
-        self.client = httpx.Client(timeout=timeout, headers=headers)
         self.async_client = httpx.AsyncClient(timeout=timeout, headers=headers)
 
     async def stream_trendbars(  # noqa: C901
@@ -199,18 +196,6 @@ class BrokerClient:
             logger.error(f"Error fetching broker health: {e}")
             raise
 
-    def close(self) -> None:
-        """Close the HTTP client."""
-        self.client.close()
-
     async def aclose(self) -> None:
         """Close the async HTTP client."""
         await self.async_client.aclose()
-
-    def __enter__(self):
-        """Context manager entry."""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit."""
-        self.close()

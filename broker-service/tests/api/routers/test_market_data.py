@@ -145,7 +145,6 @@ class HistoryContractTests(unittest.IsolatedAsyncioTestCase):
                 async for bar in client.stream_trendbars("EURUSD", start_time=start, end_time=end)
             ]
         finally:
-            client.close()
             await client.aclose()
 
     async def test_upstream_failure_is_not_successful_empty_history(self):
@@ -186,7 +185,6 @@ class HistoryContractTests(unittest.IsolatedAsyncioTestCase):
                     )
                 ]
         finally:
-            client.close()
             await client.aclose()
 
     async def test_provider_short_pages_exhaust_final_chunk(self):
@@ -271,7 +269,6 @@ class HistoryContractTests(unittest.IsolatedAsyncioTestCase):
                             )
                         ]
                 finally:
-                    client.close()
                     await client.aclose()
 
     async def test_limited_history_keeps_newest_candles_despite_provider_cap(self):
