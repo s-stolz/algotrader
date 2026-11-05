@@ -189,11 +189,11 @@ This keeps data integrity explicit and reproducible.
 
 Implement the numerical indicator under `indicator_engine/indicators/`. Its
 `IndicatorSpec` owns the engine string ID, display name, parameters, outputs and
-input/history requirements. Add one `IndicatorRegistration` to
-`indicator_engine/builtin_catalog.py`, importing the implementation module directly:
+input/history requirements. Declare one descriptively named `IndicatorRegistration`
+after the implementation in the same module:
 
 ```python
-IndicatorRegistration(
+MY_INDICATOR_REGISTRATION = IndicatorRegistration(
     public_id=8,  # Choose an unused stable ID; never reuse a persisted ID.
     implementation=MyIndicator,
     supports_live=True,
@@ -202,8 +202,10 @@ IndicatorRegistration(
 )
 ```
 
-This one entry supplies default engine registration, public API identity and
-metadata, and live-stream eligibility. No additional export or API list is needed.
+Import that constant by its descriptive name, without an alias, in
+`indicator_engine/builtin_catalog.py` and append it to the ordered catalog list.
+This declaration supplies default engine registration, public API identity and
+metadata, and live-stream eligibility. No separate package export or API list is needed.
 Preserve existing entry order and numeric IDs. Implementations must have a no-argument
 constructor and a stable specification; each registry receives fresh instances.
 Presentation keys must match spec outputs. Outputs without individual styles remain

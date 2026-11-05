@@ -4,6 +4,7 @@ from typing import Dict
 
 import numpy as np
 
+from ..catalog import IndicatorRegistration
 from ..core.bars import BarTensor
 from ..core.spec import IndicatorSpec
 from ..core.tensor import Tensor
@@ -98,3 +99,33 @@ class MACD(IndicatorBase):
         state = {**state, "prior": previous, "latest": latest, "timestamp": timestamp_ms}
         macd_values = latest[0] - latest[1]
         return state, np.stack([macd_values, latest[2], macd_values - latest[2]], axis=1)
+
+
+MACD_REGISTRATION = IndicatorRegistration(
+    public_id=4,
+    implementation=MACD,
+    supports_live=True,
+    overlay=False,
+    outputs={
+        "hist": {
+            "type": "histogram",
+            "plotOptions": {"color": "#089981", "priceFormat": {"minMove": 1e-05}},
+        },
+        "macd": {
+            "type": "line",
+            "plotOptions": {
+                "lineWidth": 2,
+                "color": "#2962ff",
+                "priceFormat": {"minMove": 1e-05},
+            },
+        },
+        "signal": {
+            "type": "line",
+            "plotOptions": {
+                "lineWidth": 2,
+                "color": "#f23645",
+                "priceFormat": {"minMove": 1e-05},
+            },
+        },
+    },
+)

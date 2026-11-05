@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..catalog import IndicatorRegistration
 from ..core.bars import BarTensor
 from ..core.history import InputHistory
 from ..core.session import SessionBounds, SessionWindow
@@ -219,3 +220,23 @@ def _snapshot_values(snapshot, timestamp_ms, bounds: SessionBounds, extension: i
     )
     output[:, 3:] = (bounds.start_ms, bounds.end_ms, extension)
     return output
+
+
+OPENING_RANGE_REGISTRATION = IndicatorRegistration(
+    public_id=7,
+    implementation=OpeningRange,
+    supports_live=False,
+    overlay=True,
+    outputs={
+        "range_high": {
+            "type": "opening_range",
+            "label": "Range",
+            "plotOptions": {
+                "color": "#2962ff",
+                "fillColor": "rgba(41, 98, 255, 0.12)",
+                "lineWidth": 1,
+                "showExtensions": True,
+            },
+        }
+    },
+)

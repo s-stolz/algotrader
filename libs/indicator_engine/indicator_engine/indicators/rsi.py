@@ -4,6 +4,7 @@ from typing import Dict
 
 import numpy as np
 
+from ..catalog import IndicatorRegistration
 from ..core.bars import BarTensor
 from ..core.spec import IndicatorSpec
 from ..core.tensor import Tensor
@@ -12,6 +13,7 @@ from .base import IndicatorBase
 
 class RSI(IndicatorBase):
     """Relative Strength Index (RSI)."""
+
     spec = IndicatorSpec(
         id="rsi",
         name="Relative Strength Index",
@@ -87,3 +89,12 @@ def _rsi(series: np.ndarray, length: int) -> np.ndarray:
             rs = np.inf if avg_loss == 0 else avg_gain / avg_loss
             out[t + 1, a_idx] = 100.0 - (100.0 / (1.0 + rs))
     return out
+
+
+RSI_REGISTRATION = IndicatorRegistration(
+    public_id=2,
+    implementation=RSI,
+    supports_live=True,
+    overlay=False,
+    outputs={"rsi": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#7E57C2"}}},
+)

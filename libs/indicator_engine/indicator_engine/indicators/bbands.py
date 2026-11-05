@@ -4,6 +4,7 @@ from typing import Dict
 
 import numpy as np
 
+from ..catalog import IndicatorRegistration
 from ..core.bars import BarTensor
 from ..core.spec import IndicatorSpec
 from ..core.tensor import Tensor
@@ -13,6 +14,7 @@ from .utils import rolling_mean, rolling_std
 
 class BBANDS(IndicatorBase):
     """Bollinger Bands."""
+
     spec = IndicatorSpec(
         id="bbands",
         name="Bollinger Bands",
@@ -62,3 +64,16 @@ class BBANDS(IndicatorBase):
                 "output": np.array(["lower", "mid", "upper"], dtype=object),
             },
         )
+
+
+BBANDS_REGISTRATION = IndicatorRegistration(
+    public_id=3,
+    implementation=BBANDS,
+    supports_live=True,
+    overlay=True,
+    outputs={
+        "lower": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#089981"}},
+        "mid": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#2962ff"}},
+        "upper": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#f23645"}},
+    },
+)

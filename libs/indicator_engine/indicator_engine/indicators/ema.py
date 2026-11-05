@@ -4,6 +4,7 @@ from typing import Dict
 
 import numpy as np
 
+from ..catalog import IndicatorRegistration
 from ..core.bars import BarTensor
 from ..core.spec import IndicatorSpec
 from ..core.tensor import Tensor
@@ -74,3 +75,12 @@ class EMA(IndicatorBase):
         latest = np.where(asset_mask, values, state["latest"])
         state = {**state, "prior": previous, "latest": latest, "timestamp": timestamp_ms}
         return state, latest[:, np.newaxis]
+
+
+EMA_REGISTRATION = IndicatorRegistration(
+    public_id=6,
+    implementation=EMA,
+    supports_live=True,
+    overlay=True,
+    outputs={"ema": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#2962ff"}}},
+)

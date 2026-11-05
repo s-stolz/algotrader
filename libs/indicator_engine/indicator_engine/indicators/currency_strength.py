@@ -4,6 +4,7 @@ from typing import Dict
 
 import numpy as np
 
+from ..catalog import IndicatorRegistration
 from ..core.bars import BarTensor
 from ..core.history import UTC_DAY_MS, InputHistory
 from ..core.spec import IndicatorSpec
@@ -334,3 +335,21 @@ def _daily_cumulative_strength(*, strength: np.ndarray, time: np.ndarray) -> np.
             running += value
             out[idx, col] = running
     return out
+
+
+CURRENCY_STRENGTH_REGISTRATION = IndicatorRegistration(
+    public_id=5,
+    implementation=CurrencyStrength,
+    supports_live=False,
+    overlay=False,
+    outputs={
+        "EUR": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#FF5252"}},
+        "GBP": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#4CAF50"}},
+        "JPY": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#00BCD4"}},
+        "AUD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#2962ff"}},
+        "NZD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#E040FB"}},
+        "CAD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#9C27B0"}},
+        "CHF": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#880E4F"}},
+        "USD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#FF9800"}},
+    },
+)
