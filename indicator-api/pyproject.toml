@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,15 +8,19 @@ version = "0.0.0"
 description = "Indicator API for algotrader"
 authors = [{ name = "Sebastian Stolz", email = "admin@tradingnerd.io" }]
 license = { text = "MIT" }
-readme = "README.md"
-requires-python = ">=3.8"
+readme = "CONTEXT.md"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "asyncpg",
-    "python-dotenv",
-    "pydantic",
-    "redis",
+    "algotrader-logger",
+    "db-accessor-client",
+    "indicator-engine",
+    "fastapi>=0.116.1",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "pandas>=2.3.2",
+    "numpy>=2.2.6",
+    "httpx>=0.28.1",
+    "redis>=7.1.0",
 ]
 
 [project.urls]
@@ -29,10 +33,9 @@ dev = [
     "black>=24.4.2",
 ]
 
+[tool.setuptools]
+py-modules = ["main"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
-
-[project.scripts]
-lint = "ruff check app/ *.py && black --check app/ *.py"
-lint-fix = "ruff check --fix app/ *.py && black app/ *.py"

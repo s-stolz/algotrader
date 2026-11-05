@@ -1,12 +1,12 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "db-accessor-client"
 version = "0.1.0"
 description = "Shared HTTP client for database-accessor-api"
-requires-python = ">=3.8"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "httpx>=0.28.1",
     "pandas>=2.3.0",

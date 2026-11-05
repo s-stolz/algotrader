@@ -19,3 +19,6 @@ frontend/dist
 backtester/src/strategies/custom/*
 !backtester/src/strategies/custom/__init__.py
 backtester/private/
+
+**/*.egg-info
+**/build

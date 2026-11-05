@@ -1,19 +1,16 @@
-FROM python:3.11-slim
-WORKDIR /workspace/realtime-service
+FROM python:3.12-slim
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    curl \
+RUN apt-get update && apt-get install -y gcc curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY realtime-service/requirements.txt ./
-COPY libs/algotrader_logger /workspace/libs/algotrader_logger
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /workspace
+COPY constraints-shared.txt ./
+COPY scripts/python_environment.py ./scripts/python_environment.py
+COPY libs ./libs
+COPY realtime-service ./realtime-service
+RUN python scripts/python_environment.py install realtime-service
 
 WORKDIR /app
-# Copy application code
 COPY realtime-service /app
 
 EXPOSE 8765 8080

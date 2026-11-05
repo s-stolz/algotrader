@@ -47,7 +47,7 @@ check_service() {
   fi
 
   echo "==> Checking ${service}"
-  "${venv_python}" -m pip check
+  "${venv_python}" "${SCRIPT_DIR}/python_environment.py" check "${service}"
 }
 
 check_root() {
@@ -59,7 +59,7 @@ check_root() {
   fi
 
   echo "==> Checking ${ROOT_TARGET}"
-  "${venv_python}" -m pip check
+  "${venv_python}" "${SCRIPT_DIR}/python_environment.py" check root
 }
 
 if [[ $# -lt 1 ]]; then

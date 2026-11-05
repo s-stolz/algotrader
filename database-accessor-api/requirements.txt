@@ -1,7 +1,0 @@
--e ../libs/algotrader_logger
-fastapi
-uvicorn[standard]
-sqlalchemy[asyncio]
-asyncpg
-python-dotenv
-pydantic

@@ -1,12 +1,13 @@
-FROM python:3.11-alpine
+FROM python:3.12-alpine
 
-RUN apk update && apk upgrade --no-cache && apk add --no-cache curl
+RUN apk add --no-cache curl
 
-WORKDIR /workspace/database-accessor-api
-
-COPY database-accessor-api/requirements.txt /workspace/database-accessor-api/requirements.txt
-COPY libs/algotrader_logger /workspace/libs/algotrader_logger
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /workspace
+COPY constraints-shared.txt ./
+COPY scripts/python_environment.py ./scripts/python_environment.py
+COPY libs ./libs
+COPY database-accessor-api ./database-accessor-api
+RUN python scripts/python_environment.py install database-accessor-api
 
 WORKDIR /app
 COPY database-accessor-api /app

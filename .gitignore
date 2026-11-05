@@ -5,6 +5,7 @@ config/.env*
 */.env
 node_modules
 __pycache__
+*.egg-info/
 *.DS_Store
 .claude
 
@@ -14,3 +15,6 @@ config/topology.local.yaml
 /backtester/src/strategies/custom/*
 !/backtester/src/strategies/custom/__init__.py
 /backtester/private/
+
+# Python packaging output.
+**/build/

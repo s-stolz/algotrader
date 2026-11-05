@@ -1,19 +1,13 @@
 FROM python:3.12-slim
 
-WORKDIR /workspace/ingestion-service
-
-# Upgrade pip
-RUN pip install --upgrade pip
-
-# Install dependencies
-COPY ingestion-service/requirements.txt /workspace/ingestion-service/requirements.txt
-COPY libs/algotrader_logger /workspace/libs/algotrader_logger
-COPY libs/db_accessor_client /workspace/libs/db_accessor_client
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /workspace
+COPY constraints-shared.txt ./
+COPY scripts/python_environment.py ./scripts/python_environment.py
+COPY libs ./libs
+COPY ingestion-service ./ingestion-service
+RUN python scripts/python_environment.py install ingestion-service
 
 WORKDIR /app
-
-# Copy application code
 COPY ingestion-service /app
 
 # Run the service
