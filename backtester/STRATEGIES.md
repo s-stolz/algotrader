@@ -165,10 +165,12 @@ inclusive entry start, an exclusive last-entry cutoff, and a same-day exit time.
 The required ordering is `0 <= start < last_entry <= exit < 1440`; omitted
 schedules preserve unrestricted execution. The schedule belongs to the run
 execution configuration, not the strategy builder. It is saved and reused with
-the request, and is shared by all members of a backtest. The public API
-accepts `execution.daily_schedule` as an optional object or null; omitted values
-remain disabled. Declarative bar strategies support schedules in both engines;
-callback-only vectorized strategies reject an enabled schedule.
+each Run's request. Backtest members can have different schedules when creation
+selects schedule alternatives. See the
+[schedule selection contract](../docs/contracts/backtests.md#shared-execution-controls)
+for `daily_schedules`, resolved Run requests, and legacy shared schedule input.
+Declarative bar strategies support schedules in both engines; callback-only
+vectorized strategies reject an enabled schedule.
 
 Both engines check the destination bar's open timestamp, including for deferred
 orders. Outside the entry window, exposure increases are cancelled; a direction
