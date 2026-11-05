@@ -21,6 +21,12 @@ import {
   listBacktestRuns,
 } from '@/api/backtesterClient';
 
+// Row actions have separate interaction suites; pagination needs the real table,
+// but not hundreds of tooltip/button instances on its largest pages.
+vi.mock('@/views/workspace/comparison/comparisonRunActions', () => ({
+  createComparisonRunActions: () => () => null,
+}));
+
 async function openPagedBacktest() {
   vi.useFakeTimers();
   const members = Array.from({ length: 105 }, (_, ordinal) =>
