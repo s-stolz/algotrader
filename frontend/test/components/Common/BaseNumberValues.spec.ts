@@ -21,9 +21,11 @@ describe('numeric value entry', () => {
     await nextTick();
     await select.get('.n-base-selection').trigger('click');
     await nextTick();
-    const menu = (select.vm as unknown as {
-      treeMate: { treeNodes: Array<{ rawNode: { value: number } }> };
-    }).treeMate;
+    const menu = (
+      select.vm as unknown as {
+        treeMate: { treeNodes: Array<{ rawNode: { value: number } }> };
+      }
+    ).treeMate;
     expect(wrapper.props('value')).toEqual([12, 19, 20]);
     expect(menu.treeNodes.map((node) => node.rawNode.value)).toEqual([
       12, 19, 20,
