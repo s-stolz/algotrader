@@ -9,10 +9,12 @@ from typing import Optional, Union
 import websockets
 from aiohttp import web
 from algotrader_logger import bind_context, configure_logging
+from app.backtest_events import BacktestEventBridge
 from app.broker_client import BrokerClient
 from app.indicator_api_client import IndicatorApiClient
 from app.redis_consumer import RedisConsumer
 from app.subscription_manager import SubscriptionManager
+from redis.asyncio import Redis
 from websockets.asyncio.server import ServerConnection
 
 configure_logging(
@@ -34,6 +36,7 @@ class WebSocketServer:
         self.health_runner: Optional[web.AppRunner] = None
         self._shutdown_lock = asyncio.Lock()
         self._is_shutdown = False
+        self.backtest_events: BacktestEventBridge | None = None
 
     async def initialize(self):
         self.broker_client = BrokerClient(
@@ -61,6 +64,18 @@ class WebSocketServer:
 
         self.redis_consumer.subscription_manager = self.subscription_manager
         await self.redis_consumer.connect()
+        self.backtest_events = BacktestEventBridge(
+            Redis.from_url(
+                os.getenv(
+                    "REDIS_URL",
+                    f"redis://{self.config['redis_host']}:{self.config['redis_port']}/0",
+                ),
+                decode_responses=True,
+                socket_connect_timeout=3,
+                socket_timeout=5,
+            )
+        )
+        self.backtest_events.start()
 
     async def handle_client(self, websocket: ServerConnection):
         assert self.subscription_manager is not None
@@ -78,6 +93,8 @@ class WebSocketServer:
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
+            if self.backtest_events is not None:
+                self.backtest_events.unsubscribe(websocket)
             await self.subscription_manager.unregister_client(client_id)
 
     async def handle_message(
@@ -89,7 +106,15 @@ class WebSocketServer:
         message = json.loads(message_data)
         message_type = message.get("type")
 
-        if message_type == "subscribeCandles":
+        if message_type == "subscribeBacktests":
+            if self.backtest_events is not None:
+                await self.backtest_events.subscribe(websocket)
+
+        elif message_type == "unsubscribeBacktests":
+            if self.backtest_events is not None:
+                self.backtest_events.unsubscribe(websocket)
+
+        elif message_type == "subscribeCandles":
             await self._handle_subscribe_candles_message(websocket, client_id, message)
 
         elif message_type == "unsubscribeCandles":
@@ -260,6 +285,10 @@ class WebSocketServer:
             if self.health_runner:
                 await self.health_runner.cleanup()
                 self.health_runner = None
+
+            if self.backtest_events is not None:
+                await self.backtest_events.close()
+                self.backtest_events = None
 
             if self.redis_consumer:
                 await self.redis_consumer.disconnect()

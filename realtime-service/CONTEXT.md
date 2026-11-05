@@ -1,6 +1,6 @@
-# Realtime service Context
+# Realtime Service Context
 
-Python WebSocket bridge between frontend clients, broker-service, indicator-api,
+Python WebSocket bridge between frontend clients, backtester, broker-service, indicator-api,
 and Redis streams.
 
 ## Ownership
@@ -34,6 +34,18 @@ Realtime service to frontend control messages are flat JSON objects:
 - `error` with an `error` string when message handling fails.
 
 Source streams are reference counted; upstream streams are shared across clients.
+
+## Backtest delivery
+
+`app/backtest_events.py` owns the independent backtest stream reader and browser
+fanout. Every subscribed browser receives events; gateway instances do not share a
+worker consumer group. Establish a stream cursor before reporting connected,
+and report Redis disconnection even when browser sockets remain open. Browsers
+refresh authoritative snapshots on subscription/reconnection, so old gateway
+messages need not be replayed. Backtest policy remains in backtester-api.
+
+For `subscribeBacktests`, `unsubscribeBacktests`, and the three outbound event
+shapes, read [real-time delivery](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
 
 ## Change Triggers
 
