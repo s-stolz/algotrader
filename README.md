@@ -60,14 +60,7 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 
 - [Docker](https://docs.docker.com/get-started/get-docker/) with the Compose v2 plugin (`docker compose`).
 - GNU Make (`make`).
-- Python 3.12 (`python3.12`) and PyYAML for host-side config generation.
-
-On Debian/Ubuntu, install the host setup tools (install Docker separately using the link above):
-
-```sh
-sudo apt update
-sudo apt install make python3 python3-yaml
-```
+- Python 3.12 (`python3.12`) with venv support, and PyYAML for host-side config generation.
 
 ## Getting Started
 
