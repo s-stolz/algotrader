@@ -33,22 +33,6 @@ def _epoch_ms_to_utc_datetime(value: int) -> datetime:
     return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
 
 
-async def get_market_by_id(session, symbol_id: int):
-    """
-    Get market by symbol_id
-
-    :param session: SQLAlchemy session
-    :param symbol_id: Market symbol_id
-
-    :return: Market data as a dictionary
-    :rtype: dict or None
-    """
-    stmt = select(markets).where(markets.c.symbol_id == symbol_id)
-    result = await session.execute(stmt)
-    row = result.fetchone()
-    return dict(row._mapping) if row else None
-
-
 async def insert_market(session, market_data: dict):
     """
     Insert a new market into the database
@@ -106,34 +90,6 @@ async def get_markets(session, symbol: Optional[str] = None, exchange: Optional[
     result = await session.execute(stmt)
     rows = result.fetchall()
     return [dict(row._mapping) for row in rows]
-
-
-async def get_symbol_id(session, symbol: str, exchange: str):
-    """
-    Get symbol_id from the markets table based on symbol and exchange
-
-    :param session: SQLAlchemy session
-    :param symbol: Market symbol
-    :param exchange: Market exchange
-
-    :return: symbol_id if found, None otherwise
-    :rtype: int or None
-
-    :raises ValueError: If symbol or exchange is not provided
-    :raises TypeError: If symbol or exchange is not a string
-    """
-
-    if not symbol or not exchange:
-        raise ValueError("Symbol and exchange must be provided")
-    if not isinstance(symbol, str) or not isinstance(exchange, str):
-        raise TypeError("Symbol and exchange must be strings")
-
-    query = text("""
-        SELECT symbol_id FROM markets WHERE symbol = :symbol AND exchange LIKE :exchange
-    """)
-    result = await session.execute(query, {"symbol": symbol, "exchange": exchange})
-    row = result.first()
-    return row[0] if row else None
 
 
 async def insert_candles(session, symbol_id: int, candles_data: list[dict]):

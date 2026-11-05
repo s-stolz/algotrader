@@ -8,17 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 _MARKETS: list[dict] = []
 _MARKETS_BY_SYMBOL: dict[str, list[dict]] = {}
-_MARKETS_BY_ID: dict[int, dict] = {}
 _CACHE_LOCK = asyncio.Lock()
 
 
 def _rebuild_cache(markets: list[dict]) -> None:
-    global _MARKETS, _MARKETS_BY_SYMBOL, _MARKETS_BY_ID
+    global _MARKETS, _MARKETS_BY_SYMBOL
     _MARKETS = list(markets)
     _MARKETS_BY_SYMBOL = {}
-    _MARKETS_BY_ID = {}
     for market in markets:
-        _MARKETS_BY_ID[market["symbol_id"]] = market
         _MARKETS_BY_SYMBOL.setdefault(market["symbol"], []).append(market)
 
     for entries in _MARKETS_BY_SYMBOL.values():
@@ -69,7 +66,3 @@ def resolve_symbol_id(
     if markets:
         return markets[0]["symbol_id"]
     return None
-
-
-def resolve_symbol(symbol_id: int) -> dict | None:
-    return _MARKETS_BY_ID.get(symbol_id)

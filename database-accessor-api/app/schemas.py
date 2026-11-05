@@ -31,10 +31,6 @@ class MarketIn(BaseModel):
         return value
 
 
-class MarketOut(MarketIn):
-    symbol_id: int
-
-
 class CandleIn(BaseModel):
     timestamp_ms: int
     open: float
