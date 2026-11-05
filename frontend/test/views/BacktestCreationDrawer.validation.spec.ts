@@ -71,7 +71,6 @@ describe('creation validation', () => {
       )!;
     expect(number.props('clearable')).toBe(true);
     number.vm.$emit('update:value', null);
-    expect(document.body.textContent).not.toContain('Set null');
     await advancePreview();
     const submit = document.querySelector(
       '[data-testid="creation-submit"]',

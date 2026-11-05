@@ -21,14 +21,6 @@ export function creationFields(
       value: market.symbol_id,
     })),
   );
-  const marketValue = computed(
-    () =>
-      markets.all.find(
-        (market) =>
-          market.symbol === draft.value.symbols[0] &&
-          market.exchange === draft.value.exchange,
-      )?.symbol_id,
-  );
   function parameterInput(parameter: StrategyParameterSchema): ParameterDraft {
     return (selections.value.parameters[parameter.name] ??= {
       mode: 'constant',
@@ -106,16 +98,13 @@ export function creationFields(
     selections.value.marketIds = [symbolId];
     draft.value.symbols = [market.symbol];
     draft.value.exchange = market.exchange;
-    delete fieldErrors.value.market;
   }
 
   function setDate(field: 'start_ms' | 'end_ms', value: string | null): void {
     draft.value[field] = value ? Date.parse(`${value}T00:00:00Z`) : 0;
-    delete fieldErrors.value.dates;
   }
   return {
     marketOptions,
-    marketValue,
     parameterInput,
     stringValues,
     selectedChoiceIndexes,

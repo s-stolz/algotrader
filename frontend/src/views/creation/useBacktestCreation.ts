@@ -135,7 +135,6 @@ export function useBacktestCreation(emit: CreationEvents) {
     setNumericValues,
     setupErrors,
     setupAttempted,
-    setupValidation,
     touchSetup,
     setupFocusRequest,
     resetSetupValidation,
@@ -392,20 +391,15 @@ export function useBacktestCreation(emit: CreationEvents) {
     ) {
       selectMarket(markets.all[0].symbol_id);
     } else if (!markets.all.length) {
-      void markets
-        .fetch()
-        .then(() => {
-          if (
-            !store.reuseSource &&
-            !selections.value.marketIds.length &&
-            markets.all.length
-          ) {
-            selectMarket(markets.all[0].symbol_id);
-          }
-        })
-        .catch(() => {
-          fieldErrors.value.market = 'Market options unavailable.';
-        });
+      void markets.fetch().then(() => {
+        if (
+          !store.reuseSource &&
+          !selections.value.marketIds.length &&
+          markets.all.length
+        ) {
+          selectMarket(markets.all[0].symbol_id);
+        }
+      });
     }
     void loadCatalog();
   });
@@ -414,7 +408,6 @@ export function useBacktestCreation(emit: CreationEvents) {
     scheduleDraft,
     setupErrors,
     setupAttempted,
-    setupValidation,
     touchSetup,
     setupFocusRequest,
     step,

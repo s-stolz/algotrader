@@ -94,18 +94,16 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     return !Object.keys(setupValidation.value).length;
   }
   function validateParameters(): boolean {
-    {
-      try {
-        buildBacktestRequest();
-      } catch (error) {
-        submitError.value =
-          error instanceof Error ? error.message : 'Complete parameter values.';
-        return false;
-      }
-      if (hasPendingNumericEntry.value) {
-        submitError.value = 'Finish adding or clear the numeric value.';
-        return false;
-      }
+    try {
+      buildBacktestRequest();
+    } catch (error) {
+      submitError.value =
+        error instanceof Error ? error.message : 'Complete parameter values.';
+      return false;
+    }
+    if (hasPendingNumericEntry.value) {
+      submitError.value = 'Finish adding or clear the numeric value.';
+      return false;
     }
     for (const parameter of selectedStrategy.value?.parameters ?? []) {
       if (parameterInput(parameter).mode !== 'constant') continue;
@@ -158,7 +156,6 @@ export function useCreationNavigation(inputs: NavigationInputs) {
   return {
     setupErrors,
     setupAttempted,
-    setupValidation,
     touchSetup,
     setupFocusRequest,
     resetSetupValidation,
@@ -169,7 +166,5 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     changeParameterMode,
     numericValues,
     setNumericValues,
-    validateSetup,
-    validateParameters,
   };
 }

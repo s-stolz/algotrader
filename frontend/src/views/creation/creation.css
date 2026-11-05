@@ -117,10 +117,6 @@
   max-width: 200px;
   margin: 12px 0;
 }
-:deep(.section-description) {
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
-}
 :deep(.preview-review .n-data-table-th),
 :deep(.preview-review .n-data-table-td) {
   white-space: nowrap;
