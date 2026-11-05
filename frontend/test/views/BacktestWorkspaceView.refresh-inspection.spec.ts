@@ -21,10 +21,9 @@ import {
   listBacktestRuns,
 } from '@/api/backtesterClient';
 
-describe('production Backtest Workspace: polling-inspection', () => {
+describe('production Backtest Workspace: refresh-inspection', () => {
   setupWorkspaceTests();
-  it('keeps settled replay series loaded across unchanged batch polling', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  it('keeps settled replay series loaded across unchanged batch refreshes', async () => {
     const members = [0, 1].map((ordinal) =>
       run(`member-${ordinal}`, { batch_id: 'stable', member_ordinal: ordinal }),
     );
@@ -77,7 +76,6 @@ describe('production Backtest Workspace: polling-inspection', () => {
         }),
       ]),
     );
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     expect(listBacktestBatchMembers).toHaveBeenCalledTimes(2);
@@ -118,7 +116,6 @@ describe('production Backtest Workspace: polling-inspection', () => {
   });
 
   it('keeps selected content steady while background detail reads are pending', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const saved = run('steady');
     vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
     vi.mocked(getBacktestRun).mockResolvedValue(saved);
@@ -130,14 +127,12 @@ describe('production Backtest Workspace: polling-inspection', () => {
       .get('[data-testid="workspace-current-backtest"]')
       .text();
     vi.mocked(getBacktestRun).mockImplementation(() => new Promise(() => {}));
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     expect(
       wrapper.get('[data-testid="workspace-current-backtest"]').text(),
     ).toBe(selectedTable);
     const reads = vi.mocked(getBacktestRun).mock.calls.length;
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     expect(getBacktestRun).toHaveBeenCalledTimes(reads);
@@ -145,7 +140,6 @@ describe('production Backtest Workspace: polling-inspection', () => {
   });
 
   it('keeps completed curves visible while another batch member settles', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const success = run('settled', { batch_id: 'active', member_ordinal: 0 });
     const pending = run('pending', {
       batch_id: 'active',
@@ -187,7 +181,6 @@ describe('production Backtest Workspace: polling-inspection', () => {
     vi.mocked(fetchBacktestEquityCurve).mockImplementation(
       () => new Promise(() => {}),
     );
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     expect(
@@ -210,8 +203,7 @@ describe('production Backtest Workspace: polling-inspection', () => {
     wrapper.unmount();
   });
 
-  it('preserves member logs and standalone log filters across history polls', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  it('preserves member logs and standalone log filters across history refreshes', async () => {
     const saved = run('standalone');
     const member = run('member', { batch_id: 'logs', member_ordinal: 0 });
     const accepted = batch('logs', 1);
@@ -240,7 +232,6 @@ describe('production Backtest Workspace: polling-inspection', () => {
       .querySelector<HTMLButtonElement>('[data-testid="execution-fills-tab"]')!
       .click();
     await wrapper.vm.$nextTick();
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     expect(
@@ -255,7 +246,6 @@ describe('production Backtest Workspace: polling-inspection', () => {
     await flushPromises();
     await wrapper.find('[data-testid="workspace-log-member"]').trigger('click');
     await flushPromises();
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     expect(document.body.textContent).toContain('Execution log · Run #1');

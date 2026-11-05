@@ -16,7 +16,7 @@ import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 
 import type { BacktestRun } from '@/types/backtesterContracts';
 
-describe('production Backtest Workspace: polling-selection', () => {
+describe('production Backtest Workspace: refresh-selection', () => {
   setupWorkspaceTests();
   it('ignores detail responses for a selection that has since changed', async () => {
     const first = run('first');

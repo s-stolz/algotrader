@@ -12,7 +12,7 @@ import { getBacktestRun, listBacktestRuns } from '@/api/backtesterClient';
 
 import type { BacktestRun } from '@/types/backtesterContracts';
 
-describe('production Backtest Workspace: polling-recovery', () => {
+describe('production Backtest Workspace: refresh-recovery', () => {
   setupWorkspaceTests();
   it('reports an unavailable initial history read without calling it empty', async () => {
     vi.mocked(listBacktestRuns).mockRejectedValue(
@@ -47,7 +47,6 @@ describe('production Backtest Workspace: polling-recovery', () => {
       wrapper.find('[data-testid="workspace-run-active"]').text(),
     ).toContain('running');
 
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     expect(
@@ -63,7 +62,6 @@ describe('production Backtest Workspace: polling-recovery', () => {
     );
 
     wrapper.unmount();
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     expect(listBacktestRuns).toHaveBeenCalledTimes(2);
@@ -135,7 +133,6 @@ describe('production Backtest Workspace: polling-recovery', () => {
     expect(wrapper.get('[data-testid="workspace-refresh"]').text()).toBe(
       'Retry now',
     );
-    vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
     await wrapper.find('[data-testid="workspace-refresh"]').trigger('click');

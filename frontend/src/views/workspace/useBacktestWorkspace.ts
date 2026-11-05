@@ -22,7 +22,7 @@ import { reuseBatch, reuseStandalone } from '../backtestReuse';
 import { runName } from '../backtestWorkspaceRuns';
 import { type HistoryEntry, rowKey } from './backtestHistoryRows';
 import { useBacktestHistory } from './useBacktestHistory';
-import { useBacktestHistoryPolling } from './useBacktestHistoryPolling';
+import { useBacktestHistoryRefresh } from './useBacktestHistoryRefresh';
 import { useWorkspaceAnalysis } from './useWorkspaceAnalysis';
 import { useWorkspaceCommands } from './useWorkspaceCommands';
 import { executionLogAvailable } from './workspaceExecution';
@@ -48,9 +48,9 @@ export function useBacktestWorkspace() {
     selectedRun,
   });
   const { selectedComparisonIds, loadAnalysis, setComparison } = inspection;
-  const polling = useBacktestHistoryPolling(reconcileHistory);
+  const historyRefresh = useBacktestHistoryRefresh(reconcileHistory);
   const { runs, batches, isLoading, isRefreshing, readError, loadRuns } =
-    polling;
+    historyRefresh;
   const history = {
     ...useBacktestHistory(runs, batches),
     runs,
@@ -361,7 +361,7 @@ export function useBacktestWorkspace() {
   function startUpdates(): void {
     if (isActive) return;
     isActive = true;
-    polling.start();
+    historyRefresh.start();
     if (marketsStore.all.length === 0) void marketsStore.fetch();
     void loadRuns();
     loadAnalysis();
@@ -369,7 +369,7 @@ export function useBacktestWorkspace() {
 
   function stopUpdates(): void {
     isActive = false;
-    polling.stop();
+    historyRefresh.stop();
     ++detailSequence;
     pendingDetailId = null;
     inspection.stop();

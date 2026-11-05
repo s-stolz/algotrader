@@ -3,7 +3,7 @@ import { listBacktestRuns, listBacktestBatches } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import type { BacktestRun, BacktestBatch } from '@/types/backtesterContracts';
 import { errorMessage } from './workspaceErrors';
-export function useBacktestHistoryPolling(
+export function useBacktestHistoryRefresh(
   onHistory: (runs: BacktestRun[], batches: BacktestBatch[]) => void,
 ) {
   const workspaceStore = useBacktestWorkspaceStore();
