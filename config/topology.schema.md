@@ -98,8 +98,9 @@ runtime-specific constraints. Backtester API/worker tuning is grouped under
 `services.broker_service`.
 
 Worker heartbeat intervals are positive; the stale threshold must exceed the
-heartbeat interval. The legacy poll interval is still validated as positive but
-does not schedule worker reads. The sweep candidate limit is a positive integer.
+heartbeat interval. The unused `poll_interval_seconds` setting is accepted for
+compatibility with older configurations and must remain positive. The worker
+waits for Redis notifications instead. The sweep candidate limit is a positive integer.
 Broker stream `max_length: null` preserves the existing unlimited retention and
 omits the corresponding `BROKER_*_STREAM_MAXLEN` variable from the generated file.
 Broker `streams.redis_db` selects its Redis database independently of the shared
