@@ -11,7 +11,7 @@ and shared Python Timeframe helpers. Centralize reusable Timeframe behavior here
   identities, and queue/heartbeat primitives through unchanged. Backtester owns
   policy and public projections; the accessor owns transactions. Read
   [backtest contracts](../docs/contracts/backtests.md) when changing those payloads.
-- Run/batch creation and read payloads preserve top-level experiment `name`
+- Backtest creation and read payloads preserve top-level experiment `name`
   independently of execution JSON; sync and async clients pass it through
   unchanged. Naming policy belongs to the
   [public/storage contract](../docs/contracts/backtests.md#experiment-names).

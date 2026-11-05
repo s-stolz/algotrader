@@ -5,29 +5,28 @@ import DesignScope from '@/components/Common/DesignScope.vue';
 
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
 
-import { afterEach, beforeEach, expect, vi } from 'vitest';
+import { afterEach, beforeEach, expect, onTestFinished, vi } from 'vitest';
 
 import {
   renameExperiment,
   cancelBacktestRun,
-  controlBacktestBatch,
-  deleteBacktestBatch,
-  deleteBacktestRun,
+  controlBacktest,
+  deleteBacktest,
   fetchBacktestClosedTrades,
   fetchBacktestEquityCurve,
   fetchBacktestFills,
   fetchBacktestQueue,
-  getBacktestBatch,
+  getBacktest,
   getBacktestRun,
-  listBacktestBatchEvents,
-  listBacktestBatchMembers,
-  listBacktestBatches,
+  listBacktestEvents,
+  listBacktestMembers,
+  listBacktests,
   listBacktestRuns,
 } from '@/api/backtesterClient';
 
 import { useMarketsStore } from '@/stores/marketsStore';
 import type {
-  BacktestBatch,
+  Backtest,
   BacktestClosedTrade,
   BacktestFill,
   BacktestRun,
@@ -53,27 +52,25 @@ vi.mock('@/api/backtesterClient', () => ({
       ],
     },
   ]),
-  previewParameterSweep: vi
+  previewBacktest: vi
     .fn()
     .mockImplementation(() => new Promise<never>(() => {})),
   cancelBacktestRun: vi.fn(),
-  controlBacktestBatch: vi.fn(),
+  controlBacktest: vi.fn(),
   renameExperiment: vi.fn(),
-  deleteBacktestBatch: vi.fn(),
-  deleteBacktestRun: vi.fn(),
+  deleteBacktest: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   fetchBacktestEquityCurve: vi.fn(),
   fetchBacktestFills: vi.fn(),
   fetchBacktestQueue: vi.fn(),
-  fetchSweepCapabilities: vi.fn().mockResolvedValue({
-    max_sweep_candidate_count: 1000,
-    batch_acceptance_enabled: true,
+  fetchBacktestCapabilities: vi.fn().mockResolvedValue({
+    max_backtest_candidate_count: 1000,
   }),
   getBacktestRun: vi.fn(),
-  getBacktestBatch: vi.fn(),
-  listBacktestBatchEvents: vi.fn(),
-  listBacktestBatchMembers: vi.fn(),
-  listBacktestBatches: vi.fn(),
+  getBacktest: vi.fn(),
+  listBacktestEvents: vi.fn(),
+  listBacktestMembers: vi.fn(),
+  listBacktests: vi.fn(),
   listBacktestRuns: vi.fn(),
 }));
 
@@ -82,6 +79,8 @@ export function run(
   overrides: Partial<BacktestRun> = {},
 ): BacktestRun {
   return {
+    backtest_id: 'backtest-1',
+    run_ordinal: 0,
     run_id: id,
     status: 'succeeded',
     submitted_at_ms: 1_780_921_805_123,
@@ -110,7 +109,6 @@ export function run(
         commission_bps: 1,
         slippage_bps: 0.5,
       },
-      persist_result: true,
     },
     result_schema_version: 3,
     metrics: {
@@ -128,16 +126,16 @@ export function run(
   };
 }
 
-export function batch(id: string, members: number): BacktestBatch {
+export function backtest(id: string, members: number): Backtest {
   return {
-    batch_id: id,
+    backtest_id: id,
     submission_id: `${id}-submission`,
     status: 'completed',
     accepted_at_ms: 1_780_000_000_000,
     started_at_ms: 1_780_000_001_000,
     completed_at_ms: 1_780_000_002_000,
-    active_member_ordinal: null,
-    next_member_ordinal: null,
+    active_run_ordinal: null,
+    next_run_ordinal: null,
     lifecycle_revision: 1,
     definition_schema_version: 1,
     accepted_definition: {
@@ -183,14 +181,19 @@ export function batch(id: string, members: number): BacktestBatch {
   };
 }
 
-export function mountWorkspace(includeBatchDetail = false) {
-  return mount(DesignScope, {
+export function mountWorkspace(includeBacktestDetail = false) {
+  const wrapper = mount(DesignScope, {
     slots: { default: () => h(BacktestWorkspaceView) },
     global: {
       plugins: [pinia],
-      stubs: { EquityReplayCharts: true, BacktestBatches: !includeBatchDetail },
+      stubs: {
+        EquityReplayCharts: true,
+        BacktestOverview: !includeBacktestDetail,
+      },
     },
   });
+  onTestFinished(() => wrapper.unmount());
+  return wrapper;
 }
 
 export async function toggleAnalysisColumns(
@@ -256,16 +259,15 @@ export function setupWorkspaceTests() {
     localStorage.clear();
     routerMock.push.mockReset();
     vi.mocked(listBacktestRuns).mockReset();
-    vi.mocked(listBacktestBatches).mockReset().mockResolvedValue([]);
-    vi.mocked(getBacktestBatch).mockReset();
-    vi.mocked(listBacktestBatchMembers).mockReset();
-    vi.mocked(listBacktestBatchEvents).mockReset();
+    vi.mocked(listBacktests).mockReset().mockResolvedValue([]);
+    vi.mocked(getBacktest).mockReset();
+    vi.mocked(listBacktestMembers).mockReset();
+    vi.mocked(listBacktestEvents).mockReset();
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(renameExperiment).mockReset();
     vi.mocked(cancelBacktestRun).mockReset();
-    vi.mocked(controlBacktestBatch).mockReset();
-    vi.mocked(deleteBacktestRun).mockReset();
-    vi.mocked(deleteBacktestBatch).mockReset();
+    vi.mocked(controlBacktest).mockReset();
+    vi.mocked(deleteBacktest).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
     vi.mocked(fetchBacktestEquityCurve).mockReset();
     vi.mocked(fetchBacktestEquityCurve).mockResolvedValue({
@@ -286,8 +288,7 @@ export function setupWorkspaceTests() {
       operational_faults: [],
       queued: [],
     });
-    vi.mocked(deleteBacktestRun).mockResolvedValue();
-    vi.mocked(deleteBacktestBatch).mockResolvedValue();
+    vi.mocked(deleteBacktest).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
     vi.mocked(fetchBacktestFills).mockResolvedValue([]);
     useMarketsStore().all = [
@@ -309,3 +310,20 @@ export function setupWorkspaceTests() {
 }
 
 export { routerMock };
+
+export function seedBacktest(members: BacktestRun[]) {
+  const id = members[0].run_id;
+  members.forEach((member, ordinal) => {
+    member.backtest_id = id;
+    member.run_ordinal = ordinal;
+  });
+  const accepted = backtest(id, members.length);
+  vi.mocked(listBacktests).mockResolvedValue([accepted]);
+  vi.mocked(getBacktest).mockResolvedValue(accepted);
+  vi.mocked(listBacktestMembers).mockResolvedValue(members);
+  vi.mocked(listBacktestEvents).mockResolvedValue([]);
+  vi.mocked(getBacktestRun).mockImplementation(
+    async (id) => members.find((run) => run.run_id === id)!,
+  );
+  return accepted;
+}

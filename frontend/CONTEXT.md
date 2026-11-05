@@ -49,12 +49,12 @@ and behavior that is easy to break when changing them.
 - Start at `src/views/BacktestWorkspaceView.vue` and
   `src/stores/backtestWorkspaceStore.ts`; creation lives in
   `src/views/BacktestCreationDrawer.vue`. Its feature-local `creation/` sections
-  share `useBacktestCreation.ts`, which owns draft/sweep retention, reuse revisions,
+  share `useBacktestCreation.ts`, which owns draft/selection retention, reuse revisions,
   preview generations/debounce cleanup, and submission identity. `src/App.vue`
   keeps routed views alive:
   navigation preserves drafts, history filters, and comparison selections.
 - Creation retains an optional experiment name alongside draft fields. Names
-  are top-level creation properties; omit them from stateless sweep preview.
+  are top-level creation properties; omit them from stateless preview.
   History/detail names and member labels share `backtestWorkspaceRuns.ts`; use
   that displayed name for search and sorting, with UUIDs beneath history labels.
   Validation and exact unnamed text follow
@@ -75,14 +75,14 @@ and behavior that is easy to break when changing them.
   update matching worker freshness without polling. The socket restores desired
   subscriptions after reconnect. See [delivery contracts](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
 - Failed reads or disconnected delivery retain the last good data and mark live status unknown.
-  Ignore superseded responses after changing the inspected run, batch, or draft.
+  Ignore superseded responses after changing the inspected Run, Backtest, or draft.
   Background refresh preserves settled charts and inspection state.
 - Creation uses the current strategy catalog; historical inspection uses saved
   requests and metadata. Reuse applies the current Strategy Version automatically,
-  retains explicit saved values, and updates previously defaulted parameters. Show
+  retains all saved resolved values, including values that originally used defaults. Show
   version changes beside the strategy and schema changes beside parameter fields;
   invalid values still block submission. Keep submission/command identities across retries;
-  submission follows explicit user action and advertised backend capability.
+  submission follows explicit user action and a successful current preview.
   `src/views/backtestReuse.ts` proposes editable names from saved top-level names
   with a complete ` (copy)` suffix, shortening by Unicode characters to fit the
   existing limit. Unnamed sources leave the draft empty; copied names use the
@@ -98,9 +98,9 @@ and behavior that is easy to break when changing them.
   Validation, draft retention, and reuse follow the shared execution contract.
 - `BacktestScheduleFields.vue` edits optional UTC daily execution boundaries in
   the shared creation execution controls. Omitted/null schedules are disabled;
-  enabled settings survive draft retention and saved-run/batch reuse. Validation
-  blocks invalid ordering before submission or sweep preview. These are shared
-  sweep settings rather than strategy parameter axes.
+  enabled settings survive draft retention and saved Run/Backtest reuse. Validation
+  blocks invalid ordering before submission or preview. These are shared
+  Backtest settings rather than strategy parameter axes.
 - Creation calendar dates convert explicitly to UTC midnight. Chart timestamp
   conversion follows the root transport contract.
 

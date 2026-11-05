@@ -30,7 +30,12 @@ def _state():
             "fault_code": None,
             "fault_message": None,
         },
-        "active_run": {"run_id": "active", "started_at": 10_000},
+        "active_run": {
+            "run_id": "active",
+            "started_at": 10_000,
+            "backtest_id": "active-backtest",
+            "run_ordinal": 0,
+        },
         "heartbeats": [
             {
                 "worker_id": "worker-a",
@@ -40,25 +45,26 @@ def _state():
                 "fault_message": None,
             }
         ],
-        "queued_runs": [
-            {"run_id": "queued-a", "submitted_at": 11_000},
-            {"run_id": "queued-b", "submitted_at": 12_000},
-        ],
         "queued_entries": [
             {
-                "entry_type": "standalone",
                 "run_id": "queued-a",
-                "batch_id": None,
+                "backtest_id": "backtest-1",
                 "submitted_at": 11_000,
-                "next_member_ordinal": None,
-                "outcome_counts": None,
+                "next_run_ordinal": 0,
+                "outcome_counts": {
+                    "queued": 1,
+                    "running": 0,
+                    "cancelling": 0,
+                    "succeeded": 0,
+                    "failed": 0,
+                    "cancelled": 0,
+                },
             },
             {
-                "entry_type": "batch",
                 "run_id": "queued-b",
-                "batch_id": "batch-b",
+                "backtest_id": "backtest-b",
                 "submitted_at": 12_000,
-                "next_member_ordinal": 0,
+                "next_run_ordinal": 0,
                 "outcome_counts": {
                     "queued": 2,
                     "running": 0,
@@ -81,8 +87,8 @@ class BacktestQueueTests(unittest.TestCase):
         self.assertEqual(snapshot["active_run"]["started_at_ms"], 10_000)
         self.assertEqual(snapshot["last_heartbeat_ms"], 45_000)
         self.assertEqual([entry["estimated_position"] for entry in snapshot["queued"]], [1, 2])
-        self.assertEqual(snapshot["queued"][1]["batch_id"], "batch-b")
-        self.assertIsNone(snapshot["queued"][1]["run_id"])
+        self.assertEqual(snapshot["queued"][1]["backtest_id"], "backtest-b")
+        self.assertEqual(snapshot["queued"][1]["next_run_ordinal"], 0)
         self.assertEqual(state["queued_entries"][1]["run_id"], "queued-b")
         self.assertEqual(state, _state())
 
@@ -123,9 +129,10 @@ class BacktestQueueTests(unittest.TestCase):
         with TestClient(create_app(queue_service=BacktestQueueService(reader))) as client:
             response = client.get("/backtests/queue")
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["queued"][0]["run_id"], "queued-a")
+            self.assertEqual(response.json()["queued"][0]["backtest_id"], "backtest-1")
             fixture = (
-                Path(__file__).resolve().parents[3] / "frontend/test/fixtures/queuedBatchQueue.json"
+                Path(__file__).resolve().parents[3]
+                / "frontend/test/fixtures/queuedBacktestQueue.json"
             )
             self.assertEqual(response.json(), json.loads(fixture.read_text(encoding="utf-8")))
             self.assertEqual(client.get("/backtests/queue/health").status_code, 200)

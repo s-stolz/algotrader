@@ -37,9 +37,9 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
                 "BACKTESTER_WORKER_STALE_AFTER_SECONDS",
             ),
             (
-                "services.backtester.sweeps.max_candidate_count",
+                "services.backtester.backtests.max_candidate_count",
                 250,
-                "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT",
+                "BACKTESTER_MAX_BACKTEST_CANDIDATE_COUNT",
             ),
             (
                 "services.realtime_service.consumer.block_ms",
@@ -241,7 +241,7 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(shared_env["BACKTESTER_LOG_FORMAT"], "pretty")
         self.assertEqual(shared_env["BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS"], "5.0")
         self.assertEqual(shared_env["BACKTESTER_WORKER_STALE_AFTER_SECONDS"], "30.0")
-        self.assertEqual(shared_env["BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT"], "1000")
+        self.assertEqual(shared_env["BACKTESTER_MAX_BACKTEST_CANDIDATE_COUNT"], "1000")
         self.assertEqual(
             shared_env["VITE_PROXY_BACKTESTER_TARGET"],
             "http://backtester-api:8020",

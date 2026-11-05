@@ -10,10 +10,10 @@ import {
   BACKTEST_ALLOWED_DIRECTIONS_SET,
   isStrategyCatalog,
 } from './requests';
-import { type SweepPreview, isSweepMarket } from './sweeps';
+import { type BacktestPreview, isBacktestMarket } from './definitions';
 import { isEpochMs, isOrdinal } from './validation';
 
-export const BACKTEST_BATCH_STATUSES = [
+export const BACKTEST_STATUSES = [
   'queued',
   'running',
   'pausing',
@@ -23,27 +23,27 @@ export const BACKTEST_BATCH_STATUSES = [
   'cancelled',
 ] as const;
 
-export type BacktestBatchStatus = (typeof BACKTEST_BATCH_STATUSES)[number];
+export type BacktestStatus = (typeof BACKTEST_STATUSES)[number];
 
-export interface BacktestBatch {
-  batch_id: string;
+export interface Backtest {
+  backtest_id: string;
   name?: string | null;
   submission_id: string;
-  status: BacktestBatchStatus;
+  status: BacktestStatus;
   accepted_at_ms: number;
   started_at_ms: number | null;
   completed_at_ms: number | null;
   cancel_requested_at_ms?: number | null;
   cancellation_source?: string | null;
   cancellation_reason?: string | null;
-  active_member_ordinal: number | null;
-  next_member_ordinal: number | null;
+  active_run_ordinal: number | null;
+  next_run_ordinal: number | null;
   lifecycle_revision: number;
   definition_schema_version: 1;
   accepted_definition: {
     schema_version: 1;
     shared_request: JsonObject;
-    normalized_selections: SweepPreview['normalized_selections'];
+    normalized_selections: BacktestPreview['normalized_selections'];
   };
   strategy_metadata: StrategyCatalogEntry;
   raw_count: number;
@@ -65,21 +65,21 @@ export interface BacktestBatch {
   strategy_version: number;
 }
 
-export interface BacktestBatchEvent {
-  batch_id: string;
+export interface BacktestEvent {
+  backtest_id: string;
   revision: number;
   event_type: string;
-  prior_status: BacktestBatchStatus | null;
-  status: BacktestBatchStatus;
+  prior_status: BacktestStatus | null;
+  status: BacktestStatus;
   occurred_at_ms: number;
   trigger_run_id: string | null;
   reason: string | null;
   command_id?: string | null;
 }
 
-export function isBatchOutcomeCounts(
+export function isBacktestOutcomeCounts(
   value: unknown,
-): value is BacktestBatch['outcome_counts'] {
+): value is Backtest['outcome_counts'] {
   return (
     isRecord(value) &&
     [
@@ -96,15 +96,15 @@ export function isBatchOutcomeCounts(
   );
 }
 
-export function isBacktestBatch(value: unknown): value is BacktestBatch {
+export function isBacktest(value: unknown): value is Backtest {
   if (!isRecord(value) || !isRecord(value.accepted_definition)) return false;
   const definition = value.accepted_definition;
   return (
-    isNonEmptyString(value.batch_id) &&
+    isNonEmptyString(value.backtest_id) &&
     isExperimentName(value.name) &&
     isNonEmptyString(value.submission_id) &&
     typeof value.status === 'string' &&
-    BACKTEST_BATCH_STATUSES.includes(value.status as BacktestBatchStatus) &&
+    BACKTEST_STATUSES.includes(value.status as BacktestStatus) &&
     Number.isInteger(value.accepted_at_ms) &&
     (value.accepted_at_ms as number) > 0 &&
     (value.started_at_ms === null || isEpochMs(value.started_at_ms)) &&
@@ -124,10 +124,9 @@ export function isBacktestBatch(value: unknown): value is BacktestBatch {
         isNonEmptyString(value.cancellation_reason))) &&
     (value.status !== 'cancelling' || value.completed_at_ms === null) &&
     (value.status !== 'cancelled' || isEpochMs(value.completed_at_ms)) &&
-    (value.active_member_ordinal === null ||
-      isOrdinal(value.active_member_ordinal)) &&
-    (value.next_member_ordinal === null ||
-      isOrdinal(value.next_member_ordinal)) &&
+    (value.active_run_ordinal === null ||
+      isOrdinal(value.active_run_ordinal)) &&
+    (value.next_run_ordinal === null || isOrdinal(value.next_run_ordinal)) &&
     Number.isInteger(value.lifecycle_revision) &&
     (value.lifecycle_revision as number) >= 0 &&
     value.definition_schema_version === 1 &&
@@ -135,7 +134,7 @@ export function isBacktestBatch(value: unknown): value is BacktestBatch {
     isJsonObject(definition.shared_request) &&
     isRecord(definition.normalized_selections) &&
     Array.isArray(definition.normalized_selections.markets) &&
-    definition.normalized_selections.markets.every(isSweepMarket) &&
+    definition.normalized_selections.markets.every(isBacktestMarket) &&
     Array.isArray(definition.normalized_selections.timeframes) &&
     definition.normalized_selections.timeframes.every(isNonEmptyString) &&
     isRecord(definition.normalized_selections.parameters) &&
@@ -158,7 +157,7 @@ export function isBacktestBatch(value: unknown): value is BacktestBatch {
     value.total_count === value.member_count &&
     Number.isInteger(value.settled_count) &&
     Number.isInteger(value.executed_count) &&
-    isBatchOutcomeCounts(value.outcome_counts) &&
+    isBacktestOutcomeCounts(value.outcome_counts) &&
     Object.values(value.outcome_counts).reduce(
       (sum: number, count: unknown) =>
         sum + (typeof count === 'number' ? count : 0),
@@ -197,29 +196,27 @@ export function isBacktestBatch(value: unknown): value is BacktestBatch {
   );
 }
 
-export function isBacktestBatchArray(value: unknown): value is BacktestBatch[] {
-  return Array.isArray(value) && value.every(isBacktestBatch);
+export function isBacktestArray(value: unknown): value is Backtest[] {
+  return Array.isArray(value) && value.every(isBacktest);
 }
 
-export function isBacktestBatchEventArray(
-  value: unknown,
-): value is BacktestBatchEvent[] {
+export function isBacktestEventArray(value: unknown): value is BacktestEvent[] {
   return (
     Array.isArray(value) &&
     value.every(
       (event: unknown, index: number) =>
         isRecord(event) &&
-        isNonEmptyString(event.batch_id) &&
+        isNonEmptyString(event.backtest_id) &&
         Number.isInteger(event.revision) &&
         (event.revision as number) >= 0 &&
         isNonEmptyString(event.event_type) &&
         (event.prior_status === null ||
           (typeof event.prior_status === 'string' &&
-            BACKTEST_BATCH_STATUSES.includes(
-              event.prior_status as BacktestBatchStatus,
+            BACKTEST_STATUSES.includes(
+              event.prior_status as BacktestStatus,
             ))) &&
         typeof event.status === 'string' &&
-        BACKTEST_BATCH_STATUSES.includes(event.status as BacktestBatchStatus) &&
+        BACKTEST_STATUSES.includes(event.status as BacktestStatus) &&
         isEpochMs(event.occurred_at_ms) &&
         (event.trigger_run_id === null ||
           isNonEmptyString(event.trigger_run_id)) &&

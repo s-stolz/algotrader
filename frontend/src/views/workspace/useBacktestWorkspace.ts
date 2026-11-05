@@ -16,9 +16,9 @@ import {
   getBacktestRunSelectability,
 } from '@/stores/backtestOverlayStore';
 import { useMarketsStore } from '@/stores/marketsStore';
-import type { BacktestRun, BacktestBatch } from '@/types/backtesterContracts';
+import type { BacktestRun, Backtest } from '@/types/backtesterContracts';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
-import { reuseBatch, reuseStandalone } from '../backtestReuse';
+import { reuseBacktest, reuseRun } from '../backtestReuse';
 import { runName } from '../backtestWorkspaceRuns';
 import { type HistoryEntry, rowKey } from './backtestHistoryRows';
 import { useBacktestHistory } from './useBacktestHistory';
@@ -38,35 +38,33 @@ export function useBacktestWorkspace() {
   );
   const detailError = ref<string | null>(null);
   const selectionNotice = ref<string | null>(null);
-  const batchMembers = ref<BacktestRun[]>([]);
-  const selectedBatchId = ref<string | null>(null);
+  const backtestMembers = ref<BacktestRun[]>([]);
+  const selectedBacktestId = ref<string | null>(null);
   const selectedRunId = computed(() => workspaceStore.selectedRunId);
   const selectedRun = computed(() => workspaceStore.selectedRun);
   const inspection = useWorkspaceAnalysis({
-    selectedBatchId,
-    batchMembers,
+    selectedBacktestId,
+    backtestMembers,
     selectedRun,
   });
   const { selectedComparisonIds, loadAnalysis, setComparison } = inspection;
   const historyRefresh = useBacktestHistoryRefresh(reconcileHistory);
-  const { runs, batches, isLoading, isRefreshing, readError, loadRuns } =
+  const { backtests, isLoading, isRefreshing, readError, loadHistory } =
     historyRefresh;
   const history = {
-    ...useBacktestHistory(runs, batches),
-    runs,
-    batches,
+    ...useBacktestHistory(backtests),
+    backtests,
     isLoading,
     isRefreshing,
     readError,
   };
   const commands = useWorkspaceCommands({
-    selectedBatchId,
+    selectedBacktestId,
     receiveMembers,
     refreshWorkspace,
     refreshQueue,
-    loadRuns,
-    onRunDeleted,
-    onBatchDeleted,
+    loadHistory,
+    onBacktestDeleted,
   });
   const creationOpen = ref(false);
   const creationSession = ref(0);
@@ -75,9 +73,9 @@ export function useBacktestWorkspace() {
     page.value = 'history';
     void router.push('/backtests');
   }
-  function showAnalysis(kind: 'run' | 'batch', id: string): void {
+  function showAnalysis(id: string): void {
     page.value = 'analysis';
-    void router.push(`/backtests/${kind}/${encodeURIComponent(id)}`);
+    void router.push(`/backtests/${encodeURIComponent(id)}`);
   }
   const logRun = ref<BacktestRun | null>(null);
   const openingChartRunId = ref<string | null>(null);
@@ -96,12 +94,8 @@ export function useBacktestWorkspace() {
     if (background && pendingDetailId === runId) return;
     pendingDetailId = runId;
     const sequence = ++detailSequence;
-    const nameReadRevision = workspaceStore.nameRevision;
     try {
-      const detail = workspaceStore.preserveRunName(
-        await getBacktestRun(runId),
-        nameReadRevision,
-      );
+      const detail = await getBacktestRun(runId);
       if (
         sequence === detailSequence &&
         workspaceStore.selectedRunId === runId
@@ -127,12 +121,12 @@ export function useBacktestWorkspace() {
     }
   }
 
-  function receiveMembers(batchId: string, members: BacktestRun[]): void {
-    if (batchId !== selectedBatchId.value) return;
+  function receiveMembers(backtestId: string, members: BacktestRun[]): void {
+    if (backtestId !== selectedBacktestId.value) return;
     const changed =
-      JSON.stringify(batchMembers.value) !== JSON.stringify(members);
-    if (changed) batchMembers.value = members;
-    if (logRun.value?.batch_id === batchId) {
+      JSON.stringify(backtestMembers.value) !== JSON.stringify(members);
+    if (changed) backtestMembers.value = members;
+    if (logRun.value?.backtest_id === backtestId) {
       const updatedLogRun = members.find(
         (run) => run.run_id === logRun.value?.run_id,
       );
@@ -149,72 +143,45 @@ export function useBacktestWorkspace() {
     if (selected && changed) workspaceStore.selectRun(selected);
   }
 
-  function reconcileHistory(
-    latest: BacktestRun[],
-    latestBatches: BacktestBatch[],
-  ): void {
-    if (logRun.value && !logRun.value.batch_id) {
-      const updatedLogRun = latest.find(
-        (run) => run.run_id === logRun.value?.run_id,
-      );
-      logRun.value =
-        updatedLogRun && executionLogAvailable(updatedLogRun)
-          ? updatedLogRun
-          : null;
-    }
+  function reconcileHistory(latestBacktests: Backtest[]): void {
     if (
-      (overlayStore.selectedRun?.batch_id &&
-        !latestBatches.some(
-          (batch) => batch.batch_id === overlayStore.selectedRun?.batch_id,
-        )) ||
-      (overlayStore.selectedRun &&
-        !overlayStore.selectedRun.batch_id &&
-        !latest.some((run) => run.run_id === overlayStore.selectedRunId))
+      overlayStore.selectedRun &&
+      !latestBacktests.some(
+        (backtest) =>
+          backtest.backtest_id === overlayStore.selectedRun?.backtest_id,
+      )
     ) {
       overlayStore.clearOverlay();
       selectionNotice.value =
-        'The chart overlay was cleared because its saved Backtest is unavailable.';
+        'The chart overlay was cleared because its Backtest is unavailable.';
     }
     if (
-      selectedBatchId.value &&
-      !latestBatches.some((batch) => batch.batch_id === selectedBatchId.value)
+      selectedBacktestId.value &&
+      !latestBacktests.some(
+        (backtest) => backtest.backtest_id === selectedBacktestId.value,
+      )
     ) {
-      selectedBatchId.value = null;
-      batchMembers.value = [];
+      selectedBacktestId.value = null;
+      backtestMembers.value = [];
       workspaceStore.clearSelection();
       ++detailSequence;
       setComparison([]);
-      selectionNotice.value =
-        'The selected Backtest Batch is no longer available.';
+      selectionNotice.value = 'The selected Backtest is no longer available.';
     }
-    const selected = latest.find((run) => run.run_id === selectedRunId.value);
-    if (selected) {
-      const changed =
-        JSON.stringify(selectedRun.value) !== JSON.stringify(selected);
-      if (changed) workspaceStore.selectRun(selected);
-      void loadSelected(selected.run_id, true);
-      if (changed) setComparison(selectedComparisonIds.value);
-    } else if (selectedBatchId.value && selectedRunId.value) {
+    if (selectedBacktestId.value && selectedRunId.value)
       void loadSelected(selectedRunId.value, true);
-    } else if (selectedRunId.value) {
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
-      selectionNotice.value =
-        'The selected Backtest Run is no longer available.';
-    }
   }
   function refreshWorkspace(): Promise<void> {
     isRefreshing.value = true;
     if (selectedComparisonIds.value.length) loadAnalysis(true);
     void queueHealth.value?.refresh();
-    return loadRuns();
+    return loadHistory();
   }
 
   function selectRun(run: BacktestRun): void {
     workspaceStore.selectRun(run);
     if (
-      selectedBatchId.value === null ||
+      selectedBacktestId.value === null ||
       selectedComparisonIds.value.length === 0
     ) {
       setComparison(run.status === 'succeeded' ? [run.run_id] : []);
@@ -223,11 +190,7 @@ export function useBacktestWorkspace() {
   }
 
   function createFrom(entry: HistoryEntry): void {
-    workspaceStore.createFromSaved(
-      entry.kind === 'run'
-        ? reuseStandalone(entry.run)
-        : reuseBatch(entry.batch),
-    );
+    workspaceStore.createFromSaved(reuseBacktest(entry.backtest));
     creationOpen.value = true;
   }
 
@@ -237,56 +200,34 @@ export function useBacktestWorkspace() {
     creationSession.value += 1;
   }
 
-  async function createdBatch(batchId: string): Promise<void> {
+  async function createdBacktest(backtestId: string): Promise<void> {
     finishCreation();
-    selectedBatchId.value = batchId;
-    batchMembers.value = [];
+    selectedBacktestId.value = backtestId;
+    backtestMembers.value = [];
     workspaceStore.clearSelection();
     ++detailSequence;
     setComparison([]);
-    showAnalysis('batch', batchId);
+    showAnalysis(backtestId);
     await refreshWorkspace();
   }
 
-  async function createdRun(runId: string): Promise<void> {
-    finishCreation();
-    void queueHealth.value?.refresh();
-    try {
-      selectedBatchId.value = null;
-      batchMembers.value = [];
-      selectRun(await getBacktestRun(runId));
-      showAnalysis('run', runId);
-      detailError.value = null;
-    } catch (error) {
-      detailError.value = errorMessage(error);
-    }
-    await loadRuns();
+  function createFromRun(run: BacktestRun): void {
+    workspaceStore.createFromSaved(reuseRun(run, marketsStore.all));
+    creationOpen.value = true;
   }
-
   function historyRowProps(entry: HistoryEntry): Record<string, unknown> {
-    const isRun = entry.kind === 'run';
     const select = () => {
       selectionNotice.value = null;
-      showAnalysis(entry.kind, rowKey(entry));
-      if (entry.kind === 'run') {
-        selectedBatchId.value = null;
-        batchMembers.value = [];
-        selectRun(entry.run);
-      } else {
-        selectedBatchId.value = entry.batch.batch_id;
-        batchMembers.value = [];
-        workspaceStore.clearSelection();
-        ++detailSequence;
-        setComparison([]);
-      }
+      showAnalysis(rowKey(entry));
+      selectedBacktestId.value = entry.backtest.backtest_id;
+      backtestMembers.value = [];
+      workspaceStore.clearSelection();
+      ++detailSequence;
+      setComparison([]);
     };
     return {
-      'data-testid': isRun
-        ? `workspace-run-${entry.run.run_id}`
-        : `workspace-batch-${entry.batch.batch_id}`,
-      'aria-selected': isRun
-        ? selectedRunId.value === entry.run.run_id
-        : selectedBatchId.value === entry.batch.batch_id,
+      'data-testid': `workspace-backtest-${entry.backtest.backtest_id}`,
+      'aria-selected': selectedBacktestId.value === entry.backtest.backtest_id,
       style: { cursor: 'pointer' },
       tabindex: 0,
       onClick: select,
@@ -302,39 +243,25 @@ export function useBacktestWorkspace() {
   function refreshQueue(): void {
     void queueHealth.value?.refresh();
   }
-  function onRunDeleted(run: BacktestRun): void {
-    if (logRun.value?.run_id === run.run_id) logRun.value = null;
-    if (selectedRunId.value === run.run_id) {
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
-    }
-    if (overlayStore.selectedRunId === run.run_id) {
-      overlayStore.clearOverlay();
-      selectionNotice.value =
-        'The deleted Backtest Run was removed from the chart overlay.';
-    }
-  }
-  function onBatchDeleted(batch: BacktestBatch): void {
-    const overlayBelongsToBatch =
-      overlayStore.selectedRun?.batch_id === batch.batch_id ||
-      batchMembers.value.some(
+  function onBacktestDeleted(backtest: Backtest): void {
+    const overlayBelongsToBacktest =
+      overlayStore.selectedRun?.backtest_id === backtest.backtest_id ||
+      backtestMembers.value.some(
         (member) => member.run_id === overlayStore.selectedRunId,
       );
-    if (selectedBatchId.value === batch.batch_id) {
-      selectedBatchId.value = null;
-      batchMembers.value = [];
+    if (selectedBacktestId.value === backtest.backtest_id) {
+      selectedBacktestId.value = null;
+      backtestMembers.value = [];
       workspaceStore.clearSelection();
       ++detailSequence;
       setComparison([]);
       logRun.value = null;
-      selectionNotice.value =
-        'The deleted Backtest Batch is no longer selected.';
+      selectionNotice.value = 'The deleted Backtest is no longer selected.';
     }
-    if (overlayBelongsToBatch) {
+    if (overlayBelongsToBacktest) {
       overlayStore.clearOverlay();
       selectionNotice.value =
-        'The deleted Backtest Batch was removed from the chart overlay.';
+        'The deleted Backtest was removed from the chart overlay.';
     }
   }
   async function openOnChart(run: BacktestRun): Promise<void> {
@@ -363,7 +290,7 @@ export function useBacktestWorkspace() {
     isActive = true;
     historyRefresh.start();
     if (marketsStore.all.length === 0) void marketsStore.fetch();
-    void loadRuns();
+    void loadHistory();
     loadAnalysis();
   }
 
@@ -386,41 +313,18 @@ export function useBacktestWorkspace() {
       }
       const id = String(params.id);
       page.value = 'analysis';
-      if (params.kind === 'batch') {
-        if (selectedBatchId.value === id) return;
-        selectedBatchId.value = id;
-        batchMembers.value = [];
-        workspaceStore.clearSelection();
-        ++detailSequence;
-        setComparison([]);
-      } else if (
-        params.kind === 'run' &&
-        (selectedBatchId.value || selectedRunId.value !== id)
-      ) {
-        selectedBatchId.value = null;
-        batchMembers.value = [];
-        workspaceStore.clearSelection();
-        setComparison([]);
-        const sequence = ++detailSequence;
-        const nameReadRevision = workspaceStore.nameRevision;
-        try {
-          const run = workspaceStore.preserveRunName(
-            await getBacktestRun(id),
-            nameReadRevision,
-          );
-          if (sequence !== detailSequence) return;
-          selectRun(run);
-        } catch (error) {
-          if (sequence === detailSequence)
-            detailError.value = errorMessage(error);
-        }
-      }
+      if (selectedBacktestId.value === id) return;
+      selectedBacktestId.value = id;
+      backtestMembers.value = [];
+      workspaceStore.clearSelection();
+      ++detailSequence;
+      setComparison([]);
     },
     { immediate: true },
   );
 
   useBacktestEvents(() => {
-    void loadRuns();
+    void loadHistory();
   });
   onMounted(startUpdates);
   onActivated(startUpdates);
@@ -435,19 +339,17 @@ export function useBacktestWorkspace() {
       createFrom,
       rowProps: historyRowProps,
       cancelRun: commands.cancelRun,
-      deleteRun: commands.deleteRun,
-      deleteBatch: commands.deleteBatch,
+      deleteBacktest: commands.deleteBacktest,
       cancellingRunIds: commands.cancellingRunIds,
-      deletingRunIds: commands.deletingRunIds,
-      deletingBatchIds: commands.deletingBatchIds,
+      deletingBacktestIds: commands.deletingBacktestIds,
     },
     inspection,
     commands,
     overlayStore,
     selectedRunId,
     selectedRun,
-    selectedBatchId,
-    batchMembers,
+    selectedBacktestId,
+    backtestMembers,
     detailError,
     selectionNotice,
     creationOpen,
@@ -462,8 +364,8 @@ export function useBacktestWorkspace() {
     selectRun,
     receiveMembers,
     createFrom,
-    createdRun,
-    createdBatch,
+    createFromRun,
+    createdBacktest,
     historyRowProps,
     chartUnavailableReason,
     openOnChart,

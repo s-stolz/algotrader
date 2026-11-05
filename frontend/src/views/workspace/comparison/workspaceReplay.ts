@@ -33,7 +33,7 @@ export function workspaceReplay(inspection: BacktestWorkspace['inspection']) {
             {
               runId: run.run_id,
               name: comparisonRunLabel(run),
-              ordinal: run.member_ordinal,
+              ordinal: run.run_ordinal,
               points: curve.equity_curve,
             },
           ]

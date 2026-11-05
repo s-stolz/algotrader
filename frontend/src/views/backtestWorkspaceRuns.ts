@@ -1,8 +1,7 @@
-import type { BacktestRun, BacktestBatch } from '@/types/backtesterContracts';
+import type { BacktestRun, Backtest } from '@/types/backtesterContracts';
 
 export type HistorySortKey =
   | 'name'
-  | 'type'
   | 'strategy'
   | 'market'
   | 'timeframe'
@@ -13,13 +12,11 @@ export type HistorySortKey =
   | 'duration';
 
 export function runName(run: BacktestRun): string {
-  return run.batch_id != null
-    ? `Run #${(run.member_ordinal ?? 0) + 1}`
-    : (run.name ?? 'Unnamed standalone run');
+  return `Run #${run.run_ordinal + 1}`;
 }
 
-export function batchName(batch: BacktestBatch): string {
-  return batch.name ?? 'Unnamed parameter sweep';
+export function backtestName(backtest: Backtest): string {
+  return backtest.name ?? 'Unnamed backtest';
 }
 
 export function strategyVersion(run: BacktestRun): string {
@@ -92,66 +89,6 @@ export function timeframeDuration(value: string): number | null {
     match[1] as 'M' | 'H' | 'D' | 'W'
   ];
   return unit * Number(match[2]);
-}
-
-function compareText(left: string, right: string): number {
-  return left.localeCompare(right, undefined, {
-    numeric: true,
-    sensitivity: 'base',
-  });
-}
-
-function compareValue(
-  left: string | number | null,
-  right: string | number | null,
-): number {
-  if (left === null) return right === null ? 0 : -1;
-  if (right === null) return 1;
-  return typeof left === 'number' && typeof right === 'number'
-    ? left - right
-    : compareText(String(left), String(right));
-}
-
-function sortValue(
-  run: BacktestRun,
-  key: HistorySortKey,
-): string | number | null {
-  switch (key) {
-    case 'name':
-      return runName(run);
-    case 'type':
-      return 'Standalone';
-    case 'strategy':
-      return `${run.request.strategy.strategy_id} ${strategyVersion(run)}`;
-    case 'market':
-      return runMarket(run);
-    case 'timeframe':
-      return timeframeDuration(run.request.timeframe) ?? run.request.timeframe;
-    case 'start':
-      return run.request.start_ms;
-    case 'end':
-      return run.request.end_ms;
-    case 'status':
-      return run.status;
-    case 'submitted':
-      return run.submitted_at_ms;
-    case 'duration':
-      return run.started_at_ms == null || run.completed_at_ms == null
-        ? null
-        : run.completed_at_ms - run.started_at_ms;
-  }
-}
-
-export function compareHistoryRuns(
-  left: BacktestRun,
-  right: BacktestRun,
-  key: HistorySortKey,
-): number {
-  return (
-    compareValue(sortValue(left, key), sortValue(right, key)) ||
-    compareText(runName(left), runName(right)) ||
-    compareText(left.run_id, right.run_id)
-  );
 }
 
 export function equityUnavailableReason(

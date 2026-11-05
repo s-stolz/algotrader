@@ -1,30 +1,28 @@
 import type {
-  BacktestBatch,
+  Backtest,
   BacktestCreationRequest,
   BacktestRun,
   StrategyCatalogEntry,
-  SweepDraftState,
-  SweepParameterDraft,
+  BacktestSelectionsDraft,
+  ParameterDraft,
 } from '@/types/backtesterContracts';
 import { normalizeExperimentName } from '@/types/backtesterContracts';
 
 export type ReuseSource = {
-  kind: 'run' | 'batch';
+  kind: 'run' | 'backtest';
   id: string;
   strategyId: string;
   strategyVersion: number | null;
   historicalMetadata: StrategyCatalogEntry | null;
-  defaultedParameters: string[];
 };
 
 export type ReuseDraft = {
   request: BacktestCreationRequest;
-  sweep: SweepDraftState;
+  selections: BacktestSelectionsDraft;
   source: ReuseSource;
 };
 
-const EMPTY_SWEEP: SweepDraftState = {
-  isSweep: false,
+const EMPTY_SELECTIONS: BacktestSelectionsDraft = {
   marketIds: [],
   timeframes: [],
   allowedDirections: [],
@@ -41,13 +39,27 @@ function copyName(value: string | null | undefined): string {
   return name ? [...name].slice(0, 120 - suffix.length).join('') + suffix : '';
 }
 
-export function reuseStandalone(run: BacktestRun): ReuseDraft {
+export function reuseRun(
+  run: BacktestRun,
+  markets: { symbol_id: number; symbol: string; exchange: string }[],
+): ReuseDraft {
   const request: BacktestCreationRequest = copyJson(run.request);
-  request.name = copyName(run.name);
+  request.name = '';
   request.run_metadata = null;
   return {
     request,
-    sweep: copyJson(EMPTY_SWEEP),
+    selections: {
+      ...copyJson(EMPTY_SELECTIONS),
+      marketIds: markets
+        .filter(
+          (market) =>
+            market.symbol === request.symbols[0] &&
+            market.exchange === request.exchange,
+        )
+        .map((market) => market.symbol_id),
+      timeframes: [request.timeframe],
+      allowedDirections: [request.execution.allowed_directions],
+    },
     source: {
       kind: 'run',
       id: run.run_id,
@@ -57,27 +69,26 @@ export function reuseStandalone(run: BacktestRun): ReuseDraft {
           ? (request.strategy.strategy_version ?? null)
           : null,
       historicalMetadata: null,
-      defaultedParameters: [],
     },
   };
 }
 
-export function reuseBatch(batch: BacktestBatch): ReuseDraft {
+export function reuseBacktest(backtest: Backtest): ReuseDraft {
   const { shared_request: shared, normalized_selections: selections } =
-    batch.accepted_definition;
+    backtest.accepted_definition;
   const firstMarket = selections.markets[0];
   const request = copyJson({
     ...shared,
-    name: copyName(batch.name),
+    name: copyName(backtest.name),
     symbols: firstMarket ? [firstMarket.symbol] : [],
     exchange: firstMarket?.exchange ?? null,
     timeframe: selections.timeframes[0] ?? 'M1',
     run_metadata: null,
   }) as BacktestCreationRequest;
-  const parameters: Record<string, SweepParameterDraft> = {};
+  const parameters: Record<string, ParameterDraft> = {};
   for (const [name, axis] of Object.entries(selections.parameters)) {
     const values = copyJson(axis.values);
-    const schema = batch.strategy_metadata.parameters.find(
+    const schema = backtest.strategy_metadata.parameters.find(
       (parameter) => parameter.name === name,
     );
     const choiceInput = schema?.type === 'bool' || Boolean(schema?.choices);
@@ -107,26 +118,21 @@ export function reuseBatch(batch: BacktestBatch): ReuseDraft {
     };
     if (mode === 'constant' && values.length)
       request.strategy.parameters[name] = values[0];
-    if (axis.mode === 'default') delete request.strategy.parameters[name];
   }
   return {
     request,
-    sweep: {
-      isSweep: true,
+    selections: {
       marketIds: selections.markets.map((market) => market.symbol_id),
       timeframes: [...selections.timeframes],
       allowedDirections: [...selections.allowed_directions],
       parameters,
     },
     source: {
-      kind: 'batch',
-      id: batch.batch_id,
-      strategyId: batch.strategy_id,
-      strategyVersion: batch.strategy_version,
-      historicalMetadata: copyJson(batch.strategy_metadata),
-      defaultedParameters: Object.entries(selections.parameters)
-        .filter(([, axis]) => axis.mode === 'default')
-        .map(([name]) => name),
+      kind: 'backtest',
+      id: backtest.backtest_id,
+      strategyId: backtest.strategy_id,
+      strategyVersion: backtest.strategy_version,
+      historicalMetadata: copyJson(backtest.strategy_metadata),
     },
   };
 }

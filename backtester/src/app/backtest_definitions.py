@@ -1,4 +1,4 @@
-"""Stateless, deterministic Parameter Sweep validation and expansion."""
+"""Stateless, deterministic Backtest validation and expansion."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ T = TypeVar("T")
 
 
 @dataclass(frozen=True)
-class SweepDefinition:
+class BacktestDefinition:
     shared_request: BacktestRequest
     market_ids: tuple[int, ...]
     timeframes: tuple[str, ...]
@@ -37,8 +37,8 @@ class SweepDefinition:
     allowed_directions: tuple[str, ...]
 
 
-class SweepPreviewService:
-    """The same pure expansion operation can be reused by batch acceptance."""
+class BacktestPreviewService:
+    """The same pure expansion operation can be reused by backtest acceptance."""
 
     def __init__(
         self,
@@ -51,7 +51,7 @@ class SweepPreviewService:
         self._markets = markets
         self.max_candidate_count = max_candidate_count
 
-    def expand(self, definition: SweepDefinition) -> dict[str, object]:
+    def expand(self, definition: BacktestDefinition) -> dict[str, object]:
         shared = definition.shared_request
         schema = _strategy_schema(definition)
         selected_markets, timeframes, directions = _selection_axes(definition, self._markets)
@@ -65,7 +65,7 @@ class SweepPreviewService:
         if raw_count > self.max_candidate_count:
             raise InvalidBacktestRequestError(
                 f"Raw candidate count {raw_count} exceeds "
-                f"max_sweep_candidate_count {self.max_candidate_count}"
+                f"max_backtest_candidate_count {self.max_candidate_count}"
             )
 
         # Validate shared settings with a real member shape before expanding combinations.
@@ -87,9 +87,9 @@ class SweepPreviewService:
             shared, selected_markets, timeframes, parameter_axes, directions
         )
         if ready_count == 0:
-            raise InvalidBacktestRequestError("Parameter Sweep has no Ready candidates")
+            raise InvalidBacktestRequestError("Backtest has no Ready candidates")
         return {
-            "max_sweep_candidate_count": self.max_candidate_count,
+            "max_backtest_candidate_count": self.max_candidate_count,
             "normalized_selections": {
                 "markets": selected_markets,
                 "timeframes": timeframes,
@@ -103,7 +103,7 @@ class SweepPreviewService:
         }
 
 
-def _strategy_schema(definition: SweepDefinition) -> list[dict[str, object]]:
+def _strategy_schema(definition: BacktestDefinition) -> list[dict[str, object]]:
     strategy = definition.shared_request.strategy
     entry = next(
         (item for item in strategy_catalog() if item["strategy_id"] == strategy.strategy_id),
@@ -120,7 +120,7 @@ def _strategy_schema(definition: SweepDefinition) -> list[dict[str, object]]:
 
 
 def _selection_axes(
-    definition: SweepDefinition, markets: Callable[[], list[dict[str, object]]]
+    definition: BacktestDefinition, markets: Callable[[], list[dict[str, object]]]
 ) -> tuple[list[dict[str, object]], list[str], list[str]]:
     if not definition.market_ids or not definition.timeframes or not definition.allowed_directions:
         raise InvalidBacktestRequestError(
@@ -154,7 +154,7 @@ def _selection_axes(
 
 
 def _parameter_axes(
-    definition: SweepDefinition, schema: list[dict[str, object]], limit: int
+    definition: BacktestDefinition, schema: list[dict[str, object]], limit: int
 ) -> tuple[list[tuple[str, list[object]]], dict[str, dict[str, object]]]:
     axes: list[tuple[str, list[object]]] = []
     normalized: dict[str, dict[str, object]] = {}
@@ -236,7 +236,7 @@ def _candidate_rows(
             row.update(
                 {
                     "status": "ready",
-                    "member_ordinal": ready_count,
+                    "run_ordinal": ready_count,
                     "request": dict(BacktestRequestSnapshot.from_request(resolved).payload),
                 }
             )
@@ -270,7 +270,7 @@ def _range_values(name: str, axis: Mapping[str, object], kind: str, limit: int) 
         count = int((stop - start) // step) + 1
         if count > limit:
             raise InvalidBacktestRequestError(
-                f"Raw candidate count exceeds max_sweep_candidate_count {limit}"
+                f"Raw candidate count exceeds max_backtest_candidate_count {limit}"
             )
         return [
             int(start + step * index) if kind == "int" else float(start + step * index)

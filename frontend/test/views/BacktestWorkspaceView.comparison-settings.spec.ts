@@ -1,7 +1,7 @@
 import {
   setupWorkspaceTests,
   run,
-  batch,
+  backtest,
   mountWorkspace,
   toggleAnalysisColumns,
 } from './backtestWorkspaceFixtures';
@@ -13,11 +13,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   fetchBacktestEquityCurve,
-  getBacktestBatch,
+  getBacktest,
   getBacktestRun,
-  listBacktestBatchEvents,
-  listBacktestBatchMembers,
-  listBacktestBatches,
+  listBacktestEvents,
+  listBacktestMembers,
+  listBacktests,
   listBacktestRuns,
 } from '@/api/backtesterClient';
 
@@ -29,8 +29,8 @@ describe('production Backtest Workspace: comparison-settings', () => {
     async () => {
       const members = Array.from({ length: 10 }, (_, ordinal) =>
         run(`member-${ordinal}`, {
-          batch_id: 'comparison',
-          member_ordinal: ordinal,
+          backtest_id: 'comparison',
+          run_ordinal: ordinal,
           request: {
             ...run('base').request,
             symbols: ordinal === 1 ? ['GBPUSD'] : ['EURUSD'],
@@ -47,28 +47,28 @@ describe('production Backtest Workspace: comparison-settings', () => {
         }),
       );
       const noTrade = run('no-trade', {
-        batch_id: 'comparison',
-        member_ordinal: 10,
+        backtest_id: 'comparison',
+        run_ordinal: 10,
       });
       const failed = run('failed-member', {
-        batch_id: 'comparison',
-        member_ordinal: 11,
+        backtest_id: 'comparison',
+        run_ordinal: 11,
         status: 'failed',
         metrics: null,
       });
       const cancelled = run('cancelled-member', {
-        batch_id: 'comparison',
-        member_ordinal: 12,
+        backtest_id: 'comparison',
+        run_ordinal: 12,
         status: 'cancelled',
         metrics: null,
       });
       const saved = [...members, noTrade, failed, cancelled];
-      const accepted = batch('comparison', saved.length);
+      const accepted = backtest('comparison', saved.length);
       vi.mocked(listBacktestRuns).mockResolvedValue([]);
-      vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
-      vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
-      vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
-      vi.mocked(listBacktestBatchMembers).mockResolvedValue(saved);
+      vi.mocked(listBacktests).mockResolvedValue([accepted]);
+      vi.mocked(getBacktest).mockResolvedValue(accepted);
+      vi.mocked(listBacktestEvents).mockResolvedValue([]);
+      vi.mocked(listBacktestMembers).mockResolvedValue(saved);
       vi.mocked(getBacktestRun).mockImplementation(
         async (id) => saved.find((item) => item.run_id === id)!,
       );
@@ -102,7 +102,7 @@ describe('production Backtest Workspace: comparison-settings', () => {
       const wrapper = mountWorkspace(true);
       await flushPromises();
       await wrapper
-        .find('[data-testid="workspace-batch-comparison"]')
+        .find('[data-testid="workspace-backtest-comparison"]')
         .trigger('click');
       await flushPromises();
       const table = () =>

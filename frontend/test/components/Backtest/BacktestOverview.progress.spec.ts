@@ -4,42 +4,42 @@ import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  getBacktestBatch,
-  listBacktestBatchEvents,
-  listBacktestBatchMembers,
-  controlBacktestBatch,
+  getBacktest,
+  listBacktestEvents,
+  listBacktestMembers,
+  controlBacktest,
 } from '@/api/backtesterClient';
-import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
+import BacktestOverview from '@/components/Backtest/BacktestOverview.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
-  controlBacktestBatch: vi.fn(),
+  controlBacktest: vi.fn(),
   renameExperiment: vi.fn(),
-  getBacktestBatch: vi.fn(),
-  listBacktestBatchEvents: vi.fn(),
-  listBacktestBatchMembers: vi.fn(),
+  getBacktest: vi.fn(),
+  listBacktestEvents: vi.fn(),
+  listBacktestMembers: vi.fn(),
 }));
 
-import { batch, member } from './backtestBatchFixtures';
+import { backtest, member } from './backtestOverviewFixtures';
 
-describe('accepted batch inspection: progress', () => {
+describe('accepted backtest inspection: progress', () => {
   beforeEach(() => {
     installBacktestSocket();
     setActivePinia(createPinia());
-    vi.mocked(controlBacktestBatch).mockReset();
-    vi.mocked(getBacktestBatch).mockReset().mockResolvedValue(batch);
-    vi.mocked(listBacktestBatchMembers)
+    vi.mocked(controlBacktest).mockReset();
+    vi.mocked(getBacktest).mockReset().mockResolvedValue(backtest);
+    vi.mocked(listBacktestMembers)
       .mockReset()
       .mockResolvedValue([member(0), member(1)]);
-    vi.mocked(listBacktestBatchEvents)
+    vi.mocked(listBacktestEvents)
       .mockReset()
       .mockResolvedValue([
         {
-          batch_id: 'batch-1',
+          backtest_id: 'backtest-1',
           revision: 0,
           event_type: 'accepted',
           status: 'queued',
           prior_status: null,
-          occurred_at_ms: batch.accepted_at_ms,
+          occurred_at_ms: backtest.accepted_at_ms,
           trigger_run_id: null,
           reason: null,
         },
@@ -50,14 +50,14 @@ describe('accepted batch inspection: progress', () => {
     'preserves successful results and shows partial failure, ordinals, ' +
       'and transitions after refresh',
     async () => {
-      vi.mocked(getBacktestBatch)
+      vi.mocked(getBacktest)
         .mockResolvedValueOnce({
-          ...batch,
+          ...backtest,
           status: 'running',
           lifecycle_revision: 2,
-          started_at_ms: batch.accepted_at_ms + 1000,
-          active_member_ordinal: 1,
-          next_member_ordinal: null,
+          started_at_ms: backtest.accepted_at_ms + 1000,
+          active_run_ordinal: 1,
+          next_run_ordinal: null,
           settled_count: 1,
           executed_count: 1,
           outcome_counts: {
@@ -71,13 +71,13 @@ describe('accepted batch inspection: progress', () => {
           has_failed_members: true,
         })
         .mockResolvedValue({
-          ...batch,
+          ...backtest,
           status: 'completed',
           lifecycle_revision: 3,
-          started_at_ms: batch.accepted_at_ms + 1000,
-          completed_at_ms: batch.accepted_at_ms + 3000,
-          active_member_ordinal: null,
-          next_member_ordinal: null,
+          started_at_ms: backtest.accepted_at_ms + 1000,
+          completed_at_ms: backtest.accepted_at_ms + 3000,
+          active_run_ordinal: null,
+          next_run_ordinal: null,
           settled_count: 2,
           executed_count: 2,
           outcome_counts: {
@@ -90,7 +90,7 @@ describe('accepted batch inspection: progress', () => {
           },
           has_failed_members: true,
         });
-      vi.mocked(listBacktestBatchMembers)
+      vi.mocked(listBacktestMembers)
         .mockResolvedValueOnce([
           { ...member(0), status: 'failed', error_message: 'Data unavailable' },
           { ...member(1), status: 'running' },
@@ -99,40 +99,42 @@ describe('accepted batch inspection: progress', () => {
           { ...member(0), status: 'failed', error_message: 'Data unavailable' },
           { ...member(1), status: 'succeeded' },
         ]);
-      vi.mocked(listBacktestBatchEvents).mockResolvedValue([
+      vi.mocked(listBacktestEvents).mockResolvedValue([
         {
-          batch_id: 'batch-1',
+          backtest_id: 'backtest-1',
           revision: 0,
           event_type: 'accepted',
           status: 'queued',
           prior_status: null,
-          occurred_at_ms: batch.accepted_at_ms,
+          occurred_at_ms: backtest.accepted_at_ms,
           trigger_run_id: null,
           reason: null,
         },
         {
-          batch_id: 'batch-1',
+          backtest_id: 'backtest-1',
           revision: 1,
           event_type: 'started',
           status: 'running',
           prior_status: 'queued',
-          occurred_at_ms: batch.accepted_at_ms + 1000,
+          occurred_at_ms: backtest.accepted_at_ms + 1000,
           trigger_run_id: 'member-0',
           reason: null,
         },
         {
-          batch_id: 'batch-1',
+          backtest_id: 'backtest-1',
           revision: 3,
           event_type: 'completed',
           status: 'completed',
           prior_status: 'running',
-          occurred_at_ms: batch.accepted_at_ms + 3000,
+          occurred_at_ms: backtest.accepted_at_ms + 3000,
           trigger_run_id: 'member-1',
           reason: null,
         },
       ]);
       vi.useFakeTimers();
-      const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+      const wrapper = mount(BacktestOverview, {
+        props: { backtestId: 'backtest-1' },
+      });
       await flushPromises();
       expect(wrapper.text()).toContain('1 run failed');
       expect(wrapper.text()).toContain('Running #2 of 2');
@@ -164,16 +166,18 @@ describe('accepted batch inspection: progress', () => {
 
   it('shows live run context and elapsed time, then freezes the final duration', async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(batch.accepted_at_ms + 10_000);
-    vi.mocked(getBacktestBatch).mockResolvedValue({
-      ...batch,
+    vi.setSystemTime(backtest.accepted_at_ms + 10_000);
+    vi.mocked(getBacktest).mockResolvedValue({
+      ...backtest,
       status: 'running',
-      started_at_ms: batch.accepted_at_ms,
-      active_member_ordinal: 0,
-      next_member_ordinal: 1,
-      outcome_counts: { ...batch.outcome_counts, running: 1, queued: 1 },
+      started_at_ms: backtest.accepted_at_ms,
+      active_run_ordinal: 0,
+      next_run_ordinal: 1,
+      outcome_counts: { ...backtest.outcome_counts, running: 1, queued: 1 },
     });
-    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    const wrapper = mount(BacktestOverview, {
+      props: { backtestId: 'backtest-1' },
+    });
     await flushPromises();
     expect(wrapper.get('.activity-copy').text()).toContain('Running #1 of 2');
     expect(wrapper.get('.active-context').text()).toContain('Fast window: 5');
@@ -182,16 +186,16 @@ describe('accepted batch inspection: progress', () => {
     vi.advanceTimersByTime(1000);
     await flushPromises();
     expect(wrapper.get('.elapsed strong').text()).toBe('11s');
-    vi.mocked(getBacktestBatch).mockResolvedValue({
-      ...batch,
+    vi.mocked(getBacktest).mockResolvedValue({
+      ...backtest,
       status: 'completed',
-      started_at_ms: batch.accepted_at_ms,
-      completed_at_ms: batch.accepted_at_ms + 12_000,
-      active_member_ordinal: null,
-      next_member_ordinal: null,
+      started_at_ms: backtest.accepted_at_ms,
+      completed_at_ms: backtest.accepted_at_ms + 12_000,
+      active_run_ordinal: null,
+      next_run_ordinal: null,
       settled_count: 2,
       executed_count: 2,
-      outcome_counts: { ...batch.outcome_counts, queued: 0, succeeded: 2 },
+      outcome_counts: { ...backtest.outcome_counts, queued: 0, succeeded: 2 },
     });
     vi.advanceTimersByTime(4000);
     emitBacktestChange();
@@ -212,11 +216,13 @@ describe('accepted batch inspection: progress', () => {
 
   it('marks failed polling as unknown, retains counts, and recovers on the next poll', async () => {
     vi.useFakeTimers();
-    vi.mocked(getBacktestBatch)
-      .mockResolvedValueOnce(batch)
+    vi.mocked(getBacktest)
+      .mockResolvedValueOnce(backtest)
       .mockRejectedValueOnce(new Error('Connection lost'))
-      .mockResolvedValue(batch);
-    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+      .mockResolvedValue(backtest);
+    const wrapper = mount(BacktestOverview, {
+      props: { backtestId: 'backtest-1' },
+    });
     await flushPromises();
     vi.advanceTimersByTime(5000);
     emitBacktestChange();
@@ -239,20 +245,22 @@ describe('accepted batch inspection: progress', () => {
   });
 
   it('counts cancelled runs as settled without counting them as executed', async () => {
-    vi.mocked(getBacktestBatch).mockResolvedValue({
-      ...batch,
+    vi.mocked(getBacktest).mockResolvedValue({
+      ...backtest,
       status: 'cancelled',
       settled_count: 2,
       executed_count: 1,
-      next_member_ordinal: null,
+      next_run_ordinal: null,
       outcome_counts: {
-        ...batch.outcome_counts,
+        ...backtest.outcome_counts,
         queued: 0,
         succeeded: 1,
         cancelled: 1,
       },
     });
-    const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
+    const wrapper = mount(BacktestOverview, {
+      props: { backtestId: 'backtest-1' },
+    });
     await flushPromises();
     expect(
       wrapper.get('[role="progressbar"]').attributes('aria-valuetext'),

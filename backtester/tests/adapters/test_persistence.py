@@ -1,9 +1,7 @@
 import unittest
-from unittest.mock import patch
 
 from adapters.persistence import (
     BacktestRunLifecyclePersistenceAdapter,
-    BacktestRunPersistenceAdapter,
 )
 from domain.enums import (
     BacktestEngine,
@@ -61,170 +59,6 @@ class _FakeLifecycleClient:
 class _FailingRunClient:
     def create_backtest_run(self, run: dict) -> dict:
         raise RuntimeError("database accessor unavailable")
-
-
-class TestBacktestRunPersistenceAdapter(unittest.TestCase):
-    @patch("adapters.persistence._new_run_id", return_value="run-123")
-    @patch(
-        "adapters.persistence._utc_now_text",
-        return_value="2026-06-08T12:30:05.123000+00:00",
-    )
-    def test_save_run_maps_complete_succeeded_result(
-        self,
-        _utc_now_text,
-        _new_run_id,
-    ) -> None:
-        client = _FakeRunClient()
-        adapter = BacktestRunPersistenceAdapter(client=client)
-        result = _build_result()
-
-        saved_result = adapter.save_run(
-            result=result,
-            execution_duration_ms=275,
-        )
-
-        payload = client.saved_runs[0]
-        self.assertEqual(payload["run_id"], "run-123")
-        self.assertEqual(payload["status"], "succeeded")
-        self.assertEqual(payload["submitted_at"], "2026-06-08T12:30:05.123000+00:00")
-        self.assertEqual(payload["started_at"], "2026-06-08T12:30:05.123000+00:00")
-        self.assertEqual(payload["completed_at"], "2026-06-08T12:30:05.123000+00:00")
-        self.assertIsNone(payload["error_code"])
-        self.assertIsNone(payload["error_message"])
-        self.assertEqual(payload["request_schema_version"], 2)
-        self.assertEqual(payload["request"]["symbols"], ["EURUSD"])
-        self.assertEqual(payload["request"]["exchange"], "FX")
-        self.assertEqual(payload["request"]["timeframe"], "M15")
-        self.assertEqual(payload["request"]["engine"], "event_driven")
-        self.assertEqual(
-            payload["request"]["execution"]["allowed_directions"],
-            "long_and_short",
-        )
-        self.assertNotIn("allow_short", payload["request"]["execution"])
-        self.assertEqual(
-            payload["request"]["strategy"],
-            {
-                "strategy_id": "sma_crossover",
-                "parameters": {
-                    "fast_window": 5,
-                    "slow_window": 20,
-                    "quantity": 1_000.0,
-                },
-            },
-        )
-        self.assertEqual(payload["request"]["execution"]["gap_policy"], "error")
-        self.assertEqual(
-            payload["request"]["execution"]["intrabar_exit_policy"],
-            "take_profit_first",
-        )
-        self.assertEqual(payload["request"]["run_metadata"], {"label": "cli-persist"})
-        self.assertEqual(payload["result_schema_version"], 3)
-        self.assertEqual(payload["metrics"], result.metrics)
-        self.assertEqual(
-            payload["diagnostics"],
-            {
-                "engine": "event_driven",
-                "bars": 25,
-                "execution_duration_ms": 275,
-            },
-        )
-        self.assertEqual(
-            payload["fills"],
-            [
-                {
-                    "fill_sequence": 0,
-                    "timestamp_ms": 1_714_522_500_000,
-                    "symbol": "EURUSD",
-                    "side": "buy",
-                    "quantity": 1_000.0,
-                    "price": 1.0715,
-                    "fees": 0.15,
-                    "exit_reason": None,
-                },
-                {
-                    "fill_sequence": 1,
-                    "timestamp_ms": 1_714_526_100_000,
-                    "symbol": "EURUSD",
-                    "side": "sell",
-                    "quantity": 1_000.0,
-                    "price": 1.074,
-                    "fees": 0.15,
-                    "exit_reason": "signal",
-                },
-            ],
-        )
-        self.assertEqual(
-            payload["trades"],
-            [
-                {
-                    "trade_sequence": 0,
-                    "trade_id": "trade-1",
-                    "symbol": "EURUSD",
-                    "trade_direction": "long",
-                    "quantity": 1_000.0,
-                    "entry_timestamp_ms": 1_714_522_500_000,
-                    "entry_price": 1.0715,
-                    "exit_timestamp_ms": 1_714_526_100_000,
-                    "exit_price": 1.074,
-                    "realized_pnl": 2.5,
-                    "fees": 0.3,
-                    "exit_reason": "signal",
-                    "stop_loss_price": None,
-                    "take_profit_price": None,
-                }
-            ],
-        )
-        self.assertNotIn("equity_curve", payload)
-        self.assertEqual(saved_result.backtest_run_id, "run-123")
-        self.assertEqual(saved_result.persisted_at, 1_780_921_805_123)
-        self.assertIsNone(result.backtest_run_id)
-
-    @patch("adapters.persistence._new_run_id", return_value="run-empty")
-    @patch(
-        "adapters.persistence._utc_now_text",
-        return_value="2026-06-08T12:30:05.123000+00:00",
-    )
-    def test_save_run_preserves_empty_artifact_collections(
-        self,
-        _utc_now_text,
-        _new_run_id,
-    ) -> None:
-        client = _FakeRunClient()
-        adapter = BacktestRunPersistenceAdapter(client=client)
-        result = _build_result(fills=[], trades=[])
-
-        adapter.save_run(result=result)
-
-        self.assertEqual(client.saved_runs[0]["fills"], [])
-        self.assertEqual(client.saved_runs[0]["trades"], [])
-        self.assertEqual(
-            client.saved_runs[0]["diagnostics"]["execution_duration_ms"],
-            0,
-        )
-
-    def test_save_run_rejects_open_trade(self) -> None:
-        adapter = BacktestRunPersistenceAdapter(client=_FakeRunClient())
-        result = _build_result(
-            trades=[
-                Trade(
-                    trade_id="open-1",
-                    symbol="EURUSD",
-                    trade_direction=TradeDirection.LONG,
-                    quantity=1_000.0,
-                    entry_timestamp_ms=1_714_522_500_000,
-                    entry_price=1.0715,
-                )
-            ]
-        )
-
-        with self.assertRaisesRegex(ValueError, "exit_timestamp_ms"):
-            adapter.save_run(result=result)
-
-    def test_save_run_surfaces_persistence_errors(self) -> None:
-        adapter = BacktestRunPersistenceAdapter(client=_FailingRunClient())
-
-        with self.assertRaisesRegex(RuntimeError, "database accessor unavailable"):
-            adapter.save_run(result=_build_result())
 
 
 class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
@@ -373,7 +207,6 @@ def _build_result(
             slippage_bps=0.75,
         ),
         initial_capital=25_000.0,
-        persist_result=True,
         run_metadata={"label": "cli-persist"},
         engine=BacktestEngine.EVENT_DRIVEN,
     )

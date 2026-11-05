@@ -11,12 +11,12 @@ import {
   isBacktestRequestPayload,
 } from './requests';
 
-export type SweepParameterAxis =
+export type ParameterAxis =
   | { mode: 'constant'; value: JsonValue }
   | { mode: 'values'; values: JsonValue[] }
   | { mode: 'range'; start: number; stop: number; step: number };
 
-export interface SweepParameterDraft {
+export interface ParameterDraft {
   mode: 'constant' | 'values' | 'range';
   valuesText: string;
   stringValues?: string[];
@@ -28,15 +28,14 @@ export interface SweepParameterDraft {
   rangeStep: number | null;
 }
 
-export interface SweepDraftState {
-  isSweep: boolean;
+export interface BacktestSelectionsDraft {
   marketIds: number[];
   timeframes: string[];
   allowedDirections: BacktestAllowedDirections[];
-  parameters: Record<string, SweepParameterDraft>;
+  parameters: Record<string, ParameterDraft>;
 }
 
-export interface SweepPreviewRequest
+export interface BacktestPreviewRequest
   extends Omit<
     BacktestRequestPayload,
     'symbols' | 'timeframe' | 'exchange' | 'strategy'
@@ -44,32 +43,32 @@ export interface SweepPreviewRequest
   strategy: { strategy_id: string; strategy_version: number };
   markets: number[];
   timeframes: string[];
-  parameter_axes: Record<string, SweepParameterAxis>;
+  parameter_axes: Record<string, ParameterAxis>;
   allowed_directions: BacktestAllowedDirections[];
 }
 
-export interface SweepPreviewIssue {
+export interface BacktestPreviewIssue {
   code: string;
   fields: string[];
   message: string;
 }
 
-export interface SweepPreviewCandidate {
+export interface BacktestPreviewCandidate {
   candidate_ordinal: number;
   market: { symbol_id: number; symbol: string; exchange: string };
   timeframe: string;
   parameters: Record<string, JsonValue>;
   allowed_directions: BacktestAllowedDirections;
   status: 'ready' | 'excluded';
-  member_ordinal?: number;
+  run_ordinal?: number;
   request?: BacktestRequestPayload;
-  issues?: SweepPreviewIssue[];
+  issues?: BacktestPreviewIssue[];
 }
 
-export interface SweepPreview {
-  max_sweep_candidate_count: number;
+export interface BacktestPreview {
+  max_backtest_candidate_count: number;
   normalized_selections: {
-    markets: SweepPreviewCandidate['market'][];
+    markets: BacktestPreviewCandidate['market'][];
     timeframes: string[];
     parameters: Record<
       string,
@@ -88,19 +87,19 @@ export interface SweepPreview {
   raw_count: number;
   ready_count: number;
   excluded_count: number;
-  candidates: SweepPreviewCandidate[];
+  candidates: BacktestPreviewCandidate[];
 }
 
-export function isSweepPreview(value: unknown): value is SweepPreview {
+export function isBacktestPreview(value: unknown): value is BacktestPreview {
   if (
     !isRecord(value) ||
-    !Number.isInteger(value.max_sweep_candidate_count) ||
+    !Number.isInteger(value.max_backtest_candidate_count) ||
     !Number.isInteger(value.raw_count) ||
     !Number.isInteger(value.ready_count) ||
     !Number.isInteger(value.excluded_count) ||
     !isRecord(value.normalized_selections) ||
     !Array.isArray(value.normalized_selections.markets) ||
-    !value.normalized_selections.markets.every(isSweepMarket) ||
+    !value.normalized_selections.markets.every(isBacktestMarket) ||
     !Array.isArray(value.normalized_selections.timeframes) ||
     !value.normalized_selections.timeframes.every(isNonEmptyString) ||
     !isRecord(value.normalized_selections.parameters) ||
@@ -120,9 +119,10 @@ export function isSweepPreview(value: unknown): value is SweepPreview {
     ) ||
     !Array.isArray(value.candidates) ||
     value.candidates.length !== value.raw_count ||
-    (value.max_sweep_candidate_count as number) <= 0 ||
+    (value.max_backtest_candidate_count as number) <= 0 ||
     (value.raw_count as number) <= 0 ||
-    (value.raw_count as number) > (value.max_sweep_candidate_count as number) ||
+    (value.raw_count as number) >
+      (value.max_backtest_candidate_count as number) ||
     (value.ready_count as number) <= 0 ||
     (value.ready_count as number) + (value.excluded_count as number) !==
       value.raw_count
@@ -134,7 +134,7 @@ export function isSweepPreview(value: unknown): value is SweepPreview {
       if (
         !isRecord(row) ||
         row.candidate_ordinal !== index ||
-        !isSweepMarket(row.market) ||
+        !isBacktestMarket(row.market) ||
         !isNonEmptyString(row.timeframe) ||
         !isRecord(row.parameters) ||
         !Object.values(row.parameters).every(isJsonValue) ||
@@ -144,8 +144,7 @@ export function isSweepPreview(value: unknown): value is SweepPreview {
         return false;
       if (row.status === 'ready') {
         return (
-          row.member_ordinal === ready++ &&
-          isBacktestRequestPayload(row.request)
+          row.run_ordinal === ready++ && isBacktestRequestPayload(row.request)
         );
       }
       return (
@@ -165,9 +164,9 @@ export function isSweepPreview(value: unknown): value is SweepPreview {
   );
 }
 
-export function isSweepMarket(
+export function isBacktestMarket(
   value: unknown,
-): value is SweepPreviewCandidate['market'] {
+): value is BacktestPreviewCandidate['market'] {
   return (
     isRecord(value) &&
     Number.isInteger(value.symbol_id) &&

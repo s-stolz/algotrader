@@ -18,19 +18,16 @@ streams live charts, and runs historical backtests.
 - **Indicator:** series derived from Candles through `indicator_engine`.
 - **Order / Position / Deal:** broker command, open exposure, and execution
   history entry respectively.
-- **Backtest Run:** one durable historical simulation, with an immutable request
-  and lifecycle. Use this term rather than Strategy Run.
-- **Backtest Batch:** an immutable, nonempty collection of related Backtest Runs.
-  A **Parameter Sweep** generates its members from configuration combinations.
-- **Experiment Name:** optional organizational `name` on a standalone Backtest
-  Run or whole Backtest Batch, separate from immutable execution snapshots.
-  Saved names seed editable Create from this drafts with independent identities.
-  A name-only command changes this metadata in any lifecycle state.
-  Members use one-based `Run #N` presentation; see [backtest contracts](docs/contracts/backtests.md#experiment-names).
+- **Backtest:** a saved definition and its nonempty collection of historical
+  simulations. Fixed inputs and varying configurations use the same model.
+- **Run:** one execution within a Backtest, with an immutable resolved request
+  and lifecycle; displayed by ordinal as `Run #N`.
+- **Experiment Name:** optional organizational name of a Backtest, separate from
+  immutable execution snapshots.
 - **Backtest Workspace:** UI for creating, monitoring, inspecting, and comparing
-  runs and batches.
+  Backtests and their Runs.
 
-For run/batch commands, Strategy Version, saved results, or Equity Replay, read
+For Backtest/Run commands, Strategy Version, saved results, or Equity Replay, read
 [backtest contracts](docs/contracts/backtests.md). For simulation and trade
 terminology, read [backtester context](backtester/CONTEXT.md).
 
@@ -65,7 +62,7 @@ Delivery and recovery details live in the
 - Timescale stores M1 candles in `candles`; higher Timeframes use continuous
   aggregates or direct bucketing.
 - WebSocket message shapes are owned by [realtime-service context](realtime-service/CONTEXT.md).
-- Durable run/batch invariants are owned by
+- Durable Backtest/Run invariants are owned by
   [backtest contracts](docs/contracts/backtests.md), including versioned snapshots,
   cancellation, and the execution slot that remains held until verified exit.
 

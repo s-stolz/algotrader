@@ -1,44 +1,44 @@
 <template>
-  <template v-if="selectedBatch">
-    <dl class="sweep-facts">
+  <template v-if="selectedBacktest">
+    <dl class="selections-facts">
       <div
-        ><dt>Runs in sweep</dt
+        ><dt>Runs in selections</dt
         ><dd
-          >{{ selectedBatch.member_count }}
-          <span>of {{ selectedBatch.raw_count }} combinations</span></dd
+          >{{ selectedBacktest.member_count }}
+          <span>of {{ selectedBacktest.raw_count }} combinations</span></dd
         ></div
       >
       <div
         ><dt>Excluded before starting</dt
         ><dd
-          >{{ selectedBatch.excluded_count }}
+          >{{ selectedBacktest.excluded_count }}
           <span>invalid combinations</span></dd
         ></div
       >
       <div
         ><dt>Started · UTC</dt
-        ><dd>{{ formatTimestamp(selectedBatch.started_at_ms) }}</dd></div
+        ><dd>{{ formatTimestamp(selectedBacktest.started_at_ms) }}</dd></div
       >
       <div
         ><dt
           >{{
-            selectedBatch.status === 'cancelled' ? 'Cancelled' : 'Finished'
+            selectedBacktest.status === 'cancelled' ? 'Cancelled' : 'Finished'
           }}
           · UTC</dt
-        ><dd>{{ formatTimestamp(selectedBatch.completed_at_ms) }}</dd></div
+        ><dd>{{ formatTimestamp(selectedBacktest.completed_at_ms) }}</dd></div
       >
     </dl>
     <p
-      v-if="selectedBatch.cancel_requested_at_ms != null"
+      v-if="selectedBacktest.cancel_requested_at_ms != null"
       class="cancellation-note"
     >
       Cancellation accepted:
-      {{ formatTimestamp(selectedBatch.cancel_requested_at_ms) }} UTC.
+      {{ formatTimestamp(selectedBacktest.cancel_requested_at_ms) }} UTC.
     </p>
 
-    <div class="sweep-details">
+    <div class="selections-details">
       <details>
-        <summary>Sweep settings <span>Saved at submission</span></summary>
+        <summary>Selections settings <span>Saved at submission</span></summary>
         <dl class="settings-grid">
           <div
             ><dt>Selected markets</dt
@@ -73,12 +73,12 @@
         </dl>
         <details class="technical-details">
           <summary>Full saved definition and strategy metadata</summary>
-          <p>Lifecycle revision {{ selectedBatch.lifecycle_revision }}</p>
+          <p>Lifecycle revision {{ selectedBacktest.lifecycle_revision }}</p>
           <pre>{{
-            JSON.stringify(selectedBatch.accepted_definition, null, 2)
+            JSON.stringify(selectedBacktest.accepted_definition, null, 2)
           }}</pre>
           <pre>{{
-            JSON.stringify(selectedBatch.strategy_metadata, null, 2)
+            JSON.stringify(selectedBacktest.strategy_metadata, null, 2)
           }}</pre>
         </details>
       </details>
@@ -123,10 +123,10 @@
   </template>
 </template>
 <script setup lang="ts">
-import type { BatchInspection } from './useBatchInspection';
-const props = defineProps<{ inspection: BatchInspection }>();
+import type { BacktestInspection } from './useBacktestInspection';
+const props = defineProps<{ inspection: BacktestInspection }>();
 const {
-  selectedBatch,
+  selectedBacktest,
   selections,
   events,
   formatTimestamp,
@@ -149,7 +149,7 @@ dt {
 dd {
   margin: var(--design-space-sm) 0 0;
 }
-.sweep-facts {
+.selections-facts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--design-space-xl);
@@ -157,11 +157,11 @@ dd {
   padding: var(--design-space-xl) var(--design-space-xl);
   border-top: 1px solid var(--design-color-border);
 }
-.sweep-facts dd {
+.selections-facts dd {
   font-size: var(--design-text-secondary);
   line-height: 1.6;
 }
-.sweep-facts dd span {
+.selections-facts dd span {
   color: var(--design-color-muted);
 }
 .cancellation-note {
@@ -169,13 +169,13 @@ dd {
   color: var(--design-color-muted);
   font-size: var(--design-text-secondary);
 }
-.sweep-details {
+.selections-details {
   border-top: 1px solid var(--design-color-border);
 }
-.sweep-details > details {
+.selections-details > details {
   padding: var(--design-space-lg) var(--design-space-xl);
 }
-.sweep-details > details + details {
+.selections-details > details + details {
   border-top: 1px solid var(--design-color-border);
 }
 summary {
@@ -279,7 +279,7 @@ pre {
   font-size: var(--design-text-secondary);
 }
 @media (max-width: 900px) {
-  .sweep-facts {
+  .selections-facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .settings-grid {
@@ -287,8 +287,8 @@ pre {
   }
 }
 @media (max-width: 600px) {
-  .sweep-facts,
-  .sweep-details > details {
+  .selections-facts,
+  .selections-details > details {
     padding: var(--design-space-lg);
   }
   .settings-grid {

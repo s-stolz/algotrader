@@ -10,7 +10,7 @@ import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 import BaseStepModal from '@/components/Common/BaseStepModal.vue';
 describe('Backtest creation session reset', () => {
   setupWorkspaceTests();
-  it.each(['submitted', 'submitted-batch'] as const)(
+  it.each(['submitted'] as const)(
     'starts a fresh creation session after %s',
     async (event) => {
       const store = useBacktestWorkspaceStore();
@@ -24,8 +24,7 @@ describe('Backtest creation session reset', () => {
           parameters: { fast: 42 },
         },
       };
-      store.creationSweepDraft = {
-        isSweep: event === 'submitted-batch',
+      store.creationSelections = {
         marketIds: [1],
         timeframes: ['H1'],
         allowedDirections: ['short_only'],
@@ -37,7 +36,6 @@ describe('Backtest creation session reset', () => {
         strategyId: 'sma',
         strategyVersion: 1,
         historicalMetadata: null,
-        defaultedParameters: [],
       };
       const wrapper = mountWorkspace();
       await flushPromises();
@@ -78,10 +76,9 @@ describe('Backtest creation session reset', () => {
           slippage_bps: 0,
         },
       });
-      expect(store.creationSweepDraft).toMatchObject({
-        isSweep: false,
-        marketIds: [],
-        timeframes: [],
+      expect(store.creationSelections).toMatchObject({
+        marketIds: [1],
+        timeframes: ['M1'],
         parameters: {},
       });
       expect(store.reuseSource).toBeNull();

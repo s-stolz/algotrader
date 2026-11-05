@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  renameExperiment,
   cancelBacktestRun,
-  controlBacktestBatch,
-  deleteBacktestRun,
-  deleteBacktestBatch,
+  controlBacktest,
+  deleteBacktest,
 } from '@/api/backtesterClient';
 import { jsonResponse, backtestRun } from './backtesterClient.fixtures';
 
@@ -12,44 +10,6 @@ describe('backtester API client commands', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  it(
-    'sends only normalized names and validates rename identity ' +
-      'and authoritative values',
-    async () => {
-      const fetchMock = vi
-        .spyOn(globalThis, 'fetch')
-        .mockResolvedValueOnce(jsonResponse({ run_id: 'run/a', name: 'Saved' }))
-        .mockResolvedValueOnce(jsonResponse({ batch_id: 'batch', name: null }))
-        .mockResolvedValueOnce(jsonResponse({ run_id: 'wrong', name: 'Saved' }))
-        .mockResolvedValueOnce(
-          jsonResponse({ run_id: 'run/a', name: ' untrimmed ' }),
-        );
-      await expect(renameExperiment('run', 'run/a', ' Saved ')).resolves.toBe(
-        'Saved',
-      );
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        1,
-        '/api/backtester/backtests/run%2Fa/name',
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Saved' }),
-        },
-      );
-      await expect(renameExperiment('batch', 'batch', '')).resolves.toBeNull();
-      await expect(renameExperiment('run', 'run/a', 'Saved')).rejects.toThrow(
-        'Invalid experiment name response',
-      );
-      await expect(renameExperiment('run', 'run/a', 'Saved')).rejects.toThrow(
-        'Invalid experiment name response',
-      );
-      await expect(renameExperiment('run', 'run/a', 'a\nb')).rejects.toThrow(
-        'single-line',
-      );
-      expect(fetchMock).toHaveBeenCalledTimes(4);
-    },
-  );
 
   it('accepts durable cancellation progress and validates the returned run', async () => {
     const cancelling = {
@@ -80,30 +40,30 @@ describe('backtester API client commands', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      '/api/backtester/backtests/run-123/cancel',
+      '/api/backtester/backtests/runs/run-123/cancel',
       {
         method: 'POST',
       },
     );
   });
 
-  it('posts stable batch command identity and validates the revision', async () => {
+  it('posts stable backtest command identity and validates the revision', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       jsonResponse({
-        batch_id: 'batch-1',
+        backtest_id: 'backtest-1',
         status: 'pausing',
         lifecycle_revision: 2,
       }),
     );
     await expect(
-      controlBacktestBatch('batch-1', 'pause', 'command-1'),
+      controlBacktest('backtest-1', 'pause', 'command-1'),
     ).resolves.toEqual({
-      batch_id: 'batch-1',
+      backtest_id: 'backtest-1',
       status: 'pausing',
       lifecycle_revision: 2,
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/backtester/backtests/batches/batch-1/pause',
+      '/api/backtester/backtests/backtest-1/pause',
       expect.objectContaining({
         method: 'POST',
         body: '{"command_id":"command-1"}',
@@ -111,12 +71,12 @@ describe('backtester API client commands', () => {
     );
   });
 
-  it('accepts Cancel Batch only with the matching command identity', async () => {
+  it('accepts Cancel Backtest only with the matching command identity', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
         jsonResponse({
-          batch_id: 'batch-1',
+          backtest_id: 'backtest-1',
           command_id: 'cancel-1',
           status: 'cancelling',
           lifecycle_revision: 4,
@@ -124,25 +84,25 @@ describe('backtester API client commands', () => {
       )
       .mockResolvedValueOnce(
         jsonResponse({
-          batch_id: 'batch-1',
+          backtest_id: 'backtest-1',
           command_id: 'other',
           status: 'cancelled',
           lifecycle_revision: 5,
         }),
       );
     await expect(
-      controlBacktestBatch('batch-1', 'cancel', 'cancel-1'),
+      controlBacktest('backtest-1', 'cancel', 'cancel-1'),
     ).resolves.toEqual({
-      batch_id: 'batch-1',
+      backtest_id: 'backtest-1',
       command_id: 'cancel-1',
       status: 'cancelling',
       lifecycle_revision: 4,
     });
     await expect(
-      controlBacktestBatch('batch-1', 'cancel', 'cancel-1'),
-    ).rejects.toThrow('Invalid Backtest Batch command response');
+      controlBacktest('backtest-1', 'cancel', 'cancel-1'),
+    ).rejects.toThrow('Invalid Backtest command response');
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/backtester/backtests/batches/batch-1/cancel',
+      '/api/backtester/backtests/backtest-1/cancel',
       expect.objectContaining({
         method: 'POST',
         body: '{"command_id":"cancel-1"}',
@@ -150,37 +110,13 @@ describe('backtester API client commands', () => {
     );
   });
 
-  it('deletes one Backtest Run through the public backtester proxy', async () => {
+  it('deletes a whole Backtest through the public backtester proxy', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response(null, { status: 204 }));
-
-    await expect(deleteBacktestRun('run-123')).resolves.toBeUndefined();
+    await expect(deleteBacktest('backtest/123')).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/backtester/backtests/run-123',
-      {
-        method: 'DELETE',
-      },
-    );
-  });
-
-  it('surfaces delete failures from the public backtester proxy', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(null, { status: 409, statusText: 'Conflict' }),
-    );
-
-    await expect(deleteBacktestRun('run-running')).rejects.toThrow(
-      'Failed to delete backtest run: Conflict',
-    );
-  });
-
-  it('deletes a whole Batch through the public backtester proxy', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(null, { status: 204 }));
-    await expect(deleteBacktestBatch('batch/123')).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/backtester/backtests/batches/batch%2F123',
+      '/api/backtester/backtests/backtest%2F123',
       {
         method: 'DELETE',
       },
@@ -188,8 +124,8 @@ describe('backtester API client commands', () => {
     fetchMock.mockResolvedValueOnce(
       new Response(null, { status: 409, statusText: 'Conflict' }),
     );
-    await expect(deleteBacktestBatch('active')).rejects.toThrow(
-      'Failed to delete Backtest Batch: Conflict',
+    await expect(deleteBacktest('active')).rejects.toThrow(
+      'Failed to delete Backtest: Conflict',
     );
   });
 });

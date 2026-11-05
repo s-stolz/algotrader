@@ -118,7 +118,6 @@ class BacktestRequest:
     initial_capital: float
     exchange: Optional[str] = None
     data_granularity: DataGranularity = DataGranularity.BAR
-    persist_result: bool = False
     run_metadata: Optional[Dict[str, Any]] = None
     engine: BacktestEngine = BacktestEngine.VECTORIZED
 
@@ -153,6 +152,8 @@ class BacktestRequestSnapshot:
 @dataclass(frozen=True)
 class BacktestRunRecord:
     run_id: str
+    backtest_id: str
+    run_ordinal: int
     status: BacktestRunStatus
     submitted_at_ms: int
     request_snapshot: BacktestRequestSnapshot
@@ -167,9 +168,6 @@ class BacktestRunRecord:
     metrics: Optional[Mapping[str, Any]] = None
     diagnostics: Optional[Mapping[str, Any]] = None
     replay_descriptor: Optional[Mapping[str, Any]] = None
-    batch_id: Optional[str] = None
-    member_ordinal: Optional[int] = None
-    name: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -226,8 +224,7 @@ class BacktestRunQuery:
     engine: Optional[BacktestEngine] = None
     submitted_from_ms: Optional[int] = None
     submitted_to_ms: Optional[int] = None
-    membership: Optional[str] = None
-    batch_id: Optional[str] = None
+    backtest_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -338,8 +335,6 @@ class BacktestResult:
     metrics: Dict[str, float] = field(default_factory=dict)
     diagnostics: Dict[str, Any] = field(default_factory=dict)
     replay_descriptor: Optional[Mapping[str, Any]] = None
-    backtest_run_id: Optional[str] = None
-    persisted_at: Optional[int] = None
 
 
 _REQUEST_PAYLOAD_FIELDS = {
@@ -353,7 +348,6 @@ _REQUEST_PAYLOAD_FIELDS = {
     "initial_capital",
     "strategy",
     "execution",
-    "persist_result",
     "run_metadata",
 }
 _STRATEGY_PAYLOAD_FIELDS = {"strategy_id", "parameters"}
@@ -413,7 +407,6 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
                 else {}
             ),
         },
-        "persist_result": bool(request.persist_result),
         "run_metadata": deepcopy(request.run_metadata),
     }
 
@@ -480,7 +473,6 @@ def _backtest_request_from_payload(
         ),
         initial_capital=float(payload["initial_capital"]),
         data_granularity=DataGranularity(payload["data_granularity"]),
-        persist_result=bool(payload["persist_result"]),
         run_metadata=deepcopy(dict(run_metadata)) if run_metadata is not None else None,
         engine=BacktestEngine(payload["engine"]),
     )

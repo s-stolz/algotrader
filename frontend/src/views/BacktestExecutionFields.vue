@@ -7,7 +7,10 @@ import type { SelectOption } from 'naive-ui';
 import InformationCircleOutline from '@vicons/ionicons5/InformationCircleOutline';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
-import type { BacktestRequestPayload } from '@/types/backtesterContracts';
+import type {
+  BacktestRequestPayload,
+  BacktestAllowedDirections,
+} from '@/types/backtesterContracts';
 const execution = defineModel<BacktestRequestPayload['execution']>(
   'execution',
   { required: true },
@@ -15,6 +18,10 @@ const execution = defineModel<BacktestRequestPayload['execution']>(
 const engine = defineModel<BacktestRequestPayload['engine']>('engine', {
   required: true,
 });
+const allowedDirections = defineModel<BacktestAllowedDirections[]>(
+  'allowedDirections',
+  { required: true },
+);
 const gapHelp = ref(false);
 const exitHelp = ref(false);
 const directionOptions: SelectOption[] = [
@@ -42,7 +49,9 @@ const exitOptions: SelectOption[] = [
   <div class="fields">
     <label class="full"
       >Allowed directions<BaseSelect
-        v-model:value="execution.allowed_directions"
+        v-model:value="allowedDirections"
+        multiple
+        data-testid="creation-directions"
         :options="directionOptions"
     /></label>
     <label class="full"

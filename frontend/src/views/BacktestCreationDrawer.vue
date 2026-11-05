@@ -67,15 +67,9 @@
         <n-tag
           round
           :bordered="false"
-          :type="isSweep && !preview?.ready_count ? 'warning' : 'success'"
+          :type="!preview?.ready_count ? 'warning' : 'success'"
         >
-          {{
-            isSweep
-              ? `${preview?.raw_count ?? 0} ${
-                  preview?.raw_count === 1 ? 'candidate' : 'candidates'
-                }`
-              : '1 run'
-          }}
+          {{ preview?.raw_count ?? 0 }} candidates
         </n-tag>
         <div class="creation-actions">
           <n-button
@@ -92,25 +86,9 @@
           </n-button>
           <div v-show="step === 2">
             <n-button
-              v-if="draft && catalog.length && !isSweep"
               type="primary"
               :disabled="
-                submitting ||
-                !marketOptions.length ||
-                !!catalogError ||
-                !selectedStrategy ||
-                strategyNeedsReview ||
-                !!nameIssue
-              "
-              :loading="submitting"
-              data-testid="creation-submit"
-              @click="submit"
-              >Create Backtest</n-button
-            >
-            <n-button
-              v-else-if="isSweep && sweepAcceptanceEnabled"
-              type="primary"
-              :disabled="
+                !!nameIssue ||
                 submitting ||
                 previewPending ||
                 !preview ||
@@ -122,13 +100,9 @@
                 hasPendingNumericEntry
               "
               :loading="submitting"
-              data-testid="sweep-submit"
-              @click="submitSweep"
-              >Accept Batch</n-button
-            >
-            <span v-else-if="isSweep"
-              >Parameter Sweep submission becomes available with batch
-              execution.</span
+              data-testid="creation-submit"
+              @click="submit"
+              >Create Backtest</n-button
             >
           </div></div
         ></div
@@ -149,8 +123,7 @@ import { useBacktestCreation } from './creation/useBacktestCreation';
 defineProps<{ show: boolean }>();
 const emit = defineEmits<{
   'update:show': [show: boolean];
-  submitted: [runId: string];
-  'submitted-batch': [batchId: string];
+  submitted: [backtestId: string];
 }>();
 const creation = useBacktestCreation(emit);
 provide(creationKey, creation);
@@ -167,19 +140,15 @@ const {
   strategyNeedsReview,
   fieldErrors,
   submitError,
-  isSweep,
   preview,
   submitting,
-  marketOptions,
   nameIssue,
   submit,
-  sweepAcceptanceEnabled,
   previewPending,
   previewError,
   parameterIssues,
   missingMarkets,
   hasPendingNumericEntry,
-  submitSweep,
 } = creation;
 </script>
 <style scoped src="./creation/creation.css"></style>

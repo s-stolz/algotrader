@@ -15,15 +15,15 @@ export {
 } from './backtest/requests';
 
 export {
-  type SweepParameterAxis,
-  type SweepParameterDraft,
-  type SweepDraftState,
-  type SweepPreviewRequest,
-  type SweepPreviewIssue,
-  type SweepPreviewCandidate,
-  type SweepPreview,
-  isSweepPreview,
-} from './backtest/sweeps';
+  type ParameterAxis,
+  type ParameterDraft,
+  type BacktestSelectionsDraft,
+  type BacktestPreviewRequest,
+  type BacktestPreviewIssue,
+  type BacktestPreviewCandidate,
+  type BacktestPreview,
+  isBacktestPreview,
+} from './backtest/definitions';
 
 export {
   BACKTEST_RUN_STATUSES,
@@ -36,14 +36,14 @@ export {
 } from './backtest/history';
 
 export {
-  BACKTEST_BATCH_STATUSES,
-  type BacktestBatchStatus,
-  type BacktestBatch,
-  type BacktestBatchEvent,
-  isBacktestBatch,
-  isBacktestBatchArray,
-  isBacktestBatchEventArray,
-} from './backtest/batches';
+  BACKTEST_STATUSES,
+  type BacktestStatus,
+  type Backtest,
+  type BacktestEvent,
+  isBacktest,
+  isBacktestArray,
+  isBacktestEventArray,
+} from './backtest/backtests';
 
 export {
   type BacktestWorkerAvailability,

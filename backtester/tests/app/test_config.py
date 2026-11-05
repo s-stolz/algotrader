@@ -16,14 +16,14 @@ class TestBacktesterConfig(unittest.TestCase):
 
         self.assertEqual(config.worker_heartbeat_interval_seconds, 5.0)
         self.assertEqual(config.worker_stale_after_seconds, 30.0)
-        self.assertEqual(config.max_sweep_candidate_count, 1000)
+        self.assertEqual(config.max_backtest_candidate_count, 1000)
 
-    def test_sweep_limit_is_configurable_and_positive(self) -> None:
-        with patch.dict(os.environ, {"BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT": "25"}, clear=True):
+    def test_candidate_limit_is_configurable_and_positive(self) -> None:
+        with patch.dict(os.environ, {"BACKTESTER_MAX_BACKTEST_CANDIDATE_COUNT": "25"}, clear=True):
             config = BacktesterConfig.from_env()
-        self.assertEqual(config.max_sweep_candidate_count, 25)
+        self.assertEqual(config.max_backtest_candidate_count, 25)
         with self.assertRaises(ValueError):
-            BacktesterConfig(max_sweep_candidate_count=0)
+            BacktesterConfig(max_backtest_candidate_count=0)
 
     def test_heartbeat_and_staleness_are_configurable(self) -> None:
         with patch.dict(

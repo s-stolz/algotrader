@@ -3,9 +3,9 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { NInput } from 'naive-ui';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  fetchSweepCapabilities,
-  previewParameterSweep,
-  submitBacktestBatch,
+  fetchBacktestCapabilities,
+  previewBacktest,
+  submitBacktest,
 } from '@/api/backtesterClient';
 
 import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
@@ -13,32 +13,30 @@ import {
   pinia,
   previewFor,
   advancePreview,
-  sweepSetup,
+  selectionsSetup,
 } from './creationFixtures';
 vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/backtesterClient')>()),
   fetchStrategyCatalog: vi.fn(),
-  submitBacktestRun: vi.fn(),
-  submitBacktestBatch: vi.fn(),
-  previewParameterSweep: vi.fn(),
-  fetchSweepCapabilities: vi.fn(),
+  submitBacktest: vi.fn(),
+  previewBacktest: vi.fn(),
+  fetchBacktestCapabilities: vi.fn(),
 }));
 
-describe('batch submission', () => {
-  sweepSetup();
+describe('backtest submission', () => {
+  selectionsSetup();
 
   it(
-    'accepts named and unnamed sweeps without passing names to ' +
+    'accepts named and unnamed backtests without passing names to ' +
       'stateless preview',
     async () => {
-      vi.mocked(fetchSweepCapabilities).mockResolvedValue({
-        max_sweep_candidate_count: 1000,
-        batch_acceptance_enabled: true,
+      vi.mocked(fetchBacktestCapabilities).mockResolvedValue({
+        max_backtest_candidate_count: 1000,
       });
-      vi.mocked(previewParameterSweep).mockImplementation(async (request) =>
+      vi.mocked(previewBacktest).mockImplementation(async (request) =>
         previewFor(request, 2),
       );
-      vi.mocked(submitBacktestBatch).mockResolvedValue('named-batch');
+      vi.mocked(submitBacktest).mockResolvedValue('named-backtest');
       const wrapper = mount(BacktestCreationDrawer, {
         props: { show: true },
         global: { plugins: [pinia] },
@@ -53,19 +51,21 @@ describe('batch submission', () => {
             component.attributes('data-testid') === 'creation-name',
         )!;
       for (const [name, expected] of [
-        ['  Sweep baseline  ', 'Sweep baseline'],
+        ['  Selections baseline  ', 'Selections baseline'],
         ['  ', null],
       ] as const) {
         input.vm.$emit('update:value', name);
         await advancePreview();
         expect(
-          vi.mocked(previewParameterSweep).mock.calls.at(-1)?.[0],
+          vi.mocked(previewBacktest).mock.calls.at(-1)?.[0],
         ).not.toHaveProperty('name');
         (
-          document.querySelector('[data-testid="sweep-submit"]') as HTMLElement
+          document.querySelector(
+            '[data-testid="creation-submit"]',
+          ) as HTMLElement
         ).click();
         await flushPromises();
-        expect(submitBacktestBatch).toHaveBeenLastCalledWith(
+        expect(submitBacktest).toHaveBeenLastCalledWith(
           expect.not.objectContaining({ name: expect.anything() }),
           expect.any(String),
           expected,
@@ -74,10 +74,10 @@ describe('batch submission', () => {
       input.vm.$emit('update:value', 'a'.repeat(121));
       await advancePreview();
       (
-        document.querySelector('[data-testid="sweep-submit"]') as HTMLElement
+        document.querySelector('[data-testid="creation-submit"]') as HTMLElement
       ).click();
       await flushPromises();
-      expect(submitBacktestBatch).toHaveBeenCalledTimes(2);
+      expect(submitBacktest).toHaveBeenCalledTimes(2);
       expect(document.body.textContent).toContain(
         'Experiment name must have at most 120 characters',
       );
@@ -85,17 +85,16 @@ describe('batch submission', () => {
     },
   );
 
-  it('uses one submission identity for a reviewed batch retry', async () => {
-    vi.mocked(fetchSweepCapabilities).mockResolvedValue({
-      max_sweep_candidate_count: 1000,
-      batch_acceptance_enabled: true,
+  it('uses one submission identity for a reviewed backtest retry', async () => {
+    vi.mocked(fetchBacktestCapabilities).mockResolvedValue({
+      max_backtest_candidate_count: 1000,
     });
-    vi.mocked(previewParameterSweep).mockImplementation(async (request) =>
+    vi.mocked(previewBacktest).mockImplementation(async (request) =>
       previewFor(request, 2),
     );
-    vi.mocked(submitBacktestBatch)
+    vi.mocked(submitBacktest)
       .mockRejectedValueOnce(new Error('Connection lost'))
-      .mockResolvedValueOnce('batch-1');
+      .mockResolvedValueOnce('backtest-1');
     const wrapper = mount(BacktestCreationDrawer, {
       props: { show: true },
       global: { plugins: [pinia] },
@@ -103,21 +102,21 @@ describe('batch submission', () => {
     });
     await advancePreview();
     const submit = document.querySelector(
-      '[data-testid="sweep-submit"]',
+      '[data-testid="creation-submit"]',
     ) as HTMLElement;
     expect(submit).not.toBeNull();
     submit.click();
     await flushPromises();
-    expect(submitBacktestBatch).toHaveBeenCalledTimes(1);
+    expect(submitBacktest).toHaveBeenCalledTimes(1);
     expect(document.body.textContent).toContain('Connection lost');
     await advancePreview();
     submit.click();
     await flushPromises();
-    expect(submitBacktestBatch).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(submitBacktestBatch).mock.calls[0][1]).toBe(
-      vi.mocked(submitBacktestBatch).mock.calls[1][1],
+    expect(submitBacktest).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(submitBacktest).mock.calls[0][1]).toBe(
+      vi.mocked(submitBacktest).mock.calls[1][1],
     );
-    expect(wrapper.emitted('submitted-batch')?.[0]).toEqual(['batch-1']);
+    expect(wrapper.emitted('submitted')?.[0]).toEqual(['backtest-1']);
     wrapper.unmount();
   });
 });

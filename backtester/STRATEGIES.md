@@ -9,7 +9,7 @@ executable behavior** change. The live catalog publishes only the current
 version. Retired code is not retained for future execution.
 
 Annotate every public builder parameter with `bool`, `int`, `float`, `str`, or
-`T | None`. Signature order is catalog and sweep order. A parameter with
+`T | None`. Signature order is catalog and parameter order. A parameter with
 no default is required; a default is materialized into each accepted immutable
 request. Use `Annotated[T, ParameterInfo(...)]` only for numeric minimum/maximum,
 restricted numeric/string choices, descriptions, or display names. Boolean
@@ -165,7 +165,7 @@ inclusive entry start, an exclusive last-entry cutoff, and a same-day exit time.
 The required ordering is `0 <= start < last_entry <= exit < 1440`; omitted
 schedules preserve unrestricted execution. The schedule belongs to the run
 execution configuration, not the strategy builder. It is saved and reused with
-the request, and is shared by all members of a parameter sweep. The public API
+the request, and is shared by all members of a backtest. The public API
 accepts `execution.daily_schedule` as an optional object or null; omitted values
 remain disabled. Declarative bar strategies support schedules in both engines;
 callback-only vectorized strategies reject an enabled schedule.
@@ -194,7 +194,7 @@ applies to positions that remain open. The optional daily entry limit below appl
 `ExecutionConfig.max_entries_per_day` is an optional positive integer; omitted or
 null means unlimited. It works independently of the daily schedule for declarative
 bar strategies. The count belongs to the run and resets on the UTC date of the
-executing candle. Shared sweep settings apply independently to each member run.
+executing candle. Shared Backtest settings apply independently to each Run.
 
 Each actual fill that opens or increases exposure counts once. A reversal counts
 as one new entry for its opening portion. Signals, cancelled/expired orders,

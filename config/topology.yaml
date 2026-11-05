@@ -47,7 +47,7 @@ services:
       heartbeat:
         interval_seconds: 5.0
         stale_after_seconds: 30.0
-    sweeps:
+    backtests:
       max_candidate_count: 1000
 
   broker_service:

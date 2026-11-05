@@ -53,59 +53,45 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
         await self.db.execute(
             (ROOT / "timescaledb-init/migrations/V001__base_schema.sql").read_text()
         )
+        await self._migrate()
 
     async def asyncTearDown(self) -> None:
         await self.db.execute(f'DROP SCHEMA "{self.schema}" CASCADE')
         await self.db.close()
 
     async def _insert_run(self, run_id: str, status: str, submitted_at: str) -> None:
+        at = datetime.fromisoformat(submitted_at.replace("Z", "+00:00"))
+        await self.db.execute(
+            """INSERT INTO backtests
+            (backtest_id, submission_id, status, accepted_at, definition_schema_version,
+             accepted_definition, strategy_metadata, raw_count, member_count, excluded_count)
+            VALUES ($1, $1, 'queued', $2, 1, '{}', '{}', 1, 1, 0)""",
+            run_id,
+            at,
+        )
         await self.db.execute(
             """INSERT INTO backtest_runs
-               (run_id, status, submitted_at, request_schema_version, request)
-               VALUES ($1, $2, $3::timestamptz, 2, '{}'::jsonb)""",
+            (run_id, backtest_id, run_ordinal, status, submitted_at,
+             request_schema_version, request)
+            VALUES ($1, $1, 0, $2, $3, 3,
+             '{"symbols":["EURUSD"],"strategy":{"strategy_version":1}}')""",
             run_id,
             status,
-            datetime.fromisoformat(submitted_at.replace("Z", "+00:00")),
+            at,
         )
+        if status == "queued":
+            await self.db.execute(
+                "INSERT INTO backtest_queue_turns (backtest_id) VALUES ($1)", run_id
+            )
 
     async def _migrate(self) -> None:
-        await self.db.execute(
-            (ROOT / "timescaledb-init/migrations/V007__equity_replay_descriptor.sql").read_text()
-        )
-        await self.db.execute(
-            (ROOT / "timescaledb-init/migrations/V008__immutable_backtest_batches.sql").read_text()
-        )
-        await self.db.execute(
-            (ROOT / "timescaledb-init/migrations/V009__backtest_execution_slot.sql").read_text()
-        )
-        await self.db.execute(
-            (ROOT / "timescaledb-init/migrations/V010__backtest_worker_heartbeat.sql").read_text()
-        )
-        await self.db.execute(
-            (ROOT / "timescaledb-init/migrations/V011__backtest_batch_turns.sql").read_text()
-        )
-        await self.db.execute(
-            (
-                ROOT / "timescaledb-init/migrations/V012__backtest_batch_event_prior_status.sql"
-            ).read_text()
-        )
-        for pause_migration in (ROOT / "timescaledb-init/migrations").glob("V013__*.sql"):
-            await self.db.execute(pause_migration.read_text())
-        await self.db.execute(
-            (ROOT / "timescaledb-init/migrations/V014__backtest_run_cancellation.sql").read_text()
-        )
-        await self.db.execute(
-            (ROOT / "timescaledb-init/migrations/V015__backtest_batch_cancellation.sql").read_text()
-        )
-
-        await self.db.execute(
-            (ROOT / "timescaledb-init/migrations/V017__experiment_names.sql").read_text()
-        )
+        for migration in sorted((ROOT / "timescaledb-init/migrations").glob("V*.sql")):
+            if int(migration.name[1:4]) >= 7:
+                await self.db.execute(migration.read_text())
 
     async def test_cancel_and_completion_are_serialized_at_the_slot(self) -> None:
         await self._insert_run("active", "queued", "2026-06-08T12:30:00Z")
         await self._insert_run("waiting", "queued", "2026-06-08T12:31:00Z")
-        await self._migrate()
         engine = create_async_engine(
             URL.create(
                 "postgresql+asyncpg",
@@ -204,7 +190,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_claim_seeds_heartbeat_and_rejects_delayed_previous_ownership(self) -> None:
         await self._insert_run("first", "queued", "2026-06-08T12:30:00Z")
         await self._insert_run("second", "queued", "2026-06-08T12:31:00Z")
-        await self._migrate()
         engine = create_async_engine(
             URL.create(
                 "postgresql+asyncpg",
@@ -244,7 +229,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNone(rolled_back["slot"]["owner_token"])
                     self.assertIsNone(rolled_back["active_run"])
                     self.assertEqual(rolled_back["heartbeats"], [])
-                    self.assertEqual(len(rolled_back["queued_runs"]), 2)
+                    self.assertEqual(len(rolled_back["queued_entries"]), 2)
                     await session.commit()
                     previous_owner = None
                     for run_id in ("first", "second"):
@@ -315,7 +300,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_heartbeat_and_queue_read_leave_durable_lifecycle_untouched(self) -> None:
         await self._insert_run("first", "queued", "2026-06-08T12:30:00Z")
         await self._insert_run("second", "queued", "2026-06-08T12:31:00Z")
-        await self._migrate()
         engine = create_async_engine(
             URL.create(
                 "postgresql+asyncpg",
@@ -341,7 +325,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                     state = await backtest_execution.read_queue_state(session)
                     self.assertEqual(first["worker_id"], "worker-a")
                     self.assertEqual(
-                        [run["run_id"] for run in state["queued_runs"]], ["first", "second"]
+                        [run["run_id"] for run in state["queued_entries"]], ["first", "second"]
                     )
                     self.assertIsNone(state["active_run"])
                     self.assertEqual(state["heartbeats"][0]["worker_id"], "worker-a")
@@ -371,7 +355,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_active_owner_heartbeat_survives_more_than_32_newer_idle_rows(self) -> None:
         await self._insert_run("active", "running", "2026-06-08T12:30:00Z")
-        await self._migrate()
         await self.db.execute("""UPDATE backtest_runs SET started_at=now() - interval '1 minute'
                WHERE run_id='active'""")
         await self.db.execute(
@@ -423,8 +406,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                (run_id, fill_sequence, timestamp_ms, symbol, side, quantity, price, fees)
                VALUES ('success', 0, 1, 'EURUSD', 'buy', 1, 1, 0)""")
 
-        await self._migrate()
-
         states = await self.db.fetch("SELECT run_id, status FROM backtest_runs ORDER BY run_id")
         self.assertEqual(
             [(row["run_id"], row["status"]) for row in states],
@@ -437,7 +418,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_two_database_connections_cannot_claim_separate_slots(self) -> None:
         await self._insert_run("first", "queued", "2026-06-08T12:30:00Z")
         await self._insert_run("second", "queued", "2026-06-08T12:31:00Z")
-        await self._migrate()
         other = await asyncpg.connect(**self.connection_options)
         await other.execute(f'SET search_path TO "{self.schema}"')
         try:
@@ -479,7 +459,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_accessor_claim_and_settlement_are_fenced_across_connections(self) -> None:
         await self._insert_run("first", "queued", "2026-06-08T12:30:00Z")
         await self._insert_run("second", "queued", "2026-06-08T12:31:00Z")
-        await self._migrate()
         engine = create_async_engine(
             URL.create(
                 "postgresql+asyncpg",
@@ -557,7 +536,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_large_result_settlement_preserves_artifacts_and_atomicity(self) -> None:
         await self._insert_run("large", "queued", "2026-06-08T12:30:00Z")
         await self._insert_run("waiting", "queued", "2026-06-08T12:31:00Z")
-        await self._migrate()
         engine = create_async_engine(
             URL.create(
                 "postgresql+asyncpg",
@@ -677,7 +655,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_restart_reconciliation_preserves_queued_work_once(self) -> None:
         await self._insert_run("interrupted", "running", "2026-06-08T12:30:00Z")
         await self._insert_run("waiting", "queued", "2026-06-08T12:31:00Z")
-        await self._migrate()
         engine = create_async_engine(
             URL.create(
                 "postgresql+asyncpg",
@@ -717,7 +694,6 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_two_worker_processes_cannot_claim_separate_runs(self) -> None:
         await self._insert_run("first", "queued", "2026-06-08T12:30:00Z")
         await self._insert_run("second", "queued", "2026-06-08T12:31:00Z")
-        await self._migrate()
 
         async def attempt(token: str) -> bool:
             process = await asyncio.create_subprocess_exec(
@@ -743,8 +719,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
             "queued",
         )
 
-    async def test_batches_and_standalone_runs_take_durable_turns_through_restart(self) -> None:
-        await self._migrate()
+    async def test_backtests_and_single_runs_take_durable_turns_through_restart(self) -> None:
         engine = create_async_engine(
             URL.create(
                 "postgresql+asyncpg",
@@ -764,42 +739,35 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                 async with AsyncSession(bind=connection) as session:
                     return await operation(session)
 
-        async def add_standalone(session, run_id):
-            return await crud.insert_backtest_run(
-                session,
-                {
-                    "run_id": run_id,
-                    "status": "queued",
-                    "submitted_at": accepted_at,
-                    "request_schema_version": 2,
-                    "request": {},
-                },
-            )
+        async def add_single(session, run_id):
+            payload = backtest_payload(run_id, 1)
+            payload["members"][0]["run_id"] = run_id
+            return await crud.create_backtest(session, payload)
 
-        async def add_batch(session, batch_id, size):
-            return await crud.create_backtest_batch(
-                session,
-                {
-                    "batch_id": batch_id,
-                    "submission_id": f"submission-{batch_id}",
-                    "accepted_at": accepted_at,
-                    "definition_schema_version": 1,
-                    "accepted_definition": {},
-                    "strategy_metadata": {},
-                    "raw_count": size,
-                    "member_count": size,
-                    "excluded_count": 0,
-                    "members": [
-                        {
-                            "run_id": f"{batch_id}-{ordinal}",
-                            "member_ordinal": ordinal,
-                            "request_schema_version": 3,
-                            "request": {"symbols": ["EURUSD"], "strategy": {"strategy_version": 1}},
-                        }
-                        for ordinal in range(size)
-                    ],
-                },
-            )
+        def backtest_payload(backtest_id, size):
+            return {
+                "backtest_id": backtest_id,
+                "submission_id": f"submission-{backtest_id}",
+                "accepted_at": accepted_at,
+                "definition_schema_version": 1,
+                "accepted_definition": {},
+                "strategy_metadata": {},
+                "raw_count": size,
+                "member_count": size,
+                "excluded_count": 0,
+                "members": [
+                    {
+                        "run_id": f"{backtest_id}-{ordinal}",
+                        "run_ordinal": ordinal,
+                        "request_schema_version": 3,
+                        "request": {"symbols": ["EURUSD"], "strategy": {"strategy_version": 1}},
+                    }
+                    for ordinal in range(size)
+                ],
+            }
+
+        async def add_backtest(session, backtest_id, size):
+            return await crud.create_backtest(session, backtest_payload(backtest_id, size))
 
         async def turn(session, run_id, terminal, token):
             self.assertTrue(
@@ -853,10 +821,10 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
             "error_message": "Backtest failed",
         }
         try:
-            await operate(lambda session: add_standalone(session, "standalone-1"))
-            await operate(lambda session: add_batch(session, "batch-a", 2))
-            await operate(lambda session: add_standalone(session, "standalone-2"))
-            await operate(lambda session: add_batch(session, "batch-b", 3))
+            await operate(lambda session: add_single(session, "single-1"))
+            await operate(lambda session: add_backtest(session, "backtest-a", 2))
+            await operate(lambda session: add_single(session, "single-2"))
+            await operate(lambda session: add_backtest(session, "backtest-b", 3))
             self.assertEqual(
                 [
                     entry["run_id"]
@@ -864,15 +832,15 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                         "queued_entries"
                     ]
                 ],
-                ["standalone-1", "batch-a-0", "standalone-2", "batch-b-0"],
+                ["single-1", "backtest-a-0", "single-2", "backtest-b-0"],
             )
             self.assertTrue(
-                await operate(lambda session: turn(session, "standalone-1", success, "owner-1"))
+                await operate(lambda session: turn(session, "single-1", success, "owner-1"))
             )
             self.assertTrue(
-                await operate(lambda session: turn(session, "batch-a-0", success, "owner-2"))
+                await operate(lambda session: turn(session, "backtest-a-0", success, "owner-2"))
             )
-            await operate(lambda session: add_standalone(session, "standalone-3"))
+            await operate(lambda session: add_single(session, "single-3"))
             self.assertEqual(
                 [
                     entry["run_id"]
@@ -880,73 +848,74 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                         "queued_entries"
                     ]
                 ],
-                ["standalone-2", "batch-b-0", "batch-a-1", "standalone-3"],
+                ["single-2", "backtest-b-0", "backtest-a-1", "single-3"],
             )
             self.assertTrue(
-                await operate(lambda session: turn(session, "standalone-2", failure, "owner-3"))
+                await operate(lambda session: turn(session, "single-2", failure, "owner-3"))
             )
             self.assertTrue(
-                await operate(lambda session: turn(session, "batch-b-0", success, "owner-4"))
+                await operate(lambda session: turn(session, "backtest-b-0", success, "owner-4"))
             )
             self.assertTrue(
-                await operate(lambda session: turn(session, "batch-a-1", failure, "owner-5"))
+                await operate(lambda session: turn(session, "backtest-a-1", failure, "owner-5"))
             )
             self.assertEqual(
                 await self.db.fetchval(
-                    "SELECT status FROM backtest_batches WHERE batch_id='batch-a'"
+                    "SELECT status FROM backtests WHERE backtest_id='backtest-a'"
                 ),
                 "completed",
             )
             self.assertEqual(
                 await self.db.fetchval(
-                    "SELECT count(*) FROM backtest_fills WHERE run_id='batch-a-0'"
+                    "SELECT count(*) FROM backtest_fills WHERE run_id='backtest-a-0'"
                 ),
                 1,
             )
             self.assertEqual(
                 await self.db.fetchval(
                     "SELECT replay_descriptor->>'fingerprint_digest' FROM backtest_runs "
-                    "WHERE run_id='batch-a-0'"
+                    "WHERE run_id='backtest-a-0'"
                 ),
                 "saved",
             )
             self.assertTrue(
                 await self.db.fetchval(
-                    "SELECT replay_descriptor IS NULL FROM backtest_runs WHERE run_id='batch-a-1'"
+                    "SELECT replay_descriptor IS NULL FROM backtest_runs "
+                    "WHERE run_id='backtest-a-1'"
                 )
             )
             self.assertEqual(
                 await self.db.fetchval(
-                    "SELECT lifecycle_revision FROM backtest_batches WHERE batch_id='batch-a'"
+                    "SELECT lifecycle_revision FROM backtests WHERE backtest_id='backtest-a'"
                 ),
                 2,
             )
             self.assertEqual(
                 await self.db.fetchval(
-                    "SELECT count(*) FROM backtest_batch_events WHERE batch_id='batch-a'"
+                    "SELECT count(*) FROM backtest_events WHERE backtest_id='backtest-a'"
                 ),
                 3,
             )
             events = await self.db.fetch(
                 "SELECT revision, event_type, prior_status, status, trigger_run_id "
-                "FROM backtest_batch_events WHERE batch_id='batch-a' ORDER BY revision"
+                "FROM backtest_events WHERE backtest_id='backtest-a' ORDER BY revision"
             )
             self.assertEqual(
                 [tuple(event.values()) for event in events],
                 [
                     (0, "accepted", None, "queued", None),
-                    (1, "started", "queued", "running", "batch-a-0"),
-                    (2, "completed", "running", "completed", "batch-a-1"),
+                    (1, "started", "queued", "running", "backtest-a-0"),
+                    (2, "completed", "running", "completed", "backtest-a-1"),
                 ],
             )
             self.assertTrue(
-                await operate(lambda session: turn(session, "standalone-3", success, "owner-6"))
+                await operate(lambda session: turn(session, "single-3", success, "owner-6"))
             )
             self.assertTrue(
                 await operate(
                     lambda session: backtest_execution.claim(
                         session,
-                        run_id="batch-b-1",
+                        run_id="backtest-b-1",
                         owner_token="interrupted",
                         started_at=accepted_at,
                         worker_id="worker-test",
@@ -985,14 +954,14 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                         "queued_entries"
                     ]
                 ],
-                ["batch-b-2"],
+                ["backtest-b-2"],
             )
             self.assertTrue(
-                await operate(lambda session: turn(session, "batch-b-2", success, "owner-7"))
+                await operate(lambda session: turn(session, "backtest-b-2", success, "owner-7"))
             )
             self.assertEqual(
                 await self.db.fetchval(
-                    "SELECT status FROM backtest_batches WHERE batch_id='batch-b'"
+                    "SELECT status FROM backtests WHERE backtest_id='backtest-b'"
                 ),
                 "completed",
             )

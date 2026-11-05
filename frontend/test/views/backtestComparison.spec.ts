@@ -5,8 +5,8 @@ import { compareRuns, differingSettings } from '@/views/backtestComparison';
 function savedRun(id: string, ordinal: number): BacktestRun {
   return {
     run_id: id,
-    batch_id: 'batch',
-    member_ordinal: ordinal,
+    backtest_id: 'backtest',
+    run_ordinal: ordinal,
     status: 'succeeded',
     submitted_at_ms: 1_780_000_000_000,
     request_schema_version: 3,
@@ -36,13 +36,12 @@ function savedRun(id: string, ordinal: number): BacktestRun {
         commission_bps: 1,
         slippage_bps: 0.5,
       },
-      persist_result: true,
     },
     metrics: { total_return_pct: 2, max_drawdown_pct: -3 },
   };
 }
 
-describe('within-batch comparison', () => {
+describe('within-backtest comparison', () => {
   it('reports each material difference without ranking the runs', () => {
     const first = savedRun('one', 0);
     const second = savedRun('two', 1);

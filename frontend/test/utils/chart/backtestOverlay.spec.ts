@@ -44,6 +44,8 @@ describe('backtest chart overlay utilities', () => {
   it('accepts persisted short result contracts and renders entry and cover actions', () => {
     const run = {
       run_id: 'run-short-acceptance',
+      backtest_id: 'backtest-1',
+      run_ordinal: 0,
       status: 'succeeded',
       submitted_at_ms: 1_780_921_805_123,
       started_at_ms: 1_780_921_900_000,
@@ -80,7 +82,6 @@ describe('backtest chart overlay utilities', () => {
           commission_bps: 10,
           slippage_bps: 0,
         },
-        persist_result: true,
         run_metadata: null,
       },
       result_schema_version: BACKTEST_RESULT_SCHEMA_VERSION,

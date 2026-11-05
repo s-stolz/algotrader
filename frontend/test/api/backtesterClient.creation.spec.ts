@@ -1,15 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  BACKTEST_BATCH_STATUSES,
-  type BacktestRequestPayload,
+  BACKTEST_STATUSES,
+  type BacktestPreviewRequest,
 } from '@/types/backtesterContracts';
 import {
   BacktestSubmissionError,
   fetchStrategyCatalog,
-  fetchSweepCapabilities,
-  previewParameterSweep,
-  submitBacktestBatch,
-  submitBacktestRun,
+  fetchBacktestCapabilities,
+  previewBacktest,
+  submitBacktest,
 } from '@/api/backtesterClient';
 import { jsonResponse, backtestRun } from './backtesterClient.fixtures';
 
@@ -40,13 +39,16 @@ describe('backtester API client creation', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(catalog))
       .mockResolvedValueOnce(
-        jsonResponse({ run_id: 'new-run', status: 'queued' }, { status: 202 }),
+        jsonResponse(
+          { backtest_id: 'new-backtest', status: 'queued' },
+          { status: 202 },
+        ),
       );
 
     await expect(fetchStrategyCatalog()).resolves.toEqual(catalog);
     await expect(
-      submitBacktestRun(backtestRun().request as BacktestRequestPayload),
-    ).resolves.toBe('new-run');
+      submitBacktest(previewRequest(), 'submission-1'),
+    ).resolves.toBe('new-backtest');
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       '/api/backtester/backtests/strategies',
@@ -112,19 +114,19 @@ describe('backtester API client creation', () => {
       );
 
     await expect(
-      submitBacktestRun(backtestRun().request as BacktestRequestPayload),
+      submitBacktest(previewRequest(), 'submission-1'),
     ).rejects.toMatchObject({
       code: 'strategy_version_unavailable',
     } satisfies Partial<BacktestSubmissionError>);
     await expect(
-      submitBacktestRun(backtestRun().request as BacktestRequestPayload),
+      submitBacktest(previewRequest(), 'submission-1'),
     ).rejects.toMatchObject({
       code: 'invalid_parameter_combination',
       fields: ['fast_window', 'slow_window'],
     } satisfies Partial<BacktestSubmissionError>);
   });
 
-  it('validates a complete bounded sweep preview and current capability', async () => {
+  it('validates a complete bounded backtest preview and current capability', async () => {
     const {
       symbols: _symbols,
       timeframe: _timeframe,
@@ -139,7 +141,7 @@ describe('backtester API client creation', () => {
       timeframes: ['M1'],
       parameter_axes: { fast_window: { mode: 'constant', value: 5 } },
       allowed_directions: ['long_and_short'],
-    } as Parameters<typeof previewParameterSweep>[0];
+    } as Parameters<typeof previewBacktest>[0];
     const candidate = {
       candidate_ordinal: 0,
       market: { symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' },
@@ -147,11 +149,11 @@ describe('backtester API client creation', () => {
       parameters: { fast_window: 5 },
       allowed_directions: 'long_and_short',
       status: 'ready',
-      member_ordinal: 0,
+      run_ordinal: 0,
       request: backtestRun().request,
     };
     const preview = {
-      max_sweep_candidate_count: 1000,
+      max_backtest_candidate_count: 1000,
       raw_count: 1,
       ready_count: 1,
       excluded_count: 0,
@@ -167,29 +169,27 @@ describe('backtester API client creation', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
         jsonResponse({
-          max_sweep_candidate_count: 1000,
-          batch_acceptance_enabled: false,
+          max_backtest_candidate_count: 1000,
         }),
       )
       .mockResolvedValueOnce(jsonResponse(preview))
       .mockResolvedValueOnce(jsonResponse({ ...preview, raw_count: 2 }));
 
-    await expect(fetchSweepCapabilities()).resolves.toEqual({
-      max_sweep_candidate_count: 1000,
-      batch_acceptance_enabled: false,
+    await expect(fetchBacktestCapabilities()).resolves.toEqual({
+      max_backtest_candidate_count: 1000,
     });
-    await expect(previewParameterSweep(request)).resolves.toEqual(preview);
-    await expect(previewParameterSweep(request)).rejects.toThrow(
-      'Invalid sweep preview response',
+    await expect(previewBacktest(request)).resolves.toEqual(preview);
+    await expect(previewBacktest(request)).rejects.toThrow(
+      'Invalid backtest preview response',
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      '/api/backtester/backtests/sweeps/preview',
+      '/api/backtester/backtests/preview',
       expect.objectContaining({ method: 'POST' }),
     );
   });
 
-  it('accepts the original batch on same-ID retries after lifecycle transitions', async () => {
+  it('accepts the original backtest on same-ID retries after lifecycle transitions', async () => {
     const {
       symbols: _symbols,
       timeframe: _timeframe,
@@ -204,38 +204,56 @@ describe('backtester API client creation', () => {
       timeframes: ['M1'],
       parameter_axes: { fast_window: { mode: 'constant', value: 5 } },
       allowed_directions: ['long_and_short'],
-    } as Parameters<typeof submitBacktestBatch>[0];
+    } as Parameters<typeof submitBacktest>[0];
     const submissionId = 'same-submission-id';
-    const batchId = 'original-batch-id';
+    const backtestId = 'original-backtest-id';
     const fetchMock = vi.spyOn(globalThis, 'fetch');
-    for (const status of BACKTEST_BATCH_STATUSES) {
+    for (const status of BACKTEST_STATUSES) {
       fetchMock.mockResolvedValueOnce(
-        jsonResponse({ batch_id: batchId, status }, { status: 202 }),
+        jsonResponse({ backtest_id: backtestId, status }, { status: 202 }),
       );
     }
 
-    for (
-      let attempt = 0;
-      attempt < BACKTEST_BATCH_STATUSES.length;
-      attempt += 1
-    ) {
-      await expect(submitBacktestBatch(request, submissionId)).resolves.toBe(
-        batchId,
+    for (let attempt = 0; attempt < BACKTEST_STATUSES.length; attempt += 1) {
+      await expect(submitBacktest(request, submissionId)).resolves.toBe(
+        backtestId,
       );
     }
-    expect(fetchMock).toHaveBeenCalledTimes(BACKTEST_BATCH_STATUSES.length);
+    expect(fetchMock).toHaveBeenCalledTimes(BACKTEST_STATUSES.length);
     for (const [url, options] of fetchMock.mock.calls) {
-      expect(url).toBe('/api/backtester/backtests/batches');
+      expect(url).toBe('/api/backtester/backtests');
       expect(options).toMatchObject({ method: 'POST' });
       expect(JSON.parse(String(options?.body))).toMatchObject({
         submission_id: submissionId,
       });
     }
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({ batch_id: batchId, status: 'unknown' }, { status: 202 }),
+      jsonResponse(
+        { backtest_id: backtestId, status: 'unknown' },
+        { status: 202 },
+      ),
     );
-    await expect(submitBacktestBatch(request, submissionId)).rejects.toThrow(
-      'Invalid batch submission response',
+    await expect(submitBacktest(request, submissionId)).rejects.toThrow(
+      'Invalid backtest submission response',
     );
   });
 });
+
+function previewRequest(): BacktestPreviewRequest {
+  const {
+    symbols: _symbols,
+    exchange: _exchange,
+    timeframe: _timeframe,
+    ...shared
+  } = backtestRun().request;
+  return {
+    ...shared,
+    engine: 'event_driven',
+    data_granularity: 'bar',
+    strategy: { strategy_id: 'sma_crossover', strategy_version: 1 },
+    markets: [1],
+    timeframes: ['M1'],
+    parameter_axes: {},
+    allowed_directions: ['long_and_short' as const],
+  };
+}

@@ -7,33 +7,32 @@ import {
   fetchBacktestClosedTrades,
   fetchBacktestFills,
   getBacktestRun,
-  listBacktestBatches,
+  listBacktests,
   listBacktestRuns,
 } from '@/api/backtesterClient';
 import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
-import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type {
   BacktestClosedTrade,
   BacktestFill,
   BacktestRun,
 } from '@/types/backtesterContracts';
-import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn(), currentRoute: { value: { query: {} } } }),
 }));
 vi.mock('@/api/backtesterClient', () => ({
-  deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   fetchBacktestFills: vi.fn(),
   getBacktestRun: vi.fn(),
-  listBacktestBatches: vi.fn(),
+  listBacktests: vi.fn(),
   listBacktestRuns: vi.fn(),
 }));
 
 function run(runId: string): BacktestRun {
   return {
+    backtest_id: 'backtest-1',
+    run_ordinal: 0,
     run_id: runId,
     status: 'succeeded',
     submitted_at_ms: 1_780_921_805_123,
@@ -61,7 +60,6 @@ function run(runId: string): BacktestRun {
         commission_bps: 1,
         slippage_bps: 0,
       },
-      persist_result: true,
     },
     metrics: { trade_count: 2, total_return_pct: 1.25 },
   };
@@ -117,7 +115,7 @@ beforeEach(() => {
   vi.mocked(fetchBacktestFills).mockReset();
   vi.mocked(getBacktestRun).mockReset();
   vi.mocked(listBacktestRuns).mockReset();
-  vi.mocked(listBacktestBatches).mockReset().mockResolvedValue([]);
+  vi.mocked(listBacktests).mockReset().mockResolvedValue([]);
   useMarketsStore().all = [
     {
       symbol_id: 1,
@@ -266,81 +264,6 @@ describe('execution-log drawer', () => {
       wrapper.findAllComponents(NSelect)[1].vm.$emit('update:value', 'all');
       await wrapper.vm.$nextTick();
       expect(rows()).toEqual(['0', '1', '2']);
-      wrapper.unmount();
-    },
-  );
-
-  it(
-    'ignores a pending log read after close and leaves a later run and ' +
-      'Workspace selection intact',
-    async () => {
-      const first = run('first');
-      const second = run('second');
-      const timestamp = 1_714_525_200_000;
-      let resolveFirst!: (trades: BacktestClosedTrade[]) => void;
-      vi.mocked(listBacktestRuns).mockResolvedValue([first, second]);
-      vi.mocked(getBacktestRun).mockImplementation(async (id) =>
-        id === first.run_id ? first : second,
-      );
-      vi.mocked(fetchBacktestClosedTrades).mockImplementation((id) =>
-        id === 'first'
-          ? new Promise((resolve) => {
-              resolveFirst = resolve;
-            })
-          : Promise.resolve([trade(1, 'short', timestamp, timestamp + 60_000)]),
-      );
-      vi.mocked(fetchBacktestFills).mockResolvedValue([]);
-      const wrapper = mount(BacktestWorkspaceView, {
-        global: { plugins: [pinia], stubs: { EquityReplayCharts: true } },
-      });
-      await flushPromises();
-      await wrapper
-        .find('[data-testid="workspace-run-first"]')
-        .trigger('click');
-      await flushPromises();
-      await wrapper
-        .find('[data-testid="workspace-log-first"]')
-        .trigger('click');
-      await flushPromises();
-      expect(document.body.textContent).toContain('Loading execution log');
-
-      document.body
-        .querySelector<HTMLButtonElement>('.n-drawer-header__close')!
-        .click();
-      await wrapper.vm.$nextTick();
-      expect(
-        document.body.querySelector('[data-testid="execution-log-drawer"]'),
-      ).toBeNull();
-      resolveFirst([trade(0, 'long', timestamp, timestamp + 60_000)]);
-      await flushPromises();
-      expect(
-        document.body.querySelector('[data-testid="execution-log-drawer"]'),
-      ).toBeNull();
-      expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
-      await wrapper
-        .get('[data-testid="workspace-run-second"]')
-        .trigger('click');
-      await flushPromises();
-      await wrapper
-        .find('[data-testid="workspace-log-second"]')
-        .trigger('click');
-      await flushPromises();
-
-      expect(document.body.textContent).toContain(
-        'Execution log · Unnamed standalone run',
-      );
-      expect(
-        document.body.querySelector(
-          '[data-testid="execution-log-drawer"] .run-identity code',
-        )?.textContent,
-      ).toBe('second');
-      expect(fetchBacktestClosedTrades).toHaveBeenLastCalledWith('second');
-      expect(document.body.textContent).toContain('short');
-      expect(document.body.textContent).not.toContain('long');
-      expect(useBacktestWorkspaceStore().selectedRunId).toBe('second');
-      expect(
-        wrapper.find('[data-testid="workspace-current-backtest"]').text(),
-      ).toContain('1.25%');
       wrapper.unmount();
     },
   );

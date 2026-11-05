@@ -83,15 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--initial-capital", default=10_000.0, type=float)
     run_parser.add_argument("--exchange", default=None)
     run_parser.add_argument(
-        "--persist-result",
-        action="store_true",
-        help="Persist the completed successful backtest through database-accessor-api.",
-    )
-    run_parser.add_argument(
         "--db-accessor-host",
         default=None,
         help=(
-            "Override database accessor host. Defaults to public.host from " "config/topology.yaml."
+            "Override database accessor host. Defaults to public.host from config/topology.yaml."
         ),
     )
     run_parser.add_argument(
@@ -145,8 +140,6 @@ def _build_request(args: argparse.Namespace) -> Any:
     strategy = _DOMAIN_TYPES_MODULE.StrategyConfig(
         strategy_id=str(args.strategy), parameters=strategy_parameters
     )
-    if args.persist_result:
-        strategy = _STRATEGY_REGISTRY_MODULE.validate_parameters(strategy)
 
     execution = replace(
         _APP_CONFIG_MODULE.build_default_execution_config(),
@@ -165,7 +158,6 @@ def _build_request(args: argparse.Namespace) -> Any:
         execution=execution,
         initial_capital=float(args.initial_capital),
         exchange=str(args.exchange) if args.exchange is not None else None,
-        persist_result=bool(args.persist_result),
         engine=_DOMAIN_ENUMS_MODULE.BacktestEngine(str(args.engine)),
     )
 
@@ -215,10 +207,6 @@ def _print_summary(result: Any) -> None:
     print(f"total_return_pct={total_return_pct:.6f}")
     print(f"max_drawdown_pct={max_drawdown_pct:.6f}")
     print(f"final_equity={final_equity:.6f}")
-    if result.backtest_run_id is not None:
-        print(f"backtest_run_id={result.backtest_run_id}")
-    if result.persisted_at is not None:
-        print(f"persisted_at_ms={result.persisted_at}")
 
 
 def _format_cli_error(exc: Exception) -> str:

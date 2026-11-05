@@ -1,7 +1,7 @@
 import {
   setupWorkspaceTests,
   run,
-  batch,
+  backtest,
   mountWorkspace,
 } from './backtestWorkspaceFixtures';
 import { flushPromises } from '@vue/test-utils';
@@ -10,70 +10,31 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   cancelBacktestRun,
-  controlBacktestBatch,
+  controlBacktest,
   fetchBacktestQueue,
-  getBacktestBatch,
-  listBacktestBatchEvents,
-  listBacktestBatchMembers,
-  listBacktestBatches,
+  getBacktest,
+  listBacktestEvents,
+  listBacktestMembers,
+  listBacktests,
   listBacktestRuns,
 } from '@/api/backtesterClient';
 
 describe('production Backtest Workspace: history-cancellation', () => {
   setupWorkspaceTests();
-  it('cancels a queued standalone run once and refreshes its durable status', async () => {
-    const queued = run('queued', {
-      status: 'queued',
-      started_at_ms: null,
-      completed_at_ms: null,
-      result_schema_version: null,
-      metrics: null,
-    });
-    const cancelled = run('queued', {
-      ...queued,
-      status: 'cancelled',
-      completed_at_ms: 1_780_922_100_000,
-      cancel_requested_at_ms: 1_780_922_100_000,
-      cancellation_source: 'user',
-      cancellation_reason: 'user_requested',
-    });
-    vi.mocked(listBacktestRuns)
-      .mockResolvedValueOnce([queued])
-      .mockResolvedValueOnce([cancelled]);
-    vi.mocked(cancelBacktestRun).mockResolvedValue(cancelled);
-    const wrapper = mountWorkspace();
-    await flushPromises();
-
-    const cancelButton = wrapper.find(
-      '[data-testid="workspace-cancel-queued"]',
-    );
-    await cancelButton.trigger('click');
-    await flushPromises();
-
-    expect(cancelBacktestRun).toHaveBeenCalledOnce();
-    expect(cancelBacktestRun).toHaveBeenCalledWith('queued');
-    expect(
-      wrapper.find('[data-testid="workspace-run-queued"]').text(),
-    ).toContain('cancelled');
-    expect(
-      wrapper.find('[data-testid="workspace-cancel-queued"]').exists(),
-    ).toBe(false);
-    wrapper.unmount();
-  });
 
   it(
-    'cancels one queued Batch member from the combined table and ' +
+    'cancels one queued Backtest member from the combined table and ' +
       'refreshes that member',
 
     async () => {
       const accepted = {
-        ...batch('cancellable', 2),
+        ...backtest('cancellable', 2),
         status: 'queued' as const,
       };
       const queued = [0, 1].map((ordinal) =>
         run(`member-${ordinal}`, {
-          batch_id: 'cancellable',
-          member_ordinal: ordinal,
+          backtest_id: 'cancellable',
+          run_ordinal: ordinal,
           status: 'queued',
           started_at_ms: null,
           completed_at_ms: null,
@@ -90,17 +51,17 @@ describe('production Backtest Workspace: history-cancellation', () => {
         cancellation_reason: 'user_requested' as const,
       };
       vi.mocked(listBacktestRuns).mockResolvedValue([]);
-      vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
-      vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
-      vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
-      vi.mocked(listBacktestBatchMembers)
+      vi.mocked(listBacktests).mockResolvedValue([accepted]);
+      vi.mocked(getBacktest).mockResolvedValue(accepted);
+      vi.mocked(listBacktestEvents).mockResolvedValue([]);
+      vi.mocked(listBacktestMembers)
         .mockResolvedValueOnce(queued)
         .mockResolvedValue([cancelled, queued[1]]);
       vi.mocked(cancelBacktestRun).mockResolvedValue(cancelled);
       const wrapper = mountWorkspace(true);
       await flushPromises();
       await wrapper
-        .find('[data-testid="workspace-batch-cancellable"]')
+        .find('[data-testid="workspace-backtest-cancellable"]')
         .trigger('click');
       await flushPromises();
       await wrapper
@@ -118,15 +79,15 @@ describe('production Backtest Workspace: history-cancellation', () => {
           .attributes('disabled'),
       ).toBeUndefined();
       expect(
-        wrapper.find('[data-testid="workspace-batch-members"]').exists(),
+        wrapper.find('[data-testid="workspace-backtest-members"]').exists(),
       ).toBe(false);
       wrapper.unmount();
     },
   );
 
-  it('refreshes combined history and queue health after cancelling an entire Batch', async () => {
+  it('refreshes history and queue after Backtest cancellation', async () => {
     const queued = {
-      ...batch('whole-batch', 2),
+      ...backtest('whole-backtest', 2),
       status: 'queued' as const,
       completed_at_ms: null,
       settled_count: 0,
@@ -156,16 +117,16 @@ describe('production Backtest Workspace: history-cancellation', () => {
       },
     };
     vi.mocked(listBacktestRuns).mockResolvedValue([]);
-    vi.mocked(listBacktestBatches)
+    vi.mocked(listBacktests)
       .mockResolvedValueOnce([queued])
       .mockResolvedValue([cancelled]);
-    vi.mocked(getBacktestBatch)
+    vi.mocked(getBacktest)
       .mockResolvedValueOnce(queued)
       .mockResolvedValue(cancelled);
-    vi.mocked(listBacktestBatchMembers).mockResolvedValue([]);
-    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
-    vi.mocked(controlBacktestBatch).mockResolvedValue({
-      batch_id: 'whole-batch',
+    vi.mocked(listBacktestMembers).mockResolvedValue([]);
+    vi.mocked(listBacktestEvents).mockResolvedValue([]);
+    vi.mocked(controlBacktest).mockResolvedValue({
+      backtest_id: 'whole-backtest',
       command_id: 'cancel-command',
       status: 'cancelled',
       lifecycle_revision: 2,
@@ -173,22 +134,22 @@ describe('production Backtest Workspace: history-cancellation', () => {
     const wrapper = mountWorkspace(true);
     await flushPromises();
     await wrapper
-      .find('[data-testid="workspace-batch-whole-batch"]')
+      .find('[data-testid="workspace-backtest-whole-backtest"]')
       .trigger('click');
     await flushPromises();
     await wrapper
-      .find('[data-testid="workspace-cancel-batch"]')
+      .find('[data-testid="workspace-cancel-backtest"]')
       .trigger('click');
     await flushPromises();
-    expect(controlBacktestBatch).toHaveBeenCalledWith(
-      'whole-batch',
+    expect(controlBacktest).toHaveBeenCalledWith(
+      'whole-backtest',
       'cancel',
       expect.any(String),
     );
-    expect(listBacktestBatches).toHaveBeenCalledTimes(2);
+    expect(listBacktests).toHaveBeenCalledTimes(2);
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
     expect(
-      wrapper.find('[data-testid="workspace-batch-whole-batch"]').text(),
+      wrapper.find('[data-testid="workspace-backtest-whole-backtest"]').text(),
     ).toContain('cancelled');
     wrapper.unmount();
   });

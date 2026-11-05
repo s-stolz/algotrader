@@ -21,28 +21,27 @@ os.environ.setdefault("TIMESCALEDB_DB", "test")
 import main  # noqa: E402
 from app import backtest_execution, crud  # noqa: E402
 from app.models import (  # noqa: E402
-    backtest_batch_commands,
-    backtest_batch_events,
-    backtest_batches,
     backtest_closed_trades,
+    backtest_commands,
+    backtest_events,
     backtest_execution_slot,
     backtest_fills,
     backtest_queue_turns,
     backtest_runs,
+    backtests,
     metadata,
 )
 from app.schemas import (  # noqa: E402
-    BacktestBatchCommandIn,
-    BacktestBatchControlPolicyIn,
-    BacktestBatchCreateIn,
     BacktestClosedTradeIn,
+    BacktestCommandIn,
+    BacktestControlPolicyIn,
+    BacktestCreateIn,
     BacktestExecutionClaimIn,
     BacktestExecutionReconcileIn,
     BacktestExecutionSettleIn,
     BacktestExecutionSlotOut,
     BacktestFillIn,
     BacktestRequestPayload,
-    BacktestRunCreateIn,
     BacktestRunOut,
     EquityReplayDescriptor,
 )
@@ -108,7 +107,6 @@ def _request_payload(**overrides):
             "commission_bps": 1.5,
             "slippage_bps": 0.75,
         },
-        "persist_result": False,
         "run_metadata": {
             "source": "queued-smoke",
             "tags": ["durable", "api"],
@@ -134,13 +132,15 @@ def _replay_descriptor() -> EquityReplayDescriptor:
 def _run_payload(**overrides):
     payload = {
         "run_id": "run-queued-1",
+        "backtest_id": "backtest-1",
+        "run_ordinal": 0,
         "status": "queued",
         "submitted_at": datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
         "started_at": None,
         "completed_at": None,
         "error_code": None,
         "error_message": None,
-        "request_schema_version": 2,
+        "request_schema_version": 3,
         "request": _request_payload(),
         "result_schema_version": None,
         "metrics": None,
@@ -149,6 +149,7 @@ def _run_payload(**overrides):
         "trades": [],
     }
     payload.update(overrides)
+    payload["request"]["strategy"]["strategy_version"] = 1
     if payload["status"] == "succeeded" and "replay_descriptor" not in overrides:
         payload["replay_descriptor"] = _replay_descriptor().model_dump()
     return payload
@@ -188,18 +189,19 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     )
                 ):
                     with self.subTest(controls=controls):
-                        payload = _run_payload(run_id=f"execution-controls-{index}")
-                        payload["submitted_at"] = payload["submitted_at"].isoformat()
-                        payload["request"]["execution"].update(controls)
-                        if controls:
-                            payload["request_schema_version"] = 3
-                            payload["request"]["strategy"]["strategy_version"] = 1
+                        payload = self._backtest_payload(
+                            backtest_id=f"controls-{index}", submission_id=f"controls-{index}"
+                        )
+                        payload["accepted_at"] = payload["accepted_at"].isoformat()
+                        member = payload["members"][0]
+                        member["run_id"] = f"execution-controls-{index}"
+                        member["request"]["execution"].update(controls)
                         response = await client.post("/backtests", json=payload)
                         self.assertEqual(response.status_code, 201, response.text)
-                        saved = await client.get(f"/backtests/execution-controls-{index}")
+                        saved = await client.get(f"/backtest-runs/execution-controls-{index}")
                         self.assertEqual(saved.status_code, 200)
                         self.assertEqual(
-                            saved.json()["request"]["execution"], payload["request"]["execution"]
+                            saved.json()["request"]["execution"], member["request"]["execution"]
                         )
         finally:
             main.app.dependency_overrides.pop(main.get_db, None)
@@ -249,125 +251,11 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         payload["execution"].update(daily_schedule=None, max_entries_per_day=None)
         self.assertEqual(BacktestRequestPayload(**payload).model_dump(), original)
 
-    async def test_name_routes_validate_persist_clear_and_reject_members(self):
-        await main.create_backtest_run(BacktestRunCreateIn(**_run_payload()), db=self.db)
-        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
-        batch_id = self._batch_payload()["batch_id"]
-        member_id = self._batch_payload()["members"][0]["run_id"]
-
-        async def database():
-            yield self.db
-
-        main.app.dependency_overrides[main.get_db] = database
-        try:
-            async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=main.app), base_url="http://test"
-            ) as client:
-                for path, read_path in [
-                    ("/backtests/run-queued-1/name", "/backtests/run-queued-1"),
-                    (f"/backtest-batches/{batch_id}/name", f"/backtest-batches/{batch_id}"),
-                ]:
-                    before = (await client.get(read_path)).json()
-                    for name, expected in [
-                        ("  Duplicate  ", "Duplicate"),
-                        ("", None),
-                        ("😀" * 120, "😀" * 120),
-                    ]:
-                        response = await client.patch(path, json={"name": name})
-                        self.assertEqual(response.status_code, 200, response.text)
-                        self.assertEqual(response.json(), {**before, "name": expected})
-                        self.assertEqual(
-                            (await client.get(read_path)).json(), {**before, "name": expected}
-                        )
-                    for payload in [
-                        {},
-                        {"name": "a\nb"},
-                        {"name": "x" * 121},
-                        {"name": 1},
-                        {"name": "ok", "status": "running"},
-                    ]:
-                        self.assertEqual((await client.patch(path, json=payload)).status_code, 422)
-                for path in ["/backtests/missing/name", "/backtest-batches/missing/name"]:
-                    self.assertEqual(
-                        (await client.patch(path, json={"name": None})).status_code, 404
-                    )
-                for name in [None, "member"]:
-                    self.assertEqual(
-                        (
-                            await client.patch(f"/backtests/{member_id}/name", json={"name": name})
-                        ).status_code,
-                        409,
-                    )
-        finally:
-            main.app.dependency_overrides.pop(main.get_db)
-
-    async def test_experiment_names_normalize_and_read_back_outside_requests(self):
-        names = [
-            (None, None),
-            ("", None),
-            (" \t ", None),
-            ("  Same  ", "Same"),
-            ("Same", "Same"),
-            ("😀" * 120, "😀" * 120),
-        ]
-        for index, (name, expected) in enumerate(names):
-            run_id = f"named-run-{index}"
-            payload = BacktestRunCreateIn(**_run_payload(run_id=run_id, name=name))
-            await main.create_backtest_run(payload, db=self.db)
-            detail = await main.get_backtest_run(run_id, db=self.db)
-            assert detail is not None
-            self.assertEqual(detail["name"], expected)
-            self.assertEqual(detail["request"], _request_payload())
-            batch = BacktestBatchCreateIn(
-                **self._batch_payload(
-                    batch_id=f"named-batch-{index}",
-                    submission_id=f"named-submit-{index}",
-                    name=name,
-                    members=[{**self._batch_payload()["members"][0], "run_id": f"member-{index}"}],
-                )
-            )
-            saved = await main.create_backtest_batch(batch, db=self.db)
-            assert saved is not None
-            self.assertEqual(saved["name"], expected)
-            members = await main.list_backtest_batch_members(saved["batch_id"], db=self.db)
-            self.assertIsNone(members[0]["name"])
-            self.assertNotIn("name", members[0]["request"])
-        history = await main.list_backtest_runs(db=self.db)
-        self.assertEqual(len(history), 12)
-        for name in ["x" * 121, "a\nb", "\ntrimmed", "a\u2028b", 123]:
-            for payload_type, payload in [
-                (BacktestRunCreateIn, _run_payload()),
-                (BacktestBatchCreateIn, self._batch_payload()),
-            ]:
-                with self.assertRaises(ValidationError):
-                    payload_type(**{**payload, "name": name})
-        for key in ("name", "label"):
-            with self.assertRaises(ValidationError):
-                BacktestRunCreateIn(
-                    **_run_payload(request=_request_payload(run_metadata={key: "old"}))
-                )
-            with self.assertRaises(ValidationError):
-                BacktestBatchCreateIn(
-                    **self._batch_payload(
-                        accepted_definition={"shared_request": {"run_metadata": {key: "old"}}}
-                    )
-                )
-
-    async def test_serialized_legacy_run_keeps_strategy_version_absent(self):
-        await main.create_backtest_run(BacktestRunCreateIn(**_run_payload()), db=self.db)
-        detail = await main.get_backtest_run("run-queued-1", db=self.db)
-        history = await main.list_backtest_runs(db=self.db)
-
-        for stored in (detail, history[0]):
-            run = BacktestRunOut.model_validate(stored).model_dump(mode="json")
-            self.assertEqual(run["request_schema_version"], 2)
-            self.assertNotIn("strategy_version", run["request"]["strategy"])
-
-    def _batch_payload(self, **overrides):
+    def _backtest_payload(self, **overrides):
         request = _request_payload()
         request["strategy"]["strategy_version"] = 1
         payload = {
-            "batch_id": "batch-1",
+            "backtest_id": "backtest-1",
             "submission_id": "submission-1",
             "accepted_at": datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
             "definition_schema_version": 1,
@@ -379,7 +267,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             "members": [
                 {
                     "run_id": "member-1",
-                    "member_ordinal": 0,
+                    "run_ordinal": 0,
                     "request_schema_version": 3,
                     "request": request,
                 }
@@ -388,13 +276,13 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         payload.update(overrides)
         return payload
 
-    async def _cancel_batch(self, command_id: str):
-        return await main.control_backtest_batch(
-            "batch-1",
+    async def _cancel_backtest(self, command_id: str):
+        return await main.control_backtest(
+            "backtest-1",
             "cancel",
-            BacktestBatchCommandIn(
+            BacktestCommandIn(
                 command_id=command_id,
-                policy=BacktestBatchControlPolicyIn(
+                policy=BacktestControlPolicyIn(
                     **{
                         "accepted_statuses": ["queued", "running", "pausing", "paused"],
                         "effective_statuses": ["cancelling", "cancelled"],
@@ -407,48 +295,46 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             db=self.db,
         )
 
-    async def test_cancel_batch_from_queued_is_atomic_and_identity_stable(self):
+    async def test_cancel_backtest_from_queued_is_atomic_and_identity_stable(self):
         from fastapi import HTTPException
 
-        payload = self._batch_payload()
+        payload = self._backtest_payload()
         payload.update(raw_count=2, member_count=2, excluded_count=0)
-        payload["members"].append(
-            {**payload["members"][0], "run_id": "member-2", "member_ordinal": 1}
-        )
-        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        payload["members"].append({**payload["members"][0], "run_id": "member-2", "run_ordinal": 1})
+        await main.create_backtest(BacktestCreateIn(**payload), db=self.db)
         _seed_execution_slot(self.session)
-        accepted = await self._cancel_batch("cancel-1")
+        accepted = await self._cancel_backtest("cancel-1")
         self.assertEqual(
             accepted,
             {
-                "batch_id": "batch-1",
+                "backtest_id": "backtest-1",
                 "command_id": "cancel-1",
                 "status": "cancelled",
                 "lifecycle_revision": 1,
             },
         )
-        batch = await main.get_backtest_batch("batch-1", db=self.db)
-        assert batch is not None
-        self.assertEqual(batch["completed_at"], batch["cancel_requested_at"])
-        self.assertEqual(batch["cancellation_source"], "user")
-        members = await main.list_backtest_batch_members("batch-1", db=self.db)
+        backtest = await main.get_backtest("backtest-1", db=self.db)
+        assert backtest is not None
+        self.assertEqual(backtest["completed_at"], backtest["cancel_requested_at"])
+        self.assertEqual(backtest["cancellation_source"], "user")
+        members = await main.list_backtest_members("backtest-1", db=self.db)
         self.assertEqual([member["status"] for member in members], ["cancelled", "cancelled"])
-        self.assertEqual({member["cancellation_source"] for member in members}, {"batch"})
+        self.assertEqual({member["cancellation_source"] for member in members}, {"backtest"})
         self.assertEqual((await main.get_backtest_queue_state(db=self.db))["queued_entries"], [])
-        self.assertEqual(await self._cancel_batch("cancel-1"), accepted)
-        self.assertEqual((await self._cancel_batch("cancel-2"))["lifecycle_revision"], 1)
-        events = await main.list_backtest_batch_events("batch-1", db=self.db)
+        self.assertEqual(await self._cancel_backtest("cancel-1"), accepted)
+        self.assertEqual((await self._cancel_backtest("cancel-2"))["lifecycle_revision"], 1)
+        events = await main.list_backtest_events("backtest-1", db=self.db)
         self.assertEqual(
             [(event["revision"], event["event_type"], event["command_id"]) for event in events],
             [(0, "accepted", None), (1, "cancel", "cancel-1")],
         )
         with self.assertRaises(HTTPException) as missing:
-            await main.control_backtest_batch(
+            await main.control_backtest(
                 "missing",
                 "cancel",
-                BacktestBatchCommandIn(
+                BacktestCommandIn(
                     command_id="missing",
-                    policy=BacktestBatchControlPolicyIn(
+                    policy=BacktestControlPolicyIn(
                         **{
                             "accepted_statuses": ["queued"],
                             "effective_statuses": ["cancelled"],
@@ -462,20 +348,20 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(missing.exception.status_code, 404)
 
-    async def test_cancel_batch_keeps_prior_success_and_active_slot_until_settlement(self):
-        payload = self._batch_payload()
+    async def test_cancel_backtest_keeps_prior_success_and_active_slot_until_settlement(self):
+        payload = self._backtest_payload()
         payload.update(raw_count=3, member_count=3, excluded_count=0)
         payload["members"].extend(
             [
                 {
                     **payload["members"][0],
                     "run_id": f"member-{ordinal}",
-                    "member_ordinal": ordinal - 1,
+                    "run_ordinal": ordinal - 1,
                 }
                 for ordinal in (2, 3)
             ]
         )
-        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        await main.create_backtest(BacktestCreateIn(**payload), db=self.db)
         _seed_execution_slot(self.session)
         at = datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc)
         self.assertTrue(
@@ -511,13 +397,13 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 worker_id="worker-test",
             )
         )
-        accepted = await self._cancel_batch("cancel-running")
+        accepted = await self._cancel_backtest("cancel-running")
         self.assertEqual(accepted["status"], "cancelling")
-        batch = await main.get_backtest_batch("batch-1", db=self.db)
-        assert batch is not None
-        self.assertIsNone(batch["completed_at"])
-        self.assertIsNotNone(batch["cancel_requested_at"])
-        members = await main.list_backtest_batch_members("batch-1", db=self.db)
+        backtest = await main.get_backtest("backtest-1", db=self.db)
+        assert backtest is not None
+        self.assertIsNone(backtest["completed_at"])
+        self.assertIsNotNone(backtest["cancel_requested_at"])
+        members = await main.list_backtest_members("backtest-1", db=self.db)
         self.assertEqual(
             [run["status"] for run in members], ["succeeded", "cancelling", "cancelled"]
         )
@@ -546,25 +432,23 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 terminal={"status": "cancelled", "completed_at": at},
             )
         )
-        batch = await main.get_backtest_batch("batch-1", db=self.db)
-        assert batch is not None
-        self.assertEqual(batch["status"], "cancelled")
-        self.assertIsNotNone(batch["completed_at"])
-        self.assertEqual((await self._cancel_batch("cancel-running"))["status"], "cancelling")
+        backtest = await main.get_backtest("backtest-1", db=self.db)
+        assert backtest is not None
+        self.assertEqual(backtest["status"], "cancelled")
+        self.assertIsNotNone(backtest["completed_at"])
+        self.assertEqual((await self._cancel_backtest("cancel-running"))["status"], "cancelling")
         self.assertEqual(
             (await main.get_backtest_run("member-1", db=self.db))["metrics"],
             {"total_return_pct": 2.5},
         )
 
-    async def test_cancel_pausing_batch_dominates_later_resume_and_normal_result(self):
+    async def test_cancel_pausing_backtest_dominates_later_resume_and_normal_result(self):
         from fastapi import HTTPException
 
-        payload = self._batch_payload()
+        payload = self._backtest_payload()
         payload.update(raw_count=2, member_count=2, excluded_count=0)
-        payload["members"].append(
-            {**payload["members"][0], "run_id": "member-2", "member_ordinal": 1}
-        )
-        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        payload["members"].append({**payload["members"][0], "run_id": "member-2", "run_ordinal": 1})
+        await main.create_backtest(BacktestCreateIn(**payload), db=self.db)
         _seed_execution_slot(self.session)
         at = datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc)
         self.assertTrue(
@@ -576,12 +460,12 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 worker_id="worker-test",
             )
         )
-        pause = await main.control_backtest_batch(
-            "batch-1",
+        pause = await main.control_backtest(
+            "backtest-1",
             "pause",
-            BacktestBatchCommandIn(
+            BacktestCommandIn(
                 command_id="pause",
-                policy=BacktestBatchControlPolicyIn(
+                policy=BacktestControlPolicyIn(
                     accepted_statuses=["queued", "running"],
                     effective_statuses=["pausing", "paused"],
                     active_status="pausing",
@@ -592,15 +476,15 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             db=self.db,
         )
         self.assertEqual(pause["status"], "pausing")
-        accepted = await self._cancel_batch("cancel")
+        accepted = await self._cancel_backtest("cancel")
         self.assertEqual(accepted["status"], "cancelling")
         with self.assertRaises(HTTPException) as conflict:
-            await main.control_backtest_batch(
-                "batch-1",
+            await main.control_backtest(
+                "backtest-1",
                 "resume",
-                BacktestBatchCommandIn(
+                BacktestCommandIn(
                     command_id="resume",
-                    policy=BacktestBatchControlPolicyIn(
+                    policy=BacktestControlPolicyIn(
                         accepted_statuses=["pausing", "paused"],
                         effective_statuses=["queued", "running"],
                         active_status="running",
@@ -632,39 +516,36 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 terminal={"status": "cancelled", "completed_at": at},
             )
         )
-        self.assertEqual(
-            (await main.get_backtest_batch("batch-1", db=self.db))["status"], "cancelled"
-        )
-        self.assertEqual((await self._cancel_batch("cancel")), accepted)
+        self.assertEqual((await main.get_backtest("backtest-1", db=self.db))["status"], "cancelled")
+        self.assertEqual((await self._cancel_backtest("cancel")), accepted)
 
-    async def test_batch_acceptance_retry_and_ordered_inspection(self):
-        payload = self._batch_payload()
-        first = await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
-        retried = await main.create_backtest_batch(
-            BacktestBatchCreateIn(**{**payload, "batch_id": "discarded-id"}), db=self.db
+    async def test_backtest_acceptance_retry_and_ordered_inspection(self):
+        payload = self._backtest_payload()
+        first = await main.create_backtest(BacktestCreateIn(**payload), db=self.db)
+        retried = await main.create_backtest(
+            BacktestCreateIn(**{**payload, "backtest_id": "discarded-id"}), db=self.db
         )
         assert first is not None and retried is not None
-        self.assertEqual(first["batch_id"], retried["batch_id"])
+        self.assertEqual(first["backtest_id"], retried["backtest_id"])
         self.assertEqual(first["status"], "queued")
         self.assertEqual(first["lifecycle_revision"], 0)
-        members = await main.list_backtest_batch_members("batch-1", db=self.db)
+        members = await main.list_backtest_members("backtest-1", db=self.db)
         self.assertEqual(
-            [(run["run_id"], run["member_ordinal"]) for run in members], [("member-1", 0)]
+            [(run["run_id"], run["run_ordinal"]) for run in members], [("member-1", 0)]
         )
         self.assertEqual(members[0]["request"], payload["members"][0]["request"])
-        events = await main.list_backtest_batch_events("batch-1", db=self.db)
+        events = await main.list_backtest_events("backtest-1", db=self.db)
         self.assertEqual(
             [(event["revision"], event["event_type"]) for event in events], [(0, "accepted")]
         )
         self.assertIsNone(events[0]["prior_status"])
         self.assertEqual(len(await main.list_backtest_runs(db=self.db)), 1)
-        self.assertEqual(len(await main.list_backtest_runs(membership="standalone", db=self.db)), 0)
 
-    async def test_batch_retry_after_concurrent_identity_winner(self):
+    async def test_backtest_retry_after_concurrent_identity_winner(self):
         from app import crud
 
-        winner = self._batch_payload()
-        retry = self._batch_payload(batch_id="discarded-id")
+        winner = self._backtest_payload()
+        retry = self._backtest_payload(backtest_id="discarded-id")
 
         class ConcurrentWinnerSession:
             def __init__(self, session):
@@ -673,15 +554,15 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
 
             async def execute(self, statement, params=None):
                 if (
-                    getattr(getattr(statement, "table", None), "name", None) == "backtest_batches"
+                    getattr(getattr(statement, "table", None), "name", None) == "backtests"
                     and not self.raced
                 ):
                     self.raced = True
-                    await crud.create_backtest_batch(
-                        self.session, BacktestBatchCreateIn(**winner).model_dump()
+                    await crud.create_backtest(
+                        self.session, BacktestCreateIn(**winner).model_dump()
                     )
                     raise IntegrityError(
-                        "INSERT backtest_batches", {}, Exception("duplicate submission_id")
+                        "INSERT backtests", {}, Exception("duplicate submission_id")
                     )
                 return await self.session.execute(statement, params)
 
@@ -692,58 +573,50 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 await self.session.rollback()
 
         racing_session = ConcurrentWinnerSession(self.session)
-        accepted = await crud.create_backtest_batch(
-            cast(AsyncSession, racing_session), BacktestBatchCreateIn(**retry).model_dump()
+        accepted = await crud.create_backtest(
+            cast(AsyncSession, racing_session), BacktestCreateIn(**retry).model_dump()
         )
         assert accepted is not None
         self.assertTrue(racing_session.raced)
-        self.assertEqual(accepted["batch_id"], winner["batch_id"])
-        self.assertEqual(len(await main.list_backtest_batches(db=self.db)), 1)
-        self.assertEqual(len(await main.list_backtest_batch_members("batch-1", db=self.db)), 1)
-        self.assertEqual(len(await main.list_backtest_batch_events("batch-1", db=self.db)), 1)
+        self.assertEqual(accepted["backtest_id"], winner["backtest_id"])
+        self.assertEqual(len(await main.list_backtests(db=self.db)), 1)
+        self.assertEqual(len(await main.list_backtest_members("backtest-1", db=self.db)), 1)
+        self.assertEqual(len(await main.list_backtest_events("backtest-1", db=self.db)), 1)
 
-    async def test_batch_identity_conflict_and_rollback(self):
+    async def test_backtest_identity_conflict_and_rollback(self):
         from app import crud
         from fastapi import HTTPException
 
-        payload = self._batch_payload()
-        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
-        changed = self._batch_payload(batch_id="batch-2", accepted_definition={"changed": True})
+        payload = self._backtest_payload()
+        await main.create_backtest(BacktestCreateIn(**payload), db=self.db)
+        changed = self._backtest_payload(
+            backtest_id="backtest-2", accepted_definition={"changed": True}
+        )
         with self.assertRaises(HTTPException) as conflict:
-            await main.create_backtest_batch(BacktestBatchCreateIn(**changed), db=self.db)
+            await main.create_backtest(BacktestCreateIn(**changed), db=self.db)
         self.assertEqual(conflict.exception.status_code, 409)
-        self.assertEqual(len(await main.list_backtest_batches(db=self.db)), 1)
+        self.assertEqual(len(await main.list_backtests(db=self.db)), 1)
 
-        invalid = self._batch_payload(batch_id="batch-3", submission_id="submission-3")
+        invalid = self._backtest_payload(backtest_id="backtest-3", submission_id="submission-3")
         invalid["members"][0]["run_id"] = "member-1"
         with self.assertRaises(IntegrityError):
-            await crud.create_backtest_batch(self.db, BacktestBatchCreateIn(**invalid).model_dump())
-        self.assertIsNone(await crud.get_backtest_batch(self.db, "batch-3"))
+            await crud.create_backtest(self.db, BacktestCreateIn(**invalid).model_dump())
+        self.assertIsNone(await crud.get_backtest(self.db, "backtest-3"))
 
-    async def test_batch_member_cannot_be_individually_deleted(self):
-        from fastapi import HTTPException
-
+    async def test_backtest_delete_rechecks_state_and_removes_members_events_and_commands(self):
         _seed_execution_slot(self.session)
-        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
-        with self.assertRaises(HTTPException) as conflict:
-            await main.delete_backtest_run("member-1", db=self.db)
-        self.assertEqual(conflict.exception.status_code, 409)
-        self.assertIsNotNone(await main.get_backtest_run("member-1", db=self.db))
-
-    async def test_batch_delete_rechecks_state_and_removes_members_events_and_commands(self):
-        _seed_execution_slot(self.session)
-        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        await main.create_backtest(BacktestCreateIn(**self._backtest_payload()), db=self.db)
         for status in ("queued", "running", "pausing", "paused", "cancelling"):
-            await self.session.execute(update(backtest_batches).values(status=status))
+            await self.session.execute(update(backtests).values(status=status))
             await self.session.commit()
             with self.assertRaises(main.HTTPException) as conflict:
-                await main.delete_backtest_batch("batch-1", db=self.db)
+                await main.delete_backtest("backtest-1", db=self.db)
             self.assertEqual(conflict.exception.status_code, 409)
-            self.assertIsNotNone(await crud.get_backtest_batch(self.db, "batch-1"))
-        await self.session.execute(update(backtest_batches).values(status="completed"))
+            self.assertIsNotNone(await crud.get_backtest(self.db, "backtest-1"))
+        await self.session.execute(update(backtests).values(status="completed"))
         await self.session.commit()
         with self.assertRaises(main.HTTPException) as conflict:
-            await main.delete_backtest_batch("batch-1", db=self.db)
+            await main.delete_backtest("backtest-1", db=self.db)
         self.assertEqual(conflict.exception.status_code, 409)
 
         await self.session.execute(
@@ -754,8 +627,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             )
         )
         await self.session.execute(
-            insert(backtest_batch_commands).values(
-                batch_id="batch-1",
+            insert(backtest_commands).values(
+                backtest_id="backtest-1",
                 command_id="command-1",
                 command="pause",
                 status="paused",
@@ -764,26 +637,26 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             )
         )
         await self.session.commit()
-        response = await main.delete_backtest_batch("batch-1", db=self.db)
+        response = await main.delete_backtest("backtest-1", db=self.db)
         self.assertEqual(response.status_code, 204)
         for table in (
-            backtest_batches,
+            backtests,
             backtest_runs,
-            backtest_batch_events,
-            backtest_batch_commands,
+            backtest_events,
+            backtest_commands,
             backtest_queue_turns,
         ):
             rows = (await self.session.execute(select(table))).fetchall()
             self.assertEqual(rows, [], table.name)
         with self.assertRaises(main.HTTPException) as missing:
-            await main.delete_backtest_batch("batch-1", db=self.db)
+            await main.delete_backtest("backtest-1", db=self.db)
         self.assertEqual(missing.exception.status_code, 404)
 
-    async def test_batch_delete_rolls_back_when_child_removal_fails(self):
+    async def test_backtest_delete_rolls_back_when_child_removal_fails(self):
         _seed_execution_slot(self.session)
-        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
+        await main.create_backtest(BacktestCreateIn(**self._backtest_payload()), db=self.db)
         await self.session.execute(
-            update(backtest_batches).values(
+            update(backtests).values(
                 status="cancelled",
                 cancel_requested_at=datetime(2026, 6, 8, 12, 34, tzinfo=timezone.utc),
                 cancellation_source="user",
@@ -798,44 +671,20 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         await self.session.commit()
 
         await self.session.execute(text("""CREATE TRIGGER reject_event_delete
-            BEFORE DELETE ON backtest_batch_events BEGIN
+            BEFORE DELETE ON backtest_events BEGIN
                 SELECT RAISE(ABORT, 'injected event deletion failure');
             END"""))
         await self.session.commit()
         with self.assertRaisesRegex(IntegrityError, "injected event deletion failure"):
-            await crud.delete_backtest_batch(self.db, "batch-1")
-        self.assertIsNotNone(await crud.get_backtest_batch(self.db, "batch-1"))
-        self.assertEqual(len(await crud.list_backtest_batch_members(self.db, "batch-1")), 1)
-        self.assertEqual(len(await crud.list_backtest_batch_events(self.db, "batch-1")), 1)
+            await crud.delete_backtest(self.db, "backtest-1")
+        self.assertIsNotNone(await crud.get_backtest(self.db, "backtest-1"))
+        self.assertEqual(len(await crud.list_backtest_members(self.db, "backtest-1")), 1)
+        self.assertEqual(len(await crud.list_backtest_events(self.db, "backtest-1")), 1)
 
-    async def test_global_claim_selects_older_batch_before_standalone(self):
-        await main.create_backtest_batch(BacktestBatchCreateIn(**self._batch_payload()), db=self.db)
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
-                **_run_payload(
-                    run_id="standalone",
-                    submitted_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
-                )
-            ),
-            db=self.db,
-        )
-        _seed_execution_slot(self.session)
-        for run_id, expected in (("standalone", False), ("member-1", True)):
-            result = await main.claim_backtest_execution(
-                BacktestExecutionClaimIn(
-                    run_id=run_id,
-                    owner_token="owner",
-                    started_at=datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc),
-                    worker_id="worker-test",
-                ),
-                db=self.db,
-            )
-            self.assertEqual(result, {"updated": expected})
-        self.assertEqual((await main.get_backtest_run("member-1", db=self.db))["status"], "running")
-        self.assertEqual((await main.get_backtest_execution_slot(db=self.db))["run_id"], "member-1")
-
-    async def test_individual_member_cancellation_preserves_other_members_and_completes_batch(self):
-        payload = self._batch_payload()
+    async def test_individual_member_cancellation_preserves_other_members_and_completes_backtest(
+        self,
+    ):
+        payload = self._backtest_payload()
         payload["raw_count"] = 2
         payload["member_count"] = 2
         payload["excluded_count"] = 0
@@ -843,17 +692,17 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             {
                 **payload["members"][0],
                 "run_id": "member-2",
-                "member_ordinal": 1,
+                "run_ordinal": 1,
             }
         )
-        await main.create_backtest_batch(BacktestBatchCreateIn(**payload), db=self.db)
+        await main.create_backtest(BacktestCreateIn(**payload), db=self.db)
         _seed_execution_slot(self.session)
         first = await main.cancel_backtest_run("member-1", db=self.db)
         assert first is not None
         self.assertEqual(first["status"], "cancelled")
-        batch = await main.get_backtest_batch("batch-1", db=self.db)
-        assert batch is not None
-        self.assertEqual(batch["status"], "queued")
+        backtest = await main.get_backtest("backtest-1", db=self.db)
+        assert backtest is not None
+        self.assertEqual(backtest["status"], "queued")
         self.assertEqual(
             await main.claim_backtest_execution(
                 BacktestExecutionClaimIn(
@@ -869,9 +718,9 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         second = await main.cancel_backtest_run("member-2", db=self.db)
         assert second is not None
         self.assertEqual(second["status"], "cancelling")
-        batch = await main.get_backtest_batch("batch-1", db=self.db)
-        assert batch is not None
-        self.assertEqual(batch["status"], "running")
+        backtest = await main.get_backtest("backtest-1", db=self.db)
+        assert backtest is not None
+        self.assertEqual(backtest["status"], "running")
         self.assertEqual(
             await main.settle_backtest_execution(
                 BacktestExecutionSettleIn(
@@ -884,109 +733,28 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             ),
             {"updated": True},
         )
-        batch = await main.get_backtest_batch("batch-1", db=self.db)
-        self.assertEqual(batch["status"], "completed")
-        self.assertEqual(batch["lifecycle_revision"], 4)
-        events = await main.list_backtest_batch_events("batch-1", db=self.db)
+        backtest = await main.get_backtest("backtest-1", db=self.db)
+        self.assertEqual(backtest["status"], "completed")
+        self.assertEqual(backtest["lifecycle_revision"], 4)
+        events = await main.list_backtest_events("backtest-1", db=self.db)
         self.assertEqual(
             [event["event_type"] for event in events],
             ["accepted", "member_cancelled", "started", "member_cancel_requested", "completed"],
         )
         self.assertEqual(
-            [
-                run["status"]
-                for run in await main.list_backtest_batch_members("batch-1", db=self.db)
-            ],
+            [run["status"] for run in await main.list_backtest_members("backtest-1", db=self.db)],
             ["cancelled", "cancelled"],
         )
 
-    def test_member_cannot_be_created_through_standalone_route(self):
-        with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(batch_id="batch-1", member_ordinal=0))
-
-    def test_batch_rejects_unresolved_or_multi_market_member(self):
-        payload = self._batch_payload()
+    def test_backtest_rejects_unresolved_or_multi_market_member(self):
+        payload = self._backtest_payload()
         payload["members"][0]["request"]["symbols"] = ["EURUSD", "USDJPY"]
         with self.assertRaises(ValidationError):
-            BacktestBatchCreateIn(**payload)
-        payload = self._batch_payload()
+            BacktestCreateIn(**payload)
+        payload = self._backtest_payload()
         payload["members"][0]["request"]["strategy"].pop("strategy_version")
         with self.assertRaises(ValidationError):
-            BacktestBatchCreateIn(**payload)
-
-    async def test_create_queued_run_and_get_preserves_complete_request(self):
-        created = await main.create_backtest_run(
-            BacktestRunCreateIn(**_run_payload()),
-            db=self.db,
-        )
-
-        fetched = await main.get_backtest_run(created["run_id"], db=self.db)
-
-        self.assertEqual(fetched["run_id"], "run-queued-1")
-        self.assertEqual(fetched["status"], "queued")
-        self.assertEqual(fetched["request_schema_version"], 2)
-        self.assertEqual(fetched["request"], _request_payload())
-        self.assertEqual(fetched["request"]["exchange"], "FX")
-        self.assertEqual(
-            fetched["request"]["strategy"]["parameters"],
-            _request_payload()["strategy"]["parameters"],
-        )
-
-        self.assertEqual(
-            fetched["request"]["execution"],
-            _request_payload()["execution"],
-        )
-        self.assertEqual(
-            fetched["request"]["run_metadata"],
-            _request_payload()["run_metadata"],
-        )
-        self.assertIsNone(fetched["started_at"])
-        self.assertIsNone(fetched["completed_at"])
-        self.assertIsNone(fetched["result_schema_version"])
-        self.assertIsNone(fetched["metrics"])
-        self.assertIsNone(fetched["diagnostics"])
-        self.assertNotIn("fills", fetched)
-        self.assertNotIn("trades", fetched)
-
-    async def test_create_version_three_preserves_exact_strategy_identity(self):
-        request = _request_payload()
-        request["strategy"] = {**request["strategy"], "strategy_version": 1}
-        created = await main.create_backtest_run(
-            BacktestRunCreateIn(
-                **_run_payload(
-                    run_id="versioned",
-                    request_schema_version=3,
-                    request=request,
-                )
-            ),
-            db=self.db,
-        )
-
-        fetched = await main.get_backtest_run(created["run_id"], db=self.db)
-
-        self.assertEqual(fetched["request_schema_version"], 3)
-        self.assertEqual(fetched["request"]["strategy"], request["strategy"])
-
-    async def test_create_queued_run_defaults_absent_terminal_fields(self):
-        run = BacktestRunCreateIn(
-            run_id="run-minimal-queued",
-            status="queued",
-            submitted_at=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
-            request_schema_version=2,
-            request=BacktestRequestPayload(**_request_payload()),
-        )
-
-        created = await main.create_backtest_run(run, db=self.db)
-
-        self.assertIsNone(created["started_at"])
-        self.assertIsNone(created["completed_at"])
-        self.assertIsNone(created["error_code"])
-        self.assertIsNone(created["error_message"])
-        self.assertIsNone(created["result_schema_version"])
-        self.assertIsNone(created["metrics"])
-        self.assertIsNone(created["diagnostics"])
-        self.assertEqual(run.fills, [])
-        self.assertEqual(run.trades, [])
+            BacktestCreateIn(**payload)
 
     async def test_get_missing_run_returns_404(self):
         with self.assertRaises(main.HTTPException) as ctx:
@@ -1015,7 +783,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         for run in runs:
-            await main.create_backtest_run(BacktestRunCreateIn(**run), db=self.db)
+            await _seed_run(SeedRun(**run), db=self.db)
 
         listed = await main.list_backtest_runs(status="queued", db=self.db)
 
@@ -1025,12 +793,12 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_list_filters_each_immutable_request_json_field(self):
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
+        await _seed_run(
+            SeedRun(
                 **_run_payload(
                     run_id="run-target",
                     request=_request_payload(
-                        symbols=["GBPUSD", "EURUSD"],
+                        symbols=["EURUSD"],
                         timeframe="H1",
                         engine="vectorized",
                         strategy={
@@ -1042,8 +810,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             ),
             db=self.db,
         )
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
+        await _seed_run(
+            SeedRun(
                 **_run_payload(
                     run_id="run-other",
                     request=_request_payload(
@@ -1079,8 +847,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             ("run-after", datetime(2026, 6, 8, 12, 32, tzinfo=timezone.utc)),
         )
         for run_id, submitted_at in timestamps:
-            await main.create_backtest_run(
-                BacktestRunCreateIn(
+            await _seed_run(
+                SeedRun(
                     **_run_payload(
                         run_id=run_id,
                         submitted_at=submitted_at,
@@ -1102,13 +870,13 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_list_combines_lifecycle_request_and_date_filters(self):
         matching_request = _request_payload(
-            symbols=["GBPUSD", "EURUSD"],
+            symbols=["EURUSD"],
             timeframe="H1",
             engine="vectorized",
             strategy={"strategy_id": "mean_reversion", "parameters": {}},
         )
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
+        await _seed_run(
+            SeedRun(
                 **_run_payload(
                     run_id="run-target",
                     status="running",
@@ -1118,8 +886,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             ),
             db=self.db,
         )
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
+        await _seed_run(
+            SeedRun(
                 **_run_payload(
                     run_id="run-wrong-status",
                     submitted_at=datetime(2026, 6, 8, 12, 30, tzinfo=timezone.utc),
@@ -1128,8 +896,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             ),
             db=self.db,
         )
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
+        await _seed_run(
+            SeedRun(
                 **_run_payload(
                     run_id="run-wrong-request",
                     status="running",
@@ -1153,8 +921,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([run["run_id"] for run in listed], ["run-target"])
 
     async def test_list_returns_empty_collection_when_no_runs_match(self):
-        await main.create_backtest_run(
-            BacktestRunCreateIn(**_run_payload()),
+        await _seed_run(
+            SeedRun(**_run_payload()),
             db=self.db,
         )
 
@@ -1164,8 +932,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_list_returns_all_matching_runs_without_a_hard_limit(self):
         for index in range(105):
-            await main.create_backtest_run(
-                BacktestRunCreateIn(
+            await _seed_run(
+                SeedRun(
                     **_run_payload(
                         run_id=f"run-{index:03d}",
                         submitted_at=datetime(
@@ -1187,73 +955,6 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(listed), 105)
         self.assertEqual(listed[0]["run_id"], "run-104")
         self.assertEqual(listed[-1]["run_id"], "run-000")
-
-    async def test_create_succeeded_run_stores_normalized_fills_and_trades(self):
-        completed_at = datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)
-        run = BacktestRunCreateIn(
-            **_run_payload(
-                run_id="run-succeeded-1",
-                status="succeeded",
-                started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
-                completed_at=completed_at,
-                result_schema_version=3,
-                replay_descriptor=_replay_descriptor(),
-                metrics={"total_return_pct": 1.25},
-                diagnostics={"execution_duration_ms": 240000},
-                fills=[
-                    {
-                        "fill_sequence": 0,
-                        "timestamp_ms": 1714525200000,
-                        "symbol": "EURUSD",
-                        "side": "buy",
-                        "quantity": 1000.0,
-                        "price": 1.0715,
-                        "fees": 0.15,
-                        "exit_reason": None,
-                    }
-                ],
-                trades=[
-                    {
-                        "trade_sequence": 0,
-                        "trade_id": "trade-1",
-                        "symbol": "EURUSD",
-                        "trade_direction": "long",
-                        "quantity": 1000.0,
-                        "entry_timestamp_ms": 1714525200000,
-                        "entry_price": 1.0715,
-                        "exit_timestamp_ms": 1714532400000,
-                        "exit_price": 1.074,
-                        "realized_pnl": 2.5,
-                        "fees": 0.3,
-                        "exit_reason": "signal",
-                        "stop_loss_price": 1.068,
-                        "take_profit_price": None,
-                    }
-                ],
-            )
-        )
-
-        created = await main.create_backtest_run(run, db=self.db)
-        fill_result = await self.session.execute(select(backtest_fills))
-        trade_result = await self.session.execute(select(backtest_closed_trades))
-        fill_row = fill_result.fetchone()
-        trade_row = trade_result.fetchone()
-        if fill_row is None or trade_row is None:
-            self.fail("Expected persisted fill and trade rows")
-        fill = dict(fill_row._mapping)
-        trade = dict(trade_row._mapping)
-
-        self.assertEqual(created["status"], "succeeded")
-        self.assertEqual(created["result_schema_version"], 3)
-        self.assertEqual(fill["run_id"], "run-succeeded-1")
-        self.assertEqual(fill["fill_sequence"], 0)
-        self.assertEqual(fill["side"], "buy")
-        self.assertEqual(trade["run_id"], "run-succeeded-1")
-        self.assertEqual(trade["trade_sequence"], 0)
-        self.assertEqual(trade["trade_direction"], "long")
-        self.assertEqual(trade["exit_reason"], "signal")
-        self.assertEqual(trade["stop_loss_price"], 1.068)
-        self.assertIsNone(trade["take_profit_price"])
 
     async def test_get_execution_logs_orders_by_sequence_and_preserves_exit_reasons(self):
         fills = [
@@ -1348,8 +1049,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "take_profit_price": None,
             },
         ]
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
+        await _seed_run(
+            SeedRun(
                 **_run_payload(
                     run_id="run-succeeded-logs",
                     status="succeeded",
@@ -1399,8 +1100,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fetched_trades[2]["take_profit_price"], 1.08)
 
     async def test_get_execution_logs_returns_empty_collections_and_missing_is_not_found(self):
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
+        await _seed_run(
+            SeedRun(
                 **_run_payload(
                     run_id="run-empty",
                     status="succeeded",
@@ -1424,186 +1125,16 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     await getter("run-missing", db=self.db)
                 self.assertEqual(ctx.exception.status_code, 404)
 
-    async def test_delete_backtest_run_cascades_execution_logs(self):
-        _seed_execution_slot(self.session)
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
-                **_run_payload(
-                    run_id="run-delete",
-                    status="succeeded",
-                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
-                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                    result_schema_version=3,
-                    replay_descriptor=_replay_descriptor(),
-                    metrics={"trade_count": 1},
-                    diagnostics={"bars": 10},
-                    fills=[
-                        {
-                            "fill_sequence": 0,
-                            "timestamp_ms": 1714525200000,
-                            "symbol": "EURUSD",
-                            "side": "buy",
-                            "quantity": 1000.0,
-                            "price": 1.0715,
-                            "fees": 0.15,
-                            "exit_reason": None,
-                        }
-                    ],
-                    trades=[
-                        {
-                            "trade_sequence": 0,
-                            "trade_id": "trade-delete",
-                            "symbol": "EURUSD",
-                            "trade_direction": "long",
-                            "quantity": 1000.0,
-                            "entry_timestamp_ms": 1714525200000,
-                            "entry_price": 1.0715,
-                            "exit_timestamp_ms": 1714532400000,
-                            "exit_price": 1.074,
-                            "realized_pnl": 2.5,
-                            "fees": 0.3,
-                            "exit_reason": "signal",
-                            "stop_loss_price": None,
-                            "take_profit_price": None,
-                        }
-                    ],
-                )
-            ),
-            db=self.db,
-        )
-
-        response = await main.delete_backtest_run("run-delete", db=self.db)
-        run_result = await self.session.execute(select(backtest_runs))
-        fill_result = await self.session.execute(select(backtest_fills))
-        trade_result = await self.session.execute(select(backtest_closed_trades))
-
-        self.assertEqual(response.status_code, 204)
-        self.assertEqual(run_result.fetchall(), [])
-        self.assertEqual(fill_result.fetchall(), [])
-        self.assertEqual(trade_result.fetchall(), [])
-
-        with self.assertRaises(main.HTTPException) as ctx:
-            await main.delete_backtest_run("run-delete", db=self.db)
-        self.assertEqual(ctx.exception.status_code, 404)
-
-    async def test_run_delete_rechecks_terminal_state_and_allows_cancelled(self):
-        _seed_execution_slot(self.session)
-        await main.create_backtest_run(
-            BacktestRunCreateIn(**_run_payload(run_id="run-delete")), db=self.db
-        )
-        for status in ("queued", "running", "cancelling"):
-            values: dict[str, object] = {"status": status}
-            if status == "cancelling":
-                values.update(
-                    cancel_requested_at=datetime(2026, 6, 8, 12, 34, tzinfo=timezone.utc),
-                    cancellation_source="user",
-                    cancellation_reason="user_requested",
-                )
-            await self.session.execute(update(backtest_runs).values(**values))
-            await self.session.commit()
-            with self.assertRaises(main.HTTPException) as conflict:
-                await main.delete_backtest_run("run-delete", db=self.db)
-            self.assertEqual(conflict.exception.status_code, 409)
-        await self.session.execute(
-            update(backtest_runs).values(
-                status="cancelled", completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc)
-            )
-        )
-        await self.session.commit()
-        self.assertEqual(
-            (await main.delete_backtest_run("run-delete", db=self.db)).status_code, 204
-        )
-
     def test_create_rejects_unknown_request_schema_version(self):
         with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(request_schema_version=1))
-
-    def test_new_success_requires_replay_descriptor(self):
-        with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(
-                **_run_payload(
-                    status="succeeded",
-                    result_schema_version=3,
-                    replay_descriptor=None,
-                )
-            )
-        with self.assertRaises(ValidationError):
-            BacktestExecutionSettleIn.model_validate(
-                {
-                    "run_id": "run-a",
-                    "owner_token": "owner-a",
-                    "status": "succeeded",
-                    "completed_at": datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                    "result_schema_version": 3,
-                    "metrics": {},
-                    "diagnostics": {},
-                }
-            )
-
-    def test_result_schema_version_accepts_v3_and_rejects_legacy_versions(self):
-        BacktestRunCreateIn(**_run_payload(result_schema_version=None))
-        BacktestRunCreateIn(**_run_payload(result_schema_version=3))
-        BacktestExecutionSettleIn(
-            run_id="run-a",
-            owner_token="owner-a",
-            status="succeeded",
-            completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-            result_schema_version=3,
-            replay_descriptor=_replay_descriptor(),
-            metrics={},
-            diagnostics={},
-        )
-
-        for legacy_version in (1, 2):
-            with self.subTest(result_schema_version=legacy_version):
-                with self.assertRaises(ValidationError):
-                    BacktestRunCreateIn(**_run_payload(result_schema_version=legacy_version))
-                with self.assertRaises(ValidationError):
-                    BacktestExecutionSettleIn(
-                        run_id="run-a",
-                        owner_token="owner-a",
-                        status="succeeded",
-                        completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                        result_schema_version=legacy_version,
-                        replay_descriptor=_replay_descriptor(),
-                        metrics={},
-                        diagnostics={},
-                    )
-
-        with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(result_schema_version=4))
-
-    def test_succeeded_create_requires_result_schema_version_3(self):
-        BacktestRunCreateIn(
-            **_run_payload(
-                status="succeeded",
-                started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
-                completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                result_schema_version=3,
-                replay_descriptor=_replay_descriptor(),
-                metrics={},
-                diagnostics={},
-            )
-        )
-
-        with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(
-                **_run_payload(
-                    status="succeeded",
-                    started_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
-                    completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
-                    result_schema_version=None,
-                    metrics={},
-                    diagnostics={},
-                )
-            )
+            SeedRun(**_run_payload(request_schema_version=1))
 
     def test_create_rejects_incomplete_request_snapshot(self):
         request = _request_payload()
         request.pop("exchange")
 
         with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(request=request))
+            SeedRun(**_run_payload(request=request))
 
     def test_create_rejects_invalid_request_enums_and_unknown_fields(self):
         invalid_execution = _request_payload()
@@ -1614,9 +1145,9 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         unknown_field = _request_payload(extra_default="must-not-be-reconstructed")
 
         with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(request=invalid_execution))
+            SeedRun(**_run_payload(request=invalid_execution))
         with self.assertRaises(ValidationError):
-            BacktestRunCreateIn(**_run_payload(request=unknown_field))
+            SeedRun(**_run_payload(request=unknown_field))
 
     def test_closed_trade_direction_is_required_and_constrained(self):
         base_trade = {
@@ -1646,7 +1177,6 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
             set(backtest_runs.c.keys()),
             {
                 "run_id",
-                "name",
                 "status",
                 "submitted_at",
                 "started_at",
@@ -1662,8 +1192,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                 "metrics",
                 "diagnostics",
                 "replay_descriptor",
-                "batch_id",
-                "member_ordinal",
+                "backtest_id",
+                "run_ordinal",
             },
         )
         self.assertNotIn("symbol", backtest_runs.c)
@@ -1740,11 +1270,9 @@ class BacktestExecutionApiTests(unittest.IsolatedAsyncioTestCase):
         self.session.close()
 
     async def _create_queue(self):
-        await main.create_backtest_run(
-            BacktestRunCreateIn(**_run_payload(run_id="run-a")), db=self.db
-        )
-        await main.create_backtest_run(
-            BacktestRunCreateIn(
+        await _seed_run(SeedRun(**_run_payload(run_id="run-a")), db=self.db)
+        await _seed_run(
+            SeedRun(
                 **_run_payload(
                     run_id="run-b",
                     submitted_at=datetime(2026, 6, 8, 12, 31, tzinfo=timezone.utc),
@@ -2070,3 +1598,48 @@ class BacktestExecutionApiTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SeedRun(BacktestRunOut):
+    fills: list[BacktestFillIn] = []
+    trades: list[BacktestClosedTradeIn] = []
+
+
+async def _seed_run(run: SeedRun, *, db: AsyncSession):
+    """Materialize a parent and seed execution artifacts for read/settlement tests."""
+    data = run.model_dump()
+    fills, trades = data.pop("fills"), data.pop("trades")
+    parent_id = f"parent-{run.run_id}"
+    data["backtest_id"] = parent_id
+    payload = BacktestRunApiTests()._backtest_payload(
+        backtest_id=parent_id,
+        submission_id=parent_id,
+        accepted_at=run.submitted_at,
+        raw_count=1,
+        member_count=1,
+        excluded_count=0,
+        members=[
+            {
+                "run_id": run.run_id,
+                "run_ordinal": 0,
+                "request_schema_version": 3,
+                "request": data["request"],
+            }
+        ],
+    )
+    await main.create_backtest(BacktestCreateIn(**payload), db=db)
+    await db.execute(
+        update(backtest_runs).where(backtest_runs.c.run_id == run.run_id).values(**data)
+    )
+    if run.status != "queued":
+        await db.execute(
+            backtest_queue_turns.delete().where(backtest_queue_turns.c.backtest_id == parent_id)
+        )
+    if fills:
+        await db.execute(insert(backtest_fills), [{"run_id": run.run_id, **f} for f in fills])
+    if trades:
+        await db.execute(
+            insert(backtest_closed_trades), [{"run_id": run.run_id, **t} for t in trades]
+        )
+    await db.commit()
+    return await main.get_backtest_run(run.run_id, db=db)

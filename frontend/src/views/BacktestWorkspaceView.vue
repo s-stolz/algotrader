@@ -32,14 +32,12 @@
     <BacktestCreationDrawer
       :key="creationSession"
       v-model:show="creationOpen"
-      @submitted="createdRun"
-      @submitted-batch="createdBatch"
+      @submitted="createdBacktest"
     />
 
     <BacktestQueueHealth
       ref="queueHealth"
-      :runs="runs"
-      :batches="batches"
+      :backtests="backtests"
       @inspect="showAnalysis"
     />
     <p
@@ -121,11 +119,10 @@ const {
   backToHistory,
   showAnalysis,
   refreshWorkspace,
-  createdRun,
-  createdBatch,
+  createdBacktest,
   selectionNotice,
 } = workspace;
-const { runs, batches, isRefreshing, readError } = workspace.history;
+const { backtests, isRefreshing, readError } = workspace.history;
 const { cancelError, deleteError } = workspace.commands;
 </script>
 <style scoped>

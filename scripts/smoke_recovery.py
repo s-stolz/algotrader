@@ -227,7 +227,7 @@ def main():  # noqa: C901
             RECOVERY_MIGRATION_TEST_USER=user,
             RUN_BACKTEST_EXECUTION_INTEGRATION_TESTS="1",
             BACKTESTER_TEST_PYTHON=args.backtester_python or args.python,
-            BACKTEST_BATCH_TEST_DATABASE_URL=f"postgresql+asyncpg://{user}:{password}@127.0.0.1:{db_port}/{database}",
+            BACKTEST_TEST_DATABASE_URL=f"postgresql+asyncpg://{user}:{password}@127.0.0.1:{db_port}/{database}",
         )
         config = output / "integration-config"
         config.mkdir()

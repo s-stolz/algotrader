@@ -1,19 +1,17 @@
 import type { DataTableColumns } from 'naive-ui';
 import type {
   StrategyCatalogEntry,
-  StrategyParameterSchema,
-  SweepPreviewCandidate,
+  BacktestPreviewCandidate,
 } from '@/types/backtesterContracts';
-import type { DraftRequest } from './creationRequest';
 import { TIMEFRAME_CODES } from '@/types/contracts';
 const collator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
 });
 function compareRows(
-  a: SweepPreviewCandidate,
-  b: SweepPreviewCandidate,
-  select: (row: SweepPreviewCandidate) => unknown,
+  a: BacktestPreviewCandidate,
+  b: BacktestPreviewCandidate,
+  select: (row: BacktestPreviewCandidate) => unknown,
 ): number {
   const left = select(a);
   const right = select(b);
@@ -23,50 +21,9 @@ function compareRows(
       : collator.compare(String(left ?? ''), String(right ?? ''));
   return compared || a.candidate_ordinal - b.candidate_ordinal;
 }
-function reviewParameterValue(
-  parameter: StrategyParameterSchema,
-  value: unknown,
-): string {
-  if (value === undefined) {
-    return 'default' in parameter
-      ? `${reviewParameterValue(parameter, parameter.default)} (default)`
-      : 'Not set';
-  }
-  return typeof value === 'string' ? JSON.stringify(value) : String(value);
-}
-export function standaloneColumns(
-  selectedStrategy: StrategyCatalogEntry | undefined,
-): DataTableColumns<DraftRequest> {
-  return [
-    { title: '#', key: 'ordinal', width: 55, fixed: 'left', render: () => '1' },
-    {
-      title: 'Market',
-      key: 'market',
-      width: 150,
-      render: (row) => `${row.symbols.join(', ')} · ${row.exchange}`,
-    },
-    { title: 'Timeframe', key: 'timeframe', width: 100 },
-    {
-      title: 'Directions',
-      key: 'direction',
-      width: 145,
-      render: (row) => row.execution.allowed_directions,
-    },
-    ...(selectedStrategy?.parameters ?? []).map((parameter) => ({
-      title: parameter.display_name || parameter.name,
-      key: parameter.name,
-      width: 135,
-      render: (row: DraftRequest) =>
-        reviewParameterValue(
-          parameter,
-          row.strategy.parameters[parameter.name],
-        ),
-    })),
-  ];
-}
 export function previewColumns(
   selectedStrategy: StrategyCatalogEntry | undefined,
-): DataTableColumns<SweepPreviewCandidate> {
+): DataTableColumns<BacktestPreviewCandidate> {
   return [
     {
       title: '#',
@@ -100,9 +57,9 @@ export function previewColumns(
     ...(selectedStrategy?.parameters ?? []).map((parameter) => ({
       title: parameter.display_name || parameter.name,
       key: `param-${parameter.name}`,
-      sorter: (a: SweepPreviewCandidate, b: SweepPreviewCandidate) =>
+      sorter: (a: BacktestPreviewCandidate, b: BacktestPreviewCandidate) =>
         compareRows(a, b, (row) => row.parameters[parameter.name]),
-      render: (row: SweepPreviewCandidate) =>
+      render: (row: BacktestPreviewCandidate) =>
         String(row.parameters[parameter.name]),
     })),
     {
@@ -116,7 +73,7 @@ export function previewColumns(
       sorter: (a, b) => compareRows(a, b, (row) => row.status),
       render: (row) =>
         row.status === 'ready'
-          ? `Ready · member #${(row.member_ordinal ?? 0) + 1}`
+          ? `Ready · Run #${(row.run_ordinal ?? 0) + 1}`
           : `Excluded · ${row.issues?.map((issue) => issue.message).join('; ') ?? ''}`,
     },
   ];

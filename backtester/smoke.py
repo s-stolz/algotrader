@@ -97,7 +97,8 @@ class SmokeReport:
 @dataclass
 class _CleanupState:
     fixture_created: bool = False
-    terminal_run_ids: list[str] = field(default_factory=list)
+    failure_symbol: str | None = None
+    terminal_backtest_ids: list[str] = field(default_factory=list)
 
 
 def run_smoke(
@@ -149,10 +150,24 @@ def _exercise_paths(
     sleep: Callable[[float], None],
     failure_symbol: str,
 ) -> SmokeReport:
-    _seed_fixture(storage, cleanup)
+    market_id = _seed_fixture(storage, cleanup)
+    response = storage.post(
+        "/markets",
+        json={
+            "symbol": failure_symbol,
+            "exchange": FIXTURE_EXCHANGE,
+            "market_type": "fixture",
+            "min_move": 0.01,
+            "timezone": "UTC",
+        },
+    )
+    response.raise_for_status()
+    failure_market_id = int(_require_mapping(response.json(), "failure market")["symbol_id"])
+    cleanup.failure_symbol = failure_symbol
     success_run_id, success_statuses, success_fill_count, success_trade_count = (
         _exercise_success_path(
             api,
+            market_id=market_id,
             cleanup=cleanup,
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
@@ -166,7 +181,7 @@ def _exercise_paths(
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             sleep=sleep,
-            failure_symbol=failure_symbol,
+            market_id=failure_market_id,
         )
     )
     return SmokeReport(
@@ -185,11 +200,12 @@ def _exercise_success_path(
     api: HttpClient,
     *,
     cleanup: _CleanupState,
+    market_id: int,
     timeout_seconds: float,
     poll_interval_seconds: float,
     sleep: Callable[[float], None],
 ) -> tuple[str, tuple[str, ...], int, int]:
-    run_id, initial_status = _submit(api, _success_request())
+    run_id, initial_status = _submit(api, _success_request(market_id))
     run, statuses = _wait_for_terminal(
         api,
         run_id=run_id,
@@ -198,7 +214,7 @@ def _exercise_success_path(
         poll_interval_seconds=poll_interval_seconds,
         sleep=sleep,
     )
-    cleanup.terminal_run_ids.append(run_id)
+    cleanup.terminal_backtest_ids.append(str(run["backtest_id"]))
     if run["status"] != "succeeded":
         raise SmokeCheckError(f"Fixture-backed run failed: {run}")
     if not isinstance(run.get("metrics"), Mapping):
@@ -206,8 +222,8 @@ def _exercise_success_path(
     if not isinstance(run.get("diagnostics"), Mapping):
         raise SmokeCheckError("Succeeded run did not expose diagnostics")
 
-    fills = _get_collection(api, f"/backtests/{run_id}/fills")
-    trades = _get_collection(api, f"/backtests/{run_id}/trades")
+    fills = _get_collection(api, f"/backtests/runs/{run_id}/fills")
+    trades = _get_collection(api, f"/backtests/runs/{run_id}/trades")
     if not fills or not trades:
         raise SmokeCheckError("Fixture-backed run did not persist fills and trades")
     return run_id, statuses, len(fills), len(trades)
@@ -220,9 +236,9 @@ def _exercise_failure_path(
     timeout_seconds: float,
     poll_interval_seconds: float,
     sleep: Callable[[float], None],
-    failure_symbol: str,
+    market_id: int,
 ) -> tuple[str, str, int, int]:
-    run_id, initial_status = _submit(api, _failure_request(failure_symbol))
+    run_id, initial_status = _submit(api, _failure_request(market_id))
     run, _ = _wait_for_terminal(
         api,
         run_id=run_id,
@@ -231,20 +247,20 @@ def _exercise_failure_path(
         poll_interval_seconds=poll_interval_seconds,
         sleep=sleep,
     )
-    cleanup.terminal_run_ids.append(run_id)
+    cleanup.terminal_backtest_ids.append(str(run["backtest_id"]))
     if run["status"] != "failed":
-        raise SmokeCheckError(f"Missing-market run did not fail: {run}")
+        raise SmokeCheckError(f"Empty-market run did not fail: {run}")
     if "metrics" in run or "diagnostics" in run:
         raise SmokeCheckError("Failed run exposed partial result artifacts")
 
-    fills = _get_collection(api, f"/backtests/{run_id}/fills")
-    trades = _get_collection(api, f"/backtests/{run_id}/trades")
+    fills = _get_collection(api, f"/backtests/runs/{run_id}/fills")
+    trades = _get_collection(api, f"/backtests/runs/{run_id}/trades")
     if fills or trades:
         raise SmokeCheckError("Failed run persisted partial fills or trades")
     return run_id, str(run["status"]), len(fills), len(trades)
 
 
-def _seed_fixture(client: HttpClient, cleanup: _CleanupState) -> None:
+def _seed_fixture(client: HttpClient, cleanup: _CleanupState) -> int:
     response = client.get(
         "/markets",
         params={"symbol": FIXTURE_SYMBOL, "exchange": FIXTURE_EXCHANGE},
@@ -268,6 +284,9 @@ def _seed_fixture(client: HttpClient, cleanup: _CleanupState) -> None:
         )
         response.raise_for_status()
         cleanup.fixture_created = True
+        market_id = int(_require_mapping(response.json(), "fixture market")["symbol_id"])
+    else:
+        market_id = int(_require_mapping(markets[0], "fixture market")["symbol_id"])
 
     response = client.post(
         "/candles",
@@ -278,6 +297,7 @@ def _seed_fixture(client: HttpClient, cleanup: _CleanupState) -> None:
         },
     )
     response.raise_for_status()
+    return market_id
 
 
 def _validate_options(timeout_seconds: float, poll_interval_seconds: float) -> None:
@@ -292,8 +312,12 @@ def _cleanup_resources(
     storage: HttpClient,
     cleanup: _CleanupState,
 ) -> None:
-    for run_id in cleanup.terminal_run_ids:
-        _delete_if_possible(api, f"/backtests/{run_id}")
+    for backtest_id in cleanup.terminal_backtest_ids:
+        _delete_if_possible(api, f"/backtests/{backtest_id}")
+    if cleanup.failure_symbol:
+        _delete_if_possible(
+            storage, f"/markets/{cleanup.failure_symbol}", params={"exchange": FIXTURE_EXCHANGE}
+        )
     if cleanup.fixture_created:
         _delete_if_possible(
             storage,
@@ -319,13 +343,16 @@ def _submit(client: HttpClient, payload: dict[str, Any]) -> tuple[str, str]:
     if response.status_code != 202:
         raise SmokeCheckError(f"Submission returned HTTP {response.status_code}")
     body = _require_mapping(response.json(), "submission")
-    run_id = str(body.get("run_id", "")).strip()
-    status = str(body.get("status", "")).strip()
-    if not run_id or status != "queued":
+    backtest_id = str(body.get("backtest_id", "")).strip()
+    if not backtest_id or body.get("status") != "queued":
         raise SmokeCheckError(f"Submission returned an invalid body: {body}")
-    if response.headers.get("location") != f"/backtests/{run_id}":
+    if response.headers.get("location") != f"/backtests/{backtest_id}":
         raise SmokeCheckError("Submission returned an invalid Location header")
-    return run_id, status
+    runs = _get_collection(client, f"/backtests/{backtest_id}/runs")
+    if len(runs) != 1:
+        raise SmokeCheckError("Fixed configuration did not create exactly one Run")
+    run = _require_mapping(runs[0], "accepted Run")
+    return str(run["run_id"]), "queued"
 
 
 def _wait_for_terminal(
@@ -340,7 +367,7 @@ def _wait_for_terminal(
     deadline = monotonic() + timeout_seconds
     statuses = [initial_status]
     while monotonic() < deadline:
-        response = client.get(f"/backtests/{run_id}")
+        response = client.get(f"/backtests/runs/{run_id}")
         response.raise_for_status()
         run = dict(_require_mapping(response.json(), "run status"))
         status = str(run.get("status", ""))
@@ -374,11 +401,12 @@ def _delete_if_possible(
         return
 
 
-def _success_request() -> dict[str, Any]:
+def _success_request(market_id: int) -> dict[str, Any]:
     return {
-        "symbols": [FIXTURE_SYMBOL],
-        "exchange": FIXTURE_EXCHANGE,
-        "timeframe": "M1",
+        "submission_id": str(uuid4()),
+        "markets": [market_id],
+        "timeframes": ["M1"],
+        "allowed_directions": ["long_and_short"],
         "start_ms": FIXTURE_START_MS,
         "end_ms": FIXTURE_START_MS + (9 * 60_000),
         "engine": "vectorized",
@@ -387,23 +415,20 @@ def _success_request() -> dict[str, Any]:
         "strategy": {
             "strategy_id": "sma_crossover",
             "strategy_version": 1,
-            "parameters": {
-                "fast_window": 2,
-                "slow_window": 3,
-                "quantity": 1.0,
-            },
+        },
+        "parameter_axes": {
+            "fast_window": {"mode": "constant", "value": 2},
+            "slow_window": {"mode": "constant", "value": 3},
+            "quantity": {"mode": "constant", "value": 1.0},
         },
         "execution": {},
-        "persist_result": False,
         "name": "Compose smoke success",
         "run_metadata": None,
     }
 
 
-def _failure_request(symbol: str) -> dict[str, Any]:
-    request = _success_request()
-    request["symbols"] = [symbol]
-    request["exchange"] = "SMOKE-MISSING"
+def _failure_request(market_id: int) -> dict[str, Any]:
+    request = _success_request(market_id)
     request["name"] = "Compose smoke failure"
     return request
 

@@ -1,11 +1,11 @@
 <template>
-  <template v-if="selectedBatch">
+  <template v-if="selectedBacktest">
     <div class="progress-panel">
       <div class="progress-heading">
         <div
           ><strong
-            >{{ selectedBatch.settled_count }}
-            <span>/ {{ selectedBatch.total_count }}</span></strong
+            >{{ selectedBacktest.settled_count }}
+            <span>/ {{ selectedBacktest.total_count }}</span></strong
           ><span class="progress-label">runs settled</span></div
         >
         <span class="progress-percent"
@@ -16,13 +16,13 @@
         class="progress-track"
         role="progressbar"
         aria-label="Settled runs"
-        :aria-valuenow="selectedBatch.settled_count"
+        :aria-valuenow="selectedBacktest.settled_count"
         :aria-valuemin="0"
-        :aria-valuemax="selectedBatch.total_count"
+        :aria-valuemax="selectedBacktest.total_count"
         :aria-valuetext="
-          `${selectedBatch.settled_count} / ` +
-          `${selectedBatch.total_count} settled; ` +
-          `${selectedBatch.executed_count} executed`
+          `${selectedBacktest.settled_count} / ` +
+          `${selectedBacktest.total_count} settled; ` +
+          `${selectedBacktest.executed_count} executed`
         "
       >
         <span
@@ -30,7 +30,7 @@
           :key="outcome.status"
           :class="outcome.status"
           :style="{
-            width: `${(outcome.count / selectedBatch.total_count) * 100}%`,
+            width: `${(outcome.count / selectedBacktest.total_count) * 100}%`,
           }"
         />
       </div>
@@ -72,15 +72,15 @@
           </span>
         </p>
         <p
-          v-if="selectedBatch.next_member_ordinal !== null"
+          v-if="selectedBacktest.next_run_ordinal !== null"
           class="muted"
         >
           {{
-            selectedBatch.status === 'paused' ||
-            selectedBatch.status === 'pausing'
+            selectedBacktest.status === 'paused' ||
+            selectedBacktest.status === 'pausing'
               ? 'Next on resume'
               : 'Up next'
-          }}: run #{{ selectedBatch.next_member_ordinal + 1 }}
+          }}: run #{{ selectedBacktest.next_run_ordinal + 1 }}
         </p>
       </div>
     </div>
@@ -88,10 +88,10 @@
 </template>
 <script setup lang="ts">
 import { NIcon } from 'naive-ui';
-import type { BatchInspection } from './useBatchInspection';
-const props = defineProps<{ inspection: BatchInspection }>();
+import type { BacktestInspection } from './useBacktestInspection';
+const props = defineProps<{ inspection: BacktestInspection }>();
 const {
-  selectedBatch,
+  selectedBacktest,
   detailError,
   isTerminal,
   progressPercent,

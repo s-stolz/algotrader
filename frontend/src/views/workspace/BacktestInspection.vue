@@ -4,61 +4,14 @@
     class="current-backtest"
     aria-label="Current Backtest"
   >
-    <BacktestBatches
-      :batch-id="selectedBatchId"
+    <BacktestOverview
+      :backtest-id="selectedBacktestId"
       @members="receiveMembers"
       @cancelled="refreshWorkspace"
     />
     <div class="table-panel">
-      <div
-        v-if="selectedRun && !selectedBatchId"
-        class="run-heading"
-      >
-        <h2 class="strategy-name">
-          <ExperimentName
-            v-if="!selectedRun.batch_id"
-            kind="run"
-            :experiment-id="selectedRun.run_id"
-            :name="selectedRun.name"
-          />
-          <template v-else>{{ runName(selectedRun) }}</template>
-        </h2>
-        <div class="analysis-context">
-          <n-tag
-            size="small"
-            :bordered="false"
-            >Standalone run</n-tag
-          >
-          <span>{{ strategyVersion(selectedRun) }}</span>
-          <span>{{ runMarket(selectedRun) }}</span
-          ><span>{{ selectedRun.request.timeframe }}</span>
-          <span
-            >{{ formatUtcDate(selectedRun.request.start_ms) }} —
-            {{ formatUtcDate(selectedRun.request.end_ms) }} UTC</span
-          >
-          <n-tag
-            size="small"
-            :type="
-              selectedRun.status === 'succeeded'
-                ? 'success'
-                : selectedRun.status === 'failed'
-                  ? 'error'
-                  : 'info'
-            "
-            :bordered="false"
-            >{{ selectedRun.status }}</n-tag
-          >
-        </div>
-      </div>
-      <div
-        v-else
-        class="section-heading"
-      >
-        <h2>Results</h2>
-      </div>
-      <p v-if="!selectedRunId && !selectedBatchId"
-        >Select a saved run or Batch to inspect its request and results.</p
-      >
+      <div class="section-heading"><h2>Runs</h2></div>
+      <p v-if="!selectedBacktestId">Select a Backtest to inspect its Runs.</p>
       <p
         v-if="detailError"
         role="alert"
@@ -113,15 +66,7 @@
   </section>
 </template>
 <script setup lang="ts">
-import { NTag } from 'naive-ui';
-import BacktestBatches from '@/components/Backtest/BacktestBatches.vue';
-import ExperimentName from '@/components/Backtest/ExperimentName.vue';
-import {
-  formatUtcDate,
-  runName,
-  runMarket,
-  strategyVersion,
-} from '../backtestWorkspaceRuns';
+import BacktestOverview from '@/components/Backtest/BacktestOverview.vue';
 import BacktestComparison from './comparison/BacktestComparison.vue';
 import type { BacktestWorkspace } from './useBacktestWorkspace';
 import type { WorkspaceComparison } from './comparison/useWorkspaceComparison';
@@ -131,8 +76,7 @@ const props = defineProps<{
 }>();
 const {
   page,
-  selectedBatchId,
-  selectedRunId,
+  selectedBacktestId,
   selectedRun,
   receiveMembers,
   refreshWorkspace,

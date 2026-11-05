@@ -1,23 +1,15 @@
 <template>
   <div class="creation-review">
-    <BaseDataTable
-      v-if="!isSweep"
-      :columns="standaloneColumns"
-      :data="[draft]"
-      :scroll-x="550 + (selectedStrategy?.parameters.length ?? 0) * 135"
-      size="small"
-    />
     <section
-      v-if="isSweep"
       class="preview-section"
-      aria-label="Sweep preview"
+      aria-label="Backtest preview"
     >
       <div class="section-header">
         <n-tag
-          v-if="sweepLimit"
+          v-if="candidateLimit"
           size="small"
           :bordered="false"
-          >Limit: {{ sweepLimit }} candidates</n-tag
+          >Limit: {{ candidateLimit }} candidates</n-tag
         >
       </div>
       <p
@@ -33,7 +25,7 @@
       <section
         v-if="preview"
         class="preview-review"
-        data-testid="sweep-review"
+        data-testid="selections-review"
       >
         <dl class="preview-counts">
           <div
@@ -52,7 +44,7 @@
           <BaseSelect
             v-model:value="previewFilter"
             :options="previewFilterOptions"
-            data-testid="sweep-filter"
+            data-testid="selections-filter"
           />
         </label>
         <n-scrollbar
@@ -65,7 +57,7 @@
             :pagination="{ pageSize: 10 }"
             size="small"
             table-layout="auto"
-            data-testid="sweep-candidates"
+            data-testid="selections-candidates"
           />
         </n-scrollbar>
       </section>
@@ -78,15 +70,10 @@ import { NTag, NScrollbar } from 'naive-ui';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import { previewFilterOptions } from './creationOptions';
-import {
-  previewColumns as buildPreviewColumns,
-  standaloneColumns as buildStandaloneColumns,
-} from './creationPreview';
+import { previewColumns as buildPreviewColumns } from './creationPreview';
 import { useCreation } from './creationContext';
 const {
-  draft,
-  isSweep,
-  sweepLimit,
+  candidateLimit,
   previewError,
   previewPending,
   preview,
@@ -102,9 +89,6 @@ const filteredCandidates = computed(
 );
 const previewColumns = computed(() =>
   buildPreviewColumns(selectedStrategy.value),
-);
-const standaloneColumns = computed(() =>
-  buildStandaloneColumns(selectedStrategy.value),
 );
 </script>
 

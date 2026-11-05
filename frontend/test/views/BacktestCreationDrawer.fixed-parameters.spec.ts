@@ -5,30 +5,31 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   BacktestSubmissionError,
   fetchStrategyCatalog,
-  submitBacktestRun,
+  submitBacktest,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 
-import { catalog, openDrawer, standaloneSetup } from './creationFixtures';
+import { catalog, openDrawer, creationSetup } from './creationFixtures';
+import { advancePreview } from './creationFixtures';
 vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/backtesterClient')>()),
   fetchStrategyCatalog: vi.fn(),
-  submitBacktestRun: vi.fn(),
-  submitBacktestBatch: vi.fn(),
-  previewParameterSweep: vi.fn(),
-  fetchSweepCapabilities: vi.fn(),
+  submitBacktest: vi.fn(),
+  previewBacktest: vi.fn(),
+  fetchBacktestCapabilities: vi.fn(),
 }));
 
-describe('standalone', () => {
-  standaloneSetup();
+describe('fixed parameters', () => {
+  creationSetup();
 
   it(
     'starts with an empty optional name, preserves drafts, and ' +
       'normalizes named and unnamed submissions',
     async () => {
-      vi.mocked(submitBacktestRun).mockResolvedValue('run-name');
+      vi.mocked(submitBacktest).mockResolvedValue('run-name');
       let wrapper = openDrawer();
       await flushPromises();
+      await advancePreview();
       const input = () =>
         wrapper
           .findAllComponents(NInput)
@@ -40,39 +41,50 @@ describe('standalone', () => {
       expect(input().props('placeholder')).toBe('Enter an experiment name');
       input().vm.$emit('update:value', '  Research baseline  ');
       await flushPromises();
+      await advancePreview();
       wrapper.unmount();
       wrapper = openDrawer();
       await flushPromises();
+      await advancePreview();
       expect(input().props('value')).toBe('  Research baseline  ');
       (
         document.querySelector('[data-testid="creation-submit"]') as HTMLElement
       ).click();
       await flushPromises();
-      expect(submitBacktestRun).toHaveBeenLastCalledWith(
-        expect.objectContaining({ name: 'Research baseline' }),
+      await advancePreview();
+      expect(submitBacktest).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.any(String),
+        'Research baseline',
       );
       expect(
-        vi.mocked(submitBacktestRun).mock.calls[0][0].run_metadata,
+        vi.mocked(submitBacktest).mock.calls[0][0].run_metadata,
       ).toBeNull();
       input().vm.$emit('update:value', '   ');
       await flushPromises();
+      await advancePreview();
       (
         document.querySelector('[data-testid="creation-submit"]') as HTMLElement
       ).click();
       await flushPromises();
-      expect(submitBacktestRun).toHaveBeenLastCalledWith(
-        expect.objectContaining({ name: null }),
+      await advancePreview();
+      expect(submitBacktest).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.any(String),
+        null,
       );
       for (const name of ['a'.repeat(121), 'two\nlines', '\ntrimmed']) {
         input().vm.$emit('update:value', name);
         await flushPromises();
+        await advancePreview();
         (
           document.querySelector(
             '[data-testid="creation-submit"]',
           ) as HTMLElement
         ).click();
         await flushPromises();
-        expect(submitBacktestRun).toHaveBeenCalledTimes(2);
+        await advancePreview();
+        expect(submitBacktest).toHaveBeenCalledTimes(2);
         expect(document.body.textContent).toContain('Experiment name must');
       }
       wrapper.unmount();
@@ -82,6 +94,7 @@ describe('standalone', () => {
   it('uses Naive calendars and converts selected dates to UTC midnight', async () => {
     const wrapper = openDrawer();
     await flushPromises();
+    await advancePreview();
     const pickers = wrapper.findAllComponents(NDatePicker);
     expect(pickers).toHaveLength(2);
     pickers[0].vm.$emit('update:formatted-value', '2026-03-29');
@@ -129,12 +142,18 @@ describe('standalone', () => {
         commission_bps: 0,
         slippage_bps: 0,
       },
-      persist_result: false,
     };
-    vi.mocked(submitBacktestRun).mockResolvedValue('run-new');
+    store.creationSelections = {
+      marketIds: [1],
+      timeframes: ['M15'],
+      allowedDirections: ['short_only'],
+      parameters: {},
+    };
+    vi.mocked(submitBacktest).mockResolvedValue('run-new');
 
     const wrapper = openDrawer();
     await flushPromises();
+    await advancePreview();
     expect(document.body.textContent).toContain('Version 1');
     expect(
       document.querySelector('[data-testid="creation-param-enabled"]'),
@@ -150,25 +169,26 @@ describe('standalone', () => {
       document.querySelector('[data-testid="creation-submit"]') as HTMLElement
     ).click();
     await flushPromises();
+    await advancePreview();
 
-    expect(submitBacktestRun).toHaveBeenCalledWith(
+    expect(submitBacktest).toHaveBeenCalledWith(
       expect.objectContaining({
-        timeframe: 'M15',
+        timeframes: ['M15'],
         initial_capital: 25_000,
         strategy: {
           strategy_id: 'sma_crossover',
           strategy_version: 1,
-          parameters: {
-            enabled: true,
-            fast_window: 3,
-            label: 'b',
-            stop_loss_pct: null,
-          },
         },
-        execution: expect.objectContaining({
-          allowed_directions: 'short_only',
-        }),
+        parameter_axes: {
+          enabled: { mode: 'constant', value: true },
+          fast_window: { mode: 'constant', value: 3 },
+          label: { mode: 'constant', value: 'b' },
+          stop_loss_pct: { mode: 'constant', value: null },
+        },
+        allowed_directions: ['short_only'],
       }),
+      expect.any(String),
+      null,
     );
     expect(wrapper.emitted('submitted')?.[0]).toEqual(['run-new']);
     wrapper.unmount();
@@ -178,7 +198,7 @@ describe('standalone', () => {
     'refreshes stale catalog and leaves the draft unchanged without ' +
       'retrying submission',
     async () => {
-      vi.mocked(submitBacktestRun).mockRejectedValue(
+      vi.mocked(submitBacktest).mockRejectedValue(
         new BacktestSubmissionError(
           'strategy_version_unavailable',
           [],
@@ -187,19 +207,21 @@ describe('standalone', () => {
       );
       const wrapper = openDrawer();
       await flushPromises();
+      await advancePreview();
 
       (
         document.querySelector('[data-testid="creation-submit"]') as HTMLElement
       ).click();
       await flushPromises();
+      await advancePreview();
 
-      expect(submitBacktestRun).toHaveBeenCalledTimes(1);
+      expect(submitBacktest).toHaveBeenCalledTimes(1);
       expect(fetchStrategyCatalog).toHaveBeenCalledTimes(2);
       expect(
         useBacktestWorkspaceStore().creationDraft?.strategy.strategy_version,
       ).toBe(1);
       expect(document.body.textContent).toContain(
-        'Review the refreshed catalog',
+        'Strategy version is unavailable',
       );
       wrapper.unmount();
     },
@@ -221,9 +243,10 @@ describe('standalone', () => {
         ],
       },
     ]);
-    vi.mocked(submitBacktestRun).mockResolvedValue('run-choice');
+    vi.mocked(submitBacktest).mockResolvedValue('run-choice');
     const wrapper = openDrawer();
     await flushPromises();
+    await advancePreview();
 
     const labelSelect = wrapper
       .findAllComponents(NSelect)
@@ -242,19 +265,22 @@ describe('standalone', () => {
       document.querySelector('[data-testid="creation-submit"]') as HTMLElement
     ).click();
     await flushPromises();
+    await advancePreview();
     expect(
-      vi.mocked(submitBacktestRun).mock.calls[0][0].strategy.parameters.label,
-    ).toBe('__null__');
+      vi.mocked(submitBacktest).mock.calls[0][0].parameter_axes.label,
+    ).toEqual({ mode: 'constant', value: '__null__' });
 
     labelSelect!.vm.$emit('update:value', 2);
     await flushPromises();
+    await advancePreview();
     (
       document.querySelector('[data-testid="creation-submit"]') as HTMLElement
     ).click();
     await flushPromises();
+    await advancePreview();
     expect(
-      vi.mocked(submitBacktestRun).mock.calls[1][0].strategy.parameters.label,
-    ).toBeNull();
+      vi.mocked(submitBacktest).mock.calls[1][0].parameter_axes.label,
+    ).toEqual({ mode: 'constant', value: null });
     wrapper.unmount();
   });
 
@@ -269,14 +295,16 @@ describe('standalone', () => {
     ]);
     const wrapper = openDrawer();
     await flushPromises();
+    await advancePreview();
 
     (
       document.querySelector('[data-testid="creation-submit"]') as HTMLElement
     ).click();
     await flushPromises();
+    await advancePreview();
 
     expect(document.body.textContent).toContain('This parameter is required.');
-    expect(submitBacktestRun).not.toHaveBeenCalled();
+    expect(submitBacktest).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

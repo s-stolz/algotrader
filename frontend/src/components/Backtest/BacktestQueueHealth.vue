@@ -109,44 +109,37 @@
               v-if="snapshot.active_run"
               class="experiment-entry"
               data-testid="queue-view-active"
-              @click="
-                inspect(
-                  snapshot.active_run.batch_id ? 'batch' : 'run',
-                  snapshot.active_run.batch_id ?? snapshot.active_run.run_id,
-                )
-              "
+              @click="inspect(snapshot.active_run.backtest_id)"
             >
               <strong data-testid="workspace-queue-active"
                 >{{ activeName }} →</strong
               >
               <span
                 class="secondary"
-                v-if="activeBatch"
-                >{{ activeBatch.settled_count }} /
-                {{ activeBatch.total_count }} finished<template
-                  v-if="activeBatch.outcome_counts.failed"
+                v-if="activeBacktest"
+                >{{ activeBacktest.settled_count }} /
+                {{ activeBacktest.total_count }} finished<template
+                  v-if="activeBacktest.outcome_counts.failed"
                 >
-                  · {{ activeBatch.outcome_counts.failed }} failed</template
+                  · {{ activeBacktest.outcome_counts.failed }} failed</template
                 ></span
               >
-              <span
-                v-else-if="!snapshot.active_run.batch_id"
-                class="secondary"
+              <span class="secondary"
                 >{{ isUnknown ? 'Started' : 'Active for' }}
                 {{ elapsed(snapshot.active_run.started_at_ms)
                 }}{{ isUnknown ? ' ago' : '' }}</span
               >
               <progress
-                v-if="activeBatch"
-                :value="activeBatch.settled_count"
-                :max="activeBatch.total_count"
+                v-if="activeBacktest"
+                :value="activeBacktest.settled_count"
+                :max="activeBacktest.total_count"
                 aria-label="Finished runs"
               />
-              <small v-if="snapshot.active_run.batch_id"
+              <small
                 >{{
                   isUnknown ? 'Last known running' : 'Currently running'
                 }}
-                #{{ (snapshot.active_run.member_ordinal ?? 0) + 1 }}</small
+                #{{ (snapshot.active_run.run_ordinal ?? 0) + 1 }}</small
               >
             </button>
             <p
@@ -170,25 +163,15 @@
           >
             <li
               v-for="entry in snapshot.queued"
-              :key="`${entryIdentity(entry).kind}:${entryIdentity(entry).id}`"
+              :key="`${entry.backtest_id}`"
               :data-testid="entryTestId(entry)"
             >
               <button
                 class="experiment-entry"
-                @click="
-                  inspect(entryIdentity(entry).kind, entryIdentity(entry).id)
-                "
+                @click="inspect(entry.backtest_id)"
               >
-                <strong
-                  >{{
-                    experimentName(
-                      entryIdentity(entry).kind,
-                      entryIdentity(entry).id,
-                    )
-                  }}
-                  →</strong
-                >
-                <small v-if="entry.outcome_counts"
+                <strong>{{ experimentName(entry.backtest_id) }} →</strong>
+                <small
                   >{{
                     Object.values(entry.outcome_counts).reduce(
                       (sum, count) => sum + count,
@@ -202,10 +185,7 @@
                     · {{ entry.outcome_counts.failed }} failed</template
                   ></small
                 >
-                <small v-else
-                  >Single backtest · waiting
-                  {{ elapsed(entry.submitted_at_ms) }}</small
-                >
+                <small>waiting {{ elapsed(entry.submitted_at_ms) }}</small>
               </button>
             </li>
           </ol>
@@ -224,13 +204,13 @@
             <ol aria-label="Recently finished experiments">
               <li
                 v-for="entry in recentExperiments"
-                :key="`${entry.kind}:${entry.id}`"
+                :key="entry.id"
               >
                 <button
                   class="experiment-entry"
-                  @click="inspect(entry.kind, entry.id)"
+                  @click="inspect(entry.id)"
                 >
-                  <strong>{{ experimentName(entry.kind, entry.id) }} →</strong>
+                  <strong>{{ experimentName(entry.id) }} →</strong>
                   <small>{{ entry.summary }}</small>
                 </button>
               </li>
@@ -256,18 +236,13 @@ import {
 } from 'vue';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import { useBacktestQueueHealth } from './useBacktestQueueHealth';
-import type {
-  BacktestBatch,
-  BacktestRun,
-  BacktestQueueEntry,
-} from '@/types/backtesterContracts';
-import { batchName, runName } from '@/views/backtestWorkspaceRuns';
+import type { Backtest, BacktestQueueEntry } from '@/types/backtesterContracts';
+import { backtestName } from '@/views/backtestWorkspaceRuns';
 
 const props = defineProps<{
-  runs?: BacktestRun[] | null;
-  batches?: BacktestBatch[] | null;
+  backtests?: Backtest[] | null;
 }>();
-const emit = defineEmits<{ inspect: [kind: 'run' | 'batch', id: string] }>();
+const emit = defineEmits<{ inspect: [id: string] }>();
 const expanded = ref(false);
 const visible = ref(true);
 const trigger = ref<HTMLButtonElement | null>(null);
@@ -298,49 +273,29 @@ const waitingLabel = computed(() =>
 );
 const activeName = computed(() => {
   const active = snapshot.value?.active_run;
-  return active
-    ? experimentName(
-        active.batch_id ? 'batch' : 'run',
-        active.batch_id ?? active.run_id,
-      )
-    : '';
+  return active ? experimentName(active.backtest_id) : '';
 });
-const activeBatch = computed(() =>
-  props.batches?.find(
-    (batch) => batch.batch_id === snapshot.value?.active_run?.batch_id,
+const activeBacktest = computed(() =>
+  props.backtests?.find(
+    (backtest) =>
+      backtest.backtest_id === snapshot.value?.active_run?.backtest_id,
   ),
 );
-function finishedCount(counts: BacktestBatch['outcome_counts']): number {
+function finishedCount(counts: Backtest['outcome_counts']): number {
   return counts.succeeded + counts.failed + counts.cancelled;
 }
 const recentExperiments = computed(() => {
   const entries = [
-    ...(props.runs ?? [])
-      .filter(
-        (run) =>
-          !run.batch_id &&
-          ['succeeded', 'failed', 'cancelled'].includes(run.status),
+    ...(props.backtests ?? [])
+      .filter((backtest) =>
+        ['completed', 'cancelled'].includes(backtest.status),
       )
-      .map((run) => ({
-        kind: 'run' as const,
-        id: run.run_id,
-        completedAt: run.completed_at_ms,
-        summary:
-          run.status === 'succeeded'
-            ? 'Completed'
-            : run.status === 'failed'
-              ? 'Failed'
-              : 'Cancelled',
-      })),
-    ...(props.batches ?? [])
-      .filter((batch) => ['completed', 'cancelled'].includes(batch.status))
-      .map((batch) => ({
-        kind: 'batch' as const,
-        id: batch.batch_id,
-        completedAt: batch.completed_at_ms,
-        summary: `${batch.settled_count} / ${batch.total_count} finished · ${
-          batch.status === 'cancelled' ? 'Cancelled' : 'Completed'
-        }${batch.outcome_counts.failed ? ` · ${batch.outcome_counts.failed} failed` : ''}`,
+      .map((backtest) => ({
+        id: backtest.backtest_id,
+        completedAt: backtest.completed_at_ms,
+        summary: `${backtest.settled_count} / ${backtest.total_count} finished · ${
+          backtest.status === 'cancelled' ? 'Cancelled' : 'Completed'
+        }${backtest.outcome_counts.failed ? ` · ${backtest.outcome_counts.failed} failed` : ''}`,
       })),
   ];
   // Keep fast runs discoverable after they leave the active queue.
@@ -350,45 +305,28 @@ const recentExperiments = computed(() => {
         entry.completedAt != null &&
         nowMs.value - entry.completedAt < 60_000 &&
         entry.completedAt <= nowMs.value &&
-        !(entry.kind === 'batch'
-          ? snapshot.value?.active_run?.batch_id === entry.id
-          : snapshot.value?.active_run?.run_id === entry.id) &&
+        snapshot.value?.active_run?.backtest_id !== entry.id &&
         !snapshot.value?.queued.some(
-          (queued) =>
-            entryIdentity(queued).kind === entry.kind &&
-            entryIdentity(queued).id === entry.id,
+          (queued) => queued.backtest_id === entry.id,
         ),
     )
     .sort((a, b) => b.completedAt! - a.completedAt!)
     .slice(0, 3);
 });
-function experimentName(kind: 'run' | 'batch', id: string): string {
-  if (kind === 'batch') {
-    const batch = props.batches?.find((item) => item.batch_id === id);
-    return batch ? batchName(batch) : `Batch ${id}`;
-  }
-  const run = props.runs?.find((item) => item.run_id === id);
-  return run ? runName(run) : `Run ${id}`;
+function experimentName(id: string): string {
+  const backtest = props.backtests?.find((item) => item.backtest_id === id);
+  return backtest ? backtestName(backtest) : `Backtest ${id}`;
 }
 function entryTestId(entry: BacktestQueueEntry): string {
-  const { kind, id } = entryIdentity(entry);
-  return `workspace-queue-${kind}-${id}`;
-}
-function entryIdentity(entry: BacktestQueueEntry): {
-  kind: 'run' | 'batch';
-  id: string;
-} {
-  return entry.entry_type === 'batch'
-    ? { kind: 'batch', id: entry.batch_id! }
-    : { kind: 'run', id: entry.run_id! };
+  return `workspace-queue-backtest-${entry.backtest_id}`;
 }
 function close(): void {
   expanded.value = false;
   trigger.value?.focus();
 }
-function inspect(kind: 'run' | 'batch', id: string): void {
+function inspect(id: string): void {
   close();
-  emit('inspect', kind, id);
+  emit('inspect', id);
 }
 function show(): void {
   visible.value = true;

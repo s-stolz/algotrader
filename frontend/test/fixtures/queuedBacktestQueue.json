@@ -3,8 +3,8 @@
   "active_run": {
     "run_id": "active",
     "started_at_ms": 10000,
-    "batch_id": null,
-    "member_ordinal": null
+    "backtest_id": "active-backtest",
+    "run_ordinal": 0
   },
   "last_heartbeat_ms": 45000,
   "availability": "healthy",
@@ -12,21 +12,24 @@
   "operational_faults": [],
   "queued": [
     {
-      "entry_type": "standalone",
-      "run_id": "queued-a",
-      "batch_id": null,
+      "backtest_id": "backtest-1",
       "submitted_at_ms": 11000,
       "estimated_position": 1,
-      "next_member_ordinal": null,
-      "outcome_counts": null
+      "next_run_ordinal": 0,
+      "outcome_counts": {
+        "queued": 1,
+        "running": 0,
+        "cancelling": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "cancelled": 0
+      }
     },
     {
-      "entry_type": "batch",
-      "run_id": null,
-      "batch_id": "batch-b",
+      "backtest_id": "backtest-b",
       "submitted_at_ms": 12000,
       "estimated_position": 2,
-      "next_member_ordinal": 0,
+      "next_run_ordinal": 0,
       "outcome_counts": {
         "queued": 2,
         "running": 0,

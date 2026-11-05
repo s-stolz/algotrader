@@ -294,6 +294,8 @@ describe('backtestOverlayStore', () => {
 
 function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
   return {
+    backtest_id: 'backtest-1',
+    run_ordinal: 0,
     run_id: 'run-123',
     status: 'succeeded',
     submitted_at_ms: 1_780_921_805_123,
@@ -325,7 +327,6 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
         commission_bps: 1,
         slippage_bps: 0.5,
       },
-      persist_result: true,
       run_metadata: null,
     },
     result_schema_version: 3,

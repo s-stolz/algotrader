@@ -1,7 +1,7 @@
 # Database Accessor API Context
 
 FastAPI persistence primitives for Markets, Candles, and backtests in TimescaleDB.
-Transport contracts live in [root context](../CONTEXT.md); durable run/batch
+Transport contracts live in [root context](../CONTEXT.md); durable Backtest/Run
 semantics live in [backtest contracts](../docs/contracts/backtests.md).
 
 ## Candle Queries
@@ -17,7 +17,7 @@ semantics live in [backtest contracts](../docs/contracts/backtests.md).
 ## Backtest Storage
 
 `app/backtest_execution.py` owns slot-serialized execution operations;
-`app/crud.py` also handles run/batch creation and history. `app/models.py` and
+`app/crud.py` also handles Backtest/Run creation and history. `app/models.py` and
 `app/schemas.py` define storage and transport shapes. Backtester supplies
 lifecycle policy; the accessor applies it against locked current state.
 
@@ -25,29 +25,25 @@ lifecycle policy; the accessor applies it against locked current state.
   from the public backtester schema. Keep optional controls coordinated across
   both boundaries: daily schedules and entry limits must survive storage HTTP
   round trips, while disabled controls stay omitted for legacy representations.
-- Lock the execution slot before batch/run rows for control transactions.
+- Lock the execution slot before Backtest/Run rows for control transactions.
   Submission turn insertion and queue snapshots use that same lock. Queue reads
   hold it through the read transaction so active ownership and waiting turns
   cannot come from different lifecycle states.
-- Claim verifies the head turn, batch eligibility, and lowest queued member.
+- Claim verifies the head turn, Backtest eligibility, and lowest queued member.
   Claims require a worker identity and seed the matching heartbeat atomically; heartbeat
   writes take the slot lock and fence delayed ownership changes.
-  Settlement requires the owner token and commits artifacts, outcome, batch
+  Settlement requires the owner token and commits artifacts, outcome, Backtest
   reconciliation/events, next turn, and slot release together.
 - Cancellation, pause/resume, deletion, and startup reconciliation must preserve
   those transaction boundaries. No-op command receipts retain identity without
   adding a revision/event; retries return the original result after later changes.
-- Run/batch creation persists a normalized top-level name separately from JSON
-  snapshots. Members cannot carry a custom name; legacy name/label request
-  metadata is rejected on new submissions. Apply
-  [experiment-name rules](../docs/contracts/backtests.md#experiment-names) at the storage boundary.
-- Name-only updates validate at the persistence boundary and update only `name`.
-  Member guards run under the run row lock; these writes never acquire or change
-  the execution slot, revisions, event history, or queue turns.
-- Standalone create rejects batch identity. Membership guards reject late member
-  insertion/replacement and direct member deletion while the batch exists.
-- Preserve version-2 request JSON. When `strategy_version` was absent, omit it
-  from serialized responses; synthesizing `null` breaks strict historical readers.
+- Backtest acceptance persists a normalized top-level name separately from JSON
+  snapshots. Runs have required parent IDs and ordinals and no independent names.
+  Apply [naming rules](../docs/contracts/backtests.md#experiment-names) at storage.
+- Name-only updates lock the parent row and change only its name, without changing
+  execution-slot ownership, revisions, events, or queue turns.
+- Membership guards reject late insertion, replacement, and direct Run deletion.
+  Whole-Backtest deletion cascades through all artifacts after settlement.
 - Filter request attributes from immutable JSON, including collection membership
   for symbol matching. Keep lifecycle fields normalized rather than copying
   request attributes into columns.

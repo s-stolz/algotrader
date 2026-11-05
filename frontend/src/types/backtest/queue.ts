@@ -1,5 +1,5 @@
 import { isRecord, isNonEmptyString } from '../transportValues';
-import { type BacktestBatch, isBatchOutcomeCounts } from './batches';
+import { type Backtest, isBacktestOutcomeCounts } from './backtests';
 import { isEpochMs, isOrdinal } from './validation';
 
 export type BacktestWorkerAvailability =
@@ -9,13 +9,11 @@ export type BacktestWorkerAvailability =
   | 'faulted';
 
 export interface BacktestQueueEntry {
-  entry_type: 'standalone' | 'batch';
-  run_id: string | null;
-  batch_id: string | null;
+  backtest_id: string;
   submitted_at_ms: number;
   estimated_position: number;
-  next_member_ordinal: number | null;
-  outcome_counts: BacktestBatch['outcome_counts'] | null;
+  next_run_ordinal: number;
+  outcome_counts: Backtest['outcome_counts'];
 }
 
 export interface BacktestQueueSnapshot {
@@ -23,8 +21,8 @@ export interface BacktestQueueSnapshot {
   active_run: {
     run_id: string;
     started_at_ms: number;
-    batch_id: string | null;
-    member_ordinal: number | null;
+    backtest_id: string;
+    run_ordinal: number;
   } | null;
   last_heartbeat_ms: number | null;
   availability: BacktestWorkerAvailability;
@@ -60,21 +58,13 @@ export function isBacktestQueueSnapshot(
     (!isRecord(value.active_run) ||
       !isNonEmptyString(value.active_run.run_id) ||
       !isEpochMs(value.active_run.started_at_ms) ||
-      (value.active_run.batch_id !== null &&
-        !isNonEmptyString(value.active_run.batch_id)) ||
-      (value.active_run.member_ordinal !== null &&
-        !isOrdinal(value.active_run.member_ordinal)) ||
-      (value.active_run.batch_id === null) !==
-        (value.active_run.member_ordinal === null))
+      !isNonEmptyString(value.active_run.backtest_id) ||
+      !isOrdinal(value.active_run.run_ordinal))
   )
     return false;
   const identities = new Set<string>();
   if (isRecord(value.active_run))
-    identities.add(
-      value.active_run.batch_id === null
-        ? `run:${value.active_run.run_id}`
-        : `batch:${value.active_run.batch_id}`,
-    );
+    identities.add(value.active_run.backtest_id as string);
   return value.queued.every((entry: unknown, index: number) => {
     if (
       !isRecord(entry) ||
@@ -82,22 +72,13 @@ export function isBacktestQueueSnapshot(
       entry.estimated_position !== index + 1
     )
       return false;
-    const isStandalone =
-      entry.entry_type === 'standalone' &&
-      isNonEmptyString(entry.run_id) &&
-      entry.batch_id === null &&
-      entry.next_member_ordinal === null &&
-      entry.outcome_counts === null;
-    const isBatch =
-      entry.entry_type === 'batch' &&
-      entry.run_id === null &&
-      isNonEmptyString(entry.batch_id) &&
-      isOrdinal(entry.next_member_ordinal) &&
-      isBatchOutcomeCounts(entry.outcome_counts);
-    if (!isStandalone && !isBatch) return false;
-    const identity = isStandalone
-      ? `run:${entry.run_id}`
-      : `batch:${entry.batch_id}`;
+    if (
+      !isNonEmptyString(entry.backtest_id) ||
+      !isOrdinal(entry.next_run_ordinal) ||
+      !isBacktestOutcomeCounts(entry.outcome_counts)
+    )
+      return false;
+    const identity = entry.backtest_id;
     if (identities.has(identity)) return false;
     identities.add(identity);
     return true;

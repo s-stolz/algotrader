@@ -6,12 +6,11 @@ from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_l
 from app import backtest_execution, crud, historical_candles, market_cache, recovery
 from app.database import get_db
 from app.schemas import (
-    BacktestBatchCommandIn,
-    BacktestBatchCommandOut,
-    BacktestBatchCreateIn,
-    BacktestBatchEventOut,
-    BacktestBatchOut,
     BacktestClosedTradeOut,
+    BacktestCommandIn,
+    BacktestCommandOut,
+    BacktestCreateIn,
+    BacktestEventOut,
     BacktestExecutionClaimIn,
     BacktestExecutionFaultIn,
     BacktestExecutionReconcileIn,
@@ -19,8 +18,8 @@ from app.schemas import (
     BacktestExecutionSettleIn,
     BacktestExecutionSlotOut,
     BacktestFillOut,
+    BacktestOut,
     BacktestQueueStateOut,
-    BacktestRunCreateIn,
     BacktestRunMutationOut,
     BacktestRunOut,
     BacktestWorkerHeartbeatIn,
@@ -102,17 +101,6 @@ async def create_market(market: MarketIn, db: AsyncSession = Depends(get_db)):
     return {"symbol_id": symbol_id, "status": "created"}
 
 
-@app.post("/backtests", response_model=BacktestRunOut, status_code=201)
-async def create_backtest_run(
-    run: BacktestRunCreateIn,
-    db: AsyncSession = Depends(get_db),
-):
-    payload = run.model_dump()
-    if run.request_schema_version == 2:
-        payload["request"]["strategy"].pop("strategy_version", None)
-    return await crud.insert_backtest_run(db, payload)
-
-
 @app.get("/backtest-execution/slot", response_model=BacktestExecutionSlotOut)
 async def get_backtest_execution_slot(db: AsyncSession = Depends(get_db)):
     return await backtest_execution.read_slot(db)
@@ -151,7 +139,7 @@ async def settle_backtest_execution(
     }
 
 
-@app.post("/backtests/{run_id}/cancel", response_model=BacktestRunOut)
+@app.post("/backtest-runs/{run_id}/cancel", response_model=BacktestRunOut)
 async def cancel_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
     outcome = await backtest_execution.cancel_run(
         db, run_id=run_id, requested_at=datetime.now(timezone.utc)
@@ -179,7 +167,7 @@ async def record_backtest_execution_fault(
     return {"updated": await backtest_execution.record_fault(db, **fault.model_dump())}
 
 
-@app.get("/backtests", response_model=list[BacktestRunOut])
+@app.get("/backtest-runs", response_model=list[BacktestRunOut])
 async def list_backtest_runs(
     status: (
         Literal["queued", "running", "cancelling", "succeeded", "failed", "cancelled"] | None
@@ -190,8 +178,7 @@ async def list_backtest_runs(
     engine: Literal["vectorized", "event_driven"] | None = None,
     submitted_from: datetime | None = None,
     submitted_to: datetime | None = None,
-    membership: Literal["standalone", "batch"] | None = None,
-    batch_id: str | None = None,
+    backtest_id: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     return await crud.list_backtest_runs(
@@ -203,103 +190,89 @@ async def list_backtest_runs(
         engine=engine,
         submitted_from=submitted_from,
         submitted_to=submitted_to,
-        membership=membership,
-        batch_id=batch_id,
+        backtest_id=backtest_id,
     )
 
 
-@app.post("/backtest-batches", response_model=BacktestBatchOut, status_code=201)
-async def create_backtest_batch(batch: BacktestBatchCreateIn, db: AsyncSession = Depends(get_db)):
+@app.post("/backtests", response_model=BacktestOut, status_code=201)
+async def create_backtest(backtest: BacktestCreateIn, db: AsyncSession = Depends(get_db)):
     try:
-        return await crud.create_backtest_batch(db, batch.model_dump())
-    except crud.BatchSubmissionConflictError as exc:
+        return await crud.create_backtest(db, backtest.model_dump())
+    except crud.BacktestSubmissionConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.get("/backtest-batches", response_model=list[BacktestBatchOut])
-async def list_backtest_batches(db: AsyncSession = Depends(get_db)):
-    return await crud.list_backtest_batches(db)
+@app.get("/backtests", response_model=list[BacktestOut])
+async def list_backtests(db: AsyncSession = Depends(get_db)):
+    return await crud.list_backtests(db)
 
 
-@app.patch("/backtest-batches/{batch_id}/name", response_model=BacktestBatchOut)
-async def rename_backtest_batch(
-    batch_id: str, request: ExperimentNameUpdateIn, db: AsyncSession = Depends(get_db)
+@app.patch("/backtests/{backtest_id}/name", response_model=BacktestOut)
+async def rename_backtest(
+    backtest_id: str, request: ExperimentNameUpdateIn, db: AsyncSession = Depends(get_db)
 ):
-    batch = await crud.rename_backtest_batch(db, batch_id, request.name)
-    if batch is None:
-        raise HTTPException(status_code=404, detail="Backtest batch not found")
-    return batch
+    backtest = await crud.rename_backtest(db, backtest_id, request.name)
+    if backtest is None:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    return backtest
 
 
-@app.patch("/backtests/{run_id}/name", response_model=BacktestRunOut)
-async def rename_backtest_run(
-    run_id: str, request: ExperimentNameUpdateIn, db: AsyncSession = Depends(get_db)
-):
+@app.get("/backtests/{backtest_id}", response_model=BacktestOut)
+async def get_backtest(backtest_id: str, db: AsyncSession = Depends(get_db)):
+    backtest = await crud.get_backtest(db, backtest_id)
+    if backtest is None:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    return backtest
+
+
+@app.get("/backtests/{backtest_id}/members", response_model=list[BacktestRunOut])
+async def list_backtest_members(backtest_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest(db, backtest_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    return await crud.list_backtest_members(db, backtest_id)
+
+
+@app.get("/backtests/{backtest_id}/events", response_model=list[BacktestEventOut])
+async def list_backtest_events(backtest_id: str, db: AsyncSession = Depends(get_db)):
+    if await crud.get_backtest(db, backtest_id) is None:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    return await crud.list_backtest_events(db, backtest_id)
+
+
+@app.delete("/backtests/{backtest_id}", status_code=204, response_class=Response)
+async def delete_backtest(backtest_id: str, db: AsyncSession = Depends(get_db)) -> Response:
     try:
-        run = await crud.rename_backtest_run(db, run_id, request.name)
-    except crud.ExperimentNameConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if run is None:
-        raise HTTPException(status_code=404, detail="Backtest run not found")
-    return run
-
-
-@app.get("/backtest-batches/{batch_id}", response_model=BacktestBatchOut)
-async def get_backtest_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
-    batch = await crud.get_backtest_batch(db, batch_id)
-    if batch is None:
-        raise HTTPException(status_code=404, detail="Backtest batch not found")
-    return batch
-
-
-@app.get("/backtest-batches/{batch_id}/members", response_model=list[BacktestRunOut])
-async def list_backtest_batch_members(batch_id: str, db: AsyncSession = Depends(get_db)):
-    if await crud.get_backtest_batch(db, batch_id) is None:
-        raise HTTPException(status_code=404, detail="Backtest batch not found")
-    return await crud.list_backtest_batch_members(db, batch_id)
-
-
-@app.get("/backtest-batches/{batch_id}/events", response_model=list[BacktestBatchEventOut])
-async def list_backtest_batch_events(batch_id: str, db: AsyncSession = Depends(get_db)):
-    if await crud.get_backtest_batch(db, batch_id) is None:
-        raise HTTPException(status_code=404, detail="Backtest batch not found")
-    return await crud.list_backtest_batch_events(db, batch_id)
-
-
-@app.delete("/backtest-batches/{batch_id}", status_code=204, response_class=Response)
-async def delete_backtest_batch(batch_id: str, db: AsyncSession = Depends(get_db)) -> Response:
-    try:
-        deleted = await crud.delete_backtest_batch(db, batch_id)
+        deleted = await crud.delete_backtest(db, backtest_id)
     except crud.BacktestDeletionConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
-        raise HTTPException(status_code=404, detail="Backtest batch not found")
+        raise HTTPException(status_code=404, detail="Backtest not found")
     return Response(status_code=204)
 
 
-@app.post("/backtest-batches/{batch_id}/{command}", response_model=BacktestBatchCommandOut)
-async def control_backtest_batch(
-    batch_id: str,
+@app.post("/backtests/{backtest_id}/{command}", response_model=BacktestCommandOut)
+async def control_backtest(
+    backtest_id: str,
     command: Literal["pause", "resume", "cancel"],
-    request: BacktestBatchCommandIn,
+    request: BacktestCommandIn,
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        result = await backtest_execution.control_batch(
+        result = await backtest_execution.control_backtest(
             db,
-            batch_id=batch_id,
+            backtest_id=backtest_id,
             command=command,
             command_id=request.command_id,
             policy=request.policy.model_dump(),
         )
-    except backtest_execution.BatchCommandConflictError as exc:
+    except backtest_execution.BacktestCommandConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
-        raise HTTPException(status_code=404, detail="Backtest batch not found")
+        raise HTTPException(status_code=404, detail="Backtest not found")
     return result
 
 
-@app.get("/backtests/{run_id}", response_model=BacktestRunOut)
+@app.get("/backtest-runs/{run_id}", response_model=BacktestRunOut)
 async def get_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
     run = await crud.get_backtest_run(db, run_id)
     if run is None:
@@ -307,32 +280,18 @@ async def get_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
     return run
 
 
-@app.get("/backtests/{run_id}/fills", response_model=list[BacktestFillOut])
+@app.get("/backtest-runs/{run_id}/fills", response_model=list[BacktestFillOut])
 async def get_backtest_fills(run_id: str, db: AsyncSession = Depends(get_db)):
     if await crud.get_backtest_run(db, run_id) is None:
         raise HTTPException(status_code=404, detail="Backtest run not found")
     return await crud.get_backtest_fills(db, run_id)
 
 
-@app.get("/backtests/{run_id}/trades", response_model=list[BacktestClosedTradeOut])
+@app.get("/backtest-runs/{run_id}/trades", response_model=list[BacktestClosedTradeOut])
 async def get_backtest_trades(run_id: str, db: AsyncSession = Depends(get_db)):
     if await crud.get_backtest_run(db, run_id) is None:
         raise HTTPException(status_code=404, detail="Backtest run not found")
     return await crud.get_backtest_trades(db, run_id)
-
-
-@app.delete("/backtests/{run_id}", status_code=204, response_class=Response)
-async def delete_backtest_run(
-    run_id: str,
-    db: AsyncSession = Depends(get_db),
-) -> Response:
-    try:
-        deleted = await crud.delete_backtest_run(db, run_id)
-    except crud.BacktestDeletionConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Backtest run not found")
-    return Response(status_code=204)
 
 
 @app.delete("/markets/{symbol}")

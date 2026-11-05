@@ -1,8 +1,8 @@
 <template>
   <section
-    v-if="batchId"
-    aria-label="Backtest Batch"
-    class="batch-history"
+    v-if="backtestId"
+    aria-label="Backtest"
+    class="backtest-history"
   >
     <p
       v-if="detailError"
@@ -11,43 +11,41 @@
     >
       Live status unavailable.
       {{
-        selectedBatch
+        selectedBacktest
           ? 'Showing the last saved snapshot.'
           : 'Retrying automatically.'
       }}
       {{ detailError }}
     </p>
     <p
-      v-if="!selectedBatch && !detailError"
+      v-if="!selectedBacktest && !detailError"
       class="loading"
       role="status"
-      >Loading parameter sweep…</p
+      >Loading backtest…</p
     >
     <section
-      v-if="selectedBatch"
-      aria-label="Accepted Batch"
-      class="batch-detail"
+      v-if="selectedBacktest"
+      aria-label="Accepted Backtest"
+      class="backtest-detail"
     >
-      <header class="sweep-header">
+      <header class="backtest-header">
         <div>
-          <div class="eyebrow">PARAMETER SWEEP</div>
           <h3
             ><ExperimentName
-              kind="batch"
-              :experiment-id="selectedBatch.batch_id"
-              :name="selectedBatch.name"
+              :experiment-id="selectedBacktest.backtest_id"
+              :name="selectedBacktest.name"
           /></h3>
           <p class="context"
-            >Version {{ selectedBatch.strategy_metadata.strategy_version }}
+            >Version {{ selectedBacktest.strategy_metadata.strategy_version }}
             <span aria-hidden="true">·</span>
-            {{ selectedBatch.markets.join(', ') }}
+            {{ selectedBacktest.markets.join(', ') }}
             <span aria-hidden="true">·</span>
-            {{ selectedBatch.timeframes.join(', ') }}</p
+            {{ selectedBacktest.timeframes.join(', ') }}</p
           >
         </div>
         <div class="header-actions">
           <div
-            v-if="selectedBatch.started_at_ms !== null"
+            v-if="selectedBacktest.started_at_ms !== null"
             class="elapsed"
           >
             <span>{{ isTerminal ? 'Total time' : 'Time since start' }}</span
@@ -55,7 +53,7 @@
           </div>
           <span
             class="status-badge"
-            :class="detailError ? 'unknown' : selectedBatch.status"
+            :class="detailError ? 'unknown' : selectedBacktest.status"
             role="status"
           >
             <span class="status-dot" />{{
@@ -71,29 +69,29 @@
               <template #icon
                 ><n-icon :component="canPause ? PauseOutline : PlayOutline"
               /></template>
-              {{ canPause ? 'Pause Batch' : 'Resume Batch' }}
+              {{ canPause ? 'Pause Backtest' : 'Resume Backtest' }}
             </n-button>
             <n-button
               size="small"
               quaternary
               type="error"
               :disabled="controlPending"
-              data-testid="workspace-cancel-batch"
+              data-testid="workspace-cancel-backtest"
               @click="control('cancel')"
-              >Cancel Batch</n-button
+              >Cancel Backtest</n-button
             >
           </template>
         </div>
       </header>
 
-      <BatchProgress :inspection="inspection" />
+      <BacktestProgress :inspection="inspection" />
       <p
-        v-if="selectedBatch.outcome_counts.failed > 0"
+        v-if="selectedBacktest.outcome_counts.failed > 0"
         class="notice warning"
         role="status"
       >
-        {{ selectedBatch.outcome_counts.failed }} run{{
-          selectedBatch.outcome_counts.failed === 1 ? '' : 's'
+        {{ selectedBacktest.outcome_counts.failed }} run{{
+          selectedBacktest.outcome_counts.failed === 1 ? '' : 's'
         }}
         failed. Successful results remain available in Results below.
       </p>
@@ -101,7 +99,7 @@
         v-if="controlPending"
         class="notice"
         role="status"
-        >Applying batch command…</p
+        >Applying backtest command…</p
       >
       <p
         v-if="controlError"
@@ -113,10 +111,10 @@
         v-if="members && members.length === 0"
         class="notice error"
         role="alert"
-        >Accepted Batch has no members.</p
+        >Accepted Backtest has no members.</p
       >
 
-      <BatchSavedDetails :inspection="inspection" />
+      <BacktestSavedDetails :inspection="inspection" />
     </section>
   </section>
 </template>
@@ -126,20 +124,20 @@ import { NButton, NIcon } from 'naive-ui';
 import { PauseOutline, PlayOutline } from '@vicons/ionicons5';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import ExperimentName from './ExperimentName.vue';
-import BatchProgress from './batch/BatchProgress.vue';
-import BatchSavedDetails from './batch/BatchSavedDetails.vue';
-import { useBatchInspection } from './batch/useBatchInspection';
+import BacktestProgress from './inspection/BacktestProgress.vue';
+import BacktestSavedDetails from './inspection/BacktestSavedDetails.vue';
+import { useBacktestInspection } from './inspection/useBacktestInspection';
 const emit = defineEmits<{
-  members: [batchId: string, runs: BacktestRun[]];
+  members: [backtestId: string, runs: BacktestRun[]];
   cancelled: [];
 }>();
-const props = defineProps<{ batchId: string | null }>();
-const inspection = useBatchInspection(props, {
-  members: (batchId, runs) => emit('members', batchId, runs),
+const props = defineProps<{ backtestId: string | null }>();
+const inspection = useBacktestInspection(props, {
+  members: (backtestId, runs) => emit('members', backtestId, runs),
   cancelled: () => emit('cancelled'),
 });
 const {
-  selectedBatch,
+  selectedBacktest,
   members,
   detailError,
   controlPending,
@@ -153,18 +151,18 @@ const {
 } = inspection;
 </script>
 <style scoped>
-.batch-history {
+.backtest-history {
   margin-bottom: var(--design-space-xl);
   color: var(--design-color-body);
   font-size: var(--design-text-body);
 }
-.batch-detail {
+.backtest-detail {
   background: var(--design-color-panel);
   border: 1px solid var(--design-color-border);
   border-radius: var(--design-radius-panel);
   overflow: hidden;
 }
-.sweep-header {
+.backtest-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -280,7 +278,7 @@ p {
   color: var(--design-color-muted);
 }
 @media (max-width: 600px) {
-  .sweep-header {
+  .backtest-header {
     padding: var(--design-space-lg);
   }
   .notice {

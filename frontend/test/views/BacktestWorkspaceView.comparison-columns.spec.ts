@@ -1,5 +1,6 @@
 import {
   setupWorkspaceTests,
+  seedBacktest,
   run,
   mountWorkspace,
   toggleAnalysisColumns,
@@ -12,7 +13,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   fetchBacktestEquityCurve,
   getBacktestRun,
-  listBacktestRuns,
 } from '@/api/backtesterClient';
 
 import type { EquityReplayResponse } from '@/types/backtesterContracts';
@@ -24,12 +24,12 @@ describe('production Backtest Workspace: comparison-columns', () => {
       'groups without changing other groups or run selection',
     async () => {
       const saved = run('groups');
-      vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+      seedBacktest([saved]);
       vi.mocked(getBacktestRun).mockResolvedValue(saved);
-      const wrapper = mountWorkspace();
+      const wrapper = mountWorkspace(true);
       await flushPromises();
       await wrapper
-        .find('[data-testid="workspace-run-groups"]')
+        .find('[data-testid="workspace-backtest-groups"]')
         .trigger('click');
       await flushPromises();
       await wrapper
@@ -101,13 +101,13 @@ describe('production Backtest Workspace: comparison-columns', () => {
 
   it('updates column settings during pending replay without rebuilding the table', async () => {
     const saved = run('column-loading');
-    vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+    seedBacktest([saved]);
     vi.mocked(getBacktestRun).mockResolvedValue(saved);
     vi.mocked(fetchBacktestEquityCurve).mockReturnValue(new Promise(() => {}));
-    const wrapper = mountWorkspace();
+    const wrapper = mountWorkspace(true);
     await flushPromises();
     await wrapper
-      .get('[data-testid="workspace-run-column-loading"]')
+      .get('[data-testid="workspace-backtest-column-loading"]')
       .trigger('click');
     await flushPromises();
     await wrapper
@@ -153,7 +153,7 @@ describe('production Backtest Workspace: comparison-columns', () => {
     'settles the ending-equity skeleton after %s replay without changing column settings',
     async (outcome) => {
       const saved = run('skeleton');
-      vi.mocked(listBacktestRuns).mockResolvedValue([saved]);
+      seedBacktest([saved]);
       vi.mocked(getBacktestRun).mockResolvedValue(saved);
       let resolveReplay!: (response: EquityReplayResponse) => void;
       let rejectReplay!: (error: Error) => void;
@@ -163,12 +163,16 @@ describe('production Backtest Workspace: comparison-columns', () => {
           rejectReplay = reject;
         }),
       );
-      const wrapper = mountWorkspace();
+      const wrapper = mountWorkspace(true);
       try {
         await flushPromises();
         await wrapper
-          .get('[data-testid="workspace-run-skeleton"]')
+          .get('[data-testid="workspace-backtest-skeleton"]')
           .trigger('click');
+        await flushPromises();
+        await wrapper
+          .get('[data-testid="comparison-select-skeleton"]')
+          .setValue(true);
         await flushPromises();
         expect(
           wrapper.find('[data-testid="ending-loading-skeleton"]').exists(),

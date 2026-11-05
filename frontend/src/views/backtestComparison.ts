@@ -52,7 +52,7 @@ export function compareRuns(
       case 'capital':
         return run.request.initial_capital;
       case 'ordinal':
-        return run.member_ordinal ?? 0;
+        return run.run_ordinal ?? 0;
     }
   };
   const a = value(left);
@@ -69,7 +69,7 @@ export function compareRuns(
           : String(a).localeCompare(String(b), undefined, { numeric: true });
   return (
     order ||
-    (left.member_ordinal ?? 0) - (right.member_ordinal ?? 0) ||
+    (left.run_ordinal ?? 0) - (right.run_ordinal ?? 0) ||
     left.run_id.localeCompare(right.run_id)
   );
 }

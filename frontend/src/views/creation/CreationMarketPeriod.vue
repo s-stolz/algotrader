@@ -5,23 +5,14 @@
   >
     <div class="settings-grid">
       <div class="field-group">
-        <label v-if="!isSweep"
-          >Market
-          <BaseSelect
-            :value="marketValue"
-            :options="marketOptions"
-            data-testid="creation-market"
-            @update:value="selectMarket"
-          />
-        </label>
-        <label v-else
+        <label
           >Markets
           <BaseSelect
-            v-model:value="sweep.marketIds"
+            v-model:value="selections.marketIds"
             multiple
             max-tag-count="responsive"
             :options="marketOptions"
-            data-testid="sweep-markets"
+            data-testid="selections-markets"
           />
         </label>
         <small
@@ -45,22 +36,14 @@
         >
       </div>
       <div class="field-group">
-        <label v-if="!isSweep"
-          >Timeframe
-          <BaseSelect
-            v-model:value="draft.timeframe"
-            :options="timeframeOptions"
-            data-testid="creation-timeframe"
-          />
-        </label>
-        <label v-else
+        <label
           >Timeframes
           <BaseSelect
-            v-model:value="sweep.timeframes"
+            v-model:value="selections.timeframes"
             multiple
             max-tag-count="responsive"
             :options="timeframeOptions"
-            data-testid="sweep-timeframes"
+            data-testid="selections-timeframes"
           />
         </label>
       </div>
@@ -88,11 +71,8 @@ import { timeframeOptions } from './creationOptions';
 import { useCreation } from './creationContext';
 const {
   draft,
-  isSweep,
-  marketValue,
   marketOptions,
-  selectMarket,
-  sweep,
+  selections,
   missingMarkets,
   fieldErrors,
   setDate,

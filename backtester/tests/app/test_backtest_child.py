@@ -140,7 +140,7 @@ class TestBacktestChildExecution(unittest.TestCase):
     def test_vectorized_and_event_driven_children_run_full_market_data_path(self) -> None:
         for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
             with self.subTest(engine=engine):
-                request = replace(_request(), engine=engine, persist_result=True)
+                request = replace(_request(), engine=engine)
                 adapter = _FakeHistoricalAdapter(_bars())
 
                 compact = execute_backtest_child(
@@ -151,7 +151,6 @@ class TestBacktestChildExecution(unittest.TestCase):
                 if not isinstance(compact, CompactBacktestResult):
                     self.fail(f"Expected successful child result, got {compact!r}")
                 self.assertEqual(compact.request.engine, engine)
-                self.assertFalse(compact.request.persist_result)
                 self.assertEqual(compact.diagnostics["engine"], engine.value)
                 self.assertGreater(len(compact.fills), 0)
                 self.assertGreaterEqual(compact.execution_duration_ms, 0)

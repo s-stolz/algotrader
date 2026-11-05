@@ -42,7 +42,6 @@ import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { normalizeExperimentName } from '@/types/backtesterContracts';
 
 const props = defineProps<{
-  kind: 'run' | 'batch';
   experimentId: string;
   name?: string | null;
 }>();
@@ -54,18 +53,11 @@ const saving = ref(false);
 const saved = ref(false);
 const error = ref<string | null>(null);
 const errorId = useId();
-const displayName = computed(
-  () =>
-    props.name ??
-    (props.kind === 'batch'
-      ? 'Unnamed parameter sweep'
-      : 'Unnamed standalone run'),
-);
+const displayName = computed(() => props.name ?? 'Unnamed backtest');
 let editSession = 0;
 let draftRevision = 0;
 let activeSaveRevision: number | null = null;
 type CommittedName = {
-  kind: 'run' | 'batch';
   id: string;
   name: string | null;
   revision: number;
@@ -78,9 +70,7 @@ function reset(cancelQueued = false): void {
   queuedCommit = null;
   if (committed && !cancelQueued) {
     // Leaving detail detaches presentation, but the committed identity still owns its write.
-    void store
-      .saveName(committed.kind, committed.id, committed.name)
-      .catch(() => undefined);
+    void store.saveName(committed.id, committed.name).catch(() => undefined);
   }
   editSession++;
   activeSaveRevision = null;
@@ -92,7 +82,7 @@ function reset(cancelQueued = false): void {
   clearTimeout(savedTimer);
 }
 watch(
-  () => `${props.kind}:${props.experimentId}`,
+  () => props.experimentId,
   () => reset(),
 );
 onBeforeUnmount(reset);
@@ -122,7 +112,6 @@ async function commit(): Promise<void> {
   const committed: CommittedName = {
     name,
     revision: draftRevision,
-    kind: props.kind,
     id: props.experimentId,
   };
   if (saving.value) {
@@ -139,7 +128,6 @@ async function commit(): Promise<void> {
 async function saveCommittedDraft({
   name,
   revision,
-  kind,
   id,
 }: CommittedName): Promise<void> {
   const session = editSession;
@@ -147,7 +135,7 @@ async function saveCommittedDraft({
   activeSaveRevision = revision;
   if (revision === draftRevision) error.value = null;
   try {
-    const authoritative = await store.saveName(kind, id, name);
+    const authoritative = await store.saveName(id, name);
     if (session !== editSession) return;
     if (revision === draftRevision && !queuedCommit) {
       draft.value = authoritative ?? '';

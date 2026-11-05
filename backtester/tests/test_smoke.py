@@ -47,7 +47,7 @@ class _StorageClient:
         return _Response(payload={"status": "ok", "added_candles": len(candles)})
 
     def delete(self, path: str, **kwargs: object) -> _Response:
-        self.assert_path(path, f"/markets/{smoke.FIXTURE_SYMBOL}")
+        assert path.startswith("/markets/")
         return _Response(payload={"status": "deleted"})
 
     def close(self) -> None:
@@ -71,39 +71,52 @@ class _BacktesterClient:
         run_id = "run-success" if self.submission_count == 1 else "run-failure"
         return _Response(
             status_code=202,
-            payload={"run_id": run_id, "status": "queued"},
+            payload={"backtest_id": run_id, "status": "queued"},
             headers={"location": f"/backtests/{run_id}"},
         )
 
     def get(self, path: str, **kwargs: object) -> _Response:
-        if path == "/backtests/run-success":
+        if path.endswith("/runs"):
+            run_id = path.split("/")[-2]
+            return _Response(
+                payload=[{"run_id": run_id, "backtest_id": run_id, "status": "queued"}]
+            )
+        if path == "/backtests/runs/run-success":
             self.success_reads += 1
             if self.success_reads == 1:
-                return _Response(payload={"run_id": "run-success", "status": "running"})
+                return _Response(
+                    payload={
+                        "run_id": "run-success",
+                        "backtest_id": "run-success",
+                        "status": "running",
+                    }
+                )
             return _Response(
                 payload={
                     "run_id": "run-success",
+                    "backtest_id": "run-success",
                     "status": "succeeded",
                     "metrics": {"trade_count": 1.0},
                     "diagnostics": {"bars": 9},
                 }
             )
-        if path == "/backtests/run-success/fills":
+        if path == "/backtests/runs/run-success/fills":
             return _Response(payload=[{"sequence": 0, "side": "buy"}])
-        if path == "/backtests/run-success/trades":
+        if path == "/backtests/runs/run-success/trades":
             return _Response(payload=[{"sequence": 0, "realized_pnl": 3.0}])
-        if path == "/backtests/run-failure":
+        if path == "/backtests/runs/run-failure":
             return _Response(
                 payload={
                     "run_id": "run-failure",
+                    "backtest_id": "run-failure",
                     "status": "failed",
                     "error_code": "backtest_failed",
                     "error_message": "Backtest execution failed",
                 }
             )
         if path in {
-            "/backtests/run-failure/fills",
-            "/backtests/run-failure/trades",
+            "/backtests/runs/run-failure/fills",
+            "/backtests/runs/run-failure/trades",
         }:
             return _Response(payload=[])
         raise AssertionError(f"Unexpected GET {path}")

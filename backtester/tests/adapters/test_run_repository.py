@@ -1,5 +1,4 @@
 import unittest
-from dataclasses import replace
 
 from adapters.persistence import DatabaseAccessorBacktestRunRepository
 from db_accessor_client import DatabaseAccessorClientError
@@ -98,30 +97,26 @@ class _RejectedCancelRunClient(_FakeRunClient):
 
 
 class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
-    def test_rename_preserves_authoritative_record(self) -> None:
-        client = _FakeRunClient()
-        repository = DatabaseAccessorBacktestRunRepository(client=client)
-        run = repository.create(
-            BacktestRunRecord(
-                run_id="rename",
-                status=BacktestRunStatus.QUEUED,
-                submitted_at_ms=1_780_921_805_123,
-                request_snapshot=BacktestRequestSnapshot.from_request(_request()),
-            )
-        )
-        self.assertEqual(repository.rename(run.run_id, "Renamed"), replace(run, name="Renamed"))
-        self.assertEqual(repository.get(run.run_id), replace(run, name="Renamed"))
-
     def test_cancel_maps_storage_outcome_without_reinterpreting_the_run(self) -> None:
         client = _FakeRunClient()
         repository = DatabaseAccessorBacktestRunRepository(client=client)
         queued = BacktestRunRecord(
+            backtest_id="backtest-1",
+            run_ordinal=0,
             run_id="run-123",
             status=BacktestRunStatus.QUEUED,
             submitted_at_ms=1_780_921_805_123,
             request_snapshot=BacktestRequestSnapshot.from_request(_request()),
         )
-        repository.create(queued)
+        client.runs_by_id[queued.run_id] = {
+            "run_id": queued.run_id,
+            "backtest_id": "backtest-1",
+            "run_ordinal": 0,
+            "status": "queued",
+            "submitted_at": "2026-06-08T12:30:05+00:00",
+            "request_schema_version": queued.request_snapshot.schema_version,
+            "request": dict(queued.request_snapshot.payload),
+        }
         cancelled = repository.cancel("run-123")
         self.assertEqual(cancelled.outcome, "accepted")
         assert cancelled.run is not None
@@ -140,47 +135,12 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
             "conflict",
         )
 
-    def test_create_maps_queued_domain_record_and_round_trips_response(self) -> None:
-        client = _FakeRunClient()
-        repository = DatabaseAccessorBacktestRunRepository(client=client)
-        run = BacktestRunRecord(
-            run_id="run-123",
-            status=BacktestRunStatus.QUEUED,
-            submitted_at_ms=1_780_921_805_123,
-            request_snapshot=BacktestRequestSnapshot.from_request(_request()),
-        )
-
-        created = repository.create(run)
-
-        self.assertEqual(
-            client.created_payloads,
-            [
-                {
-                    "run_id": "run-123",
-                    "name": None,
-                    "status": "queued",
-                    "submitted_at": "2026-06-08T12:30:05.123000+00:00",
-                    "started_at": None,
-                    "completed_at": None,
-                    "error_code": None,
-                    "error_message": None,
-                    "request_schema_version": 2,
-                    "request": dict(run.request_snapshot.payload),
-                    "result_schema_version": None,
-                    "metrics": None,
-                    "replay_descriptor": None,
-                    "diagnostics": None,
-                    "fills": [],
-                    "trades": [],
-                }
-            ],
-        )
-        self.assertEqual(created, run)
-
     def test_get_maps_lifecycle_and_terminal_fields(self) -> None:
         client = _FakeRunClient()
         client.runs_by_id["run-succeeded"] = {
             "run_id": "run-succeeded",
+            "backtest_id": "backtest-1",
+            "run_ordinal": 0,
             "status": "succeeded",
             "submitted_at": "2026-06-08T12:30:05.123000+00:00",
             "started_at": "2026-06-08T12:31:00+00:00",
@@ -254,6 +214,8 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
         client.fills_by_run_id["run-succeeded"] = [
             {
                 "run_id": "run-succeeded",
+                "backtest_id": "backtest-1",
+                "run_ordinal": 0,
                 "fill_sequence": 0,
                 "timestamp_ms": 1_714_525_200_000,
                 "symbol": "EURUSD",
@@ -265,6 +227,8 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
             },
             {
                 "run_id": "run-succeeded",
+                "backtest_id": "backtest-1",
+                "run_ordinal": 0,
                 "fill_sequence": 1,
                 "timestamp_ms": 1_714_532_400_000,
                 "symbol": "EURUSD",
@@ -278,6 +242,8 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
         client.trades_by_run_id["run-succeeded"] = [
             {
                 "run_id": "run-succeeded",
+                "backtest_id": "backtest-1",
+                "run_ordinal": 0,
                 "trade_sequence": 0,
                 "trade_id": "trade-1",
                 "symbol": "EURUSD",
@@ -348,18 +314,6 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
             ],
         )
 
-    def test_delete_maps_success_and_accessor_not_found(self) -> None:
-        client = _FakeRunClient()
-        repository = DatabaseAccessorBacktestRunRepository(client=client)
-
-        self.assertTrue(repository.delete("run-succeeded"))
-        self.assertEqual(client.deleted_run_ids, ["run-succeeded"])
-        self.assertFalse(
-            DatabaseAccessorBacktestRunRepository(client=_MissingDeleteRunClient()).delete(
-                "run-missing"
-            )
-        )
-
 
 def _request() -> BacktestRequest:
     return BacktestRequest(
@@ -385,6 +339,8 @@ def _request() -> BacktestRequest:
 def _persisted_run(run_id: str, submitted_at: str) -> dict:
     return {
         "run_id": run_id,
+        "backtest_id": "backtest-1",
+        "run_ordinal": 0,
         "status": "queued",
         "submitted_at": submitted_at,
         "started_at": None,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BacktestBatch, BacktestRun } from '@/types/backtesterContracts';
-import { reuseBatch, reuseStandalone } from '@/views/backtestReuse';
+import type { Backtest, BacktestRun } from '@/types/backtesterContracts';
+import { reuseBacktest, reuseRun } from '@/views/backtestReuse';
 
 const request = {
   symbols: ['EURUSD'],
@@ -35,7 +35,6 @@ const request = {
       exit_minute_utc: 180,
     },
   },
-  persist_result: true,
   run_metadata: { name: 'Original' },
 } as const;
 
@@ -49,43 +48,43 @@ const copyNames = [
 ] as const;
 
 describe('saved configuration reuse', () => {
-  it.each(copyNames)(
-    'copies a standalone name %s into an independent draft',
-    (name, proposed) => {
-      const run = {
-        run_id: 'old',
-        name,
-        request_schema_version: 2,
-        request,
-        status: 'succeeded',
-      } as unknown as BacktestRun;
-      const before = structuredClone(run);
-      const reuse = reuseStandalone(run);
-      expect(reuse.source.strategyVersion).toBeNull();
-      expect(reuse.request).toHaveProperty('name', proposed);
-      expect(reuse.request).toMatchObject({
-        timeframe: 'M15',
-        initial_capital: 25_000,
-        strategy: { parameters: { fast: 3, slow: 10 } },
-        execution: {
-          allowed_directions: 'short_only',
-          max_entries_per_day: 2,
-          daily_schedule: request.execution.daily_schedule,
-        },
-        run_metadata: null,
-      });
-      reuse.request.strategy.parameters.fast = 99;
-      reuse.request.execution.max_entries_per_day = 1;
-      reuse.request.execution.daily_schedule!.exit_minute_utc = 240;
-      expect(run).toEqual(before);
-    },
-  );
+  it('copies a Run into an independent fixed-parameter draft', () => {
+    const run = {
+      run_id: 'old',
+      backtest_id: 'parent',
+      run_ordinal: 0,
+      request_schema_version: 3,
+      request,
+      status: 'succeeded',
+    } as unknown as BacktestRun;
+    const before = structuredClone(run);
+    const reuse = reuseRun(run, [
+      { symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' },
+    ]);
+    expect(reuse.source.strategyVersion).toBe(2);
+    expect(reuse.request).toHaveProperty('name', '');
+    expect(reuse.request).toMatchObject({
+      timeframe: 'M15',
+      initial_capital: 25_000,
+      strategy: { parameters: { fast: 3, slow: 10 } },
+      execution: {
+        allowed_directions: 'short_only',
+        max_entries_per_day: 2,
+        daily_schedule: request.execution.daily_schedule,
+      },
+      run_metadata: null,
+    });
+    reuse.request.strategy.parameters.fast = 99;
+    reuse.request.execution.max_entries_per_day = 1;
+    reuse.request.execution.daily_schedule!.exit_minute_utc = 240;
+    expect(run).toEqual(before);
+  });
 
   it.each(copyNames)(
-    'copies a batch name %s with accepted ordered selections and ranges',
+    'copies a backtest name %s with accepted ordered selections and ranges',
     (name, proposed) => {
-      const batch = {
-        batch_id: 'saved-batch',
+      const backtest = {
+        backtest_id: 'saved-backtest',
         name,
         strategy_id: 'sma',
         strategy_version: 2,
@@ -139,25 +138,25 @@ describe('saved configuration reuse', () => {
             },
           ],
         },
-      } as unknown as BacktestBatch;
-      const before = structuredClone(batch);
-      const reuse = reuseBatch(batch);
+      } as unknown as Backtest;
+      const before = structuredClone(backtest);
+      const reuse = reuseBacktest(backtest);
       expect(reuse.request).toHaveProperty('name', proposed);
-      expect(reuse.sweep.marketIds).toEqual([2, 1]);
-      expect(reuse.sweep.timeframes).toEqual(['H1', 'M15']);
-      expect(reuse.sweep.allowedDirections).toEqual([
+      expect(reuse.selections.marketIds).toEqual([2, 1]);
+      expect(reuse.selections.timeframes).toEqual(['H1', 'M15']);
+      expect(reuse.selections.allowedDirections).toEqual([
         'short_only',
         'long_only',
       ]);
-      expect(reuse.sweep.parameters.fast).toMatchObject({
+      expect(reuse.selections.parameters.fast).toMatchObject({
         mode: 'range',
         rangeStart: 3,
         rangeStop: 7,
         rangeStep: 2,
       });
-      expect(reuse.source.defaultedParameters).toEqual(['slow']);
-      reuse.sweep.marketIds.reverse();
-      expect(batch).toEqual(before);
+      expect(reuse.request.strategy.parameters.slow).toBe(10);
+      reuse.selections.marketIds.reverse();
+      expect(backtest).toEqual(before);
     },
   );
 });

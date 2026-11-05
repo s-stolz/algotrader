@@ -4,40 +4,36 @@ import { computed, ref, type Ref } from 'vue';
 import type {
   StrategyCatalogEntry,
   StrategyParameterSchema,
-  SweepDraftState,
-  SweepParameterDraft,
-  SweepPreviewRequest,
+  BacktestSelectionsDraft,
+  ParameterDraft,
+  BacktestPreviewRequest,
 } from '@/types/backtesterContracts';
 import type { DraftRequest } from './creationRequest';
 import { parameterIssue } from './creationParameters';
 interface NavigationInputs {
   draft: Ref<DraftRequest>;
-  sweep: Ref<SweepDraftState>;
-  isSweep: Ref<boolean>;
+  selections: Ref<BacktestSelectionsDraft>;
   nameIssue: Ref<string | null>;
   strategyNeedsReview: Ref<boolean>;
   missingMarkets: Ref<string[]>;
-  marketValue: Ref<number | undefined>;
   selectedStrategy: Ref<StrategyCatalogEntry | undefined>;
   fieldErrors: Ref<Record<string, string>>;
   submitError: Ref<string | null>;
-  sweepParameter: (parameter: StrategyParameterSchema) => SweepParameterDraft;
-  buildSweepRequest: () => SweepPreviewRequest;
+  parameterInput: (parameter: StrategyParameterSchema) => ParameterDraft;
+  buildBacktestRequest: () => BacktestPreviewRequest;
 }
 export function useCreationNavigation(inputs: NavigationInputs) {
   const {
     draft,
-    sweep,
-    isSweep,
+    selections,
     nameIssue,
     strategyNeedsReview,
     missingMarkets,
-    marketValue,
     selectedStrategy,
     fieldErrors,
     submitError,
-    sweepParameter,
-    buildSweepRequest,
+    parameterInput,
+    buildBacktestRequest,
   } = inputs;
   const step = ref(0);
   const numericEntryValid = ref<Record<string, boolean>>({});
@@ -59,14 +55,10 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     if (nameIssue.value) fieldErrors.value.name = nameIssue.value;
     if (strategyNeedsReview.value)
       fieldErrors.value.strategy = 'Review the current Strategy Version.';
-    if (
-      isSweep.value
-        ? !sweep.value.marketIds.length || missingMarkets.value.length
-        : !marketValue.value
-    ) {
+    if (!selections.value.marketIds.length || missingMarkets.value.length) {
       fieldErrors.value.market = 'Select an available Market.';
     }
-    if (isSweep.value && !sweep.value.timeframes.length)
+    if (!selections.value.timeframes.length)
       fieldErrors.value.timeframe = 'Select at least one Timeframe.';
     if (
       !Number.isFinite(draft.value.start_ms) ||
@@ -92,9 +84,9 @@ export function useCreationNavigation(inputs: NavigationInputs) {
       submitError.value = executionIssue;
       return false;
     }
-    if (isSweep.value) {
+    {
       try {
-        buildSweepRequest();
+        buildBacktestRequest();
       } catch (error) {
         submitError.value =
           error instanceof Error ? error.message : 'Complete parameter values.';
@@ -106,8 +98,7 @@ export function useCreationNavigation(inputs: NavigationInputs) {
       }
     }
     for (const parameter of selectedStrategy.value?.parameters ?? []) {
-      if (isSweep.value && sweepParameter(parameter).mode !== 'constant')
-        continue;
+      if (parameterInput(parameter).mode !== 'constant') continue;
       const issue = parameterIssue(
         parameter,
         draft.value.strategy.parameters[parameter.name],
@@ -120,15 +111,15 @@ export function useCreationNavigation(inputs: NavigationInputs) {
   const hasPendingNumericEntry = computed(() =>
     Object.entries(numericEntryValid.value).some(
       ([name, valid]) =>
-        !valid && sweep.value.parameters[name]?.mode === 'values',
+        !valid && selections.value.parameters[name]?.mode === 'values',
     ),
   );
 
   function changeParameterMode(
     parameter: StrategyParameterSchema,
-    mode: SweepParameterDraft['mode'],
+    mode: ParameterDraft['mode'],
   ): void {
-    sweepParameter(parameter).mode = mode;
+    parameterInput(parameter).mode = mode;
     numericEntryValid.value[parameter.name] = true;
     if (
       mode === 'constant' &&
@@ -140,7 +131,7 @@ export function useCreationNavigation(inputs: NavigationInputs) {
   }
 
   function numericValues(parameter: StrategyParameterSchema): number[] {
-    return sweepParameter(parameter)
+    return parameterInput(parameter)
       .valuesText.split('\n')
       .filter(Boolean)
       .map(Number);
@@ -150,8 +141,8 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     parameter: StrategyParameterSchema,
     values: number[],
   ): void {
-    sweepParameter(parameter).valuesText = values.map(String).join('\n');
-    delete sweepParameter(parameter).selectedChoiceValues;
+    parameterInput(parameter).valuesText = values.map(String).join('\n');
+    delete parameterInput(parameter).selectedChoiceValues;
   }
 
   return {

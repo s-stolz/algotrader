@@ -1,21 +1,19 @@
-import { computed, ref, watch, type Ref } from 'vue';
+import { computed, ref, type Ref } from 'vue';
 import {
   getBacktestRun,
   fetchBacktestEquityCurve,
 } from '@/api/backtesterClient';
-import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import type {
   BacktestRun,
   EquityReplayResponse,
 } from '@/types/backtesterContracts';
 import { errorMessage } from './workspaceErrors';
 export function useWorkspaceAnalysis(selection: {
-  selectedBatchId: Ref<string | null>;
-  batchMembers: Ref<BacktestRun[]>;
+  selectedBacktestId: Ref<string | null>;
+  backtestMembers: Ref<BacktestRun[]>;
   selectedRun: Ref<BacktestRun | null>;
 }) {
-  const { selectedBatchId, batchMembers, selectedRun } = selection;
-  const workspaceStore = useBacktestWorkspaceStore();
+  const { backtestMembers } = selection;
   type AnalysisState = {
     loading: boolean;
     error: string | null;
@@ -25,12 +23,9 @@ export function useWorkspaceAnalysis(selection: {
   const analysis = ref<Record<string, AnalysisState>>({});
   const selectedComparisonIds = ref<string[]>([]);
   const currentRows = computed(() =>
-    (selectedBatchId.value
-      ? batchMembers.value
-      : selectedRun.value
-        ? [selectedRun.value]
-        : []
-    ).map((run) => analysis.value[run.run_id]?.detail ?? run),
+    backtestMembers.value.map(
+      (run) => analysis.value[run.run_id]?.detail ?? run,
+    ),
   );
   let analysisSequence = 0;
   const analysisTokens = new Map<string, number>();
@@ -53,7 +48,6 @@ export function useWorkspaceAnalysis(selection: {
       )
         continue;
       const token = ++analysisSequence;
-      const nameReadRevision = workspaceStore.nameRevision;
       analysisTokens.set(id, token);
       analysis.value[id] = {
         loading: true,
@@ -63,10 +57,7 @@ export function useWorkspaceAnalysis(selection: {
       };
       void (async () => {
         try {
-          const detail = workspaceStore.preserveRunName(
-            await getBacktestRun(id),
-            nameReadRevision,
-          );
+          const detail = await getBacktestRun(id);
           if (detail.status !== 'succeeded')
             throw new Error('Run is no longer successful');
           if (analysisTokens.get(id) === token)
@@ -82,7 +73,7 @@ export function useWorkspaceAnalysis(selection: {
               loading: false,
               error: null,
               curve,
-              detail: workspaceStore.preserveRunName(detail, nameReadRevision),
+              detail,
             };
         } catch (error) {
           if (analysisTokens.get(id) === token)
@@ -122,15 +113,6 @@ export function useWorkspaceAnalysis(selection: {
     );
   }
 
-  watch(
-    () => workspaceStore.nameRevision,
-    () => {
-      for (const state of Object.values(analysis.value)) {
-        if (state.detail)
-          state.detail = workspaceStore.preserveRunName(state.detail, -1);
-      }
-    },
-  );
   function stop() {
     analysisTokens.clear();
   }

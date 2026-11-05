@@ -62,7 +62,6 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(request.data_granularity, DataGranularity.BAR)
         self.assertEqual(request.engine, BacktestEngine.VECTORIZED)
         self.assertIsNone(request.exchange)
-        self.assertFalse(request.persist_result)
         self.assertIsNone(request.run_metadata)
         self.assertEqual(request.execution.commission_bps, 0.0)
         self.assertEqual(request.execution.slippage_bps, 0.0)
@@ -145,7 +144,6 @@ class TestDomainTypes(unittest.TestCase):
             execution=ExecutionConfig(),
             initial_capital=10_000.0,
             exchange="NASDAQ",
-            persist_result=True,
             run_metadata={"label": "m0-smoke"},
         )
         fill = Fill(
@@ -177,13 +175,10 @@ class TestDomainTypes(unittest.TestCase):
             equity_curve=[snapshot],
             metrics={"return_pct": 0.01},
             diagnostics={"engine": "vectorized"},
-            backtest_run_id="run-1",
-            persisted_at=1_700_000_130_000,
         )
 
         self.assertEqual(result.request.strategy.strategy_id, "sma_crossover")
         self.assertEqual(result.fills[0].side, OrderSide.BUY)
-        self.assertEqual(result.backtest_run_id, "run-1")
         self.assertEqual(result.metrics["return_pct"], 0.01)
         self.assertEqual(result.trades[0].fees, 0.0)
         self.assertEqual(result.trades[0].exit_reason, ExitReason.SIGNAL)
@@ -218,7 +213,6 @@ class TestDomainTypes(unittest.TestCase):
             ),
             initial_capital=25_000.0,
             data_granularity=DataGranularity.BAR,
-            persist_result=True,
             run_metadata={
                 "label": "exchange-preservation",
                 "tags": ["smoke", "durable"],
@@ -325,6 +319,8 @@ class TestDomainTypes(unittest.TestCase):
             exit_reason=ExitReason.SIGNAL,
         )
         run = BacktestRunRecord(
+            backtest_id="backtest-1",
+            run_ordinal=0,
             run_id="run-1",
             status=BacktestRunStatus.QUEUED,
             submitted_at_ms=1_778_848_205_123,

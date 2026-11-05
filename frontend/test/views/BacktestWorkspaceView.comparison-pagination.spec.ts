@@ -1,7 +1,7 @@
 import {
   setupWorkspaceTests,
   run,
-  batch,
+  backtest,
   mountWorkspace,
 } from './backtestWorkspaceFixtures';
 import { flushPromises } from '@vue/test-utils';
@@ -15,9 +15,9 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import {
   fetchBacktestEquityCurve,
-  getBacktestBatch,
-  listBacktestBatchMembers,
-  listBacktestBatches,
+  getBacktest,
+  listBacktestMembers,
+  listBacktests,
   listBacktestRuns,
 } from '@/api/backtesterClient';
 
@@ -30,17 +30,18 @@ vi.mock('@/views/workspace/comparison/comparisonRunActions', () => ({
 async function openPagedBacktest() {
   vi.useFakeTimers();
   const members = Array.from({ length: 105 }, (_, ordinal) =>
-    run(`paged-${ordinal}`, { batch_id: 'paged', member_ordinal: ordinal }),
+    run(`paged-${ordinal}`, { backtest_id: 'paged', run_ordinal: ordinal }),
   );
-  const accepted = batch('paged', members.length);
+  const accepted = backtest('paged', members.length);
   vi.mocked(listBacktestRuns).mockResolvedValue([]);
-  vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
-  vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
-  vi.mocked(listBacktestBatchMembers).mockResolvedValue(members);
+  vi.mocked(listBacktests).mockResolvedValue([accepted]);
+  vi.mocked(getBacktest).mockResolvedValue(accepted);
+  vi.mocked(listBacktestMembers).mockResolvedValue(members);
   const wrapper = mountWorkspace(true);
-  onTestFinished(() => wrapper.unmount());
   await flushPromises();
-  await wrapper.get('[data-testid="workspace-batch-paged"]').trigger('click');
+  await wrapper
+    .get('[data-testid="workspace-backtest-paged"]')
+    .trigger('click');
   await flushPromises();
   return {
     wrapper,
@@ -105,7 +106,7 @@ describe('production Backtest Workspace: comparison-pagination', () => {
     async (size) => {
       const { wrapper, pagination, identities, members } =
         await openPagedBacktest();
-      const memberReads = vi.mocked(listBacktestBatchMembers).mock.calls.length;
+      const memberReads = vi.mocked(listBacktestMembers).mock.calls.length;
       pagination().vm.$emit('update:page', 3);
       await flushPromises();
       expect(identities()[0]).toBe('Run #41');
@@ -127,7 +128,7 @@ describe('production Backtest Workspace: comparison-pagination', () => {
       );
       expect(pagination().props('page')).toBe(1);
       expect(pagination().exists()).toBe(true);
-      expect(listBacktestBatchMembers).toHaveBeenCalledTimes(memberReads);
+      expect(listBacktestMembers).toHaveBeenCalledTimes(memberReads);
       expect(fetchBacktestEquityCurve).not.toHaveBeenCalled();
     },
   );
@@ -135,7 +136,7 @@ describe('production Backtest Workspace: comparison-pagination', () => {
   it('sorts globally and clamps the page when members shrink', async () => {
     const { wrapper, pagination, identities, members } =
       await openPagedBacktest();
-    const memberReads = vi.mocked(listBacktestBatchMembers).mock.calls.length;
+    const memberReads = vi.mocked(listBacktestMembers).mock.calls.length;
     pagination().vm.$emit('update:page', 3);
     await flushPromises();
     wrapper.findAllComponents(NDataTable).at(-1)!.vm.sort('ordinal', 'descend');
@@ -148,7 +149,7 @@ describe('production Backtest Workspace: comparison-pagination', () => {
     await flushPromises();
     expect(identities()).toHaveLength(5);
     wrapper
-      .findComponent({ name: 'BacktestBatches' })
+      .findComponent({ name: 'BacktestOverview' })
       .vm.$emit('members', 'paged', members.slice(0, 25));
     await flushPromises();
     expect(pagination().props('page')).toBe(2);
@@ -159,7 +160,7 @@ describe('production Backtest Workspace: comparison-pagination', () => {
       'Run #2',
       'Run #1',
     ]);
-    expect(listBacktestBatchMembers).toHaveBeenCalledTimes(memberReads);
+    expect(listBacktestMembers).toHaveBeenCalledTimes(memberReads);
     expect(fetchBacktestEquityCurve).not.toHaveBeenCalled();
   });
 });

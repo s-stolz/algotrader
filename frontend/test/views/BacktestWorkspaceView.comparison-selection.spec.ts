@@ -1,7 +1,7 @@
 import {
   setupWorkspaceTests,
   run,
-  batch,
+  backtest,
   mountWorkspace,
 } from './backtestWorkspaceFixtures';
 import { flushPromises } from '@vue/test-utils';
@@ -12,11 +12,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   fetchBacktestEquityCurve,
-  getBacktestBatch,
+  getBacktest,
   getBacktestRun,
-  listBacktestBatchEvents,
-  listBacktestBatchMembers,
-  listBacktestBatches,
+  listBacktestEvents,
+  listBacktestMembers,
+  listBacktests,
   listBacktestRuns,
 } from '@/api/backtesterClient';
 
@@ -24,28 +24,28 @@ describe('production Backtest Workspace: comparison-selection', () => {
   setupWorkspaceTests();
   it('selects all eligible runs and shows partial selection in the header checkbox', async () => {
     const members = [
-      run('first', { batch_id: 'selection', member_ordinal: 0 }),
-      run('second', { batch_id: 'selection', member_ordinal: 1 }),
+      run('first', { backtest_id: 'selection', run_ordinal: 0 }),
+      run('second', { backtest_id: 'selection', run_ordinal: 1 }),
       run('failed', {
-        batch_id: 'selection',
-        member_ordinal: 2,
+        backtest_id: 'selection',
+        run_ordinal: 2,
         status: 'failed',
         metrics: null,
       }),
     ];
-    const accepted = batch('selection', members.length);
+    const accepted = backtest('selection', members.length);
     vi.mocked(listBacktestRuns).mockResolvedValue([]);
-    vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
-    vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
-    vi.mocked(listBacktestBatchEvents).mockResolvedValue([]);
-    vi.mocked(listBacktestBatchMembers).mockResolvedValue(members);
+    vi.mocked(listBacktests).mockResolvedValue([accepted]);
+    vi.mocked(getBacktest).mockResolvedValue(accepted);
+    vi.mocked(listBacktestEvents).mockResolvedValue([]);
+    vi.mocked(listBacktestMembers).mockResolvedValue(members);
     vi.mocked(getBacktestRun).mockImplementation(
       async (id) => members.find((member) => member.run_id === id)!,
     );
     const wrapper = mountWorkspace(true);
     await flushPromises();
     await wrapper
-      .get('[data-testid="workspace-batch-selection"]')
+      .get('[data-testid="workspace-backtest-selection"]')
       .trigger('click');
     await flushPromises();
     const header = () =>
@@ -97,23 +97,23 @@ describe('production Backtest Workspace: comparison-selection', () => {
     async () => {
       const members = Array.from({ length: 25 }, (_, ordinal) =>
         run(`page-selection-${ordinal}`, {
-          batch_id: 'page-selection',
-          member_ordinal: ordinal,
+          backtest_id: 'page-selection',
+          run_ordinal: ordinal,
           status: ordinal === 24 ? 'failed' : 'succeeded',
         }),
       );
-      const accepted = batch('page-selection', members.length);
+      const accepted = backtest('page-selection', members.length);
       vi.mocked(listBacktestRuns).mockResolvedValue([]);
-      vi.mocked(listBacktestBatches).mockResolvedValue([accepted]);
-      vi.mocked(getBacktestBatch).mockResolvedValue(accepted);
-      vi.mocked(listBacktestBatchMembers).mockResolvedValue(members);
+      vi.mocked(listBacktests).mockResolvedValue([accepted]);
+      vi.mocked(getBacktest).mockResolvedValue(accepted);
+      vi.mocked(listBacktestMembers).mockResolvedValue(members);
       vi.mocked(getBacktestRun).mockImplementation(
         async (id) => members.find((member) => member.run_id === id)!,
       );
       const wrapper = mountWorkspace(true);
       await flushPromises();
       await wrapper
-        .get('[data-testid="workspace-batch-page-selection"]')
+        .get('[data-testid="workspace-backtest-page-selection"]')
         .trigger('click');
       await flushPromises();
       const header = () =>

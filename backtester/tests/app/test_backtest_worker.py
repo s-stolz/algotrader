@@ -35,21 +35,19 @@ from domain.types import (
 
 
 class _FakeRunRepository:
-    def __init__(self, batches: list[list[BacktestRunRecord]]) -> None:
-        self._batches = list(batches)
+    def __init__(self, backtests: list[list[BacktestRunRecord]]) -> None:
+        self._backtests = list(backtests)
         self.queries: list[BacktestRunQuery] = []
         self.selected: BacktestRunRecord | None = None
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         self.queries.append(query)
-        if not self._batches:
+        if not self._backtests:
             return []
-        return self._batches.pop(0)
+        return self._backtests.pop(0)
 
     def next_queued(self) -> BacktestRunRecord | None:
-        queued = self.list(
-            BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
-        )
+        queued = self.list(BacktestRunQuery(status=BacktestRunStatus.QUEUED))
         self.selected = (
             min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
         )
@@ -69,9 +67,7 @@ class _StatusFilteringRunRepository:
         return [run for run in self._runs if run.status is query.status]
 
     def next_queued(self) -> BacktestRunRecord | None:
-        queued = self.list(
-            BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
-        )
+        queued = self.list(BacktestRunQuery(status=BacktestRunStatus.QUEUED))
         return min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
@@ -378,10 +374,10 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertIsNotNone(lifecycle.execution_slot()["owner_token"])
         self.assertEqual(lifecycle.execution_slot()["fault_code"], "terminal_persistence_failed")
 
-    def test_uses_durable_turn_order_for_batch_and_standalone_requests(self) -> None:
+    def test_uses_durable_turn_order_for_backtest_and_standalone_requests(self) -> None:
         standalone = _queued_run("standalone", submitted_at_ms=1)
         member = replace(
-            _queued_run("member", submitted_at_ms=0), batch_id="batch", member_ordinal=0
+            _queued_run("member", submitted_at_ms=0), backtest_id="backtest", run_ordinal=0
         )
 
         class TurnRepository:
@@ -498,7 +494,7 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertTrue(processed)
         self.assertEqual(
             repository.queries,
-            [BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")],
+            [BacktestRunQuery(status=BacktestRunStatus.QUEUED)],
         )
         self.assertEqual(executor.snapshots, [selected.request_snapshot])
         self.assertEqual(
@@ -852,7 +848,7 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertEqual(lifecycle.reconciliations, [1_000])
         self.assertEqual(
             repository.queries,
-            [BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")],
+            [BacktestRunQuery(status=BacktestRunStatus.QUEUED)],
         )
         self.assertEqual(
             lifecycle.claims,
@@ -974,6 +970,8 @@ class TestBacktestWorker(unittest.TestCase):
 
 def _queued_run(run_id: str, *, submitted_at_ms: int) -> BacktestRunRecord:
     return BacktestRunRecord(
+        backtest_id="backtest-1",
+        run_ordinal=0,
         run_id=run_id,
         status=BacktestRunStatus.QUEUED,
         submitted_at_ms=submitted_at_ms,

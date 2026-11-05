@@ -1,22 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildSweepRequest,
+  buildBacktestRequest,
   initialDraft,
 } from '@/views/creation/creationRequest';
 import type {
   StrategyCatalogEntry,
-  SweepDraftState,
+  BacktestSelectionsDraft,
 } from '@/types/backtesterContracts';
 
-describe('shared execution schedule in sweep creation', () => {
+describe('shared execution schedule in selections creation', () => {
   const strategy: StrategyCatalogEntry = {
     strategy_id: 'test',
     strategy_version: 1,
     display_name: 'Test',
     parameters: [],
   };
-  const sweep: SweepDraftState = {
-    isSweep: true,
+  const selections: BacktestSelectionsDraft = {
     marketIds: [1, 2],
     timeframes: ['M5'],
     allowedDirections: ['long_and_short'],
@@ -38,9 +37,9 @@ describe('shared execution schedule in sweep creation', () => {
     return draft;
   }
   function build(draft: ReturnType<typeof request>) {
-    return buildSweepRequest(
+    return buildBacktestRequest(
       draft,
-      sweep,
+      selections,
       strategy,
       [],
       () => {

@@ -3,10 +3,10 @@ import { ref } from 'vue';
 import { renameExperiment } from '@/api/backtesterClient';
 
 import type {
-  BacktestBatch,
+  Backtest,
   BacktestRun,
   BacktestCreationRequest,
-  SweepDraftState,
+  BacktestSelectionsDraft,
 } from '@/types/backtesterContracts';
 import type { ReuseDraft, ReuseSource } from '@/views/backtestReuse';
 
@@ -16,7 +16,7 @@ export const useBacktestWorkspaceStore = defineStore(
     const selectedRunId = ref<string | null>(null);
     const selectedRun = ref<BacktestRun | null>(null);
     const creationDraft = ref<BacktestCreationRequest | null>(null);
-    const creationSweepDraft = ref<SweepDraftState | null>(null);
+    const creationSelections = ref<BacktestSelectionsDraft | null>(null);
     const reuseSource = ref<ReuseSource | null>(null);
     const reuseRevision = ref(0);
 
@@ -26,8 +26,7 @@ export const useBacktestWorkspaceStore = defineStore(
       revision: number;
       awaitingRead: boolean;
     };
-    const runNames = new Map<string, AcknowledgedName>();
-    const batchNames = new Map<string, AcknowledgedName>();
+    const backtestNames = new Map<string, AcknowledgedName>();
 
     function preserveName<T extends { name?: string | null }>(
       record: T,
@@ -44,29 +43,25 @@ export const useBacktestWorkspaceStore = defineStore(
         : record;
     }
 
-    function preserveRunName(run: BacktestRun, readRevision = -1): BacktestRun {
-      return preserveName(run, runNames.get(run.run_id), readRevision);
-    }
-
-    function preserveBatchName(
-      batch: BacktestBatch,
+    function preserveBacktestName(
+      backtest: Backtest,
       readRevision = -1,
-    ): BacktestBatch {
-      return preserveName(batch, batchNames.get(batch.batch_id), readRevision);
+    ): Backtest {
+      return preserveName(
+        backtest,
+        backtestNames.get(backtest.backtest_id),
+        readRevision,
+      );
     }
 
     const pendingNameSaves = new Map<string, Promise<string | null>>();
-    function saveName(
-      kind: 'run' | 'batch',
-      id: string,
-      name: string | null,
-    ): Promise<string | null> {
-      const key = `${kind}:${id}`;
+    function saveName(id: string, name: string | null): Promise<string | null> {
+      const key = id;
       const previous = pendingNameSaves.get(key);
       const pending = (async () => {
         if (previous) await previous.catch(() => undefined);
-        const authoritative = await renameExperiment(kind, id, name);
-        acknowledgeName(kind, id, authoritative);
+        const authoritative = await renameExperiment(id, name);
+        acknowledgeName(id, authoritative);
         return authoritative;
       })();
       pendingNameSaves.set(key, pending);
@@ -79,20 +74,13 @@ export const useBacktestWorkspaceStore = defineStore(
       return pending;
     }
 
-    function acknowledgeName(
-      kind: 'run' | 'batch',
-      id: string,
-      name: string | null,
-    ): void {
+    function acknowledgeName(id: string, name: string | null): void {
       const revision = nameRevision.value + 1;
-      (kind === 'run' ? runNames : batchNames).set(id, {
+      backtestNames.set(id, {
         name,
         revision,
         awaitingRead: true,
       });
-      if (kind === 'run' && selectedRun.value?.run_id === id) {
-        selectedRun.value = { ...selectedRun.value, name };
-      }
       nameRevision.value = revision;
     }
 
@@ -100,9 +88,9 @@ export const useBacktestWorkspaceStore = defineStore(
       creationDraft.value = JSON.parse(
         JSON.stringify(saved.request),
       ) as BacktestCreationRequest;
-      creationSweepDraft.value = JSON.parse(
-        JSON.stringify(saved.sweep),
-      ) as SweepDraftState;
+      creationSelections.value = JSON.parse(
+        JSON.stringify(saved.selections),
+      ) as BacktestSelectionsDraft;
       reuseSource.value = JSON.parse(
         JSON.stringify(saved.source),
       ) as ReuseSource;
@@ -111,13 +99,13 @@ export const useBacktestWorkspaceStore = defineStore(
 
     function clearCreationDraft(): void {
       creationDraft.value = null;
-      creationSweepDraft.value = null;
+      creationSelections.value = null;
       reuseSource.value = null;
     }
 
     function selectRun(run: BacktestRun): void {
       selectedRunId.value = run.run_id;
-      selectedRun.value = preserveRunName(run);
+      selectedRun.value = run;
     }
 
     function clearSelection(): void {
@@ -129,14 +117,13 @@ export const useBacktestWorkspaceStore = defineStore(
       selectedRunId,
       selectedRun,
       creationDraft,
-      creationSweepDraft,
+      creationSelections,
       reuseSource,
       reuseRevision,
       nameRevision,
       saveName,
       acknowledgeName,
-      preserveRunName,
-      preserveBatchName,
+      preserveBacktestName,
       createFromSaved,
       clearCreationDraft,
       selectRun,

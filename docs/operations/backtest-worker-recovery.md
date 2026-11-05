@@ -1,6 +1,6 @@
 # Backtest worker upgrade and recovery
 
-The worker executes one standalone or batch-member Backtest Run at a time. The
+The worker executes one Backtest Run at a time. The
 database execution slot is held from the queued-to-running claim through
 confirmed child and descendant exit, reaping, and committed terminal storage.
 The slot does not expire automatically. A held or faulted slot is an operational
@@ -9,8 +9,7 @@ stop, not permission to start another worker or rewrite history.
 ## Monitor queue and worker health
 
 `GET /backtests/queue` on the backtester API returns one snapshot: database
-snapshot time, the active run and its durable start time, ordered standalone and
-batch turns with advisory positions and next-member ordinals, the last matching
+snapshot time, the active run and its durable start time, ordered Backtest turns with advisory positions and next-member ordinals, the last matching
 worker heartbeat, worker availability, and operational fault codes. Times are
 UTC epoch milliseconds. A queue-read failure is HTTP 503, which means **unknown**, not an
 empty queue. `GET /backtests/queue/health` is an operator probe: HTTP 200 means
@@ -29,7 +28,7 @@ and `reconciliation_failed`. A stale heartbeat alone never changes run status,
 cancels a child, or releases capacity. Check the slot and worker process tree
 before restarting under the single-owner safeguard below.
 
-`POST /backtests/{run_id}/cancel` accepts a queued run as `cancelled` immediately.
+`POST /backtests/runs/{run_id}/cancel` accepts a queued run as `cancelled` immediately.
 An active run becomes `cancelling`; this means its supervised process tree is
 still stopping and the slot is held. The worker requests termination, escalates
 to a forced kill when necessary, and reaps all descendants before a fenced
@@ -37,8 +36,8 @@ to a forced kill when necessary, and reaps all descendants before a fenced
 keeps the slot held and appears in the queue health surface. Do not infer
 cancellation completion from elapsed time or a stale heartbeat.
 
-`POST /backtests/batches/{batch_id}/cancel` atomically blocks new claims,
-cancels queued members, and requests cancellation of any active member. A batch
+`POST /backtests/{backtest_id}/cancel` atomically blocks new claims,
+cancels queued members, and requests cancellation of any active member. A Backtest
 with active work remains `cancelling` and retains the slot until that member and
 its descendants have exited and fenced settlement commits. Prior succeeded or
 failed members and their artifacts remain. If cleanup or persistence faults,
@@ -67,22 +66,22 @@ sessions, or keep the slot held.
 
 ## Upgrade with queued or running work
 
-1. Stop every old backtester worker instance before applying `V009` or starting
-   the new worker. Verify its child processes and descendants have exited. Stop
-   the old API before swapping accessor code so no legacy lifecycle writer can
-   race the migration.
-2. Run `make migrate-db` against the existing database, including V011 before
-   releasing batch submission. Then deploy the new database accessor API,
-   shared client, and backtester worker. Do not delete
-   `backtest_runs`, Fills, Closed Trades, or queued requests.
-3. Start one new worker. With the slot free, startup reconciliation marks any
-   interrupted `running` runs `failed` with `worker_interrupted` once. It leaves
-   `queued` runs unchanged and settles previously accepted `cancelling` runs as
-   `cancelled`, then resumes durable turns. Running batch members
-   are reconciled with their batch in the same transaction; a batch with
-   remaining queued members rejoins the tail and a fully settled batch completes.
-   Confirm these states via
-   the public `GET /backtests` and Workspace refresh.
+V020 is a destructive backtest-history cutover. It deliberately discards all
+saved Backtests, Runs, results, events, commands, and queue telemetry. Markets,
+Candles, and other trading data are retained.
+
+1. Stop the API and every worker; verify all supervised children/descendants have
+   exited. If the slot remains held or faulted, follow the recovery procedure
+   below before applying V020. The migration refuses to clear unverified ownership.
+2. Apply `make migrate-db` with the new migration files. Deploy matching accessor,
+   shared client, backtester API/worker, and frontend versions together; the old
+   standalone and parameter-sweep APIs are not supported.
+3. Start one worker and the API. Confirm `/backtests` is readable and queue health
+   is healthy, then create a Backtest and inspect its Runs through the Workspace.
+
+For later upgrades that preserve history, stop old writers before switching
+contracts. Startup reconciliation requires a free, unfaulted slot and settles
+interrupted Runs together with their parent and remaining queue turn.
 
 ## Recover a held or faulted slot
 

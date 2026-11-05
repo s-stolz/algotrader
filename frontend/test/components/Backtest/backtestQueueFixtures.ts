@@ -1,9 +1,9 @@
+import { onTestFinished } from 'vitest';
 import { defineComponent } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
 import type {
-  BacktestBatch,
-  BacktestRun,
+  Backtest,
   BacktestQueueSnapshot,
 } from '@/types/backtesterContracts';
 export const PopoverStub = defineComponent({
@@ -13,28 +13,27 @@ export const PopoverStub = defineComponent({
     '<div><div @click="$emit(\'update:show\', !show)"><slot ' +
     'name="trigger" /></div><div v-if="show"><slot /></div></div>',
 });
-export async function openQueue(
-  props: { runs?: BacktestRun[]; batches?: BacktestBatch[] } = {},
-) {
+export async function openQueue(props: { backtests?: Backtest[] } = {}) {
   const wrapper = mount(BacktestQueueHealth, {
     props,
     global: { stubs: { BasePopover: PopoverStub } },
   });
+  onTestFinished(() => wrapper.unmount());
   await flushPromises();
   await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
   return wrapper;
 }
 
-export const batch: BacktestBatch = {
-  batch_id: 'batch-1',
+export const backtest: Backtest = {
+  backtest_id: 'backtest-1',
   submission_id: 'submit-1',
   status: 'queued',
   accepted_at_ms: 1_780_000_000_000,
   lifecycle_revision: 0,
   started_at_ms: null,
   completed_at_ms: null,
-  active_member_ordinal: null,
-  next_member_ordinal: 0,
+  active_run_ordinal: 0,
+  next_run_ordinal: 0,
   definition_schema_version: 1,
   accepted_definition: {
     schema_version: 1,
@@ -87,8 +86,8 @@ export const healthySnapshot: BacktestQueueSnapshot = {
   active_run: {
     run_id: 'long-run',
     started_at_ms: NOW - 120_000,
-    batch_id: null,
-    member_ordinal: null,
+    backtest_id: 'backtest-1',
+    run_ordinal: 0,
   },
   last_heartbeat_ms: NOW - 1000,
   availability: 'healthy',
@@ -96,13 +95,18 @@ export const healthySnapshot: BacktestQueueSnapshot = {
   operational_faults: [],
   queued: [
     {
-      entry_type: 'standalone',
-      run_id: 'waiting',
-      batch_id: null,
+      backtest_id: 'waiting',
       submitted_at_ms: NOW - 60_000,
       estimated_position: 1,
-      next_member_ordinal: null,
-      outcome_counts: null,
+      next_run_ordinal: 0,
+      outcome_counts: {
+        queued: 1,
+        running: 0,
+        cancelling: 0,
+        succeeded: 0,
+        failed: 0,
+        cancelled: 0,
+      },
     },
   ],
 };

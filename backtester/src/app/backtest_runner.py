@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 from time import perf_counter
-from typing import Mapping, Protocol
+from typing import Mapping
 
 import pandas as pd
 from adapters.db_accessor import HistoricalBarDataAdapter
-from adapters.persistence import BacktestRunPersistenceAdapter
 from data.indicator_inputs import needs_source_inputs
 from data.indicators import build_feature_frame
 from data.market_data import load_market_data, load_market_data_bundle, load_raw_market_data
@@ -25,41 +24,25 @@ from strategies.registry import resolve_strategy
 from app.equity_replay import descriptor, executable_closes
 
 
-class BacktestPersistenceAdapter(Protocol):
-    """Persistence adapter surface used by app orchestration."""
-
-    def save_run(
-        self,
-        *,
-        result: BacktestResult,
-        execution_duration_ms: int | None = None,
-    ) -> BacktestResult: ...
-
-
 def run_backtest(
     *,
     request: BacktestRequest,
     bars: pd.DataFrame,
     strategy: StrategyDefinition | None = None,
-    persistence_adapter: BacktestPersistenceAdapter | None = None,
     feature_bars: Mapping[str, pd.DataFrame] | None = None,
 ) -> BacktestResult:
     """Execute one backtest request using caller-provided bar data."""
 
-    result, execution_duration_ms = _run_backtest_without_persistence(
+    result, _ = _execute_backtest(
         request=request,
         bars=bars,
         strategy=strategy,
         feature_bars=feature_bars,
     )
-    return _persist_result_if_requested(
-        result=result,
-        persistence_adapter=persistence_adapter,
-        execution_duration_ms=execution_duration_ms,
-    )
+    return result
 
 
-def _run_backtest_without_persistence(
+def _execute_backtest(
     *,
     request: BacktestRequest,
     bars: pd.DataFrame,
@@ -118,24 +101,19 @@ def run_backtest_with_market_data(
     strategy: StrategyDefinition | None = None,
     exchange: str | None = None,
     data_adapter: HistoricalBarDataAdapter | None = None,
-    persistence_adapter: BacktestPersistenceAdapter | None = None,
 ) -> BacktestResult:
     """Fetch market data through adapter integration and run one vectorized backtest."""
 
-    result, execution_duration_ms = _run_backtest_with_market_data_without_persistence(
+    result, _ = _execute_backtest_with_market_data(
         request=request,
         strategy=strategy,
         exchange=exchange,
         data_adapter=data_adapter,
     )
-    return _persist_result_if_requested(
-        result=result,
-        persistence_adapter=persistence_adapter,
-        execution_duration_ms=execution_duration_ms,
-    )
+    return result
 
 
-def _run_backtest_with_market_data_without_persistence(
+def _execute_backtest_with_market_data(
     *,
     request: BacktestRequest,
     strategy: StrategyDefinition | None = None,
@@ -151,7 +129,7 @@ def _run_backtest_with_market_data_without_persistence(
             exchange=exchange,
             data_adapter=data_adapter,
         )
-        return _run_backtest_without_persistence(
+        return _execute_backtest(
             request=request,
             bars=bundle.traded_bars,
             strategy=resolved_strategy,
@@ -228,21 +206,6 @@ def _attach_replay_descriptor(
     )
 
 
-def save_backtest_result(
-    *,
-    result: BacktestResult,
-    persistence_adapter: BacktestPersistenceAdapter | None = None,
-    execution_duration_ms: int | None = None,
-) -> BacktestResult:
-    """Persist an already completed backtest result and return metadata on the result."""
-
-    adapter = persistence_adapter or BacktestRunPersistenceAdapter()
-    return adapter.save_run(
-        result=result,
-        execution_duration_ms=execution_duration_ms,
-    )
-
-
 def prepare_bars_for_vectorized_execution(
     *,
     request: BacktestRequest,
@@ -293,22 +256,6 @@ def _resolve_strategy_for_request(
 
     _validate_strategy_request_consistency(request=request, strategy=strategy)
     return strategy
-
-
-def _persist_result_if_requested(
-    *,
-    result: BacktestResult,
-    persistence_adapter: BacktestPersistenceAdapter | None,
-    execution_duration_ms: int,
-) -> BacktestResult:
-    if not result.request.persist_result:
-        return result
-
-    return save_backtest_result(
-        result=result,
-        persistence_adapter=persistence_adapter,
-        execution_duration_ms=execution_duration_ms,
-    )
 
 
 def _elapsed_ms_since(started_at: float) -> int:

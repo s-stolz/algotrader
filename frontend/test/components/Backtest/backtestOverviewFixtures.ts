@@ -1,14 +1,14 @@
-import type { BacktestBatch, BacktestRun } from '@/types/backtesterContracts';
-export const batch: BacktestBatch = {
-  batch_id: 'batch-1',
+import type { Backtest, BacktestRun } from '@/types/backtesterContracts';
+export const backtest: Backtest = {
+  backtest_id: 'backtest-1',
   submission_id: 'submit-1',
   status: 'queued',
   accepted_at_ms: 1_780_000_000_000,
   lifecycle_revision: 0,
   started_at_ms: null,
   completed_at_ms: null,
-  active_member_ordinal: null,
-  next_member_ordinal: 0,
+  active_run_ordinal: null,
+  next_run_ordinal: 0,
   definition_schema_version: 1,
   accepted_definition: {
     schema_version: 1,
@@ -58,10 +58,10 @@ export const batch: BacktestBatch = {
 export function member(ordinal: number): BacktestRun {
   return {
     run_id: `member-${ordinal}`,
-    batch_id: 'batch-1',
-    member_ordinal: ordinal,
+    backtest_id: 'backtest-1',
+    run_ordinal: ordinal,
     status: 'queued',
-    submitted_at_ms: batch.accepted_at_ms,
+    submitted_at_ms: backtest.accepted_at_ms,
     request_schema_version: 3,
     request: {
       symbols: ['EURUSD'],
@@ -89,7 +89,6 @@ export function member(ordinal: number): BacktestRun {
         commission_bps: 0,
         slippage_bps: 0,
       },
-      persist_result: false,
     },
   };
 }

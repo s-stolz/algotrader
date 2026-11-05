@@ -1,30 +1,29 @@
 import {
-  BACKTEST_BATCH_STATUSES,
+  BACKTEST_STATUSES,
   normalizeExperimentName,
   type BacktestClosedTrade,
   type BacktestFill,
   type BacktestRun,
-  type BacktestCreationRequest,
-  type BacktestQueueSnapshot,
-  type BacktestBatch,
-  type BacktestBatchStatus,
-  type BacktestBatchEvent,
-  type EquityReplayResponse,
   type BacktestRunListQuery,
+  type BacktestQueueSnapshot,
+  type Backtest,
+  type BacktestStatus,
+  type BacktestEvent,
+  type EquityReplayResponse,
   isBacktestClosedTradeArray,
   isBacktestFillArray,
   isBacktestRun,
   isBacktestRunArray,
   isBacktestQueueSnapshot,
-  isBacktestBatch,
-  isBacktestBatchArray,
-  isBacktestBatchEventArray,
+  isBacktest,
+  isBacktestArray,
+  isBacktestEventArray,
   isEquityReplayResponse,
   isStrategyCatalog,
   type StrategyCatalogEntry,
-  type SweepPreview,
-  type SweepPreviewRequest,
-  isSweepPreview,
+  type BacktestPreview,
+  type BacktestPreviewRequest,
+  isBacktestPreview,
 } from '@/types/backtesterContracts';
 
 import { parseJsonResponse, withQuery } from './http';
@@ -61,37 +60,33 @@ export async function fetchStrategyCatalog(): Promise<StrategyCatalogEntry[]> {
   return payload;
 }
 
-export async function fetchSweepCapabilities(): Promise<{
-  max_sweep_candidate_count: number;
-  batch_acceptance_enabled: boolean;
+export async function fetchBacktestCapabilities(): Promise<{
+  max_backtest_candidate_count: number;
 }> {
   const payload = await parseJsonResponse(
     await fetch(`${BACKTESTS_BASE_URL}/capabilities`),
-    'Failed to fetch sweep capabilities',
+    'Failed to fetch selections capabilities',
   );
   if (
     typeof payload !== 'object' ||
     payload === null ||
-    !('max_sweep_candidate_count' in payload) ||
-    !Number.isInteger(payload.max_sweep_candidate_count) ||
-    (payload.max_sweep_candidate_count as number) <= 0 ||
-    !('batch_acceptance_enabled' in payload) ||
-    typeof payload.batch_acceptance_enabled !== 'boolean'
+    !('max_backtest_candidate_count' in payload) ||
+    !Number.isInteger(payload.max_backtest_candidate_count) ||
+    (payload.max_backtest_candidate_count as number) <= 0
   ) {
-    throw new Error('Invalid sweep capabilities response');
+    throw new Error('Invalid selections capabilities response');
   }
   return payload as {
-    max_sweep_candidate_count: number;
-    batch_acceptance_enabled: boolean;
+    max_backtest_candidate_count: number;
   };
 }
 
-export async function submitBacktestBatch(
-  request: SweepPreviewRequest,
+export async function submitBacktest(
+  request: BacktestPreviewRequest,
   submissionId: string,
   name: string | null = null,
 ): Promise<string> {
-  const response = await fetch(`${BACKTESTS_BASE_URL}/batches`, {
+  const response = await fetch(`${BACKTESTS_BASE_URL}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...request, submission_id: submissionId, name }),
@@ -122,42 +117,37 @@ export async function submitBacktestBatch(
       );
     }
     throw new Error(
-      `Batch submission failed: ${response.statusText || response.status}`,
+      `Backtest submission failed: ${response.statusText || response.status}`,
     );
   }
   if (
     response.status !== 202 ||
     typeof payload !== 'object' ||
     payload === null ||
-    !('batch_id' in payload) ||
-    typeof payload.batch_id !== 'string' ||
+    !('backtest_id' in payload) ||
+    typeof payload.backtest_id !== 'string' ||
     !('status' in payload) ||
     typeof payload.status !== 'string' ||
-    !BACKTEST_BATCH_STATUSES.includes(payload.status as BacktestBatchStatus)
+    !BACKTEST_STATUSES.includes(payload.status as BacktestStatus)
   ) {
-    throw new Error('Invalid batch submission response');
+    throw new Error('Invalid backtest submission response');
   }
-  return payload.batch_id;
+  return payload.backtest_id;
 }
 
 export async function renameExperiment(
-  kind: 'run' | 'batch',
   id: string,
   name: string | null,
 ): Promise<string | null> {
-  const path =
-    kind === 'batch'
-      ? `batches/${encodeURIComponent(id)}`
-      : encodeURIComponent(id);
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/${path}/name`, {
+    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(id)}/name`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: normalizeExperimentName(name) }),
     }),
     'Failed to save experiment name',
   );
-  const identity = kind === 'batch' ? 'batch_id' : 'run_id';
+  const identity = 'backtest_id';
   if (
     typeof payload !== 'object' ||
     payload === null ||
@@ -172,112 +162,107 @@ export async function renameExperiment(
   return payload.name;
 }
 
-export async function listBacktestBatches(): Promise<BacktestBatch[]> {
+export async function listBacktests(): Promise<Backtest[]> {
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/batches`),
-    'Failed to fetch Backtest Batches',
+    await fetch(`${BACKTESTS_BASE_URL}`),
+    'Failed to fetch Backtestes',
   );
-  if (!isBacktestBatchArray(payload))
-    throw new Error('Invalid Backtest Batch list response');
+  if (!isBacktestArray(payload))
+    throw new Error('Invalid Backtest list response');
   return payload;
 }
 
-export async function getBacktestBatch(
-  batchId: string,
-): Promise<BacktestBatch> {
+export async function getBacktest(backtestId: string): Promise<Backtest> {
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/batches/${encodeURIComponent(batchId)}`),
-    'Failed to fetch Backtest Batch',
+    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(backtestId)}`),
+    'Failed to fetch Backtest',
   );
-  if (!isBacktestBatch(payload))
-    throw new Error('Invalid Backtest Batch response');
+  if (!isBacktest(payload)) throw new Error('Invalid Backtest response');
   return payload;
 }
 
-export async function listBacktestBatchMembers(
-  batchId: string,
+export async function listBacktestMembers(
+  backtestId: string,
 ): Promise<BacktestRun[]> {
   const payload = await parseJsonResponse(
-    await fetch(
-      `${BACKTESTS_BASE_URL}/batches/${encodeURIComponent(batchId)}/members`,
-    ),
-    'Failed to fetch Backtest Batch members',
+    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(backtestId)}/runs`),
+    'Failed to fetch Backtest members',
   );
   if (
     !isBacktestRunArray(payload) ||
-    payload.some((run) => run.batch_id !== batchId)
+    payload.some((run) => run.backtest_id !== backtestId)
   ) {
-    throw new Error('Invalid Backtest Batch members response');
+    throw new Error('Invalid Backtest members response');
   }
   return payload;
 }
 
-export async function listBacktestBatchEvents(
-  batchId: string,
-): Promise<BacktestBatchEvent[]> {
+export async function listBacktestEvents(
+  backtestId: string,
+): Promise<BacktestEvent[]> {
   const payload = await parseJsonResponse(
     await fetch(
-      `${BACKTESTS_BASE_URL}/batches/${encodeURIComponent(batchId)}/events`,
+      `${BACKTESTS_BASE_URL}/${encodeURIComponent(backtestId)}/events`,
     ),
-    'Failed to fetch Backtest Batch events',
+    'Failed to fetch Backtest events',
   );
   if (
-    !isBacktestBatchEventArray(payload) ||
-    payload.some((event) => event.batch_id !== batchId)
+    !isBacktestEventArray(payload) ||
+    payload.some((event) => event.backtest_id !== backtestId)
   ) {
-    throw new Error('Invalid Backtest Batch events response');
+    throw new Error('Invalid Backtest events response');
   }
   return payload;
 }
 
-export async function controlBacktestBatch(
-  batchId: string,
+export async function controlBacktest(
+  backtestId: string,
   command: 'pause' | 'resume' | 'cancel',
   commandId: string,
 ): Promise<{
-  batch_id: string;
-  status: BacktestBatchStatus;
+  backtest_id: string;
+  status: BacktestStatus;
   lifecycle_revision: number;
   command_id?: string;
 }> {
   const payload = await parseJsonResponse(
     await fetch(
-      `${BACKTESTS_BASE_URL}/batches/${encodeURIComponent(batchId)}/${command}`,
+      `${BACKTESTS_BASE_URL}/${encodeURIComponent(backtestId)}/${command}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command_id: commandId }),
       },
     ),
-    `Failed to ${command} Backtest Batch`,
+    `Failed to ${command} Backtest`,
   );
   if (
     typeof payload !== 'object' ||
     payload === null ||
-    !('batch_id' in payload) ||
-    payload.batch_id !== batchId ||
+    !('backtest_id' in payload) ||
+    payload.backtest_id !== backtestId ||
     !('status' in payload) ||
     typeof payload.status !== 'string' ||
-    !BACKTEST_BATCH_STATUSES.includes(payload.status as BacktestBatchStatus) ||
+    !BACKTEST_STATUSES.includes(payload.status as BacktestStatus) ||
     !('lifecycle_revision' in payload) ||
     !Number.isInteger(payload.lifecycle_revision) ||
     (command === 'cancel' &&
       (!('command_id' in payload) || payload.command_id !== commandId))
   ) {
-    throw new Error('Invalid Backtest Batch command response');
+    throw new Error('Invalid Backtest command response');
   }
   return payload as {
-    batch_id: string;
-    status: BacktestBatchStatus;
+    backtest_id: string;
+    status: BacktestStatus;
     lifecycle_revision: number;
     command_id?: string;
   };
 }
 
-export async function previewParameterSweep(
-  request: SweepPreviewRequest,
-): Promise<SweepPreview> {
-  const response = await fetch(`${BACKTESTS_BASE_URL}/sweeps/preview`, {
+export async function previewBacktest(
+  request: BacktestPreviewRequest,
+): Promise<BacktestPreview> {
+  const response = await fetch(`${BACKTESTS_BASE_URL}/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -308,99 +293,17 @@ export async function previewParameterSweep(
       );
     }
     throw new Error(
-      `Sweep preview failed: ${response.statusText || response.status}`,
+      `Backtest preview failed: ${response.statusText || response.status}`,
     );
   }
-  if (!isSweepPreview(payload))
-    throw new Error('Invalid sweep preview response');
-  return payload;
-}
-
-export async function submitBacktestRun(
-  request: BacktestCreationRequest,
-): Promise<string> {
-  const response = await fetch(BACKTESTS_BASE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  });
-  const payload: unknown = await response.json();
-  if (!response.ok) {
-    if (
-      typeof payload === 'object' &&
-      payload !== null &&
-      'detail' in payload
-    ) {
-      const detail = payload.detail;
-      if (
-        typeof detail === 'object' &&
-        detail !== null &&
-        'code' in detail &&
-        typeof detail.code === 'string'
-      ) {
-        const fields =
-          'fields' in detail && Array.isArray(detail.fields)
-            ? detail.fields.filter(
-                (field): field is string => typeof field === 'string',
-              )
-            : [];
-        throw new BacktestSubmissionError(
-          detail.code,
-          fields,
-          'message' in detail && typeof detail.message === 'string'
-            ? detail.message
-            : detail.code,
-        );
-      }
-    }
-    throw new Error(
-      `Backtest submission failed: ${response.statusText || response.status}`,
-    );
-  }
-  if (
-    response.status !== 202 ||
-    typeof payload !== 'object' ||
-    payload === null ||
-    !('run_id' in payload) ||
-    typeof payload.run_id !== 'string' ||
-    !('status' in payload) ||
-    payload.status !== 'queued'
-  ) {
-    throw new Error('Invalid backtest submission response');
-  }
-  return payload.run_id;
-}
-
-export async function listBacktestRuns(
-  query: BacktestRunListQuery = {},
-): Promise<BacktestRun[]> {
-  const payload = await parseJsonResponse(
-    await fetch(
-      withQuery(BACKTESTS_BASE_URL, {
-        status: query.status,
-        symbol: query.symbol,
-        timeframe: query.timeframe,
-        strategy: query.strategy,
-        engine: query.engine,
-        submitted_from_ms: query.submittedFromMs,
-        submitted_to_ms: query.submittedToMs,
-        membership: query.membership,
-        batch_id: query.batchId,
-      }),
-    ),
-    'Failed to fetch backtest runs',
-  );
-
-  if (!isBacktestRunArray(payload)) {
-    throw new Error('Invalid backtest runs response');
-  }
-
+  if (!isBacktestPreview(payload))
+    throw new Error('Invalid backtest preview response');
   return payload;
 }
 
 export async function getBacktestRun(runId: string): Promise<BacktestRun> {
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}`),
+    await fetch(`${BACKTESTS_BASE_URL}/runs/${encodeURIComponent(runId)}`),
     'Failed to fetch backtest run',
   );
 
@@ -413,9 +316,12 @@ export async function getBacktestRun(runId: string): Promise<BacktestRun> {
 
 export async function cancelBacktestRun(runId: string): Promise<BacktestRun> {
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}/cancel`, {
-      method: 'POST',
-    }),
+    await fetch(
+      `${BACKTESTS_BASE_URL}/runs/${encodeURIComponent(runId)}/cancel`,
+      {
+        method: 'POST',
+      },
+    ),
     'Failed to cancel backtest run',
   );
   if (
@@ -427,31 +333,16 @@ export async function cancelBacktestRun(runId: string): Promise<BacktestRun> {
   return payload;
 }
 
-export async function deleteBacktestRun(runId: string): Promise<void> {
+export async function deleteBacktest(backtestId: string): Promise<void> {
   const response = await fetch(
-    `${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}`,
-    {
-      method: 'DELETE',
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to delete backtest run: ${await deletionFailure(response)}`,
-    );
-  }
-}
-
-export async function deleteBacktestBatch(batchId: string): Promise<void> {
-  const response = await fetch(
-    `${BACKTESTS_BASE_URL}/batches/${encodeURIComponent(batchId)}`,
+    `${BACKTESTS_BASE_URL}/${encodeURIComponent(backtestId)}`,
     {
       method: 'DELETE',
     },
   );
   if (!response.ok) {
     throw new Error(
-      `Failed to delete Backtest Batch: ${await deletionFailure(response)}`,
+      `Failed to delete Backtest: ${await deletionFailure(response)}`,
     );
   }
 }
@@ -476,7 +367,9 @@ export async function fetchBacktestClosedTrades(
   runId: string,
 ): Promise<BacktestClosedTrade[]> {
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}/trades`),
+    await fetch(
+      `${BACKTESTS_BASE_URL}/runs/${encodeURIComponent(runId)}/trades`,
+    ),
     'Failed to fetch backtest closed trades',
   );
 
@@ -494,7 +387,7 @@ export async function fetchBacktestEquityCurve(
   const payload = await parseJsonResponse(
     await fetch(
       withQuery(
-        `${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}/equity-curve`,
+        `${BACKTESTS_BASE_URL}/runs/${encodeURIComponent(runId)}/equity-curve`,
         {
           max_points: maxPoints,
         },
@@ -511,12 +404,40 @@ export async function fetchBacktestFills(
   runId: string,
 ): Promise<BacktestFill[]> {
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(runId)}/fills`),
+    await fetch(
+      `${BACKTESTS_BASE_URL}/runs/${encodeURIComponent(runId)}/fills`,
+    ),
     'Failed to fetch backtest fills',
   );
 
   if (!isBacktestFillArray(payload)) {
     throw new Error('Invalid backtest fills response');
+  }
+
+  return payload;
+}
+
+export async function listBacktestRuns(
+  query: BacktestRunListQuery = {},
+): Promise<BacktestRun[]> {
+  const payload = await parseJsonResponse(
+    await fetch(
+      withQuery(`${BACKTESTS_BASE_URL}/runs`, {
+        status: query.status,
+        symbol: query.symbol,
+        timeframe: query.timeframe,
+        strategy: query.strategy,
+        engine: query.engine,
+        submitted_from_ms: query.submittedFromMs,
+        submitted_to_ms: query.submittedToMs,
+        backtest_id: query.backtestId,
+      }),
+    ),
+    'Failed to fetch backtest runs',
+  );
+
+  if (!isBacktestRunArray(payload)) {
+    throw new Error('Invalid backtest runs response');
   }
 
   return payload;

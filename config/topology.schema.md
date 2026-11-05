@@ -19,7 +19,7 @@ existing generated environment variables; YAML nesting does not change their nam
 | --- | --- |
 | `services.database_accessor_api` | `network`, `logging`, `resources` |
 | `services.indicator_api` | `network`, `logging`, `resources` |
-| `services.backtester` | Shared `logging`, `api`, `worker`, `sweeps` |
+| `services.backtester` | Shared `logging`, `api`, `worker`, `backtests` |
 | `services.backtester.api` | `network`, `resources` |
 | `services.backtester.worker` | `resources`, `heartbeat` |
 | `services.broker_service` | `network`, `logging`, `resources`, `streams`, `ctrader` |
@@ -97,7 +97,7 @@ runtime-specific constraints. Backtester API/worker tuning is grouped under
 `services.broker_service`.
 
 Worker heartbeat intervals are positive; the stale threshold must exceed the
-heartbeat interval. The sweep candidate limit is a positive integer.
+heartbeat interval. The backtest candidate limit is a positive integer.
 Broker stream `max_length: null` preserves the existing unlimited retention and
 omits the corresponding `BROKER_*_STREAM_MAXLEN` variable from the generated file.
 Broker `streams.redis_db` selects its Redis database independently of the shared

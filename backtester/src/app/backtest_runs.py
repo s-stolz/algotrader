@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
-from datetime import datetime, timezone
-from typing import Callable, Protocol
-from uuid import uuid4
+from typing import Protocol
 
 from adapters.db_accessor import DatabaseAccessorHistoricalDataAdapter, HistoricalBarDataAdapter
-from db_accessor_client import DatabaseAccessorClientError, normalize_timeframe_code
+from db_accessor_client import normalize_timeframe_code
 from domain.enums import (
     BacktestEngine,
     BacktestRunStatus,
@@ -19,11 +17,9 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
-from domain.experiment_names import normalize_experiment_name
 from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
-    BacktestRequestSnapshot,
     BacktestRunCancellation,
     BacktestRunQuery,
     BacktestRunRecord,
@@ -48,21 +44,15 @@ from app.equity_replay import (
 class BacktestRunRepository(Protocol):
     """Persistence boundary used by durable run application workflows."""
 
-    def create(self, run: BacktestRunRecord) -> BacktestRunRecord: ...
-
     def get(self, run_id: str) -> BacktestRunRecord | None: ...
 
     def cancel(self, run_id: str) -> BacktestRunCancellation: ...
-
-    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord: ...
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]: ...
 
     def get_fills(self, run_id: str) -> list[BacktestFillRecord]: ...
 
     def get_trades(self, run_id: str) -> list[BacktestTradeRecord]: ...
-
-    def delete(self, run_id: str) -> bool: ...
 
 
 class InvalidBacktestRequestError(ValueError):
@@ -92,29 +82,10 @@ class BacktestRunService:
         self,
         *,
         repository: BacktestRunRepository,
-        new_run_id: Callable[[], str] | None = None,
-        now_ms: Callable[[], int] | None = None,
         data_adapter: HistoricalBarDataAdapter | None = None,
     ) -> None:
         self._repository = repository
-        self._new_run_id = new_run_id or _new_run_id
-        self._now_ms = now_ms or _utc_now_ms
         self._data_adapter = data_adapter
-
-    def submit(self, request: BacktestRequest, *, name: str | None = None) -> BacktestRunRecord:
-        request = _validate_submission(request)
-        name = normalize_experiment_name(name)
-        run = BacktestRunRecord(
-            run_id=self._new_run_id(),
-            name=name,
-            status=BacktestRunStatus.QUEUED,
-            submitted_at_ms=self._now_ms(),
-            request_snapshot=BacktestRequestSnapshot.from_request(request),
-        )
-        try:
-            return self._repository.create(run)
-        except Exception as exc:
-            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
     def get(self, run_id: str) -> BacktestRunRecord:
         try:
@@ -124,22 +95,6 @@ class BacktestRunService:
         if run is None:
             raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
         return run
-
-    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
-        name = normalize_experiment_name(name)
-        run = self.get(run_id)
-        if run.batch_id is not None:
-            raise BacktestRunConflictError("Batch members have no experiment name")
-        try:
-            return self._repository.rename(run_id, name)
-        except DatabaseAccessorClientError as exc:
-            if exc.status_code == 404:
-                raise BacktestRunNotFoundError("Backtest run not found") from exc
-            if exc.status_code == 409:
-                raise BacktestRunConflictError("Batch members have no experiment name") from exc
-            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
-        except Exception as exc:
-            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
     def cancel(self, run_id: str) -> BacktestRunRecord:
         try:
@@ -231,25 +186,6 @@ class BacktestRunService:
         except Exception as exc:
             raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
-    def delete(self, run_id: str) -> None:
-        run = self.get(run_id)
-        if run.batch_id is not None:
-            raise BacktestRunConflictError("Batch members cannot be deleted individually")
-        if run.status not in (
-            BacktestRunStatus.SUCCEEDED,
-            BacktestRunStatus.FAILED,
-            BacktestRunStatus.CANCELLED,
-        ):
-            raise BacktestRunConflictError("Cancel and settle this run before deleting it")
-        try:
-            deleted = self._repository.delete(run_id)
-        except BacktestRunConflictError:
-            raise
-        except Exception as exc:
-            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
-        if not deleted:
-            raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
-
 
 def _validate_submission(request: BacktestRequest) -> BacktestRequest:
     _validate_request_shape(request)
@@ -311,14 +247,6 @@ def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
 
 def _is_epoch_millisecond(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _new_run_id() -> str:
-    return str(uuid4())
-
-
-def _utc_now_ms() -> int:
-    return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
 def _unavailable_curve(reason: str) -> dict[str, object]:

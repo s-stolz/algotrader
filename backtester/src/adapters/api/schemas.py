@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from app.sweeps import SweepDefinition
+from app.backtest_definitions import BacktestDefinition
 from domain.enums import (
     AllowedDirections,
     BacktestEngine,
@@ -31,10 +31,8 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    SerializerFunctionWrapHandler,
     StrictInt,
     field_validator,
-    model_serializer,
     model_validator,
 )
 
@@ -49,18 +47,16 @@ class ApiContractModel(BaseModel):
 class QueueActiveRunSchema(ApiContractModel):
     run_id: str
     started_at_ms: int
-    batch_id: str | None = None
-    member_ordinal: int | None = None
+    backtest_id: str
+    run_ordinal: int
 
 
 class QueueEntrySchema(ApiContractModel):
-    entry_type: Literal["standalone", "batch"]
-    run_id: str | None
-    batch_id: str | None = None
+    backtest_id: str
     submitted_at_ms: int
     estimated_position: int
-    next_member_ordinal: int | None = None
-    outcome_counts: dict[str, int] | None = None
+    next_run_ordinal: int
+    outcome_counts: dict[str, int]
 
 
 class QueueFaultSchema(ApiContractModel):
@@ -84,7 +80,7 @@ class StrategyRequestSchema(ApiContractModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
-class SweepStrategyRequestSchema(ApiContractModel):
+class BacktestStrategySelectionSchema(ApiContractModel):
     strategy_id: str
     strategy_version: StrictInt = Field(gt=0)
 
@@ -120,7 +116,7 @@ class ExecutionRequestSchema(ApiContractModel):
     max_entries_per_day: StrictInt | None = Field(default=None, gt=0)
 
 
-class BacktestSubmissionRequestSchema(ApiContractModel):
+class BacktestRunRequestSchema(ApiContractModel):
     symbols: list[str]
     exchange: str | None = None
     timeframe: str
@@ -131,7 +127,6 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
     initial_capital: float = Field(default=10_000.0, gt=0.0)
     strategy: StrategyRequestSchema
     execution: ExecutionRequestSchema = Field(default_factory=ExecutionRequestSchema)
-    persist_result: bool = False
     run_metadata: dict[str, Any] | None = None
 
     @field_validator("run_metadata")
@@ -175,7 +170,6 @@ class BacktestSubmissionRequestSchema(ApiContractModel):
                     else None
                 ),
             ),
-            persist_result=self.persist_result,
             run_metadata=(dict(self.run_metadata) if self.run_metadata is not None else None),
         )
 
@@ -189,12 +183,8 @@ class ExperimentNameSchema(ApiContractModel):
         return normalize_experiment_name(value)
 
 
-class RunNameResponseSchema(ExperimentNameSchema):
-    run_id: str
-
-
-class BatchNameResponseSchema(ExperimentNameSchema):
-    batch_id: str
+class BacktestNameResponseSchema(ExperimentNameSchema):
+    backtest_id: str
 
 
 class ExperimentNameUpdateSchema(ApiContractModel):
@@ -203,11 +193,7 @@ class ExperimentNameUpdateSchema(ApiContractModel):
     _normalize_name = field_validator("name")(ExperimentNameSchema.normalize_name.__func__)
 
 
-class BacktestCreationRequestSchema(BacktestSubmissionRequestSchema, ExperimentNameSchema):
-    pass
-
-
-class SweepPreviewRequestSchema(ApiContractModel):
+class BacktestPreviewRequestSchema(ApiContractModel):
     markets: list[StrictInt] = Field(min_length=1)
     timeframes: list[str] = Field(min_length=1)
     start_ms: StrictInt
@@ -215,9 +201,8 @@ class SweepPreviewRequestSchema(ApiContractModel):
     engine: Literal["vectorized", "event_driven"] = "vectorized"
     data_granularity: Literal["bar", "tick"] = "bar"
     initial_capital: float = Field(default=10_000.0, gt=0.0)
-    strategy: SweepStrategyRequestSchema
+    strategy: BacktestStrategySelectionSchema
     execution: ExecutionRequestSchema = Field(default_factory=ExecutionRequestSchema)
-    persist_result: bool = False
     run_metadata: dict[str, Any] | None = None
     parameter_axes: dict[str, dict[str, Any]] = Field(default_factory=dict)
     allowed_directions: list[Literal["long_only", "short_only", "long_and_short"]] = Field(
@@ -225,10 +210,10 @@ class SweepPreviewRequestSchema(ApiContractModel):
     )
 
     _reject_metadata_names = field_validator("run_metadata")(
-        BacktestSubmissionRequestSchema.reject_metadata_names.__func__
+        BacktestRunRequestSchema.reject_metadata_names.__func__
     )
 
-    def to_definition(self) -> SweepDefinition:
+    def to_definition(self) -> BacktestDefinition:
         shared_fields = self.model_dump(
             exclude={
                 "markets",
@@ -237,10 +222,10 @@ class SweepPreviewRequestSchema(ApiContractModel):
                 "allowed_directions",
             }
         )
-        shared_fields["symbols"] = ["_sweep_"]
+        shared_fields["symbols"] = ["_preview_"]
         shared_fields["timeframe"] = "M1"
-        shared = BacktestSubmissionRequestSchema.model_validate(shared_fields).to_domain()
-        return SweepDefinition(
+        shared = BacktestRunRequestSchema.model_validate(shared_fields).to_domain()
+        return BacktestDefinition(
             shared_request=shared,
             market_ids=tuple(self.markets),
             timeframes=tuple(self.timeframes),
@@ -249,11 +234,11 @@ class SweepPreviewRequestSchema(ApiContractModel):
         )
 
 
-class BatchAcceptanceRequestSchema(SweepPreviewRequestSchema, ExperimentNameSchema):
+class BacktestSubmissionRequestSchema(BacktestPreviewRequestSchema, ExperimentNameSchema):
     submission_id: str = Field(min_length=1, max_length=36)
 
-    def to_definition(self) -> SweepDefinition:
-        return SweepPreviewRequestSchema.model_validate(
+    def to_definition(self) -> BacktestDefinition:
+        return BacktestPreviewRequestSchema.model_validate(
             self.model_dump(exclude={"submission_id", "name"})
         ).to_definition()
 
@@ -264,13 +249,8 @@ class StoredStrategyRequestSchema(ApiContractModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
-class StoredBacktestRequestSchema(BacktestSubmissionRequestSchema):
+class StoredBacktestRequestSchema(BacktestRunRequestSchema):
     strategy: StoredStrategyRequestSchema
-
-
-class BacktestSubmissionResponseSchema(ApiContractModel):
-    run_id: str
-    status: Literal["queued"]
 
 
 class BacktestFillResponseSchema(ApiContractModel):
@@ -335,9 +315,8 @@ class BacktestTradeResponseSchema(ApiContractModel):
 
 class BacktestRunResponseSchema(ApiContractModel):
     run_id: str
-    name: str | None = None
-    batch_id: str | None = None
-    member_ordinal: int | None = None
+    backtest_id: str
+    run_ordinal: int
     status: Literal["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
     submitted_at_ms: int
     started_at_ms: int | None = None
@@ -353,23 +332,16 @@ class BacktestRunResponseSchema(ApiContractModel):
     error_code: str | None = None
     error_message: str | None = None
 
-    @model_serializer(mode="wrap")
-    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
-        payload: dict[str, Any] = handler(self)
-        payload["name"] = self.name
-        return payload
-
     @classmethod
     def from_domain(cls, run: BacktestRunRecord) -> "BacktestRunResponseSchema":
         payload: dict[str, Any] = {
             "run_id": run.run_id,
-            "name": run.name,
             "status": run.status.value,
             "submitted_at_ms": run.submitted_at_ms,
             "request_schema_version": run.request_snapshot.schema_version,
             "request": dict(run.request_snapshot.payload),
-            "batch_id": run.batch_id,
-            "member_ordinal": run.member_ordinal,
+            "backtest_id": run.backtest_id,
+            "run_ordinal": run.run_ordinal,
         }
 
         if run.status.value in {"running", "cancelling", "succeeded", "failed", "cancelled"}:

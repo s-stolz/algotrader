@@ -1,4 +1,4 @@
-"""Authoritative Parameter Sweep acceptance and immutable batch inspection."""
+"""Authoritative Backtest acceptance and immutable backtest inspection."""
 
 from __future__ import annotations
 
@@ -10,23 +10,23 @@ from domain.experiment_names import normalize_experiment_name
 from domain.types import BacktestRequestSnapshot
 from strategies.registry import StrategyVersionUnavailableError, strategy_catalog
 
-from app.sweeps import SweepDefinition, SweepPreviewService
+from app.backtest_definitions import BacktestDefinition, BacktestPreviewService
 
 
-class BatchClient(Protocol):
-    def create_backtest_batch(self, batch: dict[str, Any]) -> Mapping[str, Any]: ...
-    def rename_backtest_batch(self, batch_id: str, name: str | None) -> Mapping[str, Any]: ...
-    def list_backtest_batches(self) -> list[dict[str, Any]]: ...
-    def get_backtest_batch(self, batch_id: str) -> Mapping[str, Any]: ...
-    def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]: ...
-    def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]: ...
-    def delete_backtest_batch(self, batch_id: str) -> None: ...
-    def control_backtest_batch(
-        self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
+class BacktestClient(Protocol):
+    def create_backtest(self, backtest: dict[str, Any]) -> Mapping[str, Any]: ...
+    def rename_backtest(self, backtest_id: str, name: str | None) -> Mapping[str, Any]: ...
+    def list_backtests(self) -> list[dict[str, Any]]: ...
+    def get_backtest(self, backtest_id: str) -> Mapping[str, Any]: ...
+    def list_backtest_members(self, backtest_id: str) -> list[dict[str, Any]]: ...
+    def list_backtest_events(self, backtest_id: str) -> list[dict[str, Any]]: ...
+    def delete_backtest(self, backtest_id: str) -> None: ...
+    def control_backtest(
+        self, backtest_id: str, command: str, command_id: str, policy: dict[str, Any]
     ) -> Mapping[str, Any]: ...
 
 
-BATCH_CONTROL_POLICY: dict[str, dict[str, Any]] = {
+BACKTEST_CONTROL_POLICY: dict[str, dict[str, Any]] = {
     "pause": {
         "accepted_statuses": ["queued", "running"],
         "effective_statuses": ["pausing", "paused"],
@@ -51,13 +51,13 @@ BATCH_CONTROL_POLICY: dict[str, dict[str, Any]] = {
 }
 
 
-class BacktestBatchService:
+class BacktestService:
     def __init__(
         self,
         *,
-        preview: SweepPreviewService,
-        client: BatchClient | None = None,
-        client_factory: Callable[[], ContextManager[BatchClient]] | None = None,
+        preview: BacktestPreviewService,
+        client: BacktestClient | None = None,
+        client_factory: Callable[[], ContextManager[BacktestClient]] | None = None,
         new_id: Callable[[], str] | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
@@ -68,7 +68,7 @@ class BacktestBatchService:
         self._now = now or (lambda: datetime.now(timezone.utc))
 
     def accept(
-        self, submission_id: str, definition: SweepDefinition, *, name: str | None = None
+        self, submission_id: str, definition: BacktestDefinition, *, name: str | None = None
     ) -> dict[str, Any]:
         name = normalize_experiment_name(name)
         if not submission_id or len(submission_id) > 36:
@@ -100,7 +100,7 @@ class BacktestBatchService:
         members = [
             {
                 "run_id": self._new_id(),
-                "member_ordinal": row["member_ordinal"],
+                "run_ordinal": row["run_ordinal"],
                 "request_schema_version": 3,
                 "request": row["request"],
             }
@@ -108,7 +108,7 @@ class BacktestBatchService:
             if row["status"] == "ready"
         ]
         payload = {
-            "batch_id": self._new_id(),
+            "backtest_id": self._new_id(),
             "submission_id": submission_id,
             "name": name,
             "accepted_at": self._now().isoformat(),
@@ -121,7 +121,7 @@ class BacktestBatchService:
             "members": members,
         }
         return self._with_client(
-            lambda client: self._batch_with_outcomes(client, client.create_backtest_batch(payload))
+            lambda client: self._backtest_with_outcomes(client, client.create_backtest(payload))
         )
 
     def list(
@@ -132,75 +132,80 @@ class BacktestBatchService:
         strategy: str | None = None,
         with_failed_members: bool | None = None,
     ) -> list[dict[str, Any]]:
-        batches = self._with_client(
+        backtests = self._with_client(
             lambda client: [
-                self._batch_with_outcomes(client, batch) for batch in client.list_backtest_batches()
+                self._backtest_with_outcomes(client, backtest)
+                for backtest in client.list_backtests()
             ]
         )
         return [
-            batch
-            for batch in batches
-            if (symbol is None or symbol in batch["markets"])
-            and (timeframe is None or timeframe in batch["timeframes"])
-            and (strategy is None or strategy == batch["strategy_id"])
-            and (with_failed_members is None or batch["has_failed_members"] == with_failed_members)
+            backtest
+            for backtest in backtests
+            if (symbol is None or symbol in backtest["markets"])
+            and (timeframe is None or timeframe in backtest["timeframes"])
+            and (strategy is None or strategy == backtest["strategy_id"])
+            and (
+                with_failed_members is None or backtest["has_failed_members"] == with_failed_members
+            )
         ]
 
-    def get(self, batch_id: str) -> dict[str, Any]:
+    def get(self, backtest_id: str) -> dict[str, Any]:
         return self._with_client(
-            lambda client: self._batch_with_outcomes(client, client.get_backtest_batch(batch_id))
+            lambda client: self._backtest_with_outcomes(client, client.get_backtest(backtest_id))
         )
 
-    def rename(self, batch_id: str, name: str | None) -> dict[str, Any]:
+    def rename(self, backtest_id: str, name: str | None) -> dict[str, Any]:
         name = normalize_experiment_name(name)
-        return self._with_client(lambda client: dict(client.rename_backtest_batch(batch_id, name)))
+        return self._with_client(lambda client: dict(client.rename_backtest(backtest_id, name)))
 
-    def members(self, batch_id: str) -> list[dict[str, Any]]:
-        return self._with_client(lambda client: client.list_backtest_batch_members(batch_id))
+    def members(self, backtest_id: str) -> list[dict[str, Any]]:
+        return self._with_client(lambda client: client.list_backtest_members(backtest_id))
 
-    def events(self, batch_id: str) -> list[dict[str, Any]]:
+    def events(self, backtest_id: str) -> list[dict[str, Any]]:
         return self._with_client(
             lambda client: [
                 {
                     **{key: value for key, value in event.items() if key != "occurred_at"},
                     "occurred_at_ms": _timestamp_ms(event["occurred_at"]),
                 }
-                for event in client.list_backtest_batch_events(batch_id)
+                for event in client.list_backtest_events(backtest_id)
             ]
         )
 
-    def control(self, batch_id: str, command: str, command_id: str) -> dict[str, Any]:
-        if command not in BATCH_CONTROL_POLICY:
-            raise ValueError("Unknown batch command")
+    def control(self, backtest_id: str, command: str, command_id: str) -> dict[str, Any]:
+        if command not in BACKTEST_CONTROL_POLICY:
+            raise ValueError("Unknown backtest command")
         if not command_id or len(command_id) > 36:
             raise ValueError("Invalid command identity")
         return self._with_client(
             lambda client: dict(
-                client.control_backtest_batch(
-                    batch_id, command, command_id, BATCH_CONTROL_POLICY[command]
+                client.control_backtest(
+                    backtest_id, command, command_id, BACKTEST_CONTROL_POLICY[command]
                 )
             )
         )
 
-    def delete(self, batch_id: str) -> None:
-        self._with_client(lambda client: client.delete_backtest_batch(batch_id))
+    def delete(self, backtest_id: str) -> None:
+        self._with_client(lambda client: client.delete_backtest(backtest_id))
 
     @staticmethod
-    def _batch_with_outcomes(client: BatchClient, batch: Mapping[str, Any]) -> dict[str, Any]:
-        members = client.list_backtest_batch_members(str(batch["batch_id"]))
-        return _project_batch(batch, members)
+    def _backtest_with_outcomes(
+        client: BacktestClient, backtest: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        members = client.list_backtest_members(str(backtest["backtest_id"]))
+        return _project_backtest(backtest, members)
 
-    def _with_client(self, operation: Callable[[BatchClient], Any]) -> Any:
+    def _with_client(self, operation: Callable[[BacktestClient], Any]) -> Any:
         if self._client is not None:
             return operation(self._client)
         if self._client_factory is None:
-            raise RuntimeError("Batch persistence client is required")
+            raise RuntimeError("Backtest persistence client is required")
         with self._client_factory() as client:
             return operation(client)
 
 
-def _project_batch(batch: Mapping[str, Any], members: list[dict[str, Any]]) -> dict[str, Any]:
-    value = dict(batch)
+def _project_backtest(backtest: Mapping[str, Any], members: list[dict[str, Any]]) -> dict[str, Any]:
+    value = dict(backtest)
     counts = {
         status: sum(member["status"] == status for member in members)
         for status in ("queued", "running", "cancelling", "succeeded", "failed", "cancelled")
@@ -231,16 +236,16 @@ def _project_batch(batch: Mapping[str, Any], members: list[dict[str, Any]]) -> d
     value["timeframes"] = list(dict.fromkeys(member["request"]["timeframe"] for member in members))
     value["strategy_id"] = value["strategy_metadata"]["strategy_id"]
     value["strategy_version"] = value["strategy_metadata"]["strategy_version"]
-    value["active_member_ordinal"] = next(
+    value["active_run_ordinal"] = next(
         (
-            member["member_ordinal"]
+            member["run_ordinal"]
             for member in members
             if member["status"] in {"running", "cancelling"}
         ),
         None,
     )
-    value["next_member_ordinal"] = next(
-        (member["member_ordinal"] for member in members if member["status"] == "queued"),
+    value["next_run_ordinal"] = next(
+        (member["run_ordinal"] for member in members if member["status"] == "queued"),
         None,
     )
     for field in ("started_at", "completed_at", "cancel_requested_at"):

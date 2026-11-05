@@ -10,7 +10,7 @@ import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 const routes: RouteRecordRaw[] = [
   { path: '/', component: ChartView },
   { path: '/backtests', component: BacktestWorkspaceView },
-  { path: '/backtests/:kind(run|batch)/:id', component: BacktestWorkspaceView },
+  { path: '/backtests/:id', component: BacktestWorkspaceView },
 ];
 
 const router = createRouter({

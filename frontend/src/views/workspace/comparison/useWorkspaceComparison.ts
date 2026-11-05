@@ -13,7 +13,7 @@ import {
 import { createComparisonRunActions } from './comparisonRunActions';
 import type { BacktestWorkspace } from '../useBacktestWorkspace';
 export function useWorkspaceComparison(workspace: BacktestWorkspace) {
-  const { selectedBatchId, selectedRun, selectedRunId, selectRun } = workspace;
+  const { selectedBacktestId, selectedRunId, selectRun } = workspace;
   const {
     currentRows,
     selectedComparisonIds,
@@ -85,7 +85,7 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
     },
   );
   watch(
-    () => selectedBatchId.value ?? selectedRun.value?.run_id,
+    () => selectedBacktestId.value,
     () => {
       analysisPage.value = 1;
     },
@@ -114,8 +114,8 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
     const count = currentRows.value.some((run) =>
       ['queued', 'running'].includes(run.status),
     )
-      ? 3
-      : 2;
+      ? 4
+      : 3;
     return (
       count * Number.parseInt(designTokens.control.small) +
       (count - 1) * Number.parseInt(designTokens.space.xs) +

@@ -270,9 +270,9 @@ def build_env(
         topology,
         "services.backtester.worker.heartbeat.stale_after_seconds",
     )
-    backtester_max_sweep_candidate_count = required(
+    backtester_max_backtest_candidate_count = required(
         topology,
-        "services.backtester.sweeps.max_candidate_count",
+        "services.backtester.backtests.max_candidate_count",
     )
 
     broker_redis_stream_db = required(topology, "services.broker_service.streams.redis_db")
@@ -319,7 +319,9 @@ def build_env(
             backtester_worker_heartbeat_interval
         ),
         "BACKTESTER_WORKER_STALE_AFTER_SECONDS": stringify(backtester_worker_stale_after),
-        "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT": stringify(backtester_max_sweep_candidate_count),
+        "BACKTESTER_MAX_BACKTEST_CANDIDATE_COUNT": stringify(
+            backtester_max_backtest_candidate_count
+        ),
         "BROKER_SERVICE_HOST": stringify(broker_host),
         "BROKER_SERVICE_PORT": stringify(broker_port),
         "BROKER_SERVICE_PUBLISHED_PORT": stringify(broker_published_port),

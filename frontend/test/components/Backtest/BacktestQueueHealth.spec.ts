@@ -15,17 +15,14 @@ import {
 
 import { fetchBacktestQueue } from '@/api/backtesterClient';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
-import type {
-  BacktestRun,
-  BacktestQueueSnapshot,
-} from '@/types/backtesterContracts';
+import type { BacktestQueueSnapshot } from '@/types/backtesterContracts';
 
 vi.mock('@/api/backtesterClient', () => ({ fetchBacktestQueue: vi.fn() }));
 
 import {
   PopoverStub,
   openQueue,
-  batch,
+  backtest,
   NOW,
   healthySnapshot,
 } from './backtestQueueFixtures';
@@ -105,25 +102,23 @@ describe('Backtest queue health', () => {
   });
 
   it(
-    'shows batch turns, active ordinal, advisory position, and ' +
+    'shows backtest turns, active ordinal, advisory position, and ' +
       'outcome counts on refresh',
     async () => {
       vi.mocked(fetchBacktestQueue).mockResolvedValueOnce({
         ...healthySnapshot,
         active_run: {
           run_id: 'member-0',
-          batch_id: 'active-batch',
-          member_ordinal: 0,
+          backtest_id: 'active-backtest',
+          run_ordinal: 0,
           started_at_ms: NOW - 120_000,
         },
         queued: [
           {
-            entry_type: 'batch',
-            run_id: null,
-            batch_id: 'waiting-batch',
+            backtest_id: 'waiting-backtest',
             submitted_at_ms: NOW - 60_000,
             estimated_position: 1,
-            next_member_ordinal: 2,
+            next_run_ordinal: 2,
             outcome_counts: {
               queued: 1,
               running: 0,
@@ -142,55 +137,57 @@ describe('Backtest queue health', () => {
       ).toContain('Currently running #1');
       expect(
         wrapper.find('[data-testid="workspace-queue-active-section"]').text(),
-      ).toContain('active-batch');
+      ).toContain('active-backtest');
       expect(
         wrapper
-          .find('[data-testid="workspace-queue-batch-waiting-batch"]')
+          .find('[data-testid="workspace-queue-backtest-waiting-backtest"]')
           .text(),
       ).toContain('1');
       expect(
         wrapper
-          .find('[data-testid="workspace-queue-batch-waiting-batch"]')
+          .find('[data-testid="workspace-queue-backtest-waiting-backtest"]')
           .text(),
       ).toContain('3 runs · 2 finished');
       expect(wrapper.text()).toContain('1 failed');
       await wrapper
-        .get('[data-testid="workspace-queue-batch-waiting-batch"] button')
+        .get('[data-testid="workspace-queue-backtest-waiting-backtest"] button')
         .trigger('click');
-      expect(wrapper.emitted('inspect')).toEqual([['batch', 'waiting-batch']]);
+      expect(wrapper.emitted('inspect')).toEqual([['waiting-backtest']]);
       await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
       vi.advanceTimersByTime(5000);
       emitBacktestChange();
       await flushPromises();
       expect(
-        wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists(),
+        wrapper
+          .find('[data-testid="workspace-queue-backtest-waiting"]')
+          .exists(),
       ).toBe(true);
       wrapper.unmount();
     },
   );
 
   it(
-    'opens the sweep instead of its transient member and displays ' +
+    'opens the selections instead of its transient member and displays ' +
       'aggregate progress',
     async () => {
       vi.mocked(fetchBacktestQueue).mockResolvedValue({
         ...healthySnapshot,
         active_run: {
           run_id: 'member-0',
-          batch_id: 'batch-1',
-          member_ordinal: 1,
+          backtest_id: 'backtest-1',
+          run_ordinal: 1,
           started_at_ms: NOW,
         },
       });
       const wrapper = await openQueue({
-        batches: [
+        backtests: [
           {
-            ...batch,
+            ...backtest,
             name: 'MA exploration',
             status: 'running',
             settled_count: 1,
             outcome_counts: {
-              ...batch.outcome_counts,
+              ...backtest.outcome_counts,
               queued: 0,
               running: 1,
               succeeded: 1,
@@ -202,7 +199,7 @@ describe('Backtest queue health', () => {
       expect(wrapper.text()).toContain('1 / 2 finished');
       expect(wrapper.get('progress').attributes('value')).toBe('1');
       await wrapper.get('[data-testid="queue-view-active"]').trigger('click');
-      expect(wrapper.emitted('inspect')).toEqual([['batch', 'batch-1']]);
+      expect(wrapper.emitted('inspect')).toEqual([['backtest-1']]);
       expect(
         wrapper.get('[data-testid="queue-toggle"]').attributes('aria-expanded'),
       ).toBe('false');
@@ -219,31 +216,16 @@ describe('Backtest queue health', () => {
         active_run: null,
         queued: [],
       });
-      const run = {
-        run_id: 'fast-run',
-        name: 'Fast baseline',
-        status: 'succeeded',
-        completed_at_ms: NOW - 1000,
-      } as BacktestRun;
       const wrapper = await openQueue({
-        runs: [
-          run,
+        backtests: [
           {
-            ...run,
-            run_id: 'member',
-            batch_id: 'batch-1',
-            name: 'Hidden member',
-          },
-        ],
-        batches: [
-          {
-            ...batch,
+            ...backtest,
             status: 'completed',
-            name: 'Finished sweep',
+            name: 'Finished selections',
             completed_at_ms: NOW - 2000,
             settled_count: 2,
             outcome_counts: {
-              ...batch.outcome_counts,
+              ...backtest.outcome_counts,
               queued: 0,
               succeeded: 1,
               failed: 1,
@@ -254,18 +236,10 @@ describe('Backtest queue health', () => {
       const recent = wrapper.get(
         '[aria-label="Recently finished experiments"]',
       );
-      expect(recent.text()).toContain('Fast baseline');
-      expect(recent.text()).toContain('Finished sweep');
+      expect(recent.text()).toContain('Finished selections');
       expect(recent.text()).toContain('1 failed');
-      expect(recent.text()).not.toContain('Hidden member');
       await recent.findAll('button')[0].trigger('click');
-      expect(wrapper.emitted('inspect')).toEqual([['run', 'fast-run']]);
-      await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
-      await wrapper
-        .get('[aria-label="Recently finished experiments"]')
-        .findAll('button')[1]
-        .trigger('click');
-      expect(wrapper.emitted('inspect')?.[1]).toEqual(['batch', 'batch-1']);
+      expect(wrapper.emitted('inspect')).toEqual([['backtest-1']]);
       await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
       vi.advanceTimersByTime(60_000);
       emitBacktestChange();
@@ -306,7 +280,9 @@ describe('Backtest queue health', () => {
         'Needs attention',
       );
       expect(
-        wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists(),
+        wrapper
+          .find('[data-testid="workspace-queue-backtest-waiting"]')
+          .exists(),
       ).toBe(true);
 
       vi.advanceTimersByTime(5000);
@@ -432,15 +408,15 @@ describe('Backtest queue health', () => {
       await flushPromises();
       await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
       await wrapper.get('[data-testid="queue-view-active"]').trigger('click');
-      expect(wrapper.emitted('inspect')).toEqual([['run', 'long-run']]);
+      expect(wrapper.emitted('inspect')).toEqual([['backtest-1']]);
       expect(
         wrapper.get('[data-testid="queue-toggle"]').attributes('aria-expanded'),
       ).toBe('false');
       await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
       await wrapper
-        .get('[data-testid="workspace-queue-run-waiting"] button')
+        .get('[data-testid="workspace-queue-backtest-waiting"] button')
         .trigger('click');
-      expect(wrapper.emitted('inspect')?.[1]).toEqual(['run', 'waiting']);
+      expect(wrapper.emitted('inspect')?.[1]).toEqual(['waiting']);
       await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
       await wrapper
         .get('[data-testid="queue-toggle"]')

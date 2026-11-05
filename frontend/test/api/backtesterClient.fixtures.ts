@@ -1,3 +1,4 @@
+import type { BacktestRun } from '@/types/backtesterContracts';
 export const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
   new Response(JSON.stringify(body), {
     status: 200,
@@ -5,9 +6,11 @@ export const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
     ...init,
   });
 
-export function backtestRun(overrides: Record<string, unknown> = {}) {
+export function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
   return {
     run_id: 'run-123',
+    backtest_id: 'backtest-1',
+    run_ordinal: 0,
     status: 'succeeded',
     submitted_at_ms: 1_780_921_805_123,
     started_at_ms: 1_780_921_900_000,
@@ -38,7 +41,6 @@ export function backtestRun(overrides: Record<string, unknown> = {}) {
         commission_bps: 1,
         slippage_bps: 0.5,
       },
-      persist_result: true,
       run_metadata: null,
     },
     result_schema_version: 3,

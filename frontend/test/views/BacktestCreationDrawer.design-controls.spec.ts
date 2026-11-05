@@ -1,23 +1,24 @@
+import { initialDraft } from '@/views/creation/creationRequest';
 import { readFileSync } from 'node:fs';
 import { compileStyle } from '@vue/compiler-sfc';
 import { flushPromises } from '@vue/test-utils';
 import { NInputNumber, NSelect } from 'naive-ui';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { submitBacktestRun } from '@/api/backtesterClient';
+import { submitBacktest } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
-import { openDrawer, standaloneSetup } from './creationFixtures';
+import { openDrawer, creationSetup } from './creationFixtures';
+import { advancePreview } from './creationFixtures';
 
 vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/backtesterClient')>()),
   fetchStrategyCatalog: vi.fn(),
-  submitBacktestRun: vi.fn(),
-  submitBacktestBatch: vi.fn(),
-  previewParameterSweep: vi.fn(),
-  fetchSweepCapabilities: vi.fn(),
+  submitBacktest: vi.fn(),
+  previewBacktest: vi.fn(),
+  fetchBacktestCapabilities: vi.fn(),
 }));
 
 describe('creation design controls', () => {
-  standaloneSetup();
+  creationSetup();
 
   it('lays out the teleported footer with the count left and actions right', async () => {
     const wrapper = openDrawer();
@@ -27,6 +28,7 @@ describe('creation design controls', () => {
       style.remove();
     });
     await flushPromises();
+    await advancePreview();
     const footer = document.querySelector<HTMLElement>('.creation-footer')!;
     const scopeId = footer
       .getAttributeNames()
@@ -80,10 +82,18 @@ describe('creation design controls', () => {
       strategyId: 'sma_crossover',
       strategyVersion: 2,
       historicalMetadata: null,
-      defaultedParameters: [],
+    };
+    useBacktestWorkspaceStore().creationDraft = {
+      ...initialDraft(),
+      strategy: {
+        strategy_id: 'sma_crossover',
+        strategy_version: 2,
+        parameters: {},
+      },
     };
     const wrapper = openDrawer();
     await flushPromises();
+    await advancePreview();
     const hint = document.querySelector<HTMLElement>(
       '[data-testid="reuse-version-review"]',
     )!;
@@ -96,8 +106,9 @@ describe('creation design controls', () => {
       )!;
     const trigger = select.get('.n-base-selection').element as HTMLElement;
     trigger.click();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await vi.advanceTimersByTimeAsync(20);
     await flushPromises();
+    await advancePreview();
     expect(hintClick).not.toHaveBeenCalled();
     expect(trigger.classList.contains('n-base-selection--active')).toBe(true);
     expect(document.querySelector('.n-select-menu')).not.toBeNull();
@@ -105,9 +116,10 @@ describe('creation design controls', () => {
   });
 
   it('retains numeric keyboard editing and requires explicit submission', async () => {
-    vi.mocked(submitBacktestRun).mockResolvedValue('keyboard-run');
+    vi.mocked(submitBacktest).mockResolvedValue('keyboard-run');
     const wrapper = openDrawer();
     await flushPromises();
+    await advancePreview();
     const capital = wrapper
       .findAllComponents(NInputNumber)
       .find(
@@ -118,16 +130,20 @@ describe('creation design controls', () => {
     await input.trigger('keydown', { key: 'Enter' });
     await input.trigger('blur');
     await flushPromises();
+    await advancePreview();
     expect(useBacktestWorkspaceStore().creationDraft?.initial_capital).toBe(
       12345,
     );
-    expect(submitBacktestRun).not.toHaveBeenCalled();
+    expect(submitBacktest).not.toHaveBeenCalled();
     document
       .querySelector<HTMLButtonElement>('[data-testid="creation-submit"]')!
       .click();
     await flushPromises();
-    expect(submitBacktestRun).toHaveBeenCalledWith(
+    await advancePreview();
+    expect(submitBacktest).toHaveBeenCalledWith(
       expect.objectContaining({ initial_capital: 12345 }),
+      expect.any(String),
+      null,
     );
     wrapper.unmount();
   });

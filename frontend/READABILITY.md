@@ -65,13 +65,12 @@ Comparison cell mapping and coordinated actions live in `workspace/comparison/`.
 Replay presentation derives compatibility, errors, and chart series from the
 existing analysis owner without issuing requests or owning polling.
 
-Batch inspection keeps a single model created by `BacktestBatches.vue`.
+Backtest inspection keeps a single model created by `BacktestOverview.vue`.
 It owns detail generations, event subscription cleanup, command retry identities,
 and name acknowledgements; progress and saved-definition/activity sections only render it.
-The batch tests retain their exact-name suite plus command and progress behavior
+The Backtest tests retain their exact-name suite plus command and progress behavior
 groups with shared fixtures. The complete hard-limit gate covers these source owners and their suites.
 
-The Workspace suites now use descriptive behavior suffixes with a shared fixture.
-The lifecycle suite mounts the real Workspace inside KeepAlive and checks filters,
-history pagination, selection, comparison, subscription shutdown, reactivation, and
-rejection of a superseded response. Existing test assertions remain intact.
+Workspace suites use descriptive behavior suffixes with shared fixtures. Tests
+exercise history and Run inspection through the parent Backtest, including a
+single Run, event refresh, command retries, copying, and comparison state.

@@ -38,8 +38,8 @@ RUN_MIGRATION_INTEGRATION_TESTS=1 .venv/bin/python -m unittest scripts.tests.tes
 ```
 
 Accessor execution/deletion tests opt in with
-`RUN_BACKTEST_EXECUTION_INTEGRATION_TESTS=1`; batch tests use
-`BACKTEST_BATCH_TEST_DATABASE_URL` pointing to a disposable local Timescale database.
+`RUN_BACKTEST_EXECUTION_INTEGRATION_TESTS=1`; acceptance tests use
+`BACKTEST_TEST_DATABASE_URL` pointing to a disposable local Timescale database.
 Set `BACKTEST_INTEGRATION_ENV_DIR` to generated configuration containing its
 published Timescale port, and `BACKTESTER_TEST_PYTHON` to a Python 3.12 environment
 with backtester dependencies. Set `PYTHONPATH` to the accessor directory, then run

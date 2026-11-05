@@ -4,10 +4,9 @@ import type { SelectOption } from 'naive-ui';
 import {
   BacktestSubmissionError,
   fetchStrategyCatalog,
-  fetchSweepCapabilities,
-  previewParameterSweep,
-  submitBacktestBatch,
-  submitBacktestRun,
+  fetchBacktestCapabilities,
+  previewBacktest,
+  submitBacktest,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
@@ -15,9 +14,9 @@ import { normalizeExperimentName } from '@/types/backtesterContracts';
 import type {
   BacktestRequestPayload,
   StrategyCatalogEntry,
-  SweepDraftState,
-  SweepPreview,
-  SweepPreviewRequest,
+  BacktestSelectionsDraft,
+  BacktestPreview,
+  BacktestPreviewRequest,
 } from '@/types/backtesterContracts';
 import type { ReuseSource } from '../backtestReuse';
 import { creationFields } from './creationFields';
@@ -29,14 +28,13 @@ import {
 } from './creationParameters';
 import {
   initialDraft,
-  buildSweepRequest as createSweepRequest,
+  buildBacktestRequest as createBacktestRequest,
   type DraftRequest,
 } from './creationRequest';
 import { parameterChanges as describeParameterChanges } from './creationStrategyReview';
 
 export interface CreationEvents {
-  (event: 'submitted', runId: string): void;
-  (event: 'submitted-batch', batchId: string): void;
+  (event: 'submitted', backtestId: string): void;
   (event: 'update:show', show: boolean): void;
 }
 export function useBacktestCreation(emit: CreationEvents) {
@@ -45,19 +43,14 @@ export function useBacktestCreation(emit: CreationEvents) {
   const draft = ref<DraftRequest>(
     (store.creationDraft as DraftRequest | null) ?? initialDraft(),
   );
-  const sweep = ref<SweepDraftState>(
-    store.creationSweepDraft ?? {
-      isSweep: false,
+  const selections = ref<BacktestSelectionsDraft>(
+    store.creationSelections ?? {
       marketIds: [],
-      timeframes: [],
-      allowedDirections: [],
+      timeframes: ['M1'],
+      allowedDirections: ['long_and_short'],
       parameters: {},
     },
   );
-  if (sweep.value.allowedDirections.length) {
-    draft.value.execution.allowed_directions = sweep.value.allowedDirections[0];
-  }
-  const isSweep = computed(() => sweep.value.isSweep);
   const nameIssue = computed(() => experimentNameIssue(draft.value.name));
   const catalog = shallowRef<StrategyCatalogEntry[]>([]);
   const catalogPending = ref(false);
@@ -65,11 +58,10 @@ export function useBacktestCreation(emit: CreationEvents) {
   const submitError = ref<string | null>(null);
   const fieldErrors = ref<Record<string, string>>({});
   const submitting = ref(false);
-  const preview = shallowRef<SweepPreview | null>(null);
+  const preview = shallowRef<BacktestPreview | null>(null);
   const previewPending = ref(false);
   const previewError = ref<string | null>(null);
-  const sweepLimit = ref<number | null>(null);
-  const sweepAcceptanceEnabled = ref(false);
+  const candidateLimit = ref<number | null>(null);
   let submissionId = globalThis.crypto.randomUUID();
   const previewFilter = ref<'all' | 'ready' | 'excluded'>('all');
   let previewRevision = 0;
@@ -86,23 +78,15 @@ export function useBacktestCreation(emit: CreationEvents) {
         draft.value.strategy.strategy_version,
   );
   const missingMarkets = computed(() =>
-    isSweep.value
-      ? sweep.value.marketIds
-          .filter(
-            (id) => !markets.all.some((market) => market.symbol_id === id),
-          )
-          .map((id) => `ID ${id}`)
-      : draft.value.symbols.length && marketValue.value === undefined
-        ? [`${draft.value.exchange ?? ''}:${draft.value.symbols.join(', ')}`]
-        : [],
+    selections.value.marketIds
+      .filter((id) => !markets.all.some((market) => market.symbol_id === id))
+      .map((id) => `ID ${id}`),
   );
   const parameterIssues = computed(() => {
     const selected = selectedStrategy.value;
     if (!selected) return [];
     return selected.parameters.flatMap((parameter) => {
-      const axis = isSweep.value
-        ? sweep.value.parameters[parameter.name]
-        : undefined;
+      const axis = selections.value.parameters[parameter.name];
       if (axis && axis.mode !== 'constant') {
         if (axis.mode === 'range')
           return parameterModeOptions(parameter).some(
@@ -127,8 +111,8 @@ export function useBacktestCreation(emit: CreationEvents) {
       value: entry.strategy_id,
     })),
   );
-  const fields = creationFields(draft, sweep, fieldErrors, markets);
-  const { marketValue, sweepParameter, stringValues, selectMarket } = fields;
+  const fields = creationFields(draft, selections, fieldErrors, markets);
+  const { parameterInput, stringValues, selectMarket } = fields;
   const parameterChanges = computed(() =>
     describeParameterChanges(
       store.reuseSource as ReuseSource | null,
@@ -146,29 +130,25 @@ export function useBacktestCreation(emit: CreationEvents) {
     changeParameterMode,
     numericValues,
     setNumericValues,
-    validateSetup,
-    validateParameters,
   } = useCreationNavigation({
     draft,
-    sweep,
-    isSweep,
+    selections,
     nameIssue,
     strategyNeedsReview,
     missingMarkets,
-    marketValue,
     selectedStrategy,
     fieldErrors,
     submitError,
-    sweepParameter,
-    buildSweepRequest,
+    parameterInput,
+    buildBacktestRequest,
   });
-  function buildSweepRequest() {
-    return createSweepRequest(
+  function buildBacktestRequest() {
+    return createBacktestRequest(
       draft.value,
-      sweep.value,
+      selections.value,
       selectedStrategy.value,
       missingMarkets.value,
-      sweepParameter,
+      parameterInput,
       stringValues,
     );
   }
@@ -179,21 +159,15 @@ export function useBacktestCreation(emit: CreationEvents) {
       store.creationDraft = JSON.parse(
         JSON.stringify(value),
       ) as BacktestRequestPayload;
-      if (
-        sweep.value.allowedDirections.length !== 1 ||
-        sweep.value.allowedDirections[0] !== value.execution.allowed_directions
-      ) {
-        sweep.value.allowedDirections = [value.execution.allowed_directions];
-      }
     },
     { deep: true, immediate: true },
   );
   watch(
-    sweep,
+    selections,
     (value) => {
-      store.creationSweepDraft = JSON.parse(
+      store.creationSelections = JSON.parse(
         JSON.stringify(value),
-      ) as SweepDraftState;
+      ) as BacktestSelectionsDraft;
     },
     { deep: true, immediate: true },
   );
@@ -204,28 +178,24 @@ export function useBacktestCreation(emit: CreationEvents) {
       draft.value = store.creationDraft
         ? (JSON.parse(JSON.stringify(store.creationDraft)) as DraftRequest)
         : initialDraft();
-      sweep.value = store.creationSweepDraft
+      selections.value = store.creationSelections
         ? (JSON.parse(
-            JSON.stringify(store.creationSweepDraft),
-          ) as SweepDraftState)
+            JSON.stringify(store.creationSelections),
+          ) as BacktestSelectionsDraft)
         : {
-            isSweep: false,
             marketIds: [],
-            timeframes: [],
-            allowedDirections: [],
+            timeframes: ['M1'],
+            allowedDirections: ['long_and_short'],
             parameters: {},
           };
       if (store.reuseSource && strategyNeedsReview.value) useCurrentVersion();
       step.value = 0;
       numericEntryValid.value = {};
-      if (sweep.value.allowedDirections.length)
-        draft.value.execution.allowed_directions =
-          sweep.value.allowedDirections[0];
       fieldErrors.value = {};
       submitError.value = null;
       submissionId = globalThis.crypto.randomUUID();
       if (
-        !draft.value.symbols.length &&
+        !selections.value.marketIds.length &&
         !store.reuseSource &&
         markets.all.length
       ) {
@@ -234,24 +204,18 @@ export function useBacktestCreation(emit: CreationEvents) {
     },
   );
 
-  watch(
-    isSweep,
-    (enabled) => {
-      if (!enabled) return;
-      void fetchSweepCapabilities()
-        .then((capabilities) => {
-          sweepLimit.value = capabilities.max_sweep_candidate_count;
-          sweepAcceptanceEnabled.value = capabilities.batch_acceptance_enabled;
-        })
-        .catch(() => {
-          sweepLimit.value = null;
-        });
-    },
-    { immediate: true },
-  );
+  onMounted(() => {
+    void fetchBacktestCapabilities()
+      .then((capabilities) => {
+        candidateLimit.value = capabilities.max_backtest_candidate_count;
+      })
+      .catch(() => {
+        candidateLimit.value = null;
+      });
+  });
 
   watch(
-    [draft, sweep, catalog, () => markets.all],
+    [draft, selections, catalog, () => markets.all],
     () => {
       previewRevision += 1;
       submissionId = globalThis.crypto.randomUUID();
@@ -259,13 +223,15 @@ export function useBacktestCreation(emit: CreationEvents) {
       preview.value = null;
       previewPending.value = false;
       previewError.value = null;
-      if (!isSweep.value || !selectedStrategy.value) return;
-      let request: SweepPreviewRequest;
+      if (!selectedStrategy.value) return;
+      let request: BacktestPreviewRequest;
       try {
-        request = buildSweepRequest();
+        request = buildBacktestRequest();
       } catch (error) {
         previewError.value =
-          error instanceof Error ? error.message : 'Complete the sweep inputs.';
+          error instanceof Error
+            ? error.message
+            : 'Complete the backtest inputs.';
         return;
       }
       const revision = previewRevision;
@@ -283,18 +249,18 @@ export function useBacktestCreation(emit: CreationEvents) {
   });
 
   async function refreshPreview(
-    request: SweepPreviewRequest,
+    request: BacktestPreviewRequest,
     revision: number,
   ): Promise<void> {
     try {
-      const result = await previewParameterSweep(request);
+      const result = await previewBacktest(request);
       if (revision !== previewRevision) return;
       preview.value = result;
-      sweepLimit.value = result.max_sweep_candidate_count;
+      candidateLimit.value = result.max_backtest_candidate_count;
     } catch (error) {
       if (revision !== previewRevision) return;
       previewError.value =
-        error instanceof Error ? error.message : 'Sweep preview failed.';
+        error instanceof Error ? error.message : 'Backtest preview failed.';
       if (
         error instanceof BacktestSubmissionError &&
         error.code === 'strategy_version_unavailable'
@@ -334,6 +300,8 @@ export function useBacktestCreation(emit: CreationEvents) {
       strategy_version: selected.strategy_version,
       parameters: defaults(selected),
     };
+    selections.value.parameters = {};
+    store.reuseSource = null;
     fieldErrors.value = {};
     numericEntryValid.value = {};
   }
@@ -343,10 +311,8 @@ export function useBacktestCreation(emit: CreationEvents) {
     if (!selected) return;
     const retained = Object.fromEntries(
       selected.parameters
-        .filter(
-          (parameter) =>
-            Object.hasOwn(draft.value.strategy.parameters, parameter.name) &&
-            !store.reuseSource?.defaultedParameters.includes(parameter.name),
+        .filter((parameter) =>
+          Object.hasOwn(draft.value.strategy.parameters, parameter.name),
         )
         .map((parameter) => [
           parameter.name,
@@ -362,47 +328,6 @@ export function useBacktestCreation(emit: CreationEvents) {
   }
 
   async function submit(): Promise<void> {
-    fieldErrors.value = {};
-    submitError.value = null;
-    if (!validateSetup()) {
-      step.value = 0;
-      return;
-    }
-    if (!validateParameters()) {
-      step.value = 1;
-      return;
-    }
-    submitting.value = true;
-    try {
-      emit(
-        'submitted',
-        await submitBacktestRun({
-          ...draft.value,
-          name: normalizeExperimentName(draft.value.name),
-        }),
-      );
-      emit('update:show', false);
-    } catch (error) {
-      if (error instanceof BacktestSubmissionError) {
-        if (error.code === 'strategy_version_unavailable') {
-          submitError.value =
-            'Strategy version changed. Review the refreshed catalog before submitting again.';
-          await loadCatalog();
-        } else {
-          for (const field of error.fields)
-            fieldErrors.value[field] = error.message;
-          submitError.value = error.message;
-        }
-      } else {
-        submitError.value =
-          error instanceof Error ? error.message : 'Submission failed.';
-      }
-    } finally {
-      submitting.value = false;
-    }
-  }
-
-  async function submitSweep(): Promise<void> {
     if (nameIssue.value) {
       submitError.value = nameIssue.value;
       return;
@@ -418,13 +343,13 @@ export function useBacktestCreation(emit: CreationEvents) {
     submitting.value = true;
     submitError.value = null;
     try {
-      const request = buildSweepRequest();
-      const batchId = await submitBacktestBatch(
+      const request = buildBacktestRequest();
+      const backtestId = await submitBacktest(
         request,
         submissionId,
         normalizeExperimentName(draft.value.name),
       );
-      emit('submitted-batch', batchId);
+      emit('submitted', backtestId);
       emit('update:show', false);
     } catch (error) {
       if (error instanceof BacktestSubmissionError) {
@@ -432,13 +357,15 @@ export function useBacktestCreation(emit: CreationEvents) {
         if (error.code === 'strategy_version_unavailable') await loadCatalog();
       } else {
         submitError.value =
-          error instanceof Error ? error.message : 'Batch submission failed.';
+          error instanceof Error
+            ? error.message
+            : 'Backtest submission failed.';
       }
       const revision = ++previewRevision;
       preview.value = null;
       previewPending.value = true;
       try {
-        await refreshPreview(buildSweepRequest(), revision);
+        await refreshPreview(buildBacktestRequest(), revision);
       } catch {
         previewPending.value = false;
       }
@@ -451,7 +378,7 @@ export function useBacktestCreation(emit: CreationEvents) {
     if (
       !store.reuseSource &&
       markets.all.length &&
-      !draft.value.symbols.length
+      !selections.value.marketIds.length
     ) {
       selectMarket(markets.all[0].symbol_id);
     } else if (!markets.all.length) {
@@ -460,7 +387,7 @@ export function useBacktestCreation(emit: CreationEvents) {
         .then(() => {
           if (
             !store.reuseSource &&
-            !draft.value.symbols.length &&
+            !selections.value.marketIds.length &&
             markets.all.length
           ) {
             selectMarket(markets.all[0].symbol_id);
@@ -484,8 +411,7 @@ export function useBacktestCreation(emit: CreationEvents) {
     setNumericValues,
     store,
     draft,
-    sweep,
-    isSweep,
+    selections,
     nameIssue,
     catalog,
     catalogError,
@@ -495,8 +421,7 @@ export function useBacktestCreation(emit: CreationEvents) {
     preview,
     previewPending,
     previewError,
-    sweepLimit,
-    sweepAcceptanceEnabled,
+    candidateLimit,
     previewFilter,
     selectedStrategy,
     strategyNeedsReview,
@@ -508,7 +433,6 @@ export function useBacktestCreation(emit: CreationEvents) {
     selectStrategy,
     useCurrentVersion,
     submit,
-    submitSweep,
     ...fields,
   };
 }

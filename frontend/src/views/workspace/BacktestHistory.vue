@@ -52,30 +52,22 @@
       >
 
       <p
-        v-if="
-          runs !== null &&
-          batches !== null &&
-          historyRows.length === 0 &&
-          !readError
-        "
+        v-if="backtests !== null && historyRows.length === 0 && !readError"
         role="status"
       >
-        No saved Backtest Runs or Batches.
+        No saved Backtests.
       </p>
       <p
         v-else-if="
-          runs !== null &&
-          batches !== null &&
-          filteredHistory.length === 0 &&
-          !readError
+          backtests !== null && filteredHistory.length === 0 && !readError
         "
         role="status"
       >
-        No Backtest Runs or Batches match these filters.
+        No Backtests match these filters.
       </p>
 
       <BaseDataTable
-        v-if="runs !== null && batches !== null"
+        v-if="backtests !== null"
         data-testid="workspace-history"
         :columns="historyColumns"
         :data="filteredHistory"
@@ -104,8 +96,7 @@ const props = defineProps<{
   canCreate: boolean;
 }>();
 const {
-  runs,
-  batches,
+  backtests,
   isLoading,
   readError,
   historyRows,

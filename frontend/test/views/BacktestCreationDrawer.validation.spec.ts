@@ -1,75 +1,42 @@
 import { flushPromises } from '@vue/test-utils';
 
-import { NDatePicker, NDataTable, NInputNumber, NSelect } from 'naive-ui';
+import { NDatePicker, NInputNumber } from 'naive-ui';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  fetchStrategyCatalog,
-  submitBacktestRun,
-} from '@/api/backtesterClient';
-import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
+import { fetchStrategyCatalog, submitBacktest } from '@/api/backtesterClient';
 
-import { catalog, openDrawer, standaloneSetup } from './creationFixtures';
+import { catalog, openDrawer, creationSetup } from './creationFixtures';
+import { advancePreview } from './creationFixtures';
 vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/backtesterClient')>()),
   fetchStrategyCatalog: vi.fn(),
-  submitBacktestRun: vi.fn(),
-  submitBacktestBatch: vi.fn(),
-  previewParameterSweep: vi.fn(),
-  fetchSweepCapabilities: vi.fn(),
+  submitBacktest: vi.fn(),
+  previewBacktest: vi.fn(),
+  fetchBacktestCapabilities: vi.fn(),
 }));
 
 describe('creation validation', () => {
-  standaloneSetup();
+  creationSetup();
   it('rejects non-finite dates at submission as well as step navigation', async () => {
     const wrapper = openDrawer();
     await flushPromises();
+    await advancePreview();
     wrapper
       .findAllComponents(NDatePicker)[0]
       .vm.$emit('update:formatted-value', 'invalid');
     await flushPromises();
+    await advancePreview();
     (
       document.querySelector('[data-testid="creation-submit"]') as HTMLElement
     ).click();
     await flushPromises();
-    expect(submitBacktestRun).not.toHaveBeenCalled();
+    await advancePreview();
+    expect(submitBacktest).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain(
-      'End date must be after start date.',
+      'Enter valid dates and initial capital.',
     );
     wrapper.unmount();
   });
-  it('distinguishes omitted defaults from explicit null in standalone review', async () => {
-    const wrapper = openDrawer();
-    await flushPromises();
-    const runType = wrapper
-      .findAllComponents(NSelect)
-      .find(
-        (select) => select.attributes('data-testid') === 'creation-run-type',
-      )!;
-    runType.vm.$emit('update:value', 'sweep');
-    await flushPromises();
-    const mode = wrapper
-      .findAllComponents(NSelect)
-      .find(
-        (select) =>
-          select.attributes('data-testid') === 'sweep-mode-fast_window',
-      )!;
-    mode.vm.$emit('update:value', 'values');
-    await flushPromises();
-    mode.vm.$emit('update:value', 'constant');
-    runType.vm.$emit('update:value', 'standalone');
-    await flushPromises();
-    [...document.body.querySelectorAll('button')]
-      .find((button) => button.textContent?.trim() === 'Review')!
-      .click();
-    await flushPromises();
-    const table = wrapper.findComponent(NDataTable);
-    expect(table.text()).toContain('5 (default)');
-    expect(table.text()).toContain('null');
-    expect(
-      useBacktestWorkspaceStore().creationDraft?.strategy.parameters,
-    ).not.toHaveProperty('fast_window');
-    wrapper.unmount();
-  });
+
   it('clears nullable fixed inputs inline while preserving empty strings', async () => {
     vi.mocked(fetchStrategyCatalog).mockResolvedValue([
       {
@@ -92,9 +59,10 @@ describe('creation validation', () => {
         ],
       },
     ]);
-    vi.mocked(submitBacktestRun).mockResolvedValue('nullable-run');
+    vi.mocked(submitBacktest).mockResolvedValue('nullable-run');
     const wrapper = openDrawer();
     await flushPromises();
+    await advancePreview();
     const number = wrapper
       .findAllComponents(NInputNumber)
       .find(
@@ -104,25 +72,35 @@ describe('creation validation', () => {
     expect(number.props('clearable')).toBe(true);
     number.vm.$emit('update:value', null);
     expect(document.body.textContent).not.toContain('Set null');
+    await advancePreview();
     const submit = document.querySelector(
       '[data-testid="creation-submit"]',
     ) as HTMLElement;
     submit.click();
     await flushPromises();
-    expect(
-      vi.mocked(submitBacktestRun).mock.lastCall?.[0].strategy.parameters,
-    ).toEqual({ threshold: null, label: '' });
+    await advancePreview();
+    expect(vi.mocked(submitBacktest).mock.lastCall?.[0].parameter_axes).toEqual(
+      {
+        threshold: { mode: 'constant', value: null },
+        label: { mode: 'constant', value: '' },
+      },
+    );
     (
       document.querySelector(
         '[aria-label="Clear label to null"]',
       ) as HTMLElement
     ).click();
     await flushPromises();
+    await advancePreview();
     submit.click();
     await flushPromises();
-    expect(
-      vi.mocked(submitBacktestRun).mock.lastCall?.[0].strategy.parameters,
-    ).toEqual({ threshold: null, label: null });
+    await advancePreview();
+    expect(vi.mocked(submitBacktest).mock.lastCall?.[0].parameter_axes).toEqual(
+      {
+        threshold: { mode: 'constant', value: null },
+        label: { mode: 'constant', value: null },
+      },
+    );
     wrapper.unmount();
   });
 });

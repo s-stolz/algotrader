@@ -12,7 +12,7 @@ interface reaches them; paths in this table are relative to the repository root.
 | Market/candle queries, durable persistence transactions | [database-accessor-api/CONTEXT.md](../database-accessor-api/CONTEXT.md) |
 | Historical/live indicators | [indicator-api/CONTEXT.md](../indicator-api/CONTEXT.md) |
 | Simulation, strategies, execution, metrics | [backtester/CONTEXT.md](../backtester/CONTEXT.md) |
-| Backtest lifecycle, batches, queue, saved-result contracts | [contracts/backtests.md](contracts/backtests.md), then affected area context |
+| Backtest lifecycle, Runs, queue, saved-result contracts | [contracts/backtests.md](contracts/backtests.md), then affected area context |
 | Shared clients, indicator computation, logging | [libs/CONTEXT.md](../libs/CONTEXT.md) |
 | Topology, environment generation, ports, container resources | [config/CONTEXT.md](../config/CONTEXT.md) |
 | SQL bootstrap, migrations, hypertables, aggregates | [timescaledb-init/CONTEXT.md](../timescaledb-init/CONTEXT.md) |

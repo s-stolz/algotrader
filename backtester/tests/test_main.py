@@ -20,7 +20,7 @@ class TestBacktesterServiceEntrypoint(unittest.TestCase):
         paths = response.json()["paths"]
         self.assertIn("post", paths["/backtests"])
         self.assertIn("get", paths["/backtests"])
-        self.assertIn("get", paths["/backtests/{run_id}"])
+        self.assertIn("get", paths["/backtests/runs/{run_id}"])
 
     def test_health_endpoint_reports_ready(self) -> None:
         with TestClient(main.app) as client:

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import type { BacktestRun } from '@/types/backtesterContracts';
 import {
-  compareHistoryRuns,
   displayWinRate,
   formatMagnitude,
   formatSigned,
@@ -13,6 +12,8 @@ import {
 
 function run(id: string, overrides: Partial<BacktestRun> = {}): BacktestRun {
   return {
+    backtest_id: 'backtest-1',
+    run_ordinal: 0,
     run_id: id,
     status: 'succeeded',
     submitted_at_ms: 1000,
@@ -39,7 +40,6 @@ function run(id: string, overrides: Partial<BacktestRun> = {}): BacktestRun {
         commission_bps: 0,
         slippage_bps: 0,
       },
-      persist_result: true,
     },
     result_schema_version: 3,
     metrics: null,
@@ -50,43 +50,20 @@ function run(id: string, overrides: Partial<BacktestRun> = {}): BacktestRun {
 describe('saved Backtest Run presentation', () => {
   it('uses recorded names and versions only when present', () => {
     const legacy = run('legacy');
-    expect(runName(legacy)).toBe('Unnamed standalone run');
+    expect(runName(legacy)).toBe('Run #1');
     expect(strategyVersion(legacy)).toBe('Version unavailable');
     expect(runMarket(legacy)).toBe('FX:EURUSD');
 
     const named = run('named', {
-      name: 'Breakout baseline',
+      run_ordinal: 3,
       request: {
         ...legacy.request,
         run_metadata: { name: 'Ignored legacy metadata' },
         strategy: { ...legacy.request.strategy, strategy_version: 4 },
       },
     });
-    expect(runName(named)).toBe('Breakout baseline');
+    expect(runName(named)).toBe('Run #4');
     expect(strategyVersion(named)).toBe('v4');
-  });
-
-  it('sorts dates and Timeframe durations numerically with name and identity ties', () => {
-    const base = run('b', {
-      request: { ...run('x').request, timeframe: 'H1' },
-    });
-    const short = run('a', { request: { ...base.request, timeframe: 'M15' } });
-    expect(compareHistoryRuns(short, base, 'timeframe')).toBeLessThan(0);
-    expect(compareHistoryRuns(base, short, 'timeframe')).toBeGreaterThan(0);
-
-    const newer = run('z', { request: { ...base.request, start_ms: 10000 } });
-    expect(compareHistoryRuns(base, newer, 'start')).toBeLessThan(0);
-
-    const sameNameA = run('run-2', {
-      name: 'Same',
-    });
-    const sameNameB = run('run-10', {
-      name: 'Same',
-    });
-    expect(compareHistoryRuns(sameNameA, sameNameB, 'status')).toBeLessThan(0);
-    expect(compareHistoryRuns(sameNameB, sameNameA, 'status')).toBeGreaterThan(
-      0,
-    );
   });
 
   it('keeps signed saved values and separates zero trades from missing results', () => {

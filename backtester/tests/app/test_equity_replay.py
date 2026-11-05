@@ -178,6 +178,8 @@ class EquityReplayTests(unittest.TestCase):
 
     def test_application_reports_exact_legacy_and_candle_failure(self):
         run = BacktestRunRecord(
+            backtest_id="backtest-1",
+            run_ordinal=0,
             run_id="run-1",
             status=BacktestRunStatus.SUCCEEDED,
             submitted_at_ms=self.start,

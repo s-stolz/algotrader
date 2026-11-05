@@ -3,7 +3,7 @@
 AlgoTrader is an experimental trading project for collecting market data,
 visualizing live and historical charts with
 [Lightweight Charts](https://tradingview.github.io/lightweight-charts/), and running
-historical backtests and parameter sweeps.
+historical backtests with fixed or varying parameters.
 
 ## Architecture
 

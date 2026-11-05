@@ -250,7 +250,7 @@ def validate_parameters(config: StrategyConfig) -> StrategyConfig:
 
 
 def validate_parameter_value(field: Mapping[str, object], value: object) -> object:
-    """Apply the standalone parameter rules to one sweep axis value."""
+    """Validate one parameter value against its strategy schema."""
     try:
         return _validated_value(field, {str(field["name"]): value})
     except ValueError as exc:

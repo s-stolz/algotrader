@@ -6,18 +6,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 
-import { openDrawer, standaloneSetup } from './creationFixtures';
+import { openDrawer, creationSetup } from './creationFixtures';
 vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/backtesterClient')>()),
   fetchStrategyCatalog: vi.fn(),
-  submitBacktestRun: vi.fn(),
-  submitBacktestBatch: vi.fn(),
-  previewParameterSweep: vi.fn(),
-  fetchSweepCapabilities: vi.fn(),
+  submitBacktest: vi.fn(),
+  previewBacktest: vi.fn(),
+  fetchBacktestCapabilities: vi.fn(),
 }));
 
 describe('creation navigation', () => {
-  standaloneSetup();
+  creationSetup();
   it(
     'synchronizes steps and footer, validates dates, and keeps drafts ' +
       'after closing',
@@ -63,11 +62,10 @@ describe('creation navigation', () => {
   );
   it(
     'clears a numeric Fixed input after switching from Values without ' +
-      'losing its sweep list',
+      'losing its selections list',
     async () => {
       const store = useBacktestWorkspaceStore();
-      store.creationSweepDraft = {
-        isSweep: true,
+      store.creationSelections = {
         marketIds: [1],
         timeframes: ['M1'],
         allowedDirections: ['short_only'],
@@ -79,7 +77,7 @@ describe('creation navigation', () => {
         .findAllComponents(NSelect)
         .find(
           (select) =>
-            select.attributes('data-testid') === 'sweep-mode-fast_window',
+            select.attributes('data-testid') === 'selections-mode-fast_window',
         )!;
       mode.vm.$emit('update:value', 'values');
       await flushPromises();
@@ -95,12 +93,12 @@ describe('creation navigation', () => {
       expect(
         store.creationDraft?.strategy.parameters.fast_window,
       ).toBeUndefined();
-      expect(store.creationSweepDraft?.parameters.fast_window.valuesText).toBe(
+      expect(store.creationSelections?.parameters.fast_window.valuesText).toBe(
         '2\n4',
       );
-      expect(store.creationDraft?.execution.allowed_directions).toBe(
+      expect(store.creationSelections?.allowedDirections).toEqual([
         'short_only',
-      );
+      ]);
       wrapper.unmount();
     },
   );

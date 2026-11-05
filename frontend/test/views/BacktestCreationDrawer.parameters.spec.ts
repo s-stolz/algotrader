@@ -4,33 +4,32 @@ import { NInput, NInputNumber, NSelect } from 'naive-ui';
 import { describe, expect, it, vi } from 'vitest';
 import {
   fetchStrategyCatalog,
-  previewParameterSweep,
-  submitBacktestRun,
+  previewBacktest,
+  submitBacktest,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 
 import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 import {
   pinia,
-  sweepCatalog,
+  selectionsCatalog,
   previewFor,
   advancePreview,
-  sweepSetup,
+  selectionsSetup,
 } from './creationFixtures';
 vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/backtesterClient')>()),
   fetchStrategyCatalog: vi.fn(),
-  submitBacktestRun: vi.fn(),
-  submitBacktestBatch: vi.fn(),
-  previewParameterSweep: vi.fn(),
-  fetchSweepCapabilities: vi.fn(),
+  submitBacktest: vi.fn(),
+  previewBacktest: vi.fn(),
+  fetchBacktestCapabilities: vi.fn(),
 }));
 
-describe('sweep parameters', () => {
-  sweepSetup();
+describe('selections parameters', () => {
+  selectionsSetup();
 
   it('keeps parameter input modes and sends independent range inputs', async () => {
-    vi.mocked(previewParameterSweep).mockImplementation(async (request) =>
+    vi.mocked(previewBacktest).mockImplementation(async (request) =>
       previewFor(request, 2),
     );
     const wrapper = mount(BacktestCreationDrawer, {
@@ -43,20 +42,20 @@ describe('sweep parameters', () => {
       .findAllComponents(NSelect)
       .find(
         (select) =>
-          select.attributes('data-testid') === 'sweep-mode-fast_window',
+          select.attributes('data-testid') === 'selections-mode-fast_window',
       );
     mode!.vm.$emit('update:value', 'range');
     await flushPromises();
     const inputs = wrapper.findAllComponents(NInputNumber);
     const range = inputs.filter((input) =>
-      input.attributes('data-testid')?.startsWith('sweep-'),
+      input.attributes('data-testid')?.startsWith('selections-'),
     );
     range[0].vm.$emit('update:value', 1);
     range[1].vm.$emit('update:value', 3);
     range[2].vm.$emit('update:value', 1);
     await advancePreview();
     expect(document.body.textContent).toContain('Limit: 1000 candidates');
-    expect(previewParameterSweep).toHaveBeenCalledWith(
+    expect(previewBacktest).toHaveBeenCalledWith(
       expect.objectContaining({
         markets: [1],
         timeframes: ['M1'],
@@ -66,14 +65,14 @@ describe('sweep parameters', () => {
       }),
     );
     expect(document.querySelector('.preview-counts dd')?.textContent).toBe('2');
-    expect(submitBacktestRun).not.toHaveBeenCalled();
+    expect(submitBacktest).not.toHaveBeenCalled();
     mode!.vm.$emit('update:value', 'constant');
     await flushPromises();
     expect(
       document.body.querySelector('[data-testid="creation-param-fast_window"]'),
     ).not.toBeNull();
     expect(
-      useBacktestWorkspaceStore().creationSweepDraft?.parameters.fast_window
+      useBacktestWorkspaceStore().creationSelections?.parameters.fast_window
         .rangeStop,
     ).toBe(3);
     wrapper.unmount();
@@ -85,7 +84,7 @@ describe('sweep parameters', () => {
     async () => {
       vi.mocked(fetchStrategyCatalog).mockResolvedValue([
         {
-          ...sweepCatalog[0],
+          ...selectionsCatalog[0],
           parameters: [
             {
               name: 'label',
@@ -97,7 +96,7 @@ describe('sweep parameters', () => {
           ],
         },
       ]);
-      vi.mocked(previewParameterSweep).mockImplementation(async (request) =>
+      vi.mocked(previewBacktest).mockImplementation(async (request) =>
         previewFor(request, 1),
       );
       const wrapper = mount(BacktestCreationDrawer, {
@@ -109,7 +108,8 @@ describe('sweep parameters', () => {
       const mode = wrapper
         .findAllComponents(NSelect)
         .find(
-          (select) => select.attributes('data-testid') === 'sweep-mode-label',
+          (select) =>
+            select.attributes('data-testid') === 'selections-mode-label',
         );
       mode!.vm.$emit('update:value', 'values');
       await advancePreview();
@@ -118,59 +118,64 @@ describe('sweep parameters', () => {
       );
 
       (
-        document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
+        document.querySelector(
+          '[data-testid="selections-add-label"]',
+        ) as HTMLElement
       ).click();
       await advancePreview();
       expect(
-        vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes
-          .label,
+        vi.mocked(previewBacktest).mock.lastCall?.[0].parameter_axes.label,
       ).toEqual({
         mode: 'values',
         values: [''],
       });
 
       (
-        document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
+        document.querySelector(
+          '[data-testid="selections-add-label"]',
+        ) as HTMLElement
       ).click();
       await flushPromises();
       const multiline = wrapper
         .findAllComponents(NInput)
         .find(
-          (input) => input.attributes('data-testid') === 'sweep-string-label-1',
+          (input) =>
+            input.attributes('data-testid') === 'selections-string-label-1',
         );
       multiline!.vm.$emit('update:value', 'first\nsecond');
       (
-        document.querySelector('[data-testid="sweep-add-label"]') as HTMLElement
+        document.querySelector(
+          '[data-testid="selections-add-label"]',
+        ) as HTMLElement
       ).click();
       await flushPromises();
       const whitespace = wrapper
         .findAllComponents(NInput)
         .find(
-          (input) => input.attributes('data-testid') === 'sweep-string-label-2',
+          (input) =>
+            input.attributes('data-testid') === 'selections-string-label-2',
         );
       whitespace!.vm.$emit('update:value', ' ');
       await advancePreview();
       expect(
-        vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes
-          .label,
+        vi.mocked(previewBacktest).mock.lastCall?.[0].parameter_axes.label,
       ).toEqual({
         mode: 'values',
         values: ['', 'first\nsecond', ' '],
       });
       expect(
-        useBacktestWorkspaceStore().creationSweepDraft?.parameters.label
+        useBacktestWorkspaceStore().creationSelections?.parameters.label
           .stringValues,
       ).toEqual(['', 'first\nsecond', ' ']);
 
       (
         document.querySelector(
-          '[data-testid="sweep-remove-label-0"]',
+          '[data-testid="selections-remove-label-0"]',
         ) as HTMLElement
       ).click();
       await advancePreview();
       expect(
-        vi.mocked(previewParameterSweep).mock.lastCall?.[0].parameter_axes
-          .label,
+        vi.mocked(previewBacktest).mock.lastCall?.[0].parameter_axes.label,
       ).toEqual({
         mode: 'values',
         values: ['first\nsecond', ' '],
@@ -178,4 +183,48 @@ describe('sweep parameters', () => {
       wrapper.unmount();
     },
   );
+  it('resets parameter values and modes when deliberately switching strategies', async () => {
+    vi.mocked(fetchStrategyCatalog).mockResolvedValue([
+      selectionsCatalog[0],
+      {
+        ...selectionsCatalog[0],
+        strategy_id: 'other',
+        parameters: [{ ...selectionsCatalog[0].parameters[0], default: 20 }],
+      },
+    ]);
+    vi.mocked(previewBacktest).mockImplementation(async (request) =>
+      previewFor(request, 1),
+    );
+    const wrapper = mount(BacktestCreationDrawer, {
+      props: { show: true },
+      global: { plugins: [pinia] },
+      attachTo: document.body,
+    });
+    try {
+      await advancePreview();
+      const store = useBacktestWorkspaceStore();
+      const select = (id: string) =>
+        wrapper
+          .findAllComponents(NSelect)
+          .find((control) => control.attributes('data-testid') === id)!;
+      select('selections-mode-fast_window').vm.$emit('update:value', 'range');
+      await flushPromises();
+      select('creation-strategy').vm.$emit('update:value', 'other');
+      await advancePreview();
+      expect(store.creationDraft?.strategy.parameters.fast_window).toBe(20);
+      expect(store.creationSelections?.parameters.fast_window.mode).toBe(
+        'constant',
+      );
+      select('creation-strategy').vm.$emit('update:value', 'sma_crossover');
+      await advancePreview();
+      expect(store.creationDraft?.strategy.parameters.fast_window).toBe(5);
+      expect(
+        vi.mocked(previewBacktest).mock.lastCall?.[0].parameter_axes,
+      ).toEqual({
+        fast_window: { mode: 'constant', value: 5 },
+      });
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });

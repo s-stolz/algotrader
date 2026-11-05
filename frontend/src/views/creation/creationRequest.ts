@@ -4,10 +4,10 @@ import type {
   BacktestRequestPayload,
   StrategyCatalogEntry,
   StrategyParameterSchema,
-  SweepDraftState,
-  SweepParameterDraft,
-  SweepPreviewRequest,
-  SweepParameterAxis,
+  BacktestSelectionsDraft,
+  ParameterDraft,
+  BacktestPreviewRequest,
+  ParameterAxis,
 } from '@/types/backtesterContracts';
 import { choiceValues } from './creationParameters';
 
@@ -24,21 +24,25 @@ export type DraftRequest = Omit<
   name?: string;
 };
 
-export function buildSweepRequest(
+export function buildBacktestRequest(
   draft: DraftRequest,
-  sweep: SweepDraftState,
+  selections: BacktestSelectionsDraft,
   selected: StrategyCatalogEntry | undefined,
   missingMarkets: string[],
-  sweepParameter: (parameter: StrategyParameterSchema) => SweepParameterDraft,
+  parameterInput: (parameter: StrategyParameterSchema) => ParameterDraft,
   stringValues: (parameter: StrategyParameterSchema) => string[],
-): SweepPreviewRequest {
+): BacktestPreviewRequest {
   if (
     !selected ||
     selected.strategy_version !== draft.strategy.strategy_version
   ) {
     throw new Error('Review the current Strategy Version.');
   }
-  if (!sweep.marketIds.length || !sweep.timeframes.length) {
+  if (
+    !selections.marketIds.length ||
+    !selections.timeframes.length ||
+    !selections.allowedDirections.length
+  ) {
     throw new Error(
       'Select at least one Market, Timeframe, and Allowed Directions value.',
     );
@@ -46,6 +50,8 @@ export function buildSweepRequest(
   if (missingMarkets.length)
     throw new Error('Replace unavailable saved Markets.');
   if (
+    !Number.isFinite(draft.start_ms) ||
+    !Number.isFinite(draft.end_ms) ||
     draft.start_ms <= 0 ||
     draft.end_ms <= draft.start_ms ||
     !Number.isFinite(draft.initial_capital) ||
@@ -57,9 +63,9 @@ export function buildSweepRequest(
     dailyScheduleIssue(draft.execution.daily_schedule) ??
     dailyEntryLimitIssue(draft.execution.max_entries_per_day);
   if (executionIssue) throw new Error(executionIssue);
-  const parameter_axes: Record<string, SweepParameterAxis> = {};
+  const parameter_axes: Record<string, ParameterAxis> = {};
   for (const parameter of selected.parameters) {
-    const input = sweepParameter(parameter);
+    const input = parameterInput(parameter);
     if (input.mode === 'constant') {
       const value = draft.strategy.parameters[parameter.name];
       if (value === undefined) {
@@ -129,10 +135,10 @@ export function buildSweepRequest(
       strategy_id: selected.strategy_id,
       strategy_version: selected.strategy_version,
     },
-    markets: sweep.marketIds,
-    timeframes: sweep.timeframes,
+    markets: selections.marketIds,
+    timeframes: selections.timeframes,
     parameter_axes,
-    allowed_directions: [draft.execution.allowed_directions],
+    allowed_directions: selections.allowedDirections,
   };
 }
 
@@ -153,7 +159,6 @@ export function initialDraft(): DraftRequest {
     initial_capital: 10_000,
     engine: 'vectorized',
     data_granularity: 'bar',
-    persist_result: false,
     run_metadata: null,
     name: '',
     execution: {

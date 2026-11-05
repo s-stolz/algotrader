@@ -62,7 +62,6 @@ export interface BacktestRequestPayload {
   initial_capital: number;
   strategy: BacktestStrategyPayload;
   execution: BacktestExecutionPayload;
-  persist_result: boolean;
   run_metadata?: JsonObject | null;
 }
 
@@ -256,7 +255,6 @@ export function isBacktestRequestPayload(
     value.initial_capital > 0 &&
     isBacktestStrategyPayload(value.strategy) &&
     isBacktestExecutionPayload(value.execution) &&
-    typeof value.persist_result === 'boolean' &&
     isOptionalNullableJsonObject(value, 'run_metadata')
   );
 }

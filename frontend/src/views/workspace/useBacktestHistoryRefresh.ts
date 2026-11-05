@@ -1,14 +1,13 @@
 import { ref, shallowRef, watch } from 'vue';
-import { listBacktestRuns, listBacktestBatches } from '@/api/backtesterClient';
+import { listBacktests } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
-import type { BacktestRun, BacktestBatch } from '@/types/backtesterContracts';
+import type { Backtest } from '@/types/backtesterContracts';
 import { errorMessage } from './workspaceErrors';
 export function useBacktestHistoryRefresh(
-  onHistory: (runs: BacktestRun[], batches: BacktestBatch[]) => void,
+  onHistory: (backtests: Backtest[]) => void,
 ) {
   const workspaceStore = useBacktestWorkspaceStore();
-  const runs = ref<BacktestRun[] | null>(null);
-  const batches = shallowRef<BacktestBatch[] | null>(null);
+  const backtests = shallowRef<Backtest[] | null>(null);
   const isLoading = ref(false);
   const isRefreshing = ref(false);
   const readError = ref<string | null>(null);
@@ -16,27 +15,20 @@ export function useBacktestHistoryRefresh(
   let activeHistoryRead: Promise<void> | null = null;
   let refreshAfterCurrentRead = false;
   let isActive = false;
-  async function readRuns(): Promise<void> {
+  async function readHistory(): Promise<void> {
     const generation = ++readGeneration;
     const nameReadRevision = workspaceStore.nameRevision;
-    isLoading.value = runs.value === null;
+    isLoading.value = backtests.value === null;
 
     try {
-      const [readRunRecords, readBatchRecords] = await Promise.all([
-        listBacktestRuns({ membership: 'standalone' }),
-        listBacktestBatches(),
-      ]);
+      const readBacktestRecords = await listBacktests();
       if (generation !== readGeneration || !isActive) return;
-      const latest = readRunRecords.map((run) =>
-        workspaceStore.preserveRunName(run, nameReadRevision),
+      const latestBacktests = readBacktestRecords.map((backtest) =>
+        workspaceStore.preserveBacktestName(backtest, nameReadRevision),
       );
-      const latestBatches = readBatchRecords.map((batch) =>
-        workspaceStore.preserveBatchName(batch, nameReadRevision),
-      );
-      runs.value = latest;
-      batches.value = latestBatches;
+      backtests.value = latestBacktests;
       readError.value = null;
-      onHistory(latest, latestBatches);
+      onHistory(latestBacktests);
     } catch (error) {
       if (generation === readGeneration && isActive)
         readError.value = errorMessage(error);
@@ -45,7 +37,7 @@ export function useBacktestHistoryRefresh(
       activeHistoryRead = null;
       if (refreshAfterCurrentRead && isActive) {
         refreshAfterCurrentRead = false;
-        void loadRuns();
+        void loadHistory();
         return;
       }
       isLoading.value = false;
@@ -53,26 +45,22 @@ export function useBacktestHistoryRefresh(
     }
   }
 
-  function loadRuns(shouldQueue = true): Promise<void> {
+  function loadHistory(shouldQueue = true): Promise<void> {
     if (!isActive) return Promise.resolve();
     if (activeHistoryRead) {
       if (shouldQueue) refreshAfterCurrentRead = true;
       return activeHistoryRead;
     }
-    activeHistoryRead = readRuns();
+    activeHistoryRead = readHistory();
     return activeHistoryRead;
   }
 
   watch(
     () => workspaceStore.nameRevision,
     () => {
-      if (runs.value)
-        runs.value = runs.value.map((run) =>
-          workspaceStore.preserveRunName(run, -1),
-        );
-      if (batches.value)
-        batches.value = batches.value.map((batch) =>
-          workspaceStore.preserveBatchName(batch, -1),
+      if (backtests.value)
+        backtests.value = backtests.value.map((backtest) =>
+          workspaceStore.preserveBacktestName(backtest, -1),
         );
     },
   );
@@ -88,12 +76,11 @@ export function useBacktestHistoryRefresh(
     isRefreshing.value = false;
   }
   return {
-    runs,
-    batches,
+    backtests,
     isLoading,
     isRefreshing,
     readError,
-    loadRuns,
+    loadHistory,
     start,
     stop,
   };

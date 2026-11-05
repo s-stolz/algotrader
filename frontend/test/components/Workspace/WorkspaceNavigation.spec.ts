@@ -43,7 +43,11 @@ describe('WorkspaceNavigation', () => {
     }
   });
 
-  it.each(['/backtests', '/backtests/run/saved', '/backtests/batch/sweep'])(
+  it.each([
+    '/backtests',
+    '/backtests/run/saved',
+    '/backtests/backtest/selections',
+  ])(
     'returns to Chart from %s without carrying route parameters',
     async (path) => {
       const { router, wrapper } = await mountNavigation(path);

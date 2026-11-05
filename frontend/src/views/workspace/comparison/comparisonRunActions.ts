@@ -1,6 +1,7 @@
 import { h } from 'vue';
 import { NButton, NIcon, NTooltip } from 'naive-ui';
 import {
+  CopyOutline,
   DocumentTextOutline,
   BarChartOutline,
   StopCircleOutline,
@@ -66,6 +67,23 @@ export function createComparisonRunActions(workspace: BacktestWorkspace) {
 
   function analysisRunActions(run: BacktestRun) {
     return h('div', { class: 'row-actions' }, [
+      h(
+        NButton,
+        {
+          quaternary: true,
+          circle: true,
+          size: 'small',
+          title: 'Create from this',
+          'aria-label': `Create from ${comparisonRunLabel(run)}`,
+          'data-testid': `workspace-create-from-run-${run.run_id}`,
+          onKeydown: (event: KeyboardEvent) => event.stopPropagation(),
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation();
+            workspace.createFromRun(run);
+          },
+        },
+        { icon: () => h(NIcon, { size: 16, component: CopyOutline }) },
+      ),
       executionLogAction(run, comparisonRunLabel(run)),
       h(NTooltip, null, {
         trigger: () =>

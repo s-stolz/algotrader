@@ -1,24 +1,16 @@
 import { h } from 'vue';
 import { designTokens } from '@/design/tokens';
 import { NButton, NIcon, NTag, type DataTableColumns } from 'naive-ui';
+import { CopyOutline, TrashOutline } from '@vicons/ionicons5';
 import {
-  CopyOutline,
-  TrashOutline,
-  StopCircleOutline,
-} from '@vicons/ionicons5';
-import type { BacktestRun } from '@/types/backtesterContracts';
-import {
-  runName,
-  batchName,
-  strategyVersion,
-  runMarket,
+  backtestName,
   formatUtcDate,
   type HistorySortKey,
 } from '../backtestWorkspaceRuns';
 import {
   rowKey,
-  batchMarkets,
-  batchTimeframes,
+  backtestMarkets,
+  backtestTimeframes,
   compareHistoryEntries,
   type HistoryEntry,
 } from './backtestHistoryRows';
@@ -38,13 +30,6 @@ function cell(value: string, explanation?: string) {
     },
     value,
   );
-}
-
-function historyRunCell(run: BacktestRun) {
-  return h('span', { class: 'run-identity' }, [
-    cell(runName(run), run.run_id),
-    h('small', run.run_id.slice(0, 8)),
-  ]);
 }
 
 function historyColumn(
@@ -80,76 +65,49 @@ export function createHistoryColumns(
   actions: BacktestWorkspace['historyActions'],
 ): DataTableColumns<HistoryEntry> {
   const { createFrom } = actions;
-  const {
-    cancellingRunIds,
-    deletingRunIds,
-    deletingBatchIds,
-    cancelRun,
-    deleteRun,
-    deleteBatch,
-  } = actions;
+  const { deletingBacktestIds, deleteBacktest } = actions;
   const historyColumns: DataTableColumns<HistoryEntry> = [
     historyColumn('Name', 'name', (entry) =>
-      entry.kind === 'run'
-        ? historyRunCell(entry.run)
-        : h('span', { class: 'run-identity' }, [
-            cell(batchName(entry.batch), entry.batch.batch_id),
-            h('small', entry.batch.batch_id.slice(0, 8)),
-          ]),
-    ),
-    historyColumn('Type', 'type', (entry) =>
-      cell(entry.kind === 'run' ? 'Standalone' : 'Parameter Sweep'),
+      h('span', { class: 'run-identity' }, [
+        cell(backtestName(entry.backtest), entry.backtest.backtest_id),
+        h('small', entry.backtest.backtest_id.slice(0, 8)),
+      ]),
     ),
     historyColumn('Strategy / version', 'strategy', (entry) =>
       cell(
-        entry.kind === 'run'
-          ? `${entry.run.request.strategy.strategy_id} · ${strategyVersion(entry.run)}`
-          : `${entry.batch.strategy_id} · v${entry.batch.strategy_version}`,
+        `${entry.backtest.strategy_id} · v${entry.backtest.strategy_version}`,
       ),
     ),
     historyColumn('Market', 'market', (entry) =>
-      cell(
-        entry.kind === 'run'
-          ? runMarket(entry.run)
-          : batchMarkets(entry.batch).join(', '),
-      ),
+      cell(backtestMarkets(entry.backtest).join(', ')),
     ),
     historyColumn('Timeframe', 'timeframe', (entry) =>
-      cell(
-        entry.kind === 'run'
-          ? entry.run.request.timeframe
-          : batchTimeframes(entry.batch).join(', '),
-      ),
+      cell(backtestTimeframes(entry.backtest).join(', ')),
     ),
     historyColumn('Start date', 'start', (entry) =>
       cell(
         formatUtcDate(
-          entry.kind === 'run'
-            ? entry.run.request.start_ms
-            : Number(entry.batch.accepted_definition.shared_request.start_ms),
+          Number(entry.backtest.accepted_definition.shared_request.start_ms),
         ),
       ),
     ),
     historyColumn('End date', 'end', (entry) =>
       cell(
         formatUtcDate(
-          entry.kind === 'run'
-            ? entry.run.request.end_ms
-            : Number(entry.batch.accepted_definition.shared_request.end_ms),
+          Number(entry.backtest.accepted_definition.shared_request.end_ms),
         ),
       ),
     ),
     historyColumn('Status', 'status', (entry) => {
-      const status =
-        entry.kind === 'run' ? entry.run.status : entry.batch.status;
+      const status = entry.backtest.status;
       return h(
         NTag,
         {
           size: 'small',
           type:
-            status === 'succeeded' || status === 'completed'
+            status === 'completed' && !entry.backtest.has_failed_members
               ? 'success'
-              : status === 'failed'
+              : entry.backtest.has_failed_members
                 ? 'error'
                 : 'info',
           title:
@@ -162,12 +120,10 @@ export function createHistoryColumns(
     }),
     historyColumn('Settled', 'progress', (entry) =>
       cell(
-        entry.kind === 'run'
-          ? '—'
-          : `${entry.batch.settled_count} / ${entry.batch.total_count}` +
-              (entry.batch.has_failed_members
-                ? ` · ${entry.batch.outcome_counts.failed} failed`
-                : ''),
+        `${entry.backtest.settled_count} / ${entry.backtest.total_count}` +
+          (entry.backtest.has_failed_members
+            ? ` · ${entry.backtest.outcome_counts.failed} failed`
+            : ''),
       ),
     ),
     {
@@ -193,7 +149,7 @@ export function createHistoryColumns(
                 circle: true,
                 size: 'small',
                 'data-testid': `workspace-create-from-${rowKey(entry)}`,
-                'aria-label': `Create from this ${entry.kind} ${rowKey(entry)}`,
+                'aria-label': `Create from this Backtest ${rowKey(entry)}`,
                 title: 'Create from this',
                 onClick: (event: MouseEvent) => {
                   event.stopPropagation();
@@ -202,30 +158,6 @@ export function createHistoryColumns(
               },
               { icon: () => h(NIcon, { component: CopyOutline }) },
             ),
-            ...(entry.kind === 'run' &&
-            ['queued', 'running'].includes(entry.run.status)
-              ? [
-                  h(
-                    NButton,
-                    {
-                      quaternary: true,
-                      circle: true,
-                      size: 'small',
-                      'data-testid': `workspace-cancel-${entry.run.run_id}`,
-                      'aria-label': 'Cancel run',
-                      title: 'Cancel run',
-                      disabled:
-                        !['queued', 'running'].includes(entry.run.status) ||
-                        cancellingRunIds.value.has(entry.run.run_id),
-                      onClick: (event: MouseEvent) => {
-                        event.stopPropagation();
-                        void cancelRun(entry.run);
-                      },
-                    },
-                    { icon: () => h(NIcon, { component: StopCircleOutline }) },
-                  ),
-                ]
-              : []),
             h(
               NButton,
               {
@@ -233,24 +165,15 @@ export function createHistoryColumns(
                 circle: true,
                 size: 'small',
                 type: 'error',
-                'data-testid':
-                  entry.kind === 'run'
-                    ? `workspace-delete-${entry.run.run_id}`
-                    : `workspace-delete-batch-${entry.batch.batch_id}`,
-                'aria-label': `Delete ${entry.kind}`,
-                title: `Delete ${entry.kind}`,
+                'data-testid': `workspace-delete-backtest-${entry.backtest.backtest_id}`,
+                'aria-label': `Delete Backtest`,
+                title: `Delete Backtest`,
                 disabled:
-                  entry.kind === 'run'
-                    ? !['succeeded', 'failed', 'cancelled'].includes(
-                        entry.run.status,
-                      ) || deletingRunIds.value.has(entry.run.run_id)
-                    : !['completed', 'cancelled'].includes(
-                        entry.batch.status,
-                      ) || deletingBatchIds.value.has(entry.batch.batch_id),
+                  !['completed', 'cancelled'].includes(entry.backtest.status) ||
+                  deletingBacktestIds.value.has(entry.backtest.backtest_id),
                 onClick: (event: MouseEvent) => {
                   event.stopPropagation();
-                  if (entry.kind === 'run') void deleteRun(entry.run);
-                  else void deleteBatch(entry.batch);
+                  void deleteBacktest(entry.backtest);
                 },
               },
               { icon: () => h(NIcon, { component: TrashOutline }) },

@@ -1,18 +1,17 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import { afterEach, beforeEach, vi } from 'vitest';
+import { afterEach, beforeEach, onTestFinished, vi } from 'vitest';
 import {
   fetchStrategyCatalog,
-  fetchSweepCapabilities,
-  previewParameterSweep,
-  submitBacktestBatch,
-  submitBacktestRun,
+  fetchBacktestCapabilities,
+  previewBacktest,
+  submitBacktest,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type {
-  SweepPreview,
-  SweepPreviewRequest,
+  BacktestPreview,
+  BacktestPreviewRequest,
 } from '@/types/backtesterContracts';
 import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 
@@ -69,14 +68,16 @@ export const reuseNames = [
 export let pinia: ReturnType<typeof createPinia>;
 
 export function openDrawer() {
-  return mount(BacktestCreationDrawer, {
+  const wrapper = mount(BacktestCreationDrawer, {
     props: { show: true },
     global: { plugins: [pinia] },
     attachTo: document.body,
   });
+  onTestFinished(() => wrapper.unmount());
+  return wrapper;
 }
 
-export const sweepCatalog = [
+export const selectionsCatalog = [
   {
     strategy_id: 'sma_crossover',
     strategy_version: 1,
@@ -94,12 +95,12 @@ export const sweepCatalog = [
 ];
 
 export function previewFor(
-  request: SweepPreviewRequest,
+  request: BacktestPreviewRequest,
   count: number,
-): SweepPreview {
+): BacktestPreview {
   const market = { symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' };
   return {
-    max_sweep_candidate_count: 1000,
+    max_backtest_candidate_count: 1000,
     normalized_selections: {
       markets: [market],
       timeframes: ['M1'],
@@ -116,7 +117,7 @@ export function previewFor(
       parameters: { fast_window: 5 },
       allowed_directions: 'long_and_short',
       status: 'ready',
-      member_ordinal: candidate_ordinal,
+      run_ordinal: candidate_ordinal,
       request: {
         ...request,
         symbols: ['EURUSD'],
@@ -141,36 +142,7 @@ export async function advancePreview() {
   await flushPromises();
 }
 
-export function standaloneSetup() {
-  beforeEach(() => {
-    pinia = createPinia();
-    setActivePinia(pinia);
-    useMarketsStore().all = [
-      {
-        symbol_id: 1,
-        symbol: 'EURUSD',
-        exchange: 'FX',
-        market_type: 'Forex',
-        min_move: 0.00001,
-        timezone: 'UTC',
-      },
-    ];
-    vi.mocked(fetchStrategyCatalog).mockReset();
-    vi.mocked(fetchStrategyCatalog).mockResolvedValue(catalog);
-    vi.mocked(submitBacktestRun).mockReset();
-    vi.mocked(submitBacktestBatch).mockReset();
-    vi.mocked(fetchSweepCapabilities).mockReset();
-    vi.mocked(fetchSweepCapabilities).mockResolvedValue({
-      max_sweep_candidate_count: 1000,
-      batch_acceptance_enabled: false,
-    });
-  });
-  afterEach(() => {
-    document.body.innerHTML = '';
-  });
-}
-
-export function sweepSetup() {
+export function creationSetup() {
   beforeEach(() => {
     vi.useFakeTimers();
     pinia = createPinia();
@@ -185,23 +157,54 @@ export function sweepSetup() {
         timezone: 'UTC',
       },
     ];
-    useBacktestWorkspaceStore().creationSweepDraft = {
-      isSweep: true,
+    vi.mocked(fetchStrategyCatalog).mockReset();
+    vi.mocked(fetchStrategyCatalog).mockResolvedValue(catalog);
+    vi.mocked(submitBacktest).mockReset();
+    vi.mocked(previewBacktest).mockImplementation(async (request) =>
+      previewFor(request, 1),
+    );
+    vi.mocked(submitBacktest).mockReset();
+    vi.mocked(fetchBacktestCapabilities).mockReset();
+    vi.mocked(fetchBacktestCapabilities).mockResolvedValue({
+      max_backtest_candidate_count: 1000,
+    });
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.useRealTimers();
+  });
+}
+
+export function selectionsSetup() {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    pinia = createPinia();
+    setActivePinia(pinia);
+    useMarketsStore().all = [
+      {
+        symbol_id: 1,
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        market_type: 'Forex',
+        min_move: 0.00001,
+        timezone: 'UTC',
+      },
+    ];
+    useBacktestWorkspaceStore().creationSelections = {
       marketIds: [1],
       timeframes: ['M1'],
       allowedDirections: ['long_and_short'],
       parameters: {},
     };
     vi.mocked(fetchStrategyCatalog).mockReset();
-    vi.mocked(fetchStrategyCatalog).mockResolvedValue(sweepCatalog);
-    vi.mocked(previewParameterSweep).mockReset();
-    vi.mocked(fetchSweepCapabilities).mockReset();
-    vi.mocked(fetchSweepCapabilities).mockResolvedValue({
-      max_sweep_candidate_count: 1000,
-      batch_acceptance_enabled: false,
+    vi.mocked(fetchStrategyCatalog).mockResolvedValue(selectionsCatalog);
+    vi.mocked(previewBacktest).mockReset();
+    vi.mocked(fetchBacktestCapabilities).mockReset();
+    vi.mocked(fetchBacktestCapabilities).mockResolvedValue({
+      max_backtest_candidate_count: 1000,
     });
-    vi.mocked(submitBacktestRun).mockReset();
-    vi.mocked(submitBacktestBatch).mockReset();
+    vi.mocked(submitBacktest).mockReset();
+    vi.mocked(submitBacktest).mockReset();
   });
   afterEach(() => {
     document.body.innerHTML = '';

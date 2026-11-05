@@ -4,20 +4,14 @@
       v-model:value="search"
       data-testid="workspace-search"
       clearable
-      placeholder="Search saved runs and batches"
-      aria-label="Search saved runs and batches"
+      placeholder="Search Backtests"
+      aria-label="Search Backtests"
     />
     <BaseSelect
       v-model:value="statusFilter"
       data-testid="workspace-status-filter"
       aria-label="Filter by status"
       :options="statusOptions"
-    />
-    <BaseSelect
-      v-model:value="typeFilter"
-      data-testid="workspace-type-filter"
-      aria-label="Filter by type"
-      :options="typeOptions"
     />
     <BaseSelect
       v-model:value="marketFilter"
@@ -53,13 +47,11 @@ const props = defineProps<{ history: BacktestWorkspace['history'] }>();
 const {
   search,
   statusFilter,
-  typeFilter,
   marketFilter,
   strategyFilter,
   timeframeFilter,
   failedFilter,
   statusOptions,
-  typeOptions,
   marketOptions,
   strategyOptions,
   timeframeOptions,
@@ -69,7 +61,7 @@ const {
 <style scoped>
 .filters {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(6, minmax(110px, 1fr));
+  grid-template-columns: minmax(220px, 2fr) repeat(5, minmax(110px, 1fr));
   gap: var(--design-space-sm);
   margin-bottom: var(--design-space-xl);
 }

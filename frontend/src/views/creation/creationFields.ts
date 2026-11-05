@@ -2,8 +2,8 @@ import { computed, type Ref } from 'vue';
 import type { SelectOption } from 'naive-ui';
 import type {
   StrategyParameterSchema,
-  SweepDraftState,
-  SweepParameterDraft,
+  BacktestSelectionsDraft,
+  ParameterDraft,
 } from '@/types/backtesterContracts';
 import type { useMarketsStore } from '@/stores/marketsStore';
 import type { DraftRequest } from './creationRequest';
@@ -11,7 +11,7 @@ import { choiceValues } from './creationParameters';
 
 export function creationFields(
   draft: Ref<DraftRequest>,
-  sweep: Ref<SweepDraftState>,
+  selections: Ref<BacktestSelectionsDraft>,
   fieldErrors: Ref<Record<string, string>>,
   markets: ReturnType<typeof useMarketsStore>,
 ) {
@@ -29,10 +29,8 @@ export function creationFields(
           market.exchange === draft.value.exchange,
       )?.symbol_id,
   );
-  function sweepParameter(
-    parameter: StrategyParameterSchema,
-  ): SweepParameterDraft {
-    return (sweep.value.parameters[parameter.name] ??= {
+  function parameterInput(parameter: StrategyParameterSchema): ParameterDraft {
+    return (selections.value.parameters[parameter.name] ??= {
       mode: 'constant',
       valuesText: '',
       stringValues: [],
@@ -45,13 +43,13 @@ export function creationFields(
   }
 
   function stringValues(parameter: StrategyParameterSchema): string[] {
-    const input = sweepParameter(parameter);
+    const input = parameterInput(parameter);
     return (input.stringValues ??=
       input.valuesText === '' ? [] : input.valuesText.split('\n'));
   }
 
   function selectedChoiceIndexes(parameter: StrategyParameterSchema): number[] {
-    const input = sweepParameter(parameter);
+    const input = parameterInput(parameter);
     if (!input.selectedChoiceValues) return input.choiceIndexes;
     return input.selectedChoiceValues
       .map((value) =>
@@ -60,31 +58,15 @@ export function creationFields(
       .filter((index) => index >= 0);
   }
 
-  function setSweepChoices(
+  function setParameterChoices(
     parameter: StrategyParameterSchema,
     indexes: number[],
   ): void {
-    const input = sweepParameter(parameter);
+    const input = parameterInput(parameter);
     input.choiceIndexes = indexes;
     input.selectedChoiceValues = indexes.map(
       (index) => choiceValues(parameter)[index],
     );
-  }
-
-  function setRunType(value: string): void {
-    sweep.value.isSweep = value === 'sweep';
-    if (sweep.value.isSweep) {
-      if (!sweep.value.marketIds.length && marketValue.value !== undefined) {
-        sweep.value.marketIds = [marketValue.value];
-      }
-      if (!sweep.value.timeframes.length)
-        sweep.value.timeframes = [draft.value.timeframe];
-      if (!sweep.value.allowedDirections.length) {
-        sweep.value.allowedDirections = [
-          draft.value.execution.allowed_directions,
-        ];
-      }
-    }
   }
 
   function selectValue(parameter: StrategyParameterSchema): number | null {
@@ -121,6 +103,7 @@ export function creationFields(
   function selectMarket(symbolId: number): void {
     const market = markets.all.find((item) => item.symbol_id === symbolId);
     if (!market) return;
+    selections.value.marketIds = [symbolId];
     draft.value.symbols = [market.symbol];
     draft.value.exchange = market.exchange;
     delete fieldErrors.value.market;
@@ -133,11 +116,10 @@ export function creationFields(
   return {
     marketOptions,
     marketValue,
-    sweepParameter,
+    parameterInput,
     stringValues,
     selectedChoiceIndexes,
-    setSweepChoices,
-    setRunType,
+    setParameterChoices,
     selectValue,
     setChoice,
     setParameter,

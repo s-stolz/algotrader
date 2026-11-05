@@ -4,40 +4,39 @@ import { NInput, NInputNumber, NSelect } from 'naive-ui';
 import { describe, expect, it, vi } from 'vitest';
 import {
   fetchStrategyCatalog,
-  fetchSweepCapabilities,
-  previewParameterSweep,
-  submitBacktestBatch,
+  fetchBacktestCapabilities,
+  previewBacktest,
+  submitBacktest,
 } from '@/api/backtesterClient';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 
-import type { BacktestBatch } from '@/types/backtesterContracts';
-import { reuseBatch } from '@/views/backtestReuse';
+import type { Backtest } from '@/types/backtesterContracts';
+import { reuseBacktest } from '@/views/backtestReuse';
 import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 import {
   reuseNames,
   pinia,
-  sweepCatalog,
+  selectionsCatalog,
   previewFor,
   advancePreview,
-  sweepSetup,
+  selectionsSetup,
 } from './creationFixtures';
 vi.mock('@/api/backtesterClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/backtesterClient')>()),
   fetchStrategyCatalog: vi.fn(),
-  submitBacktestRun: vi.fn(),
-  submitBacktestBatch: vi.fn(),
-  previewParameterSweep: vi.fn(),
-  fetchSweepCapabilities: vi.fn(),
+  submitBacktest: vi.fn(),
+  previewBacktest: vi.fn(),
+  fetchBacktestCapabilities: vi.fn(),
 }));
 
-describe('batch reuse', () => {
-  sweepSetup();
+describe('backtest reuse', () => {
+  selectionsSetup();
 
   it.each(reuseNames)(
-    'revalidates a copied batch name %s with a fresh identity',
+    'revalidates a copied backtest name %s with a fresh identity',
     async (name, proposed, chosen, expected) => {
       const batch = {
-        batch_id: 'saved-batch',
+        backtest_id: 'saved-batch',
         name,
         submission_id: 'old-submission',
         strategy_id: 'sma_crossover',
@@ -69,7 +68,6 @@ describe('batch reuse', () => {
               commission_bps: 0,
               slippage_bps: 0,
             },
-            persist_result: false,
             run_metadata: null,
           },
           normalized_selections: {
@@ -110,15 +108,15 @@ describe('batch reuse', () => {
             },
           ],
         },
-      } as unknown as BacktestBatch;
+      } as unknown as Backtest;
       const original = structuredClone(batch);
-      useBacktestWorkspaceStore().createFromSaved(reuseBatch(batch));
+      useBacktestWorkspaceStore().createFromSaved(reuseBacktest(batch));
       vi.mocked(fetchStrategyCatalog).mockResolvedValue([
         {
-          ...sweepCatalog[0],
+          ...selectionsCatalog[0],
           strategy_version: 2,
           parameters: [
-            ...sweepCatalog[0].parameters,
+            ...selectionsCatalog[0].parameters,
             {
               name: 'slow_window',
               type: 'int',
@@ -129,11 +127,10 @@ describe('batch reuse', () => {
           ],
         },
       ]);
-      vi.mocked(fetchSweepCapabilities).mockResolvedValue({
-        max_sweep_candidate_count: 1000,
-        batch_acceptance_enabled: true,
+      vi.mocked(fetchBacktestCapabilities).mockResolvedValue({
+        max_backtest_candidate_count: 1000,
       });
-      vi.mocked(previewParameterSweep)
+      vi.mocked(previewBacktest)
         .mockRejectedValueOnce(
           new Error('Raw candidate count exceeds current limit'),
         )
@@ -151,12 +148,12 @@ describe('batch reuse', () => {
             ],
           };
           delete result.candidates[1].request;
-          delete result.candidates[1].member_ordinal;
+          delete result.candidates[1].run_ordinal;
           result.ready_count = 1;
           result.excluded_count = 1;
           return result;
         });
-      vi.mocked(submitBacktestBatch).mockResolvedValue('fresh-batch');
+      vi.mocked(submitBacktest).mockResolvedValue('fresh-batch');
       let wrapper = mount(BacktestCreationDrawer, {
         props: { show: true },
         global: { plugins: [pinia] },
@@ -169,17 +166,6 @@ describe('batch reuse', () => {
           .find(
             (input) => input.attributes('data-testid') === 'creation-name',
           )!;
-      expect(nameInput().props('value')).toBe(proposed);
-      const runType = wrapper
-        .findAllComponents(NSelect)
-        .find(
-          (select) => select.attributes('data-testid') === 'creation-run-type',
-        )!;
-      runType.vm.$emit('update:value', 'standalone');
-      await flushPromises();
-      expect(nameInput().props('value')).toBe(proposed);
-      runType.vm.$emit('update:value', 'sweep');
-      await advancePreview();
       expect(nameInput().props('value')).toBe(proposed);
       nameInput().vm.$emit('update:value', chosen);
       await flushPromises();
@@ -207,16 +193,18 @@ describe('batch reuse', () => {
       expect(document.body.textContent).toContain(
         'Saved Market ID 9 unavailable',
       );
-      expect(previewParameterSweep).not.toHaveBeenCalled();
+      expect(previewBacktest).not.toHaveBeenCalled();
       const market = wrapper
         .findAllComponents(NSelect)
-        .find((select) => select.attributes('data-testid') === 'sweep-markets');
+        .find(
+          (select) => select.attributes('data-testid') === 'selections-markets',
+        );
       market!.vm.$emit('update:value', [1]);
       await advancePreview();
       expect(document.body.textContent).toContain(
         'Raw candidate count exceeds current limit',
       );
-      expect(submitBacktestBatch).not.toHaveBeenCalled();
+      expect(submitBacktest).not.toHaveBeenCalled();
       const capital = wrapper
         .findAllComponents(NInputNumber)
         .find(
@@ -224,15 +212,15 @@ describe('batch reuse', () => {
         );
       capital!.vm.$emit('update:value', 12_000);
       await advancePreview();
-      expect(previewParameterSweep).toHaveBeenCalledWith(
+      expect(previewBacktest).toHaveBeenCalledWith(
         expect.objectContaining({
           markets: [1],
           timeframes: ['H1', 'M1'],
-          allowed_directions: ['short_only'],
+          allowed_directions: ['short_only', 'long_and_short'],
           strategy: { strategy_id: 'sma_crossover', strategy_version: 2 },
           parameter_axes: {
             fast_window: { mode: 'range', start: 3, stop: 5, step: 2 },
-            slow_window: { mode: 'constant', value: 30 },
+            slow_window: { mode: 'constant', value: 20 },
           },
         }),
       );
@@ -240,24 +228,24 @@ describe('batch reuse', () => {
         document.querySelectorAll('.preview-counts dd')[2]?.textContent,
       ).toBe('1');
       (
-        document.querySelector('[data-testid="sweep-submit"]') as HTMLElement
+        document.querySelector('[data-testid="creation-submit"]') as HTMLElement
       ).click();
       await flushPromises();
-      expect(submitBacktestBatch).toHaveBeenCalledWith(
+      expect(submitBacktest).toHaveBeenCalledWith(
         expect.anything(),
         expect.not.stringContaining('old-submission'),
         expected,
       );
+      expect(vi.mocked(submitBacktest).mock.calls[0][0]).not.toHaveProperty(
+        'name',
+      );
+      expect(vi.mocked(submitBacktest).mock.calls[0][0]).not.toHaveProperty(
+        'backtest_id',
+      );
       expect(
-        vi.mocked(submitBacktestBatch).mock.calls[0][0],
+        vi.mocked(previewBacktest).mock.calls.at(-1)?.[0],
       ).not.toHaveProperty('name');
-      expect(
-        vi.mocked(submitBacktestBatch).mock.calls[0][0],
-      ).not.toHaveProperty('batch_id');
-      expect(
-        vi.mocked(previewParameterSweep).mock.calls.at(-1)?.[0],
-      ).not.toHaveProperty('name');
-      expect(wrapper.emitted('submitted-batch')?.[0]).toEqual(['fresh-batch']);
+      expect(wrapper.emitted('submitted')?.[0]).toEqual(['fresh-batch']);
       expect(batch).toEqual(original);
       wrapper.unmount();
     },

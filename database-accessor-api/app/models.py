@@ -46,10 +46,10 @@ candles = Table(
 
 json_document = JSON().with_variant(JSONB(), "postgresql")
 
-backtest_batches = Table(
-    "backtest_batches",
+backtests = Table(
+    "backtests",
     metadata,
-    Column("batch_id", String(36), primary_key=True),
+    Column("backtest_id", String(36), primary_key=True),
     Column("submission_id", String(36), nullable=False, unique=True),
     Column("name", String(120), nullable=True),
     Column("status", String(16), nullable=False),
@@ -66,13 +66,13 @@ backtest_batches = Table(
     Column("raw_count", Integer, nullable=False),
     Column("member_count", Integer, nullable=False),
     Column("excluded_count", Integer, nullable=False),
-    CheckConstraint("raw_count = member_count + excluded_count", name="batch_counts_check"),
+    CheckConstraint("raw_count = member_count + excluded_count", name="backtest_counts_check"),
     CheckConstraint(
         "(cancel_requested_at IS NULL AND cancellation_source IS NULL "
         "AND cancellation_reason IS NULL) OR "
         "(cancel_requested_at IS NOT NULL AND cancellation_source IS NOT NULL "
         "AND cancellation_reason IS NOT NULL)",
-        name="backtest_batch_cancellation_check",
+        name="backtest_cancellation_check",
     ),
 )
 
@@ -80,7 +80,6 @@ backtest_runs = Table(
     "backtest_runs",
     metadata,
     Column("run_id", String(36), primary_key=True),
-    Column("name", String(120), nullable=True),
     Column("status", String(16), nullable=False),
     Column("submitted_at", TIMESTAMP(timezone=True), nullable=False),
     Column("started_at", TIMESTAMP(timezone=True), nullable=True),
@@ -97,12 +96,12 @@ backtest_runs = Table(
     Column("diagnostics", json_document, nullable=True),
     Column("replay_descriptor", json_document, nullable=True),
     Column(
-        "batch_id",
+        "backtest_id",
         String(36),
-        ForeignKey("backtest_batches.batch_id", ondelete="CASCADE"),
-        nullable=True,
+        ForeignKey("backtests.backtest_id", ondelete="CASCADE"),
+        nullable=False,
     ),
-    Column("member_ordinal", Integer, nullable=True),
+    Column("run_ordinal", Integer, nullable=False),
     CheckConstraint(
         "status IN ('queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled')",
         name="backtest_runs_status_check",
@@ -122,21 +121,20 @@ backtest_runs = Table(
     ),
     Index("idx_backtest_runs_submitted_at", "submitted_at", "run_id"),
     Index("idx_backtest_runs_status_submitted_at", "status", "submitted_at", "run_id"),
-    Index("uq_backtest_batch_ordinal", "batch_id", "member_ordinal", unique=True),
+    Index("uq_backtest_ordinal", "backtest_id", "run_ordinal", unique=True),
     CheckConstraint(
-        "(batch_id IS NULL AND member_ordinal IS NULL) OR "
-        "(batch_id IS NOT NULL AND member_ordinal >= 0)",
+        "run_ordinal >= 0",
         name="backtest_member_identity_check",
     ),
 )
 
-backtest_batch_events = Table(
-    "backtest_batch_events",
+backtest_events = Table(
+    "backtest_events",
     metadata,
     Column(
-        "batch_id",
+        "backtest_id",
         String(36),
-        ForeignKey("backtest_batches.batch_id", ondelete="CASCADE"),
+        ForeignKey("backtests.backtest_id", ondelete="CASCADE"),
         nullable=False,
     ),
     Column("revision", Integer, nullable=False),
@@ -147,17 +145,17 @@ backtest_batch_events = Table(
     Column("reason", Text, nullable=True),
     Column("trigger_run_id", String(36), nullable=True),
     Column("command_id", String(36), nullable=True),
-    PrimaryKeyConstraint("batch_id", "revision"),
-    Index("uq_backtest_batch_command", "batch_id", "command_id", unique=True),
+    PrimaryKeyConstraint("backtest_id", "revision"),
+    Index("uq_backtest_command", "backtest_id", "command_id", unique=True),
 )
 
-backtest_batch_commands = Table(
-    "backtest_batch_commands",
+backtest_commands = Table(
+    "backtest_commands",
     metadata,
     Column(
-        "batch_id",
+        "backtest_id",
         String(36),
-        ForeignKey("backtest_batches.batch_id", ondelete="CASCADE"),
+        ForeignKey("backtests.backtest_id", ondelete="CASCADE"),
         nullable=False,
     ),
     Column("command_id", String(36), nullable=False),
@@ -165,10 +163,8 @@ backtest_batch_commands = Table(
     Column("status", String(16), nullable=False),
     Column("lifecycle_revision", Integer, nullable=False),
     Column("occurred_at", TIMESTAMP(timezone=True), nullable=False),
-    PrimaryKeyConstraint("batch_id", "command_id"),
-    CheckConstraint(
-        "command IN ('pause', 'resume', 'cancel')", name="backtest_batch_command_type_check"
-    ),
+    PrimaryKeyConstraint("backtest_id", "command_id"),
+    CheckConstraint("command IN ('pause', 'resume', 'cancel')", name="backtest_command_type_check"),
 )
 
 backtest_execution_slot = Table(
@@ -196,18 +192,13 @@ backtest_queue_turns = Table(
         primary_key=True,
         autoincrement=True,
     ),
-    Column("run_id", String(36), ForeignKey("backtest_runs.run_id"), nullable=True),
     Column(
-        "batch_id",
+        "backtest_id",
         String(36),
-        ForeignKey("backtest_batches.batch_id", ondelete="CASCADE"),
-        nullable=True,
+        ForeignKey("backtests.backtest_id", ondelete="CASCADE"),
+        nullable=False,
     ),
-    CheckConstraint(
-        "(run_id IS NULL) <> (batch_id IS NULL)", name="backtest_queue_turn_identity_check"
-    ),
-    Index("uq_backtest_queue_standalone", "run_id", unique=True),
-    Index("uq_backtest_queue_batch", "batch_id", unique=True),
+    Index("uq_backtest_queue_backtest", "backtest_id", unique=True),
 )
 
 backtest_worker_heartbeats = Table(

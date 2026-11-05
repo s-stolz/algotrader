@@ -8,7 +8,7 @@ import os
 import signal
 import sys
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from multiprocessing import get_context
 from multiprocessing.connection import Connection
 from multiprocessing.process import BaseProcess
@@ -319,7 +319,7 @@ def execute_backtest_child(
     """Resolve and execute the immutable request entirely inside the child."""
 
     try:
-        request = replace(snapshot.to_request(), persist_result=False)
+        request = snapshot.to_request()
         if request.strategy.strategy_version is None:
             raise StrategyVersionUnavailableError("strategy_version_unavailable")
         try:

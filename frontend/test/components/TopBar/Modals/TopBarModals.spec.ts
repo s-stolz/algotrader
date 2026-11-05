@@ -4,7 +4,6 @@ import { defineComponent, h } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  deleteBacktestRun,
   fetchBacktestClosedTrades,
   getBacktestRun,
   listBacktestRuns,
@@ -16,7 +15,6 @@ import type { Market } from '@/types/contracts';
 import TopBarModals from '@/components/TopBar/Modals/TopBarModals.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
-  deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
   getBacktestRun: vi.fn(),
   listBacktestRuns: vi.fn(),
@@ -159,11 +157,9 @@ describe('TopBarModals', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     updateCurrentMarket.mockReset();
-    vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(listBacktestRuns).mockReset();
-    vi.mocked(deleteBacktestRun).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
     vi.mocked(getBacktestRun).mockResolvedValue(backtestRun());
     vi.mocked(listBacktestRuns).mockResolvedValue([]);
@@ -256,6 +252,8 @@ describe('TopBarModals', () => {
 
 function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
   return {
+    backtest_id: 'backtest-1',
+    run_ordinal: 0,
     run_id: 'run-123',
     status: 'succeeded',
     submitted_at_ms: 1_780_921_805_123,
@@ -287,7 +285,6 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
         commission_bps: 1,
         slippage_bps: 0.5,
       },
-      persist_result: true,
       run_metadata: null,
     },
     result_schema_version: 3,

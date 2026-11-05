@@ -1,142 +1,150 @@
 # Backtest Contracts
 
-Read for changes to run/batch lifecycle, strategy identity, durable history, or
-Equity Replay. This is the shared contract reference linked by
-[root context](../../CONTEXT.md). Backtester owns domain policy and the public
-API; the accessor owns atomic storage, and shared clients pass documents through.
+Read for Backtest creation, lifecycle, copying, storage, or Equity Replay changes.
+Backtester owns domain policy and the public API; the accessor owns atomic
+storage, and shared clients pass documents through.
 
-## Requests and Strategy Identity
+## Backtests and Runs
 
-- A **Backtest Run** is one durable execution with an immutable resolved request.
-  Current request schema version 3 records exact Strategy Version and defaults;
-  version 2 remains readable without inventing a current strategy identity.
-  Both use Allowed Directions rather than legacy `allow_short`.
-- **Strategy Version** is the positive, monotonically increasing integer paired
-  with a registered strategy ID. Bump it for public parameter or behavior
-  changes. It identifies the declared strategy contract, not the complete runtime,
-  and does not retain retired code for execution.
-- The **Current Strategy Catalog** comes from annotated single-file builders.
-  Their signatures define the **Strategy Parameter Schema**: names, order,
-  types, defaults, and independent constraints. Boolean choices are inherent;
-  explicit choices restrict non-Boolean parameters.
-- **Strategy Parameter Validation** resolves the schema first, then applies an
-  optional pure strategy validator for cross-parameter relationships. Standalone
-  submissions and sweeps use the same path without loading Candles.
-- Queued requests with unavailable exact versions, including unversioned legacy
-  requests, fail before Candle loading with `strategy_version_unavailable`.
-  Already executing children retain loaded code; saved history remains readable.
-- **Create from this** opens an editable draft against the current catalog from a
-  saved request or batch definition. Submission creates independent history;
-  reuse applies the current Strategy Version automatically, retaining explicit
-  saved parameter values and resolving previously defaulted parameters against
-  current defaults. The Workspace shows the version switch and parameter changes;
-  invalid copied values block submission. Named
-  sources propose their saved top-level name plus ` (copy)` in the editable
-  creation draft; shorten the source portion by Unicode characters to retain
-  the suffix within 120 characters. Unnamed sources leave the draft empty.
-  Submissions use the ordinary naming contract with fresh Run/Batch identity
-  and never rename, mutate, or link the source experiment.
+A **Backtest** is an immutable definition and its nonempty collection of **Runs**.
+A Run executes one resolved combination of Market, Timeframe, Strategy Version,
+parameters, and Allowed Directions. Every Run belongs to exactly one Backtest and
+has a contiguous zero-based `run_ordinal`, displayed as `Run #N` starting at one.
+Fixed inputs produce one Run through the same creation, scheduling, inspection,
+comparison, and control flow as multiple combinations.
+
+Creation selects Markets, Timeframes, Allowed Directions, and parameter axes.
+Each parameter uses a fixed value, explicit values, or a numeric range.
+Preview deduplicates typed values and bounds the Cartesian product before
+validation. Invalid independent values reject the definition; cross-parameter
+rejections appear as excluded candidates. Candidate ordinals retain full-grid
+positions; Run ordinals cover only ready candidates. Preview returns every row
+and writes no history. At least one ready candidate is required for acceptance.
+
+Acceptance revalidates against current Markets, catalog, and candidate limit.
+The Backtest, all Runs, normalized definition, counts, initial event, and
+**Strategy Metadata Snapshot** commit together. That snapshot preserves the
+strategy identity and public parameter schema. An identical normalized definition
+with the same submission ID returns the original Backtest, including its original
+name; changing the definition conflicts. Rerunning uses a fresh submission ID.
+
+## Public resources
+
+- `POST /backtests/preview`: stateless expansion and validation.
+- `POST /backtests`: accept a Backtest and return `202` with its location.
+- `GET /backtests`, `GET /backtests/{backtest_id}`: history and overview.
+- `GET /backtests/{backtest_id}/runs` and `/events`: ordered Runs and lifecycle.
+- `POST /backtests/{backtest_id}/{pause|resume|cancel}`: durable controls.
+- `PATCH /backtests/{backtest_id}/name`: name-only update.
+- `DELETE /backtests/{backtest_id}`: delete an entire settled Backtest.
+- `/backtests/runs/{run_id}`: individual Run read; `/cancel`, `/fills`, `/trades`,
+  and `/equity-curve` expose execution controls and artifacts.
+
+The accessor uses `/backtests` for parents and `/backtest-runs` for executions.
+Run creation is part of atomic Backtest acceptance. Workspace routes identify a
+Backtest; its overview, Runs table, comparison tools, and selected Run inspector
+are the same for every Run count.
+
+## Strategy identity and copying
+
+**Strategy Version** is the positive, monotonically increasing integer paired
+with a registered strategy ID. Bump it for public parameter or behavior changes.
+It identifies the declared strategy contract, not the complete runtime, and does
+not retain retired code for execution. Request schema v3 records this identity
+and fully resolved parameter values.
+
+The **Current Strategy Catalog** comes from annotated single-file builders. Their
+signatures define names, order, types, defaults, and independent constraints.
+Boolean choices are inherent; explicit choices restrict other parameters.
+Validation resolves the schema before applying an optional pure cross-parameter
+validator, without loading Candles. Queued requests whose exact version is no
+longer available fail before Candle loading with `strategy_version_unavailable`.
+Already executing children retain their loaded code.
+
+**Create from this** copies the saved configuration into an independent editable
+draft. Copying a Backtest retains ordered selections, parameter modes, explicit
+values, and original range bounds/steps. Saved resolved defaults become explicit
+fixed values: a saved value of 20 stays 20 even if today's default is 30. Copying
+a Run fixes every axis to that Run's actual values. Both retain execution settings.
+
+The draft adopts the current Strategy Version and shows the existing version and
+schema change indicators. Removed parameters are omitted; newly introduced
+parameters use current defaults. Invalid retained values block preview/submission.
+A fresh draft or deliberate strategy selection resets all parameter values and
+modes to current defaults. Daily schedule optimization and a larger creation-form
+redesign are separate work.
 
 ## Experiment Names
 
-Standalone runs and whole batches carry one nullable top-level `name`, outside
-immutable execution requests and accepted sweep definitions. Creation accepts
-that field separately; list/detail responses return the saved field. Members
-have null names and display their existing zero-based ordinal as `Run #N` with
-one-based presentation. Strategy names and versions keep their own meaning.
+A Backtest carries one nullable top-level `name`, outside its immutable definition
+and Run requests. Runs use their ordinal and have no independent name. Copying a
+named Backtest proposes its name plus ` (copy)`, truncating the source portion to
+keep the total within 120 Unicode characters. Unnamed Backtests and copied Runs
+start with an empty draft name.
 
 Names allow duplicates. Absent, empty, or whitespace-only values normalize to
-null; surrounding whitespace is trimmed. Reject any line separator (including
-CR/LF and Unicode line separators) in nonempty names before trimming, and names longer than 120
-Unicode characters after trimming. Frontend, public API, and storage apply the
-same rules. `run_metadata.name` and `run_metadata.label` are rejected on new
-submissions; unrelated metadata remains supported. Sweep preview does not accept
-a name and remains stateless; batch acceptance persists the name separately
-without copying it into members or the accepted definition. Retrying a batch
-submission retains its original accepted name, alongside its immutable definition.
+null; trim surrounding whitespace. Reject line separators in nonempty input and
+names longer than 120 Unicode characters after trimming. Frontend, API, and
+storage share those rules. `run_metadata.name` and `.label` are rejected;
+unrelated metadata remains supported. Preview is name-free.
 
-V017 transfers usable legacy names once, choosing metadata `name` before `label`
-(and falling back to a usable label when the name is invalid). Standalone names
-come from their request metadata; batch names come from accepted shared-request
-metadata. Invalid old values become null. V017 removes only those two metadata
-keys from run requests (including members) and accepted shared requests. This
-transactional cleanup is the explicit one-time exception to snapshot immutability;
-identities, artifacts, lifecycle, membership, and unrelated metadata are preserved.
-There is no legacy naming fallback after migration.
+History displays the saved name or `Unnamed backtest`. Search uses a trimmed,
+case-insensitive whole-query substring across individual names, full IDs,
+submission IDs, statuses, strategy IDs, Markets, and Timeframes, combined with
+filters. Naming accepts every lifecycle state and changes only `name`, preserving
+requests, events, revisions, timestamps, artifacts, and queue state.
 
-Workspace history, details, and name sorting/search use the saved name or exactly
-`Unnamed standalone run` / `Unnamed parameter sweep`. History and member rows
-show shortened UUIDs underneath; existing details/tooltips retain full IDs.
-Search matches a trimmed, case-insensitive whole-query substring against each
-individual displayed-name, full ID, submission ID, status, strategy ID, Market,
-or Timeframe field and combines with existing dropdown filters.
+## Lifecycle and results
 
-Public `PATCH /backtests/{run_id}/name` and
-`PATCH /backtests/batches/{batch_id}/name` take exactly `{ "name": string | null }`
-and return the identity plus the authoritative nullable name. The accessor
-primitives use `/backtests/{run_id}/name` and `/backtest-batches/{batch_id}/name`
-and return the updated storage record. Missing identities return 404, invalid or
-missing name fields return 422, and naming any batch member (including clearing)
-returns 409. Renaming accepts every lifecycle state and writes only `name`; it
-never changes execution snapshots, timestamps, artifacts, lifecycle revisions or
-events, membership, or queue state.
+Backtest control states are `queued`, `running`, `pausing`, `paused`,
+`cancelling`, `completed`, and `cancelled`. `running` means scheduling is enabled,
+including between Runs. Outcome counts are separate: a completed Backtest can
+contain failed or individually cancelled Runs. Failure does not stop other Runs.
+Settled progress includes success, failure, and cancellation; executed count
+includes success and failure.
 
-## Runs and Results
+- Pause blocks unstarted Runs while active work drains through `pausing` to `paused`.
+- Resume retracts a pending/completed pause. Remaining work rejoins the queue tail.
+- Cancel removes the turn, cancels queued Runs, and marks active work cancelling
+  atomically. Prior results remain. The Backtest becomes cancelled after all Runs
+  settle. Only cancelling the Backtest sets this parent state.
+- Command IDs are stable across retries; receipts retain the original status and
+  revision. Lifecycle revisions order durable commands and automatic transitions.
+  Events record prior/new state; no-op receipts add no transition.
 
 Run states are `queued`, `running`, `cancelling`, `succeeded`, `failed`, and
-`cancelled`. Submission persists a queued request and returns `202` with its
-location, without executing the engine. Only success exposes result artifacts;
-failures expose bounded sanitized errors while tracebacks stay in worker logs.
+`cancelled`. Queued cancellation settles immediately. Running cancellation retains
+the execution slot until verified process-tree exit and fenced settlement.
+Acceptance time, source, and reason are durable; retries retain that acceptance.
+Succeeded/failed Runs conflict with cancellation. Individual cancellation also
+advances the parent revision and records an event.
 
-- **Backtest Fill:** one simulated execution event, with execution side.
-- **Backtest Closed Trade:** a completed round trip with explicit long/short
-  direction, entry/exit, realized PnL, fees, exit reason, and nullable planned
-  `stop_loss_price` / `take_profit_price`. Direction comes from the trade record,
-  not fill order; planned prices may differ from actual exit prices.
-- New results use schema version 3; older result versions remain inspectable.
-  Lifecycle timestamps are normalized storage fields, requests are versioned
-  JSON, and Fills/Closed Trades are normalized, per-run sequence-ordered children.
-- History filters request attributes from immutable JSON; ordering is
-  `submitted_at DESC`, then `run_id ASC`, without pagination. Existing runs with
-  no log artifacts return empty lists; missing runs return not found.
-- **Cancel Backtest Run** is irreversible. Queued standalone/member runs become
-  `cancelled` immediately. Running runs become `cancelling` and retain their slot
-  until confirmed process-tree exit and fenced settlement. Acceptance time,
-  source, and reason are durable; repeats retain the original acceptance.
-  Succeeded/failed runs conflict. Accepted cancellation prevents normal completion.
-  Individual member cancellation advances batch revision and records a command
-  event even if batch control state stays the same.
-- Delete permits terminal standalone runs (`succeeded`, `failed`, `cancelled`) or
-  entire settled batches (`completed`, `cancelled`). Active work and direct member
-  deletion conflict. Storage rechecks under the slot lock and deletes artifacts,
-  members, command receipts, and events atomically with their parent.
+Only successful Runs expose result artifacts. Failures expose bounded sanitized
+errors; tracebacks remain in worker logs. Results use schema v3. A **Fill** is one
+execution with buy/sell side. A **Closed Trade** is a completed long/short round
+trip with entry, exit, realized PnL, fees, reason, and nullable planned protection
+prices. Planned prices can differ from actual exits. Artifacts are ordered by
+per-Run sequence. Missing Runs return not found; Runs without artifacts return
+empty lists.
 
-## Daily entry limit
+Deletion permits only entire settled Backtests (`completed`, `cancelled`). Storage
+rechecks all Runs under the execution-slot lock and removes parent, Runs, results,
+events, and command receipts atomically. Accepted requests and membership remain
+immutable until whole-Backtest deletion.
 
-`execution.max_entries_per_day` is an optional positive integer, independent of
-`daily_schedule`. Omitted or null means unlimited. It counts actual entries per
-UTC day and per run; see [entry semantics](../../backtester/STRATEGIES.md#daily-entry-limit).
-It is a shared execution setting for sweeps, not a strategy parameter axis.
-Enabled limits survive immutable snapshots, worker reconstruction, inspection,
-and editable reuse. Unlimited values are omitted from canonical snapshots so
-older request representations remain unchanged. No storage/schema migration is
-required. Booleans, fractional values, strings, zero, and negative limits are rejected.
+## Shared execution controls
 
-## Daily execution schedule
+`execution.max_entries_per_day` is an optional positive integer; omitted/null
+means unlimited. It counts actual entries per UTC day and Run. Booleans, fractional
+values, strings, zero, and negative limits are invalid. See
+[entry semantics](../../backtester/STRATEGIES.md#daily-entry-limit).
 
-`execution.daily_schedule` is optional and defaults to disabled (omitted or null).
-When enabled it contains integer `entry_start_minute_utc`,
-`last_entry_minute_utc`, and `exit_minute_utc`, with
-`0 <= entry_start < last_entry <= exit < 1440`. These are shared execution controls,
-not strategy parameters or sweep axes. Every sweep member retains the same
-schedule. See [engine timing rules](../../backtester/STRATEGIES.md#daily-execution-schedule).
-
-Enabled schedules survive request snapshots, worker reconstruction, historical
-inspection, and editable reuse. Disabled schedules are omitted from canonical
-snapshots, preserving existing request representations. Older requests without
-the field retain unrestricted execution; request/result schema versions and
-storage layout are unchanged. Unknown schedule fields and invalid boundaries
-are rejected before submission.
+`execution.daily_schedule` is optional. Enabled schedules contain integer
+`entry_start_minute_utc`, `last_entry_minute_utc`, and `exit_minute_utc`, satisfying
+`0 <= entry_start < last_entry <= exit < 1440`. These settings are shared by every
+Run, survive snapshots and copying, and are not optimization axes. Disabled
+controls are omitted from canonical snapshots. See
+[engine timing](../../backtester/STRATEGIES.md#daily-execution-schedule).
 
 ## Saved chart indicators
 
@@ -169,75 +177,35 @@ Overlays wait for matching Candle history before rendering. Missing installed
 indicators or invalid snapshots produce a chart error rather than a guessed
 configuration; legacy runs without snapshots still show their saved trades.
 
-## Batches and Sweeps
-
-A **Backtest Batch** preserves why a fixed, nonempty collection of runs belongs
-together. Each **Backtest Batch Member** has one immutable resolved request and a
-contiguous zero-based member ordinal; a run belongs to at most one batch.
-Standalone runs have null batch identity. Rerunning creates new history.
-
-A **Parameter Sweep** expands selected Markets, Timeframes, and parameter axes.
-Invalid independent dimension values reject the definition. Cross-parameter
-rejections are reported as excluded candidates before membership is created.
-Preview deduplicates typed values, bounds the raw product before validation,
-returns every Ready/Excluded row, and writes no history. Candidate ordinals retain
-full-grid positions; member ordinals cover only accepted candidates.
-
-Acceptance revalidates against current Markets, catalog, and candidate limit.
-The batch, all members, normalized definition, counts, initial event, and
-**Strategy Metadata Snapshot** commit together. The snapshot preserves strategy
-identity and public parameter schema for historical inspection. Retrying the same
-submission ID returns the accepted batch for an identical normalized definition;
-a changed definition conflicts.
-
-**Backtest Batch Lifecycle** is control state: `queued`, `running`, `pausing`,
-`paused`, `cancelling`, `completed`, or `cancelled`. `running` means scheduling is
-enabled even between members. **Backtest Batch Outcome** is derived member counts;
-a completed batch can include failures and individual cancellations. Only Cancel
-Batch makes the batch `cancelled`. Settled progress counts succeeded, failed, and
-cancelled members; executed count includes only succeeded and failed members.
-
-- **Pause Batch:** blocks unstarted members; active work drains through `pausing`
-  to `paused` without interruption.
-- **Resume Batch:** retracts a pending/completed pause and restores eligibility.
-  Remaining work joins the queue tail after active work settles.
-- **Cancel Batch:** accepts from queued/running/pausing/paused. One transaction
-  removes its turn, cancels queued members, marks active work cancelling, and
-  records acceptance provenance. Terminal results remain. The batch becomes
-  `cancelled` only once every member is terminal.
-- **Backtest Batch Lifecycle Revision:** monotonic ordering of commands and
-  automatic transitions by durable commit order. Caller command IDs are stable
-  across retries; receipts return the original status/revision, including no-ops.
-- **Backtest Batch Lifecycle Event:** append-only transition/command history,
-  ordered by revision, with prior/new state. Initial revision-zero and legacy
-  events have null prior state. No-op receipts add no transition event.
-
 ## Execution Slot and Queue
 
-One durable database slot covers claim through terminal persistence. A claim
-atomically consumes the earliest eligible turn and marks its run `running`.
-There is one turn per standalone run or eligible batch; a batch claims its lowest
-queued ordinal and rejoins the tail after settlement if work remains. Settlement
-commits outcome, artifacts, batch transition/event, next turn, and slot release
-in one owner-token-fenced transaction. All workers claim through this global queue;
-the tokenless run-update and completion endpoints have been retired.
+One durable database slot covers claim through terminal persistence. One turn
+exists per eligible Backtest. A claim atomically consumes the earliest turn and
+marks its lowest queued ordinal running. After settlement, remaining work joins
+the tail. Outcome, artifacts, parent transition/event, next turn, and slot release
+commit in one owner-token-fenced transaction.
 
 The slot has no expiry. Release requires verified child-tree exit and reaping.
-Uncertain exit or terminal persistence failure retains capacity and exposes an
-operational fault. Startup reconciles interrupted work only with a free, unfaulted
-slot: running becomes `failed/worker_interrupted`, accepted cancelling becomes
-cancelled, and queued history remains queued. See
-[worker recovery](../operations/backtest-worker-recovery.md) before clearing a slot.
+Uncertain exit or persistence failure retains capacity and exposes an operational
+fault. Startup reconciles interrupted work only with a free, unfaulted slot:
+running becomes failed/worker_interrupted, accepted cancellation becomes cancelled,
+and queued work remains queued. See [worker recovery](../operations/backtest-worker-recovery.md).
 
-Queue positions and worker heartbeat availability are advisory, separate from
-run outcomes. They cannot release capacity. Public queued batch entries identify
-the batch with null `run_id`; primitive queue state retains the next member ID for
-claims. A heartbeat must match a held slot's owner to establish its freshness.
-Workers include their stable process `worker_id` when claiming a run. Storage
-commits the initial owner-matching heartbeat with the claim, using database time;
-periodic heartbeats then maintain freshness. Heartbeat writes serialize with
-claims and cannot replace the current owner's heartbeat with a delayed idle or
-previous-owner update from the same worker. Every claim requires `worker_id`.
+Queue positions and heartbeat availability are advisory. Public queue entries
+identify the Backtest and next ordinal; internal state also carries the next Run
+ID for claiming. Active entries always include their Backtest ID and ordinal.
+Claims seed an owner-matching heartbeat with database time. Periodic heartbeats
+serialize with claims; delayed idle/previous-owner updates cannot overwrite the
+current owner's evidence. Every claim requires a worker ID.
+
+## Unified-model cutover
+
+V020 deliberately discards existing Backtest history and artifacts, renames the
+parent resources, and makes Run membership mandatory. There is no compatibility
+API or history conversion. Stop API and workers, verify the slot is free and
+unfaulted, apply migrations, then restart the matching services. The migration
+refuses a held or faulted slot and leaves Markets/Candles intact. Historical
+migrations remain immutable. See the [upgrade procedure](../operations/backtest-worker-recovery.md#upgrade-with-queued-or-running-work).
 
 ## Equity Replay
 
@@ -261,7 +229,7 @@ normalized to positive zero. Fingerprint compatibility must survive code changes
 The public API durably accepts cancellation before returning `cancelling`; worker
 acknowledgment is not required for acceptance. `cancelled` still requires verified
 process-tree exit and fenced terminal settlement. Queued cancellations settle
-immediately. Batch controls preserve the same atomic member/turn behavior.
+immediately. Backtest controls preserve the same atomic member/turn behavior.
 
 The API schedules a coalesced invalidation after every mutating backtest request,
 including ambiguous error responses. Publication failures retry while the process
@@ -295,7 +263,7 @@ The browser subscribes with `subscribeBacktests` and unsubscribes with
 change and health events. Each subscription/reconnection confirms continuity and
 triggers snapshot refreshes. Browser sockets receive broadcasts independently;
 they do not compete with worker consumer groups. Changed events coalesce refreshes
-of history, selected run/batch, and queue; result artifacts retain their existing
+of history, selected Backtest and Run, and queue; result artifacts retain their existing
 on-demand loading rules. Health updates require no recurring queue read.
 
 HTTP commands and reads remain on backtester-api. The browser retains last-good

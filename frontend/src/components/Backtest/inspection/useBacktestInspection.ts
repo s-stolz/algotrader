@@ -18,33 +18,33 @@ import {
   watch,
 } from 'vue';
 import {
-  controlBacktestBatch,
-  getBacktestBatch,
-  listBacktestBatchEvents,
-  listBacktestBatchMembers,
+  controlBacktest,
+  getBacktest,
+  listBacktestEvents,
+  listBacktestMembers,
 } from '@/api/backtesterClient';
 import type {
-  BacktestBatch,
-  BacktestBatchEvent,
+  Backtest,
+  BacktestEvent,
   BacktestRun,
 } from '@/types/backtesterContracts';
 
-export function useBatchInspection(
-  props: Readonly<{ batchId: string | null }>,
+export function useBacktestInspection(
+  props: Readonly<{ backtestId: string | null }>,
   callbacks: {
-    members: (batchId: string, runs: BacktestRun[]) => void;
+    members: (backtestId: string, runs: BacktestRun[]) => void;
     cancelled: () => void;
   },
 ) {
   const workspaceStore = useBacktestWorkspaceStore();
-  const selectedBatch = shallowRef<BacktestBatch | null>(null);
+  const selectedBacktest = shallowRef<Backtest | null>(null);
   const members = ref<BacktestRun[] | null>(null);
-  const events = ref<BacktestBatchEvent[] | null>(null);
+  const events = ref<BacktestEvent[] | null>(null);
   const detailError = ref<string | null>(null);
   const controlError = ref<string | null>(null);
   const controlPending = ref(false);
-  type BatchCommand = 'pause' | 'resume' | 'cancel';
-  const commandIds: Partial<Record<BatchCommand, string>> = {};
+  type BacktestCommand = 'pause' | 'resume' | 'cancel';
+  const commandIds: Partial<Record<BacktestCommand, string>> = {};
   let detailRevision = 0;
   let isActive = false;
   let readPending = false;
@@ -53,23 +53,23 @@ export function useBatchInspection(
   const nowMs = ref(Date.now());
   let clockTimer: ReturnType<typeof setInterval> | null = null;
   const canPause = computed(() =>
-    ['queued', 'running'].includes(selectedBatch.value?.status ?? ''),
+    ['queued', 'running'].includes(selectedBacktest.value?.status ?? ''),
   );
   const canControl = computed(() =>
     ['queued', 'running', 'pausing', 'paused'].includes(
-      selectedBatch.value?.status ?? '',
+      selectedBacktest.value?.status ?? '',
     ),
   );
   const isTerminal = computed(() =>
-    ['completed', 'cancelled'].includes(selectedBatch.value?.status ?? ''),
+    ['completed', 'cancelled'].includes(selectedBacktest.value?.status ?? ''),
   );
   const selections = computed(
-    () => selectedBatch.value?.accepted_definition.normalized_selections,
+    () => selectedBacktest.value?.accepted_definition.normalized_selections,
   );
   const progressPercent = computed(() => {
-    const batch = selectedBatch.value;
-    return batch?.total_count
-      ? Math.floor((batch.settled_count / batch.total_count) * 100)
+    const backtest = selectedBacktest.value;
+    return backtest?.total_count
+      ? Math.floor((backtest.settled_count / backtest.total_count) * 100)
       : 0;
   });
   const outcomes = computed(() =>
@@ -84,51 +84,50 @@ export function useBatchInspection(
       ] as const
     ).map((outcome) => ({
       ...outcome,
-      count: selectedBatch.value?.outcome_counts[outcome.status] ?? 0,
+      count: selectedBacktest.value?.outcome_counts[outcome.status] ?? 0,
     })),
   );
   const activeMember = computed(() =>
-    selectedBatch.value?.active_member_ordinal == null
+    selectedBacktest.value?.active_run_ordinal == null
       ? null
       : members.value?.find(
           (member) =>
-            member.member_ordinal ===
-            selectedBatch.value?.active_member_ordinal,
+            member.run_ordinal === selectedBacktest.value?.active_run_ordinal,
         ),
   );
   const statusLabel = computed(() => {
-    const batch = selectedBatch.value;
-    if (!batch) return '';
-    if (batch.status === 'completed' && batch.outcome_counts.failed > 0)
+    const backtest = selectedBacktest.value;
+    if (!backtest) return '';
+    if (backtest.status === 'completed' && backtest.outcome_counts.failed > 0)
       return 'Completed with failures';
-    return eventLabel(batch.status);
+    return eventLabel(backtest.status);
   });
   const activityMessage = computed(() => {
-    const batch = selectedBatch.value;
-    if (!batch) return '';
+    const backtest = selectedBacktest.value;
+    if (!backtest) return '';
     if (detailError.value)
       return 'Live activity is unavailable. Retrying automatically.';
-    switch (batch.status) {
+    switch (backtest.status) {
       case 'queued':
         return 'Waiting for an execution slot.';
       case 'running':
-        return batch.active_member_ordinal === null
+        return backtest.active_run_ordinal === null
           ? 'Waiting for the next run to start.'
-          : `Running #${batch.active_member_ordinal + 1} of ${batch.total_count}`;
+          : `Running #${backtest.active_run_ordinal + 1} of ${backtest.total_count}`;
       case 'pausing':
         return 'Pausing after the active run finishes.';
       case 'paused':
-        return 'Batch paused. Resume to continue queued runs.';
+        return 'Backtest paused. Resume to continue queued runs.';
       case 'cancelling':
         return 'Stopping active execution. Cancellation will finish after cleanup.';
       case 'cancelled':
-        return 'Batch cancelled. Previously completed results are still available.';
+        return 'Backtest cancelled. Previously completed results are still available.';
       case 'completed':
         return '';
     }
   });
   const activityIcon = computed(() => {
-    switch (selectedBatch.value?.status) {
+    switch (selectedBacktest.value?.status) {
       case 'completed':
         return CheckmarkCircleOutline;
       case 'paused':
@@ -144,12 +143,13 @@ export function useBatchInspection(
     }
   });
   const elapsed = computed(() => {
-    const batch = selectedBatch.value;
-    if (batch?.started_at_ms == null) return '—';
+    const backtest = selectedBacktest.value;
+    if (backtest?.started_at_ms == null) return '—';
     const seconds = Math.max(
       0,
       Math.floor(
-        ((batch.completed_at_ms ?? nowMs.value) - batch.started_at_ms) / 1000,
+        ((backtest.completed_at_ms ?? nowMs.value) - backtest.started_at_ms) /
+          1000,
       ),
     );
     if (seconds < 60) return `${seconds}s`;
@@ -174,7 +174,7 @@ export function useBatchInspection(
   }
   function parameterLabel(name: string): string {
     return (
-      selectedBatch.value?.strategy_metadata.parameters.find(
+      selectedBacktest.value?.strategy_metadata.parameters.find(
         (parameter) => parameter.name === name,
       )?.display_name ?? eventLabel(name)
     );
@@ -192,16 +192,16 @@ export function useBatchInspection(
   watch(
     () => workspaceStore.nameRevision,
     () => {
-      if (selectedBatch.value)
-        selectedBatch.value = workspaceStore.preserveBatchName(
-          selectedBatch.value,
+      if (selectedBacktest.value)
+        selectedBacktest.value = workspaceStore.preserveBacktestName(
+          selectedBacktest.value,
           -1,
         );
     },
   );
 
   async function loadDetail(
-    batchId: string,
+    backtestId: string,
     background = false,
   ): Promise<void> {
     if (!isActive) return;
@@ -213,10 +213,10 @@ export function useBatchInspection(
     const revision = ++detailRevision;
     const nameReadRevision = workspaceStore.nameRevision;
     try {
-      const [batch, loadedMembers, loadedEvents] = await Promise.all([
-        getBacktestBatch(batchId),
-        listBacktestBatchMembers(batchId),
-        listBacktestBatchEvents(batchId),
+      const [backtest, loadedMembers, loadedEvents] = await Promise.all([
+        getBacktest(backtestId),
+        listBacktestMembers(backtestId),
+        listBacktestEvents(backtestId),
       ]);
       if (revision !== detailRevision) return;
       for (const command of ['pause', 'resume', 'cancel'] as const) {
@@ -230,13 +230,13 @@ export function useBatchInspection(
         }
       }
       detailError.value = null;
-      selectedBatch.value = workspaceStore.preserveBatchName(
-        batch,
+      selectedBacktest.value = workspaceStore.preserveBacktestName(
+        backtest,
         nameReadRevision,
       );
       members.value = loadedMembers;
       events.value = loadedEvents;
-      callbacks.members(batchId, loadedMembers);
+      callbacks.members(backtestId, loadedMembers);
     } catch (error) {
       if (revision === detailRevision) {
         detailError.value =
@@ -245,35 +245,35 @@ export function useBatchInspection(
     } finally {
       if (revision === detailRevision) {
         readPending = false;
-        if (refreshAfterRead && isActive && props.batchId) {
+        if (refreshAfterRead && isActive && props.backtestId) {
           refreshAfterRead = false;
-          void loadDetail(props.batchId, true);
+          void loadDetail(props.backtestId, true);
         }
       }
     }
   }
 
-  async function control(command: BatchCommand): Promise<void> {
-    const batchId = props.batchId;
-    if (!batchId || controlPending.value) return;
+  async function control(command: BacktestCommand): Promise<void> {
+    const backtestId = props.backtestId;
+    if (!backtestId || controlPending.value) return;
     controlPending.value = true;
     controlError.value = null;
     const pending = commandIds[command] ?? crypto.randomUUID();
     commandIds[command] = pending;
     try {
-      await controlBacktestBatch(batchId, command, pending);
-      if (props.batchId === batchId) {
+      await controlBacktest(backtestId, command, pending);
+      if (props.backtestId === backtestId) {
         delete commandIds.pause;
         delete commandIds.resume;
         delete commandIds.cancel;
-        await loadDetail(batchId);
+        await loadDetail(backtestId);
         if (command === 'cancel') callbacks.cancelled();
       }
     } catch (error) {
-      if (props.batchId === batchId) {
+      if (props.backtestId === backtestId) {
         controlError.value =
-          error instanceof Error ? error.message : 'Batch command failed';
-        await loadDetail(batchId);
+          error instanceof Error ? error.message : 'Backtest command failed';
+        await loadDetail(backtestId);
       }
     } finally {
       controlPending.value = false;
@@ -287,7 +287,7 @@ export function useBatchInspection(
     clockTimer = setInterval(() => {
       nowMs.value = Date.now();
     }, 1000);
-    if (props.batchId) void loadDetail(props.batchId);
+    if (props.backtestId) void loadDetail(props.backtestId);
   }
   function stop(): void {
     isActive = false;
@@ -298,31 +298,31 @@ export function useBatchInspection(
     clockTimer = null;
   }
   useBacktestEvents(() => {
-    if (props.batchId) void loadDetail(props.batchId, true);
+    if (props.backtestId) void loadDetail(props.backtestId, true);
   });
   onMounted(start);
   onActivated(start);
   onDeactivated(stop);
   watch(
-    () => props.batchId,
-    (batchId) => {
+    () => props.backtestId,
+    (backtestId) => {
       ++detailRevision;
       readPending = false;
       detailError.value = null;
-      selectedBatch.value = null;
+      selectedBacktest.value = null;
       members.value = null;
       events.value = null;
       controlError.value = null;
       delete commandIds.pause;
       delete commandIds.resume;
       delete commandIds.cancel;
-      if (batchId) void loadDetail(batchId);
+      if (backtestId) void loadDetail(backtestId);
     },
   );
   onUnmounted(stop);
 
   return {
-    selectedBatch,
+    selectedBacktest,
     members,
     events,
     detailError,
@@ -346,4 +346,4 @@ export function useBatchInspection(
     control,
   };
 }
-export type BatchInspection = ReturnType<typeof useBatchInspection>;
+export type BacktestInspection = ReturnType<typeof useBacktestInspection>;

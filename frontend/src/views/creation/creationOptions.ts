@@ -31,7 +31,3 @@ export const previewFilterOptions: SelectOption[] = [
   { label: 'Ready', value: 'ready' },
   { label: 'Excluded', value: 'excluded' },
 ];
-export const runTypeOptions: SelectOption[] = [
-  { label: 'Standalone Backtest', value: 'standalone' },
-  { label: 'Parameter Sweep', value: 'sweep' },
-];

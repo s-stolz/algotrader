@@ -26,17 +26,16 @@
           <CreationParameterChange :name="parameter.name" />
         </label>
         <BaseSelect
-          v-if="isSweep"
           size="small"
           class="parameter-mode"
           :aria-label="`${parameter.display_name || parameter.name} mode`"
-          :value="sweepParameter(parameter).mode"
+          :value="parameterInput(parameter).mode"
           :options="parameterModeOptions(parameter)"
-          :data-testid="`sweep-mode-${parameter.name}`"
+          :data-testid="`selections-mode-${parameter.name}`"
           @update:value="changeParameterMode(parameter, $event)"
         />
         <label
-          v-if="!isSweep || sweepParameter(parameter).mode === 'constant'"
+          v-if="parameterInput(parameter).mode === 'constant'"
           class="parameter-value"
           >Value
           <BaseSelect
@@ -101,15 +100,15 @@
             </template>
           </n-input>
         </label>
-        <template v-else-if="sweepParameter(parameter).mode === 'values'">
+        <template v-else-if="parameterInput(parameter).mode === 'values'">
           <BaseSelect
             v-if="parameter.choices || parameter.type === 'bool'"
             multiple
             max-tag-count="responsive"
             :value="selectedChoiceIndexes(parameter)"
             :options="parameterOptions(parameter)"
-            :data-testid="`sweep-values-${parameter.name}`"
-            @update:value="setSweepChoices(parameter, $event)"
+            :data-testid="`selections-values-${parameter.name}`"
+            @update:value="setParameterChoices(parameter, $event)"
           />
           <div
             v-else-if="parameter.type === 'str'"
@@ -125,19 +124,19 @@
                 type="textarea"
                 :value="value"
                 :aria-label="`${parameter.display_name || parameter.name} value ${index + 1}`"
-                :data-testid="`sweep-string-${parameter.name}-${index}`"
+                :data-testid="`selections-string-${parameter.name}-${index}`"
                 @update:value="stringValues(parameter)[index] = $event"
               />
               <n-button
                 size="small"
-                :data-testid="`sweep-remove-${parameter.name}-${index}`"
+                :data-testid="`selections-remove-${parameter.name}-${index}`"
                 @click="stringValues(parameter).splice(index, 1)"
                 >Remove value</n-button
               >
             </div>
             <n-button
               size="small"
-              :data-testid="`sweep-add-${parameter.name}`"
+              :data-testid="`selections-add-${parameter.name}`"
               @click="stringValues(parameter).push('')"
               >Add string value</n-button
             >
@@ -151,7 +150,7 @@
             :value="numericValues(parameter)"
             :label="`${parameter.display_name || parameter.name} values`"
             :integer="parameter.type === 'int'"
-            :data-testid="`sweep-values-${parameter.name}`"
+            :data-testid="`selections-values-${parameter.name}`"
             @update:value="setNumericValues(parameter, $event)"
             @update:valid="numericEntryValid[parameter.name] = $event"
           />
@@ -161,12 +160,12 @@
               !parameter.choices &&
               parameter.type !== 'bool'
             "
-            v-model:checked="sweepParameter(parameter).includeNull"
+            v-model:checked="parameterInput(parameter).includeNull"
             >Include null</BaseCheckbox
           >
         </template>
         <div
-          v-else-if="sweepParameter(parameter).mode === 'range'"
+          v-else-if="parameterInput(parameter).mode === 'range'"
           class="range-inputs"
         >
           <label
@@ -174,8 +173,8 @@
               :input-props="{
                 'aria-label': `${parameter.display_name || parameter.name} start`,
               }"
-              :data-testid="`sweep-start-${parameter.name}`"
-              v-model:value="sweepParameter(parameter).rangeStart"
+              :data-testid="`selections-start-${parameter.name}`"
+              v-model:value="parameterInput(parameter).rangeStart"
               :precision="parameter.type === 'int' ? 0 : undefined"
           /></label>
           <label
@@ -183,8 +182,8 @@
               :input-props="{
                 'aria-label': `${parameter.display_name || parameter.name} stop`,
               }"
-              :data-testid="`sweep-stop-${parameter.name}`"
-              v-model:value="sweepParameter(parameter).rangeStop"
+              :data-testid="`selections-stop-${parameter.name}`"
+              v-model:value="parameterInput(parameter).rangeStop"
               :precision="parameter.type === 'int' ? 0 : undefined"
           /></label>
           <label
@@ -192,8 +191,8 @@
               :input-props="{
                 'aria-label': `${parameter.display_name || parameter.name} step`,
               }"
-              :data-testid="`sweep-step-${parameter.name}`"
-              v-model:value="sweepParameter(parameter).rangeStep"
+              :data-testid="`selections-step-${parameter.name}`"
+              v-model:value="parameterInput(parameter).rangeStep"
               :precision="parameter.type === 'int' ? 0 : undefined"
           /></label>
         </div>
@@ -220,10 +219,9 @@ const {
   selectedStrategy,
   parameterChanges,
   parameterIssues,
-  isSweep,
   draft,
   fieldErrors,
-  sweepParameter,
+  parameterInput,
   selectValue,
   setChoice,
   setParameter,
@@ -231,7 +229,7 @@ const {
   stringValue,
   stringValues,
   selectedChoiceIndexes,
-  setSweepChoices,
+  setParameterChoices,
   changeParameterMode,
   numericValues,
   setNumericValues,

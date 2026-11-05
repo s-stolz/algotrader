@@ -1,7 +1,7 @@
 # Backtester Context
 
 Owns historical simulation, the public backtest API, and durable lifecycle policy.
-For run/batch commands, queue invariants, versions, or replay format, read
+For Backtest/Run commands, queue invariants, versions, or replay format, read
 [shared backtest contracts](../docs/contracts/backtests.md).
 
 ## Entry Points and Boundaries
@@ -9,14 +9,12 @@ For run/batch commands, queue invariants, versions, or replay format, read
 - `src/app/backtest_runner.py` is the common orchestration for synchronous CLI
   and worker child execution. API submission validates and queues without loading
   Candles or running an engine.
-- `src/app/backtest_runs.py`, `backtest_batches.py`, and `sweeps.py` own run policy,
-  batch acceptance/commands, and stateless sweep expansion respectively.
-- Run submission and batch acceptance take the optional top-level experiment
-  name separately from execution requests/accepted definitions. Public schemas
-  validate naming at creation; preview stays name-free. See
-  [experiment names](../docs/contracts/backtests.md#experiment-names).
-- Name-only commands use run/batch policy services and return identity plus the
-  authoritative name. Renames accept every lifecycle state and reject members.
+- `src/app/backtest_runs.py`, `backtests.py`, and `backtest_definitions.py` own
+  Run reads/cancellation, Backtest acceptance/commands, and stateless expansion.
+- Backtest acceptance takes the optional name separately from execution requests
+  and accepted definitions. Preview stays name-free. Names belong to Backtests;
+  all Runs are accepted and deleted with their parent. See
+  [shared contracts](../docs/contracts/backtests.md).
 - `src/app/backtest_worker.py` owns claim/settlement orchestration;
   `backtest_child.py` supervises execution. Claims carry the same process identity
   as periodic heartbeats so storage can establish freshness atomically.

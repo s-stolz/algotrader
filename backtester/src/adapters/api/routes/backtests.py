@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from app.backtest_batches import BacktestBatchService
+from app.backtest_definitions import BacktestPreviewService
 from app.backtest_queue import BacktestQueueService
 from app.backtest_runs import (
     BacktestCandleUnavailableError,
@@ -14,8 +14,8 @@ from app.backtest_runs import (
     BacktestRunService,
     InvalidBacktestRequestError,
 )
+from app.backtests import BacktestService
 from app.config import BacktesterConfig
-from app.sweeps import SweepPreviewService
 from db_accessor_client import DatabaseAccessorClient, DatabaseAccessorClientError
 from domain.enums import BacktestEngine, BacktestRunStatus
 from domain.types import BacktestRunQuery
@@ -29,17 +29,14 @@ from strategies.registry import (
 )
 
 from adapters.api.schemas import (
-    BacktestCreationRequestSchema,
     BacktestFillResponseSchema,
+    BacktestNameResponseSchema,
+    BacktestPreviewRequestSchema,
     BacktestQueueSnapshotSchema,
     BacktestRunResponseSchema,
-    BacktestSubmissionResponseSchema,
+    BacktestSubmissionRequestSchema,
     BacktestTradeResponseSchema,
-    BatchAcceptanceRequestSchema,
-    BatchNameResponseSchema,
     ExperimentNameUpdateSchema,
-    RunNameResponseSchema,
-    SweepPreviewRequestSchema,
 )
 from adapters.persistence import (
     DatabaseAccessorBacktestRunRepository,
@@ -84,41 +81,40 @@ def get_backtest_queue_health(
     return {"availability": availability}
 
 
-def get_sweep_preview_service() -> SweepPreviewService:
+def get_backtest_preview_service() -> BacktestPreviewService:
     def markets() -> list[dict[str, object]]:
         with DatabaseAccessorClient() as client:
             return client.get_markets()
 
-    return SweepPreviewService(
+    return BacktestPreviewService(
         markets=markets,
-        max_candidate_count=BacktesterConfig.from_env().max_sweep_candidate_count,
+        max_candidate_count=BacktesterConfig.from_env().max_backtest_candidate_count,
     )
 
 
-def get_backtest_batch_service() -> BacktestBatchService:
-    return BacktestBatchService(
-        preview=get_sweep_preview_service(), client_factory=DatabaseAccessorClient
+def get_backtest_service() -> BacktestService:
+    return BacktestService(
+        preview=get_backtest_preview_service(), client_factory=DatabaseAccessorClient
     )
 
 
 @router.get("/capabilities")
 def get_backtest_capabilities(
-    service: SweepPreviewService = Depends(get_sweep_preview_service),
+    service: BacktestPreviewService = Depends(get_backtest_preview_service),
 ) -> dict[str, int | bool]:
     return {
-        "max_sweep_candidate_count": service.max_candidate_count,
-        "batch_acceptance_enabled": True,
+        "max_backtest_candidate_count": service.max_candidate_count,
     }
 
 
-@router.post("/batches", status_code=status.HTTP_202_ACCEPTED)
-def accept_batch(
-    request: BatchAcceptanceRequestSchema,
+@router.post("", status_code=status.HTTP_202_ACCEPTED)
+def accept_backtest(
+    request: BacktestSubmissionRequestSchema,
     response: Response,
-    service: BacktestBatchService = Depends(get_backtest_batch_service),
+    service: BacktestService = Depends(get_backtest_service),
 ) -> dict[str, object]:
     try:
-        batch = service.accept(request.submission_id, request.to_definition(), name=request.name)
+        backtest = service.accept(request.submission_id, request.to_definition(), name=request.name)
     except StrategyVersionUnavailableError as exc:
         raise HTTPException(
             status_code=409,
@@ -135,7 +131,7 @@ def accept_batch(
     except (InvalidBacktestRequestError, ValueError) as exc:
         raise HTTPException(
             status_code=422,
-            detail={"code": "invalid_sweep_definition", "fields": [], "message": str(exc)},
+            detail={"code": "invalid_backtest_definition", "fields": [], "message": str(exc)},
         ) from exc
     except DatabaseAccessorClientError as exc:
         if exc.status_code == 409:
@@ -147,18 +143,18 @@ def accept_batch(
                     "message": "Submission identity conflicts",
                 },
             ) from exc
-        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
-    response.headers["Location"] = f"/backtests/batches/{batch['batch_id']}"
-    return {"batch_id": str(batch["batch_id"]), "status": str(batch["status"])}
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
+    response.headers["Location"] = f"/backtests/{backtest['backtest_id']}"
+    return {"backtest_id": str(backtest["backtest_id"]), "status": str(backtest["status"])}
 
 
-@router.get("/batches")
-def list_batches(
+@router.get("")
+def list_backtests(
     symbol: str | None = None,
     timeframe: str | None = None,
     strategy: str | None = None,
     with_failed_members: bool | None = None,
-    service: BacktestBatchService = Depends(get_backtest_batch_service),
+    service: BacktestService = Depends(get_backtest_service),
 ) -> list[dict[str, Any]]:
     try:
         return service.list(
@@ -168,108 +164,153 @@ def list_batches(
             with_failed_members=with_failed_members,
         )
     except DatabaseAccessorClientError as exc:
-        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
-@router.patch("/batches/{batch_id}/name", response_model=BatchNameResponseSchema)
-def rename_batch(
-    batch_id: str,
+@router.patch("/{backtest_id}/name", response_model=BacktestNameResponseSchema)
+def rename_backtest(
+    backtest_id: str,
     request: ExperimentNameUpdateSchema,
-    service: BacktestBatchService = Depends(get_backtest_batch_service),
+    service: BacktestService = Depends(get_backtest_service),
 ) -> dict[str, Any]:
     try:
-        batch = service.rename(batch_id, request.name)
-        return {"batch_id": batch["batch_id"], "name": batch["name"]}
+        backtest = service.rename(backtest_id, request.name)
+        return {"backtest_id": backtest["backtest_id"], "name": backtest["name"]}
     except DatabaseAccessorClientError as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
-        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+            raise HTTPException(status_code=404, detail="Backtest not found") from exc
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
-@router.get("/batches/{batch_id}")
-def get_batch(
-    batch_id: str, service: BacktestBatchService = Depends(get_backtest_batch_service)
-) -> dict[str, Any]:
-    try:
-        return service.get(batch_id)
-    except DatabaseAccessorClientError as exc:
-        if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
-        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+@router.get("/strategies")
+def list_strategies() -> list[dict[str, object]]:
+    return strategy_catalog()
 
 
 @router.get(
-    "/batches/{batch_id}/members",
+    "/runs",
     response_model=list[BacktestRunResponseSchema],
     response_model_exclude_none=True,
 )
-def get_batch_members(
-    batch_id: str, service: BacktestBatchService = Depends(get_backtest_batch_service)
+def list_backtest_runs(
+    status_filter: BacktestRunStatus | None = Query(default=None, alias="status"),
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    strategy: str | None = None,
+    engine: BacktestEngine | None = None,
+    submitted_from_ms: int | None = None,
+    submitted_to_ms: int | None = None,
+    backtest_id: str | None = None,
+    service: BacktestRunService = Depends(get_backtest_run_service),
+) -> list[BacktestRunResponseSchema]:
+    query = BacktestRunQuery(
+        status=status_filter,
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy_id=strategy,
+        engine=engine,
+        submitted_from_ms=submitted_from_ms,
+        submitted_to_ms=submitted_to_ms,
+        backtest_id=backtest_id,
+    )
+    try:
+        return [BacktestRunResponseSchema.from_domain(run) for run in service.list(query)]
+    except InvalidBacktestRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    except (BacktestRunPersistenceError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backtest persistence unavailable",
+        ) from exc
+
+
+@router.get("/{backtest_id}")
+def get_backtest(
+    backtest_id: str, service: BacktestService = Depends(get_backtest_service)
+) -> dict[str, Any]:
+    try:
+        return service.get(backtest_id)
+    except DatabaseAccessorClientError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Backtest not found") from exc
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
+
+
+@router.get(
+    "/{backtest_id}/runs",
+    response_model=list[BacktestRunResponseSchema],
+    response_model_exclude_none=True,
+)
+def get_backtest_members(
+    backtest_id: str, service: BacktestService = Depends(get_backtest_service)
 ) -> list[BacktestRunResponseSchema]:
     try:
         return [
             BacktestRunResponseSchema.from_domain(_run_record_from_response(member))
-            for member in service.members(batch_id)
+            for member in service.members(backtest_id)
         ]
     except DatabaseAccessorClientError as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
-        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+            raise HTTPException(status_code=404, detail="Backtest not found") from exc
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
-@router.get("/batches/{batch_id}/events")
-def get_batch_events(
-    batch_id: str, service: BacktestBatchService = Depends(get_backtest_batch_service)
+@router.get("/{backtest_id}/events")
+def get_backtest_events(
+    backtest_id: str, service: BacktestService = Depends(get_backtest_service)
 ) -> list[dict[str, Any]]:
     try:
-        return service.events(batch_id)
+        return service.events(backtest_id)
     except DatabaseAccessorClientError as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
-        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+            raise HTTPException(status_code=404, detail="Backtest not found") from exc
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
-@router.delete("/batches/{batch_id}", status_code=204, response_class=Response)
-def delete_batch(
-    batch_id: str, service: BacktestBatchService = Depends(get_backtest_batch_service)
+@router.delete("/{backtest_id}", status_code=204, response_class=Response)
+def delete_backtest(
+    backtest_id: str, service: BacktestService = Depends(get_backtest_service)
 ) -> Response:
     try:
-        service.delete(batch_id)
+        service.delete(backtest_id)
     except DatabaseAccessorClientError as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Backtest batch not found") from exc
+            raise HTTPException(status_code=404, detail="Backtest not found") from exc
         if exc.status_code == 409:
             raise HTTPException(
                 status_code=409,
-                detail="Cancel and settle the batch and all members before deleting it",
+                detail="Cancel and settle the backtest and all members before deleting it",
             ) from exc
-        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
     return Response(status_code=204)
 
 
-class BatchCommandRequest(BaseModel):
+class BacktestCommandRequest(BaseModel):
     command_id: str = Field(min_length=1, max_length=36)
 
 
-@router.post("/batches/{batch_id}/{command}")
-def control_batch(
-    batch_id: str,
+@router.post("/{backtest_id}/{command}")
+def control_backtest(
+    backtest_id: str,
     command: Literal["pause", "resume", "cancel"],
-    request: BatchCommandRequest,
-    service: BacktestBatchService = Depends(get_backtest_batch_service),
+    request: BacktestCommandRequest,
+    service: BacktestService = Depends(get_backtest_service),
 ) -> dict[str, Any]:
     try:
-        return service.control(batch_id, command, request.command_id)
+        return service.control(backtest_id, command, request.command_id)
     except DatabaseAccessorClientError as exc:
         if exc.status_code in {404, 409}:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-        raise HTTPException(status_code=503, detail="Batch persistence unavailable") from exc
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
-@router.post("/sweeps/preview")
-def preview_sweep(
-    request: SweepPreviewRequestSchema,
-    service: SweepPreviewService = Depends(get_sweep_preview_service),
+@router.post("/preview")
+def preview_backtest(
+    request: BacktestPreviewRequestSchema,
+    service: BacktestPreviewService = Depends(get_backtest_preview_service),
 ) -> dict[str, object]:
     try:
         return service.expand(request.to_definition())
@@ -302,106 +343,19 @@ def preview_sweep(
         raise HTTPException(
             status_code=422,
             detail={
-                "code": "invalid_sweep_definition",
+                "code": "invalid_backtest_definition",
                 "fields": [],
                 "message": str(exc),
             },
         ) from exc
 
 
-@router.post(
-    "",
-    response_model=BacktestSubmissionResponseSchema,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-def submit_backtest(
-    request: BacktestCreationRequestSchema,
-    response: Response,
-    service: BacktestRunService = Depends(get_backtest_run_service),
-) -> BacktestSubmissionResponseSchema:
-    try:
-        run = service.submit(request.to_domain(), name=request.name)
-    except StrategyVersionUnavailableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "strategy_version_unavailable",
-                "message": "Strategy version is unavailable",
-            },
-        ) from exc
-    except (InvalidParameterCombinationError, InvalidStrategyParameterError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={"code": exc.code, "fields": exc.fields, "message": str(exc)},
-        ) from exc
-    except (InvalidBacktestRequestError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(exc),
-        ) from exc
-    except BacktestRunPersistenceError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Backtest persistence unavailable",
-        ) from exc
-
-    response.headers["Location"] = f"/backtests/{run.run_id}"
-    return BacktestSubmissionResponseSchema(run_id=run.run_id, status="queued")
-
-
-@router.get("/strategies")
-def list_strategies() -> list[dict[str, object]]:
-    return strategy_catalog()
-
-
 @router.get(
-    "",
-    response_model=list[BacktestRunResponseSchema],
-    response_model_exclude_none=True,
-)
-def list_backtests(
-    status_filter: BacktestRunStatus | None = Query(default=None, alias="status"),
-    symbol: str | None = None,
-    timeframe: str | None = None,
-    strategy: str | None = None,
-    engine: BacktestEngine | None = None,
-    submitted_from_ms: int | None = None,
-    submitted_to_ms: int | None = None,
-    membership: Literal["standalone", "batch"] | None = None,
-    batch_id: str | None = None,
-    service: BacktestRunService = Depends(get_backtest_run_service),
-) -> list[BacktestRunResponseSchema]:
-    query = BacktestRunQuery(
-        status=status_filter,
-        symbol=symbol,
-        timeframe=timeframe,
-        strategy_id=strategy,
-        engine=engine,
-        submitted_from_ms=submitted_from_ms,
-        submitted_to_ms=submitted_to_ms,
-        membership=membership,
-        batch_id=batch_id,
-    )
-    try:
-        return [BacktestRunResponseSchema.from_domain(run) for run in service.list(query)]
-    except InvalidBacktestRequestError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(exc),
-        ) from exc
-    except (BacktestRunPersistenceError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Backtest persistence unavailable",
-        ) from exc
-
-
-@router.get(
-    "/{run_id}",
+    "/runs/{run_id}",
     response_model=BacktestRunResponseSchema,
     response_model_exclude_none=True,
 )
-def get_backtest(
+def get_backtest_run(
     run_id: str,
     service: BacktestRunService = Depends(get_backtest_run_service),
 ) -> BacktestRunResponseSchema:
@@ -420,25 +374,8 @@ def get_backtest(
         ) from exc
 
 
-@router.patch("/{run_id}/name", response_model=RunNameResponseSchema)
-def rename_backtest(
-    run_id: str,
-    request: ExperimentNameUpdateSchema,
-    service: BacktestRunService = Depends(get_backtest_run_service),
-) -> RunNameResponseSchema:
-    try:
-        run = service.rename(run_id, request.name)
-        return RunNameResponseSchema(run_id=run.run_id, name=run.name)
-    except BacktestRunNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Backtest run not found") from exc
-    except BacktestRunConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except BacktestRunPersistenceError as exc:
-        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
-
-
 @router.post(
-    "/{run_id}/cancel",
+    "/runs/{run_id}/cancel",
     response_model=BacktestRunResponseSchema,
     response_model_exclude_none=True,
 )
@@ -456,7 +393,7 @@ def cancel_backtest(
         raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
-@router.get("/{run_id}/equity-curve")
+@router.get("/runs/{run_id}/equity-curve")
 def get_backtest_equity_curve(
     run_id: str,
     max_points: int = Query(default=2000, ge=100, le=10000),
@@ -473,7 +410,7 @@ def get_backtest_equity_curve(
 
 
 @router.get(
-    "/{run_id}/fills",
+    "/runs/{run_id}/fills",
     response_model=list[BacktestFillResponseSchema],
 )
 def get_backtest_fills(
@@ -495,7 +432,7 @@ def get_backtest_fills(
 
 
 @router.get(
-    "/{run_id}/trades",
+    "/runs/{run_id}/trades",
     response_model=list[BacktestTradeResponseSchema],
 )
 def get_backtest_trades(
@@ -516,32 +453,3 @@ def get_backtest_trades(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Backtest persistence unavailable",
         ) from exc
-
-
-@router.delete(
-    "/{run_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-)
-def delete_backtest(
-    run_id: str,
-    service: BacktestRunService = Depends(get_backtest_run_service),
-) -> Response:
-    try:
-        service.delete(run_id)
-    except BacktestRunNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Backtest run not found",
-        ) from exc
-    except BacktestRunConflictError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except BacktestRunPersistenceError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Backtest persistence unavailable",
-        ) from exc
-    return Response(status_code=status.HTTP_204_NO_CONTENT)

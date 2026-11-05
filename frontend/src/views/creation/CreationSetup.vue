@@ -14,15 +14,6 @@
       role="alert"
       >{{ nameIssue }}</p
     >
-    <label
-      >Run type
-      <BaseSelect
-        :value="isSweep ? 'sweep' : 'standalone'"
-        :options="runTypeOptions"
-        data-testid="creation-run-type"
-        @update:value="setRunType"
-      />
-    </label>
     <div class="strategy-field">
       <span
         id="creation-strategy-label"
@@ -80,13 +71,10 @@ import { NInput, NInputNumber, NTag, NButton } from 'naive-ui';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import CreationMarketPeriod from './CreationMarketPeriod.vue';
 import CreationExecution from './CreationExecution.vue';
-import { runTypeOptions } from './creationOptions';
 import { useCreation } from './creationContext';
 const {
   draft,
   nameIssue,
-  isSweep,
-  setRunType,
   selectedStrategy,
   strategyOptions,
   selectStrategy,

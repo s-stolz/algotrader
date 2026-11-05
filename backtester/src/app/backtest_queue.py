@@ -75,8 +75,8 @@ class BacktestQueueService:
                 {
                     "run_id": str(active["run_id"]),
                     "started_at_ms": _timestamp_ms(active["started_at"]),
-                    "batch_id": active.get("batch_id"),
-                    "member_ordinal": active.get("member_ordinal"),
+                    "backtest_id": active["backtest_id"],
+                    "run_ordinal": active["run_ordinal"],
                 }
                 if active is not None and active["started_at"] is not None
                 else None
@@ -87,12 +87,10 @@ class BacktestQueueService:
             "operational_faults": faults,
             "queued": [
                 {
-                    "entry_type": run["entry_type"],
-                    "run_id": str(run["run_id"]) if run["entry_type"] == "standalone" else None,
-                    "batch_id": run["batch_id"],
+                    "backtest_id": run["backtest_id"],
                     "submitted_at_ms": _timestamp_ms(run["submitted_at"]),
                     "estimated_position": position,
-                    "next_member_ordinal": run["next_member_ordinal"],
+                    "next_run_ordinal": run["next_run_ordinal"],
                     "outcome_counts": run["outcome_counts"],
                 }
                 for position, run in enumerate(state["queued_entries"], 1)

@@ -1,8 +1,9 @@
+import { isExperimentName } from '@/types/backtest/history';
 import { describe, expect, it } from 'vitest';
 
 import {
   BACKTEST_RESULT_SCHEMA_VERSION,
-  isBacktestBatchEventArray,
+  isBacktestEventArray,
   isBacktestClosedTrade,
   isBacktestFill,
   isBacktestRun,
@@ -26,24 +27,17 @@ describe('backtester contract validators', () => {
         'Experiment name must',
       );
     }
-    const saved = {
-      run_id: 'named',
-      status: 'queued',
-      submitted_at_ms: 1000,
-      request_schema_version: 2,
-      request: backtestRequest(),
-    };
     for (const name of [null, 'Baseline', '😀'.repeat(120)]) {
-      expect(isBacktestRun({ ...saved, name })).toBe(true);
+      expect(isExperimentName(name)).toBe(true);
     }
     for (const name of ['', ' padded ', 'two\nlines', 'x'.repeat(121), 123]) {
-      expect(isBacktestRun({ ...saved, name })).toBe(false);
+      expect(isExperimentName(name)).toBe(false);
     }
   });
 
-  it('requires ordered batch lifecycle events with timestamps and trigger identity', () => {
+  it('requires ordered backtest lifecycle events with timestamps and trigger identity', () => {
     const accepted = {
-      batch_id: 'batch-1',
+      backtest_id: 'backtest-1',
       revision: 0,
       event_type: 'accepted',
       prior_status: null,
@@ -60,26 +54,22 @@ describe('backtester contract validators', () => {
       status: 'running',
       occurred_at_ms: 1_780_000_001_000,
       trigger_run_id: 'member-0',
+      backtest_id: 'backtest-1',
+      run_ordinal: 0,
     };
-    expect(isBacktestBatchEventArray([accepted, started])).toBe(true);
-    expect(isBacktestBatchEventArray([started, accepted])).toBe(false);
+    expect(isBacktestEventArray([accepted, started])).toBe(true);
+    expect(isBacktestEventArray([started, accepted])).toBe(false);
+    expect(isBacktestEventArray([accepted, { ...started, revision: 0 }])).toBe(
+      false,
+    );
     expect(
-      isBacktestBatchEventArray([accepted, { ...started, revision: 0 }]),
+      isBacktestEventArray([{ ...accepted, occurred_at_ms: 'yesterday' }]),
     ).toBe(false);
     expect(
-      isBacktestBatchEventArray([{ ...accepted, occurred_at_ms: 'yesterday' }]),
+      isBacktestEventArray([accepted, { ...started, prior_status: 'unknown' }]),
     ).toBe(false);
     expect(
-      isBacktestBatchEventArray([
-        accepted,
-        { ...started, prior_status: 'unknown' },
-      ]),
-    ).toBe(false);
-    expect(
-      isBacktestBatchEventArray([
-        accepted,
-        { ...started, prior_status: undefined },
-      ]),
+      isBacktestEventArray([accepted, { ...started, prior_status: undefined }]),
     ).toBe(false);
   });
   it('validates Fill side independently of Trade Direction', () => {
@@ -104,6 +94,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-queued',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'queued',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -114,6 +106,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-succeeded',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'succeeded',
         submitted_at_ms: 1_780_921_805_123,
         started_at_ms: 1_780_921_900_000,
@@ -138,6 +132,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-failed',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'failed',
         submitted_at_ms: 1_780_921_805_123,
         started_at_ms: 1_780_921_900_000,
@@ -152,6 +148,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'legacy-result',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'succeeded',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -164,6 +162,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-missing-null-fields',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'queued',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -174,6 +174,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-empty-symbols',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'queued',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -181,10 +183,19 @@ describe('backtester contract validators', () => {
       }),
     ).toBe(true);
 
-    expect(isBacktestRun({ run_id: 'run-123', status: 'mystery' })).toBe(false);
     expect(
       isBacktestRun({
         run_id: 'run-123',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
+        status: 'mystery',
+      }),
+    ).toBe(false);
+    expect(
+      isBacktestRun({
+        run_id: 'run-123',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'queued',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -194,6 +205,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-123',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'succeeded',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -204,6 +217,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-123',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'succeeded',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -297,6 +312,8 @@ describe('backtester contract validators', () => {
     const request = backtestRequest();
     const base = {
       run_id: 'versioned',
+      backtest_id: 'backtest-1',
+      run_ordinal: 0,
       status: 'queued',
       submitted_at_ms: 1_780_921_805_123,
       request_schema_version: 2,
@@ -342,6 +359,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-legacy-request',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'succeeded',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -359,6 +378,8 @@ describe('backtester contract validators', () => {
     expect(
       isBacktestRun({
         run_id: 'run-mixed-direction-contract',
+        backtest_id: 'backtest-1',
+        run_ordinal: 0,
         status: 'succeeded',
         submitted_at_ms: 1_780_921_805_123,
         request_schema_version: 2,
@@ -401,7 +422,6 @@ function backtestRequest() {
       commission_bps: 1,
       slippage_bps: 0.5,
     },
-    persist_result: true,
     run_metadata: null,
   };
 }

@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import queuedBatchQueue from '../fixtures/queuedBatchQueue.json';
+import queuedBacktestQueue from '../fixtures/queuedBacktestQueue.json';
 import {
   fetchBacktestClosedTrades,
   fetchBacktestEquityCurve,
   fetchBacktestFills,
   fetchBacktestQueue,
   getBacktestRun,
-  listBacktestBatchEvents,
+  listBacktestEvents,
   listBacktestRuns,
 } from '@/api/backtesterClient';
 import { jsonResponse, backtestRun } from './backtesterClient.fixtures';
@@ -42,7 +42,7 @@ describe('backtester API client history', () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/backtester/backtests?status=succeeded&symbol=EURUSD&timeframe=M15&strategy=sma_crossover&engine=event_driven&submitted_from_ms=1780921800000&submitted_to_ms=1780922100000',
+      '/api/backtester/backtests/runs?status=succeeded&symbol=EURUSD&timeframe=M15&strategy=sma_crossover&engine=event_driven&submitted_from_ms=1780921800000&submitted_to_ms=1780922100000',
     );
   });
 
@@ -55,8 +55,8 @@ describe('backtester API client history', () => {
         active_run: {
           run_id: 'active',
           started_at_ms: 1_780_922_000_000,
-          batch_id: null,
-          member_ordinal: null,
+          backtest_id: 'active-backtest',
+          run_ordinal: 0,
         },
         last_heartbeat_ms: 1_780_922_099_000,
         availability: 'healthy',
@@ -64,21 +64,24 @@ describe('backtester API client history', () => {
         operational_faults: [],
         queued: [
           {
-            entry_type: 'standalone',
-            run_id: 'waiting',
-            batch_id: null,
+            backtest_id: 'waiting',
             submitted_at_ms: 1_780_921_805_123,
             estimated_position: 1,
-            next_member_ordinal: null,
-            outcome_counts: null,
+            next_run_ordinal: 0,
+            outcome_counts: {
+              queued: 1,
+              running: 0,
+              cancelling: 0,
+              succeeded: 0,
+              failed: 0,
+              cancelled: 0,
+            },
           },
           {
-            entry_type: 'batch',
-            run_id: null,
-            batch_id: 'batch-waiting',
+            backtest_id: 'backtest-waiting',
             submitted_at_ms: 1_780_921_806_123,
             estimated_position: 2,
-            next_member_ordinal: 1,
+            next_run_ordinal: 1,
             outcome_counts: {
               queued: 1,
               running: 0,
@@ -110,17 +113,17 @@ describe('backtester API client history', () => {
     },
   );
 
-  it('accepts the same queued-batch response emitted by the public backtester route', async () => {
+  it('validates the shared public queue response', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse(queuedBatchQueue),
+      jsonResponse(queuedBacktestQueue),
     );
-    await expect(fetchBacktestQueue()).resolves.toEqual(queuedBatchQueue);
+    await expect(fetchBacktestQueue()).resolves.toEqual(queuedBacktestQueue);
   });
 
-  it('reads automatic batch events with their recorded prior state', async () => {
+  it('reads automatic backtest events with their recorded prior state', async () => {
     const events = [
       {
-        batch_id: 'batch-1',
+        backtest_id: 'backtest-1',
         revision: 0,
         event_type: 'accepted',
         prior_status: null,
@@ -130,7 +133,7 @@ describe('backtester API client history', () => {
         reason: null,
       },
       {
-        batch_id: 'batch-1',
+        backtest_id: 'backtest-1',
         revision: 1,
         event_type: 'started',
         prior_status: 'queued',
@@ -146,13 +149,13 @@ describe('backtester API client history', () => {
       .mockResolvedValueOnce(
         jsonResponse([events[0], { ...events[1], prior_status: undefined }]),
       );
-    await expect(listBacktestBatchEvents('batch-1')).resolves.toEqual(events);
+    await expect(listBacktestEvents('backtest-1')).resolves.toEqual(events);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      '/api/backtester/backtests/batches/batch-1/events',
+      '/api/backtester/backtests/backtest-1/events',
     );
-    await expect(listBacktestBatchEvents('batch-1')).rejects.toThrow(
-      'Invalid Backtest Batch events response',
+    await expect(listBacktestEvents('backtest-1')).rejects.toThrow(
+      'Invalid Backtest events response',
     );
   });
 
@@ -164,7 +167,9 @@ describe('backtester API client history', () => {
     await expect(getBacktestRun('run-123')).resolves.toEqual(
       backtestRun({ run_id: 'run-123' }),
     );
-    expect(fetchMock).toHaveBeenCalledWith('/api/backtester/backtests/run-123');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/backtester/backtests/runs/run-123',
+    );
   });
 
   it('fetches result schema version 3 closed trades for a Backtest Run', async () => {
@@ -192,7 +197,7 @@ describe('backtester API client history', () => {
 
     await expect(fetchBacktestClosedTrades('run-123')).resolves.toEqual(trades);
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/backtester/backtests/run-123/trades',
+      '/api/backtester/backtests/runs/run-123/trades',
     );
   });
 
@@ -213,7 +218,7 @@ describe('backtester API client history', () => {
       .mockResolvedValueOnce(jsonResponse(curve));
     await expect(fetchBacktestEquityCurve('run-123')).resolves.toEqual(curve);
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/backtester/backtests/run-123/equity-curve?max_points=2000',
+      '/api/backtester/backtests/runs/run-123/equity-curve?max_points=2000',
     );
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -255,7 +260,7 @@ describe('backtester API client history', () => {
 
     await expect(fetchBacktestFills('run/123')).resolves.toEqual(fills);
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/backtester/backtests/run%2F123/fills',
+      '/api/backtester/backtests/runs/run%2F123/fills',
     );
   });
 

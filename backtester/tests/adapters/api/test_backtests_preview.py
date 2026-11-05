@@ -4,8 +4,8 @@ import unittest
 from unittest.mock import patch
 
 from adapters.api.app import create_app
+from app.backtest_definitions import BacktestPreviewService
 from app.backtest_runs import BacktestRunService
-from app.sweeps import SweepPreviewService
 from db_accessor_client import DatabaseAccessorClientError
 from fastapi.testclient import TestClient
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
@@ -34,10 +34,10 @@ def _definition() -> dict:
     return definition
 
 
-class TestSweepPreviewRoutes(unittest.TestCase):
+class TestBacktestPreviewRoutes(unittest.TestCase):
     def setUp(self) -> None:
         self.repository = _FakeRunRepository()
-        self.service = SweepPreviewService(
+        self.service = BacktestPreviewService(
             markets=lambda: [
                 {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX"},
                 {"symbol_id": 2, "symbol": "USDJPY", "exchange": "FX"},
@@ -55,12 +55,12 @@ class TestSweepPreviewRoutes(unittest.TestCase):
         self.client.close()
 
     def test_complete_ordered_preview_and_no_history(self) -> None:
-        response = self.client.post("/backtests/sweeps/preview", json=_definition())
+        response = self.client.post("/backtests/preview", json=_definition())
         self.assertEqual(response.status_code, 200, response.text)
         preview = response.json()
         self.assertEqual(
             self.client.get("/backtests/capabilities").json(),
-            {"max_sweep_candidate_count": 200, "batch_acceptance_enabled": True},
+            {"max_backtest_candidate_count": 200},
         )
         self.assertEqual(preview["raw_count"], 144)
         self.assertEqual(preview["ready_count"], 96)
@@ -91,7 +91,7 @@ class TestSweepPreviewRoutes(unittest.TestCase):
             )
         )
         self.assertEqual(
-            [row["member_ordinal"] for row in rows if row["status"] == "ready"], list(range(96))
+            [row["run_ordinal"] for row in rows if row["status"] == "ready"], list(range(96))
         )
         self.assertEqual(self.repository.runs_by_id, {})
 
@@ -99,7 +99,7 @@ class TestSweepPreviewRoutes(unittest.TestCase):
         definition = _definition()
         definition["parameter_axes"]["fast_window"] = {"mode": "values", "values": [True, 4]}
         self.assertEqual(
-            self.client.post("/backtests/sweeps/preview", json=definition).json()["detail"]["code"],
+            self.client.post("/backtests/preview", json=definition).json()["detail"]["code"],
             "invalid_strategy_parameter",
         )
         definition = _definition()
@@ -109,13 +109,13 @@ class TestSweepPreviewRoutes(unittest.TestCase):
             "stop": 1000,
             "step": 1,
         }
-        oversized = self.client.post("/backtests/sweeps/preview", json=definition)
+        oversized = self.client.post("/backtests/preview", json=definition)
         self.assertEqual(oversized.status_code, 422)
-        self.assertIn("max_sweep_candidate_count", oversized.text)
+        self.assertIn("max_backtest_candidate_count", oversized.text)
         definition = _definition()
         definition["parameter_axes"]["fast_window"] = {"mode": "constant", "value": 10}
         definition["parameter_axes"]["slow_window"] = {"mode": "constant", "value": 5}
-        empty = self.client.post("/backtests/sweeps/preview", json=definition)
+        empty = self.client.post("/backtests/preview", json=definition)
         self.assertEqual(empty.status_code, 422)
         self.assertIn("no Ready", empty.text)
         self.assertEqual(self.repository.runs_by_id, {})
@@ -130,7 +130,7 @@ class TestSweepPreviewRoutes(unittest.TestCase):
             "slow_window": {"mode": "constant", "value": 2},
             "quantity": {"mode": "range", "start": 0.1, "stop": 0.31, "step": 0.1},
         }
-        response = self.client.post("/backtests/sweeps/preview", json=definition)
+        response = self.client.post("/backtests/preview", json=definition)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(
             response.json()["normalized_selections"]["parameters"]["quantity"]["values"],
@@ -142,9 +142,9 @@ class TestSweepPreviewRoutes(unittest.TestCase):
             "stop": 201,
             "step": 1,
         }
-        oversize = self.client.post("/backtests/sweeps/preview", json=definition)
+        oversize = self.client.post("/backtests/preview", json=definition)
         self.assertEqual(oversize.status_code, 422)
-        self.assertIn("max_sweep_candidate_count", oversize.text)
+        self.assertIn("max_backtest_candidate_count", oversize.text)
         self.assertEqual(self.repository.runs_by_id, {})
 
     def test_typed_deduplication_keeps_exact_strings_and_null(self) -> None:
@@ -176,7 +176,7 @@ class TestSweepPreviewRoutes(unittest.TestCase):
             "label": {"mode": "values", "values": [" x", "x", None, None]},
         }
         with patch.dict(registry._REGISTRY, {"typed_probe": probe}):
-            response = self.client.post("/backtests/sweeps/preview", json=definition)
+            response = self.client.post("/backtests/preview", json=definition)
             self.assertEqual(response.status_code, 200, response.text)
             preview = response.json()
             self.assertEqual(preview["raw_count"], 6)
@@ -192,16 +192,14 @@ class TestSweepPreviewRoutes(unittest.TestCase):
             )
             definition["parameter_axes"]["count"] = {"mode": "values", "values": [True]}
             self.assertEqual(
-                self.client.post("/backtests/sweeps/preview", json=definition).status_code, 422
+                self.client.post("/backtests/preview", json=definition).status_code, 422
             )
         self.assertEqual(self.repository.runs_by_id, {})
 
     def test_stale_version_and_unexpected_validator_failure(self) -> None:
         definition = _definition()
         definition["strategy"]["strategy_version"] = 999
-        self.assertEqual(
-            self.client.post("/backtests/sweeps/preview", json=definition).status_code, 409
-        )
+        self.assertEqual(self.client.post("/backtests/preview", json=definition).status_code, 409)
         definition = _definition()
         from strategies import registry
 
@@ -215,7 +213,7 @@ class TestSweepPreviewRoutes(unittest.TestCase):
         )
         with patch.dict(registry._REGISTRY, {"sma_crossover": broken}):
             with self.assertRaises(RuntimeError):
-                self.client.post("/backtests/sweeps/preview", json=definition)
+                self.client.post("/backtests/preview", json=definition)
         self.assertEqual(self.repository.runs_by_id, {})
 
     def test_unavailable_market_catalog_has_safe_service_error(self) -> None:
@@ -223,9 +221,9 @@ class TestSweepPreviewRoutes(unittest.TestCase):
             raise DatabaseAccessorClientError("secret connection detail")
 
         with TestClient(
-            create_app(preview_service=SweepPreviewService(markets=unavailable))
+            create_app(preview_service=BacktestPreviewService(markets=unavailable))
         ) as client:
-            response = client.post("/backtests/sweeps/preview", json=_definition())
+            response = client.post("/backtests/preview", json=_definition())
         self.assertEqual(response.status_code, 503)
         self.assertEqual(
             response.json()["detail"],

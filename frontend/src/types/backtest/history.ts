@@ -5,7 +5,6 @@ import {
   isNonEmptyString,
 } from '../transportValues';
 import {
-  type BacktestEngine,
   type BacktestRequestPayload,
   isBacktestRequestPayload,
 } from './requests';
@@ -29,9 +28,8 @@ export type BacktestRunStatus = (typeof BACKTEST_RUN_STATUSES)[number];
 
 export interface BacktestRun {
   run_id: string;
-  name?: string | null;
-  batch_id?: string;
-  member_ordinal?: number;
+  backtest_id: string;
+  run_ordinal: number;
   status: BacktestRunStatus;
   submitted_at_ms: number;
   started_at_ms?: number | null;
@@ -46,18 +44,6 @@ export interface BacktestRun {
   diagnostics?: JsonObject | null;
   error_code?: string | null;
   error_message?: string | null;
-}
-
-export interface BacktestRunListQuery {
-  status?: BacktestRunStatus | null;
-  symbol?: string | null;
-  timeframe?: string | null;
-  strategy?: string | null;
-  engine?: BacktestEngine | null;
-  submittedFromMs?: number | null;
-  submittedToMs?: number | null;
-  membership?: 'standalone' | 'batch' | null;
-  batchId?: string | null;
 }
 
 const BACKTEST_RUN_STATUS_SET: ReadonlySet<string> = new Set(
@@ -84,17 +70,9 @@ export function isBacktestRun(value: unknown): value is BacktestRun {
 
   return (
     isNonEmptyString(value.run_id) &&
-    isExperimentName(value.name) &&
-    (!('batch_id' in value) ||
-      value.batch_id === null ||
-      isNonEmptyString(value.batch_id)) &&
-    (!('member_ordinal' in value) ||
-      value.member_ordinal === null ||
-      (Number.isInteger(value.member_ordinal) &&
-        (value.member_ordinal as number) >= 0)) &&
-    ((value.batch_id == null && value.member_ordinal == null) ||
-      (isNonEmptyString(value.batch_id) &&
-        Number.isInteger(value.member_ordinal))) &&
+    isNonEmptyString(value.backtest_id) &&
+    Number.isInteger(value.run_ordinal) &&
+    (value.run_ordinal as number) >= 0 &&
     typeof value.status === 'string' &&
     BACKTEST_RUN_STATUS_SET.has(value.status) &&
     isFiniteNumber(value.submitted_at_ms) &&
@@ -152,4 +130,15 @@ export function isExperimentName(value: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+export interface BacktestRunListQuery {
+  status?: BacktestRunStatus | null;
+  symbol?: string | null;
+  timeframe?: string | null;
+  strategy?: string | null;
+  engine?: 'vectorized' | 'event_driven' | null;
+  submittedFromMs?: number | null;
+  submittedToMs?: number | null;
+  backtestId?: string | null;
 }
