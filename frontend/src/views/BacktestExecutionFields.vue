@@ -1,16 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import BacktestScheduleFields from './BacktestScheduleFields.vue';
-import BacktestEntryLimitField from './BacktestEntryLimitField.vue';
 import { NButton, NIcon, NInputNumber } from 'naive-ui';
 import type { SelectOption } from 'naive-ui';
 import InformationCircleOutline from '@vicons/ionicons5/InformationCircleOutline';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
-import type {
-  BacktestRequestPayload,
-  BacktestAllowedDirections,
-} from '@/types/backtesterContracts';
+import type { BacktestRequestPayload } from '@/types/backtesterContracts';
 const execution = defineModel<BacktestRequestPayload['execution']>(
   'execution',
   { required: true },
@@ -18,17 +13,10 @@ const execution = defineModel<BacktestRequestPayload['execution']>(
 const engine = defineModel<BacktestRequestPayload['engine']>('engine', {
   required: true,
 });
-const allowedDirections = defineModel<BacktestAllowedDirections[]>(
-  'allowedDirections',
-  { required: true },
-);
+defineProps<{ errors: Record<string, string> }>();
+const emit = defineEmits<{ change: [field: string] }>();
 const gapHelp = ref(false);
 const exitHelp = ref(false);
-const directionOptions: SelectOption[] = [
-  { label: 'Long and short', value: 'long_and_short' },
-  { label: 'Long only', value: 'long_only' },
-  { label: 'Short only', value: 'short_only' },
-];
 const engineOptions: SelectOption[] = [
   { label: 'Vectorized', value: 'vectorized' },
   { label: 'Event driven', value: 'event_driven' },
@@ -47,44 +35,25 @@ const exitOptions: SelectOption[] = [
 </script>
 <template>
   <div class="fields">
-    <label class="full"
-      >Allowed directions<BaseSelect
-        v-model:value="allowedDirections"
-        multiple
-        data-testid="creation-directions"
-        :options="directionOptions"
-    /></label>
-    <label class="full"
+    <label
+      class="full"
+      data-setup-field="engine"
       >Engine<BaseSelect
         v-model:value="engine"
         :options="engineOptions"
-    /></label>
-    <BacktestEntryLimitField
-      v-model:execution="execution"
-      class="full"
-    />
-    <BacktestScheduleFields
-      v-model:execution="execution"
-      class="full"
-    />
+        :status="errors.engine ? 'error' : undefined"
+        @update:value="emit('change', 'engine')"
+      /><small
+        v-if="errors.engine"
+        role="alert"
+        >{{ errors.engine }}</small
+      ></label
+    >
     <section class="full"
-      ><h4>Trading costs</h4
-      ><div class="fields costs">
-        <label
-          >Slippage (bps)<n-input-number
-            v-model:value="execution.slippage_bps"
-            :min="0"
-        /></label>
-        <label
-          >Commission (bps)<n-input-number
-            v-model:value="execution.commission_bps"
-            :min="0"
-        /></label> </div
-    ></section>
-    <section class="full"
-      ><h4>Data &amp; fills</h4
-      ><div class="fields costs">
-        <div class="policy-field"
+      ><div class="fields">
+        <div
+          class="policy-field"
+          data-setup-field="gap_policy"
           ><span class="policy-label"
             >Gap policy
             <BasePopover
@@ -126,8 +95,17 @@ const exitOptions: SelectOption[] = [
             v-model:value="execution.gap_policy"
             aria-label="Gap policy"
             :options="gapOptions"
-        /></div>
-        <div class="policy-field"
+            :status="errors.gap_policy ? 'error' : undefined"
+            @update:value="emit('change', 'gap_policy')"
+          /><small
+            v-if="errors.gap_policy"
+            role="alert"
+            >{{ errors.gap_policy }}</small
+          ></div
+        >
+        <div
+          class="policy-field"
+          data-setup-field="intrabar_exit_policy"
           ><span class="policy-label"
             >Intrabar exit policy
             <BasePopover
@@ -174,8 +152,41 @@ const exitOptions: SelectOption[] = [
             v-model:value="execution.intrabar_exit_policy"
             aria-label="Intrabar exit policy"
             :options="exitOptions"
-        /></div> </div
-    ></section>
+            :status="errors.intrabar_exit_policy ? 'error' : undefined"
+            @update:value="emit('change', 'intrabar_exit_policy')"
+          /><small
+            v-if="errors.intrabar_exit_policy"
+            role="alert"
+            >{{ errors.intrabar_exit_policy }}</small
+          ></div
+        >
+      </div></section
+    >
+    <label
+      v-for="cost in ['slippage_bps', 'commission_bps'] as const"
+      :key="cost"
+      :data-setup-field="cost"
+    >
+      {{ cost === 'slippage_bps' ? 'Slippage (bps)' : 'Commission (bps)' }}
+      <n-input-number
+        v-model:value="execution[cost]"
+        :min="0"
+        :status="errors[cost] ? 'error' : undefined"
+        :input-props="{
+          'aria-label':
+            cost === 'slippage_bps' ? 'Slippage (bps)' : 'Commission (bps)',
+          'aria-invalid': !!errors[cost],
+          'aria-describedby': errors[cost] ? `${cost}-error` : undefined,
+        }"
+        @update:value="emit('change', cost)"
+      />
+      <small
+        v-if="errors[cost]"
+        :id="`${cost}-error`"
+        role="alert"
+        >{{ errors[cost] }}</small
+      >
+    </label>
   </div>
 </template>
 <style scoped>
@@ -210,15 +221,8 @@ label {
   gap: 7px;
   font-size: var(--design-text-secondary);
 }
-h4 {
-  margin: 6px 0 0;
-  font-size: var(--design-text-body);
-}
 .full {
   grid-column: 1 / -1;
-}
-.costs {
-  padding-top: 14px;
 }
 @media (max-width: 520px) {
   .fields {

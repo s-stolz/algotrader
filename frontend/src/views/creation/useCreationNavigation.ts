@@ -1,6 +1,5 @@
-import { dailyEntryLimitIssue } from '@/types/backtest/entryLimit';
-import { dailyScheduleIssue } from '@/types/backtest/schedule';
 import { computed, ref, type Ref } from 'vue';
+import { setupIssues } from './setup/setupValidation';
 import type {
   StrategyCatalogEntry,
   StrategyParameterSchema,
@@ -13,7 +12,6 @@ import { parameterIssue } from './creationParameters';
 interface NavigationInputs {
   draft: Ref<DraftRequest>;
   selections: Ref<BacktestSelectionsDraft>;
-  nameIssue: Ref<string | null>;
   strategyNeedsReview: Ref<boolean>;
   missingMarkets: Ref<string[]>;
   selectedStrategy: Ref<StrategyCatalogEntry | undefined>;
@@ -26,7 +24,6 @@ export function useCreationNavigation(inputs: NavigationInputs) {
   const {
     draft,
     selections,
-    nameIssue,
     strategyNeedsReview,
     missingMarkets,
     selectedStrategy,
@@ -36,12 +33,38 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     buildBacktestRequest,
   } = inputs;
   const step = ref(0);
+  const setupAttempted = ref(false);
+  const touchedSetup = ref<Record<string, boolean>>({});
+  const setupFocusRequest = ref(0);
+  const setupValidation = computed(() =>
+    setupIssues(
+      draft.value,
+      selections.value,
+      strategyNeedsReview.value,
+      missingMarkets.value,
+    ),
+  );
+  const setupErrors = computed(() =>
+    Object.fromEntries(
+      Object.entries(setupValidation.value).filter(
+        ([key]) => setupAttempted.value || touchedSetup.value[key],
+      ),
+    ),
+  );
+  function touchSetup(field: string) {
+    touchedSetup.value[field] = true;
+  }
+  function resetSetupValidation() {
+    setupAttempted.value = false;
+    touchedSetup.value = {};
+  }
   const numericEntryValid = ref<Record<string, boolean>>({});
   function navigateStep(next: number): void {
     if (next > step.value) {
       fieldErrors.value = {};
       if (!validateSetup()) {
         step.value = 0;
+        setupFocusRequest.value += 1;
         return;
       }
       if (next === 2 && !validateParameters()) {
@@ -52,38 +75,10 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     step.value = next;
   }
   function validateSetup(): boolean {
-    if (nameIssue.value) fieldErrors.value.name = nameIssue.value;
-    if (strategyNeedsReview.value)
-      fieldErrors.value.strategy = 'Review the current Strategy Version.';
-    if (!selections.value.marketIds.length || missingMarkets.value.length) {
-      fieldErrors.value.market = 'Select an available Market.';
-    }
-    if (!selections.value.timeframes.length)
-      fieldErrors.value.timeframe = 'Select at least one Timeframe.';
-    if (
-      !Number.isFinite(draft.value.start_ms) ||
-      !Number.isFinite(draft.value.end_ms) ||
-      draft.value.start_ms <= 0 ||
-      draft.value.end_ms <= draft.value.start_ms
-    ) {
-      fieldErrors.value.dates = 'End date must be after start date.';
-    }
-    if (
-      !Number.isFinite(draft.value.initial_capital) ||
-      draft.value.initial_capital <= 0
-    ) {
-      fieldErrors.value.capital = 'Initial capital must be greater than zero.';
-    }
-    return !Object.keys(fieldErrors.value).length;
+    setupAttempted.value = true;
+    return !Object.keys(setupValidation.value).length;
   }
   function validateParameters(): boolean {
-    const executionIssue =
-      dailyScheduleIssue(draft.value.execution.daily_schedule) ??
-      dailyEntryLimitIssue(draft.value.execution.max_entries_per_day);
-    if (executionIssue) {
-      submitError.value = executionIssue;
-      return false;
-    }
     {
       try {
         buildBacktestRequest();
@@ -146,6 +141,12 @@ export function useCreationNavigation(inputs: NavigationInputs) {
   }
 
   return {
+    setupErrors,
+    setupAttempted,
+    setupValidation,
+    touchSetup,
+    setupFocusRequest,
+    resetSetupValidation,
     step,
     navigateStep,
     numericEntryValid,

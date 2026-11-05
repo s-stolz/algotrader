@@ -4,6 +4,9 @@
   gap: var(--design-space-lg);
   min-width: 0;
 }
+:global(.base-step-modal.n-card.backtest-creation) {
+  width: min(800px, calc(100vw - 32px));
+}
 .creation-fields :deep(label:not(.base-checkbox):not(.parameter-label)),
 :deep(.strategy-field),
 :deep(.preview-filter) {

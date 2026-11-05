@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import BaseDatePicker from './BaseDatePicker.vue';
 import { NButton } from 'naive-ui';
-defineProps<{ start: string; end: string }>();
+defineProps<{
+  start: string;
+  end: string;
+  invalid?: boolean;
+  errorId?: string;
+}>();
 const emit = defineEmits<{
   'update:start': [value: string | null];
   'update:end': [value: string | null];
@@ -33,30 +38,31 @@ function applyDatePreset(months: number) {
 }
 </script>
 <template>
-  <fieldset class="full date-range">
-    <legend>Dates (UTC)</legend>
+  <fieldset
+    class="full date-range"
+    :aria-invalid="!!invalid"
+    :aria-describedby="invalid ? errorId : undefined"
+  >
+    <legend class="visually-hidden">Dates (UTC)</legend>
     <div class="date-inputs">
       <label
-        ><span class="visually-hidden">Start date (UTC)</span
+        ><span>Start date (UTC)</span
         ><BaseDatePicker
           :formatted-value="start || null"
           data-testid="creation-start"
+          :status="invalid ? 'error' : undefined"
           @update:formatted-value="emit('update:start', $event)"
           type="date"
           value-format="yyyy-MM-dd"
           :clearable="false"
           :input-readonly="true"
       /></label>
-      <span
-        aria-hidden="true"
-        class="date-divider"
-        >–</span
-      >
       <label
-        ><span class="visually-hidden">End date (UTC)</span
+        ><span>End date (UTC)</span
         ><BaseDatePicker
           :formatted-value="end || null"
           data-testid="creation-end"
+          :status="invalid ? 'error' : undefined"
           @update:formatted-value="emit('update:end', $event)"
           type="date"
           value-format="yyyy-MM-dd"
@@ -91,18 +97,15 @@ function applyDatePreset(months: number) {
 }
 .date-inputs {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: var(--design-space-sm);
-}
-.date-divider {
-  color: var(--design-color-muted);
 }
 .preset-buttons {
   display: flex;
   gap: var(--design-space-xs);
   margin-top: var(--design-space-sm);
-  overflow-x: auto;
+  flex-wrap: wrap;
 }
 .visually-hidden {
   position: absolute;
@@ -120,5 +123,10 @@ label {
   flex-direction: column;
   gap: var(--design-space-sm);
   font-size: var(--design-text-secondary);
+}
+@media (max-width: 520px) {
+  .date-inputs {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -49,6 +49,10 @@
             ><dd>{{ selectedRun.request.data_granularity }}</dd>
             <dt>Allowed Directions</dt>
             <dd>{{ selectedRun.request.execution.allowed_directions }}</dd>
+            <dt>Daily schedule · UTC (start / last entry / exit)</dt>
+            <dd>{{
+              scheduleLabel(selectedRun.request.execution.daily_schedule)
+            }}</dd>
             <dt>Execution settings</dt>
             <dd class="technical-value">{{
               JSON.stringify(selectedRun.request.execution)
@@ -67,6 +71,7 @@
 </template>
 <script setup lang="ts">
 import BacktestOverview from '@/components/Backtest/BacktestOverview.vue';
+import { scheduleLabel } from '@/types/backtest/schedule';
 import BacktestComparison from './comparison/BacktestComparison.vue';
 import type { BacktestWorkspace } from './useBacktestWorkspace';
 import type { WorkspaceComparison } from './comparison/useWorkspaceComparison';

@@ -12,6 +12,7 @@ import {
 } from './requests';
 import { type BacktestPreview, isBacktestMarket } from './definitions';
 import { isEpochMs, isOrdinal } from './validation';
+import { isDailyScheduleList } from './schedule';
 
 export const BACKTEST_STATUSES = [
   'queued',
@@ -133,6 +134,8 @@ export function isBacktest(value: unknown): value is Backtest {
     definition.schema_version === 1 &&
     isJsonObject(definition.shared_request) &&
     isRecord(definition.normalized_selections) &&
+    (definition.normalized_selections.daily_schedules === undefined ||
+      isDailyScheduleList(definition.normalized_selections.daily_schedules)) &&
     Array.isArray(definition.normalized_selections.markets) &&
     definition.normalized_selections.markets.every(isBacktestMarket) &&
     Array.isArray(definition.normalized_selections.timeframes) &&

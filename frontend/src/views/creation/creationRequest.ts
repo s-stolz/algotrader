@@ -1,5 +1,5 @@
-import { dailyEntryLimitIssue } from '@/types/backtest/entryLimit';
-import { dailyScheduleIssue } from '@/types/backtest/schedule';
+import type { DailyTradingSchedule } from '@/types/backtest/schedule';
+import { setupIssues } from './setup/setupValidation';
 import type {
   BacktestRequestPayload,
   StrategyCatalogEntry,
@@ -32,37 +32,15 @@ export function buildBacktestRequest(
   parameterInput: (parameter: StrategyParameterSchema) => ParameterDraft,
   stringValues: (parameter: StrategyParameterSchema) => string[],
 ): BacktestPreviewRequest {
-  if (
-    !selected ||
-    selected.strategy_version !== draft.strategy.strategy_version
-  ) {
-    throw new Error('Review the current Strategy Version.');
-  }
-  if (
-    !selections.marketIds.length ||
-    !selections.timeframes.length ||
-    !selections.allowedDirections.length
-  ) {
-    throw new Error(
-      'Select at least one Market, Timeframe, and Allowed Directions value.',
-    );
-  }
-  if (missingMarkets.length)
-    throw new Error('Replace unavailable saved Markets.');
-  if (
-    !Number.isFinite(draft.start_ms) ||
-    !Number.isFinite(draft.end_ms) ||
-    draft.start_ms <= 0 ||
-    draft.end_ms <= draft.start_ms ||
-    !Number.isFinite(draft.initial_capital) ||
-    draft.initial_capital <= 0
-  ) {
-    throw new Error('Enter valid dates and initial capital.');
-  }
-  const executionIssue =
-    dailyScheduleIssue(draft.execution.daily_schedule) ??
-    dailyEntryLimitIssue(draft.execution.max_entries_per_day);
-  if (executionIssue) throw new Error(executionIssue);
+  const issues = setupIssues(
+    draft,
+    selections,
+    !selected || selected.strategy_version !== draft.strategy.strategy_version,
+    missingMarkets,
+  );
+  const firstIssue = Object.values(issues)[0];
+  if (firstIssue) throw new Error(firstIssue);
+  if (!selected) throw new Error('Select a strategy.');
   const parameter_axes: Record<string, ParameterAxis> = {};
   for (const parameter of selected.parameters) {
     const input = parameterInput(parameter);
@@ -129,8 +107,18 @@ export function buildBacktestRequest(
     name: _name,
     ...shared
   } = draft;
+  const execution = { ...shared.execution };
+  if (selections.dailySchedule) delete execution.daily_schedule;
   return {
     ...shared,
+    execution,
+    ...(selections.dailySchedule?.enabled
+      ? {
+          daily_schedules: selections.dailySchedule.candidates.map(
+            (candidate) => ({ ...candidate }) as DailyTradingSchedule,
+          ),
+        }
+      : {}),
     strategy: {
       strategy_id: selected.strategy_id,
       strategy_version: selected.strategy_version,

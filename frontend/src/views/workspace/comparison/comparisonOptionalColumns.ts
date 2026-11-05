@@ -1,6 +1,7 @@
 import { h } from 'vue';
 import { NSkeleton } from 'naive-ui';
 import type { BacktestRun } from '@/types/backtesterContracts';
+import { scheduleLabel } from '@/types/backtest/schedule';
 import {
   displayWinRate,
   formatSigned,
@@ -104,6 +105,17 @@ export function createOptionalColumns(
       group: 'Run settings',
       width: 165,
       render: (run) => cell(run.request.execution.allowed_directions),
+    },
+    {
+      title: 'Daily schedule (UTC)',
+      key: 'daily_schedule',
+      group: 'Run settings',
+      width: 220,
+      render: (run) =>
+        cell(
+          scheduleLabel(run.request.execution.daily_schedule),
+          'Entry start / last entry / exit (UTC).',
+        ),
     },
     {
       title: 'Commission (bps)',

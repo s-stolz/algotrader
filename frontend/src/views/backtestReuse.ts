@@ -7,6 +7,7 @@ import type {
   ParameterDraft,
 } from '@/types/backtesterContracts';
 import { normalizeExperimentName } from '@/types/backtesterContracts';
+import { initialScheduleDraft } from '@/types/backtest/schedule';
 
 export type ReuseSource = {
   kind: 'run' | 'backtest';
@@ -59,6 +60,7 @@ export function reuseRun(
         .map((market) => market.symbol_id),
       timeframes: [request.timeframe],
       allowedDirections: [request.execution.allowed_directions],
+      dailySchedule: initialScheduleDraft(request.execution.daily_schedule),
     },
     source: {
       kind: 'run',
@@ -125,6 +127,10 @@ export function reuseBacktest(backtest: Backtest): ReuseDraft {
       marketIds: selections.markets.map((market) => market.symbol_id),
       timeframes: [...selections.timeframes],
       allowedDirections: [...selections.allowed_directions],
+      dailySchedule: initialScheduleDraft(
+        request.execution.daily_schedule,
+        selections.daily_schedules,
+      ),
       parameters,
     },
     source: {

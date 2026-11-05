@@ -18,7 +18,7 @@ function update(value: number | null) {
 <template>
   <div>
     <label
-      >Max entries per day (UTC)
+      ><span>Daily entry limit <small>(Optional)</small></span>
       <n-input-number
         :value="execution.max_entries_per_day ?? null"
         :min="1"
@@ -26,11 +26,17 @@ function update(value: number | null) {
         clearable
         placeholder="Unlimited"
         :status="issue ? 'error' : undefined"
+        :input-props="{
+          'aria-label': 'Daily entry limit',
+          'aria-invalid': !!issue,
+          'aria-describedby': issue ? 'entry-limit-error' : undefined,
+        }"
         @update:value="update"
       />
     </label>
     <p
       v-if="issue"
+      id="entry-limit-error"
       role="alert"
       >{{ issue }}</p
     >
@@ -45,5 +51,9 @@ label {
 }
 p {
   margin-bottom: 0;
+}
+small {
+  color: var(--design-color-muted);
+  font-size: 10px;
 }
 </style>

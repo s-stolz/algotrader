@@ -62,6 +62,10 @@ describe('saved configuration reuse', () => {
       { symbol_id: 1, symbol: 'EURUSD', exchange: 'FX' },
     ]);
     expect(reuse.source.strategyVersion).toBe(2);
+    expect(reuse.selections.dailySchedule).toEqual({
+      enabled: true,
+      candidates: [request.execution.daily_schedule],
+    });
     expect(reuse.request).toHaveProperty('name', '');
     expect(reuse.request).toMatchObject({
       timeframe: 'M15',
@@ -107,6 +111,14 @@ describe('saved configuration reuse', () => {
             ],
             timeframes: ['H1', 'M15'],
             allowed_directions: ['short_only', 'long_only'],
+            daily_schedules: [
+              request.execution.daily_schedule,
+              {
+                entry_start_minute_utc: 360,
+                last_entry_minute_utc: 600,
+                exit_minute_utc: 960,
+              },
+            ],
             parameters: {
               fast: {
                 mode: 'range',
@@ -155,6 +167,12 @@ describe('saved configuration reuse', () => {
         rangeStep: 2,
       });
       expect(reuse.request.strategy.parameters.slow).toBe(10);
+      expect(reuse.selections.dailySchedule).toEqual({
+        enabled: true,
+        candidates:
+          backtest.accepted_definition.normalized_selections.daily_schedules,
+      });
+      reuse.selections.dailySchedule!.candidates[0].exit_minute_utc = 240;
       reuse.selections.marketIds.reverse();
       expect(backtest).toEqual(before);
     },

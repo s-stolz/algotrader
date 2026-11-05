@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { initialScheduleDraft } from '@/types/backtest/schedule';
 import {
   buildBacktestRequest,
   initialDraft,
@@ -36,10 +37,10 @@ describe('shared execution schedule in selections creation', () => {
     };
     return draft;
   }
-  function build(draft: ReturnType<typeof request>) {
+  function build(draft: ReturnType<typeof request>, selection = selections) {
     return buildBacktestRequest(
       draft,
-      selections,
+      selection,
       strategy,
       [],
       () => {
@@ -66,5 +67,31 @@ describe('shared execution schedule in selections creation', () => {
     const draft = request();
     draft.execution.daily_schedule!.exit_minute_utc = 119;
     expect(() => build(draft)).toThrow('exit must be at or after last entry');
+  });
+  it('serializes paired alternatives and retains disabled draft values', () => {
+    const draft = request();
+    const dailySchedule = initialScheduleDraft(draft.execution.daily_schedule);
+    dailySchedule.candidates.push({
+      entry_start_minute_utc: 360,
+      last_entry_minute_utc: 600,
+      exit_minute_utc: 960,
+    });
+    const selection = { ...selections, dailySchedule };
+    const preview = build(draft, selection);
+    expect(preview.daily_schedules).toEqual(dailySchedule.candidates);
+    expect(preview.execution).not.toHaveProperty('daily_schedule');
+    dailySchedule.enabled = false;
+    expect(build(draft, selection)).not.toHaveProperty('daily_schedules');
+    expect(build(draft, selection).execution).not.toHaveProperty(
+      'daily_schedule',
+    );
+    expect(dailySchedule.candidates).toHaveLength(2);
+    dailySchedule.enabled = true;
+    dailySchedule.candidates[1].exit_minute_utc = null;
+    expect(() => build(draft, selection)).toThrow('Enter all three times');
+    dailySchedule.candidates[1] = { ...dailySchedule.candidates[0] };
+    expect(() => build(draft, selection)).toThrow('already exists');
+    dailySchedule.candidates = [];
+    expect(() => build(draft, selection)).toThrow('Add at least one schedule');
   });
 });

@@ -4,6 +4,7 @@ import type {
   BacktestPreviewCandidate,
 } from '@/types/backtesterContracts';
 import { TIMEFRAME_CODES } from '@/types/contracts';
+import { scheduleLabel } from '@/types/backtest/schedule';
 const collator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
@@ -23,6 +24,7 @@ function compareRows(
 }
 export function previewColumns(
   selectedStrategy: StrategyCatalogEntry | undefined,
+  showSchedules = false,
 ): DataTableColumns<BacktestPreviewCandidate> {
   return [
     {
@@ -67,6 +69,27 @@ export function previewColumns(
       key: 'allowed_directions',
       sorter: (a, b) => compareRows(a, b, (row) => row.allowed_directions),
     },
+    ...(showSchedules
+      ? [
+          {
+            title: 'Schedule (UTC: start / last / exit)',
+            key: 'daily_schedule',
+            sorter: (
+              a: BacktestPreviewCandidate,
+              b: BacktestPreviewCandidate,
+            ) =>
+              compareRows(a, b, (row) =>
+                scheduleLabel(
+                  row.daily_schedule ?? row.request?.execution.daily_schedule,
+                ),
+              ),
+            render: (row: BacktestPreviewCandidate) =>
+              scheduleLabel(
+                row.daily_schedule ?? row.request?.execution.daily_schedule,
+              ),
+          },
+        ]
+      : []),
     {
       title: 'State',
       key: 'status',

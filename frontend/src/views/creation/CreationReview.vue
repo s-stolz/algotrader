@@ -88,7 +88,12 @@ const filteredCandidates = computed(
     ) ?? [],
 );
 const previewColumns = computed(() =>
-  buildPreviewColumns(selectedStrategy.value),
+  buildPreviewColumns(
+    selectedStrategy.value,
+    preview.value?.candidates.some(
+      (row) => !!row.daily_schedule || !!row.request?.execution.daily_schedule,
+    ),
+  ),
 );
 </script>
 

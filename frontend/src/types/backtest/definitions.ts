@@ -10,6 +10,12 @@ import {
   BACKTEST_ALLOWED_DIRECTIONS_SET,
   isBacktestRequestPayload,
 } from './requests';
+import {
+  type DailyTradingSchedule,
+  type DailyScheduleDraft,
+  isDailyTradingSchedule,
+  isDailyScheduleList,
+} from './schedule';
 
 export type ParameterAxis =
   | { mode: 'constant'; value: JsonValue }
@@ -33,6 +39,7 @@ export interface BacktestSelectionsDraft {
   timeframes: string[];
   allowedDirections: BacktestAllowedDirections[];
   parameters: Record<string, ParameterDraft>;
+  dailySchedule?: DailyScheduleDraft;
 }
 
 export interface BacktestPreviewRequest
@@ -45,6 +52,7 @@ export interface BacktestPreviewRequest
   timeframes: string[];
   parameter_axes: Record<string, ParameterAxis>;
   allowed_directions: BacktestAllowedDirections[];
+  daily_schedules?: DailyTradingSchedule[];
 }
 
 export interface BacktestPreviewIssue {
@@ -59,6 +67,7 @@ export interface BacktestPreviewCandidate {
   timeframe: string;
   parameters: Record<string, JsonValue>;
   allowed_directions: BacktestAllowedDirections;
+  daily_schedule?: DailyTradingSchedule;
   status: 'ready' | 'excluded';
   run_ordinal?: number;
   request?: BacktestRequestPayload;
@@ -83,6 +92,7 @@ export interface BacktestPreview {
       }
     >;
     allowed_directions: BacktestAllowedDirections[];
+    daily_schedules?: DailyTradingSchedule[];
   };
   raw_count: number;
   ready_count: number;
@@ -98,6 +108,8 @@ export function isBacktestPreview(value: unknown): value is BacktestPreview {
     !Number.isInteger(value.ready_count) ||
     !Number.isInteger(value.excluded_count) ||
     !isRecord(value.normalized_selections) ||
+    (value.normalized_selections.daily_schedules !== undefined &&
+      !isDailyScheduleList(value.normalized_selections.daily_schedules)) ||
     !Array.isArray(value.normalized_selections.markets) ||
     !value.normalized_selections.markets.every(isBacktestMarket) ||
     !Array.isArray(value.normalized_selections.timeframes) ||
@@ -133,6 +145,8 @@ export function isBacktestPreview(value: unknown): value is BacktestPreview {
     value.candidates.every((row: unknown, index: number) => {
       if (
         !isRecord(row) ||
+        (row.daily_schedule !== undefined &&
+          !isDailyTradingSchedule(row.daily_schedule)) ||
         row.candidate_ordinal !== index ||
         !isBacktestMarket(row.market) ||
         !isNonEmptyString(row.timeframe) ||

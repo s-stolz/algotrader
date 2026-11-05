@@ -46,16 +46,6 @@
         <CreationParameters v-show="step === 1" />
       </div>
       <p
-        v-if="fieldErrors.timeframe"
-        role="alert"
-        >{{ fieldErrors.timeframe }}</p
-      >
-      <p
-        v-if="fieldErrors.strategy"
-        role="alert"
-        >{{ fieldErrors.strategy }}</p
-      >
-      <p
         v-if="submitError"
         role="alert"
         >{{ submitError }}</p
@@ -138,7 +128,6 @@ const {
   store,
   selectedStrategy,
   strategyNeedsReview,
-  fieldErrors,
   submitError,
   preview,
   submitting,

@@ -1,4 +1,5 @@
 import { useCreationNavigation } from './useCreationNavigation';
+import { initialScheduleDraft } from '@/types/backtest/schedule';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { SelectOption } from 'naive-ui';
 import {
@@ -52,6 +53,13 @@ export function useBacktestCreation(emit: CreationEvents) {
     },
   );
   const nameIssue = computed(() => experimentNameIssue(draft.value.name));
+  function initializeSchedules() {
+    selections.value.dailySchedule ??= initialScheduleDraft(
+      draft.value.execution.daily_schedule,
+    );
+  }
+  initializeSchedules();
+  const scheduleDraft = computed(() => selections.value.dailySchedule!);
   const catalog = shallowRef<StrategyCatalogEntry[]>([]);
   const catalogPending = ref(false);
   const catalogError = ref<string | null>(null);
@@ -130,10 +138,15 @@ export function useBacktestCreation(emit: CreationEvents) {
     changeParameterMode,
     numericValues,
     setNumericValues,
+    setupErrors,
+    setupAttempted,
+    setupValidation,
+    touchSetup,
+    setupFocusRequest,
+    resetSetupValidation,
   } = useCreationNavigation({
     draft,
     selections,
-    nameIssue,
     strategyNeedsReview,
     missingMarkets,
     selectedStrategy,
@@ -190,6 +203,8 @@ export function useBacktestCreation(emit: CreationEvents) {
           };
       if (store.reuseSource && strategyNeedsReview.value) useCurrentVersion();
       step.value = 0;
+      initializeSchedules();
+      resetSetupValidation();
       numericEntryValid.value = {};
       fieldErrors.value = {};
       submitError.value = null;
@@ -401,6 +416,12 @@ export function useBacktestCreation(emit: CreationEvents) {
   });
 
   return {
+    scheduleDraft,
+    setupErrors,
+    setupAttempted,
+    setupValidation,
+    touchSetup,
+    setupFocusRequest,
     step,
     navigateStep,
     numericEntryValid,

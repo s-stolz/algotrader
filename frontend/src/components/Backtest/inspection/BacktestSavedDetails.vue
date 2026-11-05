@@ -70,6 +70,15 @@
               axis.values.map((value) => JSON.stringify(value)).join(', ')
             }}</dd>
           </div>
+          <div v-if="selections?.daily_schedules">
+            <dt>Schedules · UTC (start / last entry / exit)</dt>
+            <dd
+              v-for="(schedule, index) in selections.daily_schedules"
+              :key="index"
+            >
+              {{ scheduleLabel(schedule) }}
+            </dd>
+          </div>
         </dl>
         <details class="technical-details">
           <summary>Full saved definition and strategy metadata</summary>
@@ -124,6 +133,7 @@
 </template>
 <script setup lang="ts">
 import type { BacktestInspection } from './useBacktestInspection';
+import { scheduleLabel } from '@/types/backtest/schedule';
 const props = defineProps<{ inspection: BacktestInspection }>();
 const {
   selectedBacktest,

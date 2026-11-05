@@ -6,6 +6,84 @@ export interface DailyTradingSchedule {
   exit_minute_utc: number;
 }
 
+export type DailyScheduleInput = {
+  [Key in keyof DailyTradingSchedule]: number | null;
+};
+
+export interface DailyScheduleDraft {
+  enabled: boolean;
+  candidates: DailyScheduleInput[];
+}
+
+export function initialScheduleDraft(
+  legacy?: DailyTradingSchedule | null,
+  alternatives?: DailyTradingSchedule[],
+): DailyScheduleDraft {
+  return {
+    enabled: !!legacy || !!alternatives?.length,
+    candidates: (
+      alternatives ??
+      (legacy
+        ? [legacy]
+        : [
+            {
+              entry_start_minute_utc: 0,
+              last_entry_minute_utc: 720,
+              exit_minute_utc: 1020,
+            },
+          ])
+    ).map((schedule) => ({ ...schedule })),
+  };
+}
+
+export function scheduleDraftIssues(
+  draft: DailyScheduleDraft,
+): Record<string, string> {
+  if (!draft.enabled) return {};
+  if (!draft.candidates.length)
+    return { schedule: 'Add at least one schedule.' };
+  const issues: Record<string, string> = {};
+  draft.candidates.forEach((candidate, index) => {
+    const issue = Object.values(candidate).some((value) => value === null)
+      ? 'Enter all three times.'
+      : dailyScheduleIssue(candidate);
+    const duplicate = draft.candidates.some(
+      (other, otherIndex) =>
+        otherIndex !== index &&
+        other.entry_start_minute_utc === candidate.entry_start_minute_utc &&
+        other.last_entry_minute_utc === candidate.last_entry_minute_utc &&
+        other.exit_minute_utc === candidate.exit_minute_utc,
+    );
+    if (issue || duplicate)
+      issues[`schedule-${index}`] =
+        issue ??
+        'This schedule already exists. Change or remove the duplicate.';
+  });
+  return issues;
+}
+
+export function isDailyScheduleList(
+  value: unknown,
+): value is DailyTradingSchedule[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(isDailyTradingSchedule)
+  );
+}
+
+export function scheduleLabel(value?: DailyTradingSchedule | null): string {
+  return value
+    ? [
+        value.entry_start_minute_utc,
+        value.last_entry_minute_utc,
+        value.exit_minute_utc,
+      ]
+        .map(formatScheduleMinute)
+        .join(' / ')
+    : 'Off';
+}
+
 export function isDailyTradingSchedule(
   value: unknown,
 ): value is DailyTradingSchedule {

@@ -96,11 +96,16 @@ and behavior that is easy to break when changing them.
 - `BacktestEntryLimitField.vue` edits the independent daily entry cap; empty means
   unlimited. It counts actual entries, not signals, with a UTC reset per run.
   Validation, draft retention, and reuse follow the shared execution contract.
-- `BacktestScheduleFields.vue` edits optional UTC daily execution boundaries in
-  the shared creation execution controls. Omitted/null schedules are disabled;
-  enabled settings survive draft retention and saved Run/Backtest reuse. Validation
-  blocks invalid ordering before submission or preview. These are shared
-  Backtest settings rather than strategy parameter axes.
+- Setup groups Experiment, Markets & period, Trading rules, Daily schedules,
+  and Execution. `creation/setup/setupValidation.ts` owns the checks shared by
+  step navigation and request construction. Highlight touched fields or all
+  invalid fields after attempted progression, then focus the first error.
+- `BacktestScheduleFields.vue` edits paired UTC schedule alternatives. Each row
+  contributes one candidate alternative, multiplied with the other selection
+  axes. The UI draft retains rows while disabled; serialization omits them.
+  Reuse restores accepted alternatives or a legacy single execution schedule.
+  Validate complete, ordered, distinct triples before preview/submission;
+  individual Run requests still contain one execution schedule.
 - Creation calendar dates convert explicitly to UTC midnight. Chart timestamp
   conversion follows the root transport contract.
 

@@ -32,7 +32,7 @@ describe('creation validation', () => {
     await advancePreview();
     expect(submitBacktest).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain(
-      'Enter valid dates and initial capital.',
+      'Enter valid start and end dates.',
     );
     wrapper.unmount();
   });
