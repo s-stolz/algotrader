@@ -116,3 +116,40 @@ sessions, or keep the slot held.
 If reconciliation fails, stop the worker and preserve the slot state and error
 for diagnosis. Never force a `running` row back to `queued`: execution is not
 retried automatically. Existing successful history and artifacts remain intact.
+
+## Stream transport and realtime-service upgrade
+
+Backtest notifications use the existing Redis Streams infrastructure. The worker
+blocks on `backtests:control:v1`, recovers pending entries on connection, and reads
+storage on startup/reconnection and notifications. The API republishes a recovery
+invalidation on startup and retries failed publication while alive. A Redis outage
+leaves active computation running; cancellation is applied after delivery recovers.
+Restart a failed publisher to recover commits that preceded its crash. No periodic
+state scan repairs a publisher that remains permanently stopped.
+
+Compose fixes the worker hostname to `backtester-worker`; this is the default
+restart-stable consumer-group identity. Additional deployments must set a distinct
+`BACKTESTER_WORKER_GROUP` per instance and reuse it on restart. Never share a group
+between concurrently running instances. This does not increase execution capacity.
+The former worker poll-interval setting remains accepted for configuration
+compatibility but is unused by the stream-enabled entrypoint.
+
+The former `webserver` service/directory is now `realtime-service`. Stop/remove the
+old gateway container during cutover so it does not retain the published ports;
+start the new gateway and updated frontend together. Preserve the existing
+WebSocket ports and `WEBSERVER_*`/`COMPOSE_WEBSERVER_*` environment names. The
+configuration generator accepts legacy `services.webserver` local overrides and
+maps them to `services.realtime_service`; using both keys is an error. Regenerate
+configuration with `make config`. Recreate the worker only between runs or using
+the verified shutdown/recovery procedure above; do not interrupt an active run
+merely to apply this upgrade.
+
+Delivery verification without touching the stack:
+
+```sh
+cd backtester
+RUN_BACKTEST_REDIS_TESTS=1 PYTHONPATH=src .venv/bin/python -m unittest tests.adapters.test_backtest_events
+```
+
+These tests require `redis-server` and start an isolated temporary Unix-socket
+instance. The ordinary backend gate skips these opt-in checks.

@@ -1,3 +1,4 @@
+import { useBacktestEvents } from '@/utils/useBacktestEvents';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import {
   CheckmarkCircleOutline,
@@ -47,7 +48,7 @@ export function useBatchInspection(
   let detailRevision = 0;
   let isActive = false;
   let readPending = false;
-  let timer: ReturnType<typeof setInterval> | null = null;
+  let refreshAfterRead = false;
 
   const nowMs = ref(Date.now());
   let clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -203,7 +204,11 @@ export function useBatchInspection(
     batchId: string,
     background = false,
   ): Promise<void> {
-    if (!isActive || (background && readPending)) return;
+    if (!isActive) return;
+    if (background && readPending) {
+      refreshAfterRead = true;
+      return;
+    }
     readPending = true;
     const revision = ++detailRevision;
     const nameReadRevision = workspaceStore.nameRevision;
@@ -238,7 +243,13 @@ export function useBatchInspection(
           error instanceof Error ? error.message : 'Read failed';
       }
     } finally {
-      if (revision === detailRevision) readPending = false;
+      if (revision === detailRevision) {
+        readPending = false;
+        if (refreshAfterRead && isActive && props.batchId) {
+          refreshAfterRead = false;
+          void loadDetail(props.batchId, true);
+        }
+      }
     }
   }
 
@@ -277,19 +288,18 @@ export function useBatchInspection(
       nowMs.value = Date.now();
     }, 1000);
     if (props.batchId) void loadDetail(props.batchId);
-    timer = setInterval(() => {
-      if (props.batchId) void loadDetail(props.batchId, true);
-    }, 5000);
   }
   function stop(): void {
     isActive = false;
     ++detailRevision;
     readPending = false;
-    if (timer) clearInterval(timer);
-    timer = null;
+    refreshAfterRead = false;
     if (clockTimer) clearInterval(clockTimer);
     clockTimer = null;
   }
+  useBacktestEvents(() => {
+    if (props.batchId) void loadDetail(props.batchId, true);
+  });
   onMounted(start);
   onActivated(start);
   onDeactivated(stop);

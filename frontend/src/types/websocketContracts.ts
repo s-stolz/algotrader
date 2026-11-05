@@ -1,3 +1,7 @@
+import {
+  isBacktestEventMessage,
+  type BacktestEventMessage,
+} from './backtestEventContracts';
 import { type Candle, isCandle } from './candleContracts';
 import {
   isRecord,
@@ -58,6 +62,7 @@ export type WebSocketControlMessage =
   | WebSocketErrorMessage;
 
 export type WebSocketInboundMessage =
+  | BacktestEventMessage
   | CandleUpdateMessage
   | IndicatorUpdateMessage
   | WebSocketControlMessage;
@@ -173,6 +178,7 @@ export function isWebSocketInboundMessage(
   value: unknown,
 ): value is WebSocketInboundMessage {
   return (
+    isBacktestEventMessage(value) ||
     isCandleUpdateMessage(value) ||
     isIndicatorUpdateMessage(value) ||
     isWebSocketControlMessage(value)

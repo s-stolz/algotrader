@@ -260,4 +260,57 @@ describe('WebSocket service', () => {
     expect(removedHandler).not.toHaveBeenCalled();
     expect(socket.readyState).toBe(MockWebSocket.CLOSED);
   });
+  it('reconnects and restores only subscriptions still desired while offline', async () => {
+    vi.useFakeTimers();
+    const { wsService } = await loadService();
+    wsService.connect('ws://example.test');
+    mockSockets[0].open();
+    await wsService.send('subscribeBacktests');
+    await wsService.send('subscribeCandles', {
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    });
+    mockSockets[0].close();
+    await wsService.send('unsubscribeCandles', {
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mockSockets).toHaveLength(2);
+    mockSockets[1].open();
+    expect(mockSockets[1].sentMessages).toEqual([
+      JSON.stringify({ type: 'subscribeBacktests' }),
+    ]);
+    wsService.close();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(mockSockets).toHaveLength(2);
+    vi.useRealTimers();
+  });
+
+  it('validates backtest events and reports upstream continuity', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+    const health = vi.fn();
+    const changed = vi.fn();
+    wsService.on('backtestHealth', health);
+    wsService.on('backtestChanged', changed);
+    wsService.connect('ws://example.test');
+    mockSockets[0].open();
+    expect(wsService.backtestsConnected).toBe(false);
+    mockSockets[0].receive(
+      JSON.stringify({ type: 'backtestConnection', connected: true }),
+    );
+    expect(wsService.backtestsConnected).toBe(true);
+    mockSockets[0].receive(JSON.stringify({ type: 'backtestChanged' }));
+    mockSockets[0].receive(
+      JSON.stringify({ type: 'backtestHealth', heartbeat_at_ms: 'invalid' }),
+    );
+    expect(changed).toHaveBeenCalledOnce();
+    expect(health).not.toHaveBeenCalled();
+    mockSockets[0].receive(
+      JSON.stringify({ type: 'backtestConnection', connected: false }),
+    );
+    expect(wsService.backtestsConnected).toBe(false);
+    wsService.close();
+  });
 });

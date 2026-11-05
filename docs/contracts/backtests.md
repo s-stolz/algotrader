@@ -257,3 +257,53 @@ Descriptor v1 uses `sha256-ts-close-v1`: the domain marker
 exchange (empty if absent), symbol, and Timeframe, then signed big-endian int64
 executable timestamps and big-endian binary64 finite closes. Negative zero is
 normalized to positive zero. Fingerprint compatibility must survive code changes.
+
+## Real-time delivery and recovery
+
+The public API durably accepts cancellation before returning `cancelling`; worker
+acknowledgment is not required for acceptance. `cancelled` still requires verified
+process-tree exit and fenced terminal settlement. Queued cancellations settle
+immediately. Batch controls preserve the same atomic member/turn behavior.
+
+The API schedules a coalesced invalidation after every mutating backtest request,
+including ambiguous error responses. Publication failures retry while the process
+is alive. Publisher startup republishes a reconciliation request: workers perform
+the authoritative queue/active-run reads, so no API-side duplicate lifecycle
+scanner is needed. Worker claims and settlement also publish invalidations.
+
+- `backtests:control:v1`: Redis Stream entries have a JSON `payload` containing
+  `{"type":"reconcile"}`. This wakes queue discovery and active cancellation
+  checks. Each deployment instance uses its own stable consumer group, with the
+  consumer name `worker`; group identities must never be shared by live workers.
+- `backtests:events:v1`: JSON `payload` is `backtestChanged` or `backtestHealth`.
+  Changes invalidate saved Workspace reads. Health carries `run_id` (nullable),
+  `heartbeat_at_ms` from the persisted database heartbeat, and nullable
+  `fault_code`/`fault_message`. Only matching active-run health may refresh the
+  active owner's freshness; another idle worker cannot establish that evidence.
+- Streams retain approximately 10,000 entries. They are delivery buffers, not
+  audit records. Consumer startup/reconnection also reconciles storage, covering
+  retention gaps or a restored Redis instance. Pending messages are recovered
+  explicitly; `XREADGROUP` for new entries alone is insufficient.
+
+The worker holds delivered notifications pending until successful handling. During
+execution, cancellation notifications remain unacknowledged until terminal
+settlement. Crashes before acknowledgment can repeat delivery, including after a
+successful settlement. Terminal state and ownership checks make repeats harmless.
+A held execution slot still requires the existing operator recovery procedure.
+
+The browser subscribes with `subscribeBacktests` and unsubscribes with
+`unsubscribeBacktests` on the shared WebSocket. The gateway sends
+`backtestConnection` with boolean `connected`, including Redis continuity, plus
+change and health events. Each subscription/reconnection confirms continuity and
+triggers snapshot refreshes. Browser sockets receive broadcasts independently;
+they do not compete with worker consumer groups. Changed events coalesce refreshes
+of history, selected run/batch, and queue; result artifacts retain their existing
+on-demand loading rules. Health updates require no recurring queue read.
+
+HTTP commands and reads remain on backtester-api. The browser retains last-good
+data when disconnected, restores subscriptions automatically, and marks missing
+health evidence stale locally. Browser elapsed-time clocks do not make HTTP calls.
+There is no normal periodic backtest-state polling or separate recovery scan.
+
+See [ADR-0008](../adr/0008-backtest-stream-notifications.md) for the deliberate
+trade-off between recovery and transactional message publication.

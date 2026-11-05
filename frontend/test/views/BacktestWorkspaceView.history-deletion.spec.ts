@@ -1,3 +1,4 @@
+import { emitBacktestChange } from '../backtestEventSocket';
 import {
   setupWorkspaceTests,
   run,
@@ -43,6 +44,7 @@ describe('production Backtest Workspace: history-deletion', () => {
       false,
     );
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(wrapper.get('[data-testid="workspace-refresh"]').text()).toBe(
       'Retry now',

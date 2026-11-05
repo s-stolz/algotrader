@@ -8,6 +8,7 @@ individual frontend scripts.
 
 | Scope | Command |
 | --- | --- |
+| Redis delivery (isolated, opt-in) | See [worker transport checks](../operations/backtest-worker-recovery.md#stream-transport-and-realtime-service-upgrade) |
 | Backend area | `make test <area>`; supported areas are listed in `Makefile` |
 | All configured backend suites | `make test` |
 | Frontend lint, types, layout, unit tests, build | `make test frontend` |

@@ -1,3 +1,4 @@
+import { emitBacktestChange } from '../backtestEventSocket';
 import {
   setupWorkspaceTests,
   run,
@@ -108,6 +109,7 @@ describe('production Backtest Workspace: name-editing', () => {
         );
       await input().setValue('Recovered name');
       await vi.advanceTimersByTimeAsync(5000);
+      emitBacktestChange();
       await flushPromises();
       expect(input().element.value).toBe('Recovered name');
       await input().trigger('keydown', { key: 'Enter' });
@@ -120,6 +122,7 @@ describe('production Backtest Workspace: name-editing', () => {
       await flushPromises();
       expect(renameExperiment).toHaveBeenCalledTimes(2);
       await vi.advanceTimersByTimeAsync(5000);
+      emitBacktestChange();
       await flushPromises();
       expect(
         wrapper

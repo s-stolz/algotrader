@@ -1,3 +1,4 @@
+import { emitBacktestChange } from '../backtestEventSocket';
 import { setupWorkspaceTests, run, pinia } from './backtestWorkspaceFixtures';
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, KeepAlive } from 'vue';
@@ -60,6 +61,7 @@ describe('production Backtest Workspace: kept-alive state ownership', () => {
       .get('[data-testid="workspace-history-return"]')
       .trigger('click');
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(listBacktestRuns).toHaveBeenCalledTimes(2);
 
@@ -69,6 +71,7 @@ describe('production Backtest Workspace: kept-alive state ownership', () => {
     }
     await host.setProps({ active: false });
     vi.advanceTimersByTime(10_000);
+    emitBacktestChange();
     await flushPromises();
     expect(listBacktestRuns).toHaveBeenCalledTimes(2);
     await host.setProps({ active: true });
@@ -96,6 +99,7 @@ describe('production Backtest Workspace: kept-alive state ownership', () => {
     ).toBe(true);
     host.unmount();
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(listBacktestRuns).toHaveBeenCalledTimes(3);
   });

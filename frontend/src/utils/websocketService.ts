@@ -1,3 +1,8 @@
+import type {
+  BacktestChangedMessage,
+  BacktestConnectionMessage,
+  BacktestHealthMessage,
+} from '@/types/backtestEventContracts';
 import mitt, { type Emitter, type EventType, type Handler } from 'mitt';
 
 import {
@@ -11,6 +16,9 @@ import {
 
 export interface WebSocketServiceEventMap {
   ready: undefined;
+  backtestChanged: BacktestChangedMessage;
+  backtestConnection: BacktestConnectionMessage;
+  backtestHealth: BacktestHealthMessage;
   error: Event;
   disconnected: CloseEvent | Event;
   candleUpdate: CandleUpdateMessage;
@@ -51,6 +59,11 @@ function parseInboundMessage(
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
+  private retryDelay = 500;
+  private subscriptions = new Map<string, string>();
+  backtestsConnected = false;
   private isReady = false;
   private readyPromise: Promise<void> | null = null;
   private readyResolve: (() => void) | null = null;
@@ -61,27 +74,50 @@ export class WebSocketService {
   }
 
   connect(url: string): void {
+    this.stopped = false;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    const previous = this.ws;
+    this.ws = null;
+    previous?.close();
     this.isReady = false;
-    this.readyPromise = new Promise<void>((resolve) => {
-      this.readyResolve = resolve;
-    });
+    this.backtestsConnected = false;
+    if (!this.readyResolve) {
+      this.readyPromise = new Promise<void>((resolve) => {
+        this.readyResolve = resolve;
+      });
+    }
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-    this.ws = new WebSocket(url);
-
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       this.isReady = true;
+      this.retryDelay = 500;
+      for (const message of this.subscriptions.values()) socket.send(message);
       this.emit('ready', undefined);
       this.readyResolve?.();
       this.readyResolve = null;
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       const message = parseInboundMessage(event.data);
       if (!message) {
         return;
       }
 
       switch (message.type) {
+        case 'backtestConnection':
+          this.backtestsConnected = message.connected;
+          this.emit('backtestConnection', message);
+          return;
+        case 'backtestChanged':
+          this.emit('backtestChanged', message);
+          return;
+        case 'backtestHealth':
+          this.emit('backtestHealth', message);
+          return;
         case 'candleUpdate':
           this.emit('candleUpdate', message);
           return;
@@ -97,14 +133,24 @@ export class WebSocketService {
       }
     };
 
-    this.ws.onerror = (error) => {
+    socket.onerror = (error) => {
+      if (this.ws !== socket) return;
       console.error('WebSocket error:', error);
       this.emit('error', error);
     };
 
-    this.ws.onclose = (event) => {
+    socket.onclose = (event) => {
+      if (this.ws !== socket) return;
       this.isReady = false;
+      this.backtestsConnected = false;
       this.emit('disconnected', event);
+      if (!this.stopped) {
+        this.reconnectTimer = setTimeout(
+          () => this.connect(url),
+          this.retryDelay,
+        );
+        this.retryDelay = Math.min(this.retryDelay * 2, 10000);
+      }
     };
   }
 
@@ -119,14 +165,23 @@ export class WebSocketService {
   }
 
   async send(type: string, data: WebSocketSendPayload = {}): Promise<void> {
-    await this.waitUntilReady();
-
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type, ...data }));
+    const payload = JSON.stringify({ type, ...data });
+    const key = subscriptionKey(type, data);
+    if (key !== null) {
+      if (type.startsWith('unsubscribe')) this.subscriptions.delete(key);
+      else this.subscriptions.set(key, payload);
+      // Desired subscriptions are replayed on open, including changes made offline.
+      if (!this.isReady) return;
+    } else {
+      await this.waitUntilReady();
     }
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(payload);
   }
 
   close(): void {
+    this.stopped = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.ws?.close();
   }
 
@@ -150,6 +205,18 @@ export class WebSocketService {
   ): void {
     this.emitter.emit(event, payload as MittEvents[EventName]);
   }
+}
+
+function subscriptionKey(
+  type: string,
+  data: WebSocketSendPayload,
+): string | null {
+  const topic = type.replace(/^(un)?subscribe/, '');
+  if (topic === type) return null;
+  if (topic === 'Backtests') return topic;
+  if (topic === 'Candles') return `${topic}:${data.symbol}:${data.timeframe}`;
+  if (topic === 'Indicator') return `${topic}:${data.clientIndicatorId}`;
+  return null;
 }
 
 export const wsService = new WebSocketService();

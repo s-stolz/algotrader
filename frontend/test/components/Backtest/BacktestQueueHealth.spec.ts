@@ -1,3 +1,5 @@
+import { emitBacktestChange } from '../../backtestEventSocket';
+import { installBacktestSocket } from '../../backtestEventSocket';
 import { readFileSync } from 'node:fs';
 import { defineComponent, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -29,6 +31,7 @@ import {
 } from './backtestQueueFixtures';
 describe('Backtest queue health', () => {
   beforeEach(() => {
+    installBacktestSocket();
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.mocked(fetchBacktestQueue)
@@ -72,7 +75,7 @@ describe('Backtest queue health', () => {
     },
   );
 
-  it('polls while mounted and computes elapsed times from current clock', async () => {
+  it('refreshes on events without polling and computes elapsed times locally', async () => {
     const wrapper = await openQueue();
     await flushPromises();
     expect(wrapper.get('[data-testid="queue-toggle"]').text()).toContain(
@@ -87,12 +90,16 @@ describe('Backtest queue health', () => {
 
     vi.advanceTimersByTime(5000);
     await flushPromises();
+    expect(fetchBacktestQueue).toHaveBeenCalledTimes(1);
+    emitBacktestChange();
+    await flushPromises();
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
     expect(
       wrapper.find('[data-testid="workspace-queue-active-section"]').text(),
     ).toContain('2m 5s');
     wrapper.unmount();
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
   });
@@ -153,6 +160,7 @@ describe('Backtest queue health', () => {
       expect(wrapper.emitted('inspect')).toEqual([['batch', 'waiting-batch']]);
       await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
       vi.advanceTimersByTime(5000);
+      emitBacktestChange();
       await flushPromises();
       expect(
         wrapper.find('[data-testid="workspace-queue-run-waiting"]').exists(),
@@ -260,6 +268,7 @@ describe('Backtest queue health', () => {
       expect(wrapper.emitted('inspect')?.[1]).toEqual(['batch', 'batch-1']);
       await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
       vi.advanceTimersByTime(60_000);
+      emitBacktestChange();
       await flushPromises();
       expect(
         wrapper.find('[aria-label="Recently finished experiments"]').exists(),
@@ -301,9 +310,11 @@ describe('Backtest queue health', () => {
       ).toBe(true);
 
       vi.advanceTimersByTime(5000);
+      emitBacktestChange();
       await flushPromises();
       expect(wrapper.text()).toContain('Worker: stale');
       vi.advanceTimersByTime(5000);
+      emitBacktestChange();
       await flushPromises();
       expect(wrapper.text()).toContain('Worker: faulted');
       expect(wrapper.text()).toContain('Settlement failed');
@@ -318,6 +329,7 @@ describe('Backtest queue health', () => {
     const wrapper = await openQueue();
     await flushPromises();
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(
       wrapper.find('[data-testid="workspace-queue-unknown"]').text(),
@@ -331,6 +343,7 @@ describe('Backtest queue health', () => {
 
     vi.mocked(fetchBacktestQueue).mockResolvedValueOnce(healthySnapshot);
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(
       wrapper.find('[data-testid="workspace-queue-unknown"]').exists(),
@@ -339,6 +352,7 @@ describe('Backtest queue health', () => {
       () => new Promise(() => {}),
     );
     vi.advanceTimersByTime(35_000);
+    emitBacktestChange();
     await flushPromises();
     expect(
       wrapper.find('[data-testid="workspace-queue-unknown"]').text(),
@@ -356,6 +370,7 @@ describe('Backtest queue health', () => {
     );
     const wrapper = await openQueue();
     vi.advanceTimersByTime(10_000);
+    emitBacktestChange();
     await flushPromises();
     expect(fetchBacktestQueue).toHaveBeenCalledTimes(1);
     resolve(healthySnapshot);
@@ -466,6 +481,7 @@ describe('Backtest queue health', () => {
       shown.value = false;
       await flushPromises();
       vi.advanceTimersByTime(10_000);
+      emitBacktestChange();
       await flushPromises();
       expect(fetchBacktestQueue).toHaveBeenCalledTimes(1);
       expect(wrapper.find('[data-testid="queue-toggle"]').exists()).toBe(false);

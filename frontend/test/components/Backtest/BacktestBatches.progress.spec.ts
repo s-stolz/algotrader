@@ -1,3 +1,5 @@
+import { emitBacktestChange } from '../../backtestEventSocket';
+import { installBacktestSocket } from '../../backtestEventSocket';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +23,7 @@ import { batch, member } from './backtestBatchFixtures';
 
 describe('accepted batch inspection: progress', () => {
   beforeEach(() => {
+    installBacktestSocket();
     setActivePinia(createPinia());
     vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(getBacktestBatch).mockReset().mockResolvedValue(batch);
@@ -138,6 +141,7 @@ describe('accepted batch inspection: progress', () => {
         { ...member(1), status: 'running' },
       ]);
       vi.advanceTimersByTime(5000);
+      emitBacktestChange();
       await flushPromises();
       expect(
         wrapper.get('[role="progressbar"]').attributes('aria-valuetext'),
@@ -190,6 +194,7 @@ describe('accepted batch inspection: progress', () => {
       outcome_counts: { ...batch.outcome_counts, queued: 0, succeeded: 2 },
     });
     vi.advanceTimersByTime(4000);
+    emitBacktestChange();
     await flushPromises();
     expect(wrapper.get('.elapsed strong').text()).toBe('12s');
     expect(
@@ -197,6 +202,7 @@ describe('accepted batch inspection: progress', () => {
     ).toBe('2');
     expect(wrapper.findAll('.header-actions button')).toHaveLength(0);
     vi.advanceTimersByTime(10_000);
+    emitBacktestChange();
     await flushPromises();
     expect(wrapper.get('.elapsed strong').text()).toBe('12s');
     wrapper.unmount();
@@ -213,6 +219,7 @@ describe('accepted batch inspection: progress', () => {
     const wrapper = mount(BacktestBatches, { props: { batchId: 'batch-1' } });
     await flushPromises();
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(wrapper.get('.status-badge').text()).toBe('Status unknown');
     expect(wrapper.get('[role="alert"]').text()).toContain(
@@ -223,6 +230,7 @@ describe('accepted batch inspection: progress', () => {
     ).toBe('2');
     expect(wrapper.text()).not.toContain('Updates interrupted');
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(wrapper.get('.status-badge').text()).toBe('Queued');
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);

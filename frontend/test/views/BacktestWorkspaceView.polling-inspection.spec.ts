@@ -1,3 +1,4 @@
+import { emitBacktestChange } from '../backtestEventSocket';
 import {
   setupWorkspaceTests,
   run,
@@ -77,6 +78,7 @@ describe('production Backtest Workspace: polling-inspection', () => {
       ]),
     );
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(listBacktestBatchMembers).toHaveBeenCalledTimes(2);
     expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(2);
@@ -129,12 +131,14 @@ describe('production Backtest Workspace: polling-inspection', () => {
       .text();
     vi.mocked(getBacktestRun).mockImplementation(() => new Promise(() => {}));
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(
       wrapper.get('[data-testid="workspace-current-backtest"]').text(),
     ).toBe(selectedTable);
     const reads = vi.mocked(getBacktestRun).mock.calls.length;
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(getBacktestRun).toHaveBeenCalledTimes(reads);
     wrapper.unmount();
@@ -184,6 +188,7 @@ describe('production Backtest Workspace: polling-inspection', () => {
       () => new Promise(() => {}),
     );
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(
       wrapper.findComponent({ name: 'EquityReplayCharts' }).props('series'),
@@ -236,6 +241,7 @@ describe('production Backtest Workspace: polling-inspection', () => {
       .click();
     await wrapper.vm.$nextTick();
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(
       document.body.querySelector('[data-testid="execution-fills-table"]'),
@@ -250,6 +256,7 @@ describe('production Backtest Workspace: polling-inspection', () => {
     await wrapper.find('[data-testid="workspace-log-member"]').trigger('click');
     await flushPromises();
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(document.body.textContent).toContain('Execution log · Run #1');
     wrapper.unmount();

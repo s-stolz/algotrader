@@ -1,3 +1,4 @@
+import { installBacktestSocket } from '../../backtestEventSocket';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -26,6 +27,7 @@ import { batch, member } from './backtestBatchFixtures';
 
 describe('accepted batch inspection: inspection', () => {
   beforeEach(() => {
+    installBacktestSocket();
     setActivePinia(createPinia());
     vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(getBacktestBatch).mockReset().mockResolvedValue(batch);
@@ -112,7 +114,7 @@ describe('accepted batch inspection: inspection', () => {
     }
   });
 
-  it('does not discard a batch read that takes longer than a poll interval', async () => {
+  it('does not discard a batch read that takes several seconds', async () => {
     vi.useFakeTimers();
     let resolve!: (batch: BacktestBatch) => void;
     vi.mocked(getBacktestBatch).mockImplementationOnce(

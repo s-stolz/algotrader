@@ -1,3 +1,4 @@
+import { emitBacktestChange } from '../backtestEventSocket';
 import {
   setupWorkspaceTests,
   run,
@@ -61,6 +62,7 @@ describe('production Backtest Workspace: name-acknowledgements', () => {
         'Named sweep',
       );
       await vi.advanceTimersByTimeAsync(5000);
+      emitBacktestChange();
       await flushPromises();
       expect(
         wrapper
@@ -100,6 +102,7 @@ describe('production Backtest Workspace: name-acknowledgements', () => {
         }),
     );
     await vi.advanceTimersByTimeAsync(5000);
+    emitBacktestChange();
     await wrapper
       .get('.run-heading button[aria-label^="Edit experiment name"]')
       .trigger('click');
@@ -225,6 +228,7 @@ describe('production Backtest Workspace: name-acknowledgements', () => {
       vi.mocked(listBacktestRuns).mockResolvedValue([persisted]);
       vi.mocked(getBacktestRun).mockResolvedValue(persisted);
       await vi.advanceTimersByTimeAsync(10000);
+      emitBacktestChange();
       await flushPromises();
       expect(input().element.value).toBe('Failed successor draft');
       expect(wrapper.get('.run-heading [role="alert"]').text()).toBe(

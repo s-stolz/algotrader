@@ -1,3 +1,4 @@
+import { installBacktestSocket } from '../../backtestEventSocket';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +22,7 @@ import { batch, member } from './backtestBatchFixtures';
 
 describe('accepted batch inspection: commands', () => {
   beforeEach(() => {
+    installBacktestSocket();
     setActivePinia(createPinia());
     vi.mocked(controlBacktestBatch).mockReset();
     vi.mocked(getBacktestBatch).mockReset().mockResolvedValue(batch);

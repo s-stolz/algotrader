@@ -1,3 +1,4 @@
+import { useBacktestEvents } from '@/utils/useBacktestEvents';
 import {
   computed,
   ref,
@@ -28,7 +29,6 @@ import { executionLogAvailable } from './workspaceExecution';
 import { errorMessage } from './workspaceErrors';
 // Created once by the kept-alive view so section rendering never owns state.
 export function useBacktestWorkspace() {
-  const POLL_INTERVAL_MS = 5000;
   const router = useRouter();
   const workspaceStore = useBacktestWorkspaceStore();
   const overlayStore = useBacktestOverlayStore();
@@ -86,7 +86,6 @@ export function useBacktestWorkspace() {
       ? getBacktestRunSelectability(run).reason
       : overlayStore.getBacktestRunSelectability(run).reason;
   }
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
   let detailSequence = 0;
   let pendingDetailId: string | null = null;
   let isActive = false;
@@ -359,27 +358,22 @@ export function useBacktestWorkspace() {
     }
   }
 
-  function startPolling(): void {
+  function startUpdates(): void {
     if (isActive) return;
     isActive = true;
     polling.start();
     if (marketsStore.all.length === 0) void marketsStore.fetch();
     void loadRuns();
     loadAnalysis();
-    pollTimer = setInterval(() => {
-      void loadRuns(false);
-    }, POLL_INTERVAL_MS);
   }
 
-  function stopPolling(): void {
+  function stopUpdates(): void {
     isActive = false;
     polling.stop();
     ++detailSequence;
     pendingDetailId = null;
     inspection.stop();
     logRun.value = null;
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = null;
   }
 
   watch(
@@ -425,10 +419,13 @@ export function useBacktestWorkspace() {
     { immediate: true },
   );
 
-  onMounted(startPolling);
-  onActivated(startPolling);
-  onDeactivated(stopPolling);
-  onUnmounted(stopPolling);
+  useBacktestEvents(() => {
+    void loadRuns();
+  });
+  onMounted(startUpdates);
+  onActivated(startUpdates);
+  onDeactivated(stopUpdates);
+  onUnmounted(stopUpdates);
   return {
     history,
     historyActions: {

@@ -1,3 +1,4 @@
+import { emitBacktestChange } from '../backtestEventSocket';
 import {
   setupWorkspaceTests,
   run,
@@ -47,6 +48,7 @@ describe('production Backtest Workspace: polling-recovery', () => {
     ).toContain('running');
 
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(
       wrapper.find('[data-testid="workspace-run-active"]').text(),
@@ -62,11 +64,12 @@ describe('production Backtest Workspace: polling-recovery', () => {
 
     wrapper.unmount();
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     expect(listBacktestRuns).toHaveBeenCalledTimes(2);
   });
 
-  it('accepts a history response that takes longer than the polling interval', async () => {
+  it('accepts slow history responses without repeating reads', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     let resolveRead!: (runs: BacktestRun[]) => void;
     vi.mocked(listBacktestRuns).mockImplementationOnce(
@@ -91,7 +94,7 @@ describe('production Backtest Workspace: polling-recovery', () => {
     wrapper.unmount();
   });
 
-  it('shows a slow read error after a polling interval instead of loading forever', async () => {
+  it('shows a slow read error after several seconds instead of loading forever', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     let rejectRead!: (error: Error) => void;
     vi.mocked(listBacktestRuns).mockImplementationOnce(
@@ -114,7 +117,7 @@ describe('production Backtest Workspace: polling-recovery', () => {
     wrapper.unmount();
   });
 
-  it('coalesces a retry requested during an active recovery poll', async () => {
+  it('coalesces a retry requested during an active recovery read', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     let resolveRead!: (runs: BacktestRun[]) => void;
     vi.mocked(listBacktestRuns)
@@ -133,6 +136,7 @@ describe('production Backtest Workspace: polling-recovery', () => {
       'Retry now',
     );
     vi.advanceTimersByTime(5000);
+    emitBacktestChange();
     await flushPromises();
     await wrapper.find('[data-testid="workspace-refresh"]').trigger('click');
     expect(listBacktestRuns).toHaveBeenCalledTimes(2);

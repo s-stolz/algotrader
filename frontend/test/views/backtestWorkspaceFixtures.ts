@@ -1,3 +1,4 @@
+import { installBacktestSocket } from '../backtestEventSocket';
 import { flushPromises, mount } from '@vue/test-utils';
 import { h } from 'vue';
 import DesignScope from '@/components/Common/DesignScope.vue';
@@ -249,6 +250,7 @@ export function fill(sequence: number, side: 'buy' | 'sell'): BacktestFill {
 export let pinia: Pinia;
 export function setupWorkspaceTests() {
   beforeEach(() => {
+    installBacktestSocket();
     pinia = createPinia();
     setActivePinia(pinia);
     localStorage.clear();

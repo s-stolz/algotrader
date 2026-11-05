@@ -64,13 +64,17 @@ and behavior that is easy to break when changing them.
   committed names remain bound to that identity when navigation replaces or
   unmounts the editor; Escape cancels still-unsent queued intent. Workspace
   name revisions protect older reads and names awaiting readback, while allowing
-  fresh confirmed reads to resume normal polling. Apply name acknowledgements
+  fresh confirmed reads to resume normal refreshes. Apply name acknowledgements
   without replacing execution fields from a save response.
 - Read history, commands, logs, and Equity Replay through
   `src/api/backtesterClient.ts`. For lifecycle or API changes, read
   [backtest contracts](../docs/contracts/backtests.md); the public backtester API owns
   those policies. Queue availability and position are advisory telemetry.
-- Failed polling retains the last good data and marks live status unknown.
+- `src/utils/useBacktestEvents.ts` shares one backtest WebSocket subscription across
+  active consumers. Change/reconnect events refresh saved reads; health events
+  update matching worker freshness without polling. The socket restores desired
+  subscriptions after reconnect. See [delivery contracts](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
+- Failed reads or disconnected delivery retain the last good data and mark live status unknown.
   Ignore superseded responses after changing the inspected run, batch, or draft.
   Background refresh preserves settled charts and inspection state.
 - Creation uses the current strategy catalog; historical inspection uses saved

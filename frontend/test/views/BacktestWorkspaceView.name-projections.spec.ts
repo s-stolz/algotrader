@@ -1,3 +1,4 @@
+import { emitBacktestChange } from '../backtestEventSocket';
 import {
   setupWorkspaceTests,
   run,
@@ -54,6 +55,7 @@ describe('production Backtest Workspace: name-projections', () => {
       vi.mocked(listBacktestRuns).mockResolvedValue([persisted]);
       vi.mocked(getBacktestRun).mockResolvedValue(persisted);
       await vi.advanceTimersByTimeAsync(5000);
+      emitBacktestChange();
       await flushPromises();
       const comparison = () =>
         wrapper.get(
