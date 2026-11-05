@@ -150,4 +150,5 @@ Accepted pending recovery survives policy changes; see the
 
 `services.realtime_service` replaces `services.webserver`. The generator migrates
 legacy local overrides; specifying both keys is rejected. Generated `WEBSERVER_*`
-and `COMPOSE_WEBSERVER_*` names stay stable.
+and `COMPOSE_WEBSERVER_*` names stay stable. The legacy backtester worker
+`poll_interval_seconds` is unused by the Redis Streams worker.

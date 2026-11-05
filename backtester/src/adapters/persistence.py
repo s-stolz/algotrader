@@ -274,8 +274,8 @@ class BacktestRunLifecyclePersistenceAdapter:
         owner_token: str | None,
         fault_code: str | None = None,
         fault_message: str | None = None,
-    ) -> None:
-        self._call(
+    ) -> Mapping[str, Any]:
+        return self._call(
             "record_backtest_worker_heartbeat",
             {
                 "worker_id": worker_id,

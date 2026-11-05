@@ -66,6 +66,7 @@ services:
       start_period: 10s
 
   backtester-worker:
+    hostname: backtester-worker
     container_name: backtester-worker
     cpus: ${COMPOSE_BACKTESTER_WORKER_CPUS:?Run make config}
     mem_reservation: ${COMPOSE_BACKTESTER_WORKER_MEMORY_RESERVATION:?Run make config}

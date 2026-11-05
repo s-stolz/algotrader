@@ -29,8 +29,9 @@ Changing the boundary affects future ingestion; it does not delete stored histor
 or fill older history before an existing latest candle. Read
 [ingestion context](../ingestion-service/CONTEXT.md) for recovery semantics.
 
-Backtester heartbeat stale threshold must exceed its heartbeat interval. Polling,
-heartbeat, and sweep-limit defaults belong to topology. Heartbeat configuration
+Backtester heartbeat stale threshold must exceed its heartbeat interval. Heartbeat
+and sweep-limit defaults belong to topology. The legacy worker poll interval is
+accepted but unused by the stream-enabled entrypoint. Heartbeat configuration
 changes availability reporting, never execution-slot ownership.
 
 ## Verification

@@ -6,10 +6,12 @@ import logging
 import math
 import re
 from threading import Event, Lock, Thread
+from time import monotonic
 from time import sleep as default_sleep
 from typing import Any, Callable, Mapping, Protocol
 from uuid import uuid4
 
+from adapters.backtest_events import BacktestControlInbox, BacktestEventPublisher
 from domain.enums import BacktestRunStatus
 from domain.types import (
     BacktestRequestSnapshot,
@@ -26,6 +28,7 @@ from app.backtest_child import (
     CompactBacktestResult,
     ProcessBacktestChildExecutor,
 )
+from app.backtest_queue import _timestamp_ms
 
 _LOGGER = logging.getLogger(__name__)
 _PUBLIC_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,64}$")
@@ -114,7 +117,7 @@ class WorkerHeartbeatPublisher(Protocol):
         owner_token: str | None,
         fault_code: str | None = None,
         fault_message: str | None = None,
-    ) -> None: ...
+    ) -> Mapping[str, Any] | None: ...
 
 
 class ExecutionOperationalError(RuntimeError):
@@ -138,9 +141,16 @@ class BacktestWorker:
         sleep: Callable[[float], None] = default_sleep,
         heartbeat_publisher: WorkerHeartbeatPublisher | None = None,
         heartbeat_interval_seconds: float = 5.0,
+        inbox: BacktestControlInbox | None = None,
+        events: BacktestEventPublisher | None = None,
     ) -> None:
         if not math.isfinite(poll_interval_seconds) or poll_interval_seconds <= 0:
             raise ValueError("poll_interval_seconds must be positive and finite")
+        self._inbox = inbox
+        self._events = events
+        self._pending_notifications: set[str] = set()
+        self._active_run_id: str | None = None
+        self._next_control_read = 0.0
         self._repository = repository
         self._lifecycle = lifecycle
         self._child_executor = child_executor or ProcessBacktestChildExecutor()
@@ -184,7 +194,10 @@ class BacktestWorker:
                     return False
                 continue
 
+            self._active_run_id = selected.run_id
             self._set_owner_token(owner_token)
+            if self._inbox is not None:
+                self._inbox.ready.set()
             return self._execute_claimed(selected, owner_token)
 
     def _execute_claimed(self, selected: BacktestRunRecord, owner_token: str) -> bool:
@@ -192,7 +205,7 @@ class BacktestWorker:
             if isinstance(self._child_executor, ProcessBacktestChildExecutor):
                 outcome = self._child_executor.execute(
                     selected.request_snapshot,
-                    on_poll=lambda: self._cancellation_requested(selected.run_id),
+                    on_poll=lambda: self._control_cancellation(selected.run_id),
                 )
             else:
                 outcome = self._child_executor.execute(selected.request_snapshot)
@@ -324,6 +337,25 @@ class BacktestWorker:
                 "lost_ownership", run_id, f"Backtest run failure was not persisted: {run_id}"
             )
 
+    def _control_cancellation(self, run_id: str) -> bool:
+        if self._inbox is None:
+            return self._cancellation_requested(run_id)
+        if not self._inbox.ready.is_set() or monotonic() < self._next_control_read:
+            return False
+        self._pending_notifications.update(self._inbox.take())
+        try:
+            run = self._repository.get(run_id)
+            if run is None:
+                raise RuntimeError("Active run is unavailable")
+            return run.status == BacktestRunStatus.CANCELLING
+        except Exception:
+            # A communication outage must not kill otherwise valid computation.
+            # Retry this specific notification; this is not a periodic state scan.
+            _LOGGER.exception("Cancellation notification could not be reconciled; retrying")
+            self._next_control_read = monotonic() + 1
+            self._inbox.ready.set()
+            return False
+
     def _cancellation_requested(self, run_id: str) -> bool:
         try:
             run = self._repository.get(run_id)
@@ -397,6 +429,10 @@ class BacktestWorker:
         *,
         stop_requested: Callable[[], bool] | None = None,
     ) -> None:
+        if self._events is not None:
+            self._events.start()
+        if self._inbox is not None:
+            self._inbox.start()
         heartbeat_stop = Event()
         heartbeat_thread = None
         if self._heartbeat_publisher is not None:
@@ -410,9 +446,7 @@ class BacktestWorker:
         try:
             self.reconcile_running_runs()
             should_stop = stop_requested or (lambda: False)
-            while not should_stop():
-                if not self.run_once():
-                    self._sleep(self._poll_interval_seconds)
+            self._run_queue(should_stop)
         except ExecutionOperationalError as exc:
             _LOGGER.error(
                 "Backtest worker operational fault",
@@ -440,10 +474,35 @@ class BacktestWorker:
             heartbeat_stop.set()
             if heartbeat_thread is not None and heartbeat_thread.is_alive():
                 heartbeat_thread.join()
+            self._close_transports()
+
+    def _close_transports(self) -> None:
+        if self._inbox is not None:
+            self._inbox.close()
+        if self._events is not None:
+            self._events.close()
+
+    def _run_queue(self, should_stop: Callable[[], bool]) -> None:
+        while not should_stop():
+            if self._inbox is not None:
+                self._pending_notifications.update(self._inbox.take())
+            processed = self.run_once()
+            if self._inbox is not None:
+                self._inbox.acknowledge(set(self._pending_notifications))
+                self._pending_notifications.clear()
+                if not processed:
+                    while not should_stop() and not self._inbox.ready.wait(0.5):
+                        pass
+            elif not processed:
+                self._sleep(self._poll_interval_seconds)
 
     def _set_owner_token(self, owner_token: str | None) -> None:
         with self._owner_lock:
             self._owner_token = owner_token
+            if owner_token is None:
+                self._active_run_id = None
+        if self._events is not None:
+            self._events.changed()
 
     def _publish_heartbeat(
         self, fault_code: str | None = None, fault_message: str | None = None
@@ -452,13 +511,26 @@ class BacktestWorker:
             return
         with self._owner_lock:
             owner_token = self._owner_token
+            run_id = self._active_run_id
         try:
-            self._heartbeat_publisher(
+            heartbeat = self._heartbeat_publisher(
                 worker_id=self._worker_id,
                 owner_token=owner_token,
                 fault_code=fault_code,
                 fault_message=fault_message,
             )
+            if self._events is not None and heartbeat is not None:
+                # A fenced write can return a newer owner: do not label it with
+                # the old run captured before the HTTP call.
+                if heartbeat["owner_token"] == owner_token:
+                    self._events.health(
+                        {
+                            "run_id": run_id,
+                            "heartbeat_at_ms": _timestamp_ms(heartbeat["heartbeat_at"]),
+                            "fault_code": heartbeat["fault_code"],
+                            "fault_message": heartbeat["fault_message"],
+                        }
+                    )
         except Exception:
             _LOGGER.exception("Backtest worker heartbeat could not be persisted")
 

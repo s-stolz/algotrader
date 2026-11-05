@@ -14,8 +14,9 @@ if _SRC_PATH_TEXT not in sys.path:
     sys.path.insert(0, _SRC_PATH_TEXT)
 
 from adapters.api.app import create_app  # noqa: E402
+from adapters.backtest_events import BacktestEventPublisher  # noqa: E402
 
-app = create_app()
+app = create_app(events=BacktestEventPublisher())
 
 
 def main() -> None:

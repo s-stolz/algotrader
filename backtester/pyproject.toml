@@ -18,6 +18,7 @@ dependencies = [
   "PyYAML>=6.0",
   "uvicorn[standard]>=0.40.0",
   "watchdog",
+  "redis>=7.1.0",
 ]
 
 [project.urls]

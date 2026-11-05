@@ -1,10 +1,17 @@
 import unittest
+from unittest.mock import patch
 
 import main
 from fastapi.testclient import TestClient
 
 
 class TestBacktesterServiceEntrypoint(unittest.TestCase):
+    def setUp(self) -> None:
+        for method in ("start", "close"):
+            patcher = patch(f"adapters.backtest_events.BacktestEventPublisher.{method}")
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_fastapi_app_exposes_submission_and_status_routes(self) -> None:
         with TestClient(main.app) as client:
             response = client.get("/openapi.json")
