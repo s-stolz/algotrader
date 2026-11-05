@@ -8,16 +8,14 @@ import {
 } from '@/utils/timeframes';
 
 describe('timeframe utilities', () => {
-  it('normalizes known string and numeric timeframe values', () => {
+  it('normalizes known timeframe codes', () => {
     expect(normalizeTimeframeCode('m5')).toBe('M5');
     expect(normalizeTimeframeCode('H1')).toBe('H1');
-    expect(normalizeTimeframeCode(60)).toBe('H1');
-    expect(normalizeTimeframeCode(43200)).toBe('MN1');
   });
 
   it('falls back to M1 for unsupported inputs', () => {
     expect(normalizeTimeframeCode('bad')).toBe('M1');
-    expect(normalizeTimeframeCode(7)).toBe('M1');
+    expect(normalizeTimeframeCode(60)).toBe('M1');
     expect(timeframeToMinutes('bad')).toBe(1);
   });
 

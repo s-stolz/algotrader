@@ -1,5 +1,4 @@
 import {
-  TIMEFRAME_CODES,
   type TimeframeCode,
   type TimeframeOption,
   isTimeframeCode,
@@ -32,16 +31,7 @@ export const TIMEFRAME_TO_MINUTES: Record<TimeframeCode, number> = {
   MN1: 43200,
 };
 
-export const MINUTES_TO_TIMEFRAME: Readonly<Record<number, TimeframeCode>> =
-  Object.fromEntries(
-    TIMEFRAME_CODES.map((code) => [TIMEFRAME_TO_MINUTES[code], code]),
-  ) as Record<number, TimeframeCode>;
-
 export function normalizeTimeframeCode(timeframe: unknown): TimeframeCode {
-  if (typeof timeframe === 'number') {
-    return MINUTES_TO_TIMEFRAME[timeframe] ?? 'M1';
-  }
-
   if (typeof timeframe === 'string') {
     const upper = timeframe.toUpperCase();
     if (isTimeframeCode(upper)) {

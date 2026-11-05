@@ -2,7 +2,6 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
 import {
-  isRecord,
   isStoredCurrentTimeframe,
   type TimeframeCode,
   type TimeframeOption,
@@ -19,10 +18,6 @@ function readStoredTimeframe(): TimeframeCode {
 
   if (isStoredCurrentTimeframe(stored)) {
     return stored.value;
-  }
-
-  if (isRecord(stored)) {
-    return normalizeTimeframeCode(stored.value);
   }
 
   return 'M1';
