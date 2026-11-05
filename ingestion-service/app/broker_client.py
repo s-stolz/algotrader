@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, AsyncIterator, Dict
 
 import httpx
 
@@ -28,59 +28,6 @@ class BrokerClient:
         headers = {"X-Account-Id": account_id}
         self.client = httpx.Client(timeout=timeout, headers=headers)
         self.async_client = httpx.AsyncClient(timeout=timeout, headers=headers)
-
-    def get_trendbars(
-        self,
-        symbol: str,
-        timeframe: str = "M1",
-        start_time: str | int | None = None,
-        end_time: str | int | None = None,
-        limit: int | None = None,
-    ) -> List[Dict[str, Any]]:
-        """Fetch historical trendbars (candles) from the broker-service.
-
-        Args:
-            symbol: Trading symbol (e.g., "EURUSD")
-            timeframe: Timeframe enum (e.g., "M1", "H1", "D1")
-            start_time: Optional start timestamp (ISO format or epoch millis)
-            end_time: Optional end timestamp (ISO format or epoch millis)
-            limit: Optional maximum number of bars to return (1-1000)
-
-        Returns:
-            List of trendbar dictionaries with OHLC data
-        """
-        url = f"{self.base_url}/symbols/{symbol}/trendbars"
-
-        params: dict[str, Any] = {
-            "timeframe": timeframe,
-        }
-
-        if start_time is not None:
-            params["fromTs"] = normalize_timestamp_to_epoch_ms(start_time)
-
-        if end_time is not None:
-            params["toTs"] = normalize_timestamp_to_epoch_ms(end_time)
-
-        if limit:
-            params["limit"] = min(limit, 1000)  # Enforce max limit
-
-        try:
-            logger.debug(f"Fetching trendbars: {url} with params {params}")
-            response = self.client.get(url, params=params)
-            response.raise_for_status()
-            trendbars = response.json()
-            logger.info(f"Fetched {len(trendbars)} trendbars for {symbol} {timeframe}")
-            return trendbars
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                "HTTP error fetching trendbars: %s - %s",
-                e.response.status_code,
-                e.response.text,
-            )
-            raise
-        except Exception as e:
-            logger.error(f"Error fetching trendbars: {e}")
-            raise
 
     async def stream_trendbars(  # noqa: C901
         self,

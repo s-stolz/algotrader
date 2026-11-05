@@ -26,12 +26,8 @@ class DatabaseClientTests(unittest.TestCase):
         db_client._client = Mock()
         db_client._client.get_latest_m1_candle.side_effect = DatabaseAccessorClientError("boom")
 
-        for method in ("get_latest_m1_candle", "get_latest_candle"):
-            with self.subTest(method=method):
-                getattr(db_client._client, method).side_effect = DatabaseAccessorClientError("boom")
-                arguments = ("EURUSD", "M1") if method == "get_latest_candle" else ("EURUSD",)
-                with self.assertRaises(DatabaseAccessorClientError):
-                    getattr(db_client, method)(*arguments)
+        with self.assertRaises(DatabaseAccessorClientError):
+            db_client.get_latest_m1_candle("EURUSD")
 
     def test_successful_empty_latest_result_remains_none(self) -> None:
         db_client = DatabaseClient()
