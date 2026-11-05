@@ -30,8 +30,7 @@ or fill older history before an existing latest candle. Read
 [ingestion context](../ingestion-service/CONTEXT.md) for recovery semantics.
 
 Backtester heartbeat stale threshold must exceed its heartbeat interval. Heartbeat
-and sweep-limit defaults belong to topology. The legacy worker poll interval is
-accepted but unused by the stream-enabled entrypoint. Heartbeat configuration
+and sweep-limit defaults belong to topology. Heartbeat configuration
 changes availability reporting, never execution-slot ownership.
 
 ## Verification
@@ -52,7 +51,3 @@ lookback or a quoted UTC start date. Accepted pending recovery retains its earli
 boundary when this policy changes. For configuration and deployment obligations,
 read the [recovery contract](../docs/contracts/recovery.md); field types and
 runtime mappings are in [topology schema](topology.schema.md).
-
-The gateway topology key is `services.realtime_service`; legacy local
-`services.webserver` overrides are migrated by the generator. Existing generated
-`WEBSERVER_*` and `COMPOSE_WEBSERVER_*` names remain compatible.

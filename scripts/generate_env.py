@@ -40,7 +40,7 @@ DOCKER_RESOURCE_PATHS = {
     "indicator_api": "services.indicator_api.resources",
     "backtester_api": "services.backtester.api.resources",
     "broker_service": "services.broker_service.resources",
-    "webserver": "services.realtime_service.resources",
+    "realtime_service": "services.realtime_service.resources",
     "frontend": "services.frontend.resources",
     "backtester_worker": "services.backtester.worker.resources",
     "ingestion_service": "services.ingestion_service.resources",
@@ -81,27 +81,14 @@ def read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def migrate_realtime_key(topology: dict[str, Any]) -> dict[str, Any]:
-    """Accept existing machine overrides during the service rename."""
-    services = topology.get("services", {})
-    if "webserver" in services:
-        if "realtime_service" in services:
-            raise ValueError("Use only services.realtime_service, not both service names")
-        services["realtime_service"] = services.pop("webserver")
-        network = services["realtime_service"].get("network", {})
-        if network.get("host") == "webserver":
-            network["host"] = "realtime-service"
-    return topology
-
-
 def load_topology(
     path: Path = TOPOLOGY_PATH,
     local_path: Path = LOCAL_TOPOLOGY_PATH,
 ) -> dict[str, Any]:
     """Load shared defaults and optional partial machine overrides."""
-    topology = migrate_realtime_key(read_yaml(path))
+    topology = read_yaml(path)
     if local_path.exists():
-        merge_topology(topology, migrate_realtime_key(read_yaml(local_path)))
+        merge_topology(topology, read_yaml(local_path))
     return topology
 
 
@@ -231,17 +218,21 @@ def build_env(
     broker_log_level = required(topology, "services.broker_service.logging.level")
     broker_log_format = required(topology, "services.broker_service.logging.format")
 
-    webserver_host = required(topology, "services.realtime_service.network.host")
-    webserver_ws_port = required(topology, "services.realtime_service.network.websocket.port")
-    webserver_ws_published_port = required(
+    realtime_service_host = required(topology, "services.realtime_service.network.host")
+    realtime_service_ws_port = required(
+        topology, "services.realtime_service.network.websocket.port"
+    )
+    realtime_service_ws_published_port = required(
         topology, "services.realtime_service.network.websocket.published_port"
     )
-    webserver_health_port = required(topology, "services.realtime_service.network.health.port")
-    webserver_health_published_port = required(
+    realtime_service_health_port = required(
+        topology, "services.realtime_service.network.health.port"
+    )
+    realtime_service_health_published_port = required(
         topology, "services.realtime_service.network.health.published_port"
     )
-    webserver_log_level = required(topology, "services.realtime_service.logging.level")
-    webserver_log_format = required(topology, "services.realtime_service.logging.format")
+    realtime_service_log_level = required(topology, "services.realtime_service.logging.level")
+    realtime_service_log_format = required(topology, "services.realtime_service.logging.format")
 
     frontend_host = required(topology, "services.frontend.network.host")
     frontend_port = required(topology, "services.frontend.network.port")
@@ -261,20 +252,24 @@ def build_env(
     timescaledb_db = required(topology, "infrastructure.timescaledb.database.name")
     timescaledb_echo = required(topology, "infrastructure.timescaledb.database.echo")
 
-    webserver_redis_block_ms = required(topology, "services.realtime_service.consumer.block_ms")
-    webserver_redis_batch_size = required(topology, "services.realtime_service.consumer.batch_size")
-    webserver_stream_queue_size = required(topology, "services.realtime_service.streams.queue_size")
-    webserver_max_stream_length = required(topology, "services.realtime_service.streams.max_length")
+    realtime_service_redis_block_ms = required(
+        topology, "services.realtime_service.consumer.block_ms"
+    )
+    realtime_service_redis_batch_size = required(
+        topology, "services.realtime_service.consumer.batch_size"
+    )
+    realtime_service_stream_queue_size = required(
+        topology, "services.realtime_service.streams.queue_size"
+    )
+    realtime_service_max_stream_length = required(
+        topology, "services.realtime_service.streams.max_length"
+    )
 
     ingestion_log_level = required(topology, "services.ingestion_service.logging.level")
     ingestion_log_format = required(topology, "services.ingestion_service.logging.format")
     ingestion_batch_size = required(topology, "services.ingestion_service.consumer.batch_size")
     ingestion_block_ms = required(topology, "services.ingestion_service.consumer.block_ms")
 
-    backtester_worker_poll_interval = required(
-        topology,
-        "services.backtester.worker.poll_interval_seconds",
-    )
     backtester_worker_heartbeat_interval = required(
         topology,
         "services.backtester.worker.heartbeat.interval_seconds",
@@ -330,7 +325,6 @@ def build_env(
         "BACKTESTER_API_BASE_URL": f"http://{backtester_host}:{backtester_port}",
         "BACKTESTER_LOG_LEVEL": stringify(backtester_log_level),
         "BACKTESTER_LOG_FORMAT": stringify(backtester_log_format),
-        "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS": stringify(backtester_worker_poll_interval),
         "BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS": stringify(
             backtester_worker_heartbeat_interval
         ),
@@ -342,13 +336,13 @@ def build_env(
         "BROKER_SERVICE_BASE_URL": f"http://{broker_host}:{broker_port}",
         "BROKER_LOG_LEVEL": stringify(broker_log_level),
         "BROKER_LOG_FORMAT": stringify(broker_log_format),
-        "WEBSERVER_HOST": stringify(webserver_host),
-        "WEBSERVER_WS_PORT": stringify(webserver_ws_port),
-        "WEBSERVER_WS_PUBLISHED_PORT": stringify(webserver_ws_published_port),
-        "WEBSERVER_HEALTH_PORT": stringify(webserver_health_port),
-        "WEBSERVER_HEALTH_PUBLISHED_PORT": stringify(webserver_health_published_port),
-        "WEBSERVER_LOG_LEVEL": stringify(webserver_log_level),
-        "WEBSERVER_LOG_FORMAT": stringify(webserver_log_format),
+        "REALTIME_SERVICE_HOST": stringify(realtime_service_host),
+        "REALTIME_SERVICE_WS_PORT": stringify(realtime_service_ws_port),
+        "REALTIME_SERVICE_WS_PUBLISHED_PORT": stringify(realtime_service_ws_published_port),
+        "REALTIME_SERVICE_HEALTH_PORT": stringify(realtime_service_health_port),
+        "REALTIME_SERVICE_HEALTH_PUBLISHED_PORT": stringify(realtime_service_health_published_port),
+        "REALTIME_SERVICE_LOG_LEVEL": stringify(realtime_service_log_level),
+        "REALTIME_SERVICE_LOG_FORMAT": stringify(realtime_service_log_format),
         "FRONTEND_HOST": stringify(frontend_host),
         "FRONTEND_PORT": stringify(frontend_port),
         "FRONTEND_PUBLISHED_PORT": stringify(frontend_published_port),
@@ -368,7 +362,7 @@ def build_env(
         "VITE_PROXY_DATA_ACCESSOR_TARGET": f"http://{db_api_host}:{db_api_port}",
         "VITE_PROXY_BACKTESTER_TARGET": f"http://{backtester_host}:{backtester_port}",
         "VITE_PROXY_INDICATOR_TARGET": f"http://{indicator_host}:{indicator_port}",
-        "VITE_WS_URL": f"ws://{public_host}:{webserver_ws_published_port}",
+        "VITE_WS_URL": f"ws://{public_host}:{realtime_service_ws_published_port}",
         **history_env,
         "INGESTION_LOG_LEVEL": stringify(ingestion_log_level),
         "INGESTION_LOG_FORMAT": stringify(ingestion_log_format),
@@ -376,10 +370,10 @@ def build_env(
         "LOG_FORMAT": stringify(ingestion_log_format),
         "CONSUMER_BATCH_SIZE": stringify(ingestion_batch_size),
         "CONSUMER_BLOCK_MS": stringify(ingestion_block_ms),
-        "WEBSERVER_REDIS_BLOCK_MS": stringify(webserver_redis_block_ms),
-        "WEBSERVER_REDIS_BATCH_SIZE": stringify(webserver_redis_batch_size),
-        "WEBSERVER_STREAM_QUEUE_SIZE": stringify(webserver_stream_queue_size),
-        "WEBSERVER_MAX_STREAM_LENGTH": stringify(webserver_max_stream_length),
+        "REALTIME_SERVICE_REDIS_BLOCK_MS": stringify(realtime_service_redis_block_ms),
+        "REALTIME_SERVICE_REDIS_BATCH_SIZE": stringify(realtime_service_redis_batch_size),
+        "REALTIME_SERVICE_STREAM_QUEUE_SIZE": stringify(realtime_service_stream_queue_size),
+        "REALTIME_SERVICE_MAX_STREAM_LENGTH": stringify(realtime_service_max_stream_length),
         "BROKER_REDIS_URL": broker_redis_url,
         "BROKER_TOKEN_REDIS_KEY": "broker:auth:ctrader:current",
         "BROKER_TOKEN_REFRESH_EARLY_SECONDS": "604800",

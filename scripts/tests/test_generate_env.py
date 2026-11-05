@@ -27,11 +27,6 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
     def test_component_tuning_changes_only_its_runtime_variables(self) -> None:
         cases = (
             (
-                "services.backtester.worker.poll_interval_seconds",
-                2.5,
-                "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS",
-            ),
-            (
                 "services.backtester.worker.heartbeat.interval_seconds",
                 7.0,
                 "BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS",
@@ -46,10 +41,26 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
                 250,
                 "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT",
             ),
-            ("services.realtime_service.consumer.block_ms", 1234, "WEBSERVER_REDIS_BLOCK_MS"),
-            ("services.realtime_service.consumer.batch_size", 17, "WEBSERVER_REDIS_BATCH_SIZE"),
-            ("services.realtime_service.streams.queue_size", 31, "WEBSERVER_STREAM_QUEUE_SIZE"),
-            ("services.realtime_service.streams.max_length", 500, "WEBSERVER_MAX_STREAM_LENGTH"),
+            (
+                "services.realtime_service.consumer.block_ms",
+                1234,
+                "REALTIME_SERVICE_REDIS_BLOCK_MS",
+            ),
+            (
+                "services.realtime_service.consumer.batch_size",
+                17,
+                "REALTIME_SERVICE_REDIS_BATCH_SIZE",
+            ),
+            (
+                "services.realtime_service.streams.queue_size",
+                31,
+                "REALTIME_SERVICE_STREAM_QUEUE_SIZE",
+            ),
+            (
+                "services.realtime_service.streams.max_length",
+                500,
+                "REALTIME_SERVICE_MAX_STREAM_LENGTH",
+            ),
             ("services.ingestion_service.consumer.block_ms", 2345, "CONSUMER_BLOCK_MS"),
             ("services.ingestion_service.consumer.batch_size", 19, "CONSUMER_BATCH_SIZE"),
             ("services.broker_service.streams.ticks.queue_size", 37, "BROKER_TICK_QUEUE_SIZE"),
@@ -110,7 +121,7 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
         self.assertEqual(shared["DATABASE_ACCESSOR_BASE_URL"], "http://market-db-api:8100")
         self.assertEqual(shared["VITE_PROXY_DATA_ACCESSOR_TARGET"], "http://market-db-api:8100")
         self.assertEqual(shared["DATABASE_ACCESSOR_PUBLISHED_PORT"], "18100")
-        self.assertEqual(shared["WEBSERVER_WS_PORT"], "8766")
+        self.assertEqual(shared["REALTIME_SERVICE_WS_PORT"], "8766")
         self.assertEqual(shared["VITE_WS_URL"], "ws://workstation.local:18766")
         self.assertEqual(shared["REDIS_URL"], "redis://stream-store:6380/2")
         self.assertEqual(shared["BROKER_REDIS_URL"], "redis://stream-store:6380/3")
@@ -177,33 +188,12 @@ class LocalTopologyTests(unittest.TestCase):
                 generate_env.build_env(topology, {})
 
 
-class RealtimeServiceMigrationTests(unittest.TestCase):
-    def test_legacy_override_migrates_without_renaming_environment_variables(self):
-        legacy = {"services": {"webserver": {"network": {"host": "webserver"}}}}
-        migrated = generate_env.migrate_realtime_key(legacy)
-        self.assertEqual(
-            migrated, {"services": {"realtime_service": {"network": {"host": "realtime-service"}}}}
-        )
-        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
-        generate_env.merge_topology(topology, migrated)
-        shared, _, _, _ = generate_env.build_env(topology, {})
-        self.assertEqual(shared["WEBSERVER_HOST"], "realtime-service")
-        self.assertIn("COMPOSE_WEBSERVER_CPUS", shared)
-
-    def test_both_service_names_are_rejected(self):
-        with self.assertRaisesRegex(ValueError, "not both"):
-            generate_env.migrate_realtime_key(
-                {"services": {"webserver": {}, "realtime_service": {}}}
-            )
-
-
 class DockerResourceConfigurationTests(unittest.TestCase):
     def test_every_compose_service_uses_generated_resources(self) -> None:
         topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
         compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
         configured_services = {
-            ("realtime-service" if name == "webserver" else name.replace("_", "-"))
-            for name in generate_env.DOCKER_RESOURCE_PATHS
+            name.replace("_", "-") for name in generate_env.DOCKER_RESOURCE_PATHS
         }
         self.assertEqual(configured_services, set(compose["services"]))
         topology["services"]["backtester"]["worker"]["resources"] = {
@@ -217,11 +207,7 @@ class DockerResourceConfigurationTests(unittest.TestCase):
         self.assertEqual(shared_env["COMPOSE_BACKTESTER_WORKER_MEMORY_RESERVATION"], "768m")
         for name, service in compose["services"].items():
             with self.subTest(service=name):
-                prefix = (
-                    "COMPOSE_WEBSERVER"
-                    if name == "realtime-service"
-                    else f"COMPOSE_{name.upper().replace('-', '_')}"
-                )
+                prefix = f"COMPOSE_{name.upper().replace('-', '_')}"
                 for field, suffix in (("cpus", "CPUS"), ("mem_reservation", "MEMORY_RESERVATION")):
                     key = f"{prefix}_{suffix}"
                     self.assertIn(key, shared_env)
@@ -264,7 +250,6 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(shared_env["BACKTESTER_API_PUBLISHED_PORT"], "8020")
         self.assertEqual(shared_env["BACKTESTER_LOG_LEVEL"], "INFO")
         self.assertEqual(shared_env["BACKTESTER_LOG_FORMAT"], "pretty")
-        self.assertEqual(shared_env["BACKTESTER_WORKER_POLL_INTERVAL_SECONDS"], "1.0")
         self.assertEqual(shared_env["BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS"], "5.0")
         self.assertEqual(shared_env["BACKTESTER_WORKER_STALE_AFTER_SECONDS"], "30.0")
         self.assertEqual(shared_env["BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT"], "1000")

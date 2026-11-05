@@ -131,18 +131,8 @@ Compose fixes the worker hostname to `backtester-worker`; this is the default
 restart-stable consumer-group identity. Additional deployments must set a distinct
 `BACKTESTER_WORKER_GROUP` per instance and reuse it on restart. Never share a group
 between concurrently running instances. This does not increase execution capacity.
-The former worker poll-interval setting remains accepted for configuration
-compatibility but is unused by the stream-enabled entrypoint.
-
-The former `webserver` service/directory is now `realtime-service`. Stop/remove the
-old gateway container during cutover so it does not retain the published ports;
-start the new gateway and updated frontend together. Preserve the existing
-WebSocket ports and `WEBSERVER_*`/`COMPOSE_WEBSERVER_*` environment names. The
-configuration generator accepts legacy `services.webserver` local overrides and
-maps them to `services.realtime_service`; using both keys is an error. Regenerate
-configuration with `make config`. Recreate the worker only between runs or using
-the verified shutdown/recovery procedure above; do not interrupt an active run
-merely to apply this upgrade.
+Regenerate configuration with `make config`. Recreate the worker only between
+runs or using the verified shutdown/recovery procedure above.
 
 Delivery verification without touching the stack:
 

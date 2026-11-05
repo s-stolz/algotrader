@@ -19,8 +19,8 @@ from websockets.asyncio.server import ServerConnection
 
 configure_logging(
     service_name="realtime-service",
-    level=os.getenv("WEBSERVER_LOG_LEVEL", "INFO"),
-    format=os.getenv("WEBSERVER_LOG_FORMAT", "pretty"),
+    level=os.getenv("REALTIME_SERVICE_LOG_LEVEL", "INFO"),
+    format=os.getenv("REALTIME_SERVICE_LOG_FORMAT", "pretty"),
 )
 logger = logging.getLogger(__name__)
 
@@ -319,15 +319,15 @@ async def main():
     )
 
     config = {
-        "ws_port": int(os.getenv("WEBSERVER_WS_PORT", "8765")),
-        "health_port": int(os.getenv("WEBSERVER_HEALTH_PORT", "8080")),
+        "ws_port": int(os.getenv("REALTIME_SERVICE_WS_PORT", "8765")),
+        "health_port": int(os.getenv("REALTIME_SERVICE_HEALTH_PORT", "8080")),
         "redis_host": os.getenv("REDIS_HOST", "redis"),
         "redis_port": int(os.getenv("REDIS_PORT", "6379")),
         "broker_service_url": broker_service_url,
         "indicator_api_url": indicator_api_url,
         "account_id": os.getenv("ACCOUNT_ID"),
-        "redis_block_ms": int(os.getenv("WEBSERVER_REDIS_BLOCK_MS", "5000")),
-        "redis_batch_size": int(os.getenv("WEBSERVER_REDIS_BATCH_SIZE", "100")),
+        "redis_block_ms": int(os.getenv("REALTIME_SERVICE_REDIS_BLOCK_MS", "5000")),
+        "redis_batch_size": int(os.getenv("REALTIME_SERVICE_REDIS_BATCH_SIZE", "100")),
     }
 
     if not config["account_id"]:

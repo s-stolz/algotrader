@@ -21,7 +21,7 @@ existing generated environment variables; YAML nesting does not change their nam
 | `services.indicator_api` | `network`, `logging`, `resources` |
 | `services.backtester` | Shared `logging`, `api`, `worker`, `sweeps` |
 | `services.backtester.api` | `network`, `resources` |
-| `services.backtester.worker` | `resources`, `poll_interval_seconds`, `heartbeat` |
+| `services.backtester.worker` | `resources`, `heartbeat` |
 | `services.broker_service` | `network`, `logging`, `resources`, `streams`, `ctrader` |
 | `services.ingestion_service` | `logging`, `resources`, `consumer`, `history` |
 | `services.realtime_service` | `network`, `logging`, `resources`, `consumer`, `streams` |
@@ -98,9 +98,7 @@ runtime-specific constraints. Backtester API/worker tuning is grouped under
 `services.broker_service`.
 
 Worker heartbeat intervals are positive; the stale threshold must exceed the
-heartbeat interval. The unused `poll_interval_seconds` setting is accepted for
-compatibility with older configurations and must remain positive. The worker
-waits for Redis notifications instead. The sweep candidate limit is a positive integer.
+heartbeat interval. The sweep candidate limit is a positive integer.
 Broker stream `max_length: null` preserves the existing unlimited retention and
 omits the corresponding `BROKER_*_STREAM_MAXLEN` variable from the generated file.
 Broker `streams.redis_db` selects its Redis database independently of the shared
@@ -149,8 +147,3 @@ and recreate affected containers after editing overrides.
 
 Accepted pending recovery survives policy changes; see the
 [recovery contract](../docs/contracts/recovery.md).
-
-`services.realtime_service` replaces `services.webserver`. The generator migrates
-legacy local overrides; specifying both keys is rejected. Generated `WEBSERVER_*`
-and `COMPOSE_WEBSERVER_*` names stay stable. The legacy backtester worker
-`poll_interval_seconds` is unused by the Redis Streams worker.

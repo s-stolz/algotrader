@@ -49,16 +49,14 @@ cd realtime-service
 ```
 
 Settings live under `services.realtime_service` in `config/topology.yaml`.
-Generated environment variables retain the `WEBSERVER_*` prefix for compatibility
-with existing configurations.
 
 Key settings:
 
-- `WEBSERVER_WS_PORT` / `WEBSERVER_HEALTH_PORT`
+- `REALTIME_SERVICE_WS_PORT` / `REALTIME_SERVICE_HEALTH_PORT`
 - `BROKER_SERVICE_HOST` / `BROKER_SERVICE_PORT`
 - `ACCOUNT_ID`
-- `WEBSERVER_REDIS_BLOCK_MS` / `WEBSERVER_REDIS_BATCH_SIZE`
-- `WEBSERVER_STREAM_QUEUE_SIZE` / `WEBSERVER_MAX_STREAM_LENGTH`
+- `REALTIME_SERVICE_REDIS_BLOCK_MS` / `REALTIME_SERVICE_REDIS_BATCH_SIZE`
+- `REALTIME_SERVICE_STREAM_QUEUE_SIZE` / `REALTIME_SERVICE_MAX_STREAM_LENGTH`
 
 ## Message Protocol
 

@@ -7,7 +7,6 @@ import math
 import re
 from threading import Event, Lock, Thread
 from time import monotonic
-from time import sleep as default_sleep
 from typing import Any, Callable, Mapping, Protocol
 from uuid import uuid4
 
@@ -136,16 +135,12 @@ class BacktestWorker:
         repository: QueuedRunRepository,
         lifecycle: RunLifecyclePersistence,
         child_executor: BacktestChildExecutor | None = None,
-        poll_interval_seconds: float = 1.0,
         now_ms: Callable[[], int] | None = None,
-        sleep: Callable[[float], None] = default_sleep,
         heartbeat_publisher: WorkerHeartbeatPublisher | None = None,
         heartbeat_interval_seconds: float = 5.0,
-        inbox: BacktestControlInbox | None = None,
+        inbox: BacktestControlInbox,
         events: BacktestEventPublisher | None = None,
     ) -> None:
-        if not math.isfinite(poll_interval_seconds) or poll_interval_seconds <= 0:
-            raise ValueError("poll_interval_seconds must be positive and finite")
         self._inbox = inbox
         self._events = events
         self._pending_notifications: set[str] = set()
@@ -154,9 +149,7 @@ class BacktestWorker:
         self._repository = repository
         self._lifecycle = lifecycle
         self._child_executor = child_executor or ProcessBacktestChildExecutor()
-        self._poll_interval_seconds = float(poll_interval_seconds)
         self._now_ms = now_ms or _utc_now_ms
-        self._sleep = sleep
         if not math.isfinite(heartbeat_interval_seconds) or heartbeat_interval_seconds <= 0:
             raise ValueError("heartbeat_interval_seconds must be positive and finite")
         self._heartbeat_publisher = heartbeat_publisher
@@ -196,8 +189,7 @@ class BacktestWorker:
 
             self._active_run_id = selected.run_id
             self._set_owner_token(owner_token)
-            if self._inbox is not None:
-                self._inbox.ready.set()
+            self._inbox.ready.set()
             return self._execute_claimed(selected, owner_token)
 
     def _execute_claimed(self, selected: BacktestRunRecord, owner_token: str) -> bool:
@@ -338,8 +330,6 @@ class BacktestWorker:
             )
 
     def _control_cancellation(self, run_id: str) -> bool:
-        if self._inbox is None:
-            return self._cancellation_requested(run_id)
         if not self._inbox.ready.is_set() or monotonic() < self._next_control_read:
             return False
         self._pending_notifications.update(self._inbox.take())
@@ -431,8 +421,7 @@ class BacktestWorker:
     ) -> None:
         if self._events is not None:
             self._events.start()
-        if self._inbox is not None:
-            self._inbox.start()
+        self._inbox.start()
         heartbeat_stop = Event()
         heartbeat_thread = None
         if self._heartbeat_publisher is not None:
@@ -477,24 +466,19 @@ class BacktestWorker:
             self._close_transports()
 
     def _close_transports(self) -> None:
-        if self._inbox is not None:
-            self._inbox.close()
+        self._inbox.close()
         if self._events is not None:
             self._events.close()
 
     def _run_queue(self, should_stop: Callable[[], bool]) -> None:
         while not should_stop():
-            if self._inbox is not None:
-                self._pending_notifications.update(self._inbox.take())
+            self._pending_notifications.update(self._inbox.take())
             processed = self.run_once()
-            if self._inbox is not None:
-                self._inbox.acknowledge(set(self._pending_notifications))
-                self._pending_notifications.clear()
-                if not processed:
-                    while not should_stop() and not self._inbox.ready.wait(0.5):
-                        pass
-            elif not processed:
-                self._sleep(self._poll_interval_seconds)
+            self._inbox.acknowledge(set(self._pending_notifications))
+            self._pending_notifications.clear()
+            if not processed:
+                while not should_stop() and not self._inbox.ready.wait(0.5):
+                    pass
 
     def _set_owner_token(self, owner_token: str | None) -> None:
         with self._owner_lock:

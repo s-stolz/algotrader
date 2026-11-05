@@ -37,7 +37,6 @@ def build_worker(config: BacktesterConfig) -> BacktestWorker:
         lifecycle=lifecycle,
         inbox=BacktestControlInbox(),
         events=BacktestEventPublisher(),
-        poll_interval_seconds=config.worker_poll_interval_seconds,
         heartbeat_interval_seconds=config.worker_heartbeat_interval_seconds,
         heartbeat_publisher=lifecycle.record_worker_heartbeat,
     )
