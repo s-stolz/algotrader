@@ -60,12 +60,8 @@ defineOptions({
   name: 'UploadDataSection',
 });
 
-type UploadFileWithLegacySize = UploadFileInfo & {
-  size?: number;
-};
-
 interface BeforeUploadData {
-  file: UploadFileWithLegacySize;
+  file: UploadFileInfo;
 }
 
 withDefaults(
@@ -87,7 +83,7 @@ const fileError = ref('');
 function beforeUpload(data: BeforeUploadData): boolean {
   fileError.value = '';
   const maxSize = 100 * 1024 * 1024;
-  const fileSize = data.file.file?.size ?? data.file.size ?? 0;
+  const fileSize = data.file.file?.size ?? 0;
 
   if (fileSize > maxSize) {
     fileError.value = 'File size exceeds 100MB limit';

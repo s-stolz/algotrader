@@ -12,7 +12,7 @@ describe('execution schedule transport', () => {
     last_entry_minute_utc: 120,
     exit_minute_utc: 180,
   };
-  it('accepts legacy omitted schedules and validates enabled ones', () => {
+  it('accepts omitted schedules and validates enabled ones', () => {
     const draft = initialDraft();
     draft.symbols = ['TEST'];
     draft.strategy.strategy_id = 'test';

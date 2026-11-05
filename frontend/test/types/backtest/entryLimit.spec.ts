@@ -4,7 +4,7 @@ import { isBacktestRequestPayload } from '@/types/backtesterContracts';
 import { initialDraft } from '@/views/creation/creationRequest';
 
 describe('daily entry limit transport', () => {
-  it('accepts unlimited legacy settings and positive integer limits', () => {
+  it('accepts omitted entry limits and positive integer limits', () => {
     const draft = initialDraft();
     draft.symbols = ['TEST'];
     draft.strategy.strategy_id = 'test';

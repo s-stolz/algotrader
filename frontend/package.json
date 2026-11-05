@@ -22,8 +22,7 @@
     "mitt": "~3.0.1",
     "pinia": "^3.0.2",
     "vue": "^3.5.16",
-    "vue-router": "~4.4.3",
-    "ws": "^8.18.0"
+    "vue-router": "~4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.8.0",

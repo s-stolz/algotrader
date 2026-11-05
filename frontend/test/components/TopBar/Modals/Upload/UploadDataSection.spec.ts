@@ -68,9 +68,7 @@ describe('UploadDataSection', () => {
     });
 
     const section = wrapper.vm as unknown as {
-      beforeUpload: (data: {
-        file: UploadFileInfo & { size?: number };
-      }) => boolean;
+      beforeUpload: (data: { file: UploadFileInfo }) => boolean;
       handleFileChange: (data: { fileList: UploadFileInfo[] }) => void;
       handleFileRemove: () => void;
     };
@@ -86,7 +84,7 @@ describe('UploadDataSection', () => {
           id: 'large',
           name: 'large.csv',
           status: 'pending',
-          size: 101 * 1024 * 1024,
+          file: { size: 101 * 1024 * 1024 } as File,
         },
       }),
     ).toBe(false);
@@ -98,7 +96,7 @@ describe('UploadDataSection', () => {
           id: 'valid',
           name: 'valid.csv',
           status: 'pending',
-          size: 1024,
+          file: { size: 1024 } as File,
         },
       }),
     ).toBe(true);
