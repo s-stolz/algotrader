@@ -90,7 +90,6 @@ services:
 
   realtime_service:
     network:
-      host: realtime-service
       websocket:
         port: 8765
         published_port: 8765
@@ -106,13 +105,9 @@ services:
     consumer:
       block_ms: 5000
       batch_size: 100
-    streams:
-      queue_size: 1000
-      max_length: 10000
 
   frontend:
     network:
-      host: frontend
       port: 5173
       published_port: 5173
     resources:

@@ -218,7 +218,6 @@ def build_env(
     broker_log_level = required(topology, "services.broker_service.logging.level")
     broker_log_format = required(topology, "services.broker_service.logging.format")
 
-    realtime_service_host = required(topology, "services.realtime_service.network.host")
     realtime_service_ws_port = required(
         topology, "services.realtime_service.network.websocket.port"
     )
@@ -234,7 +233,6 @@ def build_env(
     realtime_service_log_level = required(topology, "services.realtime_service.logging.level")
     realtime_service_log_format = required(topology, "services.realtime_service.logging.format")
 
-    frontend_host = required(topology, "services.frontend.network.host")
     frontend_port = required(topology, "services.frontend.network.port")
     frontend_published_port = required(topology, "services.frontend.network.published_port")
 
@@ -257,12 +255,6 @@ def build_env(
     )
     realtime_service_redis_batch_size = required(
         topology, "services.realtime_service.consumer.batch_size"
-    )
-    realtime_service_stream_queue_size = required(
-        topology, "services.realtime_service.streams.queue_size"
-    )
-    realtime_service_max_stream_length = required(
-        topology, "services.realtime_service.streams.max_length"
     )
 
     ingestion_log_level = required(topology, "services.ingestion_service.logging.level")
@@ -310,7 +302,6 @@ def build_env(
         "DATABASE_ACCESSOR_HOST": stringify(db_api_host),
         "DATABASE_ACCESSOR_PORT": stringify(db_api_port),
         "DATABASE_ACCESSOR_PUBLISHED_PORT": stringify(db_api_published_port),
-        "DATABASE_ACCESSOR_BASE_URL": f"http://{db_api_host}:{db_api_port}",
         "DATABASE_ACCESSOR_LOG_LEVEL": stringify(db_api_log_level),
         "DATABASE_ACCESSOR_LOG_FORMAT": stringify(db_api_log_format),
         "INDICATOR_API_HOST": stringify(indicator_host),
@@ -322,7 +313,6 @@ def build_env(
         "BACKTESTER_API_HOST": stringify(backtester_host),
         "BACKTESTER_API_PORT": stringify(backtester_port),
         "BACKTESTER_API_PUBLISHED_PORT": stringify(backtester_published_port),
-        "BACKTESTER_API_BASE_URL": f"http://{backtester_host}:{backtester_port}",
         "BACKTESTER_LOG_LEVEL": stringify(backtester_log_level),
         "BACKTESTER_LOG_FORMAT": stringify(backtester_log_format),
         "BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS": stringify(
@@ -336,20 +326,17 @@ def build_env(
         "BROKER_SERVICE_BASE_URL": f"http://{broker_host}:{broker_port}",
         "BROKER_LOG_LEVEL": stringify(broker_log_level),
         "BROKER_LOG_FORMAT": stringify(broker_log_format),
-        "REALTIME_SERVICE_HOST": stringify(realtime_service_host),
         "REALTIME_SERVICE_WS_PORT": stringify(realtime_service_ws_port),
         "REALTIME_SERVICE_WS_PUBLISHED_PORT": stringify(realtime_service_ws_published_port),
         "REALTIME_SERVICE_HEALTH_PORT": stringify(realtime_service_health_port),
         "REALTIME_SERVICE_HEALTH_PUBLISHED_PORT": stringify(realtime_service_health_published_port),
         "REALTIME_SERVICE_LOG_LEVEL": stringify(realtime_service_log_level),
         "REALTIME_SERVICE_LOG_FORMAT": stringify(realtime_service_log_format),
-        "FRONTEND_HOST": stringify(frontend_host),
         "FRONTEND_PORT": stringify(frontend_port),
         "FRONTEND_PUBLISHED_PORT": stringify(frontend_published_port),
         "REDIS_HOST": stringify(redis_host),
         "REDIS_PORT": stringify(redis_port),
         "REDIS_PUBLISHED_PORT": stringify(redis_published_port),
-        "REDIS_DB": stringify(redis_db),
         "REDIS_URL": redis_url,
         "TIMESCALEDB_HOST": stringify(timescaledb_host),
         "TIMESCALEDB_PORT": stringify(timescaledb_port),
@@ -366,14 +353,10 @@ def build_env(
         **history_env,
         "INGESTION_LOG_LEVEL": stringify(ingestion_log_level),
         "INGESTION_LOG_FORMAT": stringify(ingestion_log_format),
-        "LOG_LEVEL": stringify(ingestion_log_level),
-        "LOG_FORMAT": stringify(ingestion_log_format),
         "CONSUMER_BATCH_SIZE": stringify(ingestion_batch_size),
         "CONSUMER_BLOCK_MS": stringify(ingestion_block_ms),
         "REALTIME_SERVICE_REDIS_BLOCK_MS": stringify(realtime_service_redis_block_ms),
         "REALTIME_SERVICE_REDIS_BATCH_SIZE": stringify(realtime_service_redis_batch_size),
-        "REALTIME_SERVICE_STREAM_QUEUE_SIZE": stringify(realtime_service_stream_queue_size),
-        "REALTIME_SERVICE_MAX_STREAM_LENGTH": stringify(realtime_service_max_stream_length),
         "BROKER_REDIS_URL": broker_redis_url,
         "BROKER_TOKEN_REDIS_KEY": "broker:auth:ctrader:current",
         "BROKER_TOKEN_REFRESH_EARLY_SECONDS": "604800",

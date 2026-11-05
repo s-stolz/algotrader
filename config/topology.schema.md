@@ -24,7 +24,7 @@ existing generated environment variables; YAML nesting does not change their nam
 | `services.backtester.worker` | `resources`, `heartbeat` |
 | `services.broker_service` | `network`, `logging`, `resources`, `streams`, `ctrader` |
 | `services.ingestion_service` | `logging`, `resources`, `consumer`, `history` |
-| `services.realtime_service` | `network`, `logging`, `resources`, `consumer`, `streams` |
+| `services.realtime_service` | `network`, `logging`, `resources`, `consumer` |
 | `services.frontend` | `network`, `resources` |
 | `infrastructure.redis` | `network`, `resources`, `database` |
 | `infrastructure.timescaledb` | `network`, `resources`, `database` |
@@ -50,11 +50,10 @@ targets use the internal host and port. The local backtester CLI uses `public.ho
 and `services.database_accessor_api.network.published_port`, falling back to
 `network.port` when the published port is absent.
 
-Realtime service shares one hostname across two named endpoints:
+Realtime service exposes two named endpoints:
 
 ```yaml
 network:
-  host: realtime-service
   websocket:
     port: 8765
     published_port: 8765
@@ -64,12 +63,12 @@ network:
 ```
 
 The browser WebSocket URL uses `public.host` and `network.websocket.published_port`.
-Ports are integers; hostnames are strings.
+Ports are integers; hostnames are strings. Frontend networking needs only `port`
+and `published_port`; no component consumes a configurable frontend hostname.
 
 ## Logging and resources
 
 `logging` contains `level` (for example `INFO`) and `format` (`pretty` or `json`).
-Ingestion logging also supplies the legacy `LOG_LEVEL` / `LOG_FORMAT` aliases.
 
 Each container owns a `resources` mapping:
 

@@ -51,16 +51,6 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
                 17,
                 "REALTIME_SERVICE_REDIS_BATCH_SIZE",
             ),
-            (
-                "services.realtime_service.streams.queue_size",
-                31,
-                "REALTIME_SERVICE_STREAM_QUEUE_SIZE",
-            ),
-            (
-                "services.realtime_service.streams.max_length",
-                500,
-                "REALTIME_SERVICE_MAX_STREAM_LENGTH",
-            ),
             ("services.ingestion_service.consumer.block_ms", 2345, "CONSUMER_BLOCK_MS"),
             ("services.ingestion_service.consumer.batch_size", 19, "CONSUMER_BATCH_SIZE"),
             ("services.broker_service.streams.ticks.queue_size", 37, "BROKER_TICK_QUEUE_SIZE"),
@@ -118,7 +108,6 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
 
         shared, _, _, _ = generate_env.build_env(topology, {})
 
-        self.assertEqual(shared["DATABASE_ACCESSOR_BASE_URL"], "http://market-db-api:8100")
         self.assertEqual(shared["VITE_PROXY_DATA_ACCESSOR_TARGET"], "http://market-db-api:8100")
         self.assertEqual(shared["DATABASE_ACCESSOR_PUBLISHED_PORT"], "18100")
         self.assertEqual(shared["REALTIME_SERVICE_WS_PORT"], "8766")
