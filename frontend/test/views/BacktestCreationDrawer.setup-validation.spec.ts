@@ -25,6 +25,43 @@ const activeStep = () =>
 
 describe('setup validation and schedule alternatives', () => {
   creationSetup();
+  it('keeps validation attached to the edited schedule when rows are removed', async () => {
+    const wrapper = openDrawer();
+    await advancePreview();
+    wrapper.getComponent(NSwitch).vm.$emit('update:value', true);
+    await flushPromises();
+    await click('＋ Add schedule alternative');
+    const times = wrapper.findAllComponents(BaseTimePicker);
+    ['06:00', '10:00', '09:00'].forEach((time, index) => {
+      times[index + 3].vm.$emit('update:formatted-value', time);
+    });
+    await flushPromises();
+    expect(document.querySelectorAll('.schedule-row.invalid')).toHaveLength(1);
+    const removeFirst = async () => {
+      document
+        .querySelector<HTMLButtonElement>('[aria-label="Remove schedule 1"]')!
+        .click();
+      await flushPromises();
+    };
+    await removeFirst();
+    expect(document.querySelectorAll('.schedule-row.invalid')).toHaveLength(1);
+    expect(
+      document.querySelector('.schedule-row [role="alert"]')?.textContent,
+    ).toContain('exit must be at or after last entry');
+    wrapper
+      .findAllComponents(BaseTimePicker)[2]
+      .vm.$emit('update:formatted-value', '16:00');
+    await flushPromises();
+    expect(document.querySelectorAll('.schedule-row.invalid')).toHaveLength(0);
+    await click('＋ Add schedule alternative');
+    await removeFirst();
+    expect(document.querySelectorAll('.schedule-row.invalid')).toHaveLength(0);
+    await click('Parameters →');
+    expect(activeStep()).toBe('Setup');
+    expect(
+      document.querySelector('.schedule-row [role="alert"]')?.textContent,
+    ).toContain('Enter all three times.');
+  });
   it.each([
     ['selections-markets', [1], 'Select an available Market.'],
     [

@@ -1,5 +1,6 @@
 import { computed, ref, type Ref } from 'vue';
 import { setupIssues } from './setup/setupValidation';
+import type { DailyScheduleInput } from '@/types/backtest/schedule';
 import type {
   StrategyCatalogEntry,
   StrategyParameterSchema,
@@ -35,6 +36,7 @@ export function useCreationNavigation(inputs: NavigationInputs) {
   const step = ref(0);
   const setupAttempted = ref(false);
   const touchedSetup = ref<Record<string, boolean>>({});
+  const touchedSchedules = ref(new WeakSet<DailyScheduleInput>());
   const setupFocusRequest = ref(0);
   const setupValidation = computed(() =>
     setupIssues(
@@ -46,17 +48,30 @@ export function useCreationNavigation(inputs: NavigationInputs) {
   );
   const setupErrors = computed(() =>
     Object.fromEntries(
-      Object.entries(setupValidation.value).filter(
-        ([key]) => setupAttempted.value || touchedSetup.value[key],
-      ),
+      Object.entries(setupValidation.value).filter(([key]) => {
+        const row = scheduleRow(key);
+        return (
+          setupAttempted.value ||
+          (row ? touchedSchedules.value.has(row) : touchedSetup.value[key])
+        );
+      }),
     ),
   );
+  function scheduleRow(field: string) {
+    if (!field.startsWith('schedule-')) return;
+    return selections.value.dailySchedule?.candidates[
+      Number(field.slice('schedule-'.length))
+    ];
+  }
   function touchSetup(field: string) {
-    touchedSetup.value[field] = true;
+    const row = scheduleRow(field);
+    if (row) touchedSchedules.value.add(row);
+    else touchedSetup.value[field] = true;
   }
   function resetSetupValidation() {
     setupAttempted.value = false;
     touchedSetup.value = {};
+    touchedSchedules.value = new WeakSet();
   }
   const numericEntryValid = ref<Record<string, boolean>>({});
   function navigateStep(next: number): void {
