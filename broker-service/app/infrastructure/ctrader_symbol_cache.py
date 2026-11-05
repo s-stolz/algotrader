@@ -165,36 +165,6 @@ class SymbolCache:
 
         return symbol
 
-    async def get_light_symbol(
-        self,
-        account_id: int,
-        name: str,
-        authorize_fn: "AuthorizeFn",
-        send_request_fn: "SendRequestFn",
-    ) -> SymbolDescriptor:
-        """Get light symbol info (descriptor only).
-
-        Args:
-            account_id: The account ID for API requests.
-            name: The symbol name (will be uppercased).
-            authorize_fn: Function to authorize the account.
-            send_request_fn: Function to send API requests.
-
-        Returns:
-            SymbolDescriptor with basic symbol info.
-
-        Raises:
-            ValueError: If the symbol is unknown.
-        """
-        name = name.upper()
-        await self.ensure_populated(account_id, authorize_fn, send_request_fn)
-
-        descriptor = self.get_by_name(name)
-        if not descriptor:
-            raise ValueError(f"Unknown symbol {name}")
-
-        return descriptor
-
     def clear(self) -> None:
         """Clear all caches."""
         self._by_name.clear()

@@ -102,45 +102,6 @@ def _timeframe_to_minutes(timeframe: Timeframe) -> int:
     return mapping.get(timeframe, 1)
 
 
-def _trendbar_count_for_range(
-    timeframe: Timeframe,
-    from_ts: int,
-    to_ts: int | None,
-    max_count: int,
-) -> int:
-    if to_ts is None:
-        return max_count
-
-    if to_ts < from_ts:
-        return 0
-
-    timeframe_ms = _timeframe_to_minutes(timeframe) * 60 * 1000
-    range_count = ((to_ts - from_ts) // timeframe_ms) + 1
-    return min(max_count, range_count)
-
-
-def _trendbar_chunk_to(
-    timeframe: Timeframe,
-    from_ts: int,
-    chunk_size: int,
-    final_to: int | None,
-) -> int:
-    timeframe_ms = _timeframe_to_minutes(timeframe) * 60 * 1000
-    chunk_to = from_ts + ((chunk_size - 1) * timeframe_ms)
-    return min(chunk_to, final_to) if final_to is not None else chunk_to
-
-
-def _filter_trendbars_by_time_range(
-    bars: list[Trendbar],
-    from_ts: int,
-    to_ts: int | None,
-) -> list[Trendbar]:
-    if to_ts is None:
-        return [bar for bar in bars if bar.t >= from_ts]
-
-    return [bar for bar in bars if from_ts <= bar.t <= to_ts]
-
-
 class CtraderClient(BrokerPort, MarketDataPort):
     """Async wrapper that keeps Twisted reactor in a background thread."""
 
@@ -1021,19 +982,6 @@ class CtraderClient(BrokerPort, MarketDataPort):
         res = cast(ProtoOAReconcileRes, res)
 
         return res
-
-    async def _get_light_symbol(
-        self,
-        account_id: int,
-        name: str,
-    ) -> SymbolDescriptor:
-        """Get basic symbol info (name, id, enabled)."""
-        return await self._symbol_cache.get_light_symbol(
-            account_id,
-            name,
-            self._authorize_account,
-            self._send_request,
-        )
 
     async def _get_symbol(self, account_id: int, name: str) -> Symbol:
         """Get full symbol info (with digits, pip position, etc.)."""
