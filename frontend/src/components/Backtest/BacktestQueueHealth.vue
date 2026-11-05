@@ -343,7 +343,7 @@ const recentExperiments = computed(() => {
         }${batch.outcome_counts.failed ? ` · ${batch.outcome_counts.failed} failed` : ''}`,
       })),
   ];
-  // Keep fast runs discoverable even when they finish between queue polls.
+  // Keep fast runs discoverable after they leave the active queue.
   return entries
     .filter(
       (entry) =>

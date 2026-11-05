@@ -76,5 +76,4 @@ For rendered comparisons, wait for bundled fonts and stable canvas rendering.
 Capture the same populated states and viewports from identified checkouts;
 separate approved typography/control/color/spacing changes from regressions.
 The standalone comparison prototype stays outside production and is not a
-pixel-exact application baseline. Outstanding baseline evidence is recorded in
-[readability guidance](READABILITY.md#baseline-for-spec-17).
+pixel-exact application baseline.
