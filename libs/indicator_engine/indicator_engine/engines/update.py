@@ -233,7 +233,7 @@ class UpdateEngine:
                 "time": np.array([timestamp_ms], dtype=np.int64),
                 "asset": output_assets.copy(),
                 "output": np.array(outputs, dtype=object),
-                "param": np.array(reg.param_grid.param_ids, dtype=object),
+                "param": reg.param_grid.to_coords(),
             },
             attrs={
                 "param_names": reg.param_grid.param_names,
