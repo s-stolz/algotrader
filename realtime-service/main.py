@@ -16,7 +16,7 @@ from app.subscription_manager import SubscriptionManager
 from websockets.asyncio.server import ServerConnection
 
 configure_logging(
-    service_name="webserver",
+    service_name="realtime-service",
     level=os.getenv("WEBSERVER_LOG_LEVEL", "INFO"),
     format=os.getenv("WEBSERVER_LOG_FORMAT", "pretty"),
 )

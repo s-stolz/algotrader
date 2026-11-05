@@ -46,10 +46,10 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
                 250,
                 "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT",
             ),
-            ("services.webserver.consumer.block_ms", 1234, "WEBSERVER_REDIS_BLOCK_MS"),
-            ("services.webserver.consumer.batch_size", 17, "WEBSERVER_REDIS_BATCH_SIZE"),
-            ("services.webserver.streams.queue_size", 31, "WEBSERVER_STREAM_QUEUE_SIZE"),
-            ("services.webserver.streams.max_length", 500, "WEBSERVER_MAX_STREAM_LENGTH"),
+            ("services.realtime_service.consumer.block_ms", 1234, "WEBSERVER_REDIS_BLOCK_MS"),
+            ("services.realtime_service.consumer.batch_size", 17, "WEBSERVER_REDIS_BATCH_SIZE"),
+            ("services.realtime_service.streams.queue_size", 31, "WEBSERVER_STREAM_QUEUE_SIZE"),
+            ("services.realtime_service.streams.max_length", 500, "WEBSERVER_MAX_STREAM_LENGTH"),
             ("services.ingestion_service.consumer.block_ms", 2345, "CONSUMER_BLOCK_MS"),
             ("services.ingestion_service.consumer.batch_size", 19, "CONSUMER_BATCH_SIZE"),
             ("services.broker_service.streams.ticks.queue_size", 37, "BROKER_TICK_QUEUE_SIZE"),
@@ -93,7 +93,7 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
             "port": 8100,
             "published_port": 18100,
         }
-        topology["services"]["webserver"]["network"]["websocket"] = {
+        topology["services"]["realtime_service"]["network"]["websocket"] = {
             "port": 8766,
             "published_port": 18766,
         }
@@ -177,12 +177,33 @@ class LocalTopologyTests(unittest.TestCase):
                 generate_env.build_env(topology, {})
 
 
+class RealtimeServiceMigrationTests(unittest.TestCase):
+    def test_legacy_override_migrates_without_renaming_environment_variables(self):
+        legacy = {"services": {"webserver": {"network": {"host": "webserver"}}}}
+        migrated = generate_env.migrate_realtime_key(legacy)
+        self.assertEqual(
+            migrated, {"services": {"realtime_service": {"network": {"host": "realtime-service"}}}}
+        )
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        generate_env.merge_topology(topology, migrated)
+        shared, _, _, _ = generate_env.build_env(topology, {})
+        self.assertEqual(shared["WEBSERVER_HOST"], "realtime-service")
+        self.assertIn("COMPOSE_WEBSERVER_CPUS", shared)
+
+    def test_both_service_names_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "not both"):
+            generate_env.migrate_realtime_key(
+                {"services": {"webserver": {}, "realtime_service": {}}}
+            )
+
+
 class DockerResourceConfigurationTests(unittest.TestCase):
     def test_every_compose_service_uses_generated_resources(self) -> None:
         topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
         compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
         configured_services = {
-            name.replace("_", "-") for name in generate_env.DOCKER_RESOURCE_PATHS
+            ("realtime-service" if name == "webserver" else name.replace("_", "-"))
+            for name in generate_env.DOCKER_RESOURCE_PATHS
         }
         self.assertEqual(configured_services, set(compose["services"]))
         topology["services"]["backtester"]["worker"]["resources"] = {
@@ -196,7 +217,11 @@ class DockerResourceConfigurationTests(unittest.TestCase):
         self.assertEqual(shared_env["COMPOSE_BACKTESTER_WORKER_MEMORY_RESERVATION"], "768m")
         for name, service in compose["services"].items():
             with self.subTest(service=name):
-                prefix = f"COMPOSE_{name.upper().replace('-', '_')}"
+                prefix = (
+                    "COMPOSE_WEBSERVER"
+                    if name == "realtime-service"
+                    else f"COMPOSE_{name.upper().replace('-', '_')}"
+                )
                 for field, suffix in (("cpus", "CPUS"), ("mem_reservation", "MEMORY_RESERVATION")):
                     key = f"{prefix}_{suffix}"
                     self.assertIn(key, shared_env)

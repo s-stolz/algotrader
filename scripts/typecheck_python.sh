@@ -11,7 +11,7 @@ CONFIGS=(
   "database-accessor-api/pyrightconfig.json"
   "indicator-api/pyrightconfig.json"
   "ingestion-service/pyrightconfig.json"
-  "webserver/pyrightconfig.json"
+  "realtime-service/pyrightconfig.json"
 )
 
 if [[ -x "${REPO_ROOT}/.venv/bin/pyright" ]]; then

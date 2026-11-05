@@ -39,7 +39,7 @@ terminology, read [backtester context](backtester/CONTEXT.md).
 `broker-service` publishes cTrader ticks and candles to Redis.
 `ingestion-service` consumes closed M1 candles, backfills through the broker, and
 writes through `database-accessor-api` to TimescaleDB. `indicator-api` calculates
-historical and live series using `libs/indicator_engine`. `webserver` manages
+historical and live series using `libs/indicator_engine`. `realtime-service` manages
 source subscriptions and fans Redis updates out to the frontend over WebSocket.
 
 `backtester` loads historical candles through `libs/db_accessor_client`; its API
@@ -59,7 +59,7 @@ Frontend backtest consumers go through the backtester API.
   `start_ms` / `end_ms`.
 - Timescale stores M1 candles in `candles`; higher Timeframes use continuous
   aggregates or direct bucketing.
-- WebSocket message shapes are owned by [webserver context](webserver/CONTEXT.md).
+- WebSocket message shapes are owned by [realtime-service context](realtime-service/CONTEXT.md).
 - Durable run/batch invariants are owned by
   [backtest contracts](docs/contracts/backtests.md), including versioned snapshots,
   cancellation, and the execution slot that remains held until verified exit.

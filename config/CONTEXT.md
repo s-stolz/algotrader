@@ -51,3 +51,7 @@ lookback or a quoted UTC start date. Accepted pending recovery retains its earli
 boundary when this policy changes. For configuration and deployment obligations,
 read the [recovery contract](../docs/contracts/recovery.md); field types and
 runtime mappings are in [topology schema](topology.schema.md).
+
+The gateway topology key is `services.realtime_service`; legacy local
+`services.webserver` overrides are migrated by the generator. Existing generated
+`WEBSERVER_*` and `COMPOSE_WEBSERVER_*` names remain compatible.

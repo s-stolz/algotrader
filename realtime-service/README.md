@@ -38,7 +38,7 @@ Configuration is centralized at the repository root.
 cd ..
 cp config/.env.secrets.example config/.env.secrets.local
 python scripts/generate_env.py
-cd webserver
+cd realtime-service
 ```
 
 Key settings:
@@ -61,7 +61,7 @@ From the repository root:
 ```bash
 cp config/.env.secrets.example config/.env.secrets.local
 python scripts/generate_env.py
-cd webserver
+cd realtime-service
 python main.py
 ```
 

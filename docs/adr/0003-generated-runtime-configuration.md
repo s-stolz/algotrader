@@ -7,7 +7,7 @@ Date: 2026-05-16
 ## Context
 
 AlgoTrader runs multiple processes with shared host, port, Redis, TimescaleDB,
-logging, broker, ingestion, and webserver settings. Some values are non-secret
+logging, broker, ingestion, and realtime-service settings. Some values are non-secret
 topology while others are local secrets. Hand-editing runtime env files would
 spread configuration knowledge across generated artifacts and increase the risk
 of committing secrets.

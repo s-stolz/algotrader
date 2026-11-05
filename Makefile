@@ -14,7 +14,7 @@ ifneq ($(strip $(TEST_BACKEND_FROM_GOAL)),)
 TEST_BACKEND := $(TEST_BACKEND_FROM_GOAL)
 endif
 
-.PHONY: ensure-pyyaml config validate-config smoke-backtester migrate-db up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine frontend
+.PHONY: ensure-pyyaml config validate-config smoke-backtester migrate-db up up-detached up-build up-build-detached build down restart logs ps venvs venv venv-root venvs-recreate venvs-check typecheck-python verify-python verify test backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine realtime-service frontend
 
 ifeq ($(DETACH),1)
 UP_FLAGS += -d
@@ -133,6 +133,10 @@ test:
 		echo "Running indicator_engine tests..."; \
 		(cd libs/indicator_engine && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; [ -x .venv/bin/python ] && py_bin=".venv/bin/python"; $$py_bin -m unittest discover -s tests -p "test_*.py") || status=1; \
 	fi; \
+	if [ "$(TEST_BACKEND)" = "all" ] || [ "$(TEST_BACKEND)" = "realtime-service" ]; then \
+		echo "Running realtime-service tests..."; \
+		(cd realtime-service && py_bin="$(PYTHON)"; [ ! -x "$$py_bin" ] && py_bin="python"; [ -x .venv/bin/python ] && py_bin=".venv/bin/python"; $$py_bin -m unittest discover -s tests -p "test_*.py") || status=1; \
+	fi; \
 	if [ "$(TEST_BACKEND)" = "frontend" ]; then \
 		echo "Running frontend quality gate..."; \
 		npm --prefix frontend run format:check || status=1; \
@@ -144,13 +148,13 @@ test:
 		npm --prefix frontend run test:unit || status=1; \
 		npm --prefix frontend run build || status=1; \
 	fi; \
-	if [ "$(TEST_BACKEND)" != "all" ] && [ "$(TEST_BACKEND)" != "backtester" ] && [ "$(TEST_BACKEND)" != "database-accessor-api" ] && [ "$(TEST_BACKEND)" != "db_accessor_client" ] && [ "$(TEST_BACKEND)" != "ingestion-service" ] && [ "$(TEST_BACKEND)" != "broker-service" ] && [ "$(TEST_BACKEND)" != "indicator_engine" ] && [ "$(TEST_BACKEND)" != "frontend" ]; then \
-		echo "Invalid test target '$(TEST_BACKEND)'. Use: make test [backtester|database-accessor-api|db_accessor_client|ingestion-service|broker-service|indicator_engine|frontend]"; \
+	if [ "$(TEST_BACKEND)" != "all" ] && [ "$(TEST_BACKEND)" != "backtester" ] && [ "$(TEST_BACKEND)" != "database-accessor-api" ] && [ "$(TEST_BACKEND)" != "db_accessor_client" ] && [ "$(TEST_BACKEND)" != "ingestion-service" ] && [ "$(TEST_BACKEND)" != "broker-service" ] && [ "$(TEST_BACKEND)" != "indicator_engine" ] && [ "$(TEST_BACKEND)" != "frontend" ] && [ "$(TEST_BACKEND)" != "realtime-service" ]; then \
+		echo "Invalid test target '$(TEST_BACKEND)'. Use: make test [backtester|database-accessor-api|db_accessor_client|ingestion-service|broker-service|indicator_engine|realtime-service|frontend]"; \
 		exit 1; \
 	fi; \
 	exit $$status
 
-backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine frontend:
+backtester database-accessor-api db_accessor_client ingestion-service broker-service indicator_engine realtime-service frontend:
 	@:
 
 # Creates disposable loopback Redis/Timescale services; never uses the configured stack.

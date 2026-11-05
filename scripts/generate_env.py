@@ -40,7 +40,7 @@ DOCKER_RESOURCE_PATHS = {
     "indicator_api": "services.indicator_api.resources",
     "backtester_api": "services.backtester.api.resources",
     "broker_service": "services.broker_service.resources",
-    "webserver": "services.webserver.resources",
+    "webserver": "services.realtime_service.resources",
     "frontend": "services.frontend.resources",
     "backtester_worker": "services.backtester.worker.resources",
     "ingestion_service": "services.ingestion_service.resources",
@@ -81,14 +81,27 @@ def read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
+def migrate_realtime_key(topology: dict[str, Any]) -> dict[str, Any]:
+    """Accept existing machine overrides during the service rename."""
+    services = topology.get("services", {})
+    if "webserver" in services:
+        if "realtime_service" in services:
+            raise ValueError("Use only services.realtime_service, not both service names")
+        services["realtime_service"] = services.pop("webserver")
+        network = services["realtime_service"].get("network", {})
+        if network.get("host") == "webserver":
+            network["host"] = "realtime-service"
+    return topology
+
+
 def load_topology(
     path: Path = TOPOLOGY_PATH,
     local_path: Path = LOCAL_TOPOLOGY_PATH,
 ) -> dict[str, Any]:
     """Load shared defaults and optional partial machine overrides."""
-    topology = read_yaml(path)
+    topology = migrate_realtime_key(read_yaml(path))
     if local_path.exists():
-        merge_topology(topology, read_yaml(local_path))
+        merge_topology(topology, migrate_realtime_key(read_yaml(local_path)))
     return topology
 
 
@@ -218,17 +231,17 @@ def build_env(
     broker_log_level = required(topology, "services.broker_service.logging.level")
     broker_log_format = required(topology, "services.broker_service.logging.format")
 
-    webserver_host = required(topology, "services.webserver.network.host")
-    webserver_ws_port = required(topology, "services.webserver.network.websocket.port")
+    webserver_host = required(topology, "services.realtime_service.network.host")
+    webserver_ws_port = required(topology, "services.realtime_service.network.websocket.port")
     webserver_ws_published_port = required(
-        topology, "services.webserver.network.websocket.published_port"
+        topology, "services.realtime_service.network.websocket.published_port"
     )
-    webserver_health_port = required(topology, "services.webserver.network.health.port")
+    webserver_health_port = required(topology, "services.realtime_service.network.health.port")
     webserver_health_published_port = required(
-        topology, "services.webserver.network.health.published_port"
+        topology, "services.realtime_service.network.health.published_port"
     )
-    webserver_log_level = required(topology, "services.webserver.logging.level")
-    webserver_log_format = required(topology, "services.webserver.logging.format")
+    webserver_log_level = required(topology, "services.realtime_service.logging.level")
+    webserver_log_format = required(topology, "services.realtime_service.logging.format")
 
     frontend_host = required(topology, "services.frontend.network.host")
     frontend_port = required(topology, "services.frontend.network.port")
@@ -248,10 +261,10 @@ def build_env(
     timescaledb_db = required(topology, "infrastructure.timescaledb.database.name")
     timescaledb_echo = required(topology, "infrastructure.timescaledb.database.echo")
 
-    webserver_redis_block_ms = required(topology, "services.webserver.consumer.block_ms")
-    webserver_redis_batch_size = required(topology, "services.webserver.consumer.batch_size")
-    webserver_stream_queue_size = required(topology, "services.webserver.streams.queue_size")
-    webserver_max_stream_length = required(topology, "services.webserver.streams.max_length")
+    webserver_redis_block_ms = required(topology, "services.realtime_service.consumer.block_ms")
+    webserver_redis_batch_size = required(topology, "services.realtime_service.consumer.batch_size")
+    webserver_stream_queue_size = required(topology, "services.realtime_service.streams.queue_size")
+    webserver_max_stream_length = required(topology, "services.realtime_service.streams.max_length")
 
     ingestion_log_level = required(topology, "services.ingestion_service.logging.level")
     ingestion_log_format = required(topology, "services.ingestion_service.logging.format")

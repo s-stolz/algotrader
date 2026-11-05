@@ -30,7 +30,7 @@
     "BROKER_SERVICE_BASE_URL": "http://broker-service:8050",
     "BROKER_LOG_LEVEL": "INFO",
     "BROKER_LOG_FORMAT": "pretty",
-    "WEBSERVER_HOST": "webserver",
+    "WEBSERVER_HOST": "realtime-service",
     "WEBSERVER_WS_PORT": "8765",
     "WEBSERVER_WS_PUBLISHED_PORT": "8765",
     "WEBSERVER_HEALTH_PORT": "8080",

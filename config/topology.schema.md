@@ -24,7 +24,7 @@ existing generated environment variables; YAML nesting does not change their nam
 | `services.backtester.worker` | `resources`, `poll_interval_seconds`, `heartbeat` |
 | `services.broker_service` | `network`, `logging`, `resources`, `streams`, `ctrader` |
 | `services.ingestion_service` | `logging`, `resources`, `consumer`, `history` |
-| `services.webserver` | `network`, `logging`, `resources`, `consumer`, `streams` |
+| `services.realtime_service` | `network`, `logging`, `resources`, `consumer`, `streams` |
 | `services.frontend` | `network`, `resources` |
 | `infrastructure.redis` | `network`, `resources`, `database` |
 | `infrastructure.timescaledb` | `network`, `resources`, `database` |
@@ -54,7 +54,7 @@ Webserver shares one hostname across two named endpoints:
 
 ```yaml
 network:
-  host: webserver
+  host: realtime-service
   websocket:
     port: 8765
     published_port: 8765
@@ -147,3 +147,7 @@ and recreate affected containers after editing overrides.
 
 Accepted pending recovery survives policy changes; see the
 [recovery contract](../docs/contracts/recovery.md).
+
+`services.realtime_service` replaces `services.webserver`. The generator migrates
+legacy local overrides; specifying both keys is rejected. Generated `WEBSERVER_*`
+and `COMPOSE_WEBSERVER_*` names stay stable.

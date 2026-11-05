@@ -12,9 +12,9 @@ Paths below are relative to the repository root; use the
 | Contract | Producer → consumers | Verification focus |
 | --- | --- | --- |
 | Candle transport / Market identity | broker, ingestion, accessor → frontend, indicator-api, backtester, shared client | Serialization, timestamp conversion, symbol resolution, consumer parsing |
-| Redis Candles / Ticks | broker → webserver, ingestion, indicator-api (Candles) | Publication, parsing, closed-candle handling, stream lifecycle |
-| Historical / live Indicators | indicator-api + indicator engine → webserver (live), frontend | Tensor formatting, warmup, stream lifecycle, client validation |
-| WebSocket messages | webserver → frontend | Subscription/fanout and `frontend/test/utils/websocketService.spec.ts` |
+| Redis Candles / Ticks | broker → realtime-service, ingestion, indicator-api (Candles) | Publication, parsing, closed-candle handling, stream lifecycle |
+| Historical / live Indicators | indicator-api + indicator engine → realtime-service (live), frontend | Tensor formatting, warmup, stream lifecycle, client validation |
+| WebSocket messages | realtime-service → frontend | Subscription/fanout and `frontend/test/utils/websocketService.spec.ts` |
 | Timeframe support | broker, accessor, Timescale, shared client → frontend, indicator-api, ingestion, backtester | Queries/aggregates and each supported consumer; UI options alone are insufficient |
 | Broker Orders / Positions / Deals | broker → current route callers | Validation, protobuf mapping, consumer contracts |
 | Runtime env | topology + generator → Compose, Vite proxy, Python services; CLI also reads topology | Config mapping fixture, validation, affected stack smoke |

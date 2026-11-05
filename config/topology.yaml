@@ -89,9 +89,9 @@ services:
       batch_size: 100
       block_ms: 5000
 
-  webserver:
+  realtime_service:
     network:
-      host: webserver
+      host: realtime-service
       websocket:
         port: 8765
         published_port: 8765

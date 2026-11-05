@@ -165,7 +165,7 @@ live data**. Ingestion durably requests `invalid-continuity` recovery before
 acknowledging/discarding those rows, never writes them as live Candles, and clears
 any old open Candle. Historical retrieval recovers broker-available closed data.
 If storage is unavailable, the cursor stays put and retries. This deliberately
-keeps an old producer from silently bypassing protection. Webserver and Indicator
+keeps an old producer from silently bypassing protection. Realtime service and Indicator
 consumers accept legacy and enriched rows: they ignore transport continuity and
 expose only their existing Candle/Indicator fields. They do not refresh chart
 history or rebuild an existing live Indicator session.
@@ -248,7 +248,7 @@ For existing volumes:
 2. Build/deploy the self-contained Timescale image, then run `make migrate-db`.
    Use the configured database and preserve its migration ledger. For queued or
    running backtests, follow the [worker cutover](../operations/backtest-worker-recovery.md#upgrade-with-queued-or-running-work).
-3. Deploy the compatible accessor/shared client and the webserver/Indicator
+3. Deploy the compatible accessor/shared client and the realtime-service/Indicator
    consumers. Deploy/restart the continuity-producing broker while ingestion stays
    stopped. Retained legacy Redis rows may remain: protected startup snapshots the
    tail and recovers from the database boundary through subscription establishment;

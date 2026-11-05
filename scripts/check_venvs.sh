@@ -9,7 +9,7 @@ SERVICES=(
   "indicator-api"
   "database-accessor-api"
   "ingestion-service"
-  "webserver"
+  "realtime-service"
   "backtester"
 )
 ROOT_TARGET="root"

@@ -112,7 +112,7 @@ and behavior that is easy to break when changing them.
 - HTTP clients live in `src/api/`; runtime payload validation belongs in
   `src/types/contracts.ts` or focused validation helpers.
 - WebSocket changes start at `src/utils/websocketService.ts`. Read
-  [webserver context](../webserver/CONTEXT.md) for the shared protocol and check
+  [realtime-service context](../realtime-service/CONTEXT.md) for the shared protocol and check
   `test/utils/websocketService.spec.ts` when changing it.
 - Timeframe changes start at `src/utils/timeframes.ts`. Follow
   [contract-change guidance](../docs/agent/CONTRACT-CHANGES.md) for supported

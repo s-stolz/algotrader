@@ -6,7 +6,7 @@ interface reaches them; paths in this table are relative to the repository root.
 | Task | Read first |
 | --- | --- |
 | Charts, overlays, Workspace, UI transport | [frontend/CONTEXT.md](../frontend/CONTEXT.md) |
-| WebSocket protocol, subscriptions, Redis fanout | [webserver/CONTEXT.md](../webserver/CONTEXT.md) |
+| WebSocket protocol, subscriptions, Redis fanout | [realtime-service/CONTEXT.md](../realtime-service/CONTEXT.md) |
 | cTrader, broker commands, tick/trendbar publication | [broker-service/CONTEXT.md](../broker-service/CONTEXT.md) |
 | Closed-candle ingestion, history backfill, reconnect recovery | [ingestion-service/CONTEXT.md](../ingestion-service/CONTEXT.md) |
 | Market/candle queries, durable persistence transactions | [database-accessor-api/CONTEXT.md](../database-accessor-api/CONTEXT.md) |

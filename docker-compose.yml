@@ -195,18 +195,18 @@ services:
       - ./config/.env.secrets.runtime
     restart: always
 
-  webserver:
-    container_name: webserver
+  realtime-service:
+    container_name: realtime-service
     cpus: ${COMPOSE_WEBSERVER_CPUS:?Run make config}
     mem_reservation: ${COMPOSE_WEBSERVER_MEMORY_RESERVATION:?Run make config}
     build:
       context: .
-      dockerfile: webserver/Dockerfile
+      dockerfile: realtime-service/Dockerfile
     ports:
       - ${WEBSERVER_WS_PUBLISHED_PORT:-8765}:${WEBSERVER_WS_PORT:-8765}
       - ${WEBSERVER_HEALTH_PUBLISHED_PORT:-8080}:${WEBSERVER_HEALTH_PORT:-8080}
     volumes:
-      - ./webserver:/app
+      - ./realtime-service:/app
     depends_on:
       redis:
         condition: service_healthy
@@ -237,7 +237,7 @@ services:
       - frontend_node_modules:/app/frontend/node_modules
       - frontend_data:/app/frontend/dist
     depends_on:
-      webserver:
+      realtime-service:
         condition: service_healthy
     env_file:
       - ./config/.env.shared

@@ -11,7 +11,7 @@ SERVICES=(
   "indicator-api"
   "database-accessor-api"
   "ingestion-service"
-  "webserver"
+  "realtime-service"
   "backtester"
 )
 ROOT_TARGET="root"
@@ -26,7 +26,7 @@ Usage:
 Examples:
   ./scripts/setup_venvs.sh all
   ./scripts/setup_venvs.sh root
-  ./scripts/setup_venvs.sh broker-service webserver
+  ./scripts/setup_venvs.sh broker-service realtime-service
   ./scripts/setup_venvs.sh --recreate all
 EOF
 }
