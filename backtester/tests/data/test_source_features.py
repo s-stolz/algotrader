@@ -473,8 +473,9 @@ class SymbolOutputSelectionTests(unittest.TestCase):
             ),
         )
         for engine in BacktestEngine:
-            with self.subTest(engine=engine), self.assertRaisesRegex(
-                ValueError, "no output configured"
+            with (
+                self.subTest(engine=engine),
+                self.assertRaisesRegex(ValueError, "no output configured"),
             ):
                 run_backtest(
                     request=request(engine), bars=bars, strategy=mapped, feature_bars=sources
@@ -488,8 +489,9 @@ class SymbolOutputSelectionTests(unittest.TestCase):
         mapping["TEST"] = "USD"
         self.assertEqual(requirement.resolve_output_key("TEST"), "EUR")
         for invalid in ({"": "EUR"}, {"TEST": ""}, {" TEST": "EUR"}, {"TEST": " EUR"}):
-            with self.subTest(invalid=invalid), self.assertRaisesRegex(
-                ValueError, "output_key_by_symbol"
+            with (
+                self.subTest(invalid=invalid),
+                self.assertRaisesRegex(ValueError, "output_key_by_symbol"),
             ):
                 replace(requirement, output_key_by_symbol=invalid)
         with self.assertRaisesRegex(ValueError, "not both"):

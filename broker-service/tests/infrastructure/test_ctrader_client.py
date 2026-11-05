@@ -132,9 +132,11 @@ class ReconnectTests(unittest.IsolatedAsyncioTestCase):
                 return ProtoOAErrorRes(errorCode="TEMPORARY")
             return ProtoOAAccountAuthRes(ctidTraderAccountId=123)
 
-        with patch.object(self.client, "_send_request", side_effect=respond), patch(
-            "app.infrastructure.ctrader_client.asyncio.sleep", AsyncMock()
-        ), self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"):
+        with (
+            patch.object(self.client, "_send_request", side_effect=respond),
+            patch("app.infrastructure.ctrader_client.asyncio.sleep", AsyncMock()),
+            self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"),
+        ):
             self.client._on_message(self.client._client, ProtoOAApplicationAuthRes())
             await self._finish_restoration()
         self.assertEqual(requests.count("ProtoOASubscribeSpotsReq"), 1)
@@ -176,9 +178,11 @@ class ReconnectTests(unittest.IsolatedAsyncioTestCase):
             delays.append(delay)
             await original_sleep(0)
 
-        with patch.object(self.client._client, "send", side_effect=send), patch(
-            "app.infrastructure.ctrader_client.asyncio.sleep", retry
-        ), self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"):
+        with (
+            patch.object(self.client._client, "send", side_effect=send),
+            patch("app.infrastructure.ctrader_client.asyncio.sleep", retry),
+            self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"),
+        ):
             self.client._on_connected(self.client._client)
             async with asyncio.timeout(1):
                 while not self.client.is_connected:

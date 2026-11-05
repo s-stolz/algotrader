@@ -274,9 +274,10 @@ class LiveContinuityTests(unittest.IsolatedAsyncioTestCase):
                     requests.clear()
                     subscribed.clear()
                     failing = True
-                    with patch(
-                        "app.infrastructure.ctrader_client.asyncio.sleep", retry
-                    ), self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"):
+                    with (
+                        patch("app.infrastructure.ctrader_client.asyncio.sleep", retry),
+                        self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"),
+                    ):
                         client._on_disconnected(client._client, "both Markets interrupted")
                         client._on_message(
                             client._client,

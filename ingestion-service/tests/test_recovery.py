@@ -225,8 +225,9 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             recovery_backoff_initial_seconds=1,
             recovery_backoff_max_seconds=1,
         )
-        with patch("main.load_config", return_value=config), patch.object(
-            IngestionService, "_utc_now_ms", side_effect=now
+        with (
+            patch("main.load_config", return_value=config),
+            patch.object(IngestionService, "_utc_now_ms", side_effect=now),
         ):
             service = IngestionService()
         service._utc_now_ms = now

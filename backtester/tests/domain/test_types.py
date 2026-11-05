@@ -42,8 +42,9 @@ class TestDomainTypes(unittest.TestCase):
         self.assertIsNone(ExecutionConfig().max_entries_per_day)
         self.assertEqual(ExecutionConfig(max_entries_per_day=1).max_entries_per_day, 1)
         for value in (0, -1, True, 1.5, "2"):
-            with self.subTest(value=value), self.assertRaisesRegex(
-                ValueError, "max_entries_per_day"
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(ValueError, "max_entries_per_day"),
             ):
                 ExecutionConfig(max_entries_per_day=cast(Any, value))
 

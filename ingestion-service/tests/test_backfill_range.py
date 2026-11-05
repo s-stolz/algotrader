@@ -40,14 +40,18 @@ class BackfillRangeTests(unittest.TestCase):
             ("", "2999-01-01"),
             ("", "20240101"),
         ]:
-            with self.subTest(days=days, start=start), patch.dict(
-                "os.environ",
-                {
-                    "INGESTION_HISTORY_LOOKBACK_DAYS": days,
-                    "INGESTION_HISTORY_START_DATE": start,
-                },
-                clear=True,
-            ), self.assertRaises(ValueError):
+            with (
+                self.subTest(days=days, start=start),
+                patch.dict(
+                    "os.environ",
+                    {
+                        "INGESTION_HISTORY_LOOKBACK_DAYS": days,
+                        "INGESTION_HISTORY_START_DATE": start,
+                    },
+                    clear=True,
+                ),
+                self.assertRaises(ValueError),
+            ):
                 load_config()
 
     def test_empty_and_existing_markets_respect_inclusive_history_boundary(self) -> None:
