@@ -110,8 +110,8 @@ sessions, or keep the slot held.
    rows to `cancelled`; repeated restarts do not
    alter terminal rows. Confirm the former running run is failed, queued runs
    remain queued, and the next eligible run can claim. The accessor rejects a
-   late write with the old owner token and any legacy tokenless lifecycle write,
-   including one received between slot clear and reconciliation.
+   late write with the old owner token, including one received between slot clear
+   and reconciliation. Tokenless lifecycle endpoints are no longer exposed.
 
 If reconciliation fails, stop the worker and preserve the slot state and error
 for diagnosis. Never force a `running` row back to `queued`: execution is not

@@ -219,9 +219,8 @@ atomically consumes the earliest eligible turn and marks its run `running`.
 There is one turn per standalone run or eligible batch; a batch claims its lowest
 queued ordinal and rejoins the tail after settlement if work remains. Settlement
 commits outcome, artifacts, batch transition/event, next turn, and slot release
-in one owner-token-fenced transaction. Batch members cannot use legacy standalone
-claiming; tokenless lifecycle writes cannot commit worker outcomes once the slot
-is installed, including after a manual clear.
+in one owner-token-fenced transaction. All workers claim through this global queue;
+the tokenless run-update and completion endpoints have been retired.
 
 The slot has no expiry. Release requires verified child-tree exit and reaping.
 Uncertain exit or terminal persistence failure retains capacity and exposes an
@@ -238,8 +237,7 @@ Workers include their stable process `worker_id` when claiming a run. Storage
 commits the initial owner-matching heartbeat with the claim, using database time;
 periodic heartbeats then maintain freshness. Heartbeat writes serialize with
 claims and cannot replace the current owner's heartbeat with a delayed idle or
-previous-owner update from the same worker. Claims without `worker_id` remain
-accepted for legacy callers but do not establish an initial heartbeat.
+previous-owner update from the same worker. Every claim requires `worker_id`.
 
 ## Equity Replay
 

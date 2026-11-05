@@ -221,9 +221,7 @@ async def read_queue_state(session) -> dict:
     }
 
 
-async def _seed_claim_heartbeat(session, *, worker_id: str | None, owner_token: str) -> None:
-    if worker_id is None:
-        return
+async def _seed_claim_heartbeat(session, *, worker_id: str, owner_token: str) -> None:
     heartbeat = pg_insert(backtest_worker_heartbeats).values(
         worker_id=worker_id,
         owner_token=owner_token,
@@ -244,9 +242,7 @@ async def _seed_claim_heartbeat(session, *, worker_id: str | None, owner_token: 
     )
 
 
-async def claim(
-    session, *, run_id: str, owner_token: str, started_at, worker_id: str | None = None
-) -> bool:
+async def claim(session, *, run_id: str, owner_token: str, started_at, worker_id: str) -> bool:
     """Serialize global queue selection and slot ownership in one transaction."""
     try:
         slot = (

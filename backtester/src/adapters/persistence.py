@@ -56,18 +56,6 @@ class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
 class BacktestLifecycleClient(Protocol):
     """Client protocol for lifecycle and transactional result persistence."""
 
-    def conditional_update_backtest_run(
-        self,
-        run_id: str,
-        update: dict[str, Any],
-    ) -> bool: ...
-
-    def complete_backtest_run(
-        self,
-        run_id: str,
-        completion: dict[str, Any],
-    ) -> bool: ...
-
     def get_backtest_execution_slot(self) -> Mapping[str, Any]: ...
 
     def claim_backtest_execution(self, claim: dict[str, Any]) -> bool: ...
@@ -346,12 +334,10 @@ class BacktestRunLifecyclePersistenceAdapter:
         execution_duration_ms: int,
     ) -> bool:
         completion = build_successful_completion_payload(
-            expected_status=BacktestRunStatus.RUNNING,
             completed_at_ms=completed_at_ms,
             result=result,
             execution_duration_ms=execution_duration_ms,
         )
-        completion.pop("expected_status")
         completion.update(run_id=run_id, owner_token=owner_token, status="succeeded")
         return bool(self._call("settle_backtest_execution", completion))
 
@@ -381,64 +367,6 @@ class BacktestRunLifecyclePersistenceAdapter:
         client_cls = _import_database_accessor_client()
         with client_cls() as client:
             return getattr(client, name)(*args)
-
-    def conditional_update(
-        self,
-        *,
-        run_id: str,
-        expected_status: BacktestRunStatus,
-        new_status: BacktestRunStatus,
-        started_at_ms: int | None = None,
-        completed_at_ms: int | None = None,
-        error_code: str | None = None,
-        error_message: str | None = None,
-    ) -> bool:
-        update = {
-            "expected_status": _enum_or_text_value(expected_status),
-            "new_status": _enum_or_text_value(new_status),
-        }
-        if started_at_ms is not None:
-            update["started_at"] = _epoch_ms_to_utc_text(started_at_ms)
-        if completed_at_ms is not None:
-            update["completed_at"] = _epoch_ms_to_utc_text(completed_at_ms)
-        if error_code is not None:
-            update["error_code"] = error_code
-        if error_message is not None:
-            update["error_message"] = error_message
-        return self._conditional_update(run_id, update)
-
-    def complete(
-        self,
-        *,
-        run_id: str,
-        expected_status: BacktestRunStatus,
-        completed_at_ms: int,
-        result: BacktestResult,
-        execution_duration_ms: int | None = None,
-    ) -> bool:
-        completion = build_successful_completion_payload(
-            expected_status=expected_status,
-            completed_at_ms=completed_at_ms,
-            result=result,
-            execution_duration_ms=execution_duration_ms,
-        )
-        return self._complete(run_id, completion)
-
-    def _conditional_update(self, run_id: str, update: dict[str, Any]) -> bool:
-        if self._client is not None:
-            return self._client.conditional_update_backtest_run(run_id, update)
-
-        client_cls = _import_database_accessor_client()
-        with client_cls() as client:
-            return bool(client.conditional_update_backtest_run(run_id, update))
-
-    def _complete(self, run_id: str, completion: dict[str, Any]) -> bool:
-        if self._client is not None:
-            return self._client.complete_backtest_run(run_id, completion)
-
-        client_cls = _import_database_accessor_client()
-        with client_cls() as client:
-            return bool(client.complete_backtest_run(run_id, completion))
 
 
 def build_succeeded_run_payload(
@@ -477,7 +405,6 @@ def build_succeeded_run_payload(
 
 def build_successful_completion_payload(
     *,
-    expected_status: BacktestRunStatus,
     completed_at_ms: int,
     result: BacktestResult,
     execution_duration_ms: int | None = None,
@@ -490,7 +417,6 @@ def build_successful_completion_payload(
         execution_duration_ms=execution_duration_ms,
     )
     return {
-        "expected_status": _enum_or_text_value(expected_status),
         "completed_at": _epoch_ms_to_utc_text(completed_at_ms),
         "result_schema_version": BACKTEST_RESULT_SCHEMA_VERSION,
         "metrics": deepcopy(result.metrics),

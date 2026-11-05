@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any, List, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     BaseModel,
@@ -11,7 +12,6 @@ from pydantic import (
     model_serializer,
     model_validator,
 )
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 class MarketIn(BaseModel):
@@ -299,46 +299,12 @@ class BacktestRunOut(BacktestRunBase):
     pass
 
 
-class BacktestRunConditionalUpdateIn(BacktestContractModel):
-    expected_status: Literal["queued", "running", "succeeded", "failed"]
-    new_status: Literal["queued", "running", "succeeded", "failed"]
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    error_code: str | None = None
-    error_message: str | None = None
-
-    @field_validator("new_status")
-    @classmethod
-    def validate_new_status(cls, value: str) -> str:
-        if value == "succeeded":
-            raise ValueError("succeeded backtest runs must use the completion endpoint")
-        return value
-
-
-class BacktestRunCompleteIn(BacktestContractModel):
-    expected_status: Literal["running"]
-    completed_at: datetime
-    result_schema_version: int
-    metrics: dict[str, Any]
-    diagnostics: dict[str, Any]
-    replay_descriptor: EquityReplayDescriptor
-    fills: list[BacktestFillIn] = Field(default_factory=list)
-    trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
-
-    @field_validator("result_schema_version")
-    @classmethod
-    def validate_result_schema_version(cls, value: int) -> int:
-        if value != 3:
-            raise ValueError("result_schema_version must be 3")
-        return value
-
-
 class BacktestRunMutationOut(BacktestContractModel):
     updated: bool
 
 
 class BacktestExecutionClaimIn(BacktestContractModel):
-    worker_id: str | None = Field(default=None, min_length=1)
+    worker_id: str = Field(min_length=1)
     run_id: str
     owner_token: str
     started_at: datetime

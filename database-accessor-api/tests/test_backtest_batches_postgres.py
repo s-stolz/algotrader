@@ -342,7 +342,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             await crud.create_backtest_batch(session, payload)
             self.assertTrue(
                 await backtest_execution.claim(
-                    session, run_id="member-0", owner_token="owner-0", started_at=now
+                    session,
+                    run_id="member-0",
+                    owner_token="owner-0",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             pause = await self._control(
@@ -357,7 +361,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertFalse(
                 await backtest_execution.claim(
-                    session, run_id="member-1", owner_token="owner-1", started_at=now
+                    session,
+                    run_id="member-1",
+                    owner_token="owner-1",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             self.assertTrue(
@@ -415,12 +423,20 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertFalse(
                 await backtest_execution.claim(
-                    session, run_id="member-1", owner_token="owner-1", started_at=now
+                    session,
+                    run_id="member-1",
+                    owner_token="owner-1",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             self.assertTrue(
                 await backtest_execution.claim(
-                    session, run_id="waiter", owner_token="waiter-owner", started_at=now
+                    session,
+                    run_id="waiter",
+                    owner_token="waiter-owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             self.assertTrue(
@@ -438,7 +454,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(
                 await backtest_execution.claim(
-                    session, run_id="member-1", owner_token="owner-1", started_at=now
+                    session,
+                    run_id="member-1",
+                    owner_token="owner-1",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             self.assertTrue(
@@ -485,7 +505,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             await crud.create_backtest_batch(session, payload)
             self.assertTrue(
                 await backtest_execution.claim(
-                    session, run_id="member-active", owner_token="owner", started_at=now
+                    session,
+                    run_id="member-active",
+                    owner_token="owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             pause = await self._control(
@@ -599,7 +623,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             await self._control(session, batch_id="resumed", command="resume", command_id="resume")
             self.assertTrue(
                 await backtest_execution.claim(
-                    session, run_id="first-run", owner_token="owner", started_at=now
+                    session,
+                    run_id="first-run",
+                    owner_token="owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             saved = await self._batch(session, "resumed")
@@ -617,7 +645,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             )
             await crud.create_backtest_batch(session, payload)
             await backtest_execution.claim(
-                session, run_id="active", owner_token="owner", started_at=now
+                session,
+                run_id="active",
+                owner_token="owner",
+                started_at=now,
+                worker_id="worker-test",
             )
 
         slot_read = asyncio.Event()
@@ -678,7 +710,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             await crud.create_backtest_batch(session, payload)
             self.assertTrue(
                 await backtest_execution.claim(
-                    session, run_id="first-member", owner_token="first-owner", started_at=now
+                    session,
+                    run_id="first-member",
+                    owner_token="first-owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             await self._control(
@@ -710,7 +746,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(
                 await backtest_execution.claim(
-                    session, run_id="last-member", owner_token="last-owner", started_at=now
+                    session,
+                    run_id="last-member",
+                    owner_token="last-owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             final_pause = await self._control(
@@ -755,7 +795,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
         async def claim():
             async with self.sessions() as session:
                 return await backtest_execution.claim(
-                    session, run_id="race-run", owner_token="race-owner", started_at=now
+                    session,
+                    run_id="race-run",
+                    owner_token="race-owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
 
         async def pause():
@@ -773,7 +817,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertFalse(
                 await backtest_execution.claim(
-                    session, run_id="race-run", owner_token="late-owner", started_at=now
+                    session,
+                    run_id="race-run",
+                    owner_token="late-owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
 
@@ -794,7 +842,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             await crud.create_backtest_batch(session, payload)
             self.assertTrue(
                 await backtest_execution.claim(
-                    session, run_id="first", owner_token="first-owner", started_at=now
+                    session,
+                    run_id="first",
+                    owner_token="first-owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             self.assertTrue(
@@ -856,7 +908,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
         async def claim():
             async with self.sessions() as session:
                 return await backtest_execution.claim(
-                    session, run_id="only", owner_token="owner", started_at=now
+                    session,
+                    run_id="only",
+                    owner_token="owner",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
 
         async def cancel():
@@ -917,7 +973,11 @@ class BacktestBatchPostgresTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertFalse(
                 await backtest_execution.claim(
-                    session, run_id="only", owner_token="retry", started_at=now
+                    session,
+                    run_id="only",
+                    owner_token="retry",
+                    started_at=now,
+                    worker_id="worker-test",
                 )
             )
             events = await crud.list_backtest_batch_events(session, "batch-race")

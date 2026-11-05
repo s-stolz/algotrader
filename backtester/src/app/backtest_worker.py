@@ -78,28 +78,6 @@ class RunLifecyclePersistence(Protocol):
         self, *, run_id: str, owner_token: str, code: str, message: str
     ) -> bool: ...
 
-    def conditional_update(
-        self,
-        *,
-        run_id: str,
-        expected_status: BacktestRunStatus,
-        new_status: BacktestRunStatus,
-        started_at_ms: int | None = None,
-        completed_at_ms: int | None = None,
-        error_code: str | None = None,
-        error_message: str | None = None,
-    ) -> bool: ...
-
-    def complete(
-        self,
-        *,
-        run_id: str,
-        expected_status: BacktestRunStatus,
-        completed_at_ms: int,
-        result: BacktestResult,
-        execution_duration_ms: int | None = None,
-    ) -> bool: ...
-
 
 class BacktestChildExecutor(Protocol):
     def execute(

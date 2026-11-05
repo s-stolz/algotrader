@@ -338,46 +338,6 @@ class DatabaseAccessorClientTests(unittest.TestCase):
             ],
         )
 
-    def test_conditional_update_backtest_run_patches_expected_status(self) -> None:
-        payload = {
-            "expected_status": "queued",
-            "new_status": "running",
-            "started_at": "2026-06-08T12:31:00Z",
-        }
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            self.assertEqual(request.method, "PATCH")
-            self.assertEqual(request.url.path, "/backtests/run-123")
-            self.assertEqual(json.loads(request.content.decode()), payload)
-            return httpx.Response(200, json={"updated": True})
-
-        client = DatabaseAccessorClient()
-        client.client = httpx.Client(transport=httpx.MockTransport(handler))
-        try:
-            updated = client.conditional_update_backtest_run("run-123", payload)
-        finally:
-            client.close()
-
-        self.assertTrue(updated)
-
-    def test_complete_backtest_run_posts_atomic_artifacts(self) -> None:
-        payload = _completion_payload()
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            self.assertEqual(request.method, "POST")
-            self.assertEqual(request.url.path, "/backtests/run-123/complete")
-            self.assertEqual(json.loads(request.content.decode()), payload)
-            return httpx.Response(200, json={"updated": True})
-
-        client = DatabaseAccessorClient()
-        client.client = httpx.Client(transport=httpx.MockTransport(handler))
-        try:
-            updated = client.complete_backtest_run("run-123", payload)
-        finally:
-            client.close()
-
-        self.assertTrue(updated)
-
     def test_execution_slot_mutations_use_fenced_storage_routes(self) -> None:
         calls: list[tuple[str, str, dict | None]] = []
 
@@ -755,54 +715,6 @@ class AsyncDatabaseAccessorClientTests(unittest.IsolatedAsyncioTestCase):
             await client.aclose()
 
         self.assertEqual(runs, [response_payload])
-
-    async def test_async_conditional_update_backtest_run_patches_expected_status(
-        self,
-    ) -> None:
-        payload = {
-            "expected_status": "queued",
-            "new_status": "running",
-            "started_at": "2026-06-08T12:31:00Z",
-        }
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            self.assertEqual(request.method, "PATCH")
-            self.assertEqual(request.url.path, "/backtests/run-async-123")
-            self.assertEqual(json.loads(request.content.decode()), payload)
-            return httpx.Response(200, json={"updated": True})
-
-        client = AsyncDatabaseAccessorClient()
-        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        try:
-            updated = await client.conditional_update_backtest_run(
-                "run-async-123",
-                payload,
-            )
-        finally:
-            await client.aclose()
-
-        self.assertTrue(updated)
-
-    async def test_async_complete_backtest_run_posts_atomic_artifacts(self) -> None:
-        payload = _completion_payload()
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            self.assertEqual(request.method, "POST")
-            self.assertEqual(request.url.path, "/backtests/run-async-123/complete")
-            self.assertEqual(json.loads(request.content.decode()), payload)
-            return httpx.Response(200, json={"updated": True})
-
-        client = AsyncDatabaseAccessorClient()
-        client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        try:
-            updated = await client.complete_backtest_run(
-                "run-async-123",
-                payload,
-            )
-        finally:
-            await client.aclose()
-
-        self.assertTrue(updated)
 
     async def test_async_execution_claim_and_settlement(self) -> None:
         calls: list[str] = []

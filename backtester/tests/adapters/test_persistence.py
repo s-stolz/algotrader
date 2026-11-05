@@ -7,7 +7,6 @@ from adapters.persistence import (
 )
 from domain.enums import (
     BacktestEngine,
-    BacktestRunStatus,
     ExitReason,
     GapPolicy,
     IntrabarExitPolicy,
@@ -36,17 +35,7 @@ class _FakeRunClient:
 
 class _FakeLifecycleClient:
     def __init__(self) -> None:
-        self.conditional_updates: list[tuple[str, dict]] = []
-        self.completions: list[tuple[str, dict]] = []
         self.execution_requests: list[tuple[str, dict | None]] = []
-
-    def conditional_update_backtest_run(self, run_id: str, update: dict) -> bool:
-        self.conditional_updates.append((run_id, update))
-        return True
-
-    def complete_backtest_run(self, run_id: str, completion: dict) -> bool:
-        self.completions.append((run_id, completion))
-        return True
 
     def get_backtest_execution_slot(self) -> dict:
         self.execution_requests.append(("slot", None))
@@ -284,33 +273,7 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         self.assertEqual(settle_request["status"], "failed")
         self.assertEqual(reconcile_request["error_code"], "worker_interrupted")
 
-    def test_conditional_update_maps_status_enums_and_lifecycle_fields(self) -> None:
-        client = _FakeLifecycleClient()
-        adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
-
-        updated = adapter.conditional_update(
-            run_id="run-123",
-            expected_status=BacktestRunStatus.QUEUED,
-            new_status=BacktestRunStatus.RUNNING,
-            started_at_ms=1_780_921_860_000,
-        )
-
-        self.assertTrue(updated)
-        self.assertEqual(
-            client.conditional_updates,
-            [
-                (
-                    "run-123",
-                    {
-                        "expected_status": "queued",
-                        "new_status": "running",
-                        "started_at": "2026-06-08T12:31:00+00:00",
-                    },
-                )
-            ],
-        )
-
-    def test_complete_maps_result_without_equity_curve(self) -> None:
+    def test_settle_success_maps_result_without_equity_curve(self) -> None:
         client = _FakeLifecycleClient()
         adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
         result = _build_result()
@@ -339,18 +302,21 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
             take_profit_price=1.08,
         )
 
-        updated = adapter.complete(
+        updated = adapter.settle_success(
             run_id="run-123",
-            expected_status=BacktestRunStatus.RUNNING,
+            owner_token="owner-123",
             completed_at_ms=1_780_922_100_000,
             result=result,
             execution_duration_ms=275,
         )
 
         self.assertTrue(updated)
-        run_id, payload = client.completions[0]
+        _, payload = client.execution_requests[0]
+        assert payload is not None
+        run_id = payload["run_id"]
         self.assertEqual(run_id, "run-123")
-        self.assertEqual(payload["expected_status"], "running")
+        self.assertEqual(payload["owner_token"], "owner-123")
+        self.assertEqual(payload["status"], "succeeded")
         self.assertEqual(payload["completed_at"], "2026-06-08T12:35:00+00:00")
         self.assertEqual(payload["result_schema_version"], 3)
         self.assertEqual(payload["metrics"], result.metrics)
@@ -363,18 +329,20 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         self.assertEqual(payload["trades"][0]["take_profit_price"], 1.08)
         self.assertNotIn("equity_curve", payload)
 
-    def test_complete_preserves_empty_artifact_collections(self) -> None:
+    def test_settle_success_preserves_empty_artifact_collections(self) -> None:
         client = _FakeLifecycleClient()
         adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
 
-        adapter.complete(
+        adapter.settle_success(
             run_id="run-empty",
-            expected_status=BacktestRunStatus.RUNNING,
+            owner_token="owner-123",
             completed_at_ms=1_780_922_100_000,
             result=_build_result(fills=[], trades=[]),
+            execution_duration_ms=0,
         )
 
-        payload = client.completions[0][1]
+        payload = client.execution_requests[0][1]
+        assert payload is not None
         self.assertEqual(payload["fills"], [])
         self.assertEqual(payload["trades"], [])
 

@@ -247,26 +247,6 @@ class DatabaseAccessorClient(_BaseClient):
         )
         return self._request("GET", "/backtests", params=params)
 
-    def conditional_update_backtest_run(
-        self,
-        run_id: str,
-        update: dict[str, Any],
-    ) -> bool:
-        response = self._request("PATCH", f"/backtests/{run_id}", json=update)
-        return _mutation_updated(response)
-
-    def complete_backtest_run(
-        self,
-        run_id: str,
-        completion: dict[str, Any],
-    ) -> bool:
-        response = self._request(
-            "POST",
-            f"/backtests/{run_id}/complete",
-            json=completion,
-        )
-        return _mutation_updated(response)
-
     def get_backtest_execution_slot(self) -> dict[str, Any]:
         return self._request("GET", "/backtest-execution/slot")
 
@@ -582,26 +562,6 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             batch_id=batch_id,
         )
         return await self._request("GET", "/backtests", params=params)
-
-    async def conditional_update_backtest_run(
-        self,
-        run_id: str,
-        update: dict[str, Any],
-    ) -> bool:
-        response = await self._request("PATCH", f"/backtests/{run_id}", json=update)
-        return _mutation_updated(response)
-
-    async def complete_backtest_run(
-        self,
-        run_id: str,
-        completion: dict[str, Any],
-    ) -> bool:
-        response = await self._request(
-            "POST",
-            f"/backtests/{run_id}/complete",
-            json=completion,
-        )
-        return _mutation_updated(response)
 
     async def get_backtest_execution_slot(self) -> dict[str, Any]:
         return await self._request("GET", "/backtest-execution/slot")

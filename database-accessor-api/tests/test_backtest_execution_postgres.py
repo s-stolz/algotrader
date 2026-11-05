@@ -133,6 +133,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                         run_id="active",
                         owner_token="owner",
                         started_at=at,
+                        worker_id="worker-test",
                     )
                 )
             )
@@ -193,6 +194,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                         run_id="waiting",
                         owner_token="next",
                         started_at=at,
+                        worker_id="worker-test",
                     )
                 )
             )
@@ -496,7 +498,11 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                 await connection.commit()
                 async with AsyncSession(bind=connection) as session:
                     return await backtest_execution.claim(
-                        session, run_id="first", owner_token=token, started_at=started_at
+                        session,
+                        run_id="first",
+                        owner_token=token,
+                        started_at=started_at,
+                        worker_id="worker-test",
                     )
 
         try:
@@ -608,7 +614,11 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                 async with AsyncSession(bind=connection) as session:
                     self.assertTrue(
                         await backtest_execution.claim(
-                            session, run_id="large", owner_token="owner", started_at=at
+                            session,
+                            run_id="large",
+                            owner_token="owner",
+                            started_at=at,
+                            worker_id="worker-test",
                         )
                     )
                     # A late artifact failure must roll back earlier inserts and keep ownership.
@@ -654,7 +664,11 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertTrue(
                         await backtest_execution.claim(
-                            session, run_id="waiting", owner_token="next", started_at=at
+                            session,
+                            run_id="waiting",
+                            owner_token="next",
+                            started_at=at,
+                            worker_id="worker-test",
                         )
                     )
         finally:
@@ -794,6 +808,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                     run_id=run_id,
                     owner_token=token,
                     started_at=accepted_at,
+                    worker_id="worker-test",
                 )
             )
             self.assertFalse(
@@ -802,6 +817,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                     run_id="other",
                     owner_token="other",
                     started_at=accepted_at,
+                    worker_id="worker-test",
                 )
             )
             return await backtest_execution.settle(
@@ -933,6 +949,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
                         run_id="batch-b-1",
                         owner_token="interrupted",
                         started_at=accepted_at,
+                        worker_id="worker-test",
                     )
                 )
             )
@@ -1008,6 +1025,7 @@ async def _claim_from_worker_process(schema: str, token: str) -> None:
                     run_id="first",
                     owner_token=token,
                     started_at=datetime.fromisoformat("2026-06-08T12:32:00+00:00"),
+                    worker_id="worker-test",
                 )
                 print(int(claimed))
     finally:

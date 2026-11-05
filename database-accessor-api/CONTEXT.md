@@ -30,7 +30,7 @@ lifecycle policy; the accessor applies it against locked current state.
   hold it through the read transaction so active ownership and waiting turns
   cannot come from different lifecycle states.
 - Claim verifies the head turn, batch eligibility, and lowest queued member.
-  Worker-identified claims seed the matching heartbeat atomically; heartbeat
+  Claims require a worker identity and seed the matching heartbeat atomically; heartbeat
   writes take the slot lock and fence delayed ownership changes.
   Settlement requires the owner token and commits artifacts, outcome, batch
   reconciliation/events, next turn, and slot release together.
@@ -53,8 +53,8 @@ lifecycle policy; the accessor applies it against locked current state.
   request attributes into columns.
 - Successful worker settlement validates and stores the replay descriptor with
   metrics, diagnostics, Fills, and Closed Trades. Failed settlement rejects result
-  artifacts. Tokenless legacy completion returns `updated=false` once the slot
-  exists, even after manual slot clear.
+  artifacts. Worker lifecycle writes use only the owner-token-fenced execution
+  endpoints; the tokenless update and completion endpoints have been retired.
 - Fill/trade reads use sequence order: missing parent is 404, existing parent with
   no children is an empty collection. Deletion is 204, missing is 404, ineligible
   state/membership is 409; recheck eligibility inside the locked transaction.
