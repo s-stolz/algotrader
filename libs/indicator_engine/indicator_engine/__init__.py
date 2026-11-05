@@ -9,7 +9,6 @@ from .defaults import (
     get_batch_engine,
     get_registry,
     get_update_engine,
-    list_indicators,
     run,
     run_batch,
 )
@@ -37,5 +36,4 @@ __all__ = [
     "get_update_engine",
     "run",
     "run_batch",
-    "list_indicators",
 ]

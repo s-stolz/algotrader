@@ -152,9 +152,3 @@ def run(indicator_id: str, df, params: ParamSet | None = None):
     result = run_batch(indicator_id, bar, params=params)
     out_df = result_to_dataframe(result.tensor)
     return _squeeze_result(out_df, result.tensor)
-
-
-def list_indicators() -> list[dict[str, str]]:
-    """Return a list of indicator id/name pairs from the registry."""
-    registry = get_registry()
-    return [{"id": spec.id, "name": spec.name} for spec in registry.list_specs().values()]
