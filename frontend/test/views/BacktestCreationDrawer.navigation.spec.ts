@@ -1,3 +1,4 @@
+import { initialScheduleDraft } from '@/types/backtest/schedule';
 import CreationReview from '@/views/creation/CreationReview.vue';
 import { flushPromises } from '@vue/test-utils';
 
@@ -66,6 +67,7 @@ describe('creation navigation', () => {
     async () => {
       const store = useBacktestWorkspaceStore();
       store.creationSelections = {
+        dailySchedule: initialScheduleDraft(),
         marketIds: [1],
         timeframes: ['M1'],
         allowedDirections: ['short_only'],

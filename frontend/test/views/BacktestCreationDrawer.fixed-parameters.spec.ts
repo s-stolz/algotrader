@@ -1,3 +1,4 @@
+import { initialScheduleDraft } from '@/types/backtest/schedule';
 import { flushPromises } from '@vue/test-utils';
 
 import { NDatePicker, NInput, NSelect } from 'naive-ui';
@@ -144,6 +145,7 @@ describe('fixed parameters', () => {
       },
     };
     store.creationSelections = {
+      dailySchedule: initialScheduleDraft(),
       marketIds: [1],
       timeframes: ['M15'],
       allowedDirections: ['short_only'],

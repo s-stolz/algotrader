@@ -9,7 +9,12 @@ import type {
   BacktestSelectionsDraft,
 } from '@/types/backtesterContracts';
 
-describe('shared execution schedule in selections creation', () => {
+describe('schedule alternatives in selections creation', () => {
+  const schedule = {
+    entry_start_minute_utc: 60,
+    last_entry_minute_utc: 120,
+    exit_minute_utc: 180,
+  };
   const strategy: StrategyCatalogEntry = {
     strategy_id: 'test',
     strategy_version: 1,
@@ -21,6 +26,7 @@ describe('shared execution schedule in selections creation', () => {
     timeframes: ['M5'],
     allowedDirections: ['long_and_short'],
     parameters: {},
+    dailySchedule: initialScheduleDraft(schedule),
   };
   function request() {
     const draft = initialDraft();
@@ -30,11 +36,6 @@ describe('shared execution schedule in selections creation', () => {
       parameters: {},
     };
     draft.execution.max_entries_per_day = 1;
-    draft.execution.daily_schedule = {
-      entry_start_minute_utc: 60,
-      last_entry_minute_utc: 120,
-      exit_minute_utc: 180,
-    };
     return draft;
   }
   function build(draft: ReturnType<typeof request>, selection = selections) {
@@ -49,12 +50,11 @@ describe('shared execution schedule in selections creation', () => {
       () => [],
     );
   }
-  it('retains the schedule as a shared control without adding a parameter axis', () => {
+  it('serializes a single alternative separately from strategy parameters', () => {
     const draft = request();
     const preview = build(draft);
-    expect(preview.execution.daily_schedule).toEqual(
-      draft.execution.daily_schedule,
-    );
+    expect(preview.daily_schedules).toEqual([schedule]);
+    expect(preview.execution).not.toHaveProperty('daily_schedule');
     expect(preview.execution.max_entries_per_day).toBe(1);
     expect(preview.parameter_axes).toEqual({});
   });
@@ -65,12 +65,17 @@ describe('shared execution schedule in selections creation', () => {
   });
   it('rejects invalid scheduling before requesting a preview', () => {
     const draft = request();
-    draft.execution.daily_schedule!.exit_minute_utc = 119;
-    expect(() => build(draft)).toThrow('exit must be at or after last entry');
+    const dailySchedule = initialScheduleDraft({
+      ...schedule,
+      exit_minute_utc: 119,
+    });
+    expect(() => build(draft, { ...selections, dailySchedule })).toThrow(
+      'exit must be at or after last entry',
+    );
   });
   it('serializes paired alternatives and retains disabled draft values', () => {
     const draft = request();
-    const dailySchedule = initialScheduleDraft(draft.execution.daily_schedule);
+    const dailySchedule = initialScheduleDraft(schedule);
     dailySchedule.candidates.push({
       entry_start_minute_utc: 360,
       last_entry_minute_utc: 600,

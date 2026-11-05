@@ -23,13 +23,6 @@ export type ReuseDraft = {
   source: ReuseSource;
 };
 
-const EMPTY_SELECTIONS: BacktestSelectionsDraft = {
-  marketIds: [],
-  timeframes: [],
-  allowedDirections: [],
-  parameters: {},
-};
-
 function copyJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -50,7 +43,7 @@ export function reuseRun(
   return {
     request,
     selections: {
-      ...copyJson(EMPTY_SELECTIONS),
+      parameters: {},
       marketIds: markets
         .filter(
           (market) =>

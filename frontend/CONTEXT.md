@@ -104,6 +104,8 @@ and behavior that is easy to break when changing them.
   contributes one candidate alternative, multiplied with the other selection
   axes. The UI draft retains rows while disabled; serialization omits them.
   Reuse restores accepted alternatives or a legacy single execution schedule.
+  Creation drafts always include schedule state; legacy snapshots are converted
+  at the saved-record reuse boundary, before validation and serialization.
   Validate complete, ordered, distinct triples before preview/submission;
   individual Run requests still contain one execution schedule.
 - Creation calendar dates convert explicitly to UTC midnight. Chart timestamp

@@ -1,3 +1,4 @@
+import { initialScheduleDraft } from '@/types/backtest/schedule';
 import {
   setupWorkspaceTests,
   run,
@@ -25,6 +26,7 @@ describe('Backtest creation session reset', () => {
         },
       };
       store.creationSelections = {
+        dailySchedule: initialScheduleDraft(),
         marketIds: [1],
         timeframes: ['H1'],
         allowedDirections: ['short_only'],

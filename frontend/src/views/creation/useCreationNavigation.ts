@@ -59,7 +59,7 @@ export function useCreationNavigation(inputs: NavigationInputs) {
   );
   function scheduleRow(field: string) {
     if (!field.startsWith('schedule-')) return;
-    return selections.value.dailySchedule?.candidates[
+    return selections.value.dailySchedule.candidates[
       Number(field.slice('schedule-'.length))
     ];
   }

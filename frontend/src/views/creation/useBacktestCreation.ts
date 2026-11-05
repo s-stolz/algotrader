@@ -50,16 +50,11 @@ export function useBacktestCreation(emit: CreationEvents) {
       timeframes: ['M1'],
       allowedDirections: ['long_and_short'],
       parameters: {},
+      dailySchedule: initialScheduleDraft(),
     },
   );
   const nameIssue = computed(() => experimentNameIssue(draft.value.name));
-  function initializeSchedules() {
-    selections.value.dailySchedule ??= initialScheduleDraft(
-      draft.value.execution.daily_schedule,
-    );
-  }
-  initializeSchedules();
-  const scheduleDraft = computed(() => selections.value.dailySchedule!);
+  const scheduleDraft = computed(() => selections.value.dailySchedule);
   const catalog = shallowRef<StrategyCatalogEntry[]>([]);
   const catalogPending = ref(false);
   const catalogError = ref<string | null>(null);
@@ -200,10 +195,10 @@ export function useBacktestCreation(emit: CreationEvents) {
             timeframes: ['M1'],
             allowedDirections: ['long_and_short'],
             parameters: {},
+            dailySchedule: initialScheduleDraft(),
           };
       if (store.reuseSource && strategyNeedsReview.value) useCurrentVersion();
       step.value = 0;
-      initializeSchedules();
       resetSetupValidation();
       numericEntryValid.value = {};
       fieldErrors.value = {};

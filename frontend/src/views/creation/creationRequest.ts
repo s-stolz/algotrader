@@ -108,11 +108,11 @@ export function buildBacktestRequest(
     ...shared
   } = draft;
   const execution = { ...shared.execution };
-  if (selections.dailySchedule) delete execution.daily_schedule;
+  delete execution.daily_schedule;
   return {
     ...shared,
     execution,
-    ...(selections.dailySchedule?.enabled
+    ...(selections.dailySchedule.enabled
       ? {
           daily_schedules: selections.dailySchedule.candidates.map(
             (candidate) => ({ ...candidate }) as DailyTradingSchedule,

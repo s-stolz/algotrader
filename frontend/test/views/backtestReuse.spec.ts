@@ -172,7 +172,7 @@ describe('saved configuration reuse', () => {
         candidates:
           backtest.accepted_definition.normalized_selections.daily_schedules,
       });
-      reuse.selections.dailySchedule!.candidates[0].exit_minute_utc = 240;
+      reuse.selections.dailySchedule.candidates[0].exit_minute_utc = 240;
       reuse.selections.marketIds.reverse();
       expect(backtest).toEqual(before);
     },

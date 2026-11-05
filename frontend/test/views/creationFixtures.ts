@@ -1,3 +1,4 @@
+import { initialScheduleDraft } from '@/types/backtest/schedule';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, onTestFinished, vi } from 'vitest';
@@ -191,6 +192,7 @@ export function selectionsSetup() {
       },
     ];
     useBacktestWorkspaceStore().creationSelections = {
+      dailySchedule: initialScheduleDraft(),
       marketIds: [1],
       timeframes: ['M1'],
       allowedDirections: ['long_and_short'],

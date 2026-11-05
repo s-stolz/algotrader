@@ -1,9 +1,6 @@
 import type { BacktestSelectionsDraft } from '@/types/backtesterContracts';
 import { dailyEntryLimitIssue } from '@/types/backtest/entryLimit';
-import {
-  dailyScheduleIssue,
-  scheduleDraftIssues,
-} from '@/types/backtest/schedule';
+import { scheduleDraftIssues } from '@/types/backtest/schedule';
 import { TIMEFRAME_CODES } from '@/types/contracts';
 import { experimentNameIssue } from '../creationParameters';
 import type { DraftRequest } from '../creationRequest';
@@ -48,12 +45,7 @@ export function setupIssues(
     issues.capital = 'Initial capital must be greater than zero.';
   const entryIssue = dailyEntryLimitIssue(draft.execution.max_entries_per_day);
   if (entryIssue) issues.entryLimit = entryIssue;
-  if (selections.dailySchedule)
-    Object.assign(issues, scheduleDraftIssues(selections.dailySchedule));
-  else {
-    const scheduleIssue = dailyScheduleIssue(draft.execution.daily_schedule);
-    if (scheduleIssue) issues.schedule = scheduleIssue;
-  }
+  Object.assign(issues, scheduleDraftIssues(selections.dailySchedule));
   for (const key of ['slippage_bps', 'commission_bps'] as const) {
     const value = draft.execution[key];
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0)

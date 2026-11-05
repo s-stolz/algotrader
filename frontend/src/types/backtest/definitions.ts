@@ -39,7 +39,7 @@ export interface BacktestSelectionsDraft {
   timeframes: string[];
   allowedDirections: BacktestAllowedDirections[];
   parameters: Record<string, ParameterDraft>;
-  dailySchedule?: DailyScheduleDraft;
+  dailySchedule: DailyScheduleDraft;
 }
 
 export interface BacktestPreviewRequest
