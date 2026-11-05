@@ -49,8 +49,3 @@ def get_indicator_metadata(indicator_id: int) -> dict:
 
 def get_engine_id(indicator_id: int) -> str:
     return INDICATOR_MAP[indicator_id]
-
-
-def get_indicator_by_id(indicator_id: int):
-    engine_id = INDICATOR_MAP[indicator_id]
-    return ENGINE_REGISTRY.get(engine_id)
