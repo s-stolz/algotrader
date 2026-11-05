@@ -53,7 +53,6 @@ class BarBuffer:
         self.assets = np.array(list(assets), dtype=object)
         self.fields = np.array(list(fields), dtype=object)
         self.asset_index = {asset: i for i, asset in enumerate(self.assets)}
-        self.field_index = {field: i for i, field in enumerate(self.fields)}
         self.history = history
         self.allow_out_of_order = allow_out_of_order
         self.dtype = dtype

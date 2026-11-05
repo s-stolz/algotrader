@@ -43,7 +43,6 @@ class EventDrivenFeatureStream:
         bars: pd.DataFrame | None = None,
         feature_bars: Mapping[str, pd.DataFrame] | None = None,
     ) -> None:
-        self._strategy = strategy
         self._symbol = str(symbol)
         self._timeframe = str(timeframe)
         self._source_stream = (
