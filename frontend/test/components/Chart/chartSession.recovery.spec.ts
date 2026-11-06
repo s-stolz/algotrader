@@ -78,9 +78,7 @@ it('merges the inclusive gap with older history and fresh live values', async ()
   ]);
   expect(candles.data[1].close).toBe(3);
   expect(candles.data.at(-1)?.close).toBe(9);
-  expect(render).toHaveBeenLastCalledWith(candles.data, {
-    preserveViewport: true,
-  });
+  expect(render).toHaveBeenLastCalledWith(candles.data);
   await session.stop();
   expect([...handlers.values()].every((set) => set.size === 0)).toBe(true);
 });

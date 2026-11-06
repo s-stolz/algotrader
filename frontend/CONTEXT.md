@@ -16,8 +16,10 @@ and behavior that is easy to break when changing them.
   Freeze the last Candle timestamp on disconnect; fetch that timestamp inclusively
   through reconnect time, without the latest-batch limit. Merge Candles and
   Indicators in one silent recovery pass, with fresh live values taking precedence.
-  Preserve loaded history and viewport. Failed requests retain the anchor for the
-  next reconnect; there are no timed retries or database-completeness guarantees.
+  Preserve loaded history; viewport movement follows the chart library's normal
+  data updates, without explicit scrolling or restoration during recovery.
+  Failed requests retain the anchor for the next reconnect; there are no timed
+  retries or database-completeness guarantees.
   Indicator recovery lives in `stores/indicators/recovery.ts`; it includes run-owned
   indicators and guards session, removal, and calculation-generation changes.
   `stores/indicators/pendingRequests.ts` orders recovery after pending initial or

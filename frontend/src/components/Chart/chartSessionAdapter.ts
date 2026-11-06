@@ -18,7 +18,7 @@ interface ChartSessionAdapterOptions {
   currentChartSessionKey: () => ChartSessionKeyInput;
   renderCandlesticks: (
     candles: readonly ChartCandle[],
-    options?: { scrollToRealtime?: boolean; preserveViewport?: boolean },
+    options?: { scrollToRealtime?: boolean },
   ) => void;
   shouldScrollToRealTime: () => boolean;
   onCandlesLoaded?: (key: ChartSessionKey) => void;
@@ -71,7 +71,7 @@ export function createChartSessionAdapter({
         candlesticksStore.replace(
           [...merged.values()].sort((a, b) => a.timestamp_ms - b.timestamp_ms),
         );
-        renderCandlesticks(candlesticksStore.data, { preserveViewport: true });
+        renderCandlesticks(candlesticksStore.data);
       },
       recoverIndicators: (query, isCurrent, signal) =>
         recoverIndicatorHistory(indicatorsStore, query, isCurrent, signal),

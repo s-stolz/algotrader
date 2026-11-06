@@ -1,4 +1,3 @@
-import { captureChartViewport } from '@/utils/chart/chartViewport';
 import { nextTick, shallowReactive } from 'vue';
 import { whenChartFontReady } from '@/utils/chart/chartFonts';
 import type {
@@ -44,7 +43,6 @@ interface OhlcLegendPoint {
 }
 interface RenderCandlestickOptions {
   scrollToRealtime?: boolean;
-  preserveViewport?: boolean;
 }
 interface ChartRenderingState {
   isReady: boolean;
@@ -244,13 +242,10 @@ export function createChartRendering({
 
   function renderCandlesticks(
     data: readonly ChartCandle[],
-    {
-      scrollToRealtime = false,
-      preserveViewport = false,
-    }: RenderCandlestickOptions = {},
+    { scrollToRealtime = false }: RenderCandlestickOptions = {},
   ): void {
     if (!state.isReady) {
-      pendingRender = { scrollToRealtime, preserveViewport };
+      pendingRender = { scrollToRealtime };
       return;
     }
     const minMove = getMinMove();
@@ -262,14 +257,10 @@ export function createChartRendering({
       };
     }
 
-    const restoreViewport = preserveViewport
-      ? captureChartViewport(infrastructure.chartManager.chart)
-      : () => {};
     state.ohlcSeriesRef = infrastructure.addCandlestickData(
       data,
       state.seriesOptions,
     );
-    restoreViewport();
     void syncBacktestOverlayTarget();
     refreshBacktestMarkers();
 
