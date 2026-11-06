@@ -58,6 +58,7 @@ class LiveDailyBasket:
         self.awaiting_snapshot = True
         self.next_recovery = 0.0
         self.recovery_from: int | None = None
+        self.recovery_through: int | None = None
         self.published: dict[int, dict[str, float]] = {}
         self.last_published: int | None = None
         self.has_baseline = False
@@ -76,6 +77,12 @@ class LiveDailyBasket:
         if boundary is not None:
             self.recovery_from = (
                 boundary if self.recovery_from is None else min(self.recovery_from, boundary)
+            )
+        if self.target is not None:
+            self.recovery_through = (
+                self.target
+                if self.recovery_through is None
+                else max(self.recovery_through, self.target)
             )
         self.needs_history = True
         self.awaiting_snapshot = True
@@ -106,7 +113,11 @@ class LiveDailyBasket:
             if self.live[asset].get(timestamp) != close:
                 self.needs_rebuild = True
                 self.state = None
-                if self.history and not self.awaiting_snapshot:
+                if (
+                    self.history
+                    and not self.awaiting_snapshot
+                    and (self.recovery_from is None or timestamp < self.recovery_from)
+                ):
                     index = self.assets.index(asset)
                     self.history[index].loc[timestamp, "close"] = close
                     self.history[index] = self.history[index].sort_index()
@@ -177,6 +188,12 @@ class LiveDailyBasket:
             frames.append(frame.loc[~frame.index.duplicated(keep="last")].sort_index())
         return frames
 
+    def _finish_recovery_if_closed(self, timestamp: int) -> None:
+        if self.recovery_through is None or timestamp > self.recovery_through:
+            self.recovery_from = None
+            self.recovery_through = None
+        self.needs_history = self.recovery_from is not None
+
     def calculate(self) -> list[tuple[int, dict[str, float], bool]]:
         if self.target is None or not self.history or self.awaiting_snapshot:
             return []
@@ -205,8 +222,7 @@ class LiveDailyBasket:
                 return self._changed(outputs)
             self.state = self.indicator.init_state(block.bars, self.spec.parameters)
             self.needs_rebuild = False
-            self.needs_history = False
-            self.recovery_from = None
+            self._finish_recovery_if_closed(self.target)
         if self.state is not None:
             row = np.array([[self.live[asset][self.target]] for asset in self.assets])
             self.state, values = self.indicator.update(

@@ -243,3 +243,57 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
         await self.basket.recover()
         await self.basket.publish(self.redis, 100)
         np.testing.assert_allclose(list(self.output().values()), 0.0)
+
+    async def test_same_candle_reconnect_recovers_its_authoritative_close_after_rollover(self):
+        from app.services.anchored_indicator_service import calculate_anchored_indicator
+
+        await self.start()
+        self.ingest(120000, 1.031, continuity="b")
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        published = self.redis.xadd.await_count
+        self.ingest(180000, 1.04, continuity="b")
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.await_count, published)
+
+        self.ingest(120000, 1.034, continuity="b")
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.await_count, published)
+
+        for frame in self.frames.values():
+            frame.loc[120000] = 1.035
+            frame.loc[180000] = 1.04
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.call_args.args[1]["t"], "180000")
+        historical = await calculate_anchored_indicator(
+            engine_id="currency_strength",
+            parameters={},
+            symbol="EURUSD",
+            exchange=None,
+            timeframe="M1",
+            start_ms=180000,
+            end_ms=240000,
+            limit=None,
+        )
+        np.testing.assert_allclose(list(self.output().values()), historical.iloc[-1].to_numpy())
+        self.assertFalse(self.basket.needs_history)
+
+    async def test_reconnect_protects_the_newest_inflight_candle_of_a_partial_basket(self):
+        await self.start()
+        self.ingest(180000, 1.04, [self.basket.assets[0]])
+        self.basket.require_recovery()
+        for frame in self.frames.values():
+            frame.loc[120000] = 1.035
+        self.ingest(180000, 1.04, self.basket.assets[1:])
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        published = self.redis.xadd.await_count
+        self.ingest(240000, 1.05)
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.await_count, published)
+        for frame in self.frames.values():
+            frame.loc[180000] = 1.045
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.call_args.args[1]["t"], "240000")
