@@ -1,5 +1,6 @@
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { marketPricePrecision } from './priceFormatting';
+import { isChartSeriesType } from './seriesTypes';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { IndicatorDataPoint, JsonObject } from '@/types/contracts';
 import { OpeningRangeOverlays } from './openingRange/lifecycle';
@@ -29,23 +30,6 @@ export interface IndicatorChartManager {
 }
 
 type IndicatorsStore = ReturnType<typeof useIndicatorsStore>;
-
-const CHART_SERIES_TYPES = new Set<ChartSeriesType>([
-  'line',
-  'area',
-  'bar',
-  'baseline',
-  'candlestick',
-  'histogram',
-]);
-
-function isChartSeriesType(
-  value: string | undefined,
-): value is ChartSeriesType {
-  return (
-    value !== undefined && CHART_SERIES_TYPES.has(value as ChartSeriesType)
-  );
-}
 
 function toChartSeriesOptions(
   options: JsonObject | undefined,

@@ -1,6 +1,7 @@
 import type { MouseEventParams, Time } from 'lightweight-charts';
 import type { StoreIndicator } from '@/stores/indicatorsStore';
 import type { ChartSeriesInfo } from '@/utils/chart/ChartManager';
+import { isChartSeriesType } from '@/utils/chart/seriesTypes';
 import { rangeStyle } from '@/utils/chart/openingRange/model';
 
 export type IndicatorReadout = Record<string, string>;
@@ -17,11 +18,7 @@ export function getReadoutOutputs(indicator: StoreIndicator) {
     ];
   }
   return Object.entries(indicator.info.outputs)
-    .filter(([, output]) =>
-      ['line', 'area', 'bar', 'baseline', 'candlestick', 'histogram'].includes(
-        output.type ?? '',
-      ),
-    )
+    .filter(([, output]) => isChartSeriesType(output.type))
     .map(([key, output]) => {
       const options = indicator.styles[key] ?? output.plotOptions;
       const color = options?.color ?? options?.lineColor;
