@@ -17,7 +17,7 @@ from indicator_engine.core.history import UTC_DAY_MS
 from indicator_engine.core.tensor import Tensor
 
 from app import BATCH_ENGINE, ENGINE_REGISTRY
-from app.services.anchored_indicator_service import _fetch_sources
+from app.services.live_daily_history import load_daily_snapshot
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -163,7 +163,8 @@ class LiveDailyBasket:
             if timestamp not in self.live[asset]:
                 return False
             expected = self.predecessor_times.get(asset)
-            prior = history.index[history.index < day]
+            times = history.index.to_numpy(dtype="int64")
+            prior = times[times < day]
             if expected is not None and (not len(prior) or int(prior[-1]) < expected):
                 return False
         return True
@@ -172,30 +173,14 @@ class LiveDailyBasket:
         if self.target is None or self.day is None:
             return
         self.next_recovery = time.monotonic() + 5.0
-        frames, predecessors = await asyncio.gather(
-            _fetch_sources(
-                assets=self.assets,
-                fields=["close"],
-                timeframe=self.spec.timeframe,
-                exchange=self.spec.exchange,
-                start_ms=self.day,
-                end_ms=self.target,
-                limit=None,
-            ),
-            _fetch_sources(
-                assets=self.assets,
-                fields=["close"],
-                timeframe=self.spec.timeframe,
-                exchange=self.spec.exchange,
-                start_ms=None,
-                end_ms=self.day,
-                limit=1,
-            ),
+        snapshot = await load_daily_snapshot(
+            self.spec, self.assets, self.day, self.target, self.interval
         )
-        self.history = [
-            pd.concat([prior, frame]).sort_index()
-            for prior, frame in zip(predecessors, frames, strict=True)
-        ]
+        if snapshot is None:
+            self.needs_history = True
+            self.awaiting_snapshot = True
+            return
+        self.history = snapshot
         self.needs_history = False
         self.awaiting_snapshot = False
         self.needs_rebuild = True

@@ -22,9 +22,21 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
         )
         self.fetch.start()
         self.addCleanup(self.fetch.stop)
+        self.storage = Mock(
+            get_market=AsyncMock(return_value={"symbol_id": 1}),
+            get_pending_recovery=AsyncMock(return_value=None),
+            get_live_write_guard=AsyncMock(return_value=None),
+        )
+        client = patch("app.services.live_daily_history.AsyncDatabaseAccessorClient")
+        client.start().return_value.__aenter__.return_value = self.storage
+        self.addCleanup(client.stop)
 
-    async def get_candles(self, *, symbol, start_ms, end_ms, limit, **kwargs):
+    async def get_candles(self, *, symbol, start_ms, end_ms, limit, timeframe, **kwargs):
+        from db_accessor_client import timeframe_to_minutes
+
         frame = self.frames[symbol]
+        interval = timeframe_to_minutes(timeframe) * 60_000
+        frame = frame.groupby(frame.index.to_numpy() // interval * interval).last()
         if start_ms is not None:
             frame = frame.loc[frame.index >= start_ms]
         if end_ms is not None:
@@ -241,7 +253,9 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
     async def test_daily_timeframe_uses_previous_available_candle(self):
         self.basket = LiveDailyBasket(LiveStreamSpec("123", "EURUSD", "D1", 5, None, {}))
         for index, asset in enumerate(self.basket.assets):
-            self.frames[asset] = pd.DataFrame({"close": [1.03]}, index=[-(index + 1) * UTC_DAY_MS])
+            self.frames[asset] = pd.DataFrame(
+                {"close": [1.03]}, index=[-index * UTC_DAY_MS - 60000]
+            )
         self.ingest(0, 1.03)
         await self.basket.recover()
         await self.basket.publish(self.redis, 100)
@@ -355,3 +369,87 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
         await self.basket.recover()
         await self.basket.publish(self.redis, 100)
         self.redis.xadd.assert_awaited_once()
+
+    async def test_hourly_midnight_waits_for_final_minute_and_ignores_stale_aggregates(self):
+        self.basket = LiveDailyBasket(LiveStreamSpec("123", "EURUSD", "H1", 5, None, {}))
+        prior = UTC_DAY_MS - 3_600_000
+        for asset in self.basket.assets:
+            self.frames[asset] = pd.DataFrame({"close": [1.0]}, index=[prior])
+        self.ingest(prior, 1.03)
+        self.ingest(UTC_DAY_MS, 1.04)
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.redis.xadd.assert_not_awaited()
+
+        for frame in self.frames.values():
+            frame.loc[UTC_DAY_MS - 60000] = 1.03
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.call_args.args[1]["t"], str(UTC_DAY_MS))
+        self.assertFalse(self.basket.needs_history)
+        from app.services.anchored_indicator_service import calculate_anchored_indicator
+
+        for frame in self.frames.values():
+            frame.loc[UTC_DAY_MS] = 1.04
+        historical = await calculate_anchored_indicator(
+            engine_id="currency_strength",
+            parameters={},
+            symbol="EURUSD",
+            exchange=None,
+            timeframe="H1",
+            start_ms=UTC_DAY_MS,
+            end_ms=UTC_DAY_MS + 3_600_000,
+            limit=None,
+        )
+        np.testing.assert_allclose(list(self.output().values()), historical.iloc[-1].to_numpy())
+        # The seed must come from raw M1, even while a materialized H1 close is stale.
+        self.assertAlmostEqual(float(self.basket.history[0].iloc[-1]["close"]), 1.03)
+
+    async def test_hourly_reconnect_waits_for_interrupted_bucket_final_minute(self):
+        hour = 3_600_000
+        self.basket = LiveDailyBasket(LiveStreamSpec("123", "EURUSD", "H1", 5, None, {}))
+        for asset in self.basket.assets:
+            self.frames[asset] = pd.DataFrame({"close": [1.0]}, index=[-60000])
+        self.ingest(0, 1.03)
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.ingest(0, 1.035, continuity="b")
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        count = self.redis.xadd.await_count
+        for frame in self.frames.values():
+            frame.loc[0] = 1.01
+        self.ingest(hour, 1.04, continuity="b")
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.await_count, count)
+        for frame in self.frames.values():
+            frame.loc[hour - 60000] = 1.035
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertFalse(self.basket.needs_history)
+        self.assertEqual(self.redis.xadd.call_args.args[1]["t"], str(hour))
+        self.assertAlmostEqual(float(self.basket.history[0].loc[0, "close"]), 1.035)
+
+    async def test_existing_closed_rows_wait_for_authoritative_backfill(self):
+        await self.start()
+        self.ingest(120000, 1.035, continuity="b")
+        self.ingest(180000, 1.04)
+        for frame in self.frames.values():
+            frame.loc[120000] = 1.02
+            frame.loc[180000] = 1.04
+        self.storage.get_pending_recovery.return_value = {
+            "next_ms": 120000,
+            "target_ms": 179999,
+        }
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.await_count, 1)
+        self.assertTrue(self.basket.needs_history)
+        for frame in self.frames.values():
+            frame.loc[120000] = 1.035
+        self.storage.get_pending_recovery.return_value = None
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertAlmostEqual(float(self.basket.history[0].loc[120000, "close"]), 1.035)
+        self.assertEqual(self.redis.xadd.call_args.args[1]["t"], "180000")

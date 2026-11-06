@@ -172,7 +172,10 @@ single-symbol Indicators ignore it. Daily basket Indicators use session changes
 and Redis interruptions to request fresh storage history and rebuild cumulative
 state. Recovery remains pending through the interrupted forming Candle's close;
 missing inputs silently pause output until storage supplies them. Ingestion owns
-durable backfill. Corrected older Indicator points carry the optional replay
+durable backfill. Daily snapshots read raw M1 closes and wait while existing
+pending recovery or live write guards overlap their closed input range; newer
+stored rows alone do not establish that backfill finished. Corrected older
+Indicator points carry the optional replay
 marker so charts merge them without rewinding the live tail. See
 [daily basket adaptation](../../indicator-api/CONTEXT.md#historical-and-live-paths).
 

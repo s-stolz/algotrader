@@ -34,6 +34,13 @@ parameters, response formatting, and live-stream lifecycle.
   must be fetched after rollover. At UTC midnight, retain each source's latest
   observed predecessor timestamp and wait until storage reaches it before seeding
   the new day. Predecessor timestamps may differ between sources.
+  `services/live_daily_history.py` builds closed snapshots from raw M1 closes,
+  grouped into the requested timeframe, so recovery does not depend on aggregate
+  refresh timing. Higher-timeframe buckets wait for raw storage progress through
+  their final minute (or later, across a market closure). Pending ingestion
+  recovery and unconfirmed writes are checked before and after snapshot reads;
+  overlapping work keeps the snapshot pending. These checks do not prove general
+  historical completeness; the daily input adapter still validates required bars.
   Ingestion remains responsible for durable source backfill. Rebuilt values use
   the historical adapter's completeness rules; corrected earlier outputs carry
   the optional Redis `replay: "1"` marker. Recovery is silent in the chart.
