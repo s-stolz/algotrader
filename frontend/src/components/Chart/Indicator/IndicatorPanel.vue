@@ -34,18 +34,48 @@
             <TrashOutline />
           </n-icon>
         </n-button>
+        <BasePopover
+          v-if="hasNoData"
+          v-model:show="showEmptyState"
+          trigger="hover"
+          :width="260"
+        >
+          <template #trigger>
+            <n-button
+              text
+              circle
+              class="indicator-empty-state"
+              aria-label="No data available for this symbol and indicator."
+              @focus="showEmptyState = true"
+              @blur="showEmptyState = false"
+              @click="showEmptyState = true"
+              @keydown.esc="showEmptyState = false"
+            >
+              <n-icon
+                size="20"
+                color="var(--design-color-error)"
+              >
+                <AlertCircleOutline />
+              </n-icon>
+            </n-button>
+          </template>
+          No data available for this symbol and indicator.
+        </BasePopover>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
 
-import { SettingsOutline, TrashOutline } from '@/icons';
+import { AlertCircleOutline, SettingsOutline, TrashOutline } from '@/icons';
+import BasePopover from '@/components/Common/BasePopover.vue';
 import { useModalStore } from '@/stores/modalStore';
 
 import type { IndicatorInstance } from './types';
+import type { IndicatorDataPoint } from '@/types/contracts';
 
 defineOptions({
   name: 'IndicatorPanel',
@@ -60,6 +90,28 @@ const emit = defineEmits<{
 }>();
 
 const modalStore = useModalStore();
+const showEmptyState = ref(false);
+
+const hasNoData = computed(() => {
+  if (props.indicator.info.overlay) return false;
+  const outputs = Object.keys(props.indicator.info.outputs).filter(
+    (key) => key !== 'timestamp',
+  );
+  const hasValue = (point: IndicatorDataPoint) =>
+    Number.isFinite(point.timestamp_ms) &&
+    outputs.some(
+      (key) => typeof point[key] === 'number' && Number.isFinite(point[key]),
+    );
+  return !(
+    (props.indicator.lastLivePoint &&
+      hasValue(props.indicator.lastLivePoint)) ||
+    props.indicator.data.some(hasValue)
+  );
+});
+
+watch(hasNoData, () => {
+  showEmptyState.value = false;
+});
 
 function onOpenSettings(): void {
   modalStore.openModal(`indicatorSettings_${props.indicator._id}`);
@@ -96,6 +148,10 @@ function onRemoveIndicator(): void {
   display: flex;
   align-items: center;
   gap: var(--design-space-xs);
+}
+
+.indicator-empty-state {
+  cursor: help;
 }
 
 .remove-button:hover {

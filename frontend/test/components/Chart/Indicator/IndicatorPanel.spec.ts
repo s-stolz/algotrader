@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import IndicatorPanel from '@/components/Chart/Indicator/IndicatorPanel.vue';
 import { useModalStore } from '@/stores/modalStore';
@@ -109,6 +109,51 @@ describe('IndicatorPanel', () => {
     setActivePinia(createPinia());
     localStorage.clear();
   });
+
+  it.each([{ data: [] }, { data: [{ timestamp_ms: 1000, sma: null }] }])(
+    'shows empty-state help after the remove control when no values can be plotted',
+    async ({ data }) => {
+      const indicator = createIndicator({ data });
+      const wrapper = mount(IndicatorPanel, {
+        props: { indicator },
+        global: { stubs: { NButton: NButtonStub, NIcon: true } },
+      });
+      const message = 'No data available for this symbol and indicator.';
+      const help = wrapper.get('.indicator-empty-state');
+      expect(
+        wrapper
+          .get('.indicator-controls')
+          .findAll('button')
+          .map((button) => button.attributes('aria-label')),
+      ).toEqual(['Indicator settings', 'Remove Indicator', message]);
+      expect(wrapper.text()).not.toContain(message);
+      expect(document.querySelector('.base-popover')).toBeNull();
+      await help.trigger('mouseenter');
+      await vi.waitFor(() => {
+        expect(document.querySelector('.base-popover')?.textContent).toContain(
+          message,
+        );
+      });
+      await help.trigger('mouseleave');
+      await wrapper.get('[aria-label="Indicator settings"]').trigger('click');
+      expect(useModalStore().activeModal).toBe('indicatorSettings_indicator-1');
+      await wrapper.get('[aria-label="Remove Indicator"]').trigger('click');
+      expect(wrapper.emitted('remove-indicator')).toEqual([['indicator-1']]);
+
+      await wrapper.setProps({ indicator: createIndicator() });
+      expect(wrapper.find('.indicator-empty-state').exists()).toBe(false);
+      await wrapper.setProps({ indicator });
+      expect(wrapper.find('.indicator-empty-state').exists()).toBe(true);
+      await wrapper.setProps({
+        indicator: {
+          ...indicator,
+          lastLivePoint: { timestamp_ms: 2000, sma: 0 },
+        },
+      });
+      expect(wrapper.find('.indicator-empty-state').exists()).toBe(false);
+      wrapper.unmount();
+    },
+  );
 
   it('omits the historical suffix for live currency strength', async () => {
     const indicator = createIndicator({

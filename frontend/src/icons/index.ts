@@ -7,6 +7,7 @@ export { default as CloudUploadOutline } from '@vicons/ionicons5/es/CloudUploadO
 import EllipsisHorizontalCircleOutline from '@vicons/ionicons5/es/EllipsisHorizontalCircleOutline';
 export { EllipsisHorizontalCircleOutline };
 export { default as WarningOutline } from '@vicons/ionicons5/es/WarningOutline';
+export { default as AlertCircleOutline } from '@vicons/ionicons5/es/AlertCircleOutline';
 export { default as ListOutline } from '@vicons/ionicons5/es/ListOutline';
 export { default as HandRightOutline } from '@vicons/ionicons5/es/HandRightOutline';
 export { default as ResizeOutline } from '@vicons/ionicons5/es/ResizeOutline';
