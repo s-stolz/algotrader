@@ -123,7 +123,7 @@ services:
     ports:
       - ${TIMESCALEDB_PUBLISHED_PORT:-5432}:5432
     volumes:
-      - timescaledb_data:/var/lib/postgresql/data
+      - timescaledb_data_pg18:/var/lib/postgresql
     command:
       [
         "postgres",
@@ -247,7 +247,7 @@ services:
     container_name: redis
     cpus: ${COMPOSE_REDIS_CPUS:?Run make config}
     mem_reservation: ${COMPOSE_REDIS_MEMORY_RESERVATION:?Run make config}
-    image: redis:7-alpine
+    image: redis:8.10.3-alpine
     ports:
       - "${REDIS_PUBLISHED_PORT:-6379}:6379"
     volumes:
@@ -262,7 +262,7 @@ services:
       start_period: 5s
 
 volumes:
-  timescaledb_data:
+  timescaledb_data_pg18:
   frontend_data:
   frontend_node_modules:
   redis_data:
