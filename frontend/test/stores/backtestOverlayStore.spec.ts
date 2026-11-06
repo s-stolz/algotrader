@@ -1,3 +1,4 @@
+import { HttpResponseError } from '@/api/http';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -154,7 +155,12 @@ describe('backtestOverlayStore', () => {
     );
     vi.mocked(getBacktestRun).mockResolvedValue(backtestRun());
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
-    useMarketsStore().all = [eurUsdMarket];
+    useMarketsStore().all = [eurUsdMarket, gbpUsdMarket];
+    useCurrentMarketStore().setMarket(gbpUsdMarket);
+    useCurrentTimeframeStore().setCurrentTimeframe({
+      label: 'H1',
+      value: 'H1',
+    });
 
     const store = useBacktestOverlayStore();
 
@@ -169,8 +175,8 @@ describe('backtestOverlayStore', () => {
     expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('run-123');
     expect(store.selectedRun).toEqual(backtestRun());
     expect(store.closedTrades).toEqual(closedTrades);
-    expect(useCurrentMarketStore().symbol).toBe('EURUSD');
-    expect(useCurrentTimeframeStore().value).toBe('M15');
+    expect(useCurrentMarketStore().symbol).toBe('GBPUSD');
+    expect(useCurrentTimeframeStore().value).toBe('H1');
   });
 
   it('clears a persisted selected Backtest Run when reload finds an unsupported run', async () => {
@@ -197,8 +203,54 @@ describe('backtestOverlayStore', () => {
     expect(store.selectedRunId).toBeNull();
     expect(store.selectedRun).toBeNull();
     expect(store.closedTrades).toEqual([]);
-    expect(store.error).toBe('Backtest Run result schema is unsupported.');
+    expect(store.error).toBeNull();
     expect(localStorage.getItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN)).toBeNull();
+  });
+
+  it('retains saved selection on temporary failures without a user-facing error', async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.SELECTED_BACKTEST_RUN,
+      JSON.stringify('run-123'),
+    );
+    vi.mocked(getBacktestRun).mockRejectedValue(new Error('offline'));
+    const store = useBacktestOverlayStore();
+    await store.restorePersistedSelection();
+    expect(store.selectedRunId).toBe('run-123');
+    expect(store.error).toBeNull();
+    expect(store.isLoading).toBe(false);
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN)!),
+    ).toBe('run-123');
+  });
+
+  it('discards a deleted run and ignores restoration after removal', async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.SELECTED_BACKTEST_RUN,
+      JSON.stringify('run-123'),
+    );
+    vi.mocked(getBacktestRun).mockRejectedValueOnce(
+      new HttpResponseError('Not found', 404),
+    );
+    const store = useBacktestOverlayStore();
+    await store.restorePersistedSelection();
+    expect(store.selectedRunId).toBeNull();
+    expect(store.error).toBeNull();
+    localStorage.setItem(
+      STORAGE_KEYS.SELECTED_BACKTEST_RUN,
+      JSON.stringify('run-123'),
+    );
+    let resolve!: (run: BacktestRun) => void;
+    vi.mocked(getBacktestRun).mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const restoring = store.restorePersistedSelection();
+    store.clearOverlay();
+    resolve(backtestRun());
+    await restoring;
+    expect(store.selectedRun).toBeNull();
+    expect(fetchBacktestClosedTrades).not.toHaveBeenCalled();
   });
 
   it('reports a missing run Market without changing the chart', async () => {

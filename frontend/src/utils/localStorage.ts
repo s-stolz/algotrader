@@ -1,4 +1,6 @@
 export const STORAGE_KEYS = {
+  INDICATORS: 'algotrader_indicators',
+  RUN_INDICATOR_STYLES: 'algotrader_run_indicator_styles',
   CURRENT_MARKET: 'algotrader_current_market',
   CURRENT_TIMEFRAME: 'algotrader_current_timeframe',
   SELECTED_BACKTEST_RUN: 'algotrader_selected_backtest_run',

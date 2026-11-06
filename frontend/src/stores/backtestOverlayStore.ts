@@ -1,3 +1,4 @@
+import { HttpResponseError } from '@/api/http';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
@@ -227,37 +228,40 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
   }
 
   async function restorePersistedSelection(): Promise<BacktestRunSelectability | null> {
-    let revision = selectionRevision;
+    const revision = ++selectionRevision;
     const runId = readStoredRunId();
-
-    if (!runId) {
-      return null;
-    }
-
+    if (!runId) return null;
     isLoading.value = true;
     error.value = null;
-
     try {
       const run = await getBacktestRun(runId);
       if (revision !== selectionRevision) return null;
-      const selection = selectRun(run);
-      revision = selectionRevision;
-      const selectability = await selection;
-      if (revision !== selectionRevision) return null;
-
+      const selectability = getSelectableBacktestRun(run);
       if (!selectability.selectable) {
+        console.error(
+          'Cannot restore selected Backtest:',
+          selectability.reason,
+        );
         clearSelectionData();
+        return selectability;
       }
-
+      const trades = await fetchBacktestClosedTrades(runId);
+      if (revision !== selectionRevision) return null;
+      selectedRunId.value = runId;
+      selectedRun.value = run;
+      closedTrades.value = trades;
       return selectability;
     } catch (err) {
       if (revision !== selectionRevision) return null;
-      clearOverlay();
-      error.value =
+      console.error('Failed to restore selected Backtest:', err);
+      if (err instanceof HttpResponseError && [404, 410].includes(err.status)) {
+        clearSelectionData();
+      }
+      return unavailable(
         err instanceof Error
           ? err.message
-          : 'Failed to reload selected Backtest.';
-      return unavailable(error.value);
+          : 'Failed to reload selected Backtest.',
+      );
     } finally {
       if (revision === selectionRevision) isLoading.value = false;
     }

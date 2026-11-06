@@ -27,16 +27,25 @@ and behavior that is easy to break when changing them.
   `src/utils/chart/backtestOverlay.ts`.
 - Chart overlay eligibility requires a successful, single-symbol run, an
   available Market, and supported version 3 Closed Trades. The selected run ID
-  persists in local storage; validate it again on reload.
+  persists in local storage; validate it again on reload without changing the
+  independently saved Market/Timeframe. Mismatches retain the existing sync action.
 - `components/Chart/backtestIndicators.ts` coordinates the selected run's saved
   indicator group after matching Candle history loads. Run-owned indicators use
   distinct local identities, locked calculation parameters, and editable styles;
   manual indicators remain independent. Changing Market/Timeframe removes the
   run-owned group and hides trade/protective overlays while retaining selection.
-  Restore returns to the saved context and reloads the group with its styles.
+  The explicit sync action returns to the saved context. Refresh preserves the
+  last chart context and reloads matching groups with their styles.
   Superseded loads cannot install indicators. Legacy runs without a snapshot
   retain trade overlays without inferred indicators; see
   [saved chart indicators](../docs/contracts/backtests.md#saved-chart-indicators).
+- Manual indicator persistence lives in `src/stores/indicators/persistence.ts`.
+  Restore configurations before mounting the chart so the normal Candle session
+  loads their data. Save only configuration, never series, subscriptions, or DOM
+  state; resolve saved indicator names against the current catalog. Run indicator
+  styles and pane positions belong to the selected run and survive mismatched
+  chart contexts. Partial restoration logs failures without new UI warnings;
+  transient read failures retain saved intent for the next refresh.
 - Measurement Overlays are transient pointer-held comparisons on the main pane:
   exact pointer prices, nearest logical bar slots, inclusive Candle count, and
   signed price/percent deltas relative to the anchor. They clear on release,

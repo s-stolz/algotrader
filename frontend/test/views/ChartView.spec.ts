@@ -1,3 +1,5 @@
+import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
+import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
@@ -93,6 +95,33 @@ describe('ChartView startup', () => {
     expect(currentMarketStore.symbol).toBe('EURUSD');
     expect(currentMarketStore.exchange).toBe('FX');
     expect(currentMarketStore.symbol_id).toBe(1);
+  });
+
+  it('restores indicators before chart mount and run after markets load', async () => {
+    let finish!: () => void;
+    const indicators = useIndicatorsStore();
+    vi.spyOn(indicators, 'restorePersistedIndicators').mockReturnValue(
+      new Promise((done) => {
+        finish = done;
+      }),
+    );
+    const restoreRun = vi
+      .spyOn(useBacktestOverlayStore(), 'restorePersistedSelection')
+      .mockResolvedValue(null);
+    vi.mocked(fetchMarkets).mockResolvedValue([marketA]);
+    const wrapper = mount(ChartView, {
+      global: { stubs: { ChartArea: ChartAreaModeStub, TheTopBar: true } },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chart-area-mode"]').exists()).toBe(
+      false,
+    );
+    expect(restoreRun).not.toHaveBeenCalled();
+    finish();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chart-area-mode"]').exists()).toBe(true);
+    expect(restoreRun).toHaveBeenCalledOnce();
+    wrapper.unmount();
   });
 
   it('owns Chart Interaction Mode as non-persisted chart UI state', async () => {

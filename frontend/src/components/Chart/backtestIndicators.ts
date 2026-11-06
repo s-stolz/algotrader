@@ -1,4 +1,11 @@
-import { ref } from 'vue';
+import {
+  getStoredState,
+  setStoredState,
+  STORAGE_KEYS,
+} from '@/utils/localStorage';
+import { isRecord } from '@/types/contracts';
+import { isIndicatorStyles } from '@/stores/indicators/persistence';
+import { ref, watch } from 'vue';
 import {
   fetchAvailableIndicators,
   requestIndicator,
@@ -31,11 +38,42 @@ export function createBacktestIndicators({
   const isLoading = ref(false);
   let revision = 0;
   let styleRunId: string | null = null;
-  let styles: IndicatorStyles[] = [];
+  let styles: (IndicatorStyles | null)[] = [];
+  let panes: (number | null)[] = [];
   let ids: string[] = [];
+  let stopStyles: (() => void)[] = [];
+
+  function persistStyles() {
+    setStoredState(STORAGE_KEYS.RUN_INDICATOR_STYLES, {
+      version: 1,
+      runId: styleRunId,
+      styles,
+      panes,
+    });
+  }
+
+  function restoreStyles(runId: string | null) {
+    const saved = getStoredState<unknown>(STORAGE_KEYS.RUN_INDICATOR_STYLES);
+    panes =
+      isRecord(saved) && saved.runId === runId && Array.isArray(saved.panes)
+        ? saved.panes.map((pane) =>
+            typeof pane === 'number' && Number.isInteger(pane) && pane > 0
+              ? pane
+              : null,
+          )
+        : [];
+    styles =
+      isRecord(saved) &&
+      saved.version === 1 &&
+      saved.runId === runId &&
+      Array.isArray(saved.styles)
+        ? saved.styles.map((style) => (isIndicatorStyles(style) ? style : null))
+        : [];
+  }
 
   function clear() {
-    styles = ids.map((id, index) => store.getById(id)?.styles ?? styles[index]);
+    for (const stop of stopStyles) stop();
+    stopStyles = [];
     for (const id of [...ids].reverse())
       manager.removeIndicatorSeriesAndData(id);
     ids = [];
@@ -47,8 +85,11 @@ export function createBacktestIndicators({
     isLoading.value = false;
     error.value = null;
     if (ids.length) clear();
-    if (runId !== styleRunId) styles = [];
-    styleRunId = runId;
+    if (runId !== styleRunId) {
+      restoreStyles(runId);
+      styleRunId = runId;
+      persistStyles();
+    }
   }
 
   async function load(
@@ -65,7 +106,7 @@ export function createBacktestIndicators({
       if (!range) return;
       const catalog = await fetchAvailableIndicators();
       if (current !== revision) return;
-      const responses = await Promise.all(
+      const responses = await Promise.allSettled(
         saved.map(async (item) => {
           const match = catalog.find(
             (entry) => entry.indicator_id === item.indicator_id,
@@ -92,7 +133,12 @@ export function createBacktestIndicators({
         }),
       );
       if (current !== revision) return;
-      responses.forEach((response, index) => {
+      responses.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error('Failed to restore backtest indicator:', result.reason);
+          return;
+        }
+        const response = result.value;
         const id = store.addIndicator(
           response.indicator_info,
           response.indicator_data,
@@ -103,6 +149,31 @@ export function createBacktestIndicators({
         ids.push(id);
         const indicator = store.getById(id)!;
         if (styles[index]) indicator.styles = styles[index];
+        const pane = panes[index];
+        if (
+          !indicator.info.overlay &&
+          pane &&
+          !store.all.some((item) => item._id !== id && item.paneIndex === pane)
+        ) {
+          indicator.paneIndex = pane;
+          store.paneCount = Math.max(
+            1,
+            ...store.all.map((item) => item.paneIndex + 1),
+          );
+        }
+        panes[index] = indicator.paneIndex || null;
+        persistStyles();
+        stopStyles.push(
+          watch(
+            () => [indicator.styles, indicator.paneIndex] as const,
+            ([style, paneIndex]) => {
+              styles[index] = style;
+              panes[index] = paneIndex || null;
+              persistStyles();
+            },
+            { deep: true, flush: 'sync' },
+          ),
+        );
         void store.subscribeIndicatorLive(id, {
           ...key,
           indicatorId: indicator.indicatorId,
@@ -113,10 +184,7 @@ export function createBacktestIndicators({
     } catch (reason) {
       if (current === revision) {
         clear();
-        error.value =
-          reason instanceof Error
-            ? reason.message
-            : 'Could not load backtest indicators.';
+        console.error('Could not load backtest indicators:', reason);
       }
     } finally {
       if (current === revision) isLoading.value = false;
@@ -128,6 +196,9 @@ export function createBacktestIndicators({
     isLoading,
     invalidate,
     load,
-    dispose: () => invalidate(null),
+    dispose: () => {
+      revision += 1;
+      clear();
+    },
   };
 }

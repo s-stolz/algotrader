@@ -79,3 +79,26 @@ it('creates restored series and their pane when history arrives after mount', as
   ]);
   wrapper.unmount();
 });
+
+it('preserves saved configuration when the renderer is destroyed', async () => {
+  const store = useIndicatorsStore();
+  await store.restorePersistedIndicators();
+  const id = store.addIndicator(info, [], 1);
+  const pane = document.createElement('div');
+  store.updateIndicatorPaneElement(id, pane);
+  const manager = new IndicatorManager({
+    series: new Map(),
+    addSeries: vi.fn(),
+    updateSeriesOptions: vi.fn(),
+    updateSeriesPoint: vi.fn(),
+    setSeriesData: vi.fn(),
+    removeSeries: vi.fn(),
+    getPaneHtmlElement: vi.fn(),
+  });
+  await flushPromises();
+  const saved = localStorage.getItem('algotrader_indicators');
+  manager.destroy();
+  await flushPromises();
+  expect(store.getById(id)?.paneHtmlElement).toBeNull();
+  expect(localStorage.getItem('algotrader_indicators')).toBe(saved);
+});

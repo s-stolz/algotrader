@@ -1,7 +1,11 @@
 <template>
   <main class="chart-workspace">
-    <TheTopBar v-model:chart-interaction-mode="chartInteractionMode" />
+    <TheTopBar
+      v-if="initialized"
+      v-model:chart-interaction-mode="chartInteractionMode"
+    />
     <ChartArea
+      v-if="initialized"
       id="chart-area"
       ref="chartArea"
       :interaction-mode="chartInteractionMode"
@@ -18,12 +22,17 @@ import {
 } from '@/components/Chart/chartInteractionMode';
 import TheTopBar from '@/components/TopBar/TheTopBar.vue';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { useIndicatorsStore } from '@/stores/indicatorsStore';
+import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 
 defineOptions({
   name: 'ChartView',
 });
 
+const initialized = ref(false);
+const indicatorsStore = useIndicatorsStore();
+const overlayStore = useBacktestOverlayStore();
 const marketsStore = useMarketsStore();
 const currentMarketStore = useCurrentMarketStore();
 const chartInteractionMode = ref<ChartInteractionMode>(
@@ -45,7 +54,12 @@ async function fetchMarketsAndInitCurrent(): Promise<void> {
 }
 
 async function initializeChartView(): Promise<void> {
-  await fetchMarketsAndInitCurrent();
+  await Promise.all([
+    fetchMarketsAndInitCurrent(),
+    indicatorsStore.restorePersistedIndicators(),
+  ]);
+  initialized.value = true;
+  if (marketsStore.all.length) void overlayStore.restorePersistedSelection();
 }
 
 void initializeChartView();

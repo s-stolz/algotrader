@@ -183,7 +183,7 @@ export default defineComponent({
     });
     function syncRunIndicators() {
       const run = backtestOverlayStore.selectedRun;
-      runIndicators.invalidate(run?.run_id ?? null);
+      runIndicators.invalidate(backtestOverlayStore.selectedRunId);
       rendering.refreshBacktestMarkers();
       const key = currentChartSessionKey();
       if (
@@ -246,6 +246,7 @@ export default defineComponent({
     watch(
       () => [
         backtestOverlayStore.selectedRun,
+        backtestOverlayStore.selectedRunId,
         sessionIdentity(),
         loadedSession.value,
         rendering.state.isReady,

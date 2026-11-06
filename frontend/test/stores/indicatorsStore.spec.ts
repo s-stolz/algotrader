@@ -98,10 +98,10 @@ describe('indicators store', () => {
         },
         {},
       );
-      expect(localId).toBe('12345');
+      expect(localId).toEqual(expect.any(String));
       expect(store.all).toHaveLength(1);
-      expect(store.getById('12345')).toMatchObject({
-        _id: '12345',
+      expect(store.getById(localId!)).toMatchObject({
+        _id: localId,
         indicatorId: 1,
         paneIndex: 1,
         data: [{ timestamp_ms: 1_000, sma: 1.2 }],
@@ -121,15 +121,15 @@ describe('indicators store', () => {
         exchange: 'FX',
         indicatorId: 1,
         parameters: { length: 14, source: 'close' },
-        clientIndicatorId: '12345',
+        clientIndicatorId: localId,
       });
-      expect(store.liveSubscriptions.get('12345')).toEqual({
+      expect(store.liveSubscriptions.get(localId!)).toEqual({
         symbol: 'EURUSD',
         timeframe: 'M5',
         exchange: 'FX',
         indicatorId: 1,
         parameters: { length: 14, source: 'close' },
-        clientIndicatorId: '12345',
+        clientIndicatorId: localId,
       });
     },
   );

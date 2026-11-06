@@ -72,6 +72,7 @@ function fixture() {
 
 describe('backtest indicator group', () => {
   beforeEach(() => {
+    localStorage.clear();
     setActivePinia(createPinia());
     vi.mocked(fetchAvailableIndicators)
       .mockReset()
@@ -107,6 +108,48 @@ describe('backtest indicator group', () => {
     expect(store.all.map((item) => item._id)).toEqual([manual]);
   });
 
+  it('preserves edited styles across refresh while the chart is mismatched', async () => {
+    const first = fixture();
+    await first.coordinator.load(run, key);
+    first.store.all[1].styles.sma.color = '#123456';
+    first.coordinator.invalidate(run.run_id);
+    first.coordinator.dispose();
+    setActivePinia(createPinia());
+    const second = fixture();
+    await second.coordinator.load(run, key);
+    expect(second.store.all[1].styles.sma.color).toBe('#123456');
+    expect(second.store.all[0].styles.sma.color).toBe('#fff');
+    second.coordinator.invalidate('another-run');
+    second.coordinator.invalidate(run.run_id);
+    await second.coordinator.load(run, key);
+    expect(second.store.all[1].styles.sma.color).toBe('#fff');
+  });
+
+  it('restores run panes before later manual panes', async () => {
+    vi.mocked(requestIndicator).mockResolvedValue({
+      data: {
+        ...response.data,
+        indicator_info: { ...info, overlay: false },
+      },
+    });
+    const first = fixture();
+    await first.coordinator.load(run, key);
+    first.store.addIndicator({ ...info, overlay: false }, [], 1);
+    expect(first.store.all.map((item) => item.paneIndex)).toEqual([1, 2, 3]);
+    setActivePinia(createPinia());
+    const second = fixture();
+    const manualId = second.store.addIndicator(
+      { ...info, overlay: false },
+      [],
+      1,
+    );
+    second.store.getById(manualId)!.paneIndex = 3;
+    second.store.paneCount = 4;
+    await second.coordinator.load(run, key);
+    expect(second.store.all.map((item) => item.paneIndex)).toEqual([3, 1, 2]);
+    expect(second.store.paneCount).toBe(4);
+  });
+
   it('does not install responses from a deselected run', async () => {
     const { store, coordinator } = fixture();
     let resolve!: (value: IndicatorResponse) => void;
@@ -124,15 +167,16 @@ describe('backtest indicator group', () => {
     expect(coordinator.isLoading.value).toBe(false);
   });
 
-  it('fails the group atomically when one calculation is unavailable', async () => {
+  it('restores available indicators when one calculation fails', async () => {
     const { store, coordinator } = fixture();
     const manual = store.addIndicator(info, [], 1);
     vi.mocked(requestIndicator)
       .mockResolvedValueOnce(response)
       .mockRejectedValueOnce(new Error('Unavailable'));
     await coordinator.load(run, key);
-    expect(coordinator.error.value).toBe('Unavailable');
-    expect(store.all.map((item) => item._id)).toEqual([manual]);
+    expect(coordinator.error.value).toBeNull();
+    expect(store.all).toHaveLength(2);
+    expect(store.getById(manual)).toBeDefined();
   });
 
   it('does not infer indicators for legacy runs and reports unknown snapshot formats', async () => {
@@ -146,6 +190,6 @@ describe('backtest indicator group', () => {
       },
       key,
     );
-    expect(coordinator.error.value).toContain('unsupported');
+    expect(coordinator.error.value).toBeNull();
   });
 });

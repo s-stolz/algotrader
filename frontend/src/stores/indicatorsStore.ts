@@ -15,6 +15,7 @@ import {
   createStyles,
   extractParameterValues,
 } from './indicators/configuration';
+import { createIndicatorPersistence } from './indicators/persistence';
 import { createIndicator } from './indicators/creation';
 import {
   mergeIndicatorData,
@@ -63,6 +64,13 @@ export const useIndicatorsStore = defineStore('indicators', () => {
   );
   const all = computed(() => Array.from(indicators.values()));
   const defaultCoverageOptions = ref<IndicatorCoverageOptions | null>(null);
+
+  const restorePersistedIndicators = createIndicatorPersistence(
+    indicators,
+    (count) => {
+      paneCount.value = count;
+    },
+  );
 
   function getById(_id: string): StoreIndicator | undefined {
     return indicators.get(_id);
@@ -339,7 +347,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     providedParameters: IndicatorParameterUpdate = {},
     ownerRunId?: string,
   ): string {
-    const _id = ownerRunId ? crypto.randomUUID() : String(Date.now());
+    const _id = crypto.randomUUID();
     const indicator = createIndicator(
       _id,
       info,
@@ -529,6 +537,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
 
   return {
     indicators,
+    restorePersistedIndicators,
     paneCount,
     liveSubscriptions,
     all,

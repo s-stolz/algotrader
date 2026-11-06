@@ -254,9 +254,10 @@ export class IndicatorManager {
     const allIndicatorIds = Array.from(this.indicatorsStore.indicators.keys());
 
     for (const id of allIndicatorIds) {
-      this.removeIndicatorSeriesAndData(id);
+      this.removeIndicatorSeries(id);
+      this.indicatorsStore.updateIndicatorPaneElement(id, null);
     }
 
-    this.indicatorsStore.clear();
+    void this.indicatorsStore.unsubscribeAllLive();
   }
 }
