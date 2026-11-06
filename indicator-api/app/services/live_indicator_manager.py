@@ -26,6 +26,7 @@ from app.schemas_live import (
     LiveIndicatorWarmupInfo,
 )
 from app.services.candle_cache import CandleCache
+from app.services.live_daily_basket import LiveDailyBasket
 
 if TYPE_CHECKING:
     from redis.typing import EncodableT, FieldT
@@ -110,6 +111,7 @@ class LiveSession:
     task: asyncio.Task | None
     update_engine: Any
     running: bool
+    daily_basket: LiveDailyBasket | None = None
 
 
 class LiveIndicatorManager:
@@ -146,21 +148,31 @@ class LiveIndicatorManager:
                     warmup=warmup,
                 )
 
-            await self._ensure_redis()
-            update_engine = get_update_engine(
-                history=HistoryPolicy(mode="rolling", max_rows=self.history_rows),
-                registry=ENGINE_REGISTRY,
+            redis = await self._ensure_redis()
+            daily_basket = None
+            update_engine = None
+            history = ENGINE_REGISTRY.get(spec.engine_id).spec.resolve_input_history(
+                spec.parameters
             )
-            update_engine.register_indicator(
-                indicator_id=spec.engine_id,
-                timeframe=spec.timeframe,
-                assets=[spec.symbol],
-                fields=CANDLE_FIELDS,
-                param_grid=ParamGrid(spec.parameters),
-                allow_out_of_order=True,
-            )
+            if history.anchor == "utc_day":
+                daily_basket = LiveDailyBasket(spec)
+                await daily_basket.initialize(redis)
+                seeded_bars, source = 0, "none"
+            else:
+                update_engine = get_update_engine(
+                    history=HistoryPolicy(mode="rolling", max_rows=self.history_rows),
+                    registry=ENGINE_REGISTRY,
+                )
+                update_engine.register_indicator(
+                    indicator_id=spec.engine_id,
+                    timeframe=spec.timeframe,
+                    assets=[spec.symbol],
+                    fields=CANDLE_FIELDS,
+                    param_grid=ParamGrid(spec.parameters),
+                    allow_out_of_order=True,
+                )
 
-            seeded_bars, source = await self._seed_warmup(spec, update_engine)
+                seeded_bars, source = await self._seed_warmup(spec, update_engine)
 
             session = LiveSession(
                 spec=spec,
@@ -168,6 +180,7 @@ class LiveIndicatorManager:
                 task=None,
                 update_engine=update_engine,
                 running=True,
+                daily_basket=daily_basket,
             )
             session.task = asyncio.create_task(self._run_session(session))
             session.task.add_done_callback(
@@ -334,6 +347,11 @@ class LiveIndicatorManager:
 
     async def _run_session(self, session: LiveSession) -> None:
         redis = await self._ensure_redis()
+        if session.daily_basket is not None:
+            await session.daily_basket.run(
+                redis, maxlen=self.stream_maxlen, count=self.redis_batch_size
+            )
+            return
         last_id = "$"
         spec = session.spec
 

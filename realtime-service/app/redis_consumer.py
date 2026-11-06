@@ -210,4 +210,5 @@ class RedisConsumer:
         return {
             "timestamp_ms": timestamp_ms,
             "values": values,
+            **({"replay": True} if fields.get("replay") == "1" else {}),
         }

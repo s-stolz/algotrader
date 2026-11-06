@@ -58,3 +58,14 @@ class IndicatorCatalogTests(unittest.TestCase):
                 for api_id, engine_id in exposed
             ],
         )
+
+    def test_live_metadata_endpoint_exposes_basket_dependencies_and_unknown_ids(self):
+        api = FastAPI()
+        api.include_router(router)
+        with TestClient(api) as client:
+            response = client.get("/indicators/5")
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()["supports_live"])
+            self.assertEqual(len(response.json()["inputs"]), 7)
+            self.assertEqual(client.get("/indicators/1").json()["inputs"], [])
+            self.assertEqual(client.get("/indicators/999").status_code, 404)

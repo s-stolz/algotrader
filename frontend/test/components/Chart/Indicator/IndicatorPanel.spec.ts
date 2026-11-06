@@ -110,6 +110,28 @@ describe('IndicatorPanel', () => {
     localStorage.clear();
   });
 
+  it('omits the historical suffix for live currency strength', async () => {
+    const indicator = createIndicator({
+      info: {
+        ...indicatorInfo,
+        name: 'Currency Strength',
+        supports_live: true,
+      },
+    });
+    const wrapper = mount(IndicatorPanel, {
+      props: { indicator },
+      global: { stubs: { NButton: true, NIcon: true } },
+    });
+    expect(wrapper.text()).toBe('Currency Strength');
+    await wrapper.setProps({
+      indicator: {
+        ...indicator,
+        info: { ...indicator.info, supports_live: false },
+      },
+    });
+    expect(wrapper.text()).toContain('Historical');
+  });
+
   it('opens settings from the panel and emits removal with the indicator id', async () => {
     const modalStore = useModalStore();
     expect(modalStore.activeModal).toBeNull();

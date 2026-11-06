@@ -18,12 +18,8 @@ import {
 } from './indicators/configuration';
 import { createIndicatorPersistence } from './indicators/persistence';
 import { createIndicator } from './indicators/creation';
-import {
-  mergeIndicatorData,
-  mergeLivePoint,
-  retainLivePoint,
-  trimDataToRange,
-} from './indicators/historyData';
+import { applyIndicatorUpdate } from './indicators/liveUpdates';
+import { mergeIndicatorData, trimDataToRange } from './indicators/historyData';
 import {
   INITIAL_INDICATOR_LIMIT,
   applyCoverageTarget,
@@ -387,12 +383,10 @@ export const useIndicatorsStore = defineStore('indicators', () => {
   ): IndicatorDataPoint | null {
     if (!message || message.type !== 'indicatorUpdate') return null;
 
-    const _id = message.clientIndicatorId;
-    const indicator = indicators.get(_id);
+    const indicator = indicators.get(message.clientIndicatorId);
     if (!indicator) return null;
-
-    const point = mergeLivePoint(indicator.lastLivePoint, message);
-    return retainLivePoint(indicator, point);
+    const coverage = defaultCoverageOptions.value;
+    return applyIndicatorUpdate(indicator, message, coverage);
   }
 
   async function subscribeIndicatorLive(

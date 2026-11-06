@@ -167,8 +167,9 @@ Notes:
 - Currency strength accumulates incrementally across chronological complete
   basket rows, resets at UTC midnight, and replaces same-timestamp corrections.
   Seed it with the history declared above; a small rolling buffer does not reset
-  the accumulated value. This library support does not enable currency-strength
-  live subscriptions in indicator-api.
+  the accumulated value. Indicator-api enables live subscriptions through its
+  daily basket adapter, which adds source synchronization, complete daily history,
+  and recovery; incremental calculation alone does not enforce those contracts.
 
 ## Indicators Included
 

@@ -340,7 +340,7 @@ def _daily_cumulative_strength(*, strength: np.ndarray, time: np.ndarray) -> np.
 CURRENCY_STRENGTH_REGISTRATION = IndicatorRegistration(
     public_id=5,
     implementation=CurrencyStrength,
-    supports_live=False,
+    supports_live=True,
     overlay=False,
     outputs={
         "EUR": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#FF5252"}},

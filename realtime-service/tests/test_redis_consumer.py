@@ -8,6 +8,15 @@ from app.redis_consumer import RedisConsumer
 
 
 class RedisConsumerTests(unittest.TestCase):
+    def test_indicator_replay_marker_is_optional_and_parsed(self) -> None:
+        consumer = RedisConsumer("unused", 1, "123")
+        fields = {"t": "60000", "d": '{"EUR":1.5}'}
+        self.assertEqual(
+            consumer._parse_indicator_message(fields),
+            {"timestamp_ms": 60000, "values": {"EUR": 1.5}},
+        )
+        self.assertTrue(consumer._parse_indicator_message({**fields, "replay": "1"})["replay"])
+
     def test_redis_socket_timeout_exceeds_block_window(self) -> None:
         timeout = RedisConsumer._redis_socket_timeout_seconds(block_ms=5000)
 

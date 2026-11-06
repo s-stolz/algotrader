@@ -15,6 +15,11 @@ class IndicatorApiClient:
     async def close(self):
         await self.client.aclose()
 
+    async def get_indicator_metadata(self, indicator_id: int) -> dict:
+        response = await self.client.get(f"{self.base_url}/indicators/{indicator_id}")
+        response.raise_for_status()
+        return response.json()
+
     async def start_live_indicator_stream(
         self,
         *,

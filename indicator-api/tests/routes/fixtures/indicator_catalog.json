@@ -310,7 +310,7 @@
       },
       "overlay": false,
       "parameters": {},
-      "supports_live": false
+      "supports_live": true
     },
     "6": {
       "id": 6,

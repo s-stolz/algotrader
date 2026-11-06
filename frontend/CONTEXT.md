@@ -30,7 +30,10 @@ and behavior that is easy to break when changing them.
   `src/utils/chart/openingRange/`. Calculation coordinates are not plotted as
   price series. Style changes redraw without recalculation; extension visibility
   does not change the range. Historical-only indicators declare `supports_live:
-  false`, skip live subscriptions, and display a Historical label.
+  false`, skip live subscriptions, and display a Historical label. Currency
+  strength now receives ordinary live updates. Its recovery points carry
+  `replay: true`; the indicator store merges these within the loaded Candle range
+  and redraws without rewinding its live tail or showing recovery status.
 - Backtest overlays use Closed Trades with explicit direction and saved planned
   protective prices. Selecting a run changes Market/Timeframe but preserves the
   normal latest-Candles, live-update, and lazy-history workflow. Render overlays

@@ -23,9 +23,22 @@ parameters, response formatting, and live-stream lifecycle.
   must check both; common formatting helpers live in `app/utils.py`.
 - Live output uses the Indicator stream name in [root context](../CONTEXT.md),
   with fields `t`, `s`, `i`, `d`. Consumers are realtime-service and frontend.
-- `currency_strength` and `opening_range` are unsupported for live streaming.
-  Catalog metadata declares `supports_live: false`; clients must avoid subscribing
-  these historical-only indicators. Opening range is catalog ID 7; its dedicated
+- `currency_strength` supports live updates through `services/live_daily_basket.py`.
+  It captures a cursor on each required source before fetching history, seeds the
+  full UTC day and each source's predecessor, and waits for all seven pairs at
+  each candle timestamp. Subsequent revisions use the latest same-candle values.
+  Missing daily inputs pause output; storage history is retried every five seconds
+  until complete. Redis read failures or source publication-session changes also
+  require a fresh snapshot, including the last forming candle once it closes.
+  Ingestion remains responsible for durable source backfill. Rebuilt values use
+  the historical adapter's completeness rules; corrected earlier outputs carry
+  the optional Redis `replay: "1"` marker. Recovery is silent in the chart.
+- `GET /indicators/{id}` exposes catalog metadata, including required `inputs`,
+  so realtime-service can acquire the basket without duplicating engine policy.
+  Deploy indicator-api before realtime-service consumers of this endpoint.
+- `opening_range` remains unsupported for live streaming. Its catalog metadata
+  declares `supports_live: false`; clients must avoid subscribing it.
+  Opening range is catalog ID 7; its dedicated
   `opening_range` output renderer consumes bounds, readiness, and timestamp
   coordinates together rather than plotting each numeric field as a price.
 - The indicator catalog includes the stable engine `indicator_id` alongside its
@@ -49,7 +62,8 @@ coverage alone does not verify transport or live-stream behavior.
 Candle. Publication continuity does not become an Indicator field or parameter.
 
 **Publication continuity:** backend delivery-session metadata. Legacy and enriched
-Candles remain valid inputs; a session change does not rebuild an active Indicator.
+Candles remain valid inputs. Rolling single-symbol indicators ignore session
+changes; daily basket indicators rebuild their cumulative state after a change.
 
 For compatibility, recovery scope and upgrade order, read
 [live publication continuity](../docs/contracts/recovery.md#live-publication-continuity).

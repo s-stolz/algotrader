@@ -25,6 +25,7 @@ export interface IndicatorUpdateMessage {
   indicatorId?: number;
   timestamp_ms: number;
   values: Record<string, number | null>;
+  replay?: boolean;
 }
 
 export interface CandleSubscribedMessage {
@@ -100,6 +101,7 @@ export function isIndicatorUpdateMessage(
     isFiniteNumber(value.timestamp_ms) &&
     value.timestamp_ms > 0 &&
     isIndicatorValueRecord(value.values) &&
+    (value.replay === undefined || typeof value.replay === 'boolean') &&
     (!('streamId' in value) ||
       value.streamId === undefined ||
       typeof value.streamId === 'string') &&

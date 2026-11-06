@@ -205,6 +205,27 @@ describe('WebSocket service', () => {
     expect(indicatorHandler).not.toHaveBeenCalled();
   });
 
+  it('preserves validated historical replay markers on indicator updates', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+    const handler = vi.fn();
+    wsService.on('indicatorUpdate', handler);
+    wsService.connect('ws://example.test');
+    mockSockets[0].open();
+    const message = {
+      type: 'indicatorUpdate',
+      clientIndicatorId: 'strength',
+      timestamp_ms: 1_700_000_000_000,
+      values: { EUR: 1.5 },
+      replay: true,
+    };
+    mockSockets[0].receive(JSON.stringify(message));
+    mockSockets[0].receive(JSON.stringify({ ...message, replay: 'true' }));
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith(message);
+    wsService.close();
+  });
+
   it('emits server error messages without classifying them as invalid', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});

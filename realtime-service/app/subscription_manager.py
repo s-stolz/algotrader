@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -36,6 +37,7 @@ class SubscriptionManager:
 
         self.source_dependency_counts: Dict[str, int] = {}
 
+        self._indicator_lock = asyncio.Lock()
         self.next_client_id = 1
 
     def register_client(self, ws: ServerConnection) -> int:
@@ -126,55 +128,73 @@ class SubscriptionManager:
         exchange: Optional[str],
         client_indicator_id: str,
     ) -> dict:
-        symbol_code = symbol.upper()
-        timeframe_code = timeframe.upper()
-        params = parameters or {}
-        params_hash = self._hash_params(params)
-        sub_key = self._make_indicator_sub_key(
-            symbol=symbol_code,
-            timeframe=timeframe_code,
-            exchange=exchange,
-            indicator_id=indicator_id,
-            params_hash=params_hash,
-        )
-
-        client_subs = self.client_subscriptions.get(client_id)
-        if client_subs is None:
-            raise ValueError(f"Client {client_id} not found")
-
-        if sub_key in client_subs:
-            self.client_indicator_bindings[client_id][sub_key] = client_indicator_id
-            meta = self.indicator_meta_by_sub_key.get(sub_key)
-            return {
-                "stream_id": meta.get("stream_id") if meta else None,
-                "sub_key": sub_key,
-                "already_subscribed": True,
-            }
-
-        await self._increment_source_dependency(symbol_code, timeframe_code)
-
-        count = self.subscription_counts.get(sub_key, 0)
-        self.subscription_counts[sub_key] = count + 1
-
-        if count == 0:
-            await self._start_indicator_stream_for_subscription(
-                sub_key=sub_key,
-                count=count,
-                symbol_code=symbol_code,
-                timeframe_code=timeframe_code,
-                indicator_id=indicator_id,
-                params=params,
+        async with self._indicator_lock:
+            symbol_code = symbol.upper()
+            timeframe_code = timeframe.upper()
+            params = parameters or {}
+            params_hash = self._hash_params(params)
+            sub_key = self._make_indicator_sub_key(
+                symbol=symbol_code,
+                timeframe=timeframe_code,
                 exchange=exchange,
+                indicator_id=indicator_id,
+                params_hash=params_hash,
             )
 
-        client_subs.add(sub_key)
-        self.client_indicator_bindings[client_id][sub_key] = client_indicator_id
-        meta = self.indicator_meta_by_sub_key[sub_key]
-        return {
-            "stream_id": meta["stream_id"],
-            "sub_key": sub_key,
-            "already_subscribed": False,
-        }
+            client_subs = self.client_subscriptions.get(client_id)
+            if client_subs is None:
+                raise ValueError(f"Client {client_id} not found")
+
+            if sub_key in client_subs:
+                self.client_indicator_bindings[client_id][sub_key] = client_indicator_id
+                meta = self.indicator_meta_by_sub_key.get(sub_key)
+                return {
+                    "stream_id": meta.get("stream_id") if meta else None,
+                    "sub_key": sub_key,
+                    "already_subscribed": True,
+                }
+
+            meta = self.indicator_meta_by_sub_key.get(sub_key)
+            if meta is not None:
+                sources = meta["sources"]
+            else:
+                metadata = await self.indicator_api_client.get_indicator_metadata(indicator_id)
+                if not metadata.get("supports_live", True):
+                    raise ValueError("Indicator does not support live streaming")
+                sources = metadata.get("inputs") or [symbol_code]
+            acquired = []
+            try:
+                for source in sources:
+                    await self._increment_source_dependency(source, timeframe_code)
+                    acquired.append(source)
+            except Exception:
+                for source in reversed(acquired):
+                    await self._decrement_source_dependency(source, timeframe_code)
+                raise
+
+            count = self.subscription_counts.get(sub_key, 0)
+            self.subscription_counts[sub_key] = count + 1
+
+            if count == 0:
+                await self._start_indicator_stream_for_subscription(
+                    sub_key=sub_key,
+                    count=count,
+                    symbol_code=symbol_code,
+                    timeframe_code=timeframe_code,
+                    indicator_id=indicator_id,
+                    params=params,
+                    exchange=exchange,
+                    sources=sources,
+                )
+
+            client_subs.add(sub_key)
+            self.client_indicator_bindings[client_id][sub_key] = client_indicator_id
+            meta = self.indicator_meta_by_sub_key[sub_key]
+            return {
+                "stream_id": meta["stream_id"],
+                "sub_key": sub_key,
+                "already_subscribed": False,
+            }
 
     async def unsubscribe_indicator(
         self,
@@ -187,65 +207,68 @@ class SubscriptionManager:
         exchange: Optional[str],
         client_indicator_id: Optional[str] = None,
     ) -> None:
-        symbol_code = symbol.upper()
-        timeframe_code = timeframe.upper()
-        params_hash = self._hash_params(parameters or {})
-        sub_key = self._make_indicator_sub_key(
-            symbol=symbol_code,
-            timeframe=timeframe_code,
-            exchange=exchange,
-            indicator_id=indicator_id,
-            params_hash=params_hash,
-        )
-
-        client_subs = self.client_subscriptions.get(client_id)
-        if client_subs is None or sub_key not in client_subs:
-            return
-
-        client_subs.discard(sub_key)
-        self.client_indicator_bindings.get(client_id, {}).pop(sub_key, None)
-
-        await self._decrement_subscription(sub_key)
-        await self._decrement_source_dependency(symbol_code, timeframe_code)
-
-        if sub_key in self.subscription_counts:
-            return
-
-        meta = self.indicator_meta_by_sub_key.pop(sub_key, None)
-        if not meta:
-            return
-
-        stream_id = meta.get("stream_id")
-        if stream_id:
-            self.indicator_sub_key_by_stream_id.pop(stream_id, None)
-
-        redis_stream_key = meta.get("redis_stream_key")
-        if redis_stream_key:
-            self.redis_consumer.stop_stream(redis_stream_key)
-
-        try:
-            await self.indicator_api_client.stop_live_indicator_stream(
+        async with self._indicator_lock:
+            symbol_code = symbol.upper()
+            timeframe_code = timeframe.upper()
+            params_hash = self._hash_params(parameters or {})
+            sub_key = self._make_indicator_sub_key(
                 symbol=symbol_code,
                 timeframe=timeframe_code,
-                indicator_id=indicator_id,
-                parameters=meta.get("parameters", parameters or {}),
                 exchange=exchange,
+                indicator_id=indicator_id,
+                params_hash=params_hash,
             )
-            logger.info(
-                "Stopped indicator stream: symbol=%s timeframe=%s indicator=%s stream_id=%s",
-                symbol_code,
-                timeframe_code,
-                indicator_id,
-                stream_id,
-            )
-        except Exception as exc:
-            logger.error(
-                "Failed to stop indicator stream for %s %s indicator=%s: %s",
-                symbol_code,
-                timeframe_code,
-                indicator_id,
-                exc,
-            )
+
+            client_subs = self.client_subscriptions.get(client_id)
+            if client_subs is None or sub_key not in client_subs:
+                return
+
+            client_subs.discard(sub_key)
+            self.client_indicator_bindings.get(client_id, {}).pop(sub_key, None)
+
+            await self._decrement_subscription(sub_key)
+            meta = self.indicator_meta_by_sub_key.get(sub_key)
+            for source in meta["sources"] if meta else [symbol_code]:
+                await self._decrement_source_dependency(source, timeframe_code)
+
+            if sub_key in self.subscription_counts:
+                return
+
+            meta = self.indicator_meta_by_sub_key.pop(sub_key, None)
+            if not meta:
+                return
+
+            stream_id = meta.get("stream_id")
+            if stream_id:
+                self.indicator_sub_key_by_stream_id.pop(stream_id, None)
+
+            redis_stream_key = meta.get("redis_stream_key")
+            if redis_stream_key:
+                self.redis_consumer.stop_stream(redis_stream_key)
+
+            try:
+                await self.indicator_api_client.stop_live_indicator_stream(
+                    symbol=symbol_code,
+                    timeframe=timeframe_code,
+                    indicator_id=indicator_id,
+                    parameters=meta.get("parameters", parameters or {}),
+                    exchange=exchange,
+                )
+                logger.info(
+                    "Stopped indicator stream: symbol=%s timeframe=%s indicator=%s stream_id=%s",
+                    symbol_code,
+                    timeframe_code,
+                    indicator_id,
+                    stream_id,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to stop indicator stream for %s %s indicator=%s: %s",
+                    symbol_code,
+                    timeframe_code,
+                    indicator_id,
+                    exc,
+                )
 
     async def _start_indicator_stream_for_subscription(
         self,
@@ -257,6 +280,7 @@ class SubscriptionManager:
         indicator_id: int,
         params: dict[str, Any],
         exchange: Optional[str],
+        sources: list[str],
     ) -> None:
         try:
             start_data = await self.indicator_api_client.start_live_indicator_stream(
@@ -276,6 +300,7 @@ class SubscriptionManager:
                 "exchange": exchange,
                 "redis_stream_key": redis_stream_key,
                 "stream_id": stream_id,
+                "sources": sources,
             }
             self.indicator_sub_key_by_stream_id[stream_id] = sub_key
             await self.redis_consumer.start_indicator_stream(
@@ -306,7 +331,8 @@ class SubscriptionManager:
             self.subscription_counts[sub_key] = count
             if count == 0:
                 self.subscription_counts.pop(sub_key, None)
-            await self._decrement_source_dependency(symbol_code, timeframe_code)
+            for source in reversed(sources):
+                await self._decrement_source_dependency(source, timeframe_code)
             raise
 
     async def _increment_source_dependency(self, symbol: str, timeframe: str) -> None:
@@ -396,6 +422,7 @@ class SubscriptionManager:
                 "indicatorId": meta["indicator_id"],
                 "timestamp_ms": data.get("timestamp_ms"),
                 "values": data.get("values", {}),
+                **({"replay": True} if data.get("replay") is True else {}),
             }
             try:
                 asyncio.create_task(ws.send(json.dumps(message)))

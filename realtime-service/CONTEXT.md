@@ -24,6 +24,9 @@ Realtime service to frontend live updates are flat JSON objects:
 
 - `candleUpdate` with expanded candle fields.
 - `indicatorUpdate` with `clientIndicatorId`, `streamId`, `timestamp_ms`, and `values`.
+  Optional `replay: true` marks a corrected historical point. Consumers merge it
+  into loaded history and redraw without rewinding the live tail. Redis uses
+  `replay: "1"`; ordinary updates omit the marker.
 
 Realtime service to frontend control messages are flat JSON objects:
 
@@ -34,6 +37,11 @@ Realtime service to frontend control messages are flat JSON objects:
 - `error` with an `error` string when message handling fails.
 
 Source streams are reference counted; upstream streams are shared across clients.
+Indicator dependencies come from indicator-api's `GET /indicators/{id}` metadata:
+use `inputs` when present, otherwise the chart symbol. Each subscription retains
+all dependencies; partial startup rolls them back, and disconnect releases them.
+Indicator subscription mutations are serialized so concurrent clients share one
+upstream indicator session. Install the metadata endpoint before this consumer.
 
 ## Backtest delivery
 
