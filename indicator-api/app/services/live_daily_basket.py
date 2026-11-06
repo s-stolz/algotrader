@@ -49,6 +49,7 @@ class LiveDailyBasket:
         self.cursors: dict[str, str] = {}
         self.continuity: dict[str, str | None] = {}
         self.live: dict[str, dict[int, float]] = {asset: {} for asset in self.assets}
+        self.predecessor_times: dict[str, int | None] = {}
         self.history: list[pd.DataFrame] = []
         self.target: int | None = None
         self.day: int | None = None
@@ -104,6 +105,7 @@ class LiveDailyBasket:
             self.require_recovery()
         self.continuity[asset] = continuity
         if self.day is not None and timestamp < self.day:
+            self._remember_predecessor(asset, timestamp, close)
             return
         if self.target is None or timestamp > self.target:
             self.target = timestamp
@@ -130,10 +132,42 @@ class LiveDailyBasket:
             self.needs_history = True
             self.awaiting_snapshot = True
             self.next_recovery = 0.0
-            self.live = {
-                source: {t: value for t, value in rows.items() if t >= day}
+            self.predecessor_times = {
+                source: max((t for t in rows if t < day), default=None)
                 for source, rows in self.live.items()
             }
+            self.live = {
+                source: {
+                    t: value
+                    for t, value in rows.items()
+                    if t >= day or t == self.predecessor_times[source]
+                }
+                for source, rows in self.live.items()
+            }
+
+    def _remember_predecessor(self, asset: str, timestamp: int, close: float) -> None:
+        previous = self.predecessor_times.get(asset)
+        if previous is not None and timestamp < previous:
+            return
+        self.predecessor_times[asset] = timestamp
+        if previous is not None:
+            self.live[asset].pop(previous, None)
+        self.live[asset][timestamp] = close
+        self.needs_history = True
+        self.awaiting_snapshot = True
+        self.needs_rebuild = True
+        self.state = None
+
+    def _has_current_basket_and_predecessors(self, timestamp: int) -> bool:
+        day = timestamp // UTC_DAY_MS * UTC_DAY_MS
+        for asset, history in zip(self.assets, self.history, strict=True):
+            if timestamp not in self.live[asset]:
+                return False
+            expected = self.predecessor_times.get(asset)
+            prior = history.index[history.index < day]
+            if expected is not None and (not len(prior) or int(prior[-1]) < expected):
+                return False
+        return True
 
     async def recover(self) -> None:
         if self.target is None or self.day is None:
@@ -197,7 +231,7 @@ class LiveDailyBasket:
     def calculate(self) -> list[tuple[int, dict[str, float], bool]]:
         if self.target is None or not self.history or self.awaiting_snapshot:
             return []
-        if any(self.target not in self.live[asset] for asset in self.assets):
+        if not self._has_current_basket_and_predecessors(self.target):
             self.needs_history = True
             return []
         outputs: dict[int, dict[str, float]] = {}

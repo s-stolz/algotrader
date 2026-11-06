@@ -135,7 +135,8 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
         await self.basket.recover()
         await self.basket.publish(self.redis, 100)
         np.testing.assert_allclose(list(self.output().values()), 0.0)
-        self.assertTrue(all(min(rows) >= UTC_DAY_MS for rows in self.basket.live.values()))
+        for rows in self.basket.live.values():
+            self.assertEqual([t for t in rows if t < UTC_DAY_MS], [120000])
 
     async def test_cursors_capture_existing_tail_before_history_fetch(self):
         self.redis.xrevrange.return_value = [("17-0", {"t": "120000", "c": "1.03"})]
@@ -297,3 +298,58 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
         await self.basket.recover()
         await self.basket.publish(self.redis, 100)
         self.assertEqual(self.redis.xadd.call_args.args[1]["t"], "240000")
+
+    async def test_midnight_waits_for_known_predecessors_to_reach_storage(self):
+        from app.services.anchored_indicator_service import calculate_anchored_indicator
+
+        times = np.arange(-60000, UTC_DAY_MS - 60000, 60000)
+        for asset in self.basket.assets:
+            self.frames[asset] = pd.DataFrame({"close": np.ones(len(times))}, index=times)
+        prior = UTC_DAY_MS - 60000
+        self.ingest(prior, 1.03)
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        published = self.redis.xadd.await_count
+        self.ingest(UTC_DAY_MS, 1.04)
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.await_count, published)
+
+        for frame in self.frames.values():
+            frame.loc[prior] = 1.035
+            frame.loc[UTC_DAY_MS] = 1.04
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.assertEqual(self.redis.xadd.call_args.args[1]["t"], str(UTC_DAY_MS))
+        historical = await calculate_anchored_indicator(
+            engine_id="currency_strength",
+            parameters={},
+            symbol="EURUSD",
+            exchange=None,
+            timeframe="M1",
+            start_ms=UTC_DAY_MS,
+            end_ms=UTC_DAY_MS + 60000,
+            limit=None,
+        )
+        np.testing.assert_allclose(list(self.output().values()), historical.iloc[-1].to_numpy())
+        self.assertFalse(self.basket.needs_history)
+
+    async def test_late_previous_day_source_prevents_an_older_predecessor_from_being_used(self):
+        prior = UTC_DAY_MS - 60000
+        for asset in self.basket.assets:
+            self.frames[asset] = pd.DataFrame({"close": [1.0]}, index=[prior - 60000])
+        self.ingest(prior, 1.03, self.basket.assets[:-1])
+        self.ingest(UTC_DAY_MS, 1.04, self.basket.assets[:-1])
+        await self.basket.recover()
+        self.ingest(prior, 1.03, [self.basket.assets[-1]])
+        self.ingest(UTC_DAY_MS, 1.04, [self.basket.assets[-1]])
+        for asset in self.basket.assets[:-1]:
+            self.frames[asset].loc[prior] = 1.03
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.redis.xadd.assert_not_awaited()
+
+        self.frames[self.basket.assets[-1]].loc[prior] = 1.03
+        await self.basket.recover()
+        await self.basket.publish(self.redis, 100)
+        self.redis.xadd.assert_awaited_once()
