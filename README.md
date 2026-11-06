@@ -60,7 +60,8 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 
 - [Docker](https://docs.docker.com/get-started/get-docker/) with the Compose v2 plugin (`docker compose`).
 - GNU Make (`make`).
-- Python 3.12 (`python3.12`) with venv support, and PyYAML for host-side config generation.
+- Node 26 active LTS for frontend development (`nvm use` reads `.nvmrc`).
+- Python 3.12–3.15 (`python3.15` recommended) with venv support, and PyYAML for host-side config generation.
 
 ## Getting Started
 
@@ -190,8 +191,8 @@ Use a root virtual environment for shared library/test tooling and per-service v
 - `scripts/python_environment.py` merges pins before a single pip resolution.
   Host setup and Docker builds use the same policy. Bare `pip install` does not
   apply repository constraints; use the setup command below.
-- Python services and local tooling require Python 3.12. Set `PYTHON` to a specific
-  3.12 executable if `python3.12` is not on PATH. Use `--recreate` when replacing
+- Python services and local tooling support Python 3.12–3.15; containers use Python 3.15.2. Set `PYTHON` to a specific
+  supported executable if `python3.15` is not on PATH. Use `--recreate` when replacing
   an environment created with another Python version.
 
 ### Bootstrap all service venvs
@@ -230,7 +231,7 @@ make venvs-recreate
 
 ### Validate existing environments
 
-Checks verify Python 3.12, installed service packages, effective shared pins, and
+Checks verify Python 3.12–3.15, installed service packages, effective shared pins, and
 `pip check`. Only packages actually installed in that environment are compared
 with the shared pins.
 
