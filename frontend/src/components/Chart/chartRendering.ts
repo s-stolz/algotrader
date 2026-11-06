@@ -33,6 +33,10 @@ import type { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 import type { ChartSession } from './chartSession';
 import type { createChartMeasurement } from './chartMeasurement';
+import {
+  readIndicatorValues,
+  type IndicatorReadout,
+} from './Indicator/indicatorReadout';
 
 const WHEEL_SETTLE_MS = 250;
 interface OhlcLegendPoint {
@@ -61,6 +65,7 @@ interface ChartRenderingState {
   backtestOverlayTarget: HTMLElement | null;
   backtestMarkerDetails: Map<string, string>;
   hoveredBacktestMarker: string | null;
+  indicatorReadouts: Record<string, IndicatorReadout>;
 }
 interface ChartRenderingOptions {
   infrastructure: ChartInfrastructure;
@@ -71,6 +76,7 @@ interface ChartRenderingOptions {
   getChartContainer: () => HTMLElement | null;
   getMinMove: () => number | null;
   canShowBacktest?: () => boolean;
+  canReadIndicators?: () => boolean;
   getLegendElements: () => Record<string, unknown>;
   requestOlderHistory: ChartSession['requestOlderHistory'];
 }
@@ -91,6 +97,7 @@ export function createChartRendering({
   getChartContainer,
   getMinMove,
   canShowBacktest = () => true,
+  canReadIndicators = () => true,
   getLegendElements,
   requestOlderHistory,
 }: ChartRenderingOptions) {
@@ -118,6 +125,7 @@ export function createChartRendering({
     backtestOverlayTarget: null,
     backtestMarkerDetails: new Map(),
     hoveredBacktestMarker: null,
+    indicatorReadouts: {},
   });
   function initializeChartComponent(): void {
     state.indicatorMessageHandler = (message) => {
@@ -372,6 +380,15 @@ export function createChartRendering({
         if (!isOhlcLegendPoint(bar)) return;
 
         updateLegend(bar);
+        if (canReadIndicators()) {
+          const series = infrastructure.getSeries();
+          state.indicatorReadouts = Object.fromEntries(
+            indicatorsStore.all.map((indicator) => [
+              indicator._id,
+              readIndicatorValues(indicator, current, series),
+            ]),
+          );
+        }
       });
     } catch (error) {
       console.log('Error in crosshair move handler:', error);
@@ -392,6 +409,11 @@ export function createChartRendering({
     if (elements.legendClose instanceof HTMLElement) {
       elements.legendClose.textContent = String(bar.close ?? '-');
     }
+  }
+
+  function resetIndicatorReadouts(): void {
+    state.latestCrosshairParam = null;
+    state.indicatorReadouts = {};
   }
 
   function onVisibleLogicalRangeChange(
@@ -470,6 +492,7 @@ export function createChartRendering({
     refreshBacktestMarkers,
     removeBacktestOverlay,
     onWheelPassive,
+    resetIndicatorReadouts,
     dispose,
   };
 }

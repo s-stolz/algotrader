@@ -9,6 +9,10 @@
           :indicator="indicator"
           @remove-indicator="onRemoveIndicator"
         />
+        <IndicatorValues
+          :indicator="indicator"
+          :readout="readout"
+        />
       </div>
     </Teleport>
 
@@ -24,6 +28,8 @@
 import { watch } from 'vue';
 
 import IndicatorPanel from './IndicatorPanel.vue';
+import IndicatorValues from './IndicatorValues.vue';
+import type { IndicatorReadout } from './indicatorReadout';
 import IndicatorSettingsModal from './IndicatorSettingsModal.vue';
 import {
   getOrCreatePaneOverlayWrapper,
@@ -43,6 +49,7 @@ defineOptions({
 const props = defineProps<{
   indicatorManager: IndicatorManagerDependency;
   indicator: IndicatorInstance;
+  readout?: IndicatorReadout;
 }>();
 
 const emit = defineEmits<{
@@ -108,6 +115,17 @@ function onUpdateStyles({
 
 <style scoped>
 .indicator-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--design-space-sm) var(--design-space-md);
+  max-width: 100%;
   margin-bottom: var(--design-space-sm);
+}
+
+.indicator-container :deep(.indicator-panel) {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
 }
 </style>

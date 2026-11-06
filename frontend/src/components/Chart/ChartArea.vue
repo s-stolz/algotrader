@@ -78,6 +78,7 @@
         v-for="indicator in getAllIndicators()"
         :key="indicator._id"
         :indicator="indicator"
+        :readout="indicatorReadouts[indicator._id]"
         :indicator-manager="indicatorManager"
       />
     </div>
@@ -152,6 +153,7 @@ export default defineComponent({
       getMinMove: () => currentMarketStore.min_move,
       getLegendElements: () => instance?.refs ?? {},
       canShowBacktest: () => loadedSession.value === sessionIdentity(),
+      canReadIndicators: () => loadedSession.value === sessionIdentity(),
       requestOlderHistory: (request) => session.requestOlderHistory(request),
     });
     function currentChartSessionKey(): ChartSessionKeyInput {
@@ -233,6 +235,7 @@ export default defineComponent({
     );
     function syncNavigation() {
       loadedSession.value = null;
+      rendering.resetIndicatorReadouts();
       rendering.state.shouldScrollToRealTime = true;
       syncChartSession();
     }
@@ -288,6 +291,7 @@ export default defineComponent({
       backtestOverlayTarget,
       hoveredBacktestMarker,
       shouldScrollToRealTime,
+      indicatorReadouts,
     } = toRefs(rendering.state);
     expose({
       shouldScrollToRealTime,
@@ -301,6 +305,7 @@ export default defineComponent({
       backtestOverlayTarget,
       hoveredBacktestMarker,
       activeBacktestRunTitle,
+      indicatorReadouts,
       activeBacktestRunContext,
       chartReady: computed(() => rendering.state.isReady),
       indicatorManager: infrastructure.indicatorManager,
