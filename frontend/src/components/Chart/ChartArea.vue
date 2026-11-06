@@ -1,5 +1,5 @@
 <template>
-  <div id="chart-wrapper">
+  <div class="chart-wrapper">
     <div
       ref="chartContainer"
       id="lightweight-chart"
@@ -317,7 +317,7 @@ export default defineComponent({
 </script>
 
 <style scoped>
-#chart-wrapper {
+.chart-wrapper {
   position: relative;
   width: 100%;
   height: 100%;
@@ -405,7 +405,7 @@ export default defineComponent({
   font-size: var(--design-text-secondary);
   font-variant-numeric: tabular-nums;
   position: absolute;
-  top: 50px;
+  top: calc(var(--design-space-xs) - var(--design-space-xl));
   left: 0;
 }
 
