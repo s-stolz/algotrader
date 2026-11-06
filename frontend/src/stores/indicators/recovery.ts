@@ -1,3 +1,4 @@
+import type { ChartRecoveryQuery } from '@/types/chartRecovery';
 import { requestIndicator } from '@/api/indicatorClient';
 import type {
   IndicatorDataPoint,
@@ -16,13 +17,7 @@ interface RecoveryStore {
 
 export async function recoverIndicatorHistory(
   store: RecoveryStore,
-  query: {
-    symbol: string;
-    timeframe: string;
-    exchange: string | null;
-    startMs: number;
-    endMs: number;
-  },
+  query: ChartRecoveryQuery,
   isCurrent: () => boolean,
   signal: AbortSignal,
 ): Promise<void> {

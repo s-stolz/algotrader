@@ -55,11 +55,11 @@ export function createChartSessionAdapter({
       on: (event, handler) => wsService.on(event, handler),
       off: (event, handler) => wsService.off(event, handler),
       lastTimestamp: () => candlesticksStore.data.at(-1)?.timestamp_ms ?? null,
-      fetch: (key, startMs, endMs) =>
-        fetchHistoricalCandles(key.symbol, key.timeframe, {
-          startMs,
-          endMs,
-          exchange: key.exchange,
+      fetch: (query) =>
+        fetchHistoricalCandles(query.symbol, query.timeframe, {
+          startMs: query.startMs,
+          endMs: query.endMs,
+          exchange: query.exchange,
         }),
       merge: (candles, live) => {
         const merged = new Map(
@@ -73,13 +73,8 @@ export function createChartSessionAdapter({
         );
         renderCandlesticks(candlesticksStore.data, { preserveViewport: true });
       },
-      recoverIndicators: (key, startMs, endMs, isCurrent, signal) =>
-        recoverIndicatorHistory(
-          indicatorsStore,
-          { ...key, startMs, endMs },
-          isCurrent,
-          signal,
-        ),
+      recoverIndicators: (query, isCurrent, signal) =>
+        recoverIndicatorHistory(indicatorsStore, query, isCurrent, signal),
     },
     subscribeCandles: (key) =>
       wsService.send('subscribeCandles', {

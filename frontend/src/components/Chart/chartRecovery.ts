@@ -1,3 +1,4 @@
+import type { ChartRecoveryQuery } from '@/types/chartRecovery';
 import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
 import type { ChartSessionKey } from './chartSession';
 
@@ -6,19 +7,13 @@ export interface ChartRecoveryAdapter {
   on(event: ConnectionEvent, handler: () => void): void;
   off(event: ConnectionEvent, handler: () => void): void;
   lastTimestamp(): number | null;
-  fetch(
-    key: ChartSessionKey,
-    startMs: number,
-    endMs: number,
-  ): Promise<ChartCandle[]>;
+  fetch(query: ChartRecoveryQuery): Promise<ChartCandle[]>;
   merge(
     candles: readonly ChartCandle[],
     live: readonly CandleUpdateMessage[],
   ): void;
   recoverIndicators(
-    key: ChartSessionKey,
-    startMs: number,
-    endMs: number,
+    query: ChartRecoveryQuery,
     isCurrent: () => boolean,
     signal: AbortSignal,
   ): Promise<void>;
@@ -98,9 +93,7 @@ export class ChartRecovery {
     const key = this.key;
     const endMs = Math.max(Date.now(), startMs + 1);
     void this.recover(
-      key,
-      startMs,
-      endMs,
+      { ...key, startMs, endMs },
       live,
       isCurrent,
       this.controller.signal,
@@ -108,18 +101,16 @@ export class ChartRecovery {
   };
 
   private async recover(
-    key: ChartSessionKey,
-    startMs: number,
-    endMs: number,
+    query: ChartRecoveryQuery,
     live: Map<number, CandleUpdateMessage>,
     isCurrent: () => boolean,
     signal: AbortSignal,
   ): Promise<void> {
     const results = await Promise.allSettled([
-      this.adapter.fetch(key, startMs, endMs).then((candles) => {
+      this.adapter.fetch(query).then((candles) => {
         if (isCurrent()) this.adapter.merge(candles, [...live.values()]);
       }),
-      this.adapter.recoverIndicators(key, startMs, endMs, isCurrent, signal),
+      this.adapter.recoverIndicators(query, isCurrent, signal),
     ]);
     if (!isCurrent()) return;
     this.live = null;
