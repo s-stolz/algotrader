@@ -165,10 +165,16 @@ live data**. Ingestion durably requests `invalid-continuity` recovery before
 acknowledging/discarding those rows, never writes them as live Candles, and clears
 any old open Candle. Historical retrieval recovers broker-available closed data.
 If storage is unavailable, the cursor stays put and retries. This deliberately
-keeps an old producer from silently bypassing protection. Realtime service and Indicator
-consumers accept legacy and enriched rows: they ignore transport continuity and
-expose only their existing Candle/Indicator fields. They do not refresh chart
-history or rebuild an existing live Indicator session.
+keeps an old producer from silently bypassing protection. Realtime service and
+Indicator consumers accept legacy and enriched rows; publication continuity is
+not exposed as a Candle/Indicator value. Realtime delivery and rolling
+single-symbol Indicators ignore it. Daily basket Indicators use session changes
+and Redis interruptions to request fresh storage history and rebuild cumulative
+state. Recovery remains pending through the interrupted forming Candle's close;
+missing inputs silently pause output until storage supplies them. Ingestion owns
+durable backfill. Corrected older Indicator points carry the optional replay
+marker so charts merge them without rewinding the live tail. See
+[daily basket adaptation](../../indicator-api/CONTEXT.md#historical-and-live-paths).
 
 Authentication, healthy containers and fresh live delivery establish connection
 health only. Historical recovery succeeds only when the finite interval's broker

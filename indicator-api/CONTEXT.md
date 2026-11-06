@@ -30,6 +30,10 @@ parameters, response formatting, and live-stream lifecycle.
   Missing daily inputs pause output; storage history is retried every five seconds
   until complete. Redis read failures or source publication-session changes also
   require a fresh snapshot, including the last forming candle once it closes.
+  Resuming within that candle does not clear recovery; its authoritative close
+  must be fetched after rollover. At UTC midnight, retain each source's latest
+  observed predecessor timestamp and wait until storage reaches it before seeding
+  the new day. Predecessor timestamps may differ between sources.
   Ingestion remains responsible for durable source backfill. Rebuilt values use
   the historical adapter's completeness rules; corrected earlier outputs carry
   the optional Redis `replay: "1"` marker. Recovery is silent in the chart.
