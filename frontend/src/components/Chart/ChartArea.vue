@@ -406,7 +406,7 @@ export default defineComponent({
   font-variant-numeric: tabular-nums;
   position: absolute;
   top: 50px;
-  left: 10px;
+  left: 0;
 }
 
 .legend-value {
