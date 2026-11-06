@@ -99,6 +99,7 @@ export class IndicatorManager {
           ),
         };
         const seriesKey = `${id}_${outputKey}`;
+        if (this.chartManager.series.has(seriesKey)) continue;
 
         this.chartManager.addSeries(
           seriesKey,
@@ -109,6 +110,7 @@ export class IndicatorManager {
         );
       }
     }
+    await this.updateMissingPaneHtmlElements();
   }
 
   transformIndicatorData(
@@ -172,7 +174,10 @@ export class IndicatorManager {
       const seriesKey = `${id}_${outputKey}`;
       const seriesInfo = this.chartManager.series.get(seriesKey);
 
-      if (!seriesInfo) continue;
+      if (!seriesInfo) {
+        void this.addIndicatorSeries(id);
+        continue;
+      }
 
       const transformed = this.transformIndicatorData(data, outputKey);
       this.chartManager.setSeriesData(seriesKey, transformed);
@@ -225,14 +230,22 @@ export class IndicatorManager {
 
   async updateMissingPaneHtmlElements(): Promise<void> {
     for (const indicator of this.indicatorsStore.all) {
-      if (indicator.paneHtmlElement === null) {
+      const hasSeries = Object.keys(indicator.info.outputs).some((output) =>
+        this.chartManager.series.has(`${indicator._id}_${output}`),
+      );
+      const hasRangePane =
+        indicator.info.indicator_id === 'opening_range' &&
+        this.chartManager.series.has('ohlc');
+      if (indicator.paneHtmlElement === null && (hasSeries || hasRangePane)) {
         const paneHtmlElement = await this.chartManager.getPaneHtmlElement(
           indicator.paneIndex,
         );
-        this.indicatorsStore.updateIndicatorPaneElement(
-          indicator._id,
-          paneHtmlElement,
-        );
+        if (this.indicatorsStore.getById(indicator._id) === indicator) {
+          this.indicatorsStore.updateIndicatorPaneElement(
+            indicator._id,
+            paneHtmlElement,
+          );
+        }
       }
     }
   }
