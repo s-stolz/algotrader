@@ -8,7 +8,7 @@
       :backtest-id="selectedBacktestId"
       @members="receiveMembers"
       @cancelled="refreshWorkspace"
-      @unavailable="backtestUnavailable"
+      @unavailable="redirectUnavailableBacktest"
     />
     <div class="table-panel">
       <div class="section-heading"><h2>Runs</h2></div>
@@ -86,7 +86,7 @@ const {
   selectedRun,
   receiveMembers,
   refreshWorkspace,
-  backtestUnavailable,
+  redirectUnavailableBacktest,
   detailError,
   overlayStore,
 } = props.workspace;

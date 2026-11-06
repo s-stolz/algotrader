@@ -168,7 +168,7 @@ export function useBacktestWorkspace() {
     if (selectedBacktestId.value && selectedRunId.value)
       void loadSelected(selectedRunId.value, true);
   }
-  function backtestUnavailable(backtestId: string): void {
+  function redirectUnavailableBacktest(backtestId: string): void {
     if (router.currentRoute?.value.params.id === backtestId) {
       void router.replace('/');
     }
@@ -246,7 +246,7 @@ export function useBacktestWorkspace() {
     void queueHealth.value?.refresh();
   }
   function onBacktestDeleted(backtest: Backtest): void {
-    backtestUnavailable(backtest.backtest_id);
+    redirectUnavailableBacktest(backtest.backtest_id);
     const overlayBelongsToBacktest =
       overlayStore.selectedRun?.backtest_id === backtest.backtest_id ||
       backtestMembers.value.some(
@@ -366,7 +366,7 @@ export function useBacktestWorkspace() {
     refreshWorkspace,
     selectRun,
     receiveMembers,
-    backtestUnavailable,
+    redirectUnavailableBacktest,
     createFrom,
     createFromRun,
     createdBacktest,
