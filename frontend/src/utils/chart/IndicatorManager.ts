@@ -1,3 +1,5 @@
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { measurementPricePrecision } from './measurementOverlay';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { IndicatorDataPoint, JsonObject } from '@/types/contracts';
 import { OpeningRangeOverlays } from './openingRange/lifecycle';
@@ -97,6 +99,7 @@ export class IndicatorManager {
           ...toChartSeriesOptions(
             indicator.styles[outputKey] ?? outputInfo.plotOptions,
           ),
+          ...this.priceOptions(paneIndex),
         };
         const seriesKey = `${id}_${outputKey}`;
         if (this.chartManager.series.has(seriesKey)) continue;
@@ -111,6 +114,24 @@ export class IndicatorManager {
       }
     }
     await this.updateMissingPaneHtmlElements();
+  }
+
+  private priceOptions(paneIndex: number | undefined): ChartSeriesOptions {
+    const minMove = useCurrentMarketStore().min_move;
+    if (
+      paneIndex !== 0 ||
+      !minMove ||
+      !Number.isFinite(minMove) ||
+      minMove <= 0
+    )
+      return {};
+    return {
+      priceFormat: {
+        type: 'price',
+        minMove,
+        precision: measurementPricePrecision(minMove),
+      },
+    };
   }
 
   transformIndicatorData(
@@ -149,7 +170,10 @@ export class IndicatorManager {
       return true;
     }
     const seriesKey = `${id}_${outputKey}`;
-    return this.chartManager.updateSeriesOptions(seriesKey, newStyles);
+    return this.chartManager.updateSeriesOptions(seriesKey, {
+      ...newStyles,
+      ...this.priceOptions(indicator?.paneIndex),
+    });
   }
 
   removeIndicatorSeriesAndData(id: string): void {
@@ -179,6 +203,9 @@ export class IndicatorManager {
         continue;
       }
 
+      if (indicator.paneIndex === 0) {
+        this.chartManager.updateSeriesOptions(seriesKey, this.priceOptions(0));
+      }
       const transformed = this.transformIndicatorData(data, outputKey);
       this.chartManager.setSeriesData(seriesKey, transformed);
     }
