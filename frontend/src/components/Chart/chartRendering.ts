@@ -43,6 +43,7 @@ interface OhlcLegendPoint {
 }
 interface RenderCandlestickOptions {
   scrollToRealtime?: boolean;
+  preserveViewport?: boolean;
 }
 interface ChartRenderingState {
   isReady: boolean;
@@ -242,10 +243,13 @@ export function createChartRendering({
 
   function renderCandlesticks(
     data: readonly ChartCandle[],
-    { scrollToRealtime = false }: RenderCandlestickOptions = {},
+    {
+      scrollToRealtime = false,
+      preserveViewport = false,
+    }: RenderCandlestickOptions = {},
   ): void {
     if (!state.isReady) {
-      pendingRender = { scrollToRealtime };
+      pendingRender = { scrollToRealtime, preserveViewport };
       return;
     }
     const minMove = getMinMove();
@@ -257,10 +261,15 @@ export function createChartRendering({
       };
     }
 
+    const timeScale = preserveViewport
+      ? infrastructure.chartManager.chart?.timeScale()
+      : null;
+    const visibleRange = timeScale?.getVisibleRange();
     state.ohlcSeriesRef = infrastructure.addCandlestickData(
       data,
       state.seriesOptions,
     );
+    if (visibleRange) timeScale?.setVisibleRange(visibleRange);
     void syncBacktestOverlayTarget();
     refreshBacktestMarkers();
 

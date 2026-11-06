@@ -59,7 +59,7 @@ describe('ChartArea font readiness', () => {
     wrapper.unmount();
   });
 
-  it('replays merged deferred points before normal live updates', async () => {
+  it('retains deferred points for initial rendering before normal live updates', async () => {
     const font = pendingFont();
     const frames: FrameRequestCallback[] = [];
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -92,7 +92,11 @@ describe('ChartArea font readiness', () => {
     flushFrame();
     deliver(90_000, { sma: 99 });
     flushFrame();
-    expect(indicatorsStore.getById(id)?.data).toEqual(history);
+    expect(indicatorsStore.getById(id)?.data).toEqual([
+      ...history,
+      { timestamp_ms: 120_000, sma: 2, signal: 4 },
+      { timestamp_ms: 180_000, sma: 3, signal: 5 },
+    ]);
     expect(indicatorsStore.getById(id)?.lastLivePoint).toEqual({
       timestamp_ms: 180_000,
       sma: 3,
@@ -104,7 +108,6 @@ describe('ChartArea font readiness', () => {
     font.resolve();
     await flushPromises();
     expect(update.mock.calls).toEqual([
-      [id, { timestamp_ms: 120_000, sma: 2, signal: 4 }],
       [id, { timestamp_ms: 180_000, sma: 3, signal: 5 }],
     ]);
     deliver(240_000, { sma: 4 });
@@ -113,7 +116,7 @@ describe('ChartArea font readiness', () => {
       timestamp_ms: 240_000,
       sma: 4,
     });
-    expect(update).toHaveBeenCalledTimes(3);
+    expect(update).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 

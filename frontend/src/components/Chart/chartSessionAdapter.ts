@@ -1,3 +1,5 @@
+import { recoverIndicatorHistory } from '@/stores/indicators/recovery';
+import { toChartCandle } from '@/types/contracts';
 import { fetchCandles as fetchHistoricalCandles } from '@/api/candleClient';
 import { wsService } from '@/utils/websocketService';
 import { timeframeToMinutes } from '@/utils/timeframes';
@@ -16,7 +18,7 @@ interface ChartSessionAdapterOptions {
   currentChartSessionKey: () => ChartSessionKeyInput;
   renderCandlesticks: (
     candles: readonly ChartCandle[],
-    options?: { scrollToRealtime?: boolean },
+    options?: { scrollToRealtime?: boolean; preserveViewport?: boolean },
   ) => void;
   shouldScrollToRealTime: () => boolean;
   onCandlesLoaded?: (key: ChartSessionKey) => void;
@@ -49,6 +51,36 @@ export function createChartSessionAdapter({
   });
 
   return {
+    recovery: {
+      on: (event, handler) => wsService.on(event, handler),
+      off: (event, handler) => wsService.off(event, handler),
+      lastTimestamp: () => candlesticksStore.data.at(-1)?.timestamp_ms ?? null,
+      fetch: (key, startMs, endMs) =>
+        fetchHistoricalCandles(key.symbol, key.timeframe, {
+          startMs,
+          endMs,
+          exchange: key.exchange,
+        }),
+      merge: (candles, live) => {
+        const merged = new Map(
+          candlesticksStore.data.map((candle) => [candle.timestamp_ms, candle]),
+        );
+        for (const candle of candles) merged.set(candle.timestamp_ms, candle);
+        for (const candle of live)
+          merged.set(candle.timestamp_ms, toChartCandle(candle));
+        candlesticksStore.replace(
+          [...merged.values()].sort((a, b) => a.timestamp_ms - b.timestamp_ms),
+        );
+        renderCandlesticks(candlesticksStore.data, { preserveViewport: true });
+      },
+      recoverIndicators: (key, startMs, endMs, isCurrent, signal) =>
+        recoverIndicatorHistory(
+          indicatorsStore,
+          { ...key, startMs, endMs },
+          isCurrent,
+          signal,
+        ),
+    },
     subscribeCandles: (key) =>
       wsService.send('subscribeCandles', {
         symbol: key.symbol,

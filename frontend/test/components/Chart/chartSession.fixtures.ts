@@ -84,6 +84,14 @@ export function createFakeAdapter() {
   const fetchedCandles = [chartCandle(300_000)];
 
   const adapter: FakeChartSessionAdapter = {
+    recovery: {
+      on: vi.fn(),
+      off: vi.fn(),
+      lastTimestamp: () => 300_000,
+      fetch: vi.fn(async () => []),
+      merge: vi.fn(),
+      recoverIndicators: vi.fn(async () => {}),
+    },
     subscribeCandles: vi.fn((key) => {
       subscribes.push({ ...key });
       events.push(`subscribe:${keyLabel(key)}`);

@@ -12,6 +12,14 @@ and behavior that is easy to break when changing them.
   Keep session sequencing there. Related state and rendering live in
   `src/stores/candlesticksStore.ts`, `src/stores/indicatorsStore.ts`, and
   `src/utils/chart/ChartManager.ts`.
+- `chartRecovery.ts` owns browser reconnect recovery within each Chart session.
+  Freeze the last Candle timestamp on disconnect; fetch that timestamp inclusively
+  through reconnect time, without the latest-batch limit. Merge Candles and
+  Indicators in one silent recovery pass, with fresh live values taking precedence.
+  Preserve loaded history and viewport. Failed requests retain the anchor for the
+  next reconnect; there are no timed retries or database-completeness guarantees.
+  Indicator recovery lives in `stores/indicators/recovery.ts`; it includes run-owned
+  indicators and guards session, removal, and calculation-generation changes.
 - Historical Indicators cover the loaded Candle range: load the latest batch
   first, backfill older batches, and trim points outside that range.
 - Opening ranges render as per-session primitives on the Candle series through

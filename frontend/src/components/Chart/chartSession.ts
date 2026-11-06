@@ -1,3 +1,4 @@
+import { ChartRecovery, type ChartRecoveryAdapter } from './chartRecovery';
 import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
 
 export interface ChartSessionKeyInput {
@@ -31,6 +32,7 @@ export interface ChartSessionOlderHistorySignal {
 }
 
 export interface ChartSessionSubscriptionsAdapter {
+  recovery: ChartRecoveryAdapter;
   subscribeCandles(key: ChartSessionKey): Promise<void> | void;
   unsubscribeCandles(key: ChartSessionKey): Promise<void> | void;
   onCandleUpdate(handler: ChartSessionCandleHandler): void;
@@ -139,7 +141,11 @@ export class ChartSession {
   private lastOlderIndicatorsHistoryLoadTs = 0;
   private revision = 0;
 
-  constructor(private readonly adapter: ChartSessionSubscriptionsAdapter) {}
+  private readonly recovery: ChartRecovery;
+
+  constructor(private readonly adapter: ChartSessionSubscriptionsAdapter) {
+    this.recovery = new ChartRecovery(adapter.recovery);
+  }
 
   getActiveKey(): ChartSessionKey | null {
     return this.activeKey ? cloneSessionKey(this.activeKey) : null;
@@ -161,6 +167,7 @@ export class ChartSession {
     const previousKey = this.activeKey;
     const previousListener = this.listener;
 
+    this.recovery.stop();
     this.activeKey = null;
     this.listener = null;
     this.liveCandleReceiver = null;
@@ -185,6 +192,7 @@ export class ChartSession {
 
     this.adapter.resetIndicatorHistory?.();
     this.activeKey = cloneSessionKey(nextKey);
+    this.recovery.start(this.activeKey);
     this.liveCandleReceiver = receiveLiveCandle;
     this.listener = (message) => {
       this.handleCandleUpdate(message);
@@ -215,6 +223,7 @@ export class ChartSession {
     const previousKey = this.activeKey;
     const previousListener = this.listener;
 
+    this.recovery.stop();
     this.activeKey = null;
     this.listener = null;
     this.liveCandleReceiver = null;
@@ -248,6 +257,7 @@ export class ChartSession {
     if (!this.activeKey || !this.liveCandleReceiver) return;
     if (!candleMatchesSession(message, this.activeKey)) return;
 
+    this.recovery.record(message);
     if (this.bufferLiveCandleIfFetchInFlight(message, this.activeKey)) {
       return;
     }
@@ -501,6 +511,9 @@ export class ChartSession {
     }
 
     await this.adapter.requestIndicators(cloneSessionKey(sessionKey));
+    if (this.isCurrentSession(sessionKey, revision)) {
+      this.recovery.historyLoaded(candles.at(-1)?.timestamp_ms ?? null);
+    }
   }
 
   private isCurrentSession(key: ChartSessionKey, revision: number): boolean {

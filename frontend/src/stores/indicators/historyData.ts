@@ -2,7 +2,7 @@ import type {
   IndicatorDataPoint,
   IndicatorUpdateMessage,
 } from '@/types/contracts';
-import type { IndicatorLoadedCandleRange } from './types';
+import type { IndicatorLoadedCandleRange, StoreIndicator } from './types';
 
 export function trimDataToRange(
   data: readonly IndicatorDataPoint[],
@@ -75,4 +75,21 @@ export function mergeLivePoint(
   }
 
   return null;
+}
+
+// Retain live history for later recovery without triggering a full series redraw.
+export function retainLivePoint(
+  indicator: Pick<StoreIndicator, 'data' | 'lastLivePoint'>,
+  point: IndicatorDataPoint | null,
+): IndicatorDataPoint | null {
+  if (!point) return null;
+  indicator.lastLivePoint = point;
+  const data = indicator.data;
+  const last = data.at(-1);
+  if (last?.timestamp_ms === point.timestamp_ms) {
+    data[data.length - 1] = point;
+  } else if (!last || last.timestamp_ms < point.timestamp_ms) {
+    data.push(point);
+  }
+  return point;
 }

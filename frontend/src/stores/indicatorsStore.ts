@@ -20,6 +20,7 @@ import { createIndicator } from './indicators/creation';
 import {
   mergeIndicatorData,
   mergeLivePoint,
+  retainLivePoint,
   trimDataToRange,
 } from './indicators/historyData';
 import {
@@ -389,8 +390,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     if (!indicator) return null;
 
     const point = mergeLivePoint(indicator.lastLivePoint, message);
-    if (point) indicator.lastLivePoint = point;
-    return point;
+    return retainLivePoint(indicator, point);
   }
 
   async function subscribeIndicatorLive(
