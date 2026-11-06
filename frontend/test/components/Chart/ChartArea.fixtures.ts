@@ -23,6 +23,7 @@ import type { ChartLogicalRange } from '@/utils/chart';
 
 import ChartArea from '@/components/Chart/ChartArea.vue';
 import type {
+  ChartSession,
   ChartSessionKey,
   ChartSessionSubscriptionsAdapter,
 } from '@/components/Chart/chartSession';
@@ -124,7 +125,7 @@ const chartAreaMocks = vi.hoisted(() => {
     createChartSession: vi.fn((adapter: unknown) => {
       const session = {
         requestOlderHistory: vi.fn(),
-        setSession: vi.fn(() => Promise.resolve()),
+        setSession: vi.fn<ChartSession['setSession']>(() => Promise.resolve()),
         stop: vi.fn(() => Promise.resolve()),
       };
 
