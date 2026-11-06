@@ -5,7 +5,7 @@ import type {
   ChartProtectiveLineSegment,
   ChartSeriesMarker,
 } from './ChartManager';
-import { measurementPricePrecision } from './measurementOverlay';
+import { marketPricePrecision } from './priceFormatting';
 
 export interface LoadedCandleRange {
   startMs: number;
@@ -39,7 +39,7 @@ function formatTradePrice(
     return String(price);
   }
 
-  return price.toFixed(measurementPricePrecision(minMove));
+  return price.toFixed(marketPricePrecision(minMove));
 }
 
 function isTimestampInRange(

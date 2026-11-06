@@ -1,5 +1,5 @@
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
-import { measurementPricePrecision } from './measurementOverlay';
+import { marketPricePrecision } from './priceFormatting';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { IndicatorDataPoint, JsonObject } from '@/types/contracts';
 import { OpeningRangeOverlays } from './openingRange/lifecycle';
@@ -129,7 +129,7 @@ export class IndicatorManager {
       priceFormat: {
         type: 'price',
         minMove,
-        precision: measurementPricePrecision(minMove),
+        precision: marketPricePrecision(minMove),
       },
     };
   }
