@@ -14,8 +14,6 @@ holds local secrets. Use their checked-in examples for initial setup.
 - Docker Compose needs generated shared settings plus service-specific secret
   files. Direct calls require `--env-file config/.env.shared`; Make stack targets
   handle this. Database passwords stay in the database secret file.
-- `backtester/cli.py` also reads topology and local overrides. Changes to accessor
-  endpoint paths must update its lookup and CLI tests alongside the generator.
 - Preserve stable generated env names when restructuring topology, including
   Compose resource names and frontend Vite proxy targets.
 - Resource memory reservations are soft MiB reservations, not hard limits. Apply

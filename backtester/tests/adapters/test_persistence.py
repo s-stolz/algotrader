@@ -207,7 +207,7 @@ def _build_result(
             slippage_bps=0.75,
         ),
         initial_capital=25_000.0,
-        run_metadata={"label": "cli-persist"},
+        run_metadata={"label": "persistence-test"},
         engine=BacktestEngine.EVENT_DRIVEN,
     )
     default_fills = [

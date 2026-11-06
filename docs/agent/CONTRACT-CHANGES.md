@@ -17,7 +17,7 @@ Paths below are relative to the repository root; use the
 | WebSocket messages | realtime-service → frontend | Subscription/fanout and `frontend/test/utils/websocketService.spec.ts` |
 | Timeframe support | broker, accessor, Timescale, shared client → frontend, indicator-api, ingestion, backtester | Queries/aggregates and each supported consumer; UI options alone are insufficient |
 | Broker Orders / Positions / Deals | broker → current route callers | Validation, protobuf mapping, consumer contracts |
-| Runtime env | topology + generator → Compose, Vite proxy, Python services; CLI also reads topology | Config mapping fixture, validation, affected stack smoke |
+| Runtime env | topology + generator → Compose, Vite proxy, Python services | Config mapping fixture, validation, affected stack smoke |
 | SQL schema / aggregates | Timescale migrations → accessor → query consumers | Forward migration, query behavior, live storage tests |
 | Backtest/Run persistence, commands, queue | backtester policy + accessor transactions + Timescale constraints → shared client, worker, frontend | Public contracts, sync/async clients, live transaction races, process cleanup, Workspace event refresh/controls |
 | Strategy catalog / candidate expansion / saved configuration reuse | backtester registry and API → frontend, worker, persisted snapshots | Exact versions, defaults, pure validation, deterministic preview/acceptance, saved-value reuse |

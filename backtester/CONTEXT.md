@@ -6,9 +6,9 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
 
 ## Entry Points and Boundaries
 
-- `src/app/backtest_runner.py` is the common orchestration for synchronous CLI
-  and worker child execution. API submission validates and queues without loading
-  Candles or running an engine.
+- `src/app/backtest_runner.py` orchestrates simulations for worker child execution
+  and callers supplying historical bars. API submission validates and queues
+  without loading Candles or running an engine.
 - `src/app/backtest_runs.py`, `backtests.py`, and `backtest_definitions.py` own
   Run reads/cancellation, Backtest acceptance/commands, and stateless expansion.
 - `backtest_definitions.py` expands optional schedule alternatives as whole UTC
@@ -40,7 +40,7 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
 - **Allowed Directions:** `long_only`, `short_only`, or default `long_and_short`.
   `ExecutionConfig.allowed_directions` is the sole direction constraint; validate
   resulting targets, not fill side, and reject disallowed targets rather than
-  clamping them. CLI exposes `--allowed-directions`.
+  clamping them.
 - **Signed Target Quantity / Signed Portfolio Quantity:** desired / actual open
   quantity; positive is long, negative short, zero flat.
 - **Strategy Signal:** directional intent. Zero holds the target. Direction-neutral

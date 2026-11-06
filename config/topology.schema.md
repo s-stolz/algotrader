@@ -9,7 +9,7 @@ existing generated environment variables; YAML nesting does not change their nam
 | Key | Purpose |
 | --- | --- |
 | `mode` | Runtime mode, such as `development`. |
-| `public.host` | Browser and local CLI host, such as `localhost`. |
+| `public.host` | Browser-facing host, such as `localhost`. |
 | `services` | Application networking, logging, resources, and runtime tuning. |
 | `infrastructure` | Redis and TimescaleDB networking, resources, and database settings. |
 
@@ -46,9 +46,7 @@ network:
 
 `host` is the internal service hostname. `port` is the internal port;
 `published_port` is the port exposed on the host. Internal URLs and frontend proxy
-targets use the internal host and port. The local backtester CLI uses `public.host`
-and `services.database_accessor_api.network.published_port`, falling back to
-`network.port` when the published port is absent.
+targets use the internal host and port.
 
 Realtime service exposes two named endpoints:
 
