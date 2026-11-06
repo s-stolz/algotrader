@@ -40,6 +40,7 @@ const response = (
 beforeEach(() => {
   setActivePinia(createPinia());
   vi.clearAllMocks();
+  vi.mocked(requestIndicator).mockReset();
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -162,4 +163,28 @@ it('removes the live listener immediately when the session aborts', async () => 
   expect(wsService.off).toHaveBeenCalled();
   pending.resolve(response());
   await recovery;
+});
+
+it('keeps repaired points when initial indicator history was still pending', async () => {
+  const store = useIndicatorsStore();
+  const id = store.addIndicator(info, [point(0)], 1);
+  const initialResponse = deferred<IndicatorResponse>();
+  vi.mocked(requestIndicator)
+    .mockReturnValueOnce(initialResponse.promise)
+    .mockResolvedValueOnce(response());
+  const initial = store.requestIndicator(id, 1, query);
+  const recovery = recoverIndicatorHistory(
+    store,
+    query,
+    () => true,
+    new AbortController().signal,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  initialResponse.resolve(response([point(0)]));
+  await Promise.all([initial, recovery]);
+  expect(store.getById(id)!.data).toContainEqual(point(180_000, 3));
+  expect(wsService.send).toHaveBeenCalledWith(
+    'subscribeIndicator',
+    expect.objectContaining({ clientIndicatorId: id }),
+  );
 });

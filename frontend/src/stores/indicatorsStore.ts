@@ -1,3 +1,4 @@
+import { trackIndicatorRequests } from './indicators/pendingRequests';
 import { defineStore } from 'pinia';
 import { computed, markRaw, reactive, ref } from 'vue';
 
@@ -58,6 +59,7 @@ export type {
 } from './indicators/types';
 
 export const useIndicatorsStore = defineStore('indicators', () => {
+  const requestIndicator = trackIndicatorRequests(loadIndicator, getById);
   const indicators = reactive(new Map<string, StoreIndicator>());
   const paneCount = ref(1);
   const liveSubscriptions = reactive(
@@ -179,7 +181,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     await ensureCoverageForAll(symbol, timeframe, exchange, { batchSize });
   }
 
-  async function requestIndicator(
+  async function loadIndicator(
     _id: string | null | undefined,
     indicatorId: number,
     query: IndicatorStoreQuery,

@@ -1,3 +1,4 @@
+import { waitForIndicatorRequest } from './pendingRequests';
 import type { ChartRecoveryQuery } from '@/types/chartRecovery';
 import { requestIndicator } from '@/api/indicatorClient';
 import type {
@@ -46,6 +47,13 @@ export async function recoverIndicatorHistory(
     const results = await Promise.allSettled(
       targets.map(async (target) => {
         const { indicator, generation, parameters, live } = target;
+        await waitForIndicatorRequest(indicator);
+        if (
+          !isCurrent() ||
+          store.getById(indicator._id) !== indicator ||
+          indicator.historyGeneration !== generation
+        )
+          return;
         const response = await requestIndicator(indicator.indicatorId, query, {
           parameters,
         });

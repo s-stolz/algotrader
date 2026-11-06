@@ -20,6 +20,8 @@ and behavior that is easy to break when changing them.
   next reconnect; there are no timed retries or database-completeness guarantees.
   Indicator recovery lives in `stores/indicators/recovery.ts`; it includes run-owned
   indicators and guards session, removal, and calculation-generation changes.
+  `stores/indicators/pendingRequests.ts` orders recovery after pending initial or
+  parameter loads so late snapshots cannot erase repaired points.
 - Historical Indicators cover the loaded Candle range: load the latest batch
   first, backfill older batches, and trim points outside that range.
 - Opening ranges render as per-session primitives on the Candle series through
