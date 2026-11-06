@@ -102,7 +102,7 @@ def run_backtest_with_market_data(
     exchange: str | None = None,
     data_adapter: HistoricalBarDataAdapter | None = None,
 ) -> BacktestResult:
-    """Fetch market data through adapter integration and run one vectorized backtest."""
+    """Fetch market data and run the requested backtest engine."""
 
     result, _ = _execute_backtest_with_market_data(
         request=request,

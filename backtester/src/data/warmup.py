@@ -55,7 +55,7 @@ def compute_required_warmup_bars(strategy: StrategyDefinition) -> int:
 
 
 def compute_fetch_start_ms(*, start_ms: int, timeframe: str, warmup_bars: int) -> int:
-    """Shift fetch start backward to cover warmup requirements."""
+    """Estimate the warmup fetch start from nominal candle spacing."""
 
     if warmup_bars <= 1:
         return start_ms
