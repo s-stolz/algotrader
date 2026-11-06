@@ -1,3 +1,4 @@
+import { captureChartViewport } from '@/utils/chart/chartViewport';
 import { nextTick, shallowReactive } from 'vue';
 import { whenChartFontReady } from '@/utils/chart/chartFonts';
 import type {
@@ -261,15 +262,14 @@ export function createChartRendering({
       };
     }
 
-    const timeScale = preserveViewport
-      ? infrastructure.chartManager.chart?.timeScale()
-      : null;
-    const visibleRange = timeScale?.getVisibleRange();
+    const restoreViewport = preserveViewport
+      ? captureChartViewport(infrastructure.chartManager.chart)
+      : () => {};
     state.ohlcSeriesRef = infrastructure.addCandlestickData(
       data,
       state.seriesOptions,
     );
-    if (visibleRange) timeScale?.setVisibleRange(visibleRange);
+    restoreViewport();
     void syncBacktestOverlayTarget();
     refreshBacktestMarkers();
 

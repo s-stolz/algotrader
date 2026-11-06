@@ -17,7 +17,9 @@ it('preserves the visible time range when recovery inserts missing candles', asy
   const visibleRange = { from: 300, to: 1200 };
   const timeScale = {
     getVisibleRange: vi.fn(() => visibleRange),
-    setVisibleRange: vi.fn(),
+    getVisibleLogicalRange: vi.fn(() => ({ from: 0.25, to: 10.75 })),
+    timeToIndex: vi.fn(() => 5),
+    setVisibleLogicalRange: vi.fn(),
   };
   Object.assign(chartAreaMocks.infrastructure.chartManager, {
     chart: { timeScale: () => timeScale },
@@ -25,7 +27,10 @@ it('preserves the visible time range when recovery inserts missing candles', asy
   chartAreaMocks.infrastructure.scrollToRealTime.mockClear();
   try {
     latestChartSessionAdapter().recovery.merge([candle(600_000)], []);
-    expect(timeScale.setVisibleRange).toHaveBeenCalledWith(visibleRange);
+    expect(timeScale.setVisibleLogicalRange).toHaveBeenCalledWith({
+      from: 0.25,
+      to: 10.75,
+    });
     expect(
       chartAreaMocks.infrastructure.scrollToRealTime,
     ).not.toHaveBeenCalled();
