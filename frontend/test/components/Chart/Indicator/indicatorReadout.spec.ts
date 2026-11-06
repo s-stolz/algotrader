@@ -64,9 +64,9 @@ describe('indicator readouts', () => {
         event.seriesData.set(series, { time: event.time!, value });
       }
       expect(readIndicatorValues(indicator, event, manager.series)).toEqual({
-        macd: '0.00000',
-        signal: '1.23456',
-        hist: '−2.10000',
+        macd: { text: '0.00000' },
+        signal: { text: '1.23456' },
+        hist: { text: '−2.10000' },
       });
       const macd = manager.series.get(`${indicator._id}_macd`)!.series;
       event.seriesData.set(macd, { time: 120 as UTCTimestamp, value: 42 });
@@ -76,9 +76,9 @@ describe('indicator readouts', () => {
         manager.series.get(`${indicator._id}_hist`)!.series,
       );
       expect(readIndicatorValues(indicator, event, manager.series)).toEqual({
-        macd: '—',
-        signal: '—',
-        hist: '—',
+        macd: { text: '—' },
+        signal: { text: '—' },
+        hist: { text: '—' },
       });
     } finally {
       real.cleanup();
@@ -119,8 +119,8 @@ describe('indicator readouts', () => {
         seriesData: new Map(),
       };
       expect(readIndicatorValues(indicator, event, manager.series)).toEqual({
-        range_high: '12.500',
-        range_low: '10.000',
+        range_high: { text: '12.500' },
+        range_low: { text: '10.000' },
       });
       expect(getReadoutOutputs(indicator)).toEqual([
         { key: 'range_high', label: 'High', color: '#123456' },
@@ -128,13 +128,13 @@ describe('indicator readouts', () => {
       ]);
       event.time = 30 as UTCTimestamp;
       expect(readIndicatorValues(indicator, event, manager.series)).toEqual({
-        range_high: '—',
-        range_low: '—',
+        range_high: { text: '—' },
+        range_low: { text: '—' },
       });
       event.time = 90 as UTCTimestamp;
       expect(readIndicatorValues(indicator, event, manager.series)).toEqual({
-        range_high: '—',
-        range_low: '—',
+        range_high: { text: '—' },
+        range_low: { text: '—' },
       });
     } finally {
       real.cleanup();
@@ -151,7 +151,11 @@ describe('indicator readouts', () => {
       'rgb(171, 205, 239)',
     );
     await wrapper.setProps({
-      readout: { macd: '1.23', signal: '0.00', hist: '-0.10' },
+      readout: {
+        macd: { text: '1.23' },
+        signal: { text: '0.00' },
+        hist: { text: '-0.10' },
+      },
     });
     expect(wrapper.text()).toContain('Signal:  0.00');
     indicator.lastLivePoint = { timestamp_ms: 60_000, macd: 99 };

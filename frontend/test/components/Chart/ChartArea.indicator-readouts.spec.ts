@@ -83,7 +83,10 @@ describe('ChartArea indicator readouts', () => {
       chartAreaMocks.crosshairHandler?.(hover(1));
       chartAreaMocks.crosshairHandler?.(hover(1.25));
       await flushFrames();
-      expect(readouts()).toEqual([{ sma: '1.250' }, { sma: '2.000' }]);
+      expect(readouts()).toEqual([
+        { sma: { text: '1.250' } },
+        { sma: { text: '2.000' } },
+      ]);
       chartAreaMocks.crosshairHandler?.({
         ...hover(9),
         point: { x: -1, y: -1 },
@@ -101,12 +104,18 @@ describe('ChartArea indicator readouts', () => {
         volume: 1,
       });
       await flushFrames();
-      expect(readouts()).toEqual([{ sma: '1.250' }, { sma: '2.000' }]);
+      expect(readouts()).toEqual([
+        { sma: { text: '1.250' } },
+        { sma: { text: '2.000' } },
+      ]);
       const missing = hover(3, 0);
       missing.seriesData.delete(plots[0].series);
       chartAreaMocks.crosshairHandler?.(missing);
       await flushFrames();
-      expect(readouts()).toEqual([{ sma: '—' }, { sma: '2.000' }]);
+      expect(readouts()).toEqual([
+        { sma: { text: '—' } },
+        { sma: { text: '2.000' } },
+      ]);
       chartAreaMocks.crosshairHandler?.(hover(9));
       if (navigation === 'timeframe')
         stores.currentTimeframeStore.value = 'M15';

@@ -4,7 +4,7 @@ import type { ChartSeriesInfo } from '@/utils/chart/ChartManager';
 import { isChartSeriesType } from '@/utils/chart/seriesTypes';
 import { buildRangeBoxes, rangeStyle } from '@/utils/chart/openingRange/model';
 
-export type IndicatorReadout = Record<string, string>;
+export type IndicatorReadout = Record<string, { text: string; color?: string }>;
 
 export function getReadoutOutputs(indicator: StoreIndicator) {
   if (indicator.info.indicator_id === 'opening_range') {
@@ -71,11 +71,18 @@ export function readIndicatorValues(
         : point && point.time === event.time && 'value' in point
           ? point.value
           : undefined;
+      if (typeof value !== 'number' || !Number.isFinite(value) || !plot)
+        return [key, { text: '—' }];
+      const color =
+        plot.type === 'histogram' && point && 'color' in point
+          ? point.color
+          : undefined;
       return [
         key,
-        typeof value === 'number' && Number.isFinite(value) && plot
-          ? plot.series.priceFormatter().format(value)
-          : '—',
+        {
+          text: plot.series.priceFormatter().format(value),
+          ...(typeof color === 'string' ? { color } : {}),
+        },
       ];
     }),
   );

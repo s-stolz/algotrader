@@ -7,10 +7,10 @@
       v-for="output in outputs"
       :key="output.key"
       class="indicator-value"
-      :style="{ color: output.color }"
+      :style="{ color: readout?.[output.key]?.color ?? output.color }"
     >
       <span v-if="outputs.length > 1">{{ output.label }}: </span>
-      {{ readout?.[output.key] ?? '—' }}
+      {{ readout?.[output.key]?.text ?? '—' }}
     </span>
   </div>
 </template>

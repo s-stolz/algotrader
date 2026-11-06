@@ -66,10 +66,10 @@ it('clears old indicator history and series while the next session loads', async
       };
       return readIndicatorValues(indicator, event, chart.series);
     };
-    expect(capture()).toEqual({ sma: '1.25' });
+    expect(capture()).toEqual({ sma: { text: '1.25' } });
     adapter.resetIndicatorHistory?.();
     await nextTick();
-    expect(capture()).toEqual({ sma: '—' });
+    expect(capture()).toEqual({ sma: { text: '—' } });
     expect(indicator.data).toEqual([]);
     expect(indicator.lastLivePoint).toBeNull();
     expect(indicatorsStore.exists(id)).toBe(true);
@@ -77,7 +77,7 @@ it('clears old indicator history and series while the next session loads', async
       { timestamp_ms: 300_000, sma: 2.5 },
     ]);
     await nextTick();
-    expect(capture()).toEqual({ sma: '2.50' });
+    expect(capture()).toEqual({ sma: { text: '2.50' } });
   } finally {
     stop();
     surface.cleanup();
