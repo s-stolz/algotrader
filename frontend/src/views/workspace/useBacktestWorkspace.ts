@@ -169,6 +169,14 @@ export function useBacktestWorkspace() {
       void loadSelected(selectedRunId.value, true);
   }
   function redirectUnavailableBacktest(backtestId: string): void {
+    if (selectedBacktestId.value === backtestId) {
+      selectedBacktestId.value = null;
+      backtestMembers.value = [];
+      workspaceStore.clearSelection();
+      ++detailSequence;
+      setComparison([]);
+      logRun.value = null;
+    }
     if (router.currentRoute?.value.params.id === backtestId) {
       void router.replace('/');
     }
@@ -246,7 +254,6 @@ export function useBacktestWorkspace() {
     void queueHealth.value?.refresh();
   }
   function onBacktestDeleted(backtest: Backtest): void {
-    redirectUnavailableBacktest(backtest.backtest_id);
     const overlayBelongsToBacktest =
       overlayStore.selectedRun?.backtest_id === backtest.backtest_id ||
       backtestMembers.value.some(
@@ -266,6 +273,7 @@ export function useBacktestWorkspace() {
       selectionNotice.value =
         'The deleted Backtest was removed from the chart overlay.';
     }
+    redirectUnavailableBacktest(backtest.backtest_id);
   }
   async function openOnChart(run: BacktestRun): Promise<void> {
     if (

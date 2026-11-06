@@ -145,4 +145,30 @@ describe('Backtest workspace routes', () => {
     expect(window.location.pathname).toBe('/backtests/backtest-1');
     expect(wrapper.get('h3').text()).toBe('Unnamed backtest');
   });
+
+  it('invalidates a missing cached Backtest without leaving the overview', async () => {
+    let rejectMissing!: (error: Error) => void;
+    const missing = new HttpResponseError('Backtest not found', 404);
+    vi.mocked(getBacktest)
+      .mockRejectedValue(missing)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectMissing = reject;
+          }),
+      );
+    const wrapper = await openWorkspace();
+    await wrapper
+      .get('[data-testid="workspace-history-return"]')
+      .trigger('click');
+    await flushPromises();
+    rejectMissing(missing);
+    await flushPromises();
+    expect(window.location.pathname).toBe('/backtests');
+    window.history.back();
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe('/');
+    });
+    expect(getBacktest).toHaveBeenCalledTimes(2);
+  });
 });
