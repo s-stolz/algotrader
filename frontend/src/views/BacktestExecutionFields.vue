@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { NButton, NIcon, NInputNumber } from 'naive-ui';
 import type { SelectOption } from 'naive-ui';
-import InformationCircleOutline from '@vicons/ionicons5/InformationCircleOutline';
+import InformationCircleOutline from '@vicons/ionicons5/es/InformationCircleOutline';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import type { BacktestRequestPayload } from '@/types/backtesterContracts';

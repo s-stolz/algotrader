@@ -31,8 +31,8 @@ describe('production Backtest Workspace: refresh-inspection', () => {
     vi.mocked(getBacktest).mockResolvedValue(accepted);
     vi.mocked(listBacktestEvents).mockResolvedValue([]);
     vi.mocked(listBacktestMembers).mockResolvedValue(members);
-    vi.mocked(getBacktestRun).mockImplementation(
-      async (id) => members.find((run) => run.run_id === id)!,
+    vi.mocked(getBacktestRun).mockImplementation(async (id) =>
+      members.find((run) => run.run_id === id)!,
     );
     vi.mocked(fetchBacktestEquityCurve).mockResolvedValue({
       availability: 'exact',

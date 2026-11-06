@@ -270,8 +270,7 @@ describe('ChartManager', () => {
 
     expect(manager.setSeriesProtectiveLines('ohlc', firstSegments)).toBe(true);
     const primitive = series.attachPrimitive.mock.calls[0]?.[0] as
-      | { paneViews?: () => readonly unknown[] }
-      | undefined;
+      { paneViews?: () => readonly unknown[] } | undefined;
 
     expect(series.attachPrimitive).toHaveBeenCalledTimes(1);
     expect(series.createPriceLine).not.toHaveBeenCalled();

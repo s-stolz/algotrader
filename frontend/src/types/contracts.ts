@@ -168,14 +168,7 @@ export interface StoredCurrentTimeframe {
 }
 
 export type UploadColumnField =
-  | 'timestamp'
-  | 'date'
-  | 'time'
-  | 'open'
-  | 'high'
-  | 'low'
-  | 'close'
-  | 'volume';
+  'timestamp' | 'date' | 'time' | 'open' | 'high' | 'low' | 'close' | 'volume';
 
 export type UploadColumnMapping = Record<
   number,

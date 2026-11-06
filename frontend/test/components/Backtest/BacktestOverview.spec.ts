@@ -71,6 +71,7 @@ describe('accepted backtest inspection: inspection', () => {
 
   it('keeps saved disclosure focus interactive and activation native', async () => {
     const style = document.createElement('style');
+    document.body.style.setProperty('--design-color-interactive', '#63e2b7');
     style.textContent = savedDetails
       .split('<style scoped>')[1]
       .split('</style>')[0];
@@ -82,6 +83,7 @@ describe('accepted backtest inspection: inspection', () => {
     onTestFinished(() => {
       wrapper.unmount();
       style.remove();
+      document.body.style.removeProperty('--design-color-interactive');
     });
     await flushPromises();
     const summary = wrapper.get('.selections-details summary')
@@ -90,7 +92,7 @@ describe('accepted backtest inspection: inspection', () => {
     expect(document.activeElement).toBe(summary);
     expect(summary.matches(':focus-visible')).toBe(true);
     expect(getComputedStyle(summary).outline).toBe(
-      '2px solid var(--design-color-interactive)',
+      '2px solid rgb(99, 226, 183)',
     );
     expect(getComputedStyle(summary).outlineOffset).toBe('5px');
     const details = summary.parentElement as HTMLDetailsElement;

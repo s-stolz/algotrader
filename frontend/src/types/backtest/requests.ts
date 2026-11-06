@@ -20,9 +20,7 @@ export type BacktestDataGranularity = 'bar' | 'tick';
 export type BacktestExitReason = 'signal' | 'stop_loss' | 'take_profit';
 
 export type BacktestAllowedDirections =
-  | 'long_only'
-  | 'short_only'
-  | 'long_and_short';
+  'long_only' | 'short_only' | 'long_and_short';
 
 export type BacktestTradeDirection = 'long' | 'short';
 
@@ -43,10 +41,7 @@ export interface BacktestExecutionPayload {
   trade_accounting_policy: 'average_cost';
   gap_policy: 'expire' | 'skip' | 'error';
   intrabar_exit_policy:
-    | 'conservative'
-    | 'stop_first'
-    | 'take_profit_first'
-    | 'error';
+    'conservative' | 'stop_first' | 'take_profit_first' | 'error';
   commission_bps: number;
   slippage_bps: number;
 }

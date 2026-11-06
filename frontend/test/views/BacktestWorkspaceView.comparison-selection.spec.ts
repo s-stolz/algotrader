@@ -39,8 +39,8 @@ describe('production Backtest Workspace: comparison-selection', () => {
     vi.mocked(getBacktest).mockResolvedValue(accepted);
     vi.mocked(listBacktestEvents).mockResolvedValue([]);
     vi.mocked(listBacktestMembers).mockResolvedValue(members);
-    vi.mocked(getBacktestRun).mockImplementation(
-      async (id) => members.find((member) => member.run_id === id)!,
+    vi.mocked(getBacktestRun).mockImplementation(async (id) =>
+      members.find((member) => member.run_id === id)!,
     );
     const wrapper = mountWorkspace(true);
     await flushPromises();
@@ -107,8 +107,8 @@ describe('production Backtest Workspace: comparison-selection', () => {
       vi.mocked(listBacktests).mockResolvedValue([accepted]);
       vi.mocked(getBacktest).mockResolvedValue(accepted);
       vi.mocked(listBacktestMembers).mockResolvedValue(members);
-      vi.mocked(getBacktestRun).mockImplementation(
-        async (id) => members.find((member) => member.run_id === id)!,
+      vi.mocked(getBacktestRun).mockImplementation(async (id) =>
+        members.find((member) => member.run_id === id)!,
       );
       const wrapper = mountWorkspace(true);
       await flushPromises();

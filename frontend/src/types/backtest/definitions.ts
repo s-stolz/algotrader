@@ -42,11 +42,10 @@ export interface BacktestSelectionsDraft {
   dailySchedule: DailyScheduleDraft;
 }
 
-export interface BacktestPreviewRequest
-  extends Omit<
-    BacktestRequestPayload,
-    'symbols' | 'timeframe' | 'exchange' | 'strategy'
-  > {
+export interface BacktestPreviewRequest extends Omit<
+  BacktestRequestPayload,
+  'symbols' | 'timeframe' | 'exchange' | 'strategy'
+> {
   strategy: { strategy_id: string; strategy_version: number };
   markets: number[];
   timeframes: string[];

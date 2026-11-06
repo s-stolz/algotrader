@@ -42,8 +42,8 @@ describe('production Backtest Workspace: chart-navigation', () => {
       vi.mocked(getBacktest).mockResolvedValue(accepted);
       vi.mocked(listBacktestEvents).mockResolvedValue([]);
       vi.mocked(listBacktestMembers).mockResolvedValue(members);
-      vi.mocked(getBacktestRun).mockImplementation(
-        async (id) => members.find((member) => member.run_id === id)!,
+      vi.mocked(getBacktestRun).mockImplementation(async (id) =>
+        members.find((member) => member.run_id === id)!,
       );
       const wrapper = mountWorkspace(true);
       await flushPromises();

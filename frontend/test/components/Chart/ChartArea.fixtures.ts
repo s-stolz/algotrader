@@ -139,8 +139,7 @@ const chartAreaMocks = vi.hoisted(() => {
     ohlcSeries,
     ohlcSeriesInfo,
     visibleRangeHandler: null as
-      | ((range: ChartLogicalRange | null) => void)
-      | null,
+      ((range: ChartLogicalRange | null) => void) | null,
     wsOff: vi.fn(),
     wsOn: vi.fn(),
     wsSend: vi.fn(),
@@ -348,8 +347,7 @@ export function latestLiveCandleReceiver(): (
 ) => void {
   const calls = latestChartSession().setSession.mock.calls;
   const lastCall = calls[calls.length - 1] as
-    | [unknown, (message: CandleUpdateMessage) => void]
-    | undefined;
+    [unknown, (message: CandleUpdateMessage) => void] | undefined;
 
   if (!lastCall) {
     throw new Error('Expected ChartArea to sync a chart session');

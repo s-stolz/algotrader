@@ -51,7 +51,7 @@ describe('creation design controls', () => {
     const label = strategyLabel.parentElement!;
     expect(getComputedStyle(fields).display).toBe('grid');
     expect(getComputedStyle(label).display).toBe('grid');
-    expect(getComputedStyle(label).gap).toBe('var(--design-space-xs)');
+    expect(getComputedStyle(label).gap).toBe('4px');
     expect(getComputedStyle(strategyLabel).alignItems).toBe('center');
     const parameterLabel =
       document.querySelector<HTMLElement>('.parameter-label')!;

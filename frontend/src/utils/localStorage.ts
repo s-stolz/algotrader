@@ -5,8 +5,7 @@ export const STORAGE_KEYS = {
 } as const;
 
 export type StorageKey =
-  | (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]
-  | string;
+  (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS] | string;
 
 export const getStoredState = <T>(
   key: StorageKey,

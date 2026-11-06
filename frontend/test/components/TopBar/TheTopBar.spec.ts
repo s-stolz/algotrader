@@ -70,11 +70,13 @@ describe('TheTopBar', () => {
     });
     const pan = wrapper.get('button[aria-label="Pan mode"]');
     const measure = wrapper.get('button[aria-label="Measure mode"]');
+    expect(pan.find('svg').exists()).toBe(true);
+    expect(measure.find('svg').exists()).toBe(true);
     expect(pan.attributes('aria-pressed')).toBe('true');
     expect(measure.attributes('aria-pressed')).toBe('false');
     (measure.element as HTMLElement).focus();
     await measure.trigger('click');
-    expect(wrapper.emitted('update:chartInteractionMode')).toEqual([
+    expect(wrapper.emitted('update:chart-interaction-mode')).toEqual([
       ['measure'],
     ]);
     await wrapper.setProps({ chartInteractionMode: 'measure' });

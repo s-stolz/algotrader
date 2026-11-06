@@ -45,6 +45,7 @@ describe('Backtest queue health', () => {
       'toggles its popover',
     async () => {
       const style = document.createElement('style');
+      document.body.style.setProperty('--design-color-interactive', '#63e2b7');
       style.textContent = readFileSync(
         'src/components/Backtest/backtestQueueHealth.css',
         'utf8',
@@ -57,13 +58,14 @@ describe('Backtest queue health', () => {
       onTestFinished(() => {
         wrapper.unmount();
         style.remove();
+        document.body.style.removeProperty('--design-color-interactive');
       });
       await flushPromises();
       const trigger = wrapper.get('[data-testid="queue-toggle"]');
       (trigger.element as HTMLElement).focus();
       expect(document.activeElement).toBe(trigger.element);
       expect(getComputedStyle(trigger.element).outline).toBe(
-        '2px solid var(--design-color-interactive)',
+        '2px solid rgb(99, 226, 183)',
       );
       await trigger.trigger('click');
       expect(trigger.attributes('aria-expanded')).toBe('true');

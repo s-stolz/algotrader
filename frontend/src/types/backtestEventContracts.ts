@@ -15,9 +15,7 @@ export interface BacktestHealthMessage {
   fault_message: string | null;
 }
 export type BacktestEventMessage =
-  | BacktestChangedMessage
-  | BacktestConnectionMessage
-  | BacktestHealthMessage;
+  BacktestChangedMessage | BacktestConnectionMessage | BacktestHealthMessage;
 
 export function isBacktestEventMessage(
   value: unknown,

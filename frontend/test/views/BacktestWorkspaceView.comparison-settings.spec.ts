@@ -69,8 +69,8 @@ describe('production Backtest Workspace: comparison-settings', () => {
       vi.mocked(getBacktest).mockResolvedValue(accepted);
       vi.mocked(listBacktestEvents).mockResolvedValue([]);
       vi.mocked(listBacktestMembers).mockResolvedValue(saved);
-      vi.mocked(getBacktestRun).mockImplementation(
-        async (id) => saved.find((item) => item.run_id === id)!,
+      vi.mocked(getBacktestRun).mockImplementation(async (id) =>
+        saved.find((item) => item.run_id === id)!,
       );
       vi.mocked(fetchBacktestEquityCurve).mockImplementation(async (id) => {
         if (id === 'member-1') throw new Error('Replay service unavailable');

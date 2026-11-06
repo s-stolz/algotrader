@@ -322,8 +322,8 @@ export function seedBacktest(members: BacktestRun[]) {
   vi.mocked(getBacktest).mockResolvedValue(accepted);
   vi.mocked(listBacktestMembers).mockResolvedValue(members);
   vi.mocked(listBacktestEvents).mockResolvedValue([]);
-  vi.mocked(getBacktestRun).mockImplementation(
-    async (id) => members.find((run) => run.run_id === id)!,
+  vi.mocked(getBacktestRun).mockImplementation(async (id) =>
+    members.find((run) => run.run_id === id)!,
   );
   return accepted;
 }

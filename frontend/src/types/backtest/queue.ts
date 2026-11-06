@@ -3,10 +3,7 @@ import { type Backtest, isBacktestOutcomeCounts } from './backtests';
 import { isEpochMs, isOrdinal } from './validation';
 
 export type BacktestWorkerAvailability =
-  | 'healthy'
-  | 'stale'
-  | 'unavailable'
-  | 'faulted';
+  'healthy' | 'stale' | 'unavailable' | 'faulted';
 
 export interface BacktestQueueEntry {
   backtest_id: string;

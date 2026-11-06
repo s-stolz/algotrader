@@ -105,7 +105,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  'update:chartInteractionMode': [mode: ChartInteractionMode];
+  'update:chart-interaction-mode': [mode: ChartInteractionMode];
 }>();
 
 const currentMarketStore = useCurrentMarketStore();
@@ -126,7 +126,7 @@ function chartInteractionModeIconColor(
 }
 
 function selectChartInteractionMode(mode: ChartInteractionMode): void {
-  emit('update:chartInteractionMode', mode);
+  emit('update:chart-interaction-mode', mode);
 }
 </script>
 

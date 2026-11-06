@@ -39,12 +39,7 @@ import {
 } from './chartScrollOptions';
 
 export type ChartSeriesType =
-  | 'line'
-  | 'area'
-  | 'bar'
-  | 'baseline'
-  | 'candlestick'
-  | 'histogram';
+  'line' | 'area' | 'bar' | 'baseline' | 'candlestick' | 'histogram';
 
 export interface ChartOhlcPoint {
   timestamp_ms?: number;

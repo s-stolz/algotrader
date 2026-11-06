@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue';
 import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 
-import { createDevServerProxy } from './src/viteProxy';
+import { createDevServerProxy } from './src/viteProxy.ts';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {

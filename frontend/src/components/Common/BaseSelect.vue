@@ -29,8 +29,7 @@ export default defineComponent({
     }));
     const ellipsisTagPopoverProps = computed(() => {
       const overrides = props.ellipsisTagPopoverProps as
-        | InstanceType<typeof NPopover>['$props']
-        | undefined;
+        InstanceType<typeof NPopover>['$props'] | undefined;
       return {
         placement: 'bottom-start' as const,
         overlap: false,

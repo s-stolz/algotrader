@@ -83,9 +83,8 @@ describe('creation navigation', () => {
         )!;
       mode.vm.$emit('update:value', 'values');
       await flushPromises();
-      const { default: BaseNumberValues } = await import(
-        '@/components/Common/BaseNumberValues.vue'
-      );
+      const { default: BaseNumberValues } =
+        await import('@/components/Common/BaseNumberValues.vue');
       wrapper
         .findAllComponents(BaseNumberValues)[0]
         .vm.$emit('update:value', [2, 4]);

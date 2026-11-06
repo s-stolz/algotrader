@@ -75,10 +75,7 @@ export function creationFields(
 
   function setParameter(name: string, value: unknown): void {
     draft.value.strategy.parameters[name] = value as
-      | null
-      | boolean
-      | number
-      | string;
+      null | boolean | number | string;
     delete fieldErrors.value[name];
   }
 
