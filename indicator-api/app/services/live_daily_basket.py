@@ -61,7 +61,6 @@ class LiveDailyBasket:
         self.recovery_from: int | None = None
         self.recovery_through: int | None = None
         self.published: dict[int, dict[str, float]] = {}
-        self.last_published: int | None = None
         self.has_baseline = False
 
     async def initialize(self, redis: Redis) -> None:
@@ -303,7 +302,6 @@ class LiveDailyBasket:
                 self.spec.indicator_stream_key, payload, maxlen=maxlen, approximate=True
             )
             self.published[timestamp] = values
-            self.last_published = max(self.last_published or timestamp, timestamp)
 
     async def run(self, redis: Redis, *, maxlen: int, count: int) -> None:
         while True:

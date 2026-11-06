@@ -125,7 +125,9 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
         correction = self.redis.xadd.call_args_list[-2].args[1]
         self.assertEqual(correction["t"], "120000")
         self.assertEqual(correction["replay"], "1")
-        self.assertEqual(self.basket.last_published, 180000)
+        latest = self.redis.xadd.call_args.args[1]
+        self.assertEqual(latest["t"], "180000")
+        self.assertNotIn("replay", latest)
 
     async def test_midnight_reset_and_different_predecessor_times(self):
         await self.start()
