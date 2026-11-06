@@ -262,7 +262,7 @@ export function setupWorkspaceTests() {
     vi.mocked(listBacktests).mockReset().mockResolvedValue([]);
     vi.mocked(getBacktest).mockReset();
     vi.mocked(listBacktestMembers).mockReset();
-    vi.mocked(listBacktestEvents).mockReset();
+    vi.mocked(listBacktestEvents).mockReset().mockResolvedValue([]);
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(renameExperiment).mockReset();
     vi.mocked(cancelBacktestRun).mockReset();
