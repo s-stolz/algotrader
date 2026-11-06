@@ -27,6 +27,12 @@ watch(
     :mask-closable="false"
     :auto-focus="true"
     preset="card"
+    :content-style="{
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '0px',
+      overflow: 'hidden',
+    }"
     :title="title"
     class="base-step-modal"
     @update:show="emit('update:show', $event)"
@@ -103,12 +109,6 @@ watch(
   border-radius: var(--design-radius-panel);
   font-family: var(--design-font-ui);
   font-size: var(--design-text-body);
-}
-.base-step-modal.n-card > .n-card__content {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 .base-step-modal .step-body {
   flex: 1;
