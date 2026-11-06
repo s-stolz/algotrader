@@ -128,13 +128,39 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(forbidden_imports, [])
         self.assertEqual(forbidden_calls, [])
 
-    def test_indicator_strategy_requires_complete_pre_start_bootstrap(self) -> None:
+    def test_indicator_strategy_completes_warmup_inside_requested_window(self) -> None:
+        start_ms = 1_700_000_000_000
+        bars = self._build_bars()
+        # A market closure during warmup must not count as additional candles.
+        bars.loc[2:, "timestamp_ms"] += 2 * 86_400_000
+        end_ms = int(bars["timestamp_ms"].iloc[-1]) + 60_000
+        results = [
+            run_backtest(
+                request=self._build_request(engine=engine, start_ms=start_ms, end_ms=end_ms),
+                bars=bars,
+            )
+            for engine in BacktestEngine
+        ]
+
+        self.assertEqual(results[0].fills, results[1].fills)
+        self.assertEqual(results[0].equity_curve, results[1].equity_curve)
+        self.assertEqual(results[0].replay_descriptor, results[1].replay_descriptor)
+        self.assertEqual(
+            [point.timestamp_ms for point in results[1].equity_curve],
+            bars["timestamp_ms"].iloc[2:].tolist(),
+        )
+        self.assertGreater(len(results[1].fills), 0)
+        self.assertTrue(
+            all(fill.timestamp_ms > bars["timestamp_ms"].iloc[2] for fill in results[1].fills)
+        )
+
+    def test_indicator_strategy_rejects_window_that_never_completes_warmup(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
-            "Event-driven.*insufficient warmup.*sma_fast.*sma_slow",
+            "No executable bars remain after warmup/feature trimming",
         ):
             run_backtest(
-                request=self._build_request(start_ms=1_700_000_000_000),
+                request=self._build_request(start_ms=1_700_000_000_000, end_ms=1_700_000_120_000),
                 bars=self._build_bars(),
             )
 

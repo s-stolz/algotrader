@@ -187,23 +187,20 @@ def _run_event_driven_loop(
         feature_snapshot_count += 1
         previous_features = dict(snapshot.features)
 
-    if (
-        strategy.indicator_requirements
-        and previous_features is None
-        and not needs_source_inputs(strategy)
-    ):
-        required_features = _format_required_indicator_features(strategy)
-        raise ValueError(
-            "Event-driven bar bootstrap has insufficient warmup before start_ms "
-            f"{start_ms} for strategy '{strategy.strategy_id}'; required feature(s): "
-            f"{required_features}"
-        )
-
     if needs_source_inputs(strategy):
         previous_features = None
 
     for row in tradable_bars.itertuples(index=False):
         bar = _bar_from_row(row)
+        snapshot = stream.update(bar)
+        if snapshot is None:
+            if previous_features is None:
+                continue
+            _raise_runtime_invalid_feature_snapshot(
+                strategy=strategy,
+                symbol=symbol,
+                timestamp_ms=int(bar.timestamp_ms),
+            )
         bar_index = state.start_bar()
         protective_exit = bar_model.protective_exit
 
@@ -261,13 +258,6 @@ def _run_event_driven_loop(
             commission_bps=float(request.execution.commission_bps),
         )
 
-        snapshot = stream.update(bar)
-        if snapshot is None:
-            _raise_runtime_invalid_feature_snapshot(
-                strategy=strategy,
-                symbol=symbol,
-                timestamp_ms=int(bar.timestamp_ms),
-            )
         feature_snapshot_count += 1
         signal = bar_model.evaluate_sequential_signal(
             previous=previous_features,

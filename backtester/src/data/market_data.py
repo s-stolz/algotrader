@@ -9,7 +9,6 @@ from adapters.db_accessor import (
     DatabaseAccessorHistoricalDataAdapter,
     HistoricalBarDataAdapter,
 )
-from domain.enums import BacktestEngine
 from domain.types import BacktestRequest
 from indicator_engine import get_registry
 from strategies.base import StrategyDefinition
@@ -82,8 +81,6 @@ def load_raw_market_data(
 
     symbol = str(request.symbols[0])
     warmup_bars = compute_required_warmup_bars(strategy)
-    if request.engine == BacktestEngine.EVENT_DRIVEN and strategy.indicator_requirements:
-        warmup_bars += 1
     fetch_start_ms = compute_fetch_start_ms(
         start_ms=int(request.start_ms),
         timeframe=request.timeframe,
@@ -100,7 +97,36 @@ def load_raw_market_data(
         exchange=resolved_exchange,
     )
 
-    return normalize_bar_data(bars=raw_bars, symbol=symbol)
+    normalized = normalize_bar_data(bars=raw_bars, symbol=symbol)
+    history_end_ms = fetch_start_ms
+    # Warmup includes the first executable candle. Recover missing predecessors
+    # by count so market closures do not limit how far back history can reach.
+    while (
+        missing_bars := warmup_bars
+        - 1
+        - int((normalized["timestamp_ms"] < int(request.start_ms)).sum())
+    ) > 0:
+        prior = adapter.fetch_bars(
+            symbol=symbol,
+            timeframe=request.timeframe,
+            start_ms=None,
+            end_ms=history_end_ms,
+            exchange=resolved_exchange,
+            limit=missing_bars,
+        )
+        if prior.empty:
+            break
+        prior = prior.loc[prior["timestamp_ms"] < history_end_ms]
+        if prior.empty:
+            break
+        history_end_ms = int(prior["timestamp_ms"].min())
+        if "symbol" not in prior.columns:
+            prior = prior.assign(symbol=symbol)
+        normalized = normalize_bar_data(
+            bars=pd.concat([prior, normalized], ignore_index=True), symbol=symbol
+        )
+
+    return normalized
 
 
 @dataclass(frozen=True)

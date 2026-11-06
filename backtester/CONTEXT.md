@@ -85,15 +85,22 @@ source frames explicitly. See [strategy input contracts](STRATEGIES.md#indicator
   expose causal availability instead. Preserve the array-based runtime instead
   of per-bar interpretation.
 - `src/engines/event_driven.py` bootstraps indicators from bars before `start_ms`,
-  then executes sequentially over `[start_ms, end_ms)`. Bootstrap emits no trading
-  artifacts. Indicator strategies require complete pre-start warmup; strategies
-  without indicators may begin at the first in-window bar. Ordinary indicator
-  features invalid after bootstrap fail execution. Multi-source/anchored inputs
+  then executes sequentially over `[start_ms, end_ms)`. Both engines use the same
+  history loader for ordinary indicators: the initial time window is supplemented
+  with older candles by count across gaps and closures. Warmup includes the first
+  executable candle (an N-candle indicator needs N-1 predecessors). If stored
+  history is exhausted before warmup is complete at `start_ms`, warmup continues
+  through in-window candles until the first complete snapshot,
+  matching vectorized initial feature trimming. Warmup emits no trading artifacts
+  or equity points; the requested start remains unchanged. A window that never
+  completes warmup fails with no executable bars. Strategies without indicators
+  may begin at the first in-window bar. Ordinary indicator features invalid after
+  warmup fail event-driven execution. Multi-source/anchored inputs
   instead suppress directional entry signals while preserving position management.
   Their bootstrap initializes calculations only; crossover decisions begin with
   in-window snapshots in both engines.
-- Each tradable bar executes prior pending deltas at open, updates features and
-  evaluates the completed bar, queues future deltas, then marks actual positions
+- Each tradable bar executes prior pending deltas at open, evaluates the completed
+  bar's features, queues future deltas, then marks actual positions
   at close. The final decision expires without a next in-window open. Keep this
   runtime independent of vectorized fill/cumulative portfolio helpers.
 - Invalid opens follow `gap_policy`: `skip` defers, `expire` drops, `error` raises.
