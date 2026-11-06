@@ -144,6 +144,9 @@ export function createChartSessionAdapter({
     },
     resetIndicatorHistory: () => {
       indicatorsStore.resetHistoryFlags();
+      for (const indicator of indicatorsStore.all) {
+        indicatorsStore.updateIndicatorData(indicator._id, []);
+      }
     },
     reportCandleFetchError: (_key, error) => {
       console.error('Failed to fetch candlestick data:', error);
