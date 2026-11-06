@@ -35,7 +35,7 @@ const outputs = computed(() => getReadoutOutputs(props.indicator));
   gap: var(--design-space-xs) var(--design-space-md);
   min-width: 0;
   flex: 1 1 12rem;
-  font-size: var(--design-text-body);
+  font-size: var(--design-text-secondary);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
