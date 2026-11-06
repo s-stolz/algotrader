@@ -52,9 +52,10 @@ parameters, response formatting, and live-stream lifecycle.
 
 ## Verification
 
-Use `make test indicator_engine` for shared computation. Route/manager changes
-also need tests of service adaptation and affected WebSocket consumers; engine
-coverage alone does not verify transport or live-stream behavior.
+Use `make test indicator-api` for service adaptation and routes, and
+`make test indicator_engine` for shared computation. Route/manager changes also
+need affected WebSocket consumer tests; engine coverage alone does not verify
+transport or live-stream behavior.
 
 # Indicator live Candle context
 
