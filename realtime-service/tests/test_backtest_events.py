@@ -41,7 +41,9 @@ class BacktestBridgeTests(unittest.IsolatedAsyncioTestCase):
             with self.assertLogs("app.backtest_events"):
                 await incoming.put(ConnectionError("lost upstream"))
                 await wait_for(lambda: not bridge._connected)
-            await wait_for(lambda: bridge._connected)
+            await wait_for(
+                lambda: sum(message["type"] == "backtestConnection" for message in messages()) == 4
+            )
             statuses = [
                 message["connected"]
                 for message in messages()

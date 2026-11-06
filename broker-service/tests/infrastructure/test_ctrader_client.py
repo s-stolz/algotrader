@@ -144,7 +144,10 @@ class ReconnectTests(unittest.IsolatedAsyncioTestCase):
 
     async def _finish_restoration(self):
         # Application-auth callback is delivered on the owning event loop.
-        await asyncio.get_running_loop().run_in_executor(None, lambda: None)
+        loop = asyncio.get_running_loop()
+        delivered = loop.create_future()
+        loop.call_soon(delivered.set_result, None)
+        await delivered
         assert self.client._subscription_restore_task is not None
         await self.client._subscription_restore_task
 

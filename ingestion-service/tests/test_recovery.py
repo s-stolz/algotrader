@@ -786,7 +786,9 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
         await redis.publish(
             "BTC", [candle(RESUMED), candle(RESUMED + 60000), candle(RESUMED + 120000)]
         )
-        await eventually(lambda: not service._state_by_id[1].live_ready.is_set())
+        await eventually(
+            lambda: 1 in storage.fail_save and not service._state_by_id[1].live_ready.is_set()
+        )
         self.assertIn(RESUMED, storage.rows["BTC"])
         self.assertNotIn(RESUMED + 60000, storage.rows["BTC"])
         # Retry cannot choose the now-newer latest row or skip the failed chunk.
