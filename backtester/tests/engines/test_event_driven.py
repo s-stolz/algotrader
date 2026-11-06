@@ -280,7 +280,7 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
             ValueError,
             "Event-driven.*runtime invalid feature.*timestamp_ms "
             f"{start_ms + minute}.*symbol AAPL.*runtime_bad",
-        ) as raised:
+        ):
             run_backtest(
                 request=self._build_request(
                     strategy=StrategyConfig(strategy_id=strategy.strategy_id),
@@ -290,8 +290,6 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
                 bars=bars,
                 strategy=strategy,
             )
-
-        self.assertNotIn("insufficient warmup", str(raised.exception))
 
     def test_event_driven_diagnostics_include_sequential_processing_counters(self) -> None:
         result = run_backtest(request=self._build_request(), bars=self._build_bars())

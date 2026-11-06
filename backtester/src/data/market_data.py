@@ -98,7 +98,28 @@ def load_raw_market_data(
     )
 
     normalized = normalize_bar_data(bars=raw_bars, symbol=symbol)
-    history_end_ms = fetch_start_ms
+    return _recover_warmup_history(
+        normalized=normalized,
+        request=request,
+        adapter=adapter,
+        exchange=resolved_exchange,
+        warmup_bars=warmup_bars,
+        history_end_ms=fetch_start_ms,
+    )
+
+
+def _recover_warmup_history(
+    *,
+    normalized: pd.DataFrame,
+    request: BacktestRequest,
+    adapter: HistoricalBarDataAdapter,
+    exchange: str | None,
+    warmup_bars: int,
+    history_end_ms: int,
+) -> pd.DataFrame:
+    """Supplement normalized bars until warmup is covered or older history runs out."""
+
+    symbol = str(request.symbols[0])
     # Warmup includes the first executable candle. Recover missing predecessors
     # by count so market closures do not limit how far back history can reach.
     while (
@@ -111,7 +132,7 @@ def load_raw_market_data(
             timeframe=request.timeframe,
             start_ms=None,
             end_ms=history_end_ms,
-            exchange=resolved_exchange,
+            exchange=exchange,
             limit=missing_bars,
         )
         if prior.empty:

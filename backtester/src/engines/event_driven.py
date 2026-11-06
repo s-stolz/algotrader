@@ -170,7 +170,7 @@ def _run_event_driven_loop(
     start_ms = int(request.start_ms)
     end_ms = int(request.end_ms)
     bootstrap_bars = bars.loc[bars["timestamp_ms"] < start_ms]
-    tradable_bars = bars.loc[(bars["timestamp_ms"] >= start_ms) & (bars["timestamp_ms"] < end_ms)]
+    in_window_bars = bars.loc[(bars["timestamp_ms"] >= start_ms) & (bars["timestamp_ms"] < end_ms)]
 
     previous_features: dict[str, float] | None = None
     processed_bar_count = len(bars)
@@ -190,7 +190,7 @@ def _run_event_driven_loop(
     if needs_source_inputs(strategy):
         previous_features = None
 
-    for row in tradable_bars.itertuples(index=False):
+    for row in in_window_bars.itertuples(index=False):
         bar = _bar_from_row(row)
         snapshot = stream.update(bar)
         if snapshot is None:
