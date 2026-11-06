@@ -1,6 +1,6 @@
 import { trackIndicatorRequests } from './indicators/pendingRequests';
 import { defineStore } from 'pinia';
-import { computed, markRaw, reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 
 import { requestIndicator as requestIndicatorFromApi } from '@/api/indicatorClient';
 import type {
@@ -19,7 +19,11 @@ import {
 import { createIndicatorPersistence } from './indicators/persistence';
 import { createIndicator } from './indicators/creation';
 import { applyIndicatorUpdate } from './indicators/liveUpdates';
-import { mergeIndicatorData, trimDataToRange } from './indicators/historyData';
+import {
+  mergeIndicatorData,
+  replaceIndicatorData,
+  trimDataToRange,
+} from './indicators/historyData';
 import {
   INITIAL_INDICATOR_LIMIT,
   applyCoverageTarget,
@@ -371,12 +375,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
 
     if (!indicator) return;
 
-    indicator.data = markRaw(Array.isArray(newData) ? [...newData] : []);
-    indicator.currentLimit = indicator.data.length;
-    indicator.lastLivePoint = indicator.data.length
-      ? indicator.data[indicator.data.length - 1]
-      : null;
-    indicator.dataVersion = (indicator.dataVersion || 0) + 1;
+    replaceIndicatorData(indicator, newData);
   }
 
   function handleLiveUpdate(

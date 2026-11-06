@@ -1,8 +1,22 @@
+import { markRaw } from 'vue';
 import type {
   IndicatorDataPoint,
   IndicatorUpdateMessage,
 } from '@/types/contracts';
 import type { IndicatorLoadedCandleRange, StoreIndicator } from './types';
+
+export function replaceIndicatorData(
+  indicator: Pick<
+    StoreIndicator,
+    'data' | 'currentLimit' | 'lastLivePoint' | 'dataVersion'
+  >,
+  data: readonly IndicatorDataPoint[],
+): void {
+  indicator.data = markRaw(Array.isArray(data) ? [...data] : []);
+  indicator.currentLimit = indicator.data.length;
+  indicator.lastLivePoint = indicator.data.at(-1) ?? null;
+  indicator.dataVersion = (indicator.dataVersion || 0) + 1;
+}
 
 export function trimDataToRange(
   data: readonly IndicatorDataPoint[],

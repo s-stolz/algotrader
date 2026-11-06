@@ -1,10 +1,10 @@
-import { markRaw } from 'vue';
 import type { IndicatorUpdateMessage } from '@/types/contracts';
 import type { IndicatorCoverageOptions, StoreIndicator } from './types';
 import { getLoadedCandleRange } from './historyCoverage';
 import {
   mergeIndicatorData,
   mergeLivePoint,
+  replaceIndicatorData,
   retainLivePoint,
   trimDataToRange,
 } from './historyData';
@@ -23,9 +23,9 @@ export function applyIndicatorUpdate(
   if (!point) return null;
   const range = getLoadedCandleRange(coverage ?? {});
   if (!trimDataToRange([point], range).length) return null;
-  indicator.data = markRaw(mergeIndicatorData([point], indicator.data, null));
-  indicator.currentLimit = indicator.data.length;
-  indicator.lastLivePoint = indicator.data.at(-1) ?? null;
-  indicator.dataVersion += 1;
+  replaceIndicatorData(
+    indicator,
+    mergeIndicatorData([point], indicator.data, null),
+  );
   return null;
 }
