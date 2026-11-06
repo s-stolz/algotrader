@@ -9,6 +9,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getBacktest,
   getBacktestRun,
+  listBacktestEvents,
+  listBacktestMembers,
   listBacktests,
 } from '@/api/backtesterClient';
 import { HttpResponseError } from '@/api/http';
@@ -114,6 +116,50 @@ describe('Backtest workspace routes', () => {
   it('keeps a valid detail page when an older history response omits it', async () => {
     vi.mocked(listBacktests).mockResolvedValue([]);
     const wrapper = await openWorkspace();
+    expect(window.location.pathname).toBe('/backtests/backtest-1');
+    expect(wrapper.get('h3').text()).toBe('Unnamed backtest');
+  });
+
+  it.each([getBacktest, listBacktestMembers, listBacktestEvents])(
+    'redirects a delayed missing response after another detail read fails',
+    async (missingRead) => {
+      let rejectMissing!: (error: Error) => void;
+      vi.mocked(missingRead).mockImplementationOnce(
+        () =>
+          new Promise<never>((_, reject) => {
+            rejectMissing = reject;
+          }),
+      );
+      const failingRead =
+        missingRead === listBacktestEvents ? getBacktest : listBacktestEvents;
+      vi.mocked(failingRead).mockRejectedValueOnce(
+        new HttpResponseError('Service unavailable', 503),
+      );
+      const wrapper = await openWorkspace();
+      expect(window.location.pathname).toBe('/backtests/backtest-1');
+      expect(wrapper.text()).toContain('Service unavailable');
+      rejectMissing(new HttpResponseError('Backtest not found', 404));
+      await flushPromises();
+      expect(window.location.pathname).toBe('/');
+    },
+  );
+
+  it('ignores a delayed missing response after a failed read is superseded', async () => {
+    let rejectMissing!: (error: Error) => void;
+    vi.mocked(getBacktest).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectMissing = reject;
+        }),
+    );
+    vi.mocked(listBacktestEvents).mockRejectedValueOnce(
+      new HttpResponseError('Service unavailable', 503),
+    );
+    const wrapper = await openWorkspace('/backtests/previous');
+    await router.push('/backtests/backtest-1');
+    await flushPromises();
+    rejectMissing(new HttpResponseError('Backtest not found', 404));
+    await flushPromises();
     expect(window.location.pathname).toBe('/backtests/backtest-1');
     expect(wrapper.get('h3').text()).toBe('Unnamed backtest');
   });

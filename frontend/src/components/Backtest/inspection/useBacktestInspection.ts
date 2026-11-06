@@ -214,11 +214,24 @@ export function useBacktestInspection(
     readPending = true;
     const revision = ++detailRevision;
     const nameReadRevision = workspaceStore.nameRevision;
+    let isUnavailable = false;
+    function reportMissingBacktest(error: unknown): never {
+      if (
+        revision === detailRevision &&
+        !isUnavailable &&
+        error instanceof HttpResponseError &&
+        error.status === 404
+      ) {
+        isUnavailable = true;
+        callbacks.unavailable(backtestId);
+      }
+      throw error;
+    }
     try {
       const [backtest, loadedMembers, loadedEvents] = await Promise.all([
-        getBacktest(backtestId),
-        listBacktestMembers(backtestId),
-        listBacktestEvents(backtestId),
+        getBacktest(backtestId).catch(reportMissingBacktest),
+        listBacktestMembers(backtestId).catch(reportMissingBacktest),
+        listBacktestEvents(backtestId).catch(reportMissingBacktest),
       ]);
       if (revision !== detailRevision) return;
       for (const command of ['pause', 'resume', 'cancel'] as const) {
@@ -240,11 +253,7 @@ export function useBacktestInspection(
       events.value = loadedEvents;
       callbacks.members(backtestId, loadedMembers);
     } catch (error) {
-      if (revision === detailRevision) {
-        if (error instanceof HttpResponseError && error.status === 404) {
-          callbacks.unavailable(backtestId);
-          return;
-        }
+      if (revision === detailRevision && !isUnavailable) {
         detailError.value =
           error instanceof Error ? error.message : 'Read failed';
       }
