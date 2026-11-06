@@ -1,7 +1,11 @@
 import { createPinia, setActivePinia, disposePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import { fetchAvailableIndicators } from '@/api/indicatorClient';
+import {
+  fetchAvailableIndicators,
+  requestIndicator,
+} from '@/api/indicatorClient';
+import { wsService } from '@/utils/websocketService';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { IndicatorInfo } from '@/types/contracts';
 import { STORAGE_KEYS } from '@/utils/localStorage';
@@ -26,6 +30,8 @@ const info: IndicatorInfo = {
 describe('persisted manual indicators', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.mocked(requestIndicator).mockReset();
+    vi.mocked(wsService.send).mockClear();
     setActivePinia(createPinia());
     vi.mocked(fetchAvailableIndicators)
       .mockReset()
@@ -67,6 +73,63 @@ describe('persisted manual indicators', () => {
       JSON.parse(localStorage.getItem(STORAGE_KEYS.INDICATORS)!).items,
     ).toHaveLength(1);
   });
+
+  it.each([true, false])(
+    'uses current live support (%s) after loading a saved indicator',
+    async (supportsLive) => {
+      const current: IndicatorInfo = {
+        ...info,
+        id: 5,
+        indicator_id: 'currency_strength',
+        name: 'Currency Strength',
+        supports_live: supportsLive,
+        outputs: { EUR: { type: 'line', plotOptions: { color: '#fff' } } },
+        parameters: {},
+      };
+      localStorage.setItem(
+        STORAGE_KEYS.INDICATORS,
+        JSON.stringify({
+          version: 1,
+          items: [
+            {
+              info: { ...current, supports_live: !supportsLive },
+              parameters: {},
+              styles: { EUR: { color: '#f00', lineWidth: 3 } },
+              paneIndex: 2,
+            },
+          ],
+        }),
+      );
+      vi.mocked(fetchAvailableIndicators).mockResolvedValue([
+        { id: 5, indicator_id: 'currency_strength', name: 'Currency Strength' },
+      ]);
+      vi.mocked(requestIndicator).mockResolvedValue({
+        data: {
+          indicator_info: current,
+          indicator_data: [{ timestamp_ms: 1000, EUR: 1.5 }],
+        },
+      });
+      const store = useIndicatorsStore();
+      await store.restorePersistedIndicators();
+      const restored = store.all[0];
+      await store.requestIndicator(restored._id, 5, {
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+        exchange: 'FX',
+      });
+      expect(restored.info.supports_live).toBe(supportsLive);
+      expect(store.liveSubscriptions.has(restored._id)).toBe(supportsLive);
+      expect(wsService.send).toHaveBeenCalledTimes(supportsLive ? 1 : 0);
+      expect(restored.styles).toEqual({ EUR: { color: '#f00', lineWidth: 3 } });
+      expect(restored.paneIndex).toBe(2);
+      expect(restored.data).toEqual([{ timestamp_ms: 1000, EUR: 1.5 }]);
+      await nextTick();
+      expect(
+        JSON.parse(localStorage.getItem(STORAGE_KEYS.INDICATORS)!).items[0].info
+          .supports_live,
+      ).toBe(supportsLive);
+    },
+  );
 
   it('retains temporary failures and skips unavailable entries', async () => {
     const saved = { info, parameters: { window: 5 }, styles: {}, paneIndex: 1 };

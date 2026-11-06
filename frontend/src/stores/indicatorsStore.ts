@@ -329,10 +329,11 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     if (isNewIndicatorRequest) {
       newLocalId = addIndicator(indicatorInfo, indicatorData, indicatorId);
     } else {
-      if (!indicators.has(_id)) {
+      const existing = indicators.get(_id);
+      if (!existing) {
         return null;
       }
-
+      existing.info = { ...indicatorInfo };
       updateIndicatorData(_id, indicatorData);
     }
 

@@ -57,7 +57,10 @@ and behavior that is easy to break when changing them.
 - Manual indicator persistence lives in `src/stores/indicators/persistence.ts`.
   Restore configurations before mounting the chart so the normal Candle session
   loads their data. Save only configuration, never series, subscriptions, or DOM
-  state; resolve saved indicator names against the current catalog. Run indicator
+  state; resolve saved indicator names against the current catalog. Indicator
+  metadata is refreshed from the history response before live subscription;
+  saved capability flags must not override the current API. Keep user parameters,
+  styles, and pane positions when refreshing metadata. Run indicator
   styles and pane positions belong to the selected run and survive mismatched
   chart contexts. Partial restoration logs failures without new UI warnings;
   transient read failures retain saved intent for the next refresh.
