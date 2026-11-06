@@ -158,11 +158,7 @@ export function useBacktestWorkspace() {
         (backtest) => backtest.backtest_id === selectedBacktestId.value,
       )
     ) {
-      selectedBacktestId.value = null;
-      backtestMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
+      resetInspection(null);
       selectionNotice.value = 'The selected Backtest is no longer available.';
     }
     if (selectedBacktestId.value && selectedRunId.value)
@@ -170,16 +166,19 @@ export function useBacktestWorkspace() {
   }
   function redirectUnavailableBacktest(backtestId: string): void {
     if (selectedBacktestId.value === backtestId) {
-      selectedBacktestId.value = null;
-      backtestMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
+      resetInspection(null);
       logRun.value = null;
     }
     if (router.currentRoute?.value.params.id === backtestId) {
       void router.replace('/');
     }
+  }
+  function resetInspection(backtestId: string | null): void {
+    selectedBacktestId.value = backtestId;
+    backtestMembers.value = [];
+    workspaceStore.clearSelection();
+    ++detailSequence;
+    setComparison([]);
   }
   function refreshWorkspace(): Promise<void> {
     isRefreshing.value = true;
@@ -212,11 +211,7 @@ export function useBacktestWorkspace() {
 
   async function createdBacktest(backtestId: string): Promise<void> {
     finishCreation();
-    selectedBacktestId.value = backtestId;
-    backtestMembers.value = [];
-    workspaceStore.clearSelection();
-    ++detailSequence;
-    setComparison([]);
+    resetInspection(backtestId);
     showAnalysis(backtestId);
     await refreshWorkspace();
   }
@@ -229,11 +224,7 @@ export function useBacktestWorkspace() {
     const select = () => {
       selectionNotice.value = null;
       showAnalysis(rowKey(entry));
-      selectedBacktestId.value = entry.backtest.backtest_id;
-      backtestMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
+      resetInspection(entry.backtest.backtest_id);
     };
     return {
       'data-testid': `workspace-backtest-${entry.backtest.backtest_id}`,
@@ -260,11 +251,7 @@ export function useBacktestWorkspace() {
         (member) => member.run_id === overlayStore.selectedRunId,
       );
     if (selectedBacktestId.value === backtest.backtest_id) {
-      selectedBacktestId.value = null;
-      backtestMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
+      resetInspection(null);
       logRun.value = null;
       selectionNotice.value = 'The deleted Backtest is no longer selected.';
     }
@@ -325,11 +312,7 @@ export function useBacktestWorkspace() {
       const id = String(params.id);
       page.value = 'analysis';
       if (selectedBacktestId.value === id) return;
-      selectedBacktestId.value = id;
-      backtestMembers.value = [];
-      workspaceStore.clearSelection();
-      ++detailSequence;
-      setComparison([]);
+      resetInspection(id);
     },
     { immediate: true },
   );
