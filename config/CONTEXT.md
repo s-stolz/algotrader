@@ -58,4 +58,4 @@ Service package metadata owns direct dependencies. The root shared constraints
 and optional service replacements own installed versions. Host and Docker
 installations use `scripts/python_environment.py`; see the
 [installation workflow](../README.md#shared-constraints-and-service-packages).
-Services use separate Python 3.12 environments because several own an `app` package.
+Services use separate Python 3.12–3.15 environments (containers use 3.15.2) because several own an `app` package.

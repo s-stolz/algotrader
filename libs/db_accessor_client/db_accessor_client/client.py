@@ -25,7 +25,7 @@ def _candles_to_dataframe(
     df = pd.DataFrame(data)
     if not df.empty and "timestamp_ms" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp_ms"], unit="ms", utc=True)
-        df.set_index("timestamp", inplace=True)
+        df = df.set_index("timestamp")
         if not include_timestamp_ms:
             df = df.drop(columns=["timestamp_ms"])
     return df

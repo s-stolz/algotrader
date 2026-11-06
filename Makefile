@@ -1,5 +1,5 @@
 ifneq ($(wildcard .venv/bin/python),)
-PYTHON ?= .venv/bin/python
+PYTHON ?= $(CURDIR)/.venv/bin/python
 else
 PYTHON ?= python3
 endif

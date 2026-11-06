@@ -7,7 +7,7 @@ name = "indicator-engine"
 version = "0.0.0"
 description = "NumPy-first indicator engine"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.16"
 dependencies = [
     "numpy>=2.2.6",
     "pandas>=2.3.2",

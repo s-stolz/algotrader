@@ -16,6 +16,25 @@ class _FakeClient:
 
 
 class TestDatabaseAccessorHistoricalDataAdapter(unittest.TestCase):
+    def test_datetime_index_resolution_preserves_epoch_milliseconds(self) -> None:
+        for unit in ("ms", "us", "ns"):
+            with self.subTest(unit=unit):
+                source = pd.DataFrame(
+                    {name: [1.0, 2.0] for name in ("open", "high", "low", "close", "volume")},
+                    index=pd.date_range("2026-01-01", periods=2, freq="min", tz="UTC").as_unit(
+                        unit
+                    ),
+                )
+                adapter = DatabaseAccessorHistoricalDataAdapter(client=_FakeClient(source))
+                bars = adapter.fetch_bars(
+                    symbol="EURUSD",
+                    timeframe="M1",
+                    start_ms=1767225600000,
+                    end_ms=1767225720000,
+                    exchange="FX",
+                )
+                self.assertEqual(bars["timestamp_ms"].tolist(), [1767225600000, 1767225660000])
+
     def test_fetch_bars_maps_request_and_response_shape(self) -> None:
         source = pd.DataFrame(
             {

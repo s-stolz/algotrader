@@ -125,7 +125,7 @@ def _recover_warmup_history(
     while (
         missing_bars := warmup_bars
         - 1
-        - int((normalized["timestamp_ms"] < int(request.start_ms)).sum())
+        - len(normalized.loc[normalized["timestamp_ms"] < int(request.start_ms)])
     ) > 0:
         prior = adapter.fetch_bars(
             symbol=symbol,

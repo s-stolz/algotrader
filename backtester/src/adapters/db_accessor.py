@@ -128,8 +128,7 @@ def _map_to_canonical_bar_frame(*, candles: pd.DataFrame, symbol: str) -> pd.Dat
     mapped = candles.copy()
     if "timestamp_ms" not in mapped.columns:
         if isinstance(mapped.index, pd.DatetimeIndex):
-            timestamp_ns = mapped.index.to_series().astype("int64")
-            mapped["timestamp_ms"] = (timestamp_ns // 1_000_000).to_numpy(dtype="int64")
+            mapped["timestamp_ms"] = mapped.index.as_unit("ms").asi8
         else:
             raise ValueError(
                 "Candles payload does not include timestamp_ms and index is not DatetimeIndex"

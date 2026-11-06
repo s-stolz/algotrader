@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "realtime-service"
 version = "0.0.0"
 description = "WebSocket server for real-time market data streaming"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.16"
 dependencies = [
     "algotrader-logger",
     "websockets>=16.0",

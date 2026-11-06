@@ -1,7 +1,7 @@
 -e ./libs/db_accessor_client
 -e ./libs/indicator_engine
 -e ./libs/algotrader_logger
-black>=24.4.2
-ruff>=0.14.11
-pyright==1.1.409
+black==26.10.1
+ruff==0.17.4
+pyright==1.1.414
 PyYAML>=6.0

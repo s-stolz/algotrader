@@ -260,6 +260,7 @@ class LiveIndicatorManager:
             self._redis = await aioredis.from_url(
                 f"redis://{self.redis_host}:{self.redis_port}",
                 decode_responses=True,
+                protocol=2,
                 socket_timeout=_redis_socket_timeout_seconds(self.redis_block_ms),
             )
         redis = self._redis

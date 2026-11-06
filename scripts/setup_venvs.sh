@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${PYTHON:-python3.12}"
+PYTHON_BIN="${PYTHON:-python3.15}"
 ENVIRONMENT_TOOL="${SCRIPT_DIR}/python_environment.py"
 
 SERVICES=(
@@ -102,7 +102,7 @@ install_service() {
   fi
   (
     cd "${service_dir}"
-    "${python_in_venv}" "${ENVIRONMENT_TOOL}" install "${service}"
+    "${python_in_venv}" "${ENVIRONMENT_TOOL}" install "${service}" --dev
   )
 
 }

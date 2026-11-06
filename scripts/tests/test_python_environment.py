@@ -66,13 +66,13 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertIn("httpx>=1", dependency_arguments)
 
     def test_wrong_python_version_is_rejected(self):
-        for version in ((3, 11), (3, 13)):
+        for version in ((3, 11), (3, 16)):
             with (
                 self.subTest(version=version),
                 patch.object(environment.sys, "version_info", version),
             ):
                 with self.assertRaisesRegex(ValueError, "Python 3.12"):
-                    environment.require_python312()
+                    environment.require_supported_python()
 
     def test_check_rejects_version_drift_even_if_pip_would_accept_it(self):
         with (

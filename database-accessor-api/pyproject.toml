@@ -9,7 +9,7 @@ description = "Database accessor API for algotrader"
 authors = [{ name = "Sebastian Stolz", email = "admin@tradingnerd.io" }]
 license = { text = "MIT" }
 readme = "CONTEXT.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.16"
 dependencies = [
     "algotrader-logger",
     "fastapi",
@@ -25,6 +25,7 @@ Repository = "https://github.com/s-stolz/algotrader"
 
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.28.1",
     "ruff>=0.14.11",
     "black>=24.4.2",
 ]

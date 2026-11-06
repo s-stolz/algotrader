@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "db-accessor-client"
 version = "0.1.0"
 description = "Shared HTTP client for database-accessor-api"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.16"
 dependencies = [
     "httpx>=0.28.1",
     "pandas>=2.3.0",

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "algotrader-logger"
 version = "0.1.0"
 description = "Shared logging package for algotrader Python services"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.16"
 
 [tool.setuptools.packages.find]
 where = ["."]

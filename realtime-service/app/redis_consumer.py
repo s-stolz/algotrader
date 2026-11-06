@@ -44,6 +44,7 @@ class RedisConsumer:
             self.redis = await aioredis.from_url(
                 f"redis://{self.redis_host}:{self.redis_port}",
                 decode_responses=True,
+                protocol=2,
                 socket_timeout=self._redis_socket_timeout_seconds(self.block_ms),
             )
             ping_result = self.redis.ping()

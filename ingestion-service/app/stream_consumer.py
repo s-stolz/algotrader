@@ -5,7 +5,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from itertools import groupby
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 from redis.asyncio import Redis
 
@@ -200,10 +200,13 @@ class StreamConsumer:
                     interruption = None
                 stage = "redis-read-failure" if messages is None else "live-write-failure"
                 if messages is None:
-                    messages = await self.redis.xread(
-                        {stream_key: last_id},
-                        count=self.batch_size,
-                        block=self.block_ms,
+                    messages = cast(
+                        list[tuple[Any, list[tuple[Any, Any]]]],
+                        await self.redis.xread(
+                            {stream_key: last_id},
+                            count=self.batch_size,
+                            block=self.block_ms,
+                        ),
                     )
 
                 if not messages:

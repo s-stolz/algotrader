@@ -118,6 +118,7 @@ class IngestionService:
         self.redis = Redis.from_url(
             self.config.redis_url,
             decode_responses=False,
+            protocol=2,
             socket_timeout=self._redis_socket_timeout_seconds(self.config.consumer_block_ms),
         )
         self.markets = await self._own_task(self._load_markets())

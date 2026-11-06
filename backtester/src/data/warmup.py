@@ -91,8 +91,8 @@ def trim_bars_for_execution(
     trimmed = trimmed.loc[
         (trimmed["timestamp_ms"] >= int(start_ms)) & (trimmed["timestamp_ms"] < int(end_ms))
     ].copy()
-    trimmed.sort_values("timestamp_ms", kind="mergesort", inplace=True)
-    trimmed.reset_index(drop=True, inplace=True)
+    trimmed = trimmed.sort_values("timestamp_ms", kind="mergesort")
+    trimmed = trimmed.reset_index(drop=True)
 
     if trimmed.empty:
         raise ValueError(

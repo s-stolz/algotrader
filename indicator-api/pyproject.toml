@@ -9,7 +9,7 @@ description = "Indicator API for algotrader"
 authors = [{ name = "Sebastian Stolz", email = "admin@tradingnerd.io" }]
 license = { text = "MIT" }
 readme = "CONTEXT.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.16"
 dependencies = [
     "algotrader-logger",
     "db-accessor-client",

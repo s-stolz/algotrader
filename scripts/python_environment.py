@@ -27,9 +27,9 @@ def normalize_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def require_python312() -> None:
-    if sys.version_info[:2] != (3, 12):
-        raise ValueError("Use Python 3.12 for repository environments.")
+def require_supported_python() -> None:
+    if not (3, 12) <= sys.version_info[:2] < (3, 16):
+        raise ValueError("Use Python 3.12 through 3.15 for repository environments.")
 
 
 def read_pins(path: Path, *, require_reason: bool = False) -> dict[str, str]:
@@ -107,13 +107,15 @@ def service_install_arguments(
     return arguments
 
 
-def install(target: str, *, dependencies_only: bool = False) -> None:
+def install(target: str, *, dependencies_only: bool = False, dev: bool = False) -> None:
     pins = effective_pins(target)
     arguments = (
         ["-r", str(ROOT / "requirements.root.txt")]
         if target == "root"
         else service_install_arguments(target, dependencies_only=dependencies_only)
     )
+    if dev and target != "root":
+        arguments.extend(project(ROOT / target).get("optional-dependencies", {}).get("dev", []))
     with tempfile.TemporaryDirectory(prefix="algotrader-constraints-") as directory:
         constraints = Path(directory) / "constraints.txt"
         constraints.write_text("".join(f"{name}=={version}\n" for name, version in pins.items()))
@@ -152,14 +154,15 @@ def main() -> None:
     parser.add_argument("command", choices=("install", "check", "version"))
     parser.add_argument("target", nargs="?", choices=("root", *SERVICES))
     parser.add_argument("--dependencies-only", action="store_true")
+    parser.add_argument("--dev", action="store_true", help="Install service development dependencies")
     args = parser.parse_args()
-    require_python312()
+    require_supported_python()
     if args.command == "version":
         return
     if args.target is None:
         parser.error("install/check requires a target")
     if args.command == "install":
-        install(args.target, dependencies_only=args.dependencies_only)
+        install(args.target, dependencies_only=args.dependencies_only, dev=args.dev)
     else:
         check(args.target, require_service=not args.dependencies_only)
 

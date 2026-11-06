@@ -55,8 +55,8 @@ def run_event_driven_backtest(
     normalized = normalized.loc[normalized["timestamp_ms"] < int(request.end_ms)].copy()
     if normalized.empty:
         raise ValueError("No bars found before request end_ms for event-driven execution")
-    normalized.sort_values("timestamp_ms", kind="mergesort", inplace=True)
-    normalized.reset_index(drop=True, inplace=True)
+    normalized = normalized.sort_values("timestamp_ms", kind="mergesort")
+    normalized = normalized.reset_index(drop=True)
 
     run_result = _run_event_driven_loop(
         request=request,

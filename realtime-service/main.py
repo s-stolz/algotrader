@@ -71,6 +71,7 @@ class WebSocketServer:
                     f"redis://{self.config['redis_host']}:{self.config['redis_port']}/0",
                 ),
                 decode_responses=True,
+                protocol=2,
                 socket_connect_timeout=3,
                 socket_timeout=5,
             )

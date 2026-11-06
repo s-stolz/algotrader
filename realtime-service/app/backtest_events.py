@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from typing import cast
 
 from redis.asyncio import Redis
 
@@ -50,11 +51,16 @@ class BacktestEventBridge:
                 # Establish a concrete cursor before advertising continuity. Every
                 # subscriber refreshes a snapshot on (re)connection; old events
                 # need not be replayed into browser state.
-                tail = await self._redis.xrevrange(_STREAM, count=1)
+                tail = cast(
+                    list[tuple[str, dict[str, str]]], await self._redis.xrevrange(_STREAM, count=1)
+                )
                 cursor = tail[0][0] if tail else "0-0"
                 await self._connection(True)
                 while True:
-                    rows = await self._redis.xread({_STREAM: cursor}, block=1000, count=100)
+                    rows = cast(
+                        list[tuple[str, list[tuple[str, dict[str, str]]]]],
+                        await self._redis.xread({_STREAM: cursor}, block=1000, count=100),
+                    )
                     for _, messages in rows:
                         for message_id, fields in messages:
                             message = json.loads(fields["payload"])

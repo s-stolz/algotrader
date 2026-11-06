@@ -336,8 +336,8 @@ def _normalize_bars(*, bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
     if filtered.empty:
         raise ValueError(f"No bars found for symbol {symbol}")
 
-    filtered.sort_values("timestamp_ms", inplace=True)
-    filtered.reset_index(drop=True, inplace=True)
+    filtered = filtered.sort_values("timestamp_ms")
+    filtered = filtered.reset_index(drop=True)
 
     return filtered
 
