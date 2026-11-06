@@ -76,10 +76,6 @@ export class IndicatorManager {
       return;
     }
 
-    if (!data.length) {
-      return;
-    }
-
     for (const [outputKey, outputInfo] of Object.entries(info.outputs)) {
       if (outputKey === 'timestamp') {
         continue;
@@ -91,27 +87,25 @@ export class IndicatorManager {
 
       const transformedData = this.transformIndicatorData(data, outputKey);
 
-      if (transformedData.length > 0) {
-        const seriesOptions: ChartSeriesOptions = {
-          crosshairMarkerVisible: false,
-          lastValueVisible: false,
-          priceLineVisible: false,
-          ...toChartSeriesOptions(
-            indicator.styles[outputKey] ?? outputInfo.plotOptions,
-          ),
-          ...this.priceOptions(paneIndex),
-        };
-        const seriesKey = `${id}_${outputKey}`;
-        if (this.chartManager.series.has(seriesKey)) continue;
+      const seriesOptions: ChartSeriesOptions = {
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        ...toChartSeriesOptions(
+          indicator.styles[outputKey] ?? outputInfo.plotOptions,
+        ),
+        ...this.priceOptions(paneIndex),
+      };
+      const seriesKey = `${id}_${outputKey}`;
+      if (this.chartManager.series.has(seriesKey)) continue;
 
-        this.chartManager.addSeries(
-          seriesKey,
-          outputInfo.type,
-          transformedData,
-          seriesOptions,
-          paneIndex,
-        );
-      }
+      this.chartManager.addSeries(
+        seriesKey,
+        outputInfo.type,
+        transformedData,
+        seriesOptions,
+        paneIndex,
+      );
     }
     await this.updateMissingPaneHtmlElements();
   }

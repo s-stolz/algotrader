@@ -133,7 +133,14 @@ describe('IndicatorManager', () => {
       },
       1,
     );
-    expect(chartManager.addSeries).toHaveBeenCalledTimes(1);
+    expect(chartManager.addSeries).toHaveBeenCalledTimes(2);
+    expect(chartManager.addSeries).toHaveBeenCalledWith(
+      `${indicatorId}_signal`,
+      'histogram',
+      [],
+      expect.any(Object),
+      1,
+    );
   });
 
   it('updates styles and data, applies live points, and removes series', () => {

@@ -27,7 +27,7 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-it('creates restored series and their pane when history arrives after mount', async () => {
+it('creates a restored pane immediately and fills it when history arrives', async () => {
   const store = useIndicatorsStore();
   const id = store.addIndicator(info, [], 1);
   const pane = document.createElement('div');
@@ -61,16 +61,20 @@ it('creates restored series and their pane when history arrives after mount', as
     },
   });
   await flushPromises();
-  expect(chart.getPaneHtmlElement).not.toHaveBeenCalled();
-  store.updateIndicatorData(id, [{ timestamp_ms: 1000, eur: 1 }]);
-  await flushPromises();
+  expect(store.getById(id)!.paneHtmlElement).toBe(pane);
   expect(chart.addSeries).toHaveBeenCalledWith(
     `${id}_eur`,
     'line',
-    [{ time: 1, value: 1 }],
+    [],
     expect.any(Object),
     1,
   );
+  store.updateIndicatorData(id, [{ timestamp_ms: 1000, eur: 1 }]);
+  await flushPromises();
+  expect(chart.addSeries).toHaveBeenCalledOnce();
+  expect(chart.setSeriesData).toHaveBeenCalledWith(`${id}_eur`, [
+    { time: 1, value: 1 },
+  ]);
   expect(store.getById(id)!.paneHtmlElement).toBe(pane);
   store.updateIndicatorData(id, [{ timestamp_ms: 1000, eur: 2 }]);
   await flushPromises();
