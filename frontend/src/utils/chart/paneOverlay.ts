@@ -26,7 +26,7 @@ export function getOrCreatePaneOverlayWrapper(
     top: 10px;
     left: 0px;
     z-index: 1000;
-    max-width: 350px;
+    max-width: 100%;
   `;
   paneHtmlElement.appendChild(wrapper);
 

@@ -124,28 +124,33 @@ function onRemoveIndicator(): void {
 
 <style scoped>
 .indicator-name {
+  min-width: 0;
   font-size: var(--design-text-body);
   white-space: nowrap;
-  overflow: ellipsis;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .indicator-panel {
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 100%;
   background: var(--design-color-panel);
   border: 1px solid var(--design-color-border);
   border-radius: var(--design-radius-panel);
   padding: var(--design-space-sm) var(--design-space-md);
   margin-bottom: var(--design-space-sm);
-  min-width: 300px;
 }
 
 .indicator-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: var(--design-space-md);
 }
 
 .indicator-controls {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--design-space-xs);
 }
