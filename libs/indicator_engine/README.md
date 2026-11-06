@@ -213,6 +213,11 @@ Presentation keys must match spec outputs. Outputs without individual styles rem
 in metadata with empty styles, supporting compound renderers such as opening range.
 A new renderer type still requires a corresponding frontend renderer.
 
+Histogram `plotOptions` may include `negativeColor` for values below zero;
+`color` applies to zero and positive values. Without `negativeColor`, all bars
+use `color`. The frontend maps this palette to per-point colors and merges
+saved style overrides with current catalog defaults.
+
 Live eligibility is a service capability, not `supports_update`: the live adapter
 supports batch fallback, but some multi-input/history requirements are unsupported.
 Declare eligibility explicitly and test the live adapter before enabling it.

@@ -109,7 +109,11 @@ MACD_REGISTRATION = IndicatorRegistration(
     outputs={
         "hist": {
             "type": "histogram",
-            "plotOptions": {"color": "#089981", "priceFormat": {"minMove": 1e-05}},
+            "plotOptions": {
+                "color": "#089981",
+                "negativeColor": "#f23645",
+                "priceFormat": {"minMove": 1e-05},
+            },
         },
         "macd": {
             "type": "line",

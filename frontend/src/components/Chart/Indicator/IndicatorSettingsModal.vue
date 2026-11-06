@@ -38,6 +38,7 @@
 import { NConfigProvider } from 'naive-ui';
 import { indicatorControlTheme } from './indicatorControlTheme';
 import { computed } from 'vue';
+import { resolveIndicatorPlotStyle } from '@/utils/chart/indicatorPlotStyle';
 import { NTabs, NTabPane } from 'naive-ui';
 
 import BaseModal from '@/components/Common/BaseModal.vue';
@@ -67,7 +68,7 @@ const indicatorInfo = computed(() => ({
       {
         ...output,
         ...(output.plotOptions
-          ? { plotOptions: props.indicator.styles[key] ?? output.plotOptions }
+          ? { plotOptions: resolveIndicatorPlotStyle(props.indicator, key) }
           : {}),
       },
     ]),

@@ -23,7 +23,11 @@
             v-if="typeof value !== 'object' || value === null"
             class="output-style-option"
           >
-            <td>{{ styleLabel(styleKey) }}</td>
+            <td>{{
+              styleKey === 'color' && output.plotOptions?.negativeColor
+                ? 'Zero and above'
+                : styleLabel(styleKey)
+            }}</td>
 
             <td v-if="typeof value === 'boolean'">
               <BaseCheckbox
@@ -149,6 +153,7 @@ function styleLabel(key: StyleKey): string {
     showExtensions: 'Show extensions',
     fillColor: 'Fill color',
     color: 'Color',
+    negativeColor: 'Below zero',
     lineWidth: 'Line width',
   };
   return labels[String(key)] ?? String(key);

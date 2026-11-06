@@ -4,6 +4,10 @@ import { isChartSeriesType } from './seriesTypes';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { IndicatorDataPoint, JsonObject } from '@/types/contracts';
 import { OpeningRangeOverlays } from './openingRange/lifecycle';
+import {
+  colorIndicatorPoint,
+  resolveIndicatorPlotStyle,
+} from './indicatorPlotStyle';
 
 import type {
   ChartSeriesInfo,
@@ -34,7 +38,9 @@ type IndicatorsStore = ReturnType<typeof useIndicatorsStore>;
 function toChartSeriesOptions(
   options: JsonObject | undefined,
 ): ChartSeriesOptions {
-  return options ? ({ ...options } as ChartSeriesOptions) : {};
+  const chartOptions = { ...options };
+  delete chartOptions.negativeColor;
+  return chartOptions as ChartSeriesOptions;
 }
 
 export class IndicatorManager {
@@ -69,15 +75,19 @@ export class IndicatorManager {
         continue;
       }
 
-      const transformedData = this.transformIndicatorData(data, outputKey);
+      const style = resolveIndicatorPlotStyle(indicator, outputKey);
+      const transformedData = this.transformIndicatorData(
+        data,
+        outputKey,
+        outputInfo.type,
+        style,
+      );
 
       const seriesOptions: ChartSeriesOptions = {
         crosshairMarkerVisible: false,
         lastValueVisible: false,
         priceLineVisible: false,
-        ...toChartSeriesOptions(
-          indicator.styles[outputKey] ?? outputInfo.plotOptions,
-        ),
+        ...toChartSeriesOptions(style),
         ...this.priceOptions(paneIndex),
       };
       const seriesKey = `${id}_${outputKey}`;
@@ -115,6 +125,8 @@ export class IndicatorManager {
   transformIndicatorData(
     data: readonly IndicatorDataPoint[],
     outputKey: string,
+    outputType?: string,
+    style?: JsonObject,
   ): ChartValuePoint[] {
     const points: ChartValuePoint[] = [];
 
@@ -130,7 +142,7 @@ export class IndicatorManager {
         continue;
       }
 
-      points.push({ time, value });
+      points.push(colorIndicatorPoint({ time, value }, outputType, style));
     }
 
     return points;
@@ -139,7 +151,7 @@ export class IndicatorManager {
   updateIndicatorStyles(
     id: string,
     outputKey: string,
-    newStyles: ChartSeriesOptions,
+    newStyles: ChartSeriesOptions & { negativeColor?: string },
   ): boolean {
     const indicator = this.indicatorsStore.getById(id);
     if (indicator) indicator.styles[outputKey] = { ...newStyles } as JsonObject;
@@ -148,8 +160,20 @@ export class IndicatorManager {
       return true;
     }
     const seriesKey = `${id}_${outputKey}`;
+    const style = indicator
+      ? resolveIndicatorPlotStyle(indicator, outputKey)
+      : (newStyles as JsonObject);
+    const series = this.chartManager.series.get(seriesKey);
+    if (series?.type === 'histogram') {
+      this.chartManager.setSeriesData(
+        seriesKey,
+        series.data
+          .filter((point): point is ChartValuePoint => 'value' in point)
+          .map((point) => colorIndicatorPoint(point, series.type, style)),
+      );
+    }
     return this.chartManager.updateSeriesOptions(seriesKey, {
-      ...newStyles,
+      ...toChartSeriesOptions(style),
       ...this.priceOptions(indicator?.paneIndex),
     });
   }
@@ -184,7 +208,12 @@ export class IndicatorManager {
       if (indicator.paneIndex === 0) {
         this.chartManager.updateSeriesOptions(seriesKey, this.priceOptions(0));
       }
-      const transformed = this.transformIndicatorData(data, outputKey);
+      const transformed = this.transformIndicatorData(
+        data,
+        outputKey,
+        info.outputs[outputKey]?.type,
+        resolveIndicatorPlotStyle(indicator, outputKey),
+      );
       this.chartManager.setSeriesData(seriesKey, transformed);
     }
   }
@@ -214,7 +243,14 @@ export class IndicatorManager {
       }
 
       const seriesKey = `${id}_${outputKey}`;
-      this.chartManager.updateSeriesPoint(seriesKey, { time, value });
+      this.chartManager.updateSeriesPoint(
+        seriesKey,
+        colorIndicatorPoint(
+          { time, value },
+          indicator.info.outputs[outputKey]?.type,
+          resolveIndicatorPlotStyle(indicator, outputKey),
+        ),
+      );
     }
   }
 

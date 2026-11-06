@@ -180,6 +180,7 @@
         "hist": {
           "plotOptions": {
             "color": "#089981",
+            "negativeColor": "#f23645",
             "priceFormat": {
               "minMove": 1e-05
             }

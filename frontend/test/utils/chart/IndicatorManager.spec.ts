@@ -183,6 +183,7 @@ describe('IndicatorManager', () => {
       `${indicatorId}_sma`,
       {
         color: '#0f0',
+        lineWidth: 2,
       },
     );
     expect(chartManager.setSeriesData).toHaveBeenCalledWith(

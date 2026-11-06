@@ -6,6 +6,10 @@ and behavior that is easy to break when changing them.
 
 ## Chart Sessions and Overlays
 
+- Histogram sign palettes follow the shared [catalog presentation contract](../libs/indicator_engine/README.md#adding-an-indicator).
+  `utils/chart/indicatorPlotStyle.ts` resolves saved styles over current defaults
+  and colors historical/live points. Palette edits recolor displayed series data.
+
 - `src/components/Chart/ChartArea.vue` wires rendering and lifecycle adapters;
   `chartSession.ts` beside it owns market/timeframe transitions, live Candle
   subscriptions, fetch guards, live-tail buffering, and older-history paging.

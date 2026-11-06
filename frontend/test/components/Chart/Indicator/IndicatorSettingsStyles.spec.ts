@@ -114,6 +114,36 @@ const indicatorInfo: IndicatorInfo = {
 };
 
 describe('IndicatorSettingsStyles', () => {
+  it('edits the histogram colors independently', async () => {
+    const wrapper = mount(IndicatorSettingsStyles, {
+      props: {
+        indicatorInfo: {
+          ...indicatorInfo,
+          outputs: {
+            hist: {
+              type: 'histogram',
+              plotOptions: {
+                color: '#089981',
+                negativeColor: '#f23645',
+              },
+            },
+          },
+        },
+      },
+      global: { stubs: { BaseColorPicker: NColorPickerStub } },
+    });
+    expect(wrapper.text()).toContain('Zero and above');
+    expect(wrapper.text()).toContain('Below zero');
+    await wrapper.findAll('input.color-picker')[1].setValue('#ff0000');
+    expect(wrapper.emitted('update-styles')).toEqual([
+      [
+        {
+          outputKey: 'hist',
+          styles: { color: '#089981', negativeColor: '#ff0000' },
+        },
+      ],
+    ]);
+  });
   it('exposes a labeled extension toggle and omits calculation-only outputs', async () => {
     const wrapper = mount(IndicatorSettingsStyles, {
       props: {
