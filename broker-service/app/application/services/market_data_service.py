@@ -41,24 +41,6 @@ class MarketDataService:
     async def tick_stream_status(self, account_id: AccountId, symbol: str) -> TickStreamStatus:
         return await self._streams.get_tick_stream_status(account_id, symbol)
 
-    async def get_trendbars(
-        self,
-        account_id: AccountId,
-        symbol: str,
-        timeframe: Timeframe,
-        from_ts: int,
-        to_ts: int | None,
-        limit: int | None,
-    ) -> list[Trendbar]:
-        return await self._market_data_port.get_trendbars(
-            account_id,
-            symbol,
-            timeframe,
-            from_ts,
-            to_ts,
-            limit,
-        )
-
     def stream_trendbars(
         self,
         account_id: AccountId,

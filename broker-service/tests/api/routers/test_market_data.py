@@ -16,7 +16,7 @@ from app.domain.value_objects import AccountId, SymbolDescriptor, SymbolId, Time
 from app.infrastructure.ctrader_client import CtraderClient
 from app.settings import CtraderCredentials
 from ctrader_open_api.messages import OpenApiMessages_pb2, OpenApiModelMessages_pb2
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 
 from .fakes import FakeMarketDataService
 
@@ -33,30 +33,6 @@ class MarketDataRouterTests(unittest.IsolatedAsyncioTestCase):
     async def test_get_symbol_shape(self) -> None:
         response = await market_data.get_symbol("EURUSD", AccountId(123), FakeMarketDataService())
         self.assertIn("symbol_id", response)
-
-    async def test_get_trendbars_excludes_digits(self) -> None:
-        response = await market_data.get_trendbars(
-            symbol="EURUSD",
-            timeframe=Timeframe.M1,
-            from_ts=None,
-            to_ts=None,
-            limit=1,
-            account_id=AccountId(123),
-            service=FakeMarketDataService(),
-        )
-        self.assertNotIn("digits", response[0])
-
-    async def test_get_trendbars_requires_from_or_limit(self) -> None:
-        with self.assertRaises(HTTPException):
-            await market_data.get_trendbars(
-                symbol="EURUSD",
-                timeframe=Timeframe.M1,
-                from_ts=None,
-                to_ts=None,
-                limit=None,
-                account_id=AccountId(123),
-                service=FakeMarketDataService(),
-            )
 
     async def test_start_trendbar_stream_without_only_completed_bars(self) -> None:
         response = await market_data.start_trendbar_stream(
@@ -205,15 +181,6 @@ class HistoryContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.consume(provider), [])
         self.assertEqual(len(calls), 1)
 
-    async def test_limited_count_response_respects_lower_bound(self):
-        provider, _ = provider_history(
-            [0, 60000, 120000], page_limit=10000, count_ignores_start=True
-        )
-        bars = await provider.get_trendbars(
-            AccountId(123), "EURUSD", Timeframe.M1, 120000, 180000, 10
-        )
-        self.assertEqual([bar.t for bar in bars], [120000])
-
     async def test_provider_failure_after_first_page_reaches_ingestion(self):
         provider, _ = provider_history([60000, 120000, 180000], fail_after=1)
         with self.assertRaises(RuntimeError):
@@ -270,13 +237,6 @@ class HistoryContractTests(unittest.IsolatedAsyncioTestCase):
                         ]
                 finally:
                     await client.aclose()
-
-    async def test_limited_history_keeps_newest_candles_despite_provider_cap(self):
-        provider, _ = provider_history([60000, 120000, 180000])
-        bars = await provider.get_trendbars(
-            AccountId(123), "EURUSD", Timeframe.M1, 60000, 180000, 2
-        )
-        self.assertEqual([bar.t for bar in bars], [120000, 180000])
 
 
 if __name__ == "__main__":

@@ -63,17 +63,6 @@ class MarketDataPort(Protocol):
     """Market data operations exposed by broker."""
 
     @abstractmethod
-    async def get_trendbars(
-        self,
-        account_id: AccountId,
-        symbol: str,
-        timeframe: Timeframe,
-        from_ts: int,
-        to_ts: int | None,
-        limit: int | None,
-    ) -> list[Trendbar]: ...
-
-    @abstractmethod
     def stream_trendbars(
         self,
         account_id: AccountId,

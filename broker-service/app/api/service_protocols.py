@@ -72,16 +72,6 @@ class MarketDataServicePort(Protocol):
 
     async def tick_stream_status(self, account_id: AccountId, symbol: str) -> TickStreamStatus: ...
 
-    async def get_trendbars(
-        self,
-        account_id: AccountId,
-        symbol: str,
-        timeframe: Timeframe,
-        from_ts: int,
-        to_ts: int | None,
-        limit: int | None,
-    ) -> list[Trendbar]: ...
-
     def stream_trendbars(
         self,
         account_id: AccountId,

@@ -341,48 +341,6 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
     # ---------------------------------------------------------- MarketDataPort
 
-    async def get_trendbars(  # noqa: C901
-        self,
-        account_id: AccountId,
-        symbol: str,
-        timeframe: Timeframe,
-        from_ts: int,
-        to_ts: int | None,
-        limit: int | None,
-    ) -> list[Trendbar]:
-        """Fetch finite history, retaining newest-first selection for limited queries."""
-        if limit is not None:
-            info = await self._get_symbol(int(account_id), symbol.upper())
-            page_to = to_ts if to_ts is not None else int(time.time() * 1000)
-            bars: list[Trendbar] = []
-            while from_ts <= page_to and len(bars) < limit:
-                page = await self._fetch_trendbar_chunk(
-                    int(account_id),
-                    info.symbol_id,
-                    info.digits,
-                    timeframe,
-                    from_ts,
-                    page_to,
-                    min(10000, limit - len(bars)),
-                )
-                if not page:
-                    break
-                timestamps = [bar.t for bar in page]
-                if len(set(timestamps)) != len(timestamps) or max(timestamps) > page_to:
-                    raise RuntimeError(
-                        "cTrader historical pagination did not advance within interval"
-                    )
-                # Count-based provider pages can extend before fromTimestamp.
-                bars.extend(bar for bar in page if bar.t >= from_ts)
-                page_to = min(timestamps) - 1
-            return sorted(bars, key=lambda item: item.t)[-limit:]
-        return [
-            bar
-            async for bar in self.stream_trendbars(
-                account_id, symbol, timeframe, from_ts, to_ts, limit
-            )
-        ]
-
     async def _fetch_trendbar_chunk(
         self,
         account_id: int,
