@@ -93,13 +93,14 @@ export class IndicatorManager {
       const seriesKey = `${id}_${outputKey}`;
       if (this.chartManager.series.has(seriesKey)) continue;
 
-      this.chartManager.addSeries(
+      const series = this.chartManager.addSeries(
         seriesKey,
         outputInfo.type,
         transformedData,
         seriesOptions,
         paneIndex,
       );
+      if (outputInfo.type === 'histogram') series?.setSeriesOrder(0);
     }
     await this.updateMissingPaneHtmlElements();
   }

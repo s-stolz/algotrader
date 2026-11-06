@@ -25,6 +25,8 @@ async function setup(negativeColor: string | undefined = '#f23645') {
       inputs: [],
       parameters: {},
       outputs: {
+        macd: { type: 'line', plotOptions: { color: '#2962ff' } },
+        signal: { type: 'line', plotOptions: { color: '#f23645' } },
         hist: {
           type: 'histogram',
           plotOptions: {
@@ -32,13 +34,12 @@ async function setup(negativeColor: string | undefined = '#f23645') {
             ...(negativeColor ? { negativeColor } : {}),
           },
         },
-        signal: { type: 'line', plotOptions: { color: '#2962ff' } },
       },
     },
     [
-      { timestamp_ms: 1000, hist: -2, signal: -1 },
-      { timestamp_ms: 2000, hist: 0, signal: 0 },
-      { timestamp_ms: 3000, hist: 2, signal: 1 },
+      { timestamp_ms: 1000, hist: -2, macd: -3, signal: -1 },
+      { timestamp_ms: 2000, hist: 0, macd: 0, signal: 0 },
+      { timestamp_ms: 3000, hist: 2, macd: 3, signal: 1 },
     ],
     4,
   );
@@ -50,8 +51,8 @@ async function setup(negativeColor: string | undefined = '#f23645') {
   return { ...real, chart, manager, id, indicator, plot };
 }
 
-describe('MACD histogram colors', () => {
-  it('colors history and zero using current defaults plus saved styles', async () => {
+describe('MACD histogram rendering', () => {
+  it('renders colored history behind the MACD and signal lines', async () => {
     const test = await setup();
     try {
       expect(test.plot.data()).toEqual([
@@ -60,6 +61,12 @@ describe('MACD histogram colors', () => {
         { time: 3, value: 2, color: '#00aa00' },
       ]);
       expect(test.plot.options()).not.toHaveProperty('negativeColor');
+      expect(test.plot.seriesOrder()).toBe(0);
+      for (const output of ['macd', 'signal']) {
+        expect(
+          test.chart.series.get(`${test.id}_${output}`)!.series.seriesOrder(),
+        ).toBeGreaterThan(0);
+      }
       expect(test.chart.series.get(`${test.id}_signal`)!.series.data()).toEqual(
         [
           { time: 1, value: -1 },
