@@ -2,7 +2,7 @@ import type { MouseEventParams, Time } from 'lightweight-charts';
 import type { StoreIndicator } from '@/stores/indicatorsStore';
 import type { ChartSeriesInfo } from '@/utils/chart/ChartManager';
 import { isChartSeriesType } from '@/utils/chart/seriesTypes';
-import { rangeStyle } from '@/utils/chart/openingRange/model';
+import { buildRangeBoxes, rangeStyle } from '@/utils/chart/openingRange/model';
 
 export type IndicatorReadout = Record<string, string>;
 
@@ -61,12 +61,13 @@ export function readIndicatorValues(
   const rangePoint = isRange
     ? findRangePoint(indicator, event.time)
     : undefined;
+  const range = rangePoint ? buildRangeBoxes([rangePoint])[0] : undefined;
   return Object.fromEntries(
     getReadoutOutputs(indicator).map(({ key }) => {
       const plot = series.get(isRange ? 'ohlc' : `${indicator._id}_${key}`);
       const point = plot ? event.seriesData.get(plot.series) : undefined;
       const value = isRange
-        ? rangePoint?.[key]
+        ? range?.[key === 'range_high' ? 'high' : 'low']
         : point && point.time === event.time && 'value' in point
           ? point.value
           : undefined;

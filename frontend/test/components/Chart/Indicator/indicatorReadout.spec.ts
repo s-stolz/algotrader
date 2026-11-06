@@ -101,9 +101,15 @@ describe('indicator readouts', () => {
       },
     });
     indicator.data = [
+      { timestamp_ms: 30_000, range_high: 0, range_low: 0, ready: 0 },
       { timestamp_ms: 60_000, range_high: 12.5, range_low: 10, ready: 0 },
       { timestamp_ms: 120_000, range_high: 20, range_low: 8, ready: 1 },
-    ];
+    ].map((point) => ({
+      ...point,
+      range_start_ms: 60_000,
+      range_end_ms: 120_000,
+      extension_end_ms: 180_000,
+    }));
     try {
       manager.addSeries('ohlc', 'candlestick', [], {
         priceFormat: { type: 'price', minMove: 0.001, precision: 3 },
@@ -120,6 +126,11 @@ describe('indicator readouts', () => {
         { key: 'range_high', label: 'High', color: '#123456' },
         { key: 'range_low', label: 'Low', color: '#123456' },
       ]);
+      event.time = 30 as UTCTimestamp;
+      expect(readIndicatorValues(indicator, event, manager.series)).toEqual({
+        range_high: '—',
+        range_low: '—',
+      });
       event.time = 90 as UTCTimestamp;
       expect(readIndicatorValues(indicator, event, manager.series)).toEqual({
         range_high: '—',
