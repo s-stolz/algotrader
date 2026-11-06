@@ -49,6 +49,25 @@ export function mergeIndicatorData(
   );
 }
 
+export function mergeRecoveredIndicatorData(
+  existing: readonly IndicatorDataPoint[],
+  recovered: readonly IndicatorDataPoint[],
+  live: readonly IndicatorDataPoint[],
+): IndicatorDataPoint[] {
+  // Recovery corrects old duplicates; samples received during the request win.
+  const history = mergeIndicatorData(recovered, existing, null);
+  const merged = new Map(history.map((point) => [point.timestamp_ms, point]));
+  for (const point of live) {
+    merged.set(point.timestamp_ms, {
+      ...merged.get(point.timestamp_ms),
+      ...point,
+    });
+  }
+  return [...merged.values()].sort(
+    (left, right) => left.timestamp_ms - right.timestamp_ms,
+  );
+}
+
 export function mergeLivePoint(
   lastLivePoint: IndicatorDataPoint | null,
   message: IndicatorUpdateMessage,

@@ -7,7 +7,7 @@ import type {
 } from '@/types/contracts';
 import { wsService } from '@/utils/websocketService';
 import { extractParameterValues } from './configuration';
-import { mergeIndicatorData, mergeLivePoint } from './historyData';
+import { mergeRecoveredIndicatorData, mergeLivePoint } from './historyData';
 import type { StoreIndicator } from './types';
 
 interface RecoveryStore {
@@ -65,25 +65,12 @@ export async function recoverIndicatorHistory(
             JSON.stringify(parameters)
         )
           return;
-        // Recovery corrects old duplicates; samples received during this request win.
-        const recovered = mergeIndicatorData(
-          response.data.indicator_data,
-          indicator.data,
-          null,
-        );
-        const merged = new Map(
-          recovered.map((point) => [point.timestamp_ms, point]),
-        );
-        for (const point of live.values()) {
-          merged.set(point.timestamp_ms, {
-            ...merged.get(point.timestamp_ms),
-            ...point,
-          });
-        }
         store.updateIndicatorData(
           indicator._id,
-          [...merged.values()].sort(
-            (left, right) => left.timestamp_ms - right.timestamp_ms,
+          mergeRecoveredIndicatorData(
+            indicator.data,
+            response.data.indicator_data,
+            [...live.values()],
           ),
         );
       }),
