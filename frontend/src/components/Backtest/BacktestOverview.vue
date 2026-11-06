@@ -130,11 +130,13 @@ import { useBacktestInspection } from './inspection/useBacktestInspection';
 const emit = defineEmits<{
   members: [backtestId: string, runs: BacktestRun[]];
   cancelled: [];
+  unavailable: [backtestId: string];
 }>();
 const props = defineProps<{ backtestId: string | null }>();
 const inspection = useBacktestInspection(props, {
   members: (backtestId, runs) => emit('members', backtestId, runs),
   cancelled: () => emit('cancelled'),
+  unavailable: (backtestId) => emit('unavailable', backtestId),
 });
 const {
   selectedBacktest,

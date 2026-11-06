@@ -1,5 +1,6 @@
 import { useBacktestEvents } from '@/utils/useBacktestEvents';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
+import { HttpResponseError } from '@/api/http';
 import {
   CheckmarkCircleOutline,
   HourglassOutline,
@@ -34,6 +35,7 @@ export function useBacktestInspection(
   callbacks: {
     members: (backtestId: string, runs: BacktestRun[]) => void;
     cancelled: () => void;
+    unavailable: (backtestId: string) => void;
   },
 ) {
   const workspaceStore = useBacktestWorkspaceStore();
@@ -239,6 +241,10 @@ export function useBacktestInspection(
       callbacks.members(backtestId, loadedMembers);
     } catch (error) {
       if (revision === detailRevision) {
+        if (error instanceof HttpResponseError && error.status === 404) {
+          callbacks.unavailable(backtestId);
+          return;
+        }
         detailError.value =
           error instanceof Error ? error.message : 'Read failed';
       }
