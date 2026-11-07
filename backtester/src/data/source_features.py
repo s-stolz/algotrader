@@ -18,7 +18,8 @@ def build_source_features(
     timeframe: str,
     feature_bars: Mapping[str, pd.DataFrame],
 ) -> pd.DataFrame:
-    strategy.require_v1_parity_model()
+    if strategy.order_model is None:
+        strategy.require_v1_parity_model()
     featured = bars.copy()
     available = np.ones(len(bars), dtype=bool)
     for requirement in strategy.indicator_requirements:

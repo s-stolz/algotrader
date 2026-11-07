@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
+from domain.enums import GapPolicy
 from domain.orders import OrderCommand
 from domain.types import Fill
 from numpy.typing import NDArray
@@ -21,7 +22,7 @@ class OrderScanResult:
     ambiguous_minutes: int
 
 
-def scan_orders(
+def scan_orders(  # noqa: C901
     *,
     symbol: str,
     timestamp_ms: Sequence[int],
@@ -29,6 +30,7 @@ def scan_orders(
     commands: Sequence[OrderCommand],
     end_ms: int,
     config: OrderExecutionConfig,
+    start_ms: int | None = None,
 ) -> OrderScanResult:
     """Merge sorted close-time commands into minute bars without a nested time scan.
 
@@ -49,10 +51,23 @@ def scan_orders(
     events: list[dict[str, object]] = []
     delta, notional, fees = (np.zeros(len(timestamps), dtype=np.float64) for _ in range(3))
     cursor = 0
+    previous_end = int(timestamps[0]) if start_ms is None and len(timestamps) else (start_ms or 0)
     for index, timestamp in enumerate(timestamps):
-        while cursor < len(ordered) and ordered[cursor].effective_at_ms <= timestamp:
+        while cursor < len(ordered) and ordered[cursor].effective_at_ms < timestamp:
             state.command(ordered[cursor])
             cursor += 1
+        if timestamp > previous_end:
+            if config.gap_policy == GapPolicy.ERROR:
+                raise ValueError(f"Missing minute execution data at {previous_end}")
+            state.record(previous_end, "", "execution_gap")
+            if config.gap_policy == GapPolicy.EXPIRE:
+                for key in state.active:
+                    state.record(previous_end, key, "gap_expired")
+                state.active.clear()
+        while cursor < len(ordered) and ordered[cursor].effective_at_ms == timestamp:
+            state.command(ordered[cursor])
+            cursor += 1
+        previous_end = int(timestamp) + 60_000
         state = execute_minute(
             state, symbol=symbol, timestamp_ms=int(timestamp), prices=ohlc[index], config=config
         )
@@ -65,6 +80,10 @@ def scan_orders(
         events.extend(state.events)
         state.fills = []
         state.events = []
+    if previous_end < end_ms:
+        if config.gap_policy == GapPolicy.ERROR:
+            raise ValueError(f"Missing minute execution data at {previous_end}")
+        state.record(previous_end, "", "execution_gap")
     for key in state.active:
         state.record(end_ms, key, "run_end_expired")
     for command in ordered[cursor:]:

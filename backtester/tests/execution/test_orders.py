@@ -156,3 +156,14 @@ class OrderProtectionTests(unittest.TestCase):
         state = self.minute(state, (110, 111, 109, 110))
         self.assertEqual(state.average_entry, 105)
         self.assertEqual(state.stop_price, 94.5)
+
+
+class ExpiredOrderUpdateTests(unittest.TestCase):
+    def test_update_after_expiry_does_not_resurrect_order_across_gap(self):
+        state = OrderExecutionState()
+        order = LimitOrder("entry", OrderSide.BUY, 95, 1, expires_at_ms=120_000)
+        state.command(OrderCommand(60_000, OrderAction.SUBMIT, "entry", order))
+        updated = LimitOrder("entry", OrderSide.BUY, 99, 1, expires_at_ms=600_000)
+        state.command(OrderCommand(180_000, OrderAction.UPDATE, "entry", updated))
+        self.assertFalse(state.active)
+        self.assertEqual(state.events[-1]["outcome"], "inactive_noop")

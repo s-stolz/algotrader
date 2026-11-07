@@ -90,6 +90,34 @@ class EquityReplayTests(unittest.TestCase):
         self.start = self.request.start_ms
         self.closes = [(self.start + i * 60_000, float(10 + i)) for i in range(4)]
 
+    def test_order_replay_fetches_execution_timeframe(self):
+        request = replace(
+            self.request,
+            timeframe="M10",
+            execution=ExecutionConfig(execution_mode="orders", candle_quote="bid"),
+        )
+        run = BacktestRunRecord(
+            backtest_id="backtest-1",
+            run_ordinal=0,
+            run_id="run-1",
+            status=BacktestRunStatus.SUCCEEDED,
+            submitted_at_ms=self.start,
+            request_snapshot=BacktestRequestSnapshot.from_request(request),
+            replay_descriptor=descriptor(request, self.closes),
+        )
+        calls = []
+
+        class MinuteCandles(_Candles):
+            def fetch_bars(self, **kwargs):
+                calls.append(kwargs["timeframe"])
+                return super().fetch_bars(**kwargs)
+
+        service = BacktestRunService(
+            repository=_Repository(run, []), data_adapter=MinuteCandles(self.closes)
+        )
+        self.assertEqual(service.get_equity_curve("run-1", 100)["availability"], "exact")
+        self.assertEqual(calls, ["M1"])
+
     def test_fingerprint_normalizes_negative_zero_and_identifies_market(self):
         zero = [(self.start, -0.0)]
         self.assertEqual(

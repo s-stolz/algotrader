@@ -53,7 +53,11 @@ def descriptor(request: BacktestRequest, closes: Sequence[tuple[int, float]]) ->
         raise ReplayUnavailableError("unsupported_replay_shape")
     digest = hashlib.sha256()
     digest.update(DOMAIN_MARKER)
-    for identity in (request.exchange or "", str(request.symbols[0]), request.timeframe):
+    for identity in (
+        request.exchange or "",
+        str(request.symbols[0]),
+        "M1" if request.execution.execution_mode == "orders" else request.timeframe,
+    ):
         encoded = identity.encode("utf-8")
         digest.update(struct.pack(">I", len(encoded)))
         digest.update(encoded)

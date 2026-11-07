@@ -150,7 +150,9 @@ class BacktestRunService:
         try:
             bars = adapter.fetch_bars(
                 symbol=request.symbols[0],
-                timeframe=request.timeframe,
+                timeframe=(
+                    "M1" if request.execution.execution_mode == "orders" else request.timeframe
+                ),
                 start_ms=request.start_ms,
                 end_ms=request.end_ms,
                 exchange=request.exchange,
@@ -240,6 +242,16 @@ def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
         raise
     except ValueError as exc:
         raise InvalidBacktestRequestError(str(exc)) from exc
+    if request.execution.execution_mode == "orders":
+        if strategy.order_model is None:
+            raise InvalidBacktestRequestError("Order execution requires an order strategy")
+        if strategy.sizing_model is not None or strategy.risk_rules:
+            raise InvalidBacktestRequestError(
+                "Target transforms cannot be used with explicit orders"
+            )
+        return replace(request, strategy=resolved)
+    if strategy.order_model is not None:
+        raise InvalidBacktestRequestError("Order strategies require execution_mode=orders")
     if not strategy.is_v1_parity_compatible:
         raise InvalidBacktestRequestError("Backtest requests require a v1 declarative bar strategy")
     return replace(request, strategy=resolved)

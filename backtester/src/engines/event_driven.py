@@ -45,8 +45,25 @@ def run_event_driven_backtest(
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
     feature_bars: Mapping[str, pd.DataFrame] | None = None,
+    execution_bars: pd.DataFrame | None = None,
 ) -> BacktestResult:
     """Run a single-symbol event-driven bar backtest."""
+    if request.execution.execution_mode == "orders":
+        from data.order_inputs import prepare_order_inputs
+        from engines.order_event_driven import run_order_event_driven
+
+        featured, minutes = prepare_order_inputs(
+            request=request,
+            bars=bars,
+            strategy=strategy,
+            execution_bars=execution_bars,
+            feature_bars=feature_bars,
+        )
+        return run_order_event_driven(
+            request=request, strategy_bars=featured, execution_bars=minutes, strategy=strategy
+        )
+    if strategy.order_model is not None:
+        raise ValueError("Order strategies require execution_mode=orders")
 
     _validate_event_driven_request(request=request, strategy=strategy)
 

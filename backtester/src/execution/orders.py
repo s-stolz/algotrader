@@ -73,6 +73,10 @@ class OrderExecutionState:
     entries_today: int = 0
 
     def command(self, command: OrderCommand) -> None:
+        for identity, active in list(self.active.items()):
+            if active.expires_at_ms is not None and active.expires_at_ms <= command.effective_at_ms:
+                del self.active[identity]
+                self.record(active.expires_at_ms, identity, "expired")
         key = command.order_id
         if command.action == OrderAction.PROTECT:
             if self.position:
@@ -364,6 +368,7 @@ def _protect(
                 config,
                 limit=level,
                 reason=ExitReason.TAKE_PROFIT,
+                take_profit_override=level,
             )
 
 
@@ -377,6 +382,7 @@ def _fill(
     config: OrderExecutionConfig,
     limit: float | None = None,
     reason: ExitReason | None = None,
+    take_profit_override: float | None = None,
 ) -> None:
     direction = 1 if side == OrderSide.BUY else -1
     price = raw_price * (1 + direction * config.slippage_bps / 10_000)
@@ -406,7 +412,11 @@ def _fill(
             fees,
             reason,
             state.stop_price,
-            state.targets[0][0] if state.targets else None,
+            (
+                take_profit_override
+                if take_profit_override is not None
+                else (state.targets[0][0] if state.targets else None)
+            ),
         )
     )
     if before * state.position <= 0:

@@ -32,8 +32,10 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializerFunctionWrapHandler,
     StrictInt,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -120,6 +122,20 @@ class ExecutionRequestSchema(ApiContractModel):
     spread: float = Field(default=0.0, ge=0.0)
     candle_quote: Literal["bid", "ask", "mid"] | None = None
     max_position_quantity: float | None = Field(default=None, gt=0)
+
+    @model_serializer(mode="wrap")
+    def serialize_execution(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        value = handler(self)
+        for key in (
+            "execution_mode",
+            "spread",
+            "candle_quote",
+            "max_position_quantity",
+            "intrabar_execution_policy",
+        ):
+            if key not in self.model_fields_set:
+                value.pop(key, None)
+        return value
 
 
 class BacktestRunRequestSchema(ApiContractModel):

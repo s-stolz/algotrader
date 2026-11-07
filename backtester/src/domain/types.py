@@ -437,7 +437,11 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
                     "execution_mode": execution.execution_mode,
                     "spread": execution.spread,
                     "candle_quote": execution.candle_quote,
-                    "max_position_quantity": execution.max_position_quantity,
+                    **(
+                        {"max_position_quantity": execution.max_position_quantity}
+                        if execution.max_position_quantity is not None
+                        else {}
+                    ),
                 }
                 if execution.execution_mode == "orders"
                 else {}

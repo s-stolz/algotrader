@@ -289,3 +289,16 @@ There is no normal periodic backtest-state polling or separate recovery scan.
 
 See [ADR-0008](../adr/0008-backtest-stream-notifications.md) for the deliberate
 trade-off between recovery and transactional message publication.
+
+## Order execution snapshots
+
+Request v3 optionally carries `execution_mode=orders`, an explicit `candle_quote`,
+price-unit `spread`, and `max_position_quantity`. `intrabar_execution_policy`
+generalizes the legacy exit policy without changing old saved requests. New fields
+are omitted from legacy snapshot responses unless originally present. Runtime
+semantics and strategy authoring are owned by [order contracts](../../backtester/ORDERS.md).
+
+Order-mode Fills retain existing ordered storage and minute timestamps. Diagnostics
+persist the order lifecycle in `order_events`. Equity Replay descriptor v1 uses M1
+as its timeframe identity and reads M1 candles for these runs; the request timeframe
+continues to identify strategy decisions. Target-mode fingerprints are unchanged.

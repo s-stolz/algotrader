@@ -67,13 +67,22 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
 - **Direction Breakdown Metrics:** long/short counts, win rates, realized PnL.
   Empty-direction win rates are zero; total trade count includes both directions.
 
+- **Order Command:** a close-time submission, update, cancellation, or position
+  protection update, effective from the following minute.
+- **Execution Candle:** the M1 Candle used to match pending orders; distinct from
+  the strategy Candle used to calculate a decision.
+- **Partial Protective Close:** a fully executed reduce-only order that closes
+  part of the net position; distinct from a liquidity-based partial order fill.
+
 ## Engine Invariants
 
-Supported execution is single-symbol bar data, close-time decisions, next-open
-fills, and average-cost accounting. Tick simulation, multi-symbol execution, and
+Supported execution is single-symbol bar data, close-time decisions, and
+average-cost accounting. Default target mode uses next-open fills. Explicit order
+mode uses persistent limit orders with M1 execution; see [order contracts](ORDERS.md). Tick simulation, multi-symbol execution, and
 partial fills are rejected by the API and both engines. Event-driven mode accepts
 declarative bar strategies; placeholder domain types do not establish support for
-callback strategies or richer order simulation.
+arbitrary tick callbacks. `OrderStrategyModel` explicitly provides array and
+completed-candle evaluators for order mode.
 
 Additional indicator input Markets do not become executable Markets. The loader
 discovers them from indicator specifications; caller-supplied runs provide their

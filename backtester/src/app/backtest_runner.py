@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import Mapping
 
 import pandas as pd
-from adapters.db_accessor import HistoricalBarDataAdapter
+from adapters.db_accessor import DatabaseAccessorHistoricalDataAdapter, HistoricalBarDataAdapter
 from data.indicator_inputs import needs_source_inputs
 from data.indicators import build_feature_frame
 from data.market_data import load_market_data, load_market_data_bundle, load_raw_market_data
@@ -30,6 +30,7 @@ def run_backtest(
     bars: pd.DataFrame,
     strategy: StrategyDefinition | None = None,
     feature_bars: Mapping[str, pd.DataFrame] | None = None,
+    execution_bars: pd.DataFrame | None = None,
 ) -> BacktestResult:
     """Execute one backtest request using caller-provided bar data."""
 
@@ -38,6 +39,7 @@ def run_backtest(
         bars=bars,
         strategy=strategy,
         feature_bars=feature_bars,
+        execution_bars=execution_bars,
     )
     return result
 
@@ -48,8 +50,26 @@ def _execute_backtest(
     bars: pd.DataFrame,
     strategy: StrategyDefinition | None = None,
     feature_bars: Mapping[str, pd.DataFrame] | None = None,
+    execution_bars: pd.DataFrame | None = None,
 ) -> tuple[BacktestResult, int]:
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
+
+    if request.execution.execution_mode == "orders":
+        from app.order_backtest import execute_order_backtest
+
+        started_at = perf_counter()
+        result, minute_frame = execute_order_backtest(
+            request=request,
+            bars=bars,
+            strategy=resolved_strategy,
+            execution_bars=execution_bars,
+            feature_bars=feature_bars,
+        )
+        return _attach_replay_descriptor(
+            request, minute_frame, result, resolved_strategy
+        ), _elapsed_ms_since(started_at)
+    if resolved_strategy.order_model is not None:
+        raise ValueError("Order strategies require execution_mode=orders")
 
     if request.engine == BacktestEngine.VECTORIZED:
         if request.data_granularity == DataGranularity.BAR:
@@ -121,6 +141,37 @@ def _execute_backtest_with_market_data(
     data_adapter: HistoricalBarDataAdapter | None = None,
 ) -> tuple[BacktestResult, int]:
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
+
+    if request.execution.execution_mode == "orders":
+        adapter = data_adapter or DatabaseAccessorHistoricalDataAdapter()
+        if needs_source_inputs(resolved_strategy):
+            bundle = load_market_data_bundle(
+                request=request, strategy=resolved_strategy, exchange=exchange, data_adapter=adapter
+            )
+            strategy_bars, inputs = bundle.traded_bars, bundle.feature_bars
+        else:
+            strategy_bars = load_raw_market_data(
+                request=request, strategy=resolved_strategy, exchange=exchange, data_adapter=adapter
+            )
+            inputs = None
+        minutes = (
+            strategy_bars
+            if request.timeframe.upper() == "M1"
+            else adapter.fetch_bars(
+                symbol=request.symbols[0],
+                timeframe="M1",
+                start_ms=request.start_ms,
+                end_ms=request.end_ms,
+                exchange=exchange if exchange is not None else request.exchange,
+            )
+        )
+        return _execute_backtest(
+            request=request,
+            bars=strategy_bars,
+            strategy=resolved_strategy,
+            execution_bars=minutes,
+            feature_bars=inputs,
+        )
 
     if needs_source_inputs(resolved_strategy):
         bundle = load_market_data_bundle(

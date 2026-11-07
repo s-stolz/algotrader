@@ -205,3 +205,8 @@ same candle still counts. At the limit, exposure increases are cancelled and a
 reversal may close the old position without opening the opposite position.
 Protective, scheduled, and explicit exits remain eligible. Deferred entries count
 on their actual fill day, subject to any separately enabled schedule restrictions.
+
+## Persistent limit orders
+
+See [order strategy contracts](ORDERS.md) for the dual evaluator interface, minute
+execution, protective tiers, costs, and the registered `limit_reversion` example.

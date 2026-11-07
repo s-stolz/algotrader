@@ -54,6 +54,23 @@ class TestBacktestPreviewRoutes(unittest.TestCase):
     def tearDown(self) -> None:
         self.client.close()
 
+    def test_order_mode_preview_preserves_execution_assumptions(self) -> None:
+        definition = _definition()
+        definition["strategy"] = {"strategy_id": "limit_reversion", "strategy_version": 1}
+        definition["parameter_axes"] = {}
+        definition["execution"].update(
+            execution_mode="orders",
+            candle_quote="bid",
+            spread=0.0001,
+            intrabar_execution_policy="conservative",
+        )
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        ready = [row for row in response.json()["candidates"] if row["status"] == "ready"]
+        self.assertTrue(ready)
+        self.assertEqual(ready[0]["request"]["execution"]["execution_mode"], "orders")
+        self.assertEqual(ready[0]["request"]["execution"]["spread"], 0.0001)
+
     def test_complete_ordered_preview_and_no_history(self) -> None:
         response = self.client.post("/backtests/preview", json=_definition())
         self.assertEqual(response.status_code, 200, response.text)
