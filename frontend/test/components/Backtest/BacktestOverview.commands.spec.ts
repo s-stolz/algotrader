@@ -286,12 +286,12 @@ describe('accepted backtest inspection: commands', () => {
     expect(wrapper.get('.header-actions button').text()).toBe(
       'Resume Backtest',
     );
-    expect(wrapper.text()).toContain('revision 1');
+    expect(wrapper.get('.status-badge').text()).toBe('Paused');
 
     await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     expect(wrapper.get('.header-actions button').text()).toBe('Pause Backtest');
-    expect(wrapper.text()).toContain('revision 2');
+    expect(wrapper.get('.status-badge').text()).toBe('Running');
 
     await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
@@ -303,7 +303,7 @@ describe('accepted backtest inspection: commands', () => {
       'pause',
     ]);
     expect(calls[2][2]).not.toBe(calls[0][2]);
-    expect(wrapper.text()).toContain('revision 3');
+    expect(wrapper.get('.status-badge').text()).toBe('Paused');
     expect(wrapper.text()).toContain('Backtest paused.');
     wrapper.unmount();
   });

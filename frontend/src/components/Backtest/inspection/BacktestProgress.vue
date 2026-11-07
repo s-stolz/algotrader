@@ -153,7 +153,7 @@ p {
   margin-left: var(--design-space-xs);
 }
 .progress-track {
-  height: 8px;
+  height: 12px;
   display: flex;
   overflow: hidden;
   border-radius: var(--design-radius-panel);

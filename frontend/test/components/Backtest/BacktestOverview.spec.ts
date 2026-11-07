@@ -102,6 +102,53 @@ describe('accepted backtest inspection: inspection', () => {
     expect(details.open).toBe(false);
   });
 
+  it('keeps configuration and activity independently collapsed with saved axes and direct event IDs', async () => {
+    vi.mocked(listBacktestEvents).mockResolvedValue([
+      {
+        backtest_id: 'backtest-1',
+        revision: 1,
+        event_type: 'started',
+        status: 'running',
+        prior_status: 'queued',
+        occurred_at_ms: backtest.accepted_at_ms,
+        trigger_run_id: '12345678-1234-1234-1234-123456789abc',
+        reason: null,
+        command_id: '87654321-1234-1234-1234-123456789abc',
+      },
+    ]);
+    const wrapper = mount(BacktestOverview, {
+      props: { backtestId: 'backtest-1' },
+    });
+    onTestFinished(() => wrapper.unmount());
+    await flushPromises();
+    const configuration = wrapper.get<HTMLDetailsElement>(
+      '.configuration-section',
+    );
+    const activity = wrapper.get<HTMLDetailsElement>('.activity-section');
+    expect(configuration.element.open).toBe(false);
+    expect(activity.element.open).toBe(false);
+    configuration.get('summary').element.click();
+    expect(configuration.element.open).toBe(true);
+    expect(activity.element.open).toBe(false);
+    expect(configuration.text()).toContain('EURUSD · FX');
+    expect(configuration.text()).toContain('5 → 6');
+    expect(configuration.text()).toContain('step 1 · 2 values');
+    expect(wrapper.get('.backtest-header').text()).not.toContain('EURUSD');
+    expect(wrapper.get('.backtest-header').text()).toContain('Version 1');
+    activity.get('summary').element.click();
+    expect(activity.element.open).toBe(true);
+    const identifiers = activity.findAll('code');
+    expect(identifiers.map((identifier) => identifier.text())).toEqual([
+      'Run 12345678',
+      'Cmd 87654321',
+    ]);
+    expect(identifiers[0].attributes('title')).toBe(
+      '12345678-1234-1234-1234-123456789abc',
+    );
+    expect(activity.find('details').exists()).toBe(false);
+    expect(configuration.find('pre').exists()).toBe(false);
+  });
+
   it('shows the saved experiment name again after reloading detail', async () => {
     vi.mocked(getBacktest).mockResolvedValue({
       ...backtest,
@@ -159,7 +206,7 @@ describe('accepted backtest inspection: inspection', () => {
       expect(
         reloaded.find('[data-testid="workspace-backtest-members"]').exists(),
       ).toBe(false);
-      expect(reloaded.text()).toContain(
+      expect(reloaded.text()).not.toContain(
         'Full saved definition and strategy metadata',
       );
       expect(
