@@ -1,7 +1,7 @@
 """Sequential completed-candle decisions and independent order/portfolio updates."""
 
 import pandas as pd
-from data.order_bars import close_timestamps
+from data.order_bars import close_timestamps, resolve_order_expiry
 from domain.enums import GapPolicy, IntrabarExitPolicy
 from domain.orders import IntrabarExecutionPolicy
 from domain.types import BacktestRequest, BacktestResult, PortfolioSnapshot
@@ -61,7 +61,7 @@ def run_order_event_driven(  # noqa: C901
         for command in model.evaluate_close(boundary, previous, current):
             if command.effective_at_ms != boundary:
                 raise ValueError("Order commands must originate at the current strategy close")
-            state.command(command)
+            state.command(resolve_order_expiry(command, request.timeframe))
         previous = current
         cursor += 1
 

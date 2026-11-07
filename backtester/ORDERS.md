@@ -115,3 +115,36 @@ for order mode while the immutable request retains the strategy timeframe.
 Minute-level strategy decisions inside unfinished higher-timeframe candles,
 ticks, liquidity simulation, hedged positions, and Workspace order-authoring
 controls remain outside this version.
+
+## Flat-only range-limit example
+
+`rsi_range_limit` (RSI Range Limit) uses closed-candle RSI crossings and the
+`rolling_range` indicator. A cross below the lower threshold buys the trailing
+lowest low; a cross above the upper threshold sells the highest high. Both lines
+share a window and include the signal candle. The first available snapshot does
+not trigger a crossing. The strategy declares both indicators for saved chart overlays.
+
+Its required `tick_size` parameter is the instrument's minimum price increment
+(`min_move`), explicitly saved with the strategy parameters. Backtest requests do
+not currently carry market tick metadata. Stop-loss and take-profit tick counts
+are converted to price distances and anchored to the actual entry fill. Defaults
+are example settings, not instrument-specific presets.
+
+`LimitOrder.only_when_flat` ignores submissions while the net position is open,
+before any pending replacement, and also guards execution against added exposure.
+Ignored signals are never deferred until the position closes. `replace_group`
+cancels active orders in that group when a new submission is accepted. This
+example uses one group across both sides, giving at most one pending entry.
+These options default off for existing strategies.
+
+`lifetime_bars` resolves to an exclusive absolute expiry using the run's strategy
+timeframe: N elapsed timeframe intervals from the signal close, including gaps
+and market closures. Monthly intervals use calendar months. It cannot be combined
+with `expires_at_ms`; resolution never reads future candles. The example freezes
+the submitted price and defaults to ten intervals.
+
+`OrderProtection.stop_loss_distance` and `take_profit_distance` accept positive
+price distances, mutually exclusive with the corresponding fixed/percentage
+mode. At attachment they resolve against the net average entry; for this flat-only
+example that is the actual entry fill including price improvement and slippage.
+Resolved levels stay fixed. Nonpositive resulting protection prices reject execution.

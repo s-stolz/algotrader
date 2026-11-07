@@ -1,6 +1,7 @@
 """Order request validation and immutable snapshot compatibility."""
 
 import unittest
+from typing import Any
 
 from domain.enums import IntrabarExitPolicy
 from domain.orders import IntrabarExecutionPolicy
@@ -37,3 +38,20 @@ class OrderContractTests(unittest.TestCase):
     def test_target_mode_rejects_unused_costs(self):
         with self.assertRaisesRegex(ValueError, "require order execution"):
             ExecutionConfig(spread=1)
+
+
+class DistanceProtectionTests(unittest.TestCase):
+    def test_rejects_conflicting_and_invalid_distances(self):
+        from domain.orders import OrderProtection, TakeProfitTier
+
+        invalid: list[dict[str, Any]] = [
+            {"stop_loss_distance": 0},
+            {"take_profit_distance": float("nan")},
+            {"stop_loss_distance": 1, "stop_price": 95},
+            {"stop_loss_distance": 1, "stop_loss_pct": 2},
+            {"take_profit_distance": 1, "take_profit_pct": 2},
+            {"take_profit_distance": 1, "take_profits": (TakeProfitTier(110, fraction=1),)},
+        ]
+        for kwargs in invalid:
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                OrderProtection(**kwargs)

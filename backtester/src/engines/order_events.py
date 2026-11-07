@@ -72,7 +72,7 @@ class EventOrderState:
     entry_day: int | None = None
     entries_today: int = 0
 
-    def command(self, command: OrderCommand) -> None:
+    def command(self, command: OrderCommand) -> None:  # noqa: C901
         for identity, active in list(self.active.items()):
             if active.expires_at_ms is not None and active.expires_at_ms <= command.effective_at_ms:
                 del self.active[identity]
@@ -91,6 +91,14 @@ class EventOrderState:
                 raise ValueError(f"Order ID already submitted: {key}")
             assert command.order is not None
             self.submitted_ids.add(key)
+            if command.order.only_when_flat and self.position:
+                self.record(command.effective_at_ms, key, "position_open_ignored")
+                return
+            if command.order.replace_group is not None:
+                for identity, pending in list(self.active.items()):
+                    if pending.replace_group == command.order.replace_group:
+                        del self.active[identity]
+                        self.record(command.effective_at_ms, identity, "replaced")
             self.active[key] = command.order
         elif key not in self.active:
             self.record(command.effective_at_ms, key, "inactive_noop")
@@ -114,6 +122,17 @@ class EventOrderState:
         self.relative_stop = protection.stop_loss_pct
         self.relative_target = protection.take_profit_pct
         self.refresh_relative_protection()
+        direction = 1 if self.position > 0 else -1
+        if protection.stop_loss_distance is not None:
+            self.stop_price = self.average_entry - direction * protection.stop_loss_distance
+        if protection.take_profit_distance is not None:
+            self.targets = [
+                (self.average_entry + direction * protection.take_profit_distance, quantity)
+            ]
+        if (self.stop_price is not None and self.stop_price <= 0) or any(
+            price <= 0 for price, _ in self.targets
+        ):
+            raise ValueError("Protective distances produced nonpositive price levels")
 
     def refresh_relative_protection(self) -> None:
         direction = 1 if self.position > 0 else -1
@@ -275,6 +294,9 @@ def _at_price(  # noqa: C901
         del state.active[key]
         direction = 1 if order.side == OrderSide.BUY else -1
         quantity = order.quantity
+        if order.only_when_flat and state.position:
+            state.record(timestamp, key, "constraint_cancelled")
+            continue
         if order.reduce_only:
             quantity = min(quantity, abs(state.position)) if state.position * direction < 0 else 0
         if not quantity:

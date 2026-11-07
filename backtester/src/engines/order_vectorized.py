@@ -1,7 +1,7 @@
 """Array strategy evaluation and minute execution for order-based strategies."""
 
 import pandas as pd
-from data.order_bars import close_timestamps, feature_matrix
+from data.order_bars import close_timestamps, feature_matrix, resolve_order_expiry
 from domain.enums import IntrabarExitPolicy
 from domain.orders import IntrabarExecutionPolicy
 from domain.types import BacktestRequest, BacktestResult
@@ -25,7 +25,10 @@ def run_order_vectorized(
         raise ValueError("Order execution requires an order strategy")
     symbol = request.symbols[0]
     closes = close_timestamps(strategy_bars, request.timeframe)
-    commands = list(model.build_commands(feature_matrix(strategy_bars, symbol), closes))
+    commands = [
+        resolve_order_expiry(command, request.timeframe)
+        for command in model.build_commands(feature_matrix(strategy_bars, symbol), closes)
+    ]
     boundaries = set(closes)
     if any(command.effective_at_ms not in boundaries for command in commands):
         raise ValueError("Order commands must originate at completed strategy-candle boundaries")

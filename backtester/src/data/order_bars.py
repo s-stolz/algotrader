@@ -1,8 +1,11 @@
 """Validated strategy and minute clocks for order execution."""
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 from db_accessor_client.timeframes import timeframe_to_minutes
+from domain.orders import OrderCommand
 from domain.types import BacktestRequest, FeatureMatrix
 
 from data.normalization import normalize_bar_data
@@ -49,3 +52,23 @@ def feature_matrix(bars: pd.DataFrame, symbol: str) -> FeatureMatrix:
             }
         },
     )
+
+
+def resolve_order_expiry(command: OrderCommand, timeframe: str) -> OrderCommand:
+    """Resolve a candle-duration lifetime without reading future candles."""
+    order = command.order
+    if order is None or order.lifetime_bars is None:
+        return command
+    if timeframe.upper() == "MN1":
+        expiry = int(
+            (
+                pd.Timestamp(command.effective_at_ms, unit="ms", tz="UTC")
+                + pd.DateOffset(months=order.lifetime_bars)
+            ).value
+            // 1_000_000
+        )
+    else:
+        expiry = (
+            command.effective_at_ms + order.lifetime_bars * timeframe_to_minutes(timeframe) * 60_000
+        )
+    return replace(command, order=replace(order, expires_at_ms=expiry, lifetime_bars=None))

@@ -44,11 +44,24 @@ class OrderProtection:
     take_profits: tuple[TakeProfitTier, ...] = field(default_factory=tuple)
     stop_loss_pct: float | None = None
     take_profit_pct: float | None = None
+    stop_loss_distance: float | None = None
+    take_profit_distance: float | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) -> None:  # noqa: C901
         if self.stop_price is not None:
             _positive("stop price", self.stop_price)
         object.__setattr__(self, "take_profits", tuple(self.take_profits))
+        for value in (self.stop_loss_distance, self.take_profit_distance):
+            if value is not None:
+                _positive("protective distance", value)
+        if self.stop_loss_distance is not None and (
+            self.stop_price is not None or self.stop_loss_pct is not None
+        ):
+            raise ValueError("Use only one stop protection mode")
+        if self.take_profit_distance is not None and (
+            self.take_profits or self.take_profit_pct is not None
+        ):
+            raise ValueError("Use only one target protection mode")
         for value in (self.stop_loss_pct, self.take_profit_pct):
             if value is not None:
                 _positive("protective percentage", value)
@@ -70,6 +83,9 @@ class LimitOrder:
     oco_group: str | None = None
     reduce_only: bool = False
     protection: OrderProtection | None = None
+    only_when_flat: bool = False
+    replace_group: str | None = None
+    lifetime_bars: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.order_id, str) or not self.order_id.strip():
@@ -81,6 +97,13 @@ class LimitOrder:
             type(self.expires_at_ms) is not int or self.expires_at_ms % 60_000
         ):
             raise ValueError("expiry must be an integer minute boundary")
+        if self.lifetime_bars is not None:
+            if type(self.lifetime_bars) is not int or self.lifetime_bars < 1:
+                raise ValueError("lifetime_bars must be a positive integer")
+            if self.expires_at_ms is not None:
+                raise ValueError("Use an absolute expiry or lifetime_bars")
+        if self.replace_group is not None and not self.replace_group.strip():
+            raise ValueError("replace_group must be non-empty")
         if self.oco_group is not None and not self.oco_group.strip():
             raise ValueError("oco_group must be non-empty")
 
