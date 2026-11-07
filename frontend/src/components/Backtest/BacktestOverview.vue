@@ -242,9 +242,13 @@ p {
   background: var(--design-color-inset);
 }
 .status-badge.cancelled {
-  color: var(--design-color-muted);
-  border-color: var(--design-color-border);
-  background: var(--design-color-inset);
+  color: var(--design-color-warning);
+  border-color: var(--design-color-warning);
+  background: color-mix(
+    in srgb,
+    var(--design-color-warning) 12%,
+    var(--design-color-inset)
+  );
 }
 .notice {
   margin: var(--design-space-md) var(--design-space-xl);

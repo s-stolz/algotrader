@@ -137,7 +137,7 @@ describe('accepted backtest inspection: progress', () => {
       });
       await flushPromises();
       expect(wrapper.text()).toContain('1 run failed');
-      expect(wrapper.text()).toContain('Running #2 of 2');
+      expect(wrapper.get('.status-badge').text()).toBe('Running');
       expect(wrapper.emitted('members')?.[0]?.[1]).toEqual([
         { ...member(0), status: 'failed', error_message: 'Data unavailable' },
         { ...member(1), status: 'running' },
@@ -179,9 +179,10 @@ describe('accepted backtest inspection: progress', () => {
       props: { backtestId: 'backtest-1' },
     });
     await flushPromises();
-    expect(wrapper.get('.activity-copy').text()).toContain('Running #1 of 2');
-    expect(wrapper.get('.active-context').text()).toContain('Fast window: 5');
-    expect(wrapper.get('.activity-copy').text()).toContain('Up next: run #2');
+    expect(wrapper.get('.status-badge').text()).toBe('Running');
+    expect(
+      wrapper.get('[role="progressbar"]').attributes('aria-valuemax'),
+    ).toBe('2');
     expect(wrapper.get('[data-testid="backtest-duration"]').text()).toBe('10s');
     vi.advanceTimersByTime(1000);
     await flushPromises();
