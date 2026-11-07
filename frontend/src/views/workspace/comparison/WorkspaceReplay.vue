@@ -34,8 +34,8 @@
       </li>
     </ul>
     <ReplayLoading
-      v-if="pendingCount"
-      :count="pendingCount"
+      v-if="pendingReplayCount"
+      :count="pendingReplayCount"
       :show-skeleton="!chartSeries.length"
     />
     <EquityReplayCharts
@@ -46,7 +46,6 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue';
 import ReplayLoading from './ReplayLoading.vue';
 import EquityReplayCharts from '../../EquityReplayCharts.vue';
 import { equityUnavailableReason } from '../../backtestWorkspaceRuns';
@@ -54,13 +53,8 @@ import { workspaceReplay } from './workspaceReplay';
 import type { BacktestWorkspace } from '../useBacktestWorkspace';
 const props = defineProps<{ inspection: BacktestWorkspace['inspection'] }>();
 const { selectedComparisonIds, analysis } = props.inspection;
-const pendingCount = computed(
-  () =>
-    selectedComparisonIds.value.filter(
-      (id) => !analysis.value[id] || analysis.value[id].loading,
-    ).length,
-);
 const {
+  pendingReplayCount,
   compatibilityDifferences,
   curveStatusIds,
   hasSampledCurve,
