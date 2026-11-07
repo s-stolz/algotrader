@@ -18,6 +18,7 @@ from domain.enums import (
     TradeAccountingPolicy,
 )
 from domain.experiment_names import normalize_experiment_name
+from domain.orders import IntrabarExecutionPolicy
 from domain.schedule import DailyTradingSchedule
 from domain.types import (
     BacktestFillRecord,
@@ -114,6 +115,11 @@ class ExecutionRequestSchema(ApiContractModel):
     slippage_bps: float = Field(default=0.0, ge=0.0)
     daily_schedule: DailyTradingScheduleRequestSchema | None = None
     max_entries_per_day: StrictInt | None = Field(default=None, gt=0)
+    execution_mode: Literal["targets", "orders"] = "targets"
+    intrabar_execution_policy: Literal["conservative", "optimistic", "error"] | None = None
+    spread: float = Field(default=0.0, ge=0.0)
+    candle_quote: Literal["bid", "ask", "mid"] | None = None
+    max_position_quantity: float | None = Field(default=None, gt=0)
 
 
 class BacktestRunRequestSchema(ApiContractModel):
@@ -163,6 +169,15 @@ class BacktestRunRequestSchema(ApiContractModel):
                 intrabar_exit_policy=IntrabarExitPolicy(execution.intrabar_exit_policy),
                 commission_bps=execution.commission_bps,
                 slippage_bps=execution.slippage_bps,
+                execution_mode=execution.execution_mode,
+                intrabar_execution_policy=(
+                    IntrabarExecutionPolicy(execution.intrabar_execution_policy)
+                    if execution.intrabar_execution_policy is not None
+                    else None
+                ),
+                spread=execution.spread,
+                candle_quote=execution.candle_quote,
+                max_position_quantity=execution.max_position_quantity,
                 max_entries_per_day=execution.max_entries_per_day,
                 daily_schedule=(
                     DailyTradingSchedule(**execution.daily_schedule.model_dump())

@@ -21,6 +21,7 @@ from domain.enums import (
     TradeAccountingPolicy,
     TradeDirection,
 )
+from domain.orders import IntrabarExecutionPolicy
 from domain.schedule import DailyTradingSchedule
 
 BACKTEST_REQUEST_SCHEMA_VERSION = 3
@@ -71,8 +72,43 @@ class ExecutionConfig:
     slippage_bps: float = 0.0
     daily_schedule: DailyTradingSchedule | None = None
     max_entries_per_day: int | None = None
+    execution_mode: Literal["targets", "orders"] = "targets"
+    intrabar_execution_policy: IntrabarExecutionPolicy | None = None
+    spread: float = 0.0
+    candle_quote: Literal["bid", "ask", "mid"] | None = None
+    max_position_quantity: float | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) -> None:  # noqa: C901
+        if self.execution_mode not in ("targets", "orders"):
+            raise ValueError("execution_mode must be targets or orders")
+        if not math.isfinite(self.spread) or self.spread < 0:
+            raise ValueError("spread must be nonnegative and finite")
+        if self.candle_quote not in (None, "bid", "ask", "mid"):
+            raise ValueError("candle_quote must be bid, ask, or mid")
+        if self.execution_mode == "orders" and self.candle_quote is None:
+            raise ValueError("Order execution requires an explicit candle_quote")
+        if self.execution_mode == "targets" and (
+            self.spread or self.max_position_quantity is not None
+        ):
+            raise ValueError("spread and max_position_quantity require order execution")
+        if self.max_position_quantity is not None and (
+            not math.isfinite(self.max_position_quantity) or self.max_position_quantity <= 0
+        ):
+            raise ValueError("max_position_quantity must be positive and finite")
+        if self.intrabar_execution_policy is not None:
+            policy = IntrabarExecutionPolicy(self.intrabar_execution_policy)
+            object.__setattr__(self, "intrabar_execution_policy", policy)
+            legacy = {
+                IntrabarExecutionPolicy.CONSERVATIVE: IntrabarExitPolicy.CONSERVATIVE,
+                IntrabarExecutionPolicy.OPTIMISTIC: IntrabarExitPolicy.TAKE_PROFIT_FIRST,
+                IntrabarExecutionPolicy.ERROR: IntrabarExitPolicy.ERROR,
+            }[policy]
+            if (
+                self.intrabar_exit_policy != IntrabarExitPolicy.CONSERVATIVE
+                and self.intrabar_exit_policy != legacy
+            ):
+                raise ValueError("Conflicting intrabar execution and legacy exit policies")
+            object.__setattr__(self, "intrabar_exit_policy", legacy)
         if self.max_entries_per_day is not None and (
             isinstance(self.max_entries_per_day, bool)
             or not isinstance(self.max_entries_per_day, int)
@@ -397,6 +433,21 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
             "commission_bps": float(execution.commission_bps),
             "slippage_bps": float(execution.slippage_bps),
             **(
+                {
+                    "execution_mode": execution.execution_mode,
+                    "spread": execution.spread,
+                    "candle_quote": execution.candle_quote,
+                    "max_position_quantity": execution.max_position_quantity,
+                }
+                if execution.execution_mode == "orders"
+                else {}
+            ),
+            **(
+                {"intrabar_execution_policy": execution.intrabar_execution_policy.value}
+                if execution.intrabar_execution_policy is not None
+                else {}
+            ),
+            **(
                 {"max_entries_per_day": execution.max_entries_per_day}
                 if execution.max_entries_per_day is not None
                 else {}
@@ -425,7 +476,19 @@ def _backtest_request_from_payload(
     _validate_payload_fields(
         "Backtest execution",
         execution,
-        _EXECUTION_PAYLOAD_FIELDS | (set(execution) & {"daily_schedule", "max_entries_per_day"}),
+        _EXECUTION_PAYLOAD_FIELDS
+        | (
+            set(execution)
+            & {
+                "daily_schedule",
+                "max_entries_per_day",
+                "execution_mode",
+                "spread",
+                "candle_quote",
+                "max_position_quantity",
+                "intrabar_execution_policy",
+            }
+        ),
     )
 
     symbols = payload["symbols"]
@@ -468,6 +531,11 @@ def _backtest_request_from_payload(
             intrabar_exit_policy=IntrabarExitPolicy(execution["intrabar_exit_policy"]),
             commission_bps=float(execution["commission_bps"]),
             slippage_bps=float(execution["slippage_bps"]),
+            execution_mode=execution.get("execution_mode", "targets"),
+            spread=execution.get("spread", 0.0),
+            candle_quote=execution.get("candle_quote"),
+            max_position_quantity=execution.get("max_position_quantity"),
+            intrabar_execution_policy=execution.get("intrabar_execution_policy"),
             daily_schedule=DailyTradingSchedule.from_payload(execution.get("daily_schedule")),
             max_entries_per_day=execution.get("max_entries_per_day"),
         ),

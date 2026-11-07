@@ -11,6 +11,7 @@ from domain.enums import AllowedDirections, StrategySignal
 from domain.types import ExecutionArrayBundle, FeatureMatrix, ProtectiveExitSpec, SignalMatrix
 
 from strategies.conditions import ConditionRule
+from strategies.orders import OrderStrategyModel
 
 DecisionModel = Callable[[FeatureMatrix], SignalMatrix]
 PositionBuilder = Callable[[SignalMatrix], ExecutionArrayBundle]
@@ -249,6 +250,7 @@ class StrategyDefinition:
     sizing_model: Optional[ExecutionTransformer] = None
     risk_rules: Sequence[ExecutionTransformer] = field(default_factory=tuple)
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    order_model: OrderStrategyModel | None = None
 
     @property
     def is_v1_parity_compatible(self) -> bool:
