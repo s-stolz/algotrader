@@ -10,7 +10,14 @@ from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 from domain.enums import AllowedDirections, ExitReason, GapPolicy, OrderSide
-from domain.orders import IntrabarExecutionPolicy, LimitOrder, OrderAction, OrderCommand
+from domain.orders import (
+    IntrabarExecutionPolicy,
+    LimitOrder,
+    OrderAction,
+    OrderCommand,
+    OrderProtection,
+)
+from domain.schedule import DAY_MS, DailyTradingSchedule
 from domain.types import Fill
 
 
@@ -24,6 +31,8 @@ class OrderExecutionConfig:
     gap_policy: GapPolicy = GapPolicy.SKIP
     allowed_directions: AllowedDirections = AllowedDirections.LONG_AND_SHORT
     max_position_quantity: float | None = None
+    daily_schedule: DailyTradingSchedule | None = None
+    max_entries_per_day: int | None = None
 
     def __post_init__(self) -> None:
         for name in ("spread", "slippage_bps", "commission_bps"):
@@ -56,9 +65,23 @@ class OrderExecutionState:
     fills: list[Fill] = field(default_factory=list)
     events: list[dict[str, object]] = field(default_factory=list)
     ambiguous_minutes: int = 0
+    average_entry: float = 0.0
+    relative_stop: float | None = None
+    relative_target: float | None = None
+    entry_timestamp_ms: int | None = None
+    entry_day: int | None = None
+    entries_today: int = 0
 
     def command(self, command: OrderCommand) -> None:
         key = command.order_id
+        if command.action == OrderAction.PROTECT:
+            if self.position:
+                assert command.protection is not None
+                self.set_protection(command.protection, abs(self.position))
+                self.record(command.effective_at_ms, key, "protection_updated")
+            else:
+                self.record(command.effective_at_ms, key, "inactive_noop")
+            return
         if command.action == OrderAction.SUBMIT:
             if key in self.submitted_ids:
                 raise ValueError(f"Order ID already submitted: {key}")
@@ -75,11 +98,36 @@ class OrderExecutionState:
             self.active[key] = command.order
         self.record(command.effective_at_ms, key, command.action.value)
 
+    def set_protection(self, protection: OrderProtection, quantity: float) -> None:
+        self.stop_price = protection.stop_price
+        self.targets = [
+            (
+                tier.price,
+                tier.quantity if tier.quantity is not None else quantity * (tier.fraction or 0.0),
+            )
+            for tier in protection.take_profits
+        ]
+        self.relative_stop = protection.stop_loss_pct
+        self.relative_target = protection.take_profit_pct
+        self.refresh_relative_protection()
+
+    def refresh_relative_protection(self) -> None:
+        direction = 1 if self.position > 0 else -1
+        if self.relative_stop is not None:
+            self.stop_price = self.average_entry * (1 - direction * self.relative_stop / 100)
+        if self.relative_target is not None:
+            self.targets = [
+                (
+                    self.average_entry * (1 + direction * self.relative_target / 100),
+                    abs(self.position),
+                )
+            ]
+
     def record(self, timestamp: int, order_id: str, outcome: str) -> None:
         self.events.append({"timestamp_ms": timestamp, "order_id": order_id, "outcome": outcome})
 
 
-def execute_minute(
+def execute_minute(  # noqa: C901
     state: OrderExecutionState,
     *,
     symbol: str,
@@ -117,6 +165,22 @@ def execute_minute(
         base.fills = state.fills + base.fills
         base.events = state.events + base.events
         return base
+    if config.daily_schedule is not None and base.position and base.entry_timestamp_ms is not None:
+        if timestamp_ms >= config.daily_schedule.exit_timestamp(base.entry_timestamp_ms):
+            side = OrderSide.SELL if base.position > 0 else OrderSide.BUY
+            _fill(
+                base,
+                symbol,
+                timestamp_ms,
+                side,
+                abs(base.position),
+                opening + config.quote_offset(side),
+                config,
+                reason=ExitReason.SIGNAL,
+            )
+            for key in base.active:
+                base.record(timestamp_ms, key, "schedule_cancelled")
+            base.active.clear()
     paths = [(opening, high, low, closing), (opening, low, high, closing)]
     outcomes = [
         _path(
@@ -124,7 +188,7 @@ def execute_minute(
                 base,
                 active=dict(base.active),
                 targets=list(base.targets),
-                fills=[],
+                fills=list(base.fills),
                 events=list(base.events),
             ),
             path,
@@ -213,6 +277,10 @@ def _at_price(  # noqa: C901
             state.record(timestamp, key, "reduce_only_cancelled")
             continue
         new_position = state.position + direction * quantity
+        increasing = state.position * direction >= 0 or quantity > abs(state.position)
+        if state.entry_day != timestamp // DAY_MS:
+            state.entry_day = timestamp // DAY_MS
+            state.entries_today = 0
         invalid = (
             (config.allowed_directions == AllowedDirections.LONG_ONLY and new_position < 0)
             or (config.allowed_directions == AllowedDirections.SHORT_ONLY and new_position > 0)
@@ -222,10 +290,20 @@ def _at_price(  # noqa: C901
                 and abs(new_position) > abs(state.position)
             )
         )
+        if increasing:
+            invalid |= config.daily_schedule is not None and not config.daily_schedule.allows_entry(
+                timestamp
+            )
+            invalid |= (
+                config.max_entries_per_day is not None
+                and state.entries_today >= config.max_entries_per_day
+            )
         if invalid:
             state.record(timestamp, key, "constraint_cancelled")
             continue
         _fill(state, symbol, timestamp, order.side, quantity, quote, config, limit=order.price)
+        if increasing:
+            state.entries_today += 1
         state.record(timestamp, key, "filled")
         if order.oco_group is not None:
             for sibling, pending in list(state.active.items()):
@@ -233,18 +311,12 @@ def _at_price(  # noqa: C901
                     del state.active[sibling]
                     state.record(timestamp, sibling, "oco_cancelled")
         if order.protection is not None and state.position:
-            state.stop_price = order.protection.stop_price
-            state.targets = [
-                (
-                    tier.price,
-                    (
-                        tier.quantity
-                        if tier.quantity is not None
-                        else abs(state.position) * (tier.fraction or 0.0)
-                    ),
-                )
-                for tier in order.protection.take_profits
-            ]
+            state.set_protection(order.protection, order.quantity)
+            state.fills[-1] = replace(
+                state.fills[-1],
+                stop_loss_price=state.stop_price,
+                take_profit_price=state.targets[0][0] if state.targets else None,
+            )
         _protect(state, price, symbol, timestamp, config)
 
 
@@ -315,6 +387,14 @@ def _fill(
     fees = quantity * price * config.commission_bps / 10_000
     before = state.position
     state.position += direction * quantity
+    if before * direction >= 0:
+        state.average_entry = (abs(before) * state.average_entry + quantity * price) / abs(
+            state.position
+        )
+    elif before * state.position < 0:
+        state.average_entry = price
+    if before == 0 or before * state.position < 0:
+        state.entry_timestamp_ms = timestamp
     state.cash -= direction * quantity * price + fees
     state.fills.append(
         Fill(
@@ -332,3 +412,10 @@ def _fill(
     if before * state.position <= 0:
         state.stop_price = None
         state.targets.clear()
+        state.relative_stop = None
+        state.relative_target = None
+    if state.position:
+        state.refresh_relative_protection()
+    else:
+        state.entry_timestamp_ms = None
+        state.average_entry = 0.0

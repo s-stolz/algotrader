@@ -107,3 +107,52 @@ class OrderExecutionTests(unittest.TestCase):
         result = self.minute(state, (100, 111, 99, 110))
         self.assertEqual(result.position, 0)
         self.assertEqual(result.fills[-1].quantity, 2)
+
+
+class OrderProtectionTests(unittest.TestCase):
+    state = OrderExecutionTests.state
+    minute = OrderExecutionTests.minute
+
+    def test_protection_update_resolves_fraction_once(self):
+        state = self.minute(
+            self.state(LimitOrder("buy", OrderSide.BUY, 100, 4)), (100, 101, 99, 100)
+        )
+        state.command(
+            OrderCommand(
+                120_000,
+                OrderAction.PROTECT,
+                "position",
+                protection=OrderProtection(
+                    90, (TakeProfitTier(105, fraction=0.5), TakeProfitTier(110, fraction=0.5))
+                ),
+            )
+        )
+        state = self.minute(state, (100, 106, 99, 105))
+        self.assertEqual(state.position, 2)
+        self.assertEqual(state.targets, [(110, 2)])
+
+    def test_daily_entry_limit_survives_same_minute_stop(self):
+        state = self.state(LimitOrder("buy", OrderSide.BUY, 100, 1, protection=OrderProtection(99)))
+        state = self.minute(state, (100, 101, 98, 100), max_entries_per_day=1)
+        state.command(
+            OrderCommand(
+                120_000, OrderAction.SUBMIT, "again", LimitOrder("again", OrderSide.BUY, 100, 1)
+            )
+        )
+        state = self.minute(state, (100, 101, 99, 100), max_entries_per_day=1)
+        self.assertEqual(state.position, 0)
+        self.assertEqual(state.events[-1]["outcome"], "constraint_cancelled")
+
+    def test_average_entry_relative_stop_updates_after_add(self):
+        state = self.state(
+            LimitOrder("first", OrderSide.BUY, 100, 1, protection=OrderProtection(stop_loss_pct=10))
+        )
+        state = self.minute(state, (100, 101, 99, 100))
+        state.command(
+            OrderCommand(
+                120_000, OrderAction.SUBMIT, "add", LimitOrder("add", OrderSide.BUY, 110, 1)
+            )
+        )
+        state = self.minute(state, (110, 111, 109, 110))
+        self.assertEqual(state.average_entry, 105)
+        self.assertEqual(state.stop_price, 94.5)

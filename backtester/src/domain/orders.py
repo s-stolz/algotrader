@@ -11,6 +11,7 @@ class OrderAction(str, Enum):
     SUBMIT = "submit"
     UPDATE = "update"
     CANCEL = "cancel"
+    PROTECT = "protect"
 
 
 class IntrabarExecutionPolicy(str, Enum):
@@ -41,11 +42,22 @@ class TakeProfitTier:
 class OrderProtection:
     stop_price: float | None = None
     take_profits: tuple[TakeProfitTier, ...] = field(default_factory=tuple)
+    stop_loss_pct: float | None = None
+    take_profit_pct: float | None = None
 
     def __post_init__(self) -> None:
         if self.stop_price is not None:
             _positive("stop price", self.stop_price)
         object.__setattr__(self, "take_profits", tuple(self.take_profits))
+        for value in (self.stop_loss_pct, self.take_profit_pct):
+            if value is not None:
+                _positive("protective percentage", value)
+        if self.stop_loss_pct is not None and self.stop_loss_pct >= 100:
+            raise ValueError("stop_loss_pct must be less than 100")
+        if self.stop_price is not None and self.stop_loss_pct is not None:
+            raise ValueError("Use a fixed stop or an average-entry percentage")
+        if self.take_profits and self.take_profit_pct is not None:
+            raise ValueError("Use fixed profit tiers or an average-entry percentage")
 
 
 @dataclass(frozen=True)
@@ -85,6 +97,7 @@ class OrderCommand:
     action: OrderAction
     order_id: str
     order: LimitOrder | None = None
+    protection: OrderProtection | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "action", OrderAction(self.action))
@@ -92,6 +105,12 @@ class OrderCommand:
             raise ValueError("commands must take effect on minute boundaries")
         if not self.order_id.strip():
             raise ValueError("order_id must be non-empty")
+        if self.action == OrderAction.PROTECT:
+            if self.order is not None or self.protection is None:
+                raise ValueError("protect requires protection and no entry order")
+            return
+        if self.protection is not None:
+            raise ValueError("Only protect commands carry position protection")
         if self.action == OrderAction.CANCEL:
             if self.order is not None:
                 raise ValueError("cancel must not carry an order")
