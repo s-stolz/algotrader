@@ -6,6 +6,7 @@ from .indicators.currency_strength import CURRENCY_STRENGTH_REGISTRATION
 from .indicators.ema import EMA_REGISTRATION
 from .indicators.macd import MACD_REGISTRATION
 from .indicators.opening_range import OPENING_RANGE_REGISTRATION
+from .indicators.rolling_range import ROLLING_RANGE_REGISTRATION
 from .indicators.rsi import RSI_REGISTRATION
 from .indicators.sma import SMA_REGISTRATION
 
@@ -18,5 +19,6 @@ BUILTIN_CATALOG = IndicatorCatalog(
         CURRENCY_STRENGTH_REGISTRATION,
         EMA_REGISTRATION,
         OPENING_RANGE_REGISTRATION,
+        ROLLING_RANGE_REGISTRATION,
     ]
 )

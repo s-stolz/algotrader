@@ -35,6 +35,7 @@ class IndicatorCatalogTests(unittest.TestCase):
             (5, "currency_strength"),
             (6, "ema"),
             (7, "opening_range"),
+            (8, "rolling_range"),
         ]
         registry = IndicatorRegistry()
         for _, engine_id in reversed(exposed):

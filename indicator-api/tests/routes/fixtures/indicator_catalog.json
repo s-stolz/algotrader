@@ -34,6 +34,11 @@
       "id": 7,
       "indicator_id": "opening_range",
       "name": "Opening Range"
+    },
+    {
+      "id": 8,
+      "indicator_id": "rolling_range",
+      "name": "Rolling High / Low"
     }
   ],
   "metadata": {
@@ -389,6 +394,38 @@
         }
       },
       "supports_live": false
+    },
+    "8": {
+      "id": 8,
+      "indicator_id": "rolling_range",
+      "name": "Rolling High / Low",
+      "overlay": true,
+      "supports_live": true,
+      "outputs": {
+        "highest_high": {
+          "type": "line",
+          "plotOptions": {
+            "lineWidth": 2,
+            "color": "#EF5350"
+          }
+        },
+        "lowest_low": {
+          "type": "line",
+          "plotOptions": {
+            "lineWidth": 2,
+            "color": "#26A69A"
+          }
+        }
+      },
+      "parameters": {
+        "window": {
+          "type": "int",
+          "default": 20,
+          "min": 1,
+          "max": 5000
+        }
+      },
+      "inputs": []
     }
   }
 }

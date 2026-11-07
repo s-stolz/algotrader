@@ -224,3 +224,12 @@ Declare eligibility explicitly and test the live adapter before enabling it.
 Optional entry-point plugins remain computational registrations only; discovery
 does not assign a public ID or expose a plugin to chart clients. See
 [ADR-0009](../../docs/adr/0009-shared-indicator-registration-catalog.md).
+
+### Rolling High / Low
+
+`rolling_range` (public API ID 8) exposes `highest_high` and `lowest_low` as price
+overlay lines. `window` defaults to 20 and accepts 1–5000 candles. Each output uses
+the trailing window including the current candle, requires a full window, and
+propagates missing inputs. Live calculation replaces forming-candle revisions;
+rolling-window recomputation matches historical calculation. The window maximum
+matches the indicator service's default live candle retention.

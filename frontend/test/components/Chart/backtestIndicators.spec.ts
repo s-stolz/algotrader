@@ -80,6 +80,57 @@ describe('backtest indicator group', () => {
     vi.mocked(requestIndicator).mockReset().mockResolvedValue(response);
   });
 
+  it('loads both rolling range lines from the catalog and saved window', async () => {
+    const rangeInfo: IndicatorInfo = {
+      ...info,
+      id: 8,
+      indicator_id: 'rolling_range',
+      name: 'Rolling High / Low',
+      supports_live: true,
+      outputs: {
+        highest_high: { type: 'line', plotOptions: { color: '#EF5350' } },
+        lowest_low: { type: 'line', plotOptions: { color: '#26A69A' } },
+      },
+    };
+    vi.mocked(fetchAvailableIndicators).mockResolvedValue([
+      { id: 8, indicator_id: 'rolling_range', name: rangeInfo.name },
+    ]);
+    vi.mocked(requestIndicator).mockResolvedValue({
+      data: {
+        indicator_info: rangeInfo,
+        indicator_data: [
+          { timestamp_ms: 1000, highest_high: 110, lowest_low: 90 },
+        ],
+      },
+    });
+    const { store, coordinator } = fixture();
+    await coordinator.load(
+      {
+        ...run,
+        diagnostics: {
+          chart_indicators: {
+            schema_version: 1,
+            items: [
+              { indicator_id: 'rolling_range', parameters: { window: 12 } },
+            ],
+          },
+        },
+      },
+      key,
+    );
+    expect(store.all).toHaveLength(1);
+    expect(store.all[0].parameters.window.value).toBe(12);
+    expect(Object.keys(store.all[0].styles)).toEqual([
+      'highest_high',
+      'lowest_low',
+    ]);
+    expect(requestIndicator).toHaveBeenCalledWith(
+      8,
+      { ...key, endMs: 302000, limit: 500 },
+      { parameters: { window: 12 } },
+    );
+  });
+
   it('restores saved parameters and styles without changing manual indicators', async () => {
     const { store, coordinator } = fixture();
     const manual = store.addIndicator(info, [], 1);
