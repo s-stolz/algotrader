@@ -130,7 +130,9 @@ class BacktestRunService:
         except Exception as exc:
             raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
-    def get_equity_curve(self, run_id: str, max_points: int = 2000) -> dict[str, object]:
+    def get_equity_curve(  # noqa: C901
+        self, run_id: str, max_points: int = 2000
+    ) -> dict[str, object]:
         if not 100 <= max_points <= 10000:
             raise ValueError("max_points must be between 100 and 10000")
         run = self.get(run_id)
@@ -162,6 +164,10 @@ class BacktestRunService:
         except Exception as exc:
             raise BacktestCandleUnavailableError("Candle service unavailable") from exc
         try:
+            if request.execution.execution_mode == "orders":
+                from data.order_bars import minute_bars
+
+                bars = minute_bars(request, bars)
             closes = executable_closes(bars, first_timestamp_ms=int(saved["first_timestamp_ms"]))
             fills = self._repository.get_fills(run_id)
             points = replay(request, saved, closes, fills)

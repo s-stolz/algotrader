@@ -7,11 +7,20 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 from app.backtest_runner import run_backtest, run_backtest_with_market_data
+from app.backtest_runs import BacktestRunService
 from app.equity_replay import descriptor
-from domain.enums import BacktestEngine, GapPolicy
+from domain.enums import BacktestEngine, BacktestRunStatus, GapPolicy
 from domain.orders import IntrabarExecutionPolicy
-from domain.types import BacktestRequest, ExecutionConfig, StrategyConfig
+from domain.types import (
+    BacktestFillRecord,
+    BacktestRequest,
+    BacktestRequestSnapshot,
+    BacktestRunRecord,
+    ExecutionConfig,
+    StrategyConfig,
+)
 from strategies.examples.limit_reversion import build_limit_reversion
+from tests.app.test_equity_replay import _Repository
 
 
 def candles(timestamps, lows=None):
@@ -105,6 +114,47 @@ class OrderBacktestTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "Missing minute"):
             self.run_engine(BacktestEngine.VECTORIZED, missing)
+
+    def test_replay_uses_the_same_valid_minute_rows_as_execution(self):
+        self.minutes.loc[10, "high"] = np.nan
+        result = self.run_engine(BacktestEngine.VECTORIZED)
+        run = BacktestRunRecord(
+            backtest_id="backtest-1",
+            run_ordinal=0,
+            run_id="run-1",
+            status=BacktestRunStatus.SUCCEEDED,
+            submitted_at_ms=0,
+            request_snapshot=BacktestRequestSnapshot.from_request(self.request),
+            replay_descriptor=result.replay_descriptor,
+        )
+        minutes = self.minutes.copy()
+
+        class Adapter:
+            def fetch_bars(self, **kwargs):
+                return minutes
+
+        fills = [
+            BacktestFillRecord(
+                "run-1",
+                i,
+                fill.timestamp_ms,
+                fill.symbol,
+                fill.side,
+                fill.quantity,
+                fill.price,
+                fill.fees,
+            )
+            for i, fill in enumerate(result.fills)
+        ]
+        service = BacktestRunService(repository=_Repository(run, fills), data_adapter=Adapter())
+        replayed = service.get_equity_curve("run-1", 100)
+        self.assertEqual(replayed["availability"], "exact")
+        curve = replayed["equity_curve"]
+        assert isinstance(curve, list)
+        self.assertEqual(
+            [point["equity"] for point in curve],
+            [point.equity for point in result.equity_curve],
+        )
 
     def test_loader_fetches_both_resolutions(self):
         frames = {"M10": self.bars, "M1": self.minutes}
