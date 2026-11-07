@@ -173,21 +173,6 @@ const {
   gap: var(--design-space-xl);
   padding: var(--design-space-xl) var(--design-space-xl);
 }
-.eyebrow {
-  display: flex;
-  align-items: center;
-  gap: var(--design-space-md);
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
-  font-weight: 600;
-  letter-spacing: 1.5px;
-}
-.eyebrow span {
-  color: var(--design-color-muted);
-  font-size: var(--design-text-id);
-  font-family: var(--design-font-mono);
-  letter-spacing: 0;
-}
 h3 {
   margin: var(--design-space-sm) 0;
   font-size: var(--design-text-heading);
@@ -196,12 +181,6 @@ h3 {
 }
 p {
   margin: 0;
-}
-.context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--design-space-sm);
-  color: var(--design-color-muted);
 }
 .header-actions {
   display: flex;

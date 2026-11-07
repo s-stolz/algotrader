@@ -121,12 +121,6 @@ const historyRowProps = props.actions.rowProps;
   justify-content: space-between;
   gap: var(--design-space-xl);
 }
-.section-heading p {
-  margin: var(--design-space-sm) 0 0;
-  color: var(--design-color-muted);
-  font-size: var(--design-text-body);
-  overflow-wrap: anywhere;
-}
 @media (max-width: 700px) {
   .table-panel {
     padding: var(--design-space-lg);

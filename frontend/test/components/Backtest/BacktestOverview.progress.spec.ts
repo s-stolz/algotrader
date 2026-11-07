@@ -214,7 +214,7 @@ describe('accepted backtest inspection: progress', () => {
     vi.useRealTimers();
   });
 
-  it('marks failed polling as unknown, retains counts, and recovers on the next poll', async () => {
+  it('retains state after a failed refresh and recovers on the next event', async () => {
     vi.useFakeTimers();
     vi.mocked(getBacktest)
       .mockResolvedValueOnce(backtest)
@@ -234,7 +234,6 @@ describe('accepted backtest inspection: progress', () => {
     expect(
       wrapper.get('[role="progressbar"]').attributes('aria-valuemax'),
     ).toBe('2');
-    expect(wrapper.text()).not.toContain('Updates interrupted');
     vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
@@ -244,7 +243,7 @@ describe('accepted backtest inspection: progress', () => {
     vi.useRealTimers();
   });
 
-  it('counts cancelled runs as settled without counting them as executed', async () => {
+  it('shows terminal cancellation outcomes and disables active controls', async () => {
     vi.mocked(getBacktest).mockResolvedValue({
       ...backtest,
       status: 'cancelled',

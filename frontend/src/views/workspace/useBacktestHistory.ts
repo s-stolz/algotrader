@@ -59,22 +59,6 @@ export function useBacktestHistory(backtests: Ref<Backtest[] | null>) {
       backtest,
     })),
   ]);
-  const activeHistoryCount = computed(
-    () =>
-      historyRows.value.filter(
-        (entry) => !['completed', 'cancelled'].includes(entry.backtest.status),
-      ).length,
-  );
-  const completedHistoryCount = computed(
-    () =>
-      historyRows.value.filter((entry) => entry.backtest.status === 'completed')
-        .length,
-  );
-  const failedHistoryCount = computed(
-    () =>
-      historyRows.value.filter((entry) => entry.backtest.has_failed_members)
-        .length,
-  );
   const filteredHistory = computed(() =>
     historyRows.value.filter((entry) => {
       const query = search.value.trim().toLowerCase();
@@ -117,9 +101,6 @@ export function useBacktestHistory(backtests: Ref<Backtest[] | null>) {
     strategyOptions,
     timeframeOptions,
     historyRows,
-    activeHistoryCount,
-    completedHistoryCount,
-    failedHistoryCount,
     filteredHistory,
   };
 }

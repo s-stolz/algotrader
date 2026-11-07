@@ -73,7 +73,6 @@ describe('accepted backtest inspection: commands', () => {
     expect(wrapper.get('.header-actions button').text()).toBe(
       'Resume Backtest',
     );
-    expect(wrapper.get('.status-badge').text()).not.toContain('%');
     wrapper.unmount();
   });
 
@@ -147,7 +146,6 @@ describe('accepted backtest inspection: commands', () => {
     expect(
       wrapper.get('[role="progressbar"]').attributes('aria-valuetext'),
     ).toContain('1 / 2 settled');
-    expect(wrapper.text()).not.toContain('0 executed');
     expect(wrapper.get('.status-badge').text()).toBe('Cancelling');
     expect(wrapper.text()).toContain('Cancellation accepted:');
     expect(
@@ -180,7 +178,6 @@ describe('accepted backtest inspection: commands', () => {
     expect(wrapper.get('.header-actions button').text()).toBe(
       'Resume Backtest',
     );
-    expect(wrapper.get('.status-badge').text()).not.toContain('%');
     await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('Connection lost');

@@ -2,13 +2,6 @@ import { useBacktestEvents } from '@/utils/useBacktestEvents';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { HttpResponseError } from '@/api/http';
 import {
-  CheckmarkCircleOutline,
-  HourglassOutline,
-  PauseOutline,
-  PlayOutline,
-  StopCircleOutline,
-} from '@vicons/ionicons5';
-import {
   computed,
   onActivated,
   onDeactivated,
@@ -89,60 +82,12 @@ export function useBacktestInspection(
       count: selectedBacktest.value?.outcome_counts[outcome.status] ?? 0,
     })),
   );
-  const activeMember = computed(() =>
-    selectedBacktest.value?.active_run_ordinal == null
-      ? null
-      : members.value?.find(
-          (member) =>
-            member.run_ordinal === selectedBacktest.value?.active_run_ordinal,
-        ),
-  );
   const statusLabel = computed(() => {
     const backtest = selectedBacktest.value;
     if (!backtest) return '';
     if (backtest.status === 'completed' && backtest.outcome_counts.failed > 0)
       return 'Completed with failures';
     return eventLabel(backtest.status);
-  });
-  const activityMessage = computed(() => {
-    const backtest = selectedBacktest.value;
-    if (!backtest) return '';
-    if (detailError.value)
-      return 'Live activity is unavailable. Retrying automatically.';
-    switch (backtest.status) {
-      case 'queued':
-        return 'Waiting for an execution slot.';
-      case 'running':
-        return backtest.active_run_ordinal === null
-          ? 'Waiting for the next run to start.'
-          : `Running #${backtest.active_run_ordinal + 1} of ${backtest.total_count}`;
-      case 'pausing':
-        return 'Pausing after the active run finishes.';
-      case 'paused':
-        return 'Backtest paused. Resume to continue queued runs.';
-      case 'cancelling':
-        return 'Stopping active execution. Cancellation will finish after cleanup.';
-      case 'cancelled':
-        return 'Backtest cancelled. Previously completed results are still available.';
-      case 'completed':
-        return '';
-    }
-  });
-  const activityIcon = computed(() => {
-    switch (selectedBacktest.value?.status) {
-      case 'completed':
-        return CheckmarkCircleOutline;
-      case 'paused':
-      case 'pausing':
-        return PauseOutline;
-      case 'cancelled':
-      case 'cancelling':
-        return StopCircleOutline;
-      case 'running':
-        return PlayOutline;
-      default:
-        return HourglassOutline;
-    }
   });
   const elapsed = computed(() => {
     const backtest = selectedBacktest.value;
@@ -349,10 +294,7 @@ export function useBacktestInspection(
     selections,
     progressPercent,
     outcomes,
-    activeMember,
     statusLabel,
-    activityMessage,
-    activityIcon,
     elapsed,
     formatTimestamp,
     eventLabel,
