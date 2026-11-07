@@ -17,7 +17,7 @@ import type { EquityReplayResponse } from '@/types/backtesterContracts';
 
 describe('Backtest Workspace replay loading', () => {
   setupWorkspaceTests();
-  it('shows both placeholders immediately and retains loaded charts while another run loads or fails', async () => {
+  it('keeps loaded charts while another replay loads or fails', async () => {
     const members = [0, 1].map((ordinal) =>
       run(`loading-${ordinal}`, {
         backtest_id: 'loading',

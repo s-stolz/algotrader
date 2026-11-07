@@ -16,7 +16,7 @@ import { member } from '../components/Backtest/backtestOverviewFixtures';
 
 describe('Backtest member list on repeated navigation', () => {
   setupRoutingTests();
-  it('keeps the completed backtest header and its runs together when reopened from history', async () => {
+  it('reopens a completed backtest with its member rows', async () => {
     vi.mocked(getBacktest).mockResolvedValue({
       ...backtest,
       status: 'completed',

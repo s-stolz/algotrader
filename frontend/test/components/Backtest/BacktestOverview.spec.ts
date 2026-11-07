@@ -102,7 +102,7 @@ describe('accepted backtest inspection: inspection', () => {
     expect(details.open).toBe(false);
   });
 
-  it('keeps configuration and activity independently collapsed with saved axes and direct event IDs', async () => {
+  it('keeps sections independent and exposes saved axes and event IDs', async () => {
     vi.mocked(listBacktestEvents).mockResolvedValue([
       {
         backtest_id: 'backtest-1',
