@@ -23,7 +23,8 @@ lifecycle policy; the accessor applies it against locked current state.
 
 - `BacktestExecutionPayload` validates persisted execution settings separately
   from the public backtester schema. Keep optional controls coordinated across
-  both boundaries: daily schedules and entry limits must survive storage HTTP
+  both boundaries: order mode, quote convention, spread, intrabar policy, position
+  limits, daily schedules, and entry limits must survive storage HTTP
   round trips, while disabled controls stay omitted for legacy representations.
 - Lock the execution slot before Backtest/Run rows for control transactions.
   Submission turn insertion and queue snapshots use that same lock. Queue reads

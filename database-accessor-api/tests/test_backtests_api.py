@@ -186,6 +186,14 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         {"daily_schedule": schedule},
                         {"max_entries_per_day": 1},
                         {"daily_schedule": schedule, "max_entries_per_day": 2},
+                        {
+                            "execution_mode": "orders",
+                            "candle_quote": "mid",
+                            "spread": 0.0002,
+                            "max_position_quantity": 10_000,
+                            "intrabar_execution_policy": "optimistic",
+                        },
+                        {"execution_mode": "orders", "candle_quote": "bid", "spread": 0.0},
                     )
                 ):
                     with self.subTest(controls=controls):
@@ -208,6 +216,12 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
 
     def test_execution_controls_reject_invalid_values_and_omit_unlimited_defaults(self):
         for controls in (
+            {"execution_mode": "orders"},
+            {"execution_mode": "orders", "candle_quote": "last"},
+            {"spread": -0.1},
+            {"spread": float("nan")},
+            {"max_position_quantity": 0},
+            {"intrabar_execution_policy": "guess"},
             {"max_entries_per_day": 0},
             {"max_entries_per_day": True},
             {"max_entries_per_day": 1.5},

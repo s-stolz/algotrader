@@ -93,11 +93,30 @@ class BacktestExecutionPayload(BacktestContractModel):
     slippage_bps: float
     daily_schedule: BacktestDailySchedulePayload | None = None
     max_entries_per_day: StrictInt | None = Field(default=None, gt=0)
+    execution_mode: Literal["targets", "orders"] | None = None
+    candle_quote: Literal["bid", "ask", "mid"] | None = None
+    spread: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    max_position_quantity: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    intrabar_execution_policy: Literal["conservative", "optimistic", "error"] | None = None
+
+    @model_validator(mode="after")
+    def require_order_quote(self) -> "BacktestExecutionPayload":
+        if self.execution_mode == "orders" and self.candle_quote is None:
+            raise ValueError("Order execution requires an explicit candle_quote")
+        return self
 
     @model_serializer(mode="wrap")
     def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         payload: dict[str, Any] = handler(self)
-        for field in ("daily_schedule", "max_entries_per_day"):
+        for field in (
+            "daily_schedule",
+            "max_entries_per_day",
+            "execution_mode",
+            "candle_quote",
+            "spread",
+            "max_position_quantity",
+            "intrabar_execution_policy",
+        ):
             if getattr(self, field) is None:
                 payload.pop(field, None)
         return payload
