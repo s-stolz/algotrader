@@ -174,8 +174,9 @@ export function useBacktestWorkspace() {
     }
   }
   function resetInspection(backtestId: string | null): void {
+    // Reopening the same ID does not trigger the overview's member loader.
+    if (selectedBacktestId.value !== backtestId) backtestMembers.value = [];
     selectedBacktestId.value = backtestId;
-    backtestMembers.value = [];
     workspaceStore.clearSelection();
     ++detailSequence;
     setComparison([]);
