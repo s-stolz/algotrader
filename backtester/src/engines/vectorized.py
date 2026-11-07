@@ -57,6 +57,7 @@ def run_vectorized_backtest(
     """Run a vectorized bar backtest for one symbol."""
     if request.execution.execution_mode == "orders":
         from data.order_inputs import prepare_order_inputs
+
         from engines.order_vectorized import run_order_vectorized
 
         featured, minutes = prepare_order_inputs(

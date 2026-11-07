@@ -50,6 +50,7 @@ def run_event_driven_backtest(
     """Run a single-symbol event-driven bar backtest."""
     if request.execution.execution_mode == "orders":
         from data.order_inputs import prepare_order_inputs
+
         from engines.order_event_driven import run_order_event_driven
 
         featured, minutes = prepare_order_inputs(
