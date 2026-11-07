@@ -76,7 +76,6 @@ describe('production Backtest Workspace: history-deletion', () => {
       expect(
         wrapper.find('[data-testid="workspace-backtest-delete-me"]').exists(),
       ).toBe(false);
-      expect(wrapper.text()).toContain('removed from the chart overlay');
       expect(overlay.selectedRunId).toBeNull();
       expect(wrapper.text()).not.toContain('Conflict');
       wrapper.unmount();

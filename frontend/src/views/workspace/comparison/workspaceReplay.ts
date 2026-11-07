@@ -5,6 +5,12 @@ import { runName as comparisonRunLabel } from '../../backtestWorkspaceRuns';
 import type { BacktestWorkspace } from '../useBacktestWorkspace';
 export function workspaceReplay(inspection: BacktestWorkspace['inspection']) {
   const { currentRows, selectedComparisonIds, analysis } = inspection;
+  const pendingReplayCount = computed(
+    () =>
+      selectedComparisonIds.value.filter(
+        (id) => !analysis.value[id] || analysis.value[id].loading,
+      ).length,
+  );
   const selectedComparisonRuns = computed(() =>
     selectedComparisonIds.value
       .map((id) => currentRows.value.find((run) => run.run_id === id))
@@ -46,6 +52,7 @@ export function workspaceReplay(inspection: BacktestWorkspace['inspection']) {
   }
 
   return {
+    pendingReplayCount,
     compatibilityDifferences,
     curveStatusIds,
     hasSampledCurve,

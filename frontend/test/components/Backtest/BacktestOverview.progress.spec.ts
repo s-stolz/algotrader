@@ -137,7 +137,7 @@ describe('accepted backtest inspection: progress', () => {
       });
       await flushPromises();
       expect(wrapper.text()).toContain('1 run failed');
-      expect(wrapper.text()).toContain('Running #2 of 2');
+      expect(wrapper.get('.status-badge').text()).toBe('Running');
       expect(wrapper.emitted('members')?.[0]?.[1]).toEqual([
         { ...member(0), status: 'failed', error_message: 'Data unavailable' },
         { ...member(1), status: 'running' },
@@ -145,16 +145,16 @@ describe('accepted backtest inspection: progress', () => {
       vi.advanceTimersByTime(5000);
       emitBacktestChange();
       await flushPromises();
+      expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
       expect(
-        wrapper.get('[role="progressbar"]').attributes('aria-valuetext'),
-      ).toContain('2 / 2 settled');
-      expect(wrapper.get('.outcome-grid .succeeded dd').text()).toBe('1');
+        wrapper.get('[data-testid="backtest-outcome-succeeded"]').text(),
+      ).toBe('Succeeded 1');
       expect(wrapper.get('.status-badge').text()).toBe(
         'Completed with failures',
       );
       expect(wrapper.text()).toContain('running → completed');
       expect(wrapper.text()).toContain('Finished · UTC');
-      expect(wrapper.text()).toContain('run member-1');
+      expect(wrapper.text()).toContain('Run member-1');
       expect(wrapper.emitted('members')?.[1]?.[1]).toEqual([
         { ...member(0), status: 'failed', error_message: 'Data unavailable' },
         { ...member(1), status: 'succeeded' },
@@ -179,13 +179,14 @@ describe('accepted backtest inspection: progress', () => {
       props: { backtestId: 'backtest-1' },
     });
     await flushPromises();
-    expect(wrapper.get('.activity-copy').text()).toContain('Running #1 of 2');
-    expect(wrapper.get('.active-context').text()).toContain('Fast window: 5');
-    expect(wrapper.get('.activity-copy').text()).toContain('Up next: run #2');
-    expect(wrapper.get('.elapsed strong').text()).toBe('10s');
+    expect(wrapper.get('.status-badge').text()).toBe('Running');
+    expect(
+      wrapper.get('[role="progressbar"]').attributes('aria-valuemax'),
+    ).toBe('2');
+    expect(wrapper.get('[data-testid="backtest-duration"]').text()).toBe('10s');
     vi.advanceTimersByTime(1000);
     await flushPromises();
-    expect(wrapper.get('.elapsed strong').text()).toBe('11s');
+    expect(wrapper.get('[data-testid="backtest-duration"]').text()).toBe('11s');
     vi.mocked(getBacktest).mockResolvedValue({
       ...backtest,
       status: 'completed',
@@ -200,21 +201,20 @@ describe('accepted backtest inspection: progress', () => {
     vi.advanceTimersByTime(4000);
     emitBacktestChange();
     await flushPromises();
-    expect(wrapper.get('.elapsed strong').text()).toBe('12s');
-    expect(
-      wrapper.get('[role="progressbar"]').attributes('aria-valuenow'),
-    ).toBe('2');
+    expect(wrapper.get('[data-testid="backtest-duration"]').text()).toBe('12s');
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
+    expect(wrapper.get('.status-badge').text()).toBe('Completed');
     expect(wrapper.findAll('.header-actions button')).toHaveLength(0);
     vi.advanceTimersByTime(10_000);
     emitBacktestChange();
     await flushPromises();
-    expect(wrapper.get('.elapsed strong').text()).toBe('12s');
+    expect(wrapper.get('[data-testid="backtest-duration"]').text()).toBe('12s');
     wrapper.unmount();
     expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
   });
 
-  it('marks failed polling as unknown, retains counts, and recovers on the next poll', async () => {
+  it('retains state after a failed refresh and recovers on the next event', async () => {
     vi.useFakeTimers();
     vi.mocked(getBacktest)
       .mockResolvedValueOnce(backtest)
@@ -234,7 +234,6 @@ describe('accepted backtest inspection: progress', () => {
     expect(
       wrapper.get('[role="progressbar"]').attributes('aria-valuemax'),
     ).toBe('2');
-    expect(wrapper.text()).not.toContain('Updates interrupted');
     vi.advanceTimersByTime(5000);
     emitBacktestChange();
     await flushPromises();
@@ -244,7 +243,7 @@ describe('accepted backtest inspection: progress', () => {
     vi.useRealTimers();
   });
 
-  it('counts cancelled runs as settled without counting them as executed', async () => {
+  it('shows terminal cancellation outcomes and disables active controls', async () => {
     vi.mocked(getBacktest).mockResolvedValue({
       ...backtest,
       status: 'cancelled',
@@ -262,12 +261,14 @@ describe('accepted backtest inspection: progress', () => {
       props: { backtestId: 'backtest-1' },
     });
     await flushPromises();
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
     expect(
-      wrapper.get('[role="progressbar"]').attributes('aria-valuetext'),
-    ).toBe('2 / 2 settled; 1 executed');
-    expect(wrapper.get('.progress-percent').text()).toBe('100%');
+      wrapper.get('[data-testid="backtest-outcome-succeeded"]').text(),
+    ).toBe('Succeeded 1');
     expect(wrapper.get('.status-badge').text()).toBe('Cancelled');
-    expect(wrapper.get('.outcome-grid .cancelled dd').text()).toBe('1');
+    expect(
+      wrapper.get('[data-testid="backtest-outcome-cancelled"]').text(),
+    ).toBe('Cancelled 1');
     expect(wrapper.findAll('.header-actions button')).toHaveLength(0);
     wrapper.unmount();
   });

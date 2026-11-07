@@ -3,22 +3,6 @@
     class="history-page"
     aria-label="Saved Backtest Runs"
   >
-    <div class="workspace-summary">
-      <div
-        ><span>Saved experiments</span
-        ><strong>{{ historyRows.length }}</strong></div
-      >
-      <div
-        ><span>In progress</span><strong>{{ activeHistoryCount }}</strong></div
-      >
-      <div
-        ><span>Completed</span><strong>{{ completedHistoryCount }}</strong></div
-      >
-      <div
-        ><span>With failed runs</span
-        ><strong class="failure-count">{{ failedHistoryCount }}</strong></div
-      >
-    </div>
     <div class="table-panel">
       <div class="section-heading history-heading">
         <div>
@@ -30,7 +14,6 @@
               >{{ filteredHistory.length }} experiments</n-tag
             >
           </div>
-          <p>Open a backtest to explore its configuration and performance.</p>
         </div>
         <n-button
           v-if="canCreate"
@@ -100,9 +83,6 @@ const {
   isLoading,
   readError,
   historyRows,
-  activeHistoryCount,
-  completedHistoryCount,
-  failedHistoryCount,
   filteredHistory,
   historyPagination,
 } = props.history;
@@ -110,33 +90,6 @@ const historyColumns = createHistoryColumns(props.actions);
 const historyRowProps = props.actions.rowProps;
 </script>
 <style scoped>
-.workspace-summary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--design-space-lg);
-  margin: var(--design-space-xl) 0;
-}
-.workspace-summary > div {
-  padding: var(--design-space-lg) var(--design-space-xl);
-  border: 1px solid var(--design-color-border);
-  border-radius: var(--design-radius-panel);
-  background: var(--design-color-panel);
-}
-.workspace-summary span {
-  display: block;
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
-}
-.workspace-summary strong {
-  display: block;
-  margin-top: var(--design-space-sm);
-  font-size: var(--design-text-metric);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-.failure-count {
-  color: var(--design-color-warning);
-}
 .table-panel {
   border: 1px solid var(--design-color-border);
   border-radius: var(--design-radius-panel);
@@ -168,17 +121,7 @@ const historyRowProps = props.actions.rowProps;
   justify-content: space-between;
   gap: var(--design-space-xl);
 }
-.section-heading p {
-  margin: var(--design-space-sm) 0 0;
-  color: var(--design-color-muted);
-  font-size: var(--design-text-body);
-  overflow-wrap: anywhere;
-}
 @media (max-width: 700px) {
-  .workspace-summary {
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--design-space-sm);
-  }
   .table-panel {
     padding: var(--design-space-lg);
   }

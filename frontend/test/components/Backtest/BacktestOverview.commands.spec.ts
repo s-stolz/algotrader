@@ -69,11 +69,10 @@ describe('accepted backtest inspection: commands', () => {
       'pause',
       expect.any(String),
     );
-    expect(wrapper.text()).toContain('Backtest paused.');
+    expect(wrapper.get('.status-badge').text()).toBe('Paused');
     expect(wrapper.get('.header-actions button').text()).toBe(
       'Resume Backtest',
     );
-    expect(wrapper.get('p[role="status"]').text()).not.toContain('%');
     wrapper.unmount();
   });
 
@@ -147,8 +146,7 @@ describe('accepted backtest inspection: commands', () => {
     expect(
       wrapper.get('[role="progressbar"]').attributes('aria-valuetext'),
     ).toContain('1 / 2 settled');
-    expect(wrapper.text()).not.toContain('0 executed');
-    expect(wrapper.text()).toContain('Cancellation will finish after cleanup');
+    expect(wrapper.get('.status-badge').text()).toBe('Cancelling');
     expect(wrapper.text()).toContain('Cancellation accepted:');
     expect(
       wrapper.find('[data-testid="workspace-cancel-backtest"]').exists(),
@@ -176,11 +174,10 @@ describe('accepted backtest inspection: commands', () => {
       props: { backtestId: 'backtest-1' },
     });
     await flushPromises();
-    expect(wrapper.text()).toContain('Pausing after the active run finishes.');
+    expect(wrapper.get('.status-badge').text()).toBe('Pausing');
     expect(wrapper.get('.header-actions button').text()).toBe(
       'Resume Backtest',
     );
-    expect(wrapper.get('p[role="status"]').text()).not.toContain('%');
     await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('Connection lost');
@@ -286,12 +283,12 @@ describe('accepted backtest inspection: commands', () => {
     expect(wrapper.get('.header-actions button').text()).toBe(
       'Resume Backtest',
     );
-    expect(wrapper.text()).toContain('revision 1');
+    expect(wrapper.get('.status-badge').text()).toBe('Paused');
 
     await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     expect(wrapper.get('.header-actions button').text()).toBe('Pause Backtest');
-    expect(wrapper.text()).toContain('revision 2');
+    expect(wrapper.get('.status-badge').text()).toBe('Running');
 
     await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
@@ -303,8 +300,7 @@ describe('accepted backtest inspection: commands', () => {
       'pause',
     ]);
     expect(calls[2][2]).not.toBe(calls[0][2]);
-    expect(wrapper.text()).toContain('revision 3');
-    expect(wrapper.text()).toContain('Backtest paused.');
+    expect(wrapper.get('.status-badge').text()).toBe('Paused');
     wrapper.unmount();
   });
 });

@@ -13,10 +13,6 @@
     size="small"
     @update:sorter="updateComparisonSort"
   />
-  <p class="column-count"
-    >The header checkbox selects successful runs on this page. Selections are
-    retained across pages.</p
-  >
   <WorkspaceReplay :inspection="inspection" />
 </template>
 <script setup lang="ts">
@@ -39,9 +35,3 @@ const {
   updateComparisonSort,
 } = props.comparison;
 </script>
-<style scoped>
-.column-count {
-  color: var(--design-color-muted);
-  align-self: center;
-}
-</style>

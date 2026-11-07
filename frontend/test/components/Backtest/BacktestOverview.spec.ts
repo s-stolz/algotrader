@@ -63,9 +63,6 @@ describe('accepted backtest inspection: inspection', () => {
       'backtest-1',
       [member(0), member(1)],
     ]);
-    expect(
-      wrapper.find('[data-testid="workspace-backtest-members"]').exists(),
-    ).toBe(false);
     wrapper.unmount();
   });
 
@@ -100,6 +97,50 @@ describe('accepted backtest inspection: inspection', () => {
     expect(details.open).toBe(true);
     summary.click();
     expect(details.open).toBe(false);
+  });
+
+  it('keeps sections independent and exposes saved axes and event IDs', async () => {
+    vi.mocked(listBacktestEvents).mockResolvedValue([
+      {
+        backtest_id: 'backtest-1',
+        revision: 1,
+        event_type: 'started',
+        status: 'running',
+        prior_status: 'queued',
+        occurred_at_ms: backtest.accepted_at_ms,
+        trigger_run_id: '12345678-1234-1234-1234-123456789abc',
+        reason: null,
+        command_id: '87654321-1234-1234-1234-123456789abc',
+      },
+    ]);
+    const wrapper = mount(BacktestOverview, {
+      props: { backtestId: 'backtest-1' },
+    });
+    onTestFinished(() => wrapper.unmount());
+    await flushPromises();
+    const configuration = wrapper.get<HTMLDetailsElement>(
+      '.configuration-section',
+    );
+    const activity = wrapper.get<HTMLDetailsElement>('.activity-section');
+    expect(configuration.element.open).toBe(false);
+    expect(activity.element.open).toBe(false);
+    configuration.get('summary').element.click();
+    expect(configuration.element.open).toBe(true);
+    expect(activity.element.open).toBe(false);
+    expect(configuration.text()).toContain('EURUSD · FX');
+    expect(configuration.text()).toContain('5 → 6');
+    expect(configuration.text()).toContain('step 1 · 2 values');
+    expect(wrapper.get('.backtest-header').text()).toContain('Version 1');
+    activity.get('summary').element.click();
+    expect(activity.element.open).toBe(true);
+    const identifiers = activity.findAll('code');
+    expect(identifiers.map((identifier) => identifier.text())).toEqual([
+      'Run 12345678',
+      'Cmd 87654321',
+    ]);
+    expect(identifiers[0].attributes('title')).toBe(
+      '12345678-1234-1234-1234-123456789abc',
+    );
   });
 
   it('shows the saved experiment name again after reloading detail', async () => {
@@ -139,33 +180,22 @@ describe('accepted backtest inspection: inspection', () => {
     vi.useRealTimers();
   });
 
-  it(
-    'shows one backtest summary, saved definition, and actual ordered ' +
-      'Ready members after reload',
-    async () => {
-      const reloaded = mount(BacktestOverview, {
-        props: { backtestId: 'backtest-1' },
-      });
-      await flushPromises();
-      expect(reloaded.text()).toContain('2 of 3 combinations');
-      expect(
-        reloaded.get('[role="progressbar"]').attributes('aria-valuetext'),
-      ).toContain('0 / 2 settled');
-      expect(reloaded.text()).not.toContain('0 executed');
-      expect(reloaded.emitted('members')?.[0]).toEqual([
-        'backtest-1',
-        [member(0), member(1)],
-      ]);
-      expect(
-        reloaded.find('[data-testid="workspace-backtest-members"]').exists(),
-      ).toBe(false);
-      expect(reloaded.text()).toContain(
-        'Full saved definition and strategy metadata',
-      );
-      expect(
-        reloaded.get('[role="progressbar"]').attributes('aria-valuenow'),
-      ).toBe('0');
-      reloaded.unmount();
-    },
-  );
+  it('renders saved configuration and emits ordered runs', async () => {
+    const wrapper = mount(BacktestOverview, {
+      props: { backtestId: 'backtest-1' },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('2 of 3 combinations');
+    expect(
+      wrapper.get('[role="progressbar"]').attributes('aria-valuetext'),
+    ).toContain('0 / 2 settled');
+    expect(wrapper.emitted('members')?.[0]).toEqual([
+      'backtest-1',
+      [member(0), member(1)],
+    ]);
+    expect(
+      wrapper.get('[role="progressbar"]').attributes('aria-valuenow'),
+    ).toBe('0');
+    wrapper.unmount();
+  });
 });

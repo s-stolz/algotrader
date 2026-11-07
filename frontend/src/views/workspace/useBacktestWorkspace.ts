@@ -174,8 +174,9 @@ export function useBacktestWorkspace() {
     }
   }
   function resetInspection(backtestId: string | null): void {
+    // Reopening the same ID does not trigger the overview's member loader.
+    if (selectedBacktestId.value !== backtestId) backtestMembers.value = [];
     selectedBacktestId.value = backtestId;
-    backtestMembers.value = [];
     workspaceStore.clearSelection();
     ++detailSequence;
     setComparison([]);
@@ -245,6 +246,7 @@ export function useBacktestWorkspace() {
     void queueHealth.value?.refresh();
   }
   function onBacktestDeleted(backtest: Backtest): void {
+    selectionNotice.value = null;
     const overlayBelongsToBacktest =
       overlayStore.selectedRun?.backtest_id === backtest.backtest_id ||
       backtestMembers.value.some(
@@ -253,12 +255,9 @@ export function useBacktestWorkspace() {
     if (selectedBacktestId.value === backtest.backtest_id) {
       resetInspection(null);
       logRun.value = null;
-      selectionNotice.value = 'The deleted Backtest is no longer selected.';
     }
     if (overlayBelongsToBacktest) {
       overlayStore.clearOverlay();
-      selectionNotice.value =
-        'The deleted Backtest was removed from the chart overlay.';
     }
     redirectUnavailableBacktest(backtest.backtest_id);
   }

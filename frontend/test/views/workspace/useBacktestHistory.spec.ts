@@ -36,17 +36,4 @@ describe('Backtest history', () => {
     model.search.value = 'Research EURUSD';
     expect(model.filteredHistory.value).toHaveLength(0);
   });
-
-  it('counts lifecycle and failed outcomes independently of Run count', () => {
-    const history = shallowRef<Backtest[]>([
-      { ...backtest('one', 1), has_failed_members: true },
-      { ...backtest('many', 3), status: 'paused' as const },
-    ]);
-    const model = useBacktestHistory(history);
-    expect(model.activeHistoryCount.value).toBe(1);
-    expect(model.completedHistoryCount.value).toBe(1);
-    expect(model.failedHistoryCount.value).toBe(1);
-    history.value = [];
-    expect(model.historyRows.value).toHaveLength(0);
-  });
 });

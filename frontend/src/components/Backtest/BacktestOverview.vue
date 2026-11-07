@@ -29,28 +29,21 @@
       class="backtest-detail"
     >
       <header class="backtest-header">
-        <div>
+        <div class="title-row">
           <h3
             ><ExperimentName
               :experiment-id="selectedBacktest.backtest_id"
               :name="selectedBacktest.name"
           /></h3>
-          <p class="context"
-            >Version {{ selectedBacktest.strategy_metadata.strategy_version }}
-            <span aria-hidden="true">·</span>
-            {{ selectedBacktest.markets.join(', ') }}
-            <span aria-hidden="true">·</span>
-            {{ selectedBacktest.timeframes.join(', ') }}</p
+          <n-tag
+            size="small"
+            round
+            :bordered="false"
+            >Version
+            {{ selectedBacktest.strategy_metadata.strategy_version }}</n-tag
           >
         </div>
         <div class="header-actions">
-          <div
-            v-if="selectedBacktest.started_at_ms !== null"
-            class="elapsed"
-          >
-            <span>{{ isTerminal ? 'Total time' : 'Time since start' }}</span
-            ><strong>{{ elapsed }}</strong>
-          </div>
           <span
             class="status-badge"
             :class="detailError ? 'unknown' : selectedBacktest.status"
@@ -84,7 +77,10 @@
         </div>
       </header>
 
-      <BacktestProgress :inspection="inspection" />
+      <BacktestProgress
+        v-if="!isTerminal"
+        :inspection="inspection"
+      />
       <p
         v-if="selectedBacktest.outcome_counts.failed > 0"
         class="notice warning"
@@ -120,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { NButton, NIcon } from 'naive-ui';
+import { NButton, NIcon, NTag } from 'naive-ui';
 import { PauseOutline, PlayOutline } from '@vicons/ionicons5';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import ExperimentName from './ExperimentName.vue';
@@ -145,7 +141,6 @@ const {
   controlPending,
   controlError,
   isTerminal,
-  elapsed,
   statusLabel,
   canControl,
   canPause,
@@ -153,6 +148,12 @@ const {
 } = inspection;
 </script>
 <style scoped>
+.title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
 .backtest-history {
   margin-bottom: var(--design-space-xl);
   color: var(--design-color-body);
@@ -172,21 +173,6 @@ const {
   gap: var(--design-space-xl);
   padding: var(--design-space-xl) var(--design-space-xl);
 }
-.eyebrow {
-  display: flex;
-  align-items: center;
-  gap: var(--design-space-md);
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
-  font-weight: 600;
-  letter-spacing: 1.5px;
-}
-.eyebrow span {
-  color: var(--design-color-muted);
-  font-size: var(--design-text-id);
-  font-family: var(--design-font-mono);
-  letter-spacing: 0;
-}
 h3 {
   margin: var(--design-space-sm) 0;
   font-size: var(--design-text-heading);
@@ -195,12 +181,6 @@ h3 {
 }
 p {
   margin: 0;
-}
-.context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--design-space-sm);
-  color: var(--design-color-muted);
 }
 .header-actions {
   display: flex;
@@ -241,22 +221,13 @@ p {
   background: var(--design-color-inset);
 }
 .status-badge.cancelled {
-  color: var(--design-color-muted);
-  border-color: var(--design-color-border);
-  background: var(--design-color-inset);
-}
-.elapsed {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--design-space-sm);
-  white-space: nowrap;
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
-}
-.elapsed strong {
-  color: var(--design-color-body);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+  color: var(--design-color-warning);
+  border-color: var(--design-color-warning);
+  background: color-mix(
+    in srgb,
+    var(--design-color-warning) 12%,
+    var(--design-color-inset)
+  );
 }
 .notice {
   margin: var(--design-space-md) var(--design-space-xl);

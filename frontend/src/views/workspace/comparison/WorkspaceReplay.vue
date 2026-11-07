@@ -7,14 +7,8 @@
     Compared runs differ in {{ compatibilityDifferences.join(', ') }}. Interpret
     their results in context.
   </p>
-  <p
-    v-if="selectedComparisonIds.length === 0"
-    role="status"
-  >
-    Select successful runs to inspect exact equity and drawdown.
-  </p>
   <div
-    v-else
+    v-if="selectedComparisonIds.length > 0"
     class="curve-inspection"
   >
     <ul
@@ -39,6 +33,11 @@
         >
       </li>
     </ul>
+    <ReplayLoading
+      v-if="pendingReplayCount"
+      :count="pendingReplayCount"
+      :show-skeleton="!chartSeries.length"
+    />
     <EquityReplayCharts
       v-if="chartSeries.length"
       :series="chartSeries"
@@ -47,6 +46,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import ReplayLoading from './ReplayLoading.vue';
 import EquityReplayCharts from '../../EquityReplayCharts.vue';
 import { equityUnavailableReason } from '../../backtestWorkspaceRuns';
 import { workspaceReplay } from './workspaceReplay';
@@ -54,6 +54,7 @@ import type { BacktestWorkspace } from '../useBacktestWorkspace';
 const props = defineProps<{ inspection: BacktestWorkspace['inspection'] }>();
 const { selectedComparisonIds, analysis } = props.inspection;
 const {
+  pendingReplayCount,
   compatibilityDifferences,
   curveStatusIds,
   hasSampledCurve,
