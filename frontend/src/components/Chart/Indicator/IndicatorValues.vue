@@ -34,7 +34,7 @@ const outputs = computed(() => getReadoutOutputs(props.indicator));
   align-items: center;
   gap: var(--design-space-xs) var(--design-space-md);
   min-width: 0;
-  flex: 1 1 12rem;
+  flex: 1 1 auto;
   font-size: var(--design-text-secondary);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
