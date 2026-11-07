@@ -1,3 +1,4 @@
+import { isOrderExecution } from './orderExecution';
 import { dailyEntryLimitIssue } from './entryLimit';
 import { isDailyTradingSchedule, type DailyTradingSchedule } from './schedule';
 import {
@@ -31,6 +32,11 @@ export interface BacktestStrategyPayload {
 }
 
 export interface BacktestExecutionPayload {
+  execution_mode?: 'targets' | 'orders';
+  intrabar_execution_policy?: 'conservative' | 'optimistic' | 'error' | null;
+  candle_quote?: 'bid' | 'ask' | 'mid' | null;
+  spread?: number;
+  max_position_quantity?: number | null;
   daily_schedule?: DailyTradingSchedule | null;
   max_entries_per_day?: number | null;
   signal_timing: 'close';
@@ -203,6 +209,7 @@ function isBacktestExecutionPayload(
 ): value is BacktestExecutionPayload {
   return (
     isRecord(value) &&
+    isOrderExecution(value) &&
     dailyEntryLimitIssue(value.max_entries_per_day) === null &&
     (value.daily_schedule == null ||
       isDailyTradingSchedule(value.daily_schedule)) &&

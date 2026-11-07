@@ -41,7 +41,9 @@ and behavior that is easy to break when changing them.
 - Backtest overlays use Closed Trades with explicit direction and saved planned
   protective prices. Selecting a run changes Market/Timeframe but preserves the
   normal latest-Candles, live-update, and lazy-history workflow. Render overlays
-  for the loaded range on the main candlestick pane.
+  for the loaded range on the main candlestick pane. Order-mode minute fills
+  anchor to their containing loaded strategy Candle; trade records retain exact
+  minute timestamps and prices.
   Start at `src/stores/backtestOverlayStore.ts` and
   `src/utils/chart/backtestOverlay.ts`.
 - Chart overlay eligibility requires a successful, single-symbol run, an

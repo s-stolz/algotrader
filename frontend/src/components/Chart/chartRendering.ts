@@ -24,6 +24,7 @@ import type {
 import {
   buildBacktestProtectiveLineSegments,
   buildBacktestTradeMarkers,
+  orderCandleRange,
   formatBacktestMarkerDetails,
   type LoadedCandleRange,
 } from '@/utils/chart/backtestOverlay';
@@ -300,6 +301,13 @@ export function createChartRendering({
       return null;
     }
 
+    const run = backtestOverlayStore.selectedRun;
+    if (run?.request.execution.execution_mode === 'orders') {
+      return orderCandleRange(
+        candlesticksStore.data.map((candle) => candle.timestamp_ms),
+        run.request.timeframe,
+      );
+    }
     let startMs = Number.POSITIVE_INFINITY;
     let endMs = Number.NEGATIVE_INFINITY;
 
@@ -344,7 +352,7 @@ export function createChartRendering({
       buildBacktestTradeMarkers(trades, range, getMinMove()),
     );
     infrastructure.setCandlestickProtectiveLines(
-      buildBacktestProtectiveLineSegments(trades),
+      buildBacktestProtectiveLineSegments(trades, range.candleStartsMs),
     );
   }
 

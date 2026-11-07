@@ -1,3 +1,4 @@
+import { normalizeTimeframeCode, timeframeToMinutes } from '@/utils/timeframes';
 import { designTokens } from '@/design/tokens';
 import type { BacktestClosedTrade } from '@/types/backtesterContracts';
 
@@ -10,6 +11,7 @@ import { marketPricePrecision } from './priceFormatting';
 export interface LoadedCandleRange {
   startMs: number;
   endMs: number;
+  candleStartsMs?: readonly number[];
 }
 
 export const BUY_MARKER_COLOR = designTokens.chart.buy;
@@ -121,17 +123,27 @@ export function buildBacktestTradeMarkers(
     }
   }
 
+  for (const marker of markers) {
+    marker.time = timestampToChartTime(
+      anchorTimestamp(Number(marker.time) * 1000, range.candleStartsMs),
+    );
+  }
   return markers.sort((left, right) => Number(left.time) - Number(right.time));
 }
 
 export function buildBacktestProtectiveLineSegments(
   trades: readonly BacktestClosedTrade[],
+  candleStartsMs?: readonly number[],
 ): ChartProtectiveLineSegment[] {
   const segments: ChartProtectiveLineSegment[] = [];
 
   for (const trade of trades) {
-    const startTime = timestampToChartTime(trade.entry_timestamp_ms);
-    const endTime = timestampToChartTime(trade.exit_timestamp_ms);
+    const startTime = timestampToChartTime(
+      anchorTimestamp(trade.entry_timestamp_ms, candleStartsMs),
+    );
+    const endTime = timestampToChartTime(
+      anchorTimestamp(trade.exit_timestamp_ms, candleStartsMs),
+    );
 
     if (trade.stop_loss_price !== null) {
       segments.push({
@@ -155,4 +167,39 @@ export function buildBacktestProtectiveLineSegments(
   }
 
   return segments;
+}
+
+export function orderCandleRange(
+  timestamps: readonly number[],
+  timeframe: string,
+): LoadedCandleRange | null {
+  if (!timestamps.length) return null;
+  const starts = [...timestamps].sort((a, b) => a - b);
+  const last = starts[starts.length - 1];
+  const end = new Date(last);
+  if (normalizeTimeframeCode(timeframe) === 'MN1') {
+    end.setUTCMonth(end.getUTCMonth() + 1);
+  } else {
+    end.setTime(last + timeframeToMinutes(timeframe) * 60_000);
+  }
+  return {
+    startMs: starts[0],
+    endMs: end.getTime() - 1,
+    candleStartsMs: starts,
+  };
+}
+
+function anchorTimestamp(
+  timestamp: number,
+  starts?: readonly number[],
+): number {
+  if (!starts?.length || timestamp < starts[0]) return timestamp;
+  let low = 0;
+  let high = starts.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (starts[middle] <= timestamp) low = middle + 1;
+    else high = middle;
+  }
+  return starts[low - 1];
 }
