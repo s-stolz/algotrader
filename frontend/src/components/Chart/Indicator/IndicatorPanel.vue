@@ -93,6 +93,7 @@ const modalStore = useModalStore();
 const showEmptyState = ref(false);
 
 const hasNoData = computed(() => {
+  if (props.indicator.info.indicator_id !== 'currency_strength') return false;
   if (props.indicator.info.overlay) return false;
   const outputs = Object.keys(props.indicator.info.outputs).filter(
     (key) => key !== 'timestamp',

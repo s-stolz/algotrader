@@ -110,10 +110,30 @@ describe('IndicatorPanel', () => {
     localStorage.clear();
   });
 
+  it.each(['sma', 'rsi', 'macd'])(
+    'does not show no-data help for %s while its data is empty',
+    (indicatorId) => {
+      const wrapper = mount(IndicatorPanel, {
+        props: {
+          indicator: createIndicator({
+            info: { ...indicatorInfo, indicator_id: indicatorId },
+            data: [],
+          }),
+        },
+        global: { stubs: { NButton: NButtonStub, NIcon: true } },
+      });
+      expect(wrapper.find('.indicator-empty-state').exists()).toBe(false);
+      wrapper.unmount();
+    },
+  );
+
   it.each([{ data: [] }, { data: [{ timestamp_ms: 1000, sma: null }] }])(
     'shows empty-state help after the remove control when no values can be plotted',
     async ({ data }) => {
-      const indicator = createIndicator({ data });
+      const indicator = createIndicator({
+        info: { ...indicatorInfo, indicator_id: 'currency_strength' },
+        data,
+      });
       const wrapper = mount(IndicatorPanel, {
         props: { indicator },
         global: { stubs: { NButton: NButtonStub, NIcon: true } },
@@ -140,7 +160,9 @@ describe('IndicatorPanel', () => {
       await wrapper.get('[aria-label="Remove Indicator"]').trigger('click');
       expect(wrapper.emitted('remove-indicator')).toEqual([['indicator-1']]);
 
-      await wrapper.setProps({ indicator: createIndicator() });
+      await wrapper.setProps({
+        indicator: { ...indicator, data: createIndicator().data },
+      });
       expect(wrapper.find('.indicator-empty-state').exists()).toBe(false);
       await wrapper.setProps({ indicator });
       expect(wrapper.find('.indicator-empty-state').exists()).toBe(true);
