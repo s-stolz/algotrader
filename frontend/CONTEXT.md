@@ -44,6 +44,10 @@ and behavior that is easy to break when changing them.
   for the loaded range on the main candlestick pane. Order-mode minute fills
   anchor to their containing loaded strategy Candle; trade records retain exact
   minute timestamps and prices.
+  Solid entry-price lines span the actual entry through close; dashed pending
+  limit lines use saved priced order events through fill, cancellation, or expiry.
+  `utils/chart/backtestEntryLines.ts` builds these segments, clipping to loaded
+  history. Legacy events without prices do not produce pending lines.
   Start at `src/stores/backtestOverlayStore.ts` and
   `src/utils/chart/backtestOverlay.ts`.
 - Chart overlay eligibility requires a successful, single-symbol run, an

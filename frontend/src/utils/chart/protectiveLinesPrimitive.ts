@@ -19,6 +19,7 @@ export interface ChartProtectiveLineSegment {
   price: number;
   color: string;
   lineWidth?: number;
+  dashed?: boolean;
 }
 
 const DEFAULT_LINE_WIDTH = 2;
@@ -35,6 +36,7 @@ class ProtectiveLinesPaneRenderer implements IPrimitivePaneRenderer {
     private readonly segments: readonly ChartProtectiveLineSegment[],
     private readonly timeToCoordinate: CoordinateResolver<Time>,
     private readonly priceToCoordinate: CoordinateResolver<number>,
+    private readonly barSpacing: () => number,
   ) {}
 
   draw(target: CanvasRenderingTarget2D): void {
@@ -51,11 +53,23 @@ class ProtectiveLinesPaneRenderer implements IPrimitivePaneRenderer {
           continue;
         }
 
+        context.setLineDash(segment.dashed ? [6, 4] : []);
         context.beginPath();
         context.strokeStyle = segment.color;
         context.lineWidth = segment.lineWidth ?? DEFAULT_LINE_WIDTH;
-        context.moveTo(alignStrokeCoordinate(startX), alignStrokeCoordinate(y));
-        context.lineTo(alignStrokeCoordinate(endX), alignStrokeCoordinate(y));
+        // Intrabar entries and exits share a candle anchor but still need a visible level.
+        const halfWidth =
+          startX === endX
+            ? Math.max(3, Math.round(this.barSpacing() * 0.4))
+            : 0;
+        context.moveTo(
+          alignStrokeCoordinate(startX) - halfWidth,
+          alignStrokeCoordinate(y),
+        );
+        context.lineTo(
+          alignStrokeCoordinate(endX) + halfWidth,
+          alignStrokeCoordinate(y),
+        );
         context.stroke();
       }
 
@@ -145,6 +159,7 @@ export class ProtectiveLinesPrimitive implements ISeriesPrimitive<Time> {
       this.segments,
       (time) => this.timeToCoordinate(time),
       (price) => this.attachedParams?.series.priceToCoordinate(price) ?? null,
+      () => this.attachedParams?.chart.timeScale().options().barSpacing ?? 6,
     );
   }
 

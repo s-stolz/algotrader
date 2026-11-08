@@ -310,6 +310,11 @@ are omitted from legacy snapshot responses unless originally present. Runtime
 semantics and strategy authoring are owned by [order contracts](../../backtester/ORDERS.md).
 
 Order-mode Fills retain existing ordered storage and minute timestamps. Diagnostics
-persist the order lifecycle in `order_events`. Equity Replay descriptor v1 uses M1
+persist the order lifecycle in `order_events`. Accepted `submit` and `update`
+events include the resolved `limit_price` and `side`; timestamps mark when the
+order becomes effective. Terminal events end the pending-price segment, and
+updates start a new segment. Earlier saved events may omit prices; consumers
+must not infer their pending levels. These additive diagnostic fields do not
+change the result schema version. Equity Replay descriptor v1 uses M1
 as its timeframe identity and reads M1 candles for these runs; the request timeframe
 continues to identify strategy decisions. Target-mode fingerprints are unchanged.

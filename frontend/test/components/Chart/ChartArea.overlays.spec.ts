@@ -66,7 +66,19 @@ describe('ChartArea overlays', () => {
     setupStores('M15');
     const backtestOverlayStore = useBacktestOverlayStore();
     backtestOverlayStore.selectedRunId = 'run-123';
-    backtestOverlayStore.selectedRun = backtestRun();
+    backtestOverlayStore.selectedRun = backtestRun({
+      diagnostics: {
+        order_events: [
+          {
+            order_id: 'pending',
+            outcome: 'submit',
+            timestamp_ms: 300000,
+            limit_price: 100,
+          },
+          { order_id: 'pending', outcome: 'filled', timestamp_ms: 600000 },
+        ],
+      },
+    });
     backtestOverlayStore.closedTrades = [
       closedTrade({
         trade_id: 'entry-only',
@@ -138,6 +150,15 @@ describe('ChartArea overlays', () => {
     expect(
       chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
     ).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: 'pending:limit:0',
+        price: 100,
+        dashed: true,
+        startTime: 300,
+        endTime: 600,
+      }),
+      expect.objectContaining({ id: 'entry-only:entry-price', price: 101.25 }),
+      expect.objectContaining({ id: 'exit-only:entry-price', price: 95 }),
       {
         id: 'entry-only:stop-loss',
         startTime: 300,
@@ -196,6 +217,7 @@ describe('ChartArea overlays', () => {
     expect(
       chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
     ).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: 'range-extension:entry-price', price: 99 }),
       expect.objectContaining({
         id: 'range-extension:stop-loss',
         startTime: 60,
@@ -225,6 +247,7 @@ describe('ChartArea overlays', () => {
     expect(
       chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
     ).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: 'range-extension:entry-price', price: 99 }),
       expect.objectContaining({
         id: 'range-extension:stop-loss',
         startTime: 60,
@@ -276,6 +299,7 @@ describe('ChartArea overlays', () => {
     expect(
       chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
     ).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: 'range-extension:entry-price', price: 99 }),
       expect.objectContaining({
         id: 'range-extension:stop-loss',
         startTime: 60,

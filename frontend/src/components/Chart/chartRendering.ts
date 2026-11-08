@@ -1,3 +1,7 @@
+import {
+  buildBacktestEntryLines,
+  buildBacktestLimitLines,
+} from '@/utils/chart/backtestEntryLines';
 import { nextTick, shallowReactive } from 'vue';
 import { whenChartFontReady } from '@/utils/chart/chartFonts';
 import type {
@@ -336,9 +340,15 @@ export function createChartRendering({
     infrastructure.setCandlestickMarkers(
       buildBacktestTradeMarkers(trades, range, getMinMove()),
     );
-    infrastructure.setCandlestickProtectiveLines(
-      buildBacktestProtectiveLineSegments(trades, range.candleStartsMs),
-    );
+    infrastructure.setCandlestickProtectiveLines([
+      ...buildBacktestLimitLines(
+        backtestOverlayStore.selectedRun.diagnostics?.order_events,
+        range,
+        backtestOverlayStore.selectedRun.request.end_ms,
+      ),
+      ...buildBacktestEntryLines(trades, range),
+      ...buildBacktestProtectiveLineSegments(trades, range.candleStartsMs),
+    ]);
   }
 
   function removeBacktestOverlay(): void {

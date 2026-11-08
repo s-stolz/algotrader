@@ -147,7 +147,15 @@ class OrderExecutionState:
             ]
 
     def record(self, timestamp: int, order_id: str, outcome: str) -> None:
-        self.events.append({"timestamp_ms": timestamp, "order_id": order_id, "outcome": outcome})
+        event: dict[str, object] = {
+            "timestamp_ms": timestamp,
+            "order_id": order_id,
+            "outcome": outcome,
+        }
+        if outcome in ("submit", "update"):
+            order = self.active[order_id]
+            event.update(limit_price=order.price, side=order.side.value)
+        self.events.append(event)
 
 
 def execute_minute(  # noqa: C901

@@ -18,6 +18,25 @@ from strategies.examples.rsi_range_limit import build_rsi_range_limit
 
 
 class RsiRangeOrderTests(unittest.TestCase):
+    def test_order_events_snapshot_prices_on_submit_and_update(self):
+        for state_type in (OrderExecutionState, EventOrderState):
+            with self.subTest(state=state_type.__name__):
+                state = state_type()
+                for timestamp, action, price in (
+                    (60000, OrderAction.SUBMIT, 110.0),
+                    (120000, OrderAction.UPDATE, 111.0),
+                ):
+                    order = LimitOrder("pending", OrderSide.SELL, price, 1.0)
+                    state.command(OrderCommand(timestamp, action, "pending", order))
+                state.command(OrderCommand(180000, OrderAction.CANCEL, "pending"))
+                self.assertEqual(
+                    [event.get("limit_price") for event in state.events], [110.0, 111.0, None]
+                )
+                self.assertEqual(
+                    [event["outcome"] for event in state.events], ["submit", "update", "cancel"]
+                )
+                self.assertEqual(state.events[0]["side"], "sell")
+
     def test_delayed_fill_ignored_crossing_and_actual_fill_exits(self):
         strategy = build_rsi_range_limit()
         bars = pd.DataFrame(
@@ -65,6 +84,10 @@ class RsiRangeOrderTests(unittest.TestCase):
         self.assertEqual(vector.trades, event.trades)
         self.assertEqual(vector.equity_curve, event.equity_curve)
         self.assertEqual(vector.diagnostics["order_events"], event.diagnostics["order_events"])
+        submitted = vector.diagnostics["order_events"][0]
+        self.assertEqual(submitted["outcome"], "submit")
+        self.assertEqual(submitted["limit_price"], 95.0)
+        self.assertEqual(submitted["side"], "buy")
         self.assertEqual(len(vector.fills), 2)
         self.assertEqual(vector.fills[0].timestamp_ms, 22 * 60000)
         self.assertEqual(

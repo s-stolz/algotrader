@@ -35,6 +35,8 @@ export const designTokens = {
   chart: {
     buy: '#00E676',
     sell: '#FF5252',
+    entry: '#facc15',
+    pendingLimit: '#c084fc',
     stopLoss: '#dc2626',
     takeProfit: '#2563eb',
     replaySaturation: '72%',
