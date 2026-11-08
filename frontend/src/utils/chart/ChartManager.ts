@@ -292,6 +292,9 @@ export class ChartManager {
     }
 
     try {
+      // Refresh can restore a later manual pane before the strategy panes.
+      // The chart library only appends one pane for an out-of-range index.
+      while (this.chart.panes().length <= paneIndex) this.chart.addPane();
       return this.chart.addSeries(
         seriesDefinition,
         seriesOptions,
