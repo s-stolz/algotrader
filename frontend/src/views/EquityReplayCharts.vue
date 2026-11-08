@@ -7,26 +7,10 @@
     <section aria-label="Equity chart">
       <header class="chart-header">
         <h2>Equity</h2>
-        <ul
-          class="series-legend"
-          aria-label="Compared runs"
-        >
-          <li
-            v-for="run in series"
-            :key="run.runId"
-            :title="run.name"
-          >
-            <span
-              class="series-swatch"
-              :style="{ background: seriesColor(run) }"
-            />
-            <span :class="{ 'series-id': run.ordinal == null }">{{
-              run.ordinal == null
-                ? run.runId.slice(0, 8)
-                : `#${run.ordinal + 1}`
-            }}</span>
-          </li>
-        </ul>
+        <ReplayLegend
+          :series="series"
+          :color-for-run="seriesColor"
+        />
       </header>
       <div class="chart-panel">
         <div
@@ -39,26 +23,10 @@
     <section aria-label="Drawdown chart">
       <header class="chart-header">
         <h2>Drawdown</h2>
-        <ul
-          class="series-legend"
-          aria-label="Compared runs"
-        >
-          <li
-            v-for="run in series"
-            :key="run.runId"
-            :title="run.name"
-          >
-            <span
-              class="series-swatch"
-              :style="{ background: seriesColor(run) }"
-            />
-            <span :class="{ 'series-id': run.ordinal == null }">{{
-              run.ordinal == null
-                ? run.runId.slice(0, 8)
-                : `#${run.ordinal + 1}`
-            }}</span>
-          </li>
-        </ul>
+        <ReplayLegend
+          :series="series"
+          :color-for-run="seriesColor"
+        />
       </header>
       <div class="chart-panel">
         <div
@@ -81,6 +49,7 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import ReplayLegend from './workspace/comparison/ReplayLegend.vue';
 import type { ReplaySeries } from './backtestComparison';
 import { designTokens } from '@/design/tokens';
 import { whenChartFontReady } from '@/utils/chart/chartFonts';
@@ -311,30 +280,6 @@ onUnmounted(() => {
   border-radius: var(--design-radius-panel);
   overflow: hidden;
   background: var(--design-color-inset);
-}
-.series-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--design-space-sm) var(--design-space-xl);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--design-text-secondary);
-  color: var(--design-color-body);
-}
-.series-legend li {
-  display: flex;
-  align-items: center;
-  gap: var(--design-space-sm);
-}
-.series-id {
-  font-family: var(--design-font-mono);
-  font-size: var(--design-text-id);
-}
-.series-swatch {
-  width: 16px;
-  height: 3px;
-  border-radius: var(--design-radius-panel);
 }
 .chart {
   width: 100%;
