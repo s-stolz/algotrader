@@ -72,3 +72,12 @@ def resolve_order_expiry(command: OrderCommand, timeframe: str) -> OrderCommand:
             command.effective_at_ms + order.lifetime_bars * timeframe_to_minutes(timeframe) * 60_000
         )
     return replace(command, order=replace(order, expires_at_ms=expiry, lifetime_bars=None))
+
+
+def resolve_order_ticks(command: OrderCommand, min_move: float | None) -> OrderCommand:
+    """Convert tick distances using the accepted run's immutable Market metadata."""
+    if command.protection is not None:
+        return replace(command, protection=command.protection.resolve_ticks(min_move))
+    if command.order is not None:
+        return replace(command, order=command.order.resolve_ticks(min_move))
+    return command

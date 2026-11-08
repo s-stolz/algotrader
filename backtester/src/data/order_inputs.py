@@ -27,6 +27,8 @@ def prepare_order_inputs(  # noqa: C901
         raise ValueError("Liquidity-based partial order fills are not supported")
     if strategy.order_model is None:
         raise ValueError("Order execution requires an order strategy")
+    if strategy.order_model.requires_min_move and request.market_min_move is None:
+        raise ValueError("Selected market requires a positive min_move for tick protection")
     if strategy.sizing_model is not None or strategy.risk_rules:
         raise ValueError("Target transforms cannot be used with explicit orders")
     if request.start_ms % 60_000 or request.end_ms % 60_000:

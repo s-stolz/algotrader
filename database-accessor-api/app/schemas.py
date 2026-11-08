@@ -135,6 +135,15 @@ class BacktestRequestPayload(BacktestContractModel):
     execution: BacktestExecutionPayload
     run_metadata: dict[str, Any] | None
 
+    market_min_move: float | None = Field(default=None, gt=0, allow_inf_nan=False, strict=True)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload: dict[str, Any] = handler(self)
+        if self.market_min_move is None:
+            payload.pop("market_min_move", None)
+        return payload
+
     @field_validator("run_metadata")
     @classmethod
     def reject_metadata_names(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:

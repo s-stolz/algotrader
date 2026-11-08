@@ -19,7 +19,7 @@ from strategies.examples.rsi_range_limit import build_rsi_range_limit
 
 class RsiRangeOrderTests(unittest.TestCase):
     def test_delayed_fill_ignored_crossing_and_actual_fill_exits(self):
-        strategy = build_rsi_range_limit(tick_size=0.01)
+        strategy = build_rsi_range_limit()
         bars = pd.DataFrame(
             {
                 "timestamp_ms": [0, 600000, 1200000, 1800000],
@@ -48,9 +48,8 @@ class RsiRangeOrderTests(unittest.TestCase):
             start_ms=0,
             end_ms=2400000,
             initial_capital=10000,
-            strategy=StrategyConfig(
-                "rsi_range_limit", strategy_version=1, parameters={"tick_size": 0.01}
-            ),
+            market_min_move=0.01,
+            strategy=StrategyConfig("rsi_range_limit", strategy_version=3),
             execution=ExecutionConfig(execution_mode="orders", candle_quote="bid"),
         )
         vector = run_order_vectorized(
@@ -80,6 +79,16 @@ class RsiRangeOrderTests(unittest.TestCase):
         self.assertIn(
             "position_open_ignored", [e["outcome"] for e in vector.diagnostics["order_events"]]
         )
+
+        for runtime in (run_order_vectorized, run_order_event_driven):
+            result = runtime(
+                request=replace(request, market_min_move=0.02),
+                strategy_bars=bars,
+                execution_bars=minutes,
+                strategy=strategy,
+            )
+            self.assertEqual(result.fills[0].stop_loss_price, 92)
+            self.assertEqual(result.fills[0].take_profit_price, 98)
 
     def test_replacement_expiry_and_short_fill_protection_in_both_matchers(self):
         runtimes: list[tuple[Any, Any, Any]] = [
@@ -140,6 +149,75 @@ class RsiRangeOrderTests(unittest.TestCase):
                 )
                 self.assertEqual(exited.position, 0)
                 self.assertEqual(exited.fills[-1].price, 114)
+
+    def test_offset_limits_wait_for_later_touch_in_both_directions_and_engines(self):
+        for side, rsi in ((OrderSide.BUY, 20), (OrderSide.SELL, 80)):
+            bars = pd.DataFrame(
+                {
+                    "timestamp_ms": [i * 60000 for i in range(7)],
+                    "symbol": "TEST",
+                    "rsi": [50, rsi, rsi, rsi, rsi, rsi, rsi],
+                    "lowest_low": 100.0,
+                    "highest_high": 100.0,
+                }
+            )
+            minutes = pd.DataFrame(
+                {
+                    "timestamp_ms": [i * 60000 for i in range(7)],
+                    "open": 100.0,
+                    "high": 100.5,
+                    "low": 99.5,
+                    "close": 100.0,
+                }
+            )
+            minutes.loc[5, "low" if side == OrderSide.BUY else "high"] = (
+                99 if side == OrderSide.BUY else 101
+            )
+            request = BacktestRequest(
+                symbols=["TEST"],
+                timeframe="M1",
+                start_ms=0,
+                end_ms=420000,
+                initial_capital=10000,
+                market_min_move=0.01,
+                strategy=StrategyConfig("rsi_range_limit", strategy_version=3),
+                execution=ExecutionConfig(execution_mode="orders", candle_quote="bid"),
+            )
+            results = []
+            for runtime in (run_order_vectorized, run_order_event_driven):
+                with self.subTest(side=side, runtime=runtime.__name__):
+                    baseline = runtime(
+                        request=request,
+                        strategy_bars=bars,
+                        execution_bars=minutes,
+                        strategy=build_rsi_range_limit(),
+                    )
+                    self.assertEqual(baseline.fills[0].timestamp_ms, 120000)
+                    shifted = runtime(
+                        request=request,
+                        strategy_bars=bars,
+                        execution_bars=minutes,
+                        strategy=build_rsi_range_limit(limit_offset_ticks=100),
+                    )
+                    self.assertEqual(shifted.fills[0].timestamp_ms, 300000)
+                    self.assertEqual(shifted.fills[0].price, 99 if side == OrderSide.BUY else 101)
+                    self.assertEqual(shifted.fills[0].side, side)
+                    results.append(shifted)
+                    expired = runtime(
+                        request=request,
+                        strategy_bars=bars,
+                        execution_bars=minutes,
+                        strategy=build_rsi_range_limit(limit_offset_ticks=100, lifetime_bars=2),
+                    )
+                    self.assertFalse(expired.fills)
+                    self.assertIn(
+                        "expired",
+                        [event["outcome"] for event in expired.diagnostics["order_events"]],
+                    )
+            self.assertEqual(results[0].fills, results[1].fills)
+            self.assertEqual(
+                results[0].diagnostics["order_events"], results[1].diagnostics["order_events"]
+            )
 
     def test_expiry_uses_timeframe_and_calendar_months(self):
         boundary = int(datetime(2024, 2, 1, tzinfo=timezone.utc).timestamp() * 1000)

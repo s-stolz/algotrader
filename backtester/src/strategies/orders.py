@@ -21,3 +21,4 @@ OrderDecision = Callable[
 class OrderStrategyModel:
     build_commands: OrderArrayBuilder
     evaluate_close: OrderDecision
+    requires_min_move: bool = False

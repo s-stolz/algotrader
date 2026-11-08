@@ -204,6 +204,8 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         member = payload["members"][0]
                         member["run_id"] = f"execution-controls-{index}"
                         member["request"]["execution"].update(controls)
+                        if index == 4:
+                            member["request"]["market_min_move"] = 0.00001
                         response = await client.post("/backtests", json=payload)
                         self.assertEqual(response.status_code, 201, response.text)
                         saved = await client.get(f"/backtest-runs/execution-controls-{index}")
@@ -211,6 +213,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(
                             saved.json()["request"]["execution"], member["request"]["execution"]
                         )
+                        self.assertEqual(saved.json()["request"], member["request"])
         finally:
             main.app.dependency_overrides.pop(main.get_db, None)
 
@@ -532,6 +535,26 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual((await main.get_backtest("backtest-1", db=self.db))["status"], "cancelled")
         self.assertEqual((await self._cancel_backtest("cancel")), accepted)
+
+    def test_market_increment_validation_and_legacy_omission(self):
+        original = _request_payload()
+        self.assertEqual(BacktestRequestPayload(**original).model_dump(), original)
+        self.assertEqual(
+            BacktestRequestPayload(**{**original, "market_min_move": None}).model_dump(), original
+        )
+        for invalid in (0, -1, True, "0.01", float("nan"), float("inf")):
+            with self.subTest(invalid=invalid), self.assertRaises(ValidationError):
+                BacktestRequestPayload(**{**original, "market_min_move": invalid})
+
+    async def test_backtest_acceptance_preserves_market_price_increment(self):
+        payload = self._backtest_payload()
+        payload["members"][0]["request"]["market_min_move"] = 0.00001
+        accepted = BacktestCreateIn(**payload)
+        await main.create_backtest(accepted, db=self.db)
+        members = await main.list_backtest_members("backtest-1", db=self.db)
+        self.assertEqual(members[0]["request"]["market_min_move"], 0.00001)
+        stored = BacktestRunOut(**members[0]).model_dump(mode="json")
+        self.assertEqual(stored["request"]["market_min_move"], 0.00001)
 
     async def test_backtest_acceptance_retry_and_ordered_inspection(self):
         payload = self._backtest_payload()

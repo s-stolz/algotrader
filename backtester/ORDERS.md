@@ -124,11 +124,20 @@ lowest low; a cross above the upper threshold sells the highest high. Both lines
 share a window and include the signal candle. The first available snapshot does
 not trigger a crossing. The strategy declares both indicators for saved chart overlays.
 
-Its required `tick_size` parameter is the instrument's minimum price increment
-(`min_move`), explicitly saved with the strategy parameters. Backtest requests do
-not currently carry market tick metadata. Stop-loss and take-profit tick counts
-are converted to price distances and anchored to the actual entry fill. Defaults
-are example settings, not instrument-specific presets.
+Version 2 takes the instrument's `min_move` from the selected Market automatically.
+Acceptance snapshots it as `market_min_move` on each Run; it is not a strategy
+parameter or a client override. Stop-loss and take-profit tick counts convert to
+price distances using this saved increment, anchored to the actual entry fill.
+Missing or invalid market increments reject tick-based strategies. Caller-supplied
+backtests must provide `BacktestRequest.market_min_move` explicitly. Version 1
+history remains readable; copying it uses the current version and Market metadata.
+
+Version 3 adds `limit_offset_ticks` (default 0): the buy limit is the rolling low
+minus this many market increments, and the sell limit is the rolling high plus
+the offset. The shared range indicator continues to show the unshifted extremes.
+Offsets resolve once at submission using the saved `market_min_move`; prices then
+stay frozen. This can leave orders pending longer, but does not guarantee a delay
+or a fill. Expiry and replacement still apply; nonpositive limit prices are rejected.
 
 `LimitOrder.only_when_flat` ignores submissions while the net position is open,
 before any pending replacement, and also guards execution against added exposure.

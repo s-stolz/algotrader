@@ -23,21 +23,13 @@ def _validate_thresholds(parameters: Mapping[str, object]) -> None:
 
 @register_strategy(
     "rsi_range_limit",
-    1,
+    3,
     display_name="RSI Range Limit",
     execution_mode="orders",
     validator=_validate_thresholds,
 )
 def build_rsi_range_limit(  # noqa: C901
     *,
-    tick_size: Annotated[
-        float,
-        ParameterInfo(
-            minimum=0,
-            exclusive_minimum=True,
-            description="Instrument minimum price increment (market min_move), in price units.",
-        ),
-    ],
     rsi_period: Annotated[int, ParameterInfo(minimum=1)] = 14,
     rsi_lower: Annotated[
         float, ParameterInfo(minimum=0, maximum=100, exclusive_minimum=True, exclusive_maximum=True)
@@ -46,6 +38,17 @@ def build_rsi_range_limit(  # noqa: C901
         float, ParameterInfo(minimum=0, maximum=100, exclusive_minimum=True, exclusive_maximum=True)
     ] = 70.0,
     range_period: Annotated[int, ParameterInfo(minimum=1, maximum=5000)] = 20,
+    limit_offset_ticks: Annotated[
+        int,
+        ParameterInfo(
+            minimum=0,
+            display_name="Limit offset (ticks)",
+            description=(
+                "Buy below the rolling low; sell above the rolling high. "
+                "Uses the selected market’s minimum price increment."
+            ),
+        ),
+    ] = 0,
     quantity: Annotated[float, ParameterInfo(minimum=0, exclusive_minimum=True)] = 1.0,
     lifetime_bars: Annotated[
         int,
@@ -56,6 +59,7 @@ def build_rsi_range_limit(  # noqa: C901
 ) -> StrategyDefinition:
     """Buy a low-RSI cross at the trailing low; sell a high-RSI cross at the high.
 
+    A tick offset moves buys below the low and sells above the high.
     The closed signal candle belongs to the window. Prices remain frozen, a new
     crossing replaces a pending entry, and signals while positioned are ignored.
     Only protection exits positions; remaining beyond a threshold never resubmits.
@@ -63,16 +67,18 @@ def build_rsi_range_limit(  # noqa: C901
     for value in (rsi_period, range_period, lifetime_bars, stop_loss_ticks, take_profit_ticks):
         if type(value) is not int or value < 1:
             raise ValueError("Periods and tick distances must be positive integers")
+    if type(limit_offset_ticks) is not int or limit_offset_ticks < 0:
+        raise ValueError("limit_offset_ticks must be a nonnegative integer")
     if range_period > 5000:
         raise ValueError("range_period must be at most 5000")
     if not 0 < rsi_lower < rsi_upper < 100:
         raise ValueError("RSI thresholds must satisfy 0 < lower < upper < 100")
-    for value in (tick_size, quantity):
+    for value in (quantity,):
         if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
-            raise ValueError("Tick size and quantity must be positive and finite")
+            raise ValueError("Quantity must be positive and finite")
     protection = OrderProtection(
-        stop_loss_distance=stop_loss_ticks * tick_size,
-        take_profit_distance=take_profit_ticks * tick_size,
+        stop_loss_ticks=stop_loss_ticks,
+        take_profit_ticks=take_profit_ticks,
     )
 
     def command(boundary: int, side: OrderSide, price: float) -> OrderCommand:
@@ -90,6 +96,7 @@ def build_rsi_range_limit(  # noqa: C901
                 only_when_flat=True,
                 replace_group="rsi-range-entry",
                 lifetime_bars=lifetime_bars,
+                price_offset_ticks=limit_offset_ticks,
             ),
         )
 
@@ -137,6 +144,6 @@ def build_rsi_range_limit(  # noqa: C901
         decision_model=empty.build_signals,
         position_builder=empty.build_positions,
         indicator_requirements=requirements,
-        order_model=OrderStrategyModel(arrays, sequential),
+        order_model=OrderStrategyModel(arrays, sequential, requires_min_move=True),
         metadata={"warmup_bars": max(rsi_period + 1, range_period)},
     )

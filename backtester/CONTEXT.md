@@ -74,6 +74,10 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
 - **Partial Protective Close:** a fully executed reduce-only order that closes
   part of the net position; distinct from a liquidity-based partial order fill.
 
+Tick-based order protection uses `BacktestRequest.market_min_move`, resolved per
+Market during acceptance and preserved in the immutable request snapshot. See
+[market price increments](../docs/contracts/backtests.md#market-price-increments).
+
 ## Engine Invariants
 
 Supported execution is single-symbol bar data, close-time decisions, and

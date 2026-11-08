@@ -294,6 +294,7 @@ class StoredStrategyRequestSchema(ApiContractModel):
 
 class StoredBacktestRequestSchema(BacktestRunRequestSchema):
     strategy: StoredStrategyRequestSchema
+    market_min_move: float | None = Field(default=None, gt=0)
 
 
 class BacktestFillResponseSchema(ApiContractModel):

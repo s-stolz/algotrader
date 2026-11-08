@@ -26,6 +26,9 @@ lifecycle policy; the accessor applies it against locked current state.
   both boundaries: order mode, quote convention, spread, intrabar policy, position
   limits, daily schedules, and entry limits must survive storage HTTP
   round trips, while disabled controls stay omitted for legacy representations.
+- `BacktestRequestPayload.market_min_move` preserves the server-resolved Market
+  increment through storage. Omit absent/null values when serializing legacy
+  snapshots; validate supplied increments as positive finite numbers.
 - Lock the execution slot before Backtest/Run rows for control transactions.
   Submission turn insertion and queue snapshots use that same lock. Queue reads
   hold it through the read transaction so active ownership and waiting turns

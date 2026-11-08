@@ -90,6 +90,7 @@ class BacktestService:
         shared = dict(BacktestRequestSnapshot.from_request(definition.shared_request).payload)
         for key in ("symbols", "exchange", "timeframe"):
             shared.pop(key)
+        shared.pop("market_min_move", None)
         accepted_definition = {
             "schema_version": 1,
             "shared_request": shared,

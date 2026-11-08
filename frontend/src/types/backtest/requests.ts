@@ -53,6 +53,7 @@ export interface BacktestExecutionPayload {
 }
 
 export interface BacktestRequestPayload {
+  market_min_move?: number | null;
   symbols: string[];
   exchange?: string | null;
   timeframe: string;
@@ -244,6 +245,8 @@ export function isBacktestRequestPayload(
     Array.isArray(value.symbols) &&
     value.symbols.every(isNonEmptyString) &&
     isOptionalNullableString(value, 'exchange') &&
+    (value.market_min_move == null ||
+      (isFiniteNumber(value.market_min_move) && value.market_min_move > 0)) &&
     isNonEmptyString(value.timeframe) &&
     isFiniteNumber(value.start_ms) &&
     value.start_ms > 0 &&

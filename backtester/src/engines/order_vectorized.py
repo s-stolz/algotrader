@@ -1,7 +1,12 @@
 """Array strategy evaluation and minute execution for order-based strategies."""
 
 import pandas as pd
-from data.order_bars import close_timestamps, feature_matrix, resolve_order_expiry
+from data.order_bars import (
+    close_timestamps,
+    feature_matrix,
+    resolve_order_expiry,
+    resolve_order_ticks,
+)
 from domain.enums import IntrabarExitPolicy
 from domain.orders import IntrabarExecutionPolicy
 from domain.types import BacktestRequest, BacktestResult
@@ -26,7 +31,9 @@ def run_order_vectorized(
     symbol = request.symbols[0]
     closes = close_timestamps(strategy_bars, request.timeframe)
     commands = [
-        resolve_order_expiry(command, request.timeframe)
+        resolve_order_ticks(
+            resolve_order_expiry(command, request.timeframe), request.market_min_move
+        )
         for command in model.build_commands(feature_matrix(strategy_bars, symbol), closes)
     ]
     boundaries = set(closes)

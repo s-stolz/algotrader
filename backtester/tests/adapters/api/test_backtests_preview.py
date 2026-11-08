@@ -9,7 +9,7 @@ from app.backtest_runs import BacktestRunService
 from db_accessor_client import DatabaseAccessorClientError
 from fastapi.testclient import TestClient
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
-from strategies.registry import RegisteredStrategy
+from strategies.registry import RegisteredStrategy, strategy_catalog
 
 from .test_backtests_routes import _FakeRunRepository, _valid_payload
 
@@ -53,6 +53,90 @@ class TestBacktestPreviewRoutes(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client.close()
+
+    def test_rsi_uses_selected_market_increment_without_a_parameter(self) -> None:
+        entry = next(
+            item for item in strategy_catalog() if item["strategy_id"] == "rsi_range_limit"
+        )
+        definition = _definition()
+        definition["strategy"] = {
+            "strategy_id": "rsi_range_limit",
+            "strategy_version": entry["strategy_version"],
+        }
+        definition["parameter_axes"] = {}
+        definition["timeframes"] = ["M1"]
+        definition["allowed_directions"] = ["long_and_short"]
+        definition["execution"].update(execution_mode="orders", candle_quote="bid")
+        markets = [
+            {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX", "min_move": 0.00001},
+            {"symbol_id": 2, "symbol": "USDJPY", "exchange": "FX", "min_move": 0.001},
+        ]
+        with patch.object(self.service, "_markets", return_value=markets):
+            response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        fields = entry["parameters"]
+        assert isinstance(fields, list)
+        self.assertNotIn("tick_size", [field["name"] for field in fields])
+        rows = response.json()["candidates"]
+        self.assertEqual([row["request"]["market_min_move"] for row in rows], [0.001, 0.00001])
+        self.assertTrue(all("tick_size" not in row["parameters"] for row in rows))
+
+    def test_rsi_limit_offset_is_a_catalog_parameter_and_saved_axis(self) -> None:
+        entry = next(
+            item for item in strategy_catalog() if item["strategy_id"] == "rsi_range_limit"
+        )
+        fields = entry["parameters"]
+        assert isinstance(fields, list)
+        offset = next(field for field in fields if field["name"] == "limit_offset_ticks")
+        self.assertEqual((offset["type"], offset["default"], offset["minimum"]), ("int", 0, 0))
+        definition = _definition()
+        definition["strategy"] = {"strategy_id": "rsi_range_limit", "strategy_version": 3}
+        definition["markets"] = [1]
+        definition["timeframes"] = ["M1"]
+        definition["allowed_directions"] = ["long_and_short"]
+        definition["parameter_axes"] = {"limit_offset_ticks": {"mode": "values", "values": [0, 25]}}
+        definition["execution"].update(execution_mode="orders", candle_quote="bid")
+        with patch.object(
+            self.service,
+            "_markets",
+            return_value=[
+                {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX", "min_move": 0.00001}
+            ],
+        ):
+            response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [
+                row["request"]["strategy"]["parameters"]["limit_offset_ticks"]
+                for row in response.json()["candidates"]
+            ],
+            [0, 25],
+        )
+
+    def test_rsi_rejects_missing_invalid_and_client_supplied_increments(self) -> None:
+        definition = _definition()
+        definition["strategy"] = {"strategy_id": "rsi_range_limit", "strategy_version": 3}
+        definition["parameter_axes"] = {}
+        definition["markets"] = [1]
+        definition["execution"].update(execution_mode="orders", candle_quote="bid")
+        for min_move in (None, 0, -1, True, "0.01", float("nan"), float("inf")):
+            with (
+                self.subTest(min_move=min_move),
+                patch.object(
+                    self.service,
+                    "_markets",
+                    return_value=[
+                        {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX", "min_move": min_move}
+                    ],
+                ),
+            ):
+                response = self.client.post("/backtests/preview", json=definition)
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn("min_move", response.text)
+        definition["market_min_move"] = 0.01
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("extra_forbidden", response.text)
 
     def test_order_mode_preview_preserves_execution_assumptions(self) -> None:
         definition = _definition()

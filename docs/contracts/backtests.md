@@ -29,6 +29,17 @@ strategy identity and public parameter schema. An identical normalized definitio
 with the same submission ID returns the original Backtest, including its original
 name; changing the definition conflicts. Rerunning uses a fresh submission ID.
 
+### Market price increments
+
+Acceptance resolves each selected Market's `min_move` from the server catalog and
+stores it in the normalized Market selection and the Run request's optional
+`market_min_move` field. It is metadata, never a strategy parameter or a client
+submission override. Tick-based strategies require a positive, finite increment.
+Execution and worker handoff use the saved value without re-reading Market metadata.
+Copying a saved Backtest or Run resolves the currently selected Market again at
+acceptance. Existing snapshots lacking the field remain readable; their historical
+parameters and results are unchanged. This additive field retains request schema v3.
+
 ## Public resources
 
 - `POST /backtests/preview`: stateless expansion and validation.

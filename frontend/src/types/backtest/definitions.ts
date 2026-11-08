@@ -3,6 +3,7 @@ import {
   isRecord,
   isNonEmptyString,
   isJsonValue,
+  isFiniteNumber,
 } from '../transportValues';
 import {
   type BacktestAllowedDirections,
@@ -44,7 +45,7 @@ export interface BacktestSelectionsDraft {
 
 export interface BacktestPreviewRequest extends Omit<
   BacktestRequestPayload,
-  'symbols' | 'timeframe' | 'exchange' | 'strategy'
+  'symbols' | 'timeframe' | 'exchange' | 'strategy' | 'market_min_move'
 > {
   strategy: { strategy_id: string; strategy_version: number };
   markets: number[];
@@ -62,7 +63,12 @@ export interface BacktestPreviewIssue {
 
 export interface BacktestPreviewCandidate {
   candidate_ordinal: number;
-  market: { symbol_id: number; symbol: string; exchange: string };
+  market: {
+    symbol_id: number;
+    symbol: string;
+    exchange: string;
+    min_move?: number;
+  };
   timeframe: string;
   parameters: Record<string, JsonValue>;
   allowed_directions: BacktestAllowedDirections;
@@ -184,6 +190,8 @@ export function isBacktestMarket(
     isRecord(value) &&
     Number.isInteger(value.symbol_id) &&
     isNonEmptyString(value.symbol) &&
-    isNonEmptyString(value.exchange)
+    isNonEmptyString(value.exchange) &&
+    (value.min_move === undefined ||
+      (isFiniteNumber(value.min_move) && value.min_move > 0))
   );
 }

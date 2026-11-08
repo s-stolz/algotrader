@@ -55,3 +55,32 @@ class DistanceProtectionTests(unittest.TestCase):
         for kwargs in invalid:
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 OrderProtection(**kwargs)
+
+
+class MarketIncrementTests(unittest.TestCase):
+    def test_tick_protection_resolves_from_saved_market_increment(self):
+        from domain.orders import OrderProtection
+
+        protection = OrderProtection(stop_loss_ticks=100, take_profit_ticks=200)
+        for min_move in (0.00001, 0.01, 0.25):
+            resolved = protection.resolve_ticks(min_move)
+            self.assertEqual(resolved.stop_loss_distance, 100 * min_move)
+            self.assertEqual(resolved.take_profit_distance, 200 * min_move)
+            self.assertIsNone(resolved.stop_loss_ticks)
+        for min_move in (None, 0, -1, True, float("inf"), float("nan")):
+            with self.subTest(min_move=min_move), self.assertRaises(ValueError):
+                protection.resolve_ticks(min_move)
+
+    def test_tick_counts_cannot_mix_with_price_or_percentage_modes(self):
+        from domain.orders import OrderProtection
+
+        invalid: list[dict[str, Any]] = [
+            {"stop_loss_ticks": 0},
+            {"take_profit_ticks": 1.5},
+            {"stop_loss_ticks": True},
+            {"stop_loss_ticks": 100, "stop_loss_distance": 1},
+            {"take_profit_ticks": 200, "take_profit_pct": 2},
+        ]
+        for kwargs in invalid:
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                OrderProtection(**kwargs)

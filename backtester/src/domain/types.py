@@ -156,6 +156,16 @@ class BacktestRequest:
     data_granularity: DataGranularity = DataGranularity.BAR
     run_metadata: Optional[Dict[str, Any]] = None
     engine: BacktestEngine = BacktestEngine.VECTORIZED
+    market_min_move: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.market_min_move is not None and (
+            isinstance(self.market_min_move, bool)
+            or not isinstance(self.market_min_move, (int, float))
+            or not math.isfinite(self.market_min_move)
+            or self.market_min_move <= 0
+        ):
+            raise ValueError("Market min_move must be positive and finite")
 
 
 @dataclass(frozen=True)
@@ -406,6 +416,11 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
     return {
         "symbols": [str(symbol) for symbol in request.symbols],
         "exchange": request.exchange,
+        **(
+            {"market_min_move": request.market_min_move}
+            if request.market_min_move is not None
+            else {}
+        ),
         "timeframe": str(request.timeframe),
         "start_ms": int(request.start_ms),
         "end_ms": int(request.end_ms),
@@ -469,7 +484,9 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
 def _backtest_request_from_payload(
     payload: Mapping[str, Any], *, schema_version: int
 ) -> BacktestRequest:
-    _validate_payload_fields("Backtest request", payload, _REQUEST_PAYLOAD_FIELDS)
+    _validate_payload_fields(
+        "Backtest request", payload, _REQUEST_PAYLOAD_FIELDS | (set(payload) & {"market_min_move"})
+    )
     strategy = _mapping_field(payload, "strategy")
     execution = _mapping_field(payload, "execution")
     _validate_payload_fields(
@@ -516,6 +533,7 @@ def _backtest_request_from_payload(
     return BacktestRequest(
         symbols=list(symbols),
         exchange=exchange,
+        market_min_move=payload.get("market_min_move"),
         timeframe=str(payload["timeframe"]),
         start_ms=int(payload["start_ms"]),
         end_ms=int(payload["end_ms"]),

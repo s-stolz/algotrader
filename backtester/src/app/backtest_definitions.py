@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, replace
 from decimal import Decimal, InvalidOperation
 from itertools import product
@@ -161,8 +162,23 @@ def _selection_axes(
             or not market.get("exchange")
         ):
             raise InvalidBacktestRequestError(f"Market is unavailable: {market_id}")
+        min_move = market.get("min_move")
+        if min_move is not None and (
+            isinstance(min_move, bool)
+            or not isinstance(min_move, (int, float))
+            or not math.isfinite(min_move)
+            or min_move <= 0
+        ):
+            raise InvalidBacktestRequestError(
+                f"Market min_move must be positive and finite: {market_id}"
+            )
         selected_markets.append(
-            {"symbol_id": market_id, "symbol": market["symbol"], "exchange": market["exchange"]}
+            {
+                "symbol_id": market_id,
+                "symbol": market["symbol"],
+                "exchange": market["exchange"],
+                **({"min_move": min_move} if min_move is not None else {}),
+            }
         )
     try:
         timeframes = _unique(normalize_timeframe_code(code) for code in definition.timeframes)
@@ -236,6 +252,7 @@ def _candidate_rows(
             shared,
             symbols=[str(market["symbol"])],
             exchange=str(market["exchange"]),
+            market_min_move=cast(float | None, market.get("min_move")),
             timeframe=str(timeframe),
             strategy=StrategyConfig(
                 shared.strategy.strategy_id, parameters, shared.strategy.strategy_version

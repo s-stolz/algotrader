@@ -30,9 +30,8 @@ class RsiRangeBacktestTests(unittest.TestCase):
             start_ms=0,
             end_ms=6000000,
             initial_capital=10000,
-            strategy=StrategyConfig(
-                "rsi_range_limit", {"tick_size": 0.01, "rsi_period": 2, "range_period": 3}, 1
-            ),
+            market_min_move=0.01,
+            strategy=StrategyConfig("rsi_range_limit", {"rsi_period": 2, "range_period": 3}, 3),
             execution=ExecutionConfig(execution_mode="orders", candle_quote="bid"),
         )
         vector = run_backtest(request=request, bars=bars)

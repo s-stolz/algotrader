@@ -251,6 +251,10 @@ def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
     if request.execution.execution_mode == "orders":
         if strategy.order_model is None:
             raise InvalidBacktestRequestError("Order execution requires an order strategy")
+        if strategy.order_model.requires_min_move and request.market_min_move is None:
+            raise InvalidBacktestRequestError(
+                "Selected market requires a positive min_move for tick protection"
+            )
         if strategy.sizing_model is not None or strategy.risk_rules:
             raise InvalidBacktestRequestError(
                 "Target transforms cannot be used with explicit orders"

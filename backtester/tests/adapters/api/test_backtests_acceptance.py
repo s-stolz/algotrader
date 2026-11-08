@@ -140,6 +140,54 @@ class BacktestAcceptanceRouteTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.client.close()
 
+    def test_acceptance_snapshots_current_market_increment_for_each_run(self) -> None:
+        from adapters.api.schemas import StoredBacktestRequestSchema
+        from domain.types import BacktestRequestSnapshot
+
+        definition = _definition()
+        definition["strategy"] = {"strategy_id": "rsi_range_limit", "strategy_version": 3}
+        definition["parameter_axes"] = {}
+        definition["timeframes"] = ["M1"]
+        definition["allowed_directions"] = ["long_and_short"]
+        definition["execution"].update(execution_mode="orders", candle_quote="bid")
+        markets = [
+            {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX", "min_move": 0.00001},
+            {"symbol_id": 2, "symbol": "USDJPY", "exchange": "FX", "min_move": 0.001},
+        ]
+        with patch.object(self.backtest_service._preview, "_markets", return_value=markets):
+            response = self.client.post(
+                "/backtests", json={**definition, "submission_id": "market-increments"}
+            )
+            self.assertEqual(response.status_code, 202, response.text)
+            backtest_id = response.json()["backtest_id"]
+            members = self.client_store.members[backtest_id]
+            self.assertEqual([m["request"]["market_min_move"] for m in members], [0.001, 0.00001])
+            markets[0]["min_move"] = 0.5
+            markets[1]["min_move"] = 1.0
+            for member, expected in zip(members, [0.001, 0.00001], strict=True):
+                snapshot = BacktestRequestSnapshot(3, member["request"])
+                request = snapshot.to_request()
+                self.assertEqual(request.market_min_move, expected)
+                self.assertEqual(
+                    BacktestRequestSnapshot.from_request(request).payload, snapshot.payload
+                )
+                self.assertEqual(
+                    StoredBacktestRequestSchema.model_validate(snapshot.payload).market_min_move,
+                    expected,
+                )
+                self.assertNotIn("tick_size", request.strategy.parameters)
+            copied = self.client.post(
+                "/backtests", json={**definition, "submission_id": "market-increments-copy"}
+            )
+            self.assertEqual(copied.status_code, 202, copied.text)
+            self.assertEqual(
+                [
+                    m["request"]["market_min_move"]
+                    for m in self.client_store.members[copied.json()["backtest_id"]]
+                ],
+                [1.0, 0.5],
+            )
+
     def test_rename_and_clear_preserve_backtest_and_members_in_every_state(self) -> None:
         import copy
 

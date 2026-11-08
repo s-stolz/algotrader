@@ -1,7 +1,7 @@
 """Persistent order commands emitted at completed strategy-candle boundaries."""
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
 from domain.enums import OrderSide
@@ -46,8 +46,27 @@ class OrderProtection:
     take_profit_pct: float | None = None
     stop_loss_distance: float | None = None
     take_profit_distance: float | None = None
+    stop_loss_ticks: int | None = None
+    take_profit_ticks: int | None = None
 
     def __post_init__(self) -> None:  # noqa: C901
+        for name, ticks, modes in (
+            (
+                "stop_loss_ticks",
+                self.stop_loss_ticks,
+                (self.stop_price, self.stop_loss_pct, self.stop_loss_distance),
+            ),
+            (
+                "take_profit_ticks",
+                self.take_profit_ticks,
+                (self.take_profit_pct, self.take_profit_distance, self.take_profits or None),
+            ),
+        ):
+            if ticks is not None:
+                if type(ticks) is not int or ticks <= 0:
+                    raise ValueError(f"{name} must be a positive integer")
+                if any(mode is not None for mode in modes):
+                    raise ValueError("Use tick protection or price/percentage protection, not both")
         if self.stop_price is not None:
             _positive("stop price", self.stop_price)
         object.__setattr__(self, "take_profits", tuple(self.take_profits))
@@ -72,6 +91,32 @@ class OrderProtection:
         if self.take_profits and self.take_profit_pct is not None:
             raise ValueError("Use fixed profit tiers or an average-entry percentage")
 
+    def resolve_ticks(self, min_move: float | None) -> "OrderProtection":
+        if self.stop_loss_ticks is None and self.take_profit_ticks is None:
+            return self
+        if (
+            min_move is None
+            or isinstance(min_move, bool)
+            or not math.isfinite(min_move)
+            or min_move <= 0
+        ):
+            raise ValueError("Market min_move is required for tick protection")
+        return replace(
+            self,
+            stop_loss_distance=(
+                self.stop_loss_ticks * min_move
+                if self.stop_loss_ticks is not None
+                else self.stop_loss_distance
+            ),
+            take_profit_distance=(
+                self.take_profit_ticks * min_move
+                if self.take_profit_ticks is not None
+                else self.take_profit_distance
+            ),
+            stop_loss_ticks=None,
+            take_profit_ticks=None,
+        )
+
 
 @dataclass(frozen=True)
 class LimitOrder:
@@ -86,11 +131,14 @@ class LimitOrder:
     only_when_flat: bool = False
     replace_group: str | None = None
     lifetime_bars: int | None = None
+    price_offset_ticks: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.order_id, str) or not self.order_id.strip():
             raise ValueError("order_id must be non-empty")
         object.__setattr__(self, "side", OrderSide(self.side))
+        if type(self.price_offset_ticks) is not int or self.price_offset_ticks < 0:
+            raise ValueError("price_offset_ticks must be a nonnegative integer")
         _positive("limit price", self.price)
         _positive("order quantity", self.quantity)
         if self.expires_at_ms is not None and (
@@ -106,6 +154,27 @@ class LimitOrder:
             raise ValueError("replace_group must be non-empty")
         if self.oco_group is not None and not self.oco_group.strip():
             raise ValueError("oco_group must be non-empty")
+
+    def resolve_ticks(self, min_move: float | None) -> "LimitOrder":
+        price = self.price
+        if self.price_offset_ticks:
+            if (
+                min_move is None
+                or isinstance(min_move, bool)
+                or not math.isfinite(min_move)
+                or min_move <= 0
+            ):
+                raise ValueError("Market min_move is required for a limit offset")
+            distance = self.price_offset_ticks * min_move
+            price += -distance if self.side == OrderSide.BUY else distance
+        return replace(
+            self,
+            price=price,
+            price_offset_ticks=0,
+            protection=(
+                self.protection.resolve_ticks(min_move) if self.protection is not None else None
+            ),
+        )
 
 
 @dataclass(frozen=True)

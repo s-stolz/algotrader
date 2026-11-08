@@ -104,6 +104,7 @@ export function buildBacktestRequest(
     symbols: _symbols,
     timeframe: _timeframe,
     exchange: _exchange,
+    market_min_move: _marketMinMove,
     name: _name,
     ...shared
   } = draft;
