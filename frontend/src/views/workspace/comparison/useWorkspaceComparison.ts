@@ -11,6 +11,12 @@ import {
   type ComparisonColumn,
 } from './comparisonOptionalColumns';
 import { createComparisonRunActions } from './comparisonRunActions';
+import { createResultColumns } from '../results/resultColumns';
+import {
+  resultMetrics,
+  compareResultValues,
+  type ResultMetricKey,
+} from '../results/runResults';
 import type { BacktestWorkspace } from '../useBacktestWorkspace';
 export function useWorkspaceComparison(workspace: BacktestWorkspace) {
   const { selectedBacktestId, selectedRunId, selectRun } = workspace;
@@ -31,6 +37,7 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
     'drawdown',
     'ending',
     'trades',
+    ...resultMetrics.map((metric) => metric.key),
   ];
   const columnSettings = ref({ visibleKeys: [...defaultColumns] });
   const hasDefaultColumns = computed(
@@ -40,13 +47,30 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
         columnSettings.value.visibleKeys.includes(key),
       ),
   );
-  const comparisonSortKey = ref<ComparisonSortKey>('ordinal');
+  const comparisonSortKey = ref<ComparisonSortKey | ResultMetricKey>('ordinal');
   const comparisonSortOrder = ref<'ascend' | 'descend'>('ascend');
+  function compareRows(
+    left: BacktestRun,
+    right: BacktestRun,
+    key: string,
+    order: 'ascend' | 'descend',
+  ) {
+    if (resultMetrics.some((metric) => metric.key === key)) {
+      const value = (run: BacktestRun) =>
+        run.status === 'succeeded'
+          ? (workspace.inspection.tradeResults.states.value[run.run_id]?.result
+              ?.metrics[key as ResultMetricKey] ?? null)
+          : null;
+      return compareResultValues(value(left), value(right), order);
+    }
+    return (
+      (order === 'ascend' ? 1 : -1) *
+      compareRuns(left, right, key as ComparisonSortKey)
+    );
+  }
   const sortedCurrentRows = computed(() =>
-    [...currentRows.value].sort(
-      (left, right) =>
-        (comparisonSortOrder.value === 'ascend' ? 1 : -1) *
-        compareRuns(left, right, comparisonSortKey.value),
+    [...currentRows.value].sort((a, b) =>
+      compareRows(a, b, comparisonSortKey.value, comparisonSortOrder.value),
     ),
   );
   const analysisPage = ref(1);
@@ -90,9 +114,10 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
       analysisPage.value = 1;
     },
   );
-  const optionalColumns = computed(() =>
-    createOptionalColumns(currentRows, analysis),
-  );
+  const optionalColumns = computed(() => [
+    ...createOptionalColumns(currentRows, analysis),
+    ...createResultColumns(workspace.inspection.tradeResults),
+  ]);
   const analysisRunActions = createComparisonRunActions(workspace);
   const columnGroups = computed(() =>
     ['Run settings', 'Performance', 'Long / short'].map((title) => {
@@ -203,7 +228,8 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
         ...(comparisonSortKeys.includes(column.key as ComparisonSortKey)
           ? {
               sorter: (a: BacktestRun, b: BacktestRun) =>
-                compareRuns(a, b, column.key as ComparisonSortKey),
+                compareRows(a, b, column.key, comparisonSortOrder.value) *
+                (comparisonSortOrder.value === 'ascend' ? 1 : -1),
               sortOrder:
                 comparisonSortKey.value === column.key
                   ? comparisonSortOrder.value
@@ -227,6 +253,7 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
     'capital',
     'return',
     'drawdown',
+    ...resultMetrics.map((metric) => metric.key),
   ];
   const comparisonScrollWidth = computed(
     () =>
@@ -245,7 +272,8 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
   }) {
     analysisPage.value = 1;
     if (sorter.order && comparisonSortKeys.includes(String(sorter.columnKey))) {
-      comparisonSortKey.value = String(sorter.columnKey) as ComparisonSortKey;
+      comparisonSortKey.value = String(sorter.columnKey) as
+        ComparisonSortKey | ResultMetricKey;
       comparisonSortOrder.value = sorter.order;
     } else {
       comparisonSortKey.value = 'ordinal';

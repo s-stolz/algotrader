@@ -14,8 +14,10 @@
     @update:sorter="updateComparisonSort"
   />
   <WorkspaceReplay :inspection="inspection" />
+  <MonthlyResults :inspection="inspection" />
 </template>
 <script setup lang="ts">
+import MonthlyResults from '../results/MonthlyResults.vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import ComparisonColumnSettings from './ComparisonColumnSettings.vue';
 import WorkspaceReplay from './WorkspaceReplay.vue';
@@ -28,10 +30,10 @@ const props = defineProps<{
 }>();
 const {
   comparisonColumns,
+  updateComparisonSort,
   sortedCurrentRows,
   currentRowProps,
   analysisPagination,
   comparisonScrollWidth,
-  updateComparisonSort,
 } = props.comparison;
 </script>

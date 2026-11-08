@@ -144,6 +144,15 @@ and behavior that is easy to break when changing them.
 - Creation calendar dates convert explicitly to UTC midnight. Chart timestamp
   conversion follows the root transport contract.
 
+- `views/workspace/results/` derives net realized profit, win rate, profit factor,
+  expectancy, holding time, and UTC exit-month totals from saved Closed Trades.
+  `useWorkspaceAnalysis` owns those reads independently of replay selection so
+  all successful Runs can be sorted before comparison. Results load with bounded
+  concurrency, reject stale workspace responses, and expose retryable failures.
+  Calendar percentages use each Run's request Initial capital, not month-end
+  equity. Year totals sum covered months; uncovered/unavailable months stay missing.
+  Exact bars per trade are not inferred from elapsed time across market gaps.
+
 ## Shared UI and Transport
 
 - Shared visual values, root provider, overlay typography, and justified control

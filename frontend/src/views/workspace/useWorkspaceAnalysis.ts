@@ -7,6 +7,7 @@ import type {
   BacktestRun,
   EquityReplayResponse,
 } from '@/types/backtesterContracts';
+import { useRunResults } from './results/useRunResults';
 import { errorMessage } from './workspaceErrors';
 export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
   type AnalysisState = {
@@ -22,9 +23,11 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
       (run) => analysis.value[run.run_id]?.detail ?? run,
     ),
   );
+  const tradeResults = useRunResults(currentRows);
   let analysisSequence = 0;
   const analysisTokens = new Map<string, number>();
   function loadAnalysis(refresh = false): void {
+    tradeResults.start();
     const ids = [...selectedComparisonIds.value];
     const kept = new Set(ids);
     for (const id of analysisTokens.keys()) {
@@ -109,10 +112,12 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
   }
 
   function stop() {
+    tradeResults.stop();
     analysisTokens.clear();
   }
   return {
     analysis,
+    tradeResults,
     selectedComparisonIds,
     currentRows,
     loadAnalysis,
