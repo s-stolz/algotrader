@@ -29,7 +29,6 @@ describe('market increment when copying a backtest', () => {
         strategy_id: 'rsi_range_limit',
         strategy_version: 2,
         display_name: 'RSI Range Limit',
-        execution_mode: 'orders',
         parameters: [],
       },
       [],
