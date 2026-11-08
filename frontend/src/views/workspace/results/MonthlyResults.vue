@@ -198,15 +198,15 @@ const rows = computed(() => {
 }
 .run-label {
   text-align: left;
-  font-size: 10px;
+  font-size: var(--design-text-id);
   color: var(--design-color-muted);
 }
 .run-result strong {
-  font-size: 13px;
+  font-size: var(--design-text-body);
   font-weight: 500;
 }
 .return-percent {
-  font-size: 11px;
+  font-size: var(--design-text-id);
   color: var(--design-color-muted);
 }
 .annual-cell {
