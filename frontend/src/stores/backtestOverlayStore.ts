@@ -4,11 +4,13 @@ import { computed, ref } from 'vue';
 
 import {
   fetchBacktestClosedTrades,
+  fetchBacktestFills,
   getBacktestRun,
 } from '@/api/backtesterClient';
 import {
   BACKTEST_RESULT_SCHEMA_VERSION,
   type BacktestClosedTrade,
+  type BacktestFill,
   type BacktestRun,
 } from '@/types/backtesterContracts';
 import type { Market } from '@/types/contracts';
@@ -123,6 +125,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
   const selectedRunId = ref<string | null>(readStoredRunId());
   const selectedRun = ref<BacktestRun | null>(null);
   const closedTrades = ref<BacktestClosedTrade[]>([]);
+  const fills = ref<BacktestFill[]>([]);
   const isLoading = ref(false);
   const error = ref<string | null>(null);
   let selectionRevision = 0;
@@ -160,6 +163,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     selectedRunId.value = null;
     selectedRun.value = null;
     closedTrades.value = [];
+    fills.value = [];
     localStorage.removeItem(STORAGE_KEYS.SELECTED_BACKTEST_RUN);
   }
 
@@ -199,7 +203,10 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     error.value = null;
 
     try {
-      const trades = await fetchBacktestClosedTrades(run.run_id);
+      const [trades, runFills] = await Promise.all([
+        fetchBacktestClosedTrades(run.run_id),
+        fetchBacktestFills(run.run_id),
+      ]);
       if (revision !== selectionRevision)
         return unavailable('Selection changed.');
       const timeframe = normalizeTimeframeCode(run.request.timeframe);
@@ -212,6 +219,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
 
       selectedRunId.value = run.run_id;
       selectedRun.value = run;
+      fills.value = runFills;
       closedTrades.value = trades;
       setStoredState(STORAGE_KEYS.SELECTED_BACKTEST_RUN, run.run_id);
 
@@ -245,10 +253,14 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
         clearSelectionData();
         return selectability;
       }
-      const trades = await fetchBacktestClosedTrades(runId);
+      const [trades, runFills] = await Promise.all([
+        fetchBacktestClosedTrades(runId),
+        fetchBacktestFills(runId),
+      ]);
       if (revision !== selectionRevision) return null;
       selectedRunId.value = runId;
       selectedRun.value = run;
+      fills.value = runFills;
       closedTrades.value = trades;
       return selectability;
     } catch (err) {
@@ -283,6 +295,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     selectedRunId,
     selectedRun,
     closedTrades,
+    fills,
     isLoading,
     error,
     clearOverlay,

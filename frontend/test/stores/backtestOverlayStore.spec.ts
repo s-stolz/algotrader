@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   fetchBacktestClosedTrades,
+  fetchBacktestFills,
   getBacktestRun,
 } from '@/api/backtesterClient';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
@@ -19,6 +20,7 @@ import { STORAGE_KEYS } from '@/utils/localStorage';
 
 vi.mock('@/api/backtesterClient', () => ({
   fetchBacktestClosedTrades: vi.fn(),
+  fetchBacktestFills: vi.fn().mockResolvedValue([]),
   getBacktestRun: vi.fn(),
 }));
 
@@ -76,6 +78,30 @@ const closedTrades: BacktestClosedTrade[] = [
 ];
 
 describe('backtestOverlayStore', () => {
+  it('loads and clears fills alongside trades for an open position', async () => {
+    useMarketsStore().all = [eurUsdMarket];
+    const fills = [
+      {
+        sequence: 0,
+        symbol: 'EURUSD',
+        side: 'buy' as const,
+        quantity: 1,
+        price: 1.07,
+        timestamp_ms: 1714525200000,
+        fees: 0,
+        exit_reason: null,
+      },
+    ];
+    vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
+    vi.mocked(fetchBacktestFills).mockResolvedValue(fills);
+    const store = useBacktestOverlayStore();
+    await store.selectRun(backtestRun());
+    expect(store.fills).toEqual(fills);
+    expect(fetchBacktestFills).toHaveBeenCalledWith('run-123');
+    store.clearOverlay();
+    expect(store.fills).toEqual([]);
+  });
+
   it('retains selection on chart mismatch and restores without re-fetching trades', async () => {
     useMarketsStore().all = [eurUsdMarket, gbpUsdMarket];
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
@@ -114,6 +140,7 @@ describe('backtestOverlayStore', () => {
     setActivePinia(createPinia());
     localStorage.clear();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
+    vi.mocked(fetchBacktestFills).mockReset().mockResolvedValue([]);
     vi.mocked(getBacktestRun).mockReset();
   });
 
@@ -131,6 +158,7 @@ describe('backtestOverlayStore', () => {
 
     expect(fetchBacktestClosedTrades).toHaveBeenCalledOnce();
     expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('run-123');
+    expect(fetchBacktestFills).toHaveBeenCalledWith('run-123');
     expect(store.selectedRunId).toBe('run-123');
     expect(store.selectedRun).toEqual(backtestRun());
     expect(store.closedTrades).toEqual(closedTrades);
@@ -173,6 +201,7 @@ describe('backtestOverlayStore', () => {
 
     expect(getBacktestRun).toHaveBeenCalledWith('run-123');
     expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('run-123');
+    expect(fetchBacktestFills).toHaveBeenCalledWith('run-123');
     expect(store.selectedRun).toEqual(backtestRun());
     expect(store.closedTrades).toEqual(closedTrades);
     expect(useCurrentMarketStore().symbol).toBe('GBPUSD');

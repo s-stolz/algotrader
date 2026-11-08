@@ -20,6 +20,53 @@ import { useMarketsStore } from '@/stores/marketsStore';
 describe('ChartArea overlays', () => {
   setupChartAreaTests();
 
+  it('renders an entry line when a filled position remains open', async () => {
+    setupStores('M5');
+    const store = useBacktestOverlayStore();
+    store.selectedRun = backtestRun({
+      request: {
+        ...backtestRun().request,
+        timeframe: 'M5',
+        end_ms: 900000,
+        execution: {
+          ...backtestRun().request.execution,
+          execution_mode: 'orders',
+          candle_quote: 'bid',
+        },
+      },
+    });
+    store.selectedRunId = 'run-123';
+    store.fills = [
+      {
+        sequence: 0,
+        symbol: 'EURUSD',
+        side: 'buy',
+        quantity: 1,
+        price: 99,
+        timestamp_ms: 360000,
+        fees: 0,
+        exit_reason: null,
+      },
+    ];
+    mountChartArea();
+    await flushPromises();
+    await latestChartSessionAdapter().renderCandles(eurUsdM5Key, [
+      candle(300000),
+      candle(600000),
+      candle(900000),
+    ]);
+    expect(
+      chartAreaMocks.infrastructure.setCandlestickProtectiveLines,
+    ).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: 'open-position:entry-price',
+        startTime: 300,
+        endTime: 600,
+        price: 99,
+      }),
+    ]);
+  });
+
   it('hides mismatched overlays and offers a compact restore control', async () => {
     const { currentTimeframeStore } = setupStores('M15');
     useMarketsStore().all = [

@@ -1,5 +1,8 @@
 import { designTokens } from '@/design/tokens';
-import type { BacktestClosedTrade } from '@/types/backtesterContracts';
+import type {
+  BacktestClosedTrade,
+  BacktestFill,
+} from '@/types/backtesterContracts';
 import { isFiniteNumber, isRecord } from '@/types/transportValues';
 import { anchorTimestamp, type LoadedCandleRange } from './backtestOverlay';
 import type { ChartProtectiveLineSegment } from './protectiveLinesPrimitive';
@@ -69,6 +72,43 @@ export function buildBacktestEntryLines(
       false,
     ),
   );
+}
+
+export function buildOpenPositionEntryLines(
+  fills: readonly BacktestFill[],
+  range: LoadedCandleRange,
+  runEndMs: number,
+): ChartProtectiveLineSegment[] {
+  let quantity = 0;
+  let price = 0;
+  let startMs = 0;
+  for (const fill of fills) {
+    const signedQuantity = fill.side === 'buy' ? fill.quantity : -fill.quantity;
+    const nextQuantity = quantity + signedQuantity;
+    if (
+      Math.abs(quantity) <= 1e-12 ||
+      (quantity * signedQuantity < 0 &&
+        Math.abs(signedQuantity) > Math.abs(quantity) + 1e-12)
+    ) {
+      price = fill.price;
+      startMs = fill.timestamp_ms;
+    } else if (quantity * signedQuantity > 0) {
+      price =
+        (price * Math.abs(quantity) + fill.price * fill.quantity) /
+        (Math.abs(quantity) + fill.quantity);
+    }
+    quantity = Math.abs(nextQuantity) <= 1e-12 ? 0 : nextQuantity;
+  }
+  return quantity === 0
+    ? []
+    : segment(
+        'open-position:entry-price',
+        startMs,
+        runEndMs - 1,
+        price,
+        range,
+        false,
+      );
 }
 
 export function buildBacktestLimitLines(

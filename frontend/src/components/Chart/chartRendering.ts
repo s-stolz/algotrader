@@ -1,5 +1,6 @@
 import {
   buildBacktestEntryLines,
+  buildOpenPositionEntryLines,
   buildBacktestLimitLines,
 } from '@/utils/chart/backtestEntryLines';
 import { nextTick, shallowReactive } from 'vue';
@@ -347,6 +348,11 @@ export function createChartRendering({
         backtestOverlayStore.selectedRun.request.end_ms,
       ),
       ...buildBacktestEntryLines(trades, range),
+      ...buildOpenPositionEntryLines(
+        backtestOverlayStore.fills,
+        range,
+        backtestOverlayStore.selectedRun.request.end_ms,
+      ),
       ...buildBacktestProtectiveLineSegments(trades, range.candleStartsMs),
     ]);
   }

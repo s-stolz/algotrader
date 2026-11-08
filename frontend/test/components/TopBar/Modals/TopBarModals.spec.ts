@@ -16,6 +16,7 @@ import TopBarModals from '@/components/TopBar/Modals/TopBarModals.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
   fetchBacktestClosedTrades: vi.fn(),
+  fetchBacktestFills: vi.fn().mockResolvedValue([]),
   getBacktestRun: vi.fn(),
   listBacktestRuns: vi.fn(),
 }));
