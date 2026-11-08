@@ -6,7 +6,17 @@
   >
     <section aria-label="Equity chart">
       <header class="chart-header">
-        <h2>Equity</h2>
+        <div class="chart-title">
+          <h2>Equity</h2>
+          <n-tag
+            v-if="sampled"
+            size="small"
+            round
+            :bordered="false"
+            title="At least one compared run uses a sampled curve."
+            >Sampled</n-tag
+          >
+        </div>
         <ReplayLegend
           :series="series"
           :color-for-run="seriesColor"
@@ -22,7 +32,17 @@
     </section>
     <section aria-label="Drawdown chart">
       <header class="chart-header">
-        <h2>Drawdown</h2>
+        <div class="chart-title">
+          <h2>Drawdown</h2>
+          <n-tag
+            v-if="sampled"
+            size="small"
+            round
+            :bordered="false"
+            title="At least one compared run uses a sampled curve."
+            >Sampled</n-tag
+          >
+        </div>
         <ReplayLegend
           :series="series"
           :color-for-run="seriesColor"
@@ -40,6 +60,7 @@
 </template>
 
 <script setup lang="ts">
+import { NTag } from 'naive-ui';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   createChart,
@@ -268,6 +289,11 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: var(--design-space-md);
   margin-bottom: var(--design-space-md);
+}
+.chart-title {
+  display: flex;
+  align-items: center;
+  gap: var(--design-space-sm);
 }
 .chart-header h2 {
   margin: 0;

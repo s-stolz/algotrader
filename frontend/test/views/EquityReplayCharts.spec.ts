@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NTag } from 'naive-ui';
 import EquityReplayCharts from '@/views/EquityReplayCharts.vue';
 import { designTokens } from '@/design/tokens';
 
@@ -53,7 +54,7 @@ describe('EquityReplayCharts', () => {
     else Reflect.deleteProperty(document, 'fonts');
   });
 
-  it('places headings outside separate chart panels without sampling text', () => {
+  it('keeps headings outside separate chart panels', () => {
     const wrapper = mount(EquityReplayCharts, {
       props: { series: [], sampled: true },
     });
@@ -68,6 +69,23 @@ describe('EquityReplayCharts', () => {
       expect(section.get('header').find('.series-legend').exists()).toBe(true);
     }
     expect(wrapper.text()).not.toContain('Sampled curve');
+    wrapper.unmount();
+  });
+
+  it('shows Sampled tags only while displayed curves are sampled', async () => {
+    const wrapper = mount(EquityReplayCharts, { props: { series: [] } });
+    expect(wrapper.findAllComponents(NTag)).toHaveLength(0);
+    await wrapper.setProps({ sampled: true });
+    expect(wrapper.findAllComponents(NTag).map((tag) => tag.text())).toEqual([
+      'Sampled',
+      'Sampled',
+    ]);
+    for (const section of wrapper.findAll('section')) {
+      expect(section.get('header').findComponent(NTag).exists()).toBe(true);
+    }
+    await wrapper.setProps({ sampled: false });
+    expect(wrapper.findAllComponents(NTag)).toHaveLength(0);
+    expect(createChart).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 
