@@ -3,17 +3,13 @@
     aria-busy="true"
     class="replay-loading"
   >
-    <p role="status"
-      >Loading equity and drawdown · {{ count }}
-      {{ count === 1 ? 'run' : 'runs' }}</p
-    >
     <template v-if="showSkeleton">
       <section
         v-for="label in ['Equity', 'Drawdown']"
         :key="label"
         :aria-label="`${label} loading`"
       >
-        <h3>{{ label }}</h3>
+        <h2>{{ label }}</h2>
         <div
           class="chart-skeleton"
           aria-hidden="true"
@@ -24,22 +20,23 @@
   </div>
 </template>
 <script setup lang="ts">
-defineProps<{ count: number; showSkeleton: boolean }>();
+defineProps<{ showSkeleton: boolean }>();
 </script>
 <style scoped>
-p {
-  color: var(--design-color-muted);
+.replay-loading {
+  display: grid;
+  gap: var(--design-space-xl);
 }
-h3 {
-  font-size: var(--design-text-body);
-  font-weight: 500;
+h2 {
+  font-size: var(--design-text-heading);
+  margin: 0 0 var(--design-space-md);
 }
 .chart-skeleton {
   position: relative;
   height: 240px;
   overflow: hidden;
-  border-bottom: 1px solid var(--design-color-border);
-  border-left: 1px solid var(--design-color-border);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
   background: repeating-linear-gradient(
     to bottom,
     transparent 0,

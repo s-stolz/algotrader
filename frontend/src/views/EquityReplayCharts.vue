@@ -1,49 +1,72 @@
 <template>
   <div
     class="replay-charts"
-    aria-label="Exact equity and drawdown charts"
+    aria-label="Equity and drawdown charts"
+    :data-sampled="sampled"
   >
-    <header class="chart-header">
-      <ul
-        class="series-legend"
-        aria-label="Compared runs"
-      >
-        <li
-          v-for="run in series"
-          :key="run.runId"
-          :title="run.name"
-        >
-          <span
-            class="series-swatch"
-            :style="{ background: seriesColor(run) }"
-          />
-          <span :class="{ 'series-id': run.ordinal == null }">{{
-            run.ordinal == null ? run.runId.slice(0, 8) : `#${run.ordinal + 1}`
-          }}</span>
-        </li>
-      </ul>
-      <span
-        v-if="sampled"
-        class="sampling-note"
-        :title="samplingDescription"
-        >Sampled curve</span
-      >
-    </header>
     <section aria-label="Equity chart">
-      <h3>Equity <span>Account value</span></h3>
-      <div
-        ref="equityContainer"
-        class="chart"
-        data-testid="equity-chart"
-      />
+      <header class="chart-header">
+        <h2>Equity</h2>
+        <ul
+          class="series-legend"
+          aria-label="Compared runs"
+        >
+          <li
+            v-for="run in series"
+            :key="run.runId"
+            :title="run.name"
+          >
+            <span
+              class="series-swatch"
+              :style="{ background: seriesColor(run) }"
+            />
+            <span :class="{ 'series-id': run.ordinal == null }">{{
+              run.ordinal == null
+                ? run.runId.slice(0, 8)
+                : `#${run.ordinal + 1}`
+            }}</span>
+          </li>
+        </ul>
+      </header>
+      <div class="chart-panel">
+        <div
+          ref="equityContainer"
+          class="chart"
+          data-testid="equity-chart"
+        />
+      </div>
     </section>
     <section aria-label="Drawdown chart">
-      <h3>Drawdown <span>Below peak · %</span></h3>
-      <div
-        ref="drawdownContainer"
-        class="chart"
-        data-testid="drawdown-chart"
-      />
+      <header class="chart-header">
+        <h2>Drawdown</h2>
+        <ul
+          class="series-legend"
+          aria-label="Compared runs"
+        >
+          <li
+            v-for="run in series"
+            :key="run.runId"
+            :title="run.name"
+          >
+            <span
+              class="series-swatch"
+              :style="{ background: seriesColor(run) }"
+            />
+            <span :class="{ 'series-id': run.ordinal == null }">{{
+              run.ordinal == null
+                ? run.runId.slice(0, 8)
+                : `#${run.ordinal + 1}`
+            }}</span>
+          </li>
+        </ul>
+      </header>
+      <div class="chart-panel">
+        <div
+          ref="drawdownContainer"
+          class="chart"
+          data-testid="drawdown-chart"
+        />
+      </div>
     </section>
   </div>
 </template>
@@ -62,9 +85,6 @@ import type { ReplaySeries } from './backtestComparison';
 import { designTokens } from '@/design/tokens';
 import { whenChartFontReady } from '@/utils/chart/chartFonts';
 
-const samplingDescription =
-  'Sampled exact replay points, preserving the first and last points ' +
-  'and the maximum drawdown peak and trough.';
 const props = defineProps<{ series: ReplaySeries[]; sampled?: boolean }>();
 const equityContainer = ref<HTMLElement | null>(null);
 const drawdownContainer = ref<HTMLElement | null>(null);
@@ -266,12 +286,11 @@ onUnmounted(() => {
   min-width: 0;
   width: 100%;
   display: grid;
-  gap: 0;
+  gap: var(--design-space-xl);
   margin-top: var(--design-space-lg);
-  border: 1px solid var(--design-color-border);
-  border-radius: var(--design-radius-panel);
-  overflow: hidden;
-  background: var(--design-color-inset);
+}
+.replay-charts section {
+  min-width: 0;
 }
 .chart-header {
   display: flex;
@@ -279,8 +298,19 @@ onUnmounted(() => {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--design-space-md);
-  padding: var(--design-space-lg) var(--design-space-lg);
-  border-bottom: 1px solid var(--design-color-border);
+  margin-bottom: var(--design-space-md);
+}
+.chart-header h2 {
+  margin: 0;
+  font-size: var(--design-text-heading);
+  color: var(--design-color-body);
+}
+.chart-panel {
+  padding: var(--design-space-lg) var(--design-space-md) var(--design-space-sm);
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-panel);
+  overflow: hidden;
+  background: var(--design-color-inset);
 }
 .series-legend {
   display: flex;
@@ -305,32 +335,6 @@ onUnmounted(() => {
   width: 16px;
   height: 3px;
   border-radius: var(--design-radius-panel);
-}
-.sampling-note {
-  font-size: var(--design-text-secondary);
-  color: var(--design-color-muted);
-}
-.replay-charts section {
-  min-width: 0;
-  width: 100%;
-  padding: var(--design-space-lg) var(--design-space-md) var(--design-space-sm);
-  box-sizing: border-box;
-}
-.replay-charts section + section {
-  border-top: 1px solid var(--design-color-border);
-}
-.replay-charts h3 {
-  display: flex;
-  align-items: baseline;
-  gap: var(--design-space-sm);
-  font-size: var(--design-text-heading);
-  margin: 0 var(--design-space-sm) var(--design-space-md);
-  color: var(--design-color-body);
-}
-.replay-charts h3 span {
-  font-size: var(--design-text-secondary);
-  font-weight: 400;
-  color: var(--design-color-muted);
 }
 .chart {
   width: 100%;

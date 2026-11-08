@@ -1,8 +1,5 @@
 <template>
   <div class="comparison-controls">
-    <span class="column-count"
-      >{{ columnSettings.visibleKeys.length }} columns shown</span
-    >
     <BasePopover
       trigger="click"
       placement="bottom-end"
@@ -93,10 +90,6 @@ const {
   flex-wrap: wrap;
   gap: var(--design-space-lg);
   margin: var(--design-space-xl) 0 var(--design-space-lg);
-}
-.column-count {
-  color: var(--design-color-muted);
-  align-self: center;
 }
 .column-popover {
   display: grid;

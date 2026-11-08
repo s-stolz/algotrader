@@ -53,6 +53,24 @@ describe('EquityReplayCharts', () => {
     else Reflect.deleteProperty(document, 'fonts');
   });
 
+  it('places headings outside separate chart panels without sampling text', () => {
+    const wrapper = mount(EquityReplayCharts, {
+      props: { series: [], sampled: true },
+    });
+    const sections = wrapper.findAll('section');
+    expect(sections.map((section) => section.get('h2').text())).toEqual([
+      'Equity',
+      'Drawdown',
+    ]);
+    for (const section of sections) {
+      expect(section.get('.chart-panel').find('h2').exists()).toBe(false);
+      expect(section.get('.chart-panel').findAll('.chart')).toHaveLength(1);
+      expect(section.get('header').find('.series-legend').exists()).toBe(true);
+    }
+    expect(wrapper.text()).not.toContain('Sampled curve');
+    wrapper.unmount();
+  });
+
   it('converts millisecond points at the chart boundary and keeps negative drawdown', () => {
     const wrapper = mount(EquityReplayCharts, {
       props: {

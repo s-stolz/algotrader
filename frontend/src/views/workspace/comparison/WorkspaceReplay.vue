@@ -35,7 +35,6 @@
     </ul>
     <ReplayLoading
       v-if="pendingReplayCount"
-      :count="pendingReplayCount"
       :show-skeleton="!chartSeries.length"
     />
     <EquityReplayCharts

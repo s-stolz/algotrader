@@ -59,7 +59,7 @@ describe('Backtest Workspace replay loading', () => {
     await flushPromises();
     expect(wrapper.findAll('.chart-skeleton')).toHaveLength(2);
     expect(wrapper.get('.replay-loading').attributes('aria-busy')).toBe('true');
-    expect(wrapper.get('.replay-loading').text()).toContain(
+    expect(wrapper.get('.replay-loading').text()).not.toContain(
       'Loading equity and drawdown',
     );
     resolveFirst({
@@ -79,7 +79,7 @@ describe('Backtest Workspace replay loading', () => {
       .get('[data-testid="comparison-select-loading-1"]')
       .setValue(true);
     await flushPromises();
-    expect(wrapper.get('.replay-loading').text()).toContain('1 run');
+    expect(wrapper.get('.replay-loading').text()).toBe('');
     expect(wrapper.findAll('.chart-skeleton')).toHaveLength(0);
     expect(wrapper.getComponent({ name: 'EquityReplayCharts' }).vm).toBe(
       chart.vm,
