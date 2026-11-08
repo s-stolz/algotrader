@@ -289,7 +289,7 @@ describe('ChartArea overlays', () => {
     ]);
   });
 
-  it('shows reversal details and clears hover outside markers', async () => {
+  it('keeps trade marker hover details out of the legend', async () => {
     setupStores();
     const store = useBacktestOverlayStore();
     store.selectedRunId = 'run-123';
@@ -323,18 +323,11 @@ describe('ChartArea overlays', () => {
       });
       await flushPromises();
     };
-    await hover('long:exit');
-    expect(pane?.querySelector('[role="tooltip"]')?.textContent).toContain(
-      'Close long @ 104.5000 · Realized PnL: -3.25 account units',
-    );
-    await hover('short:entry');
-    expect(pane?.querySelector('[role="tooltip"]')?.textContent).toContain(
-      'Open short @ 104.5000',
-    );
-    expect(pane?.querySelector('[role="tooltip"]')?.textContent).not.toContain(
-      'PnL',
-    );
     for (const args of [
+      ['long:entry'],
+      ['long:exit'],
+      ['short:entry'],
+      ['short:exit'],
       [undefined],
       ['unrelated'],
       ['long:exit', 1],
@@ -365,6 +358,7 @@ describe('ChartArea overlays', () => {
     const title = paneOverlay?.querySelector('.backtest-overlay-title');
     expect(paneOverlay).toBeInstanceOf(HTMLDivElement);
     expect(panel).toBeInstanceOf(HTMLDivElement);
+    expect(paneOverlay?.querySelector('.backtest-marker-legend')).toBeNull();
     expect(panel?.textContent).not.toContain('Backtest Run');
     expect(title?.textContent).toBe('sma_crossover');
     expect(panel?.textContent).toContain('FX:EURUSD');

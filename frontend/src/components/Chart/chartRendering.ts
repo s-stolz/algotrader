@@ -25,7 +25,6 @@ import {
   buildBacktestProtectiveLineSegments,
   buildBacktestTradeMarkers,
   orderCandleRange,
-  formatBacktestMarkerDetails,
   type LoadedCandleRange,
 } from '@/utils/chart/backtestOverlay';
 import { getOrCreatePaneOverlayWrapper } from '@/utils/chart/paneOverlay';
@@ -64,8 +63,6 @@ interface ChartRenderingState {
   shouldScrollToRealTime: boolean;
   indicatorMessageHandler: WebSocketEventHandler<'indicatorUpdate'> | null;
   backtestOverlayTarget: HTMLElement | null;
-  backtestMarkerDetails: Map<string, string>;
-  hoveredBacktestMarker: string | null;
   indicatorReadouts: Record<string, IndicatorReadout>;
 }
 interface ChartRenderingOptions {
@@ -124,8 +121,6 @@ export function createChartRendering({
     shouldScrollToRealTime: false,
     indicatorMessageHandler: null,
     backtestOverlayTarget: null,
-    backtestMarkerDetails: new Map(),
-    hoveredBacktestMarker: null,
     indicatorReadouts: {},
   });
   function initializeChartComponent(): void {
@@ -321,8 +316,6 @@ export function createChartRendering({
 
   function refreshBacktestMarkers(): void {
     if (!state.isReady) return;
-    state.hoveredBacktestMarker = null;
-    state.backtestMarkerDetails.clear();
     const range = getBacktestLoadedCandleRange();
 
     if (
@@ -340,14 +333,6 @@ export function createChartRendering({
       range.startMs,
       range.endMs,
     );
-    for (const trade of trades) {
-      for (const kind of ['entry', 'exit'] as const) {
-        state.backtestMarkerDetails.set(
-          `${trade.trade_id}:${kind}`,
-          formatBacktestMarkerDetails(trade, kind, getMinMove()),
-        );
-      }
-    }
     infrastructure.setCandlestickMarkers(
       buildBacktestTradeMarkers(trades, range, getMinMove()),
     );
@@ -364,12 +349,6 @@ export function createChartRendering({
   function onCrosshairMove(param: MouseEventParams<Time>): void {
     try {
       const validCrosshairPoint = isValidCrosshairPoint(param);
-      state.hoveredBacktestMarker =
-        validCrosshairPoint &&
-        (param.paneIndex === undefined || param.paneIndex === 0) &&
-        typeof param.hoveredObjectId === 'string'
-          ? (state.backtestMarkerDetails.get(param.hoveredObjectId) ?? null)
-          : null;
       if (!validCrosshairPoint) {
         return;
       }

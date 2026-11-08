@@ -51,18 +51,6 @@
           role="alert"
           >{{ runIndicatorError }}</div
         >
-        <div
-          v-if="backtestOverlayStore.matchesChart"
-          class="backtest-marker-legend"
-          >↑ ↓ Entry · ● Exit · Green Buy · Red Sell</div
-        >
-        <div
-          v-if="hoveredBacktestMarker"
-          class="backtest-marker-details"
-          role="tooltip"
-        >
-          {{ hoveredBacktestMarker }}
-        </div>
       </div>
     </Teleport>
 
@@ -287,12 +275,8 @@ export default defineComponent({
         : symbol;
       return `${run.request.timeframe} ${market}`;
     });
-    const {
-      backtestOverlayTarget,
-      hoveredBacktestMarker,
-      shouldScrollToRealTime,
-      indicatorReadouts,
-    } = toRefs(rendering.state);
+    const { backtestOverlayTarget, shouldScrollToRealTime, indicatorReadouts } =
+      toRefs(rendering.state);
     expose({
       shouldScrollToRealTime,
       onWheelPassive: rendering.onWheelPassive,
@@ -303,7 +287,6 @@ export default defineComponent({
       runIndicatorError: runIndicators.error,
       backtestOverlayStore,
       backtestOverlayTarget,
-      hoveredBacktestMarker,
       activeBacktestRunTitle,
       indicatorReadouts,
       activeBacktestRunContext,
@@ -337,7 +320,6 @@ export default defineComponent({
   margin-bottom: var(--design-space-sm);
 }
 
-.backtest-marker-legend,
 .backtest-marker-details {
   padding: var(--design-space-sm) var(--design-space-md);
   color: var(--design-color-muted);
@@ -356,8 +338,8 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: var(--design-space-sm);
-  min-width: 300px;
-  width: min(350px, calc(100vw - 20px));
+  box-sizing: border-box;
+  width: max-content;
   max-width: 100%;
   padding: var(--design-space-sm) var(--design-space-md);
   color: var(--design-color-muted);
@@ -370,7 +352,6 @@ export default defineComponent({
 
 .backtest-overlay-details {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
   flex: 1 1 auto;
   gap: var(--design-space-xs) var(--design-space-sm);
@@ -378,12 +359,14 @@ export default defineComponent({
 }
 
 .backtest-overlay-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 700;
   color: var(--design-color-body);
 }
 
 .backtest-overlay-context {
-  flex: 1 1 160px;
   min-width: 0;
   overflow: hidden;
   color: var(--design-color-muted);
