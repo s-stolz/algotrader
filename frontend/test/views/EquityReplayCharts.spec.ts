@@ -71,6 +71,36 @@ describe('EquityReplayCharts', () => {
     wrapper.unmount();
   });
 
+  it('keeps both legends consistent with series labels, colors, and selection', async () => {
+    const series = [
+      { runId: 'first', name: 'First run', ordinal: 0, points: [] },
+      { runId: 'legacy-run-id', name: 'Legacy run', points: [] },
+    ];
+    const wrapper = mount(EquityReplayCharts, { props: { series } });
+    for (const legend of wrapper.findAll('.series-legend')) {
+      expect(
+        legend.findAll('li').map((item) => item.attributes('title')),
+      ).toEqual(['First run', 'Legacy run']);
+      expect(legend.findAll('li').map((item) => item.text())).toEqual([
+        '#1',
+        'legacy-r',
+      ]);
+      expect(legend.get('.series-id').text()).toBe('legacy-r');
+      legend.findAll<HTMLElement>('.series-swatch').forEach((swatch, index) => {
+        const expected = document.createElement('span');
+        expected.style.background = addSeries.mock.calls[index * 2][1].color;
+        expect(swatch.element.style.background).toBe(expected.style.background);
+      });
+    }
+    await wrapper.setProps({ series: [series[1]] });
+    for (const legend of wrapper.findAll('.series-legend')) {
+      expect(legend.findAll('li')).toHaveLength(1);
+      expect(legend.get('li').attributes('title')).toBe('Legacy run');
+    }
+    expect(createChart).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
   it('converts millisecond points at the chart boundary and keeps negative drawdown', () => {
     const wrapper = mount(EquityReplayCharts, {
       props: {
