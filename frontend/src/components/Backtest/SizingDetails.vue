@@ -2,24 +2,18 @@
 import { computed } from 'vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import type { BacktestRun } from '@/types/backtesterContracts';
-import { isRecord } from '@/types/transportValues';
+import {
+  readOrderEvents,
+  type SavedOrderEvent,
+} from '@/types/backtest/orderEvents';
 const props = defineProps<{ run: BacktestRun }>();
-const rows = computed<Array<Record<string, unknown> & { index: number }>>(
-  () => {
-    const events = props.run.diagnostics?.order_events;
-    return Array.isArray(events)
-      ? events.flatMap((event, index) =>
-          isRecord(event) ? [{ ...event, index }] : [],
-        )
-      : [];
-  },
-);
+const parsed = computed(() => readOrderEvents(props.run.diagnostics));
+const rows = computed(() => parsed.value.events);
 const columns = [
   {
     title: 'Time (UTC)',
     key: 'timestamp_ms',
-    render: (row: Record<string, unknown>) =>
-      new Date(Number(row.timestamp_ms)).toISOString(),
+    render: (row: SavedOrderEvent) => new Date(row.timestamp_ms).toISOString(),
   },
   { title: 'Order', key: 'order_id' },
   { title: 'Outcome', key: 'outcome' },
@@ -52,6 +46,13 @@ const depleted = computed(() =>
       >Amounts in {{ run.request.instrument.settlement_currency }}. Planned risk
       excludes costs and can differ from actual losses.</p
     >
+    <p
+      v-if="parsed.invalidEventCount"
+      role="status"
+    >
+      Some saved order events could not be displayed because their data is
+      invalid.
+    </p>
     <details v-if="rows.length">
       <summary>Sizing decisions and order events</summary>
       <BaseDataTable
