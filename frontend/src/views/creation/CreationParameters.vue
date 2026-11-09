@@ -1,10 +1,11 @@
 <template>
   <section
     class="parameters-section"
+    :class="{ 'execution-parameters': executionSettings }"
     aria-label="Strategy parameters"
   >
     <p
-      v-if="removedParameters.length"
+      v-if="!executionSettings && removedParameters.length"
       class="removed-parameters"
     >
       No longer used: {{ removedParameters.join(', ') }}
@@ -16,6 +17,7 @@
         class="parameter-field"
       >
         <label
+          v-if="!executionSettings || visibleParameters.length > 1"
           class="parameter-label"
           :for="`parameter-${parameter.name}`"
         >
@@ -25,6 +27,10 @@
           >
           <CreationParameterChange :name="parameter.name" />
         </label>
+        <CreationParameterChange
+          v-if="executionSettings && visibleParameters.length === 1"
+          :name="parameter.name"
+        />
         <BaseSelect
           v-if="!executionSettings"
           size="small"
@@ -40,7 +46,7 @@
             executionSettings || parameterInput(parameter).mode === 'constant'
           "
           class="parameter-value"
-          >Value
+          ><span v-if="!executionSettings">Value</span>
           <BaseSelect
             v-if="parameter.choices || parameter.type === 'bool'"
             :id="`parameter-${parameter.name}`"
@@ -210,8 +216,11 @@
   </section>
 </template>
 <script setup lang="ts">
-const props = defineProps<{ executionSettings?: boolean }>();
+const props = defineProps<{
+  executionPurpose?: 'sizing' | 'stop_loss' | 'take_profit';
+}>();
 import { computed } from 'vue';
+const executionSettings = computed(() => Boolean(props.executionPurpose));
 import CreationParameterChange from './CreationParameterChange.vue';
 import { NButton, NInput, NInputNumber } from 'naive-ui';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
@@ -241,9 +250,9 @@ const {
 } = useCreation();
 const visibleParameters = computed(() =>
   (selectedStrategy.value?.parameters ?? []).filter((parameter) => {
-    if (!props.executionSettings) return !parameter.purpose;
+    if (!props.executionPurpose) return !parameter.purpose;
     const purpose = parameter.purpose;
-    if (!purpose) return false;
+    if (!purpose || purpose !== props.executionPurpose) return false;
     const source =
       purpose === 'sizing'
         ? draft.value.execution.sizing
@@ -263,3 +272,12 @@ const removedParameters = computed(() =>
     .map((item) => item.parameter),
 );
 </script>
+
+<style scoped>
+.execution-parameters .parameter-label {
+  font-weight: 400;
+}
+.execution-parameters .parameters-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+</style>

@@ -6,8 +6,17 @@
     v-model="draft.execution"
     :errors="setupErrors"
     @change="touchSetup"
-  />
-  <CreationParameters execution-settings />
+  >
+    <template #sizing>
+      <CreationParameters execution-purpose="sizing" />
+    </template>
+    <template #stop_loss>
+      <CreationParameters execution-purpose="stop_loss" />
+    </template>
+    <template #take_profit>
+      <CreationParameters execution-purpose="take_profit" />
+    </template>
+  </BacktestRiskFields>
   <BacktestExecutionFields
     v-model:execution="draft.execution"
     v-model:engine="draft.engine"
