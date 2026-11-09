@@ -96,7 +96,10 @@ source frames explicitly. See [strategy input contracts](STRATEGIES.md#indicator
   targets, fills, and portfolio arrays. Ordinary single-source indicators retain
   feature trimming. Multi-source/anchored indicators retain execution rows and
   expose causal availability instead. Preserve the array-based runtime instead
-  of per-bar interpretation.
+  of per-bar interpretation. Sized targets use `execution/target_arrays.py` to
+  select decision, protective, depletion, and schedule events with array masks;
+  only those bars enter the OHLC matcher. Fill deltas, notionals, and fees feed
+  cumulative portfolio arrays, including quiet bars between events.
 - `src/engines/event_driven.py` bootstraps indicators from bars before `start_ms`,
   then executes sequentially over `[start_ms, end_ms)`. Both engines use the same
   history loader for ordinary indicators: the initial time window is supplemented

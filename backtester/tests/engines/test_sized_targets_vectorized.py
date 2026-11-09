@@ -1,14 +1,33 @@
 """Preservation cases for sized target execution and its independent runtime."""
 
 import unittest
+from unittest.mock import patch
 
+import numpy as np
 from domain.enums import GapPolicy
-from domain.risk import InstrumentSpec, ProtectionSetting, SizingPolicy
+from domain.risk import InstrumentSpec, ProtectionSetting, SizingMode, SizingPolicy
 from domain.schedule import DailyTradingSchedule
 from domain.types import BacktestRequest, ExecutionConfig, StrategyConfig
 from engines.sized_targets_event_driven import run_sized_targets as run_events
-from engines.sized_targets_vectorized import run_sized_targets as run_arrays
+from engines.sized_targets_vectorized import run_sized_targets
+from execution.orders import execute_minute
+from execution.target_arrays import TargetExecutionArrays
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
+
+
+def run_arrays(request, strategy, decisions):
+    rows = list(decisions)
+    return run_sized_targets(
+        request,
+        strategy,
+        TargetExecutionArrays(
+            np.asarray([row[0] for row in rows], dtype=np.int64),
+            np.asarray([row[1:5] for row in rows], dtype=np.float64).reshape(-1, 4),
+            np.asarray([row[5] for row in rows], dtype=np.int64),
+            np.asarray([row[6] for row in rows], dtype=np.int64),
+            np.asarray([row[7] for row in rows], dtype=np.float64),
+        ),
+    )
 
 
 class SizedTargetArrayTests(unittest.TestCase):
@@ -46,14 +65,15 @@ class SizedTargetArrayTests(unittest.TestCase):
 
     def test_sizing_modes_preserve_reversal_reduction_and_costs(self):
         prices = [(p, p + 1, p - 1, p) for p in (100, 101, 102, 103, 102, 101, 100, 99)]
-        for mode, value in (
+        modes: tuple[tuple[SizingMode, float | None], ...] = (
             ("strategy", None),
             ("units", 2),
             ("exposure", 400),
             ("equity_exposure", 40),
             ("risk", 20),
             ("equity_risk", 2),
-        ):
+        )
+        for mode, value in modes:
             with self.subTest(mode=mode):
                 self.compare(
                     self.request(
@@ -118,3 +138,39 @@ class SizedTargetArrayTests(unittest.TestCase):
         for run in (run_arrays, run_events):
             with self.assertRaisesRegex(ValueError, "No executable bars"):
                 run(self.request(sizing=SizingPolicy()), strategy, iter([]))
+
+    def test_quiet_bars_use_array_accounting_without_per_bar_dispatch(self):
+        count = 10000
+        with patch(
+            "engines.sized_targets_vectorized.execute_minute", wraps=execute_minute
+        ) as execute:
+            result = self.compare(
+                self.request(sizing=SizingPolicy("units", 2, 10)),
+                [(100, 101, 99, 100)] * count,
+                [1] + [0] * (count - 1),
+                [2] * count,
+            )
+        self.assertEqual(len(result.equity_curve), count)
+        self.assertEqual(execute.call_count, 2)
+        self.assertEqual(result.equity_curve[-1].positions, {"X": 2})
+
+    def test_sparse_price_paths_match_independent_runtime(self):
+        for seed in range(20):
+            with self.subTest(seed=seed):
+                random = np.random.default_rng(seed)
+                closes = 100 + np.cumsum(random.uniform(-3, 3, 80))
+                prices = [(price, price + 2, price - 2, price) for price in closes]
+                signals = [int(random.choice([-1, 1, 2])) if i % 11 == 0 else 0 for i in range(80)]
+                targets = [0 if signal == 2 else signal * 2 for signal in signals]
+                self.compare(
+                    self.request(
+                        sizing=SizingPolicy("equity_risk", 2, 10),
+                        stop_loss=ProtectionSetting("distance", 6),
+                        take_profit=ProtectionSetting("distance", 9),
+                        commission_bps=1,
+                        slippage_bps=2,
+                    ),
+                    prices,
+                    signals,
+                    targets,
+                )

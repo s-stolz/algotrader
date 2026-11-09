@@ -100,6 +100,7 @@ def run_vectorized_backtest(
 
     if request.execution.sizing is not None:
         from data.order_bars import close_timestamps
+        from execution.target_arrays import TargetExecutionArrays
 
         from engines.sized_targets_vectorized import run_sized_targets
 
@@ -112,15 +113,12 @@ def run_vectorized_backtest(
         return run_sized_targets(
             request,
             strategy,
-            zip(
-                timestamp_ms.tolist(),
-                open_prices.tolist(),
-                high_prices.tolist(),
-                low_prices.tolist(),
-                close_prices.tolist(),
-                signal_values.tolist(),
-                close_timestamps(normalized, request.timeframe),
-                target_values.tolist(),
+            TargetExecutionArrays(
+                timestamp_ms,
+                np.column_stack((open_prices, high_prices, low_prices, close_prices)),
+                signal_values,
+                np.asarray(close_timestamps(normalized, request.timeframe), dtype=np.int64),
+                target_values,
             ),
         )
 
