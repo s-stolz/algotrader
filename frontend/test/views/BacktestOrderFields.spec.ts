@@ -17,7 +17,7 @@ const stubs = {
   NInputNumber: { props: ['value'], template: '<input :value="value" />' },
 };
 describe('order execution controls', () => {
-  it('reveals order controls and requires an explicit quote when enabling orders', async () => {
+  it('reveals order controls with midpoint quotes by default', async () => {
     const execution = initialDraft().execution;
     const wrapper = mount(BacktestOrderFields, {
       props: { execution, errors: {} },
@@ -30,7 +30,11 @@ describe('order execution controls', () => {
     expect(wrapper.text()).toContain('Spread (price units)');
     expect(wrapper.find('[aria-label="Execution mode"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Ask minus bid');
-    expect(execution.candle_quote).toBeUndefined();
+    expect(execution.candle_quote).toBe('mid');
+    expect(wrapper.get('[aria-label="Candle quote"]').element).toHaveProperty(
+      'value',
+      'mid',
+    );
   });
   it('displays and edits saved order settings and policy', async () => {
     const execution = initialDraft().execution;

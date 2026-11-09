@@ -80,8 +80,10 @@ export function useBacktestCreation(emit: CreationEvents) {
       if (!strategy) return;
       draft.value.execution.execution_mode =
         strategy.execution_mode ?? 'targets';
-      if (draft.value.execution.execution_mode === 'orders')
+      if (draft.value.execution.execution_mode === 'orders') {
+        draft.value.execution.candle_quote ??= 'mid';
         draft.value.execution.spread ??= 0;
+      }
     },
     { immediate: true, flush: 'sync' },
   );

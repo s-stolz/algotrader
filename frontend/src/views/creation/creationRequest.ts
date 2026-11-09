@@ -120,6 +120,7 @@ export function buildBacktestRequest(
   execution.sizing ??= { mode: 'strategy', value: null, leverage: 1 };
   delete execution.daily_schedule;
   if (execution.execution_mode === 'orders') {
+    execution.candle_quote ??= 'mid';
     execution.intrabar_execution_policy ??=
       execution.intrabar_exit_policy === 'take_profit_first'
         ? 'optimistic'
@@ -180,6 +181,7 @@ export function initialDraft(): DraftRequest {
     run_metadata: null,
     name: '',
     execution: {
+      candle_quote: 'mid',
       sizing: { mode: 'strategy', value: null, leverage: 1 },
       stop_loss: { mode: 'strategy', value: null },
       take_profit: { mode: 'strategy', value: null },

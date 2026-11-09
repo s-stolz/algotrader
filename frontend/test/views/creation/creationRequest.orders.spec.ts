@@ -72,10 +72,12 @@ describe('order execution creation', () => {
       expect(execution).not.toHaveProperty(key);
     expect(value.execution.spread).toBe(0.0001);
   });
-  it('requires a quote and valid spread and optional exposure cap', () => {
+  it('defaults missing quotes to mid and validates spread and exposure cap', () => {
     const value = draft();
     value.execution.candle_quote = null;
-    expect(() => build(value)).toThrow('quote convention');
+    expect(build(value).execution.candle_quote).toBe('mid');
+    delete value.execution.candle_quote;
+    expect(build(value).execution.candle_quote).toBe('mid');
     value.execution.candle_quote = 'ask';
     value.execution.spread = -1;
     expect(() => build(value)).toThrow('positive spread');

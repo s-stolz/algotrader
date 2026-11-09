@@ -88,9 +88,7 @@ export function setupIssues(
   )
     issues.intrabar_exit_policy = 'Select an exit policy.';
   if (draft.execution.execution_mode === 'orders') {
-    const { candle_quote, spread, max_position_quantity } = draft.execution;
-    if (!candle_quote || !['bid', 'ask', 'mid'].includes(candle_quote))
-      issues.candle_quote = 'Select the candle quote convention.';
+    const { spread, max_position_quantity } = draft.execution;
     if (typeof spread !== 'number' || !Number.isFinite(spread) || spread < 0)
       issues.spread = 'Enter zero or a positive spread in price units.';
     if (

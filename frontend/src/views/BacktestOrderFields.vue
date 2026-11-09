@@ -51,20 +51,14 @@ const policy = computed({
       <BaseSelect
         v-model:value="execution.candle_quote"
         aria-label="Candle quote"
-        placeholder="Select quote convention"
+        :clearable="false"
         :options="[
           { label: 'Bid', value: 'bid' },
           { label: 'Ask', value: 'ask' },
           { label: 'Mid', value: 'mid' },
         ]"
-        :status="errors.candle_quote ? 'error' : undefined"
         @update:value="emit('change', 'candle_quote')"
       />
-      <small
-        v-if="errors.candle_quote"
-        role="alert"
-        >{{ errors.candle_quote }}</small
-      >
     </div>
     <div
       class="field"

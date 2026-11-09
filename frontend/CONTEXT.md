@@ -148,7 +148,7 @@ and behavior that is easy to break when changing them.
   Validate complete, ordered, distinct triples before preview/submission;
   individual Run requests still contain one execution schedule.
 - `BacktestOrderFields.vue` exposes order execution settings in Setup. Quote
-  convention is explicit; spread uses price units. Execution mode comes from
+  convention defaults to Mid when absent and preserves saved Bid/Ask selections; spread uses price units. Execution mode comes from
   the current strategy catalog, rather than an editable setup field. Request construction omits
   order-only fields in target mode and aligns the legacy exit policy with the
   selected order policy. Reuse retains saved execution values.
