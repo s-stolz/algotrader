@@ -5,67 +5,121 @@
     :title="market ? 'Edit symbol' : 'New symbol'"
   >
     <div id="new-symbol-input-wrapper">
-      <n-input
-        class="new-symbol-input"
-        :input-props="{ style: 'text-transform: uppercase;' }"
-        v-model:value="symbol"
-        :status="validSymbol || symbol === undefined ? 'success' : 'error'"
-        placeholder="Symbol"
-        aria-label="Symbol"
-      />
-
-      <n-input
-        class="new-symbol-input"
-        :input-props="{ style: 'text-transform: uppercase;' }"
-        v-model:value="exchange"
-        :status="validExchange || exchange === undefined ? 'success' : 'error'"
-        placeholder="Exchange"
-        aria-label="Exchange"
-      />
-
-      <n-input-number
-        class="new-symbol-input"
-        v-model:value="minMove"
-        aria-label="Minimum price move"
-        min="0"
-        step="0.0001"
-      />
-
-      <BaseSelect
-        class="new-symbol-input"
-        v-model:value="marketType"
-        placeholder="Market Type"
-        aria-label="Market Type"
-        :status="
-          validMarketType || marketType === undefined ? 'success' : 'error'
-        "
-        :options="options"
-      />
-      <n-input
-        v-model:value="timezone"
-        placeholder="Timezone"
-        aria-label="Timezone"
-      />
-      <n-input
-        v-model:value="currency"
-        placeholder="Settlement currency"
-        aria-label="Settlement currency"
-      />
-      <n-input-number
-        v-model:value="multiplier"
-        placeholder="Contract multiplier"
-        aria-label="Contract multiplier"
-      />
-      <n-input-number
-        v-model:value="minimum"
-        placeholder="Minimum quantity"
-        aria-label="Minimum quantity"
-      />
-      <n-input-number
-        v-model:value="step"
-        placeholder="Quantity increment"
-        aria-label="Quantity increment"
-      />
+      <div class="symbol-field">
+        <SymbolFieldLabel label="Symbol"
+          >Broker instrument code, such as EURUSD or BTCUSD.</SymbolFieldLabel
+        >
+        <n-input
+          class="new-symbol-input"
+          :input-props="{
+            style: 'text-transform: uppercase;',
+          }"
+          v-model:value="symbol"
+          :status="validSymbol || symbol === undefined ? 'success' : 'error'"
+          placeholder="Symbol"
+          aria-label="Symbol"
+        />
+      </div>
+      <div class="symbol-field">
+        <SymbolFieldLabel label="Exchange"
+          >Broker or trading venue used to identify this
+          market.</SymbolFieldLabel
+        >
+        <n-input
+          class="new-symbol-input"
+          :input-props="{
+            style: 'text-transform: uppercase;',
+          }"
+          v-model:value="exchange"
+          :status="
+            validExchange || exchange === undefined ? 'success' : 'error'
+          "
+          placeholder="Exchange"
+          aria-label="Exchange"
+        />
+      </div>
+      <div class="symbol-field">
+        <SymbolFieldLabel label="Minimum price move"
+          >Smallest price increment (tick size), such as 0.00001 for
+          EURUSD.</SymbolFieldLabel
+        >
+        <n-input-number
+          class="new-symbol-input"
+          v-model:value="minMove"
+          aria-label="Minimum price move"
+          min="0"
+          step="0.0001"
+        />
+      </div>
+      <div class="symbol-field">
+        <SymbolFieldLabel label="Market type"
+          >Asset category: Forex, Crypto, or Stock.</SymbolFieldLabel
+        >
+        <BaseSelect
+          class="new-symbol-input"
+          v-model:value="marketType"
+          placeholder="Market Type"
+          aria-label="Market Type"
+          :status="
+            validMarketType || marketType === undefined ? 'success' : 'error'
+          "
+          :options="options"
+        />
+      </div>
+      <div class="symbol-field">
+        <SymbolFieldLabel label="Timezone"
+          >Market timezone, such as UTC or Europe/Berlin.</SymbolFieldLabel
+        >
+        <n-input
+          v-model:value="timezone"
+          placeholder="Timezone"
+          aria-label="Timezone"
+        />
+      </div>
+      <div class="symbol-field">
+        <SymbolFieldLabel label="Settlement currency"
+          >Currency used for backtest equity, profit, and risk amounts. No
+          currency conversion is applied.</SymbolFieldLabel
+        >
+        <n-input
+          v-model:value="currency"
+          placeholder="Settlement currency"
+          aria-label="Settlement currency"
+        />
+      </div>
+      <div class="symbol-field symbol-field-wide">
+        <SymbolFieldLabel label="Contract multiplier"
+          >Value of a 1.0 price move per quantity unit, in settlement currency.
+          Use 1 for base-asset units.</SymbolFieldLabel
+        >
+        <n-input-number
+          v-model:value="multiplier"
+          placeholder="Contract multiplier"
+          aria-label="Contract multiplier"
+        />
+      </div>
+      <div class="symbol-field">
+        <SymbolFieldLabel label="Minimum quantity"
+          >Smallest permitted order, in quantity units—not lots. For EURUSD,
+          1,000 units equals 0.01 lot.</SymbolFieldLabel
+        >
+        <n-input-number
+          v-model:value="minimum"
+          placeholder="Minimum quantity"
+          aria-label="Minimum quantity"
+        />
+      </div>
+      <div class="symbol-field">
+        <SymbolFieldLabel label="Quantity increment"
+          >Step between valid order sizes. An increment of 1,000 allows 1,000,
+          2,000, 3,000 units, and so on.</SymbolFieldLabel
+        >
+        <n-input-number
+          v-model:value="step"
+          placeholder="Quantity increment"
+          aria-label="Quantity increment"
+        />
+      </div>
       <p
         v-if="error"
         role="alert"
@@ -86,6 +140,7 @@
 </template>
 
 <script setup lang="ts">
+import SymbolFieldLabel from './SymbolFieldLabel.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import { computed, ref } from 'vue';
 import type { SelectOption } from 'naive-ui';
@@ -197,12 +252,33 @@ async function addSymbol(): Promise<void> {
 
 <style scoped>
 #new-symbol-input-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: var(--design-space-md);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--design-space-lg);
   padding: var(--design-space-lg);
 }
 
+.symbol-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--design-space-xs);
+  min-width: 0;
+}
+.symbol-field-wide {
+  grid-column: 1 / -1;
+}
+.symbol-field > :last-child {
+  margin-top: auto;
+}
+[role='alert'] {
+  grid-column: 1 / -1;
+  color: var(--design-color-error);
+}
+@media (max-width: 480px) {
+  #new-symbol-input-wrapper {
+    grid-template-columns: 1fr;
+  }
+}
 .new-symbol-input,
 .new-symbol-button {
   width: 100%;

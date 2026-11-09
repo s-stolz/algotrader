@@ -37,6 +37,7 @@ import { NButton, NIcon, type DropdownOption } from 'naive-ui';
 
 import {
   CloudUploadOutline,
+  CreateOutline,
   EllipsisHorizontalCircleOutline,
   TrashOutline,
 } from '@/icons';
@@ -59,7 +60,11 @@ const emit = defineEmits<{
 }>();
 
 const menuOptions: DropdownOption[] = [
-  { label: 'Edit symbol', key: 'edit' },
+  {
+    label: 'Edit symbol',
+    key: 'edit',
+    icon: () => h(NIcon, null, { default: () => h(CreateOutline) }),
+  },
   {
     label: 'Upload Data',
     key: 'upload',
