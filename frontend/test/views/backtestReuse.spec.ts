@@ -48,6 +48,37 @@ const copyNames = [
 ] as const;
 
 describe('saved configuration reuse', () => {
+  it('preserves saved IDs, aliases, and explicit exchange matching', () => {
+    const run = {
+      run_id: 'saved',
+      request_schema_version: 3,
+      request: structuredClone(request),
+    } as unknown as BacktestRun;
+    const markets = [
+      {
+        symbol_id: 1,
+        symbol: 'RENAMED',
+        exchange: 'NEW',
+        aliases: [{ symbol: 'EURUSD', exchange: 'FX' }],
+      },
+    ];
+    expect(reuseRun(run, markets).selections.marketIds).toEqual([1]);
+    run.request.exchange = null;
+    expect(reuseRun(run, markets).selections.marketIds).toEqual([]);
+    run.request.instrument = {
+      symbol_id: 1,
+      settlement_currency: 'USD',
+      contract_multiplier: 1,
+      minimum_quantity: 1,
+      quantity_step: 1,
+      min_move: 0.01,
+    };
+    expect(reuseRun(run, markets).selections.marketIds).toEqual([1]);
+    run.request.instrument.symbol_id = 2;
+    run.request.exchange = 'FX';
+    expect(reuseRun(run, markets).selections.marketIds).toEqual([]);
+  });
+
   it('copies a Run into an independent fixed-parameter draft', () => {
     const run = {
       run_id: 'old',

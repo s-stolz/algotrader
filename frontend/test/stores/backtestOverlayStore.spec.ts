@@ -78,21 +78,35 @@ const closedTrades: BacktestClosedTrade[] = [
 ];
 
 describe('backtestOverlayStore', () => {
-  it('keeps historical overlays attached after a symbol rename', async () => {
-    useMarketsStore().all = [
-      {
-        ...eurUsdMarket,
-        symbol: 'EURUSDNEW',
-        aliases: [{ symbol: 'EURUSD', exchange: 'FX' }],
-      },
-    ];
-    vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
-    const store = useBacktestOverlayStore();
-    await store.selectRun(backtestRun());
-    expect(useCurrentMarketStore().symbol).toBe('EURUSDNEW');
-    expect(store.matchesChart).toBe(true);
-    expect(store.selectedRun?.request.symbols).toEqual(['EURUSD']);
-  });
+  it.each(['alias', 'unspecified-exchange', 'stable-id'])(
+    'keeps renamed overlays attached via %s',
+    async (identity) => {
+      useMarketsStore().all = [
+        {
+          ...eurUsdMarket,
+          symbol: 'EURUSDNEW',
+          aliases: [{ symbol: 'EURUSD', exchange: 'FX' }],
+        },
+      ];
+      vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
+      const store = useBacktestOverlayStore();
+      const run = backtestRun();
+      if (identity === 'unspecified-exchange') run.request.exchange = null;
+      if (identity === 'stable-id')
+        run.request.instrument = {
+          symbol_id: 1,
+          settlement_currency: 'USD',
+          contract_multiplier: 1,
+          minimum_quantity: 1,
+          quantity_step: 1,
+          min_move: 0.01,
+        };
+      await store.selectRun(run);
+      expect(useCurrentMarketStore().symbol).toBe('EURUSDNEW');
+      expect(store.matchesChart).toBe(true);
+      expect(store.selectedRun?.request.symbols).toEqual(['EURUSD']);
+    },
+  );
 
   it('loads and clears fills alongside trades for an open position', async () => {
     useMarketsStore().all = [eurUsdMarket];
