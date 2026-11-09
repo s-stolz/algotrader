@@ -19,6 +19,7 @@ import {
   setStoredState,
   STORAGE_KEYS,
 } from '@/utils/localStorage';
+import { matchesBacktestMarket } from '@/utils/backtestMarket';
 import { normalizeTimeframeCode } from '@/utils/timeframes';
 
 import { useCurrentMarketStore } from './currentMarketStore';
@@ -75,31 +76,10 @@ export function getBacktestRunSelectability(
 }
 
 function findMarketForRun(run: BacktestRun, markets: Market[]): Market | null {
-  const symbol = run.request.symbols[0];
-  const exchange = run.request.exchange;
-
   return (
-    markets.find((market) => {
-      if (run.request.instrument)
-        return market.symbol_id === run.request.instrument.symbol_id;
-      if (
-        market.aliases?.some(
-          (alias) =>
-            alias.symbol === symbol &&
-            (!exchange || alias.exchange === exchange),
-        )
-      )
-        return true;
-      if (market.symbol !== symbol) {
-        return false;
-      }
-
-      if (exchange) {
-        return market.exchange === exchange;
-      }
-
-      return true;
-    }) ?? null
+    markets.find((market) =>
+      matchesBacktestMarket(market, run.request, 'allow-unspecified'),
+    ) ?? null
   );
 }
 
@@ -144,13 +124,9 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     const market = useCurrentMarketStore();
     return (
       !!run &&
-      (run.request.instrument
-        ? run.request.instrument.symbol_id === market.symbol_id
-        : (run.request.symbols[0] === market.symbol &&
-            (!run.request.exchange ||
-              run.request.exchange === market.exchange)) ||
-          findMarketForRun(run, useMarketsStore().all)?.symbol_id ===
-            market.symbol_id) &&
+      (matchesBacktestMarket(market, run.request, 'allow-unspecified') ||
+        findMarketForRun(run, useMarketsStore().all)?.symbol_id ===
+          market.symbol_id) &&
       normalizeTimeframeCode(run.request.timeframe) ===
         useCurrentTimeframeStore().value
     );

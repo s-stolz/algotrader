@@ -7,6 +7,10 @@ import type {
   ParameterDraft,
 } from '@/types/backtesterContracts';
 import { normalizeExperimentName } from '@/types/backtesterContracts';
+import {
+  matchesBacktestMarket,
+  type MarketIdentity,
+} from '@/utils/backtestMarket';
 import { initialScheduleDraft } from '@/types/backtest/schedule';
 
 export type ReuseSource = {
@@ -35,12 +39,7 @@ function copyName(value: string | null | undefined): string {
 
 export function reuseRun(
   run: BacktestRun,
-  markets: {
-    symbol_id: number;
-    symbol: string;
-    exchange: string;
-    aliases?: Array<{ symbol: string; exchange: string }>;
-  }[],
+  markets: Array<MarketIdentity & { symbol_id: number }>,
 ): ReuseDraft {
   const request: BacktestCreationRequest = copyJson(run.request);
   request.name = '';
@@ -50,17 +49,7 @@ export function reuseRun(
     selections: {
       parameters: {},
       marketIds: markets
-        .filter((market) =>
-          request.instrument
-            ? market.symbol_id === request.instrument.symbol_id
-            : (market.symbol === request.symbols[0] &&
-                market.exchange === request.exchange) ||
-              !!market.aliases?.some(
-                (alias) =>
-                  alias.symbol === request.symbols[0] &&
-                  alias.exchange === request.exchange,
-              ),
-        )
+        .filter((market) => matchesBacktestMarket(market, request, 'exact'))
         .map((market) => market.symbol_id),
       timeframes: [request.timeframe],
       allowedDirections: [request.execution.allowed_directions],
