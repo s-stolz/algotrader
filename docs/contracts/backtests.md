@@ -67,6 +67,9 @@ and fully resolved parameter values.
 
 The **Current Strategy Catalog** comes from annotated single-file builders. Their
 signatures define names, order, types, defaults, and independent constraints.
+Catalog entries also declare `execution_mode` (`targets` by default, or `orders`).
+Workspace derives execution mode from the selected strategy; it is not a user
+choice. Legacy metadata without this field is treated as target mode.
 Boolean choices are inherent; explicit choices restrict other parameters.
 Validation resolves the schema before applying an optional pure cross-parameter
 validator, without loading Candles. Queued requests whose exact version is no

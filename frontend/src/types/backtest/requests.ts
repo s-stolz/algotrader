@@ -83,6 +83,7 @@ export interface StrategyParameterSchema {
 }
 
 export interface StrategyCatalogEntry {
+  execution_mode?: 'targets' | 'orders';
   strategy_id: string;
   strategy_version: number;
   display_name: string;
@@ -150,6 +151,8 @@ export function isStrategyCatalog(
         Number.isInteger(entry.strategy_version) &&
         (entry.strategy_version as number) > 0 &&
         isNonEmptyString(entry.display_name) &&
+        (entry.execution_mode === undefined ||
+          ['targets', 'orders'].includes(String(entry.execution_mode))) &&
         Array.isArray(entry.parameters) &&
         entry.parameters.every(isStrategyParameterSchema),
     )

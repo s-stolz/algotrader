@@ -8,7 +8,16 @@ import math
 import pkgutil
 from dataclasses import dataclass
 from types import UnionType
-from typing import Annotated, Callable, Mapping, Union, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Callable,
+    Literal,
+    Mapping,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from domain.types import StrategyConfig
 
@@ -33,6 +42,7 @@ class RegisteredStrategy:
     builder: Callable[..., StrategyDefinition]
     display_name: str | None = None
     validator: Callable[[Mapping[str, object]], None] | None = None
+    execution_mode: Literal["targets", "orders"] = "targets"
 
 
 class InvalidParameterCombinationError(ValueError):
@@ -69,13 +79,18 @@ def register_strategy(
     *,
     display_name: str | None = None,
     validator: Callable[[Mapping[str, object]], None] | None = None,
+    execution_mode: Literal["targets", "orders"] = "targets",
 ) -> Callable[[Callable[..., StrategyDefinition]], Callable[..., StrategyDefinition]]:
     def decorate(builder: Callable[..., StrategyDefinition]) -> Callable[..., StrategyDefinition]:
         if not strategy_id or type(strategy_version) is not int or strategy_version <= 0:
             raise ValueError("Strategy identity requires an ID and positive integer version")
         if strategy_id in _REGISTRY:
             raise ValueError(f"Duplicate strategy_id {strategy_id!r}")
-        entry = RegisteredStrategy(strategy_id, strategy_version, builder, display_name, validator)
+        if execution_mode not in ("targets", "orders"):
+            raise ValueError("Unsupported strategy execution mode")
+        entry = RegisteredStrategy(
+            strategy_id, strategy_version, builder, display_name, validator, execution_mode
+        )
         _parameter_schema(entry)
         _REGISTRY[strategy_id] = entry
         return builder
@@ -111,6 +126,7 @@ def strategy_catalog() -> list[dict[str, object]]:
             "strategy_version": entry.strategy_version,
             "display_name": entry.display_name or entry.strategy_id,
             "parameters": _parameter_schema(entry),
+            "execution_mode": entry.execution_mode,
         }
         for entry in sorted(_REGISTRY.values(), key=lambda item: item.strategy_id)
     ]

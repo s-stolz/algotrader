@@ -74,6 +74,17 @@ export function useBacktestCreation(emit: CreationEvents) {
       (entry) => entry.strategy_id === draft.value.strategy.strategy_id,
     ),
   );
+  watch(
+    [selectedStrategy, () => draft.value.execution],
+    ([strategy]) => {
+      if (!strategy) return;
+      draft.value.execution.execution_mode =
+        strategy.execution_mode ?? 'targets';
+      if (draft.value.execution.execution_mode === 'orders')
+        draft.value.execution.spread ??= 0;
+    },
+    { immediate: true, flush: 'sync' },
+  );
   const strategyNeedsReview = computed(
     () =>
       !selectedStrategy.value ||

@@ -23,6 +23,11 @@ from strategies.registry import (
 
 
 class TestStrategyRegistry(unittest.TestCase):
+    def test_catalog_declares_strategy_execution_mode(self) -> None:
+        catalog = {item["strategy_id"]: item for item in strategy_catalog()}
+        self.assertEqual(catalog["limit_reversion"]["execution_mode"], "orders")
+        self.assertEqual(catalog["sma_crossover"]["execution_mode"], "targets")
+
     def test_local_modules_are_discovered_without_importing_supporting_directories(self) -> None:
         strategy_catalog()
         package = importlib.import_module("strategies.custom")

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import BacktestOrderFields from './BacktestOrderFields.vue';
 import { NButton, NIcon, NInputNumber } from 'naive-ui';
 import type { SelectOption } from 'naive-ui';
 import InformationCircleOutline from '@vicons/ionicons5/es/InformationCircleOutline';
@@ -49,6 +50,11 @@ const exitOptions: SelectOption[] = [
         >{{ errors.engine }}</small
       ></label
     >
+    <BacktestOrderFields
+      v-model:execution="execution"
+      :errors="errors"
+      @change="emit('change', $event)"
+    />
     <section class="full"
       ><div class="fields">
         <div
@@ -72,7 +78,27 @@ const exitOptions: SelectOption[] = [
                     :component="InformationCircleOutline"
                     :size="17" /></n-button
               ></template>
-              <div class="policy-help">
+              <div
+                v-if="execution.execution_mode === 'orders'"
+                class="policy-help"
+              >
+                <p
+                  >Missing M1 candles create execution gaps, including
+                  closed-market intervals.</p
+                >
+                <p><strong>Skip:</strong> Keep pending orders.</p>
+                <p
+                  ><strong>Expire:</strong> Cancel orders exposed to the gap.</p
+                >
+                <p
+                  ><strong>Error:</strong> Fail the backtest and report the
+                  gap.</p
+                >
+              </div>
+              <div
+                v-else
+                class="policy-help"
+              >
                 <p
                   >What happens when a pending trade cannot use the next
                   candle's opening price because it is missing or invalid?</p
@@ -105,6 +131,7 @@ const exitOptions: SelectOption[] = [
         >
         <div
           class="policy-field"
+          v-if="execution.execution_mode !== 'orders'"
           data-setup-field="intrabar_exit_policy"
           ><span class="policy-label"
             >Intrabar exit policy

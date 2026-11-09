@@ -32,6 +32,13 @@ export function buildBacktestRequest(
   parameterInput: (parameter: StrategyParameterSchema) => ParameterDraft,
   stringValues: (parameter: StrategyParameterSchema) => string[],
 ): BacktestPreviewRequest {
+  draft = {
+    ...draft,
+    execution: {
+      ...draft.execution,
+      execution_mode: selected?.execution_mode ?? 'targets',
+    },
+  };
   const issues = setupIssues(
     draft,
     selections,
@@ -110,6 +117,26 @@ export function buildBacktestRequest(
   } = draft;
   const execution = { ...shared.execution };
   delete execution.daily_schedule;
+  if (execution.execution_mode === 'orders') {
+    execution.intrabar_execution_policy ??=
+      execution.intrabar_exit_policy === 'take_profit_first'
+        ? 'optimistic'
+        : execution.intrabar_exit_policy === 'error'
+          ? 'error'
+          : 'conservative';
+    execution.intrabar_exit_policy = {
+      conservative: 'conservative',
+      optimistic: 'take_profit_first',
+      error: 'error',
+    }[
+      execution.intrabar_execution_policy
+    ] as typeof execution.intrabar_exit_policy;
+  } else {
+    delete execution.candle_quote;
+    delete execution.spread;
+    delete execution.max_position_quantity;
+    delete execution.intrabar_execution_policy;
+  }
   return {
     ...shared,
     execution,

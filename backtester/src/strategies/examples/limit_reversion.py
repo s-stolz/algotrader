@@ -12,7 +12,7 @@ from strategies.orders import OrderStrategyModel
 from strategies.registry import ParameterInfo, register_strategy
 
 
-@register_strategy("limit_reversion", 1, display_name="Limit reversion")
+@register_strategy("limit_reversion", 1, display_name="Limit reversion", execution_mode="orders")
 def build_limit_reversion(
     *,
     offset_pct: Annotated[

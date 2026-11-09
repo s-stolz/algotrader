@@ -113,8 +113,12 @@ Trades use existing persistence. Equity Replay fingerprints and fetches M1 close
 for order mode while the immutable request retains the strategy timeframe.
 
 Minute-level strategy decisions inside unfinished higher-timeframe candles,
-ticks, liquidity simulation, hedged positions, and Workspace order-authoring
-controls remain outside this version.
+ticks, liquidity simulation, and hedged positions remain outside this version.
+
+The Workspace Execution section supports order mode, candle quote, spread in
+price units, an optional maximum position quantity, and intrabar execution policy.
+The selected strategy determines execution mode automatically. Saved runs retain these
+settings when copied into a new draft.
 
 ## Flat-only range-limit example
 

@@ -16,6 +16,10 @@ restricted numeric/string choices, descriptions, or display names. Boolean
 choices are implicit. Keep internal constants in the builder body, not in its
 signature. There is no second registry manifest to update.
 
+Order builders declare `execution_mode="orders"` on `register_strategy`; the
+Workspace uses this catalog metadata to configure execution automatically.
+Target builders keep the default `targets`.
+
 An optional decorator `validator` receives the fully resolved parameter mapping.
 It must be pure and deterministic: no Candles, clock, network, database, or
 mutable external state. For an expected invalid relationship, call

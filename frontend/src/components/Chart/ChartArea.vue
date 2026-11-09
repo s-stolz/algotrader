@@ -47,7 +47,7 @@
         </div>
         <div
           v-if="runIndicatorError"
-          class="backtest-marker-details"
+          class="backtest-overlay-error"
           role="alert"
           >{{ runIndicatorError }}</div
         >
@@ -320,18 +320,14 @@ export default defineComponent({
   margin-bottom: var(--design-space-sm);
 }
 
-.backtest-marker-details {
+.backtest-overlay-error {
+  margin-top: var(--design-space-xs);
   padding: var(--design-space-sm) var(--design-space-md);
-  color: var(--design-color-muted);
+  color: var(--design-color-body);
   font-size: var(--design-text-secondary);
   background: var(--design-color-panel);
   border-radius: var(--design-radius-panel);
   pointer-events: none;
-}
-
-.backtest-marker-details {
-  margin-top: var(--design-space-xs);
-  color: var(--design-color-body);
 }
 
 .backtest-overlay-panel {
