@@ -321,3 +321,45 @@ must not infer their pending levels. These additive diagnostic fields do not
 change the result schema version. Equity Replay descriptor v1 uses M1
 as its timeframe identity and reads M1 candles for these runs; the request timeframe
 continues to identify strategy decisions. Target-mode fingerprints are unchanged.
+
+## Sizing, instrument valuation, and margin
+
+New Backtest acceptance resolves a linear instrument snapshot for each Run:
+`symbol_id`, `settlement_currency`, `contract_multiplier`, `minimum_quantity`,
+`quantity_step`, and `min_move`. The symbol's settlement currency is the account
+currency. Price changes times quantity times contract multiplier determine PnL;
+there is no account-currency conversion. Symbol edits cannot alter these snapshots.
+Historical snapshots without sizing retain their original execution semantics.
+
+Setup owns execution sizing (`strategy`, `units`, `exposure`, `equity_exposure`,
+`risk`, or `equity_risk`) and independent stop-loss/take-profit selections (`none`,
+`strategy`, `percent`, `distance`, or `ticks`). Strategy parameter catalog metadata
+`purpose` places dedicated sizing and exit parameters in Setup; those fields are
+submitted as constants. Signal parameters remain in Parameters.
+
+Sizing uses submission-time equity including unrealized PnL. Money risk is the
+entry-to-stop loss excluding costs, per entry rather than a combined-position cap.
+Pending entries use their specified price; next-open market entries use the latest
+completed close. Quantity rounds down to the instrument increment. Missing/invalid
+risk stops or below-minimum quantities reject the entry with a diagnostic. A target
+strategy without an initial stop cannot select strategy-provided risk sizing.
+Pending quantities and initial stop information remain fixed until replacement.
+Normal strategy exits stay active. Shared protective prices remain fixed after
+the first fill until flat; additions use the existing stop. Strategy protection
+updates can change only sides whose source is strategy-provided.
+
+Leverage defaults to one and affects margin, not requested exposure. Open-position
+margin is current absolute notional divided by leverage; pending entries reserve
+estimated margin. Rejection for insufficient available margin does not resize an
+entry or end the Run. Recheck affordability at fill, including execution costs.
+Closing/reducing orders remain eligible; reversals can close while their new entry
+is rejected. Account depletion is an intrabar event: cancel pending orders, close
+remaining exposure, preserve negative balances, and stop processing that Run.
+It is a successful simulation with `termination_reason=account_depleted`, not an
+infrastructure failure. Other Runs continue. There are no broker-specific stop-out
+thresholds or margin-call warnings.
+
+Sizing and rejection events are saved in diagnostics and displayed in execution
+logs. Replay uses the saved contract multiplier and ends at the saved final point.
+New historical Candle reads use stable Market IDs. A symbol rename retains aliases
+for legacy name-based reads without rewriting saved requests or Candle data.

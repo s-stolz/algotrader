@@ -18,7 +18,8 @@ export type BacktestEngine = 'vectorized' | 'event_driven';
 
 export type BacktestDataGranularity = 'bar' | 'tick';
 
-export type BacktestExitReason = 'signal' | 'stop_loss' | 'take_profit';
+export type BacktestExitReason =
+  'signal' | 'stop_loss' | 'take_profit' | 'account_depleted';
 
 export type BacktestAllowedDirections =
   'long_only' | 'short_only' | 'long_and_short';
@@ -31,7 +32,24 @@ export interface BacktestStrategyPayload {
   parameters: Record<string, JsonValue>;
 }
 
+export interface ProtectionSetting {
+  mode: 'none' | 'strategy' | 'percent' | 'distance' | 'ticks';
+  value: number | null;
+}
 export interface BacktestExecutionPayload {
+  sizing?: {
+    mode:
+      | 'strategy'
+      | 'units'
+      | 'exposure'
+      | 'equity_exposure'
+      | 'risk'
+      | 'equity_risk';
+    value: number | null;
+    leverage: number;
+  };
+  stop_loss?: ProtectionSetting;
+  take_profit?: ProtectionSetting;
   execution_mode?: 'targets' | 'orders';
   intrabar_execution_policy?: 'conservative' | 'optimistic' | 'error' | null;
   candle_quote?: 'bid' | 'ask' | 'mid' | null;
@@ -53,6 +71,14 @@ export interface BacktestExecutionPayload {
 }
 
 export interface BacktestRequestPayload {
+  instrument?: {
+    symbol_id: number;
+    settlement_currency: string;
+    contract_multiplier: number;
+    minimum_quantity: number;
+    quantity_step: number;
+    min_move: number;
+  };
   market_min_move?: number | null;
   symbols: string[];
   exchange?: string | null;
@@ -68,6 +94,7 @@ export interface BacktestRequestPayload {
 }
 
 export interface StrategyParameterSchema {
+  purpose?: 'sizing' | 'stop_loss' | 'take_profit';
   name: string;
   type: 'bool' | 'int' | 'float' | 'str';
   nullable: boolean;

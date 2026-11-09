@@ -46,7 +46,7 @@ def scan_orders(  # noqa: C901
     if len(timestamps) and timestamps[-1] >= end_ms:
         raise ValueError("execution bars must precede end_ms")
     ordered = sorted(commands, key=lambda command: command.effective_at_ms)
-    state = OrderExecutionState()
+    state = OrderExecutionState(config=config)
     fills: list[Fill] = []
     events: list[dict[str, object]] = []
     delta, notional, fees = (np.zeros(len(timestamps), dtype=np.float64) for _ in range(3))
@@ -74,19 +74,25 @@ def scan_orders(  # noqa: C901
         for fill in state.fills:
             signed = fill.quantity if fill.side.value == "buy" else -fill.quantity
             delta[index] += signed
-            notional[index] += signed * fill.price
+            notional[index] += (
+                signed
+                * fill.price
+                * (config.instrument.contract_multiplier if config.instrument else 1.0)
+            )
             fees[index] += fill.fees
         fills.extend(state.fills)
         events.extend(state.events)
         state.fills = []
         state.events = []
-    if previous_end < end_ms:
+        if state.depleted:
+            break
+    if previous_end < end_ms and not state.depleted:
         if config.gap_policy == GapPolicy.ERROR:
             raise ValueError(f"Missing minute execution data at {previous_end}")
         state.record(previous_end, "", "execution_gap")
     for key in state.active:
         state.record(end_ms, key, "run_end_expired")
-    for command in ordered[cursor:]:
+    for command in [] if state.depleted else ordered[cursor:]:
         state.record(end_ms, command.order_id, "run_end_unexecuted")
     events.extend(state.events)
     return OrderScanResult(fills, delta, notional, fees, events, state.ambiguous_minutes)

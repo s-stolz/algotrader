@@ -37,6 +37,7 @@ from app.timeframes import TimeframeCode, timeframe_to_minutes
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 configure_logging(
@@ -96,9 +97,32 @@ async def get_market(
 
 @app.post("/markets")
 async def create_market(market: MarketIn, db: AsyncSession = Depends(get_db)):
-    symbol_id = await crud.insert_market(db, market.model_dump())
+    try:
+        symbol_id = await crud.insert_market(db, market.model_dump())
+    except (IntegrityError, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Symbol and exchange already exist or specifications are invalid",
+        ) from exc
     await market_cache.refresh_market_cache(db)
     return {"symbol_id": symbol_id, "status": "created"}
+
+
+@app.put("/markets/id/{symbol_id}")
+async def update_market(symbol_id: int, market: MarketIn, db: AsyncSession = Depends(get_db)):
+    try:
+        updated = await crud.update_market(db, symbol_id, market.model_dump())
+    except (IntegrityError, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Symbol and exchange already exist or specifications are invalid",
+        ) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    await market_cache.refresh_market_cache(db)
+    return {"symbol_id": updated, "status": "updated"}
 
 
 @app.get("/backtest-execution/slot", response_model=BacktestExecutionSlotOut)
@@ -332,6 +356,7 @@ async def delete_market(
 @app.get("/candles/{symbol}")
 async def read_aggregated_candles_by_symbol(
     symbol: str,
+    market_id: Optional[int] = Query(None, gt=0),
     exchange: Optional[str] = Query(None, description="Market exchange"),
     timeframe: TimeframeCode = Query(..., description="Timeframe code (e.g. M1, H1)"),
     start_ms: Optional[int] = Query(None, description="Start timestamp in epoch ms (UTC)"),
@@ -340,10 +365,16 @@ async def read_aggregated_candles_by_symbol(
     db: AsyncSession = Depends(get_db),
 ):
     await market_cache.ensure_market_cache(db)
-    symbol_id = market_cache.resolve_symbol_id(symbol, exchange)
+    symbol_id = (
+        market_id
+        if isinstance(market_id, int)
+        else market_cache.resolve_symbol_id(symbol, exchange)
+    )
     if symbol_id is None:
         await market_cache.refresh_market_cache(db)
         symbol_id = market_cache.resolve_symbol_id(symbol, exchange)
+    if symbol_id is None:
+        symbol_id = await crud.resolve_market_alias(db, symbol, exchange)
     if symbol_id is None:
         raise HTTPException(status_code=404, detail="Market not found")
 

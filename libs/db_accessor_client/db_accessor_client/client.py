@@ -105,8 +105,10 @@ class DatabaseAccessorClient(_BaseClient):
         end_ms: int | None = None,
         limit: int | None = None,
         include_timestamp_ms: bool = False,
+        market_id: int | None = None,
     ) -> pd.DataFrame:
         params = _build_params(
+            market_id=market_id,
             exchange=exchange,
             timeframe=normalize_timeframe_code(timeframe),
             start_ms=start_ms,
@@ -402,8 +404,10 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         end_ms: int | None = None,
         limit: int | None = None,
         include_timestamp_ms: bool = False,
+        market_id: int | None = None,
     ) -> pd.DataFrame:
         params = _build_params(
+            market_id=market_id,
             exchange=exchange,
             timeframe=normalize_timeframe_code(timeframe),
             start_ms=start_ms,

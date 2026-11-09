@@ -76,6 +76,7 @@ class OrderSide(str, Enum):
 
 
 class ExitReason(str, Enum):
+    ACCOUNT_DEPLETED = "account_depleted"
     SIGNAL = "signal"
     STOP_LOSS = "stop_loss"
     TAKE_PROFIT = "take_profit"

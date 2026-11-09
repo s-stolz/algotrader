@@ -98,6 +98,32 @@ def run_vectorized_backtest(
     low_prices = normalized["low"].to_numpy(dtype="float64")
     close_prices = normalized["close"].to_numpy(dtype="float64")
 
+    if request.execution.sizing is not None:
+        from data.order_bars import close_timestamps
+
+        from engines.sized_targets_vectorized import run_sized_targets
+
+        signals = strategy.require_v1_parity_model().build_signals(
+            feature_matrix, allowed_directions=request.execution.allowed_directions
+        )
+        signal_values = _extract_signal_values(
+            signal_matrix=signals, symbol=symbol, expected_size=timestamp_ms.size
+        )
+        return run_sized_targets(
+            request,
+            strategy,
+            zip(
+                timestamp_ms.tolist(),
+                open_prices.tolist(),
+                high_prices.tolist(),
+                low_prices.tolist(),
+                close_prices.tolist(),
+                signal_values.tolist(),
+                close_timestamps(normalized, request.timeframe),
+                target_values.tolist(),
+            ),
+        )
+
     protective_exit = _protective_exit_for_strategy(strategy)
     if daily_controls and protective_exit is None:
         protective_exit = ProtectiveExitSpec()

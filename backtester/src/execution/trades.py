@@ -9,7 +9,7 @@ from domain.types import Fill, Trade
 
 
 def build_trades_from_fills(
-    fills: Sequence[Fill], *, protection_at_exit: bool = False
+    fills: Sequence[Fill], *, protection_at_exit: bool = False, contract_multiplier: float = 1.0
 ) -> List[Trade]:
     """Create closed trades from chronological fills."""
 
@@ -74,6 +74,7 @@ def build_trades_from_fills(
         entry_fee_share = open_entry_fees * (close_qty / open_abs_qty)
         exit_fee_share = fill_fees * (close_qty / qty)
         trade_fees = max(0.0, entry_fee_share + exit_fee_share)
+        gross_pnl *= contract_multiplier
         realized_pnl = gross_pnl - trade_fees
         trade_counter += 1
         trades.append(

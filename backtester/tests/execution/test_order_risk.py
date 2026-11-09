@@ -1,0 +1,119 @@
+import unittest
+from typing import Any, Iterator
+
+from domain.enums import OrderSide
+from domain.orders import LimitOrder, OrderAction, OrderCommand
+from domain.risk import InstrumentSpec, ProtectionSetting, SizingPolicy
+from engines.order_events import EventOrderConfig, EventOrderState, execute_order_event
+from execution.orders import OrderExecutionConfig, OrderExecutionState, execute_minute
+
+
+class OrderRiskTests(unittest.TestCase):
+    def runtimes(self, **overrides) -> Iterator[tuple[Any, Any, Any]]:
+        fields: dict[str, Any] = dict(
+            instrument=InstrumentSpec(1, "USD", 1, 1, 1, 0.01),
+            sizing=SizingPolicy("risk", 100, 10),
+            initial_capital=1000,
+            stop_loss=ProtectionSetting("distance", 5),
+        )
+        fields.update(overrides)
+        for config_type, state_type, execute in (
+            (OrderExecutionConfig, OrderExecutionState, execute_minute),
+            (EventOrderConfig, EventOrderState, execute_order_event),
+        ):
+            config: Any = config_type(**fields)
+            yield config, state_type(config=config), execute
+
+    def submit(self, state, identity, price=100):
+        state.command(
+            OrderCommand(
+                60000, OrderAction.SUBMIT, identity, LimitOrder(identity, OrderSide.BUY, price, 1)
+            )
+        )
+
+    def test_pending_quantity_and_reserved_margin(self):
+        for config, state, execute in self.runtimes():
+            self.submit(state, "one")
+            self.assertEqual(state.active["one"].quantity, 20)
+            self.assertEqual(state.reserved_margin(), 200)
+            result = execute(
+                state, symbol="X", timestamp_ms=60000, prices=(100, 101, 99, 100), config=config
+            )
+            self.assertEqual(result.position, 20)
+            self.assertEqual(result.stop_price, 95)
+
+    def test_insufficient_margin_rejects_without_clamping(self):
+        for config, state, execute in self.runtimes(sizing=SizingPolicy("risk", 100, 1)):
+            self.submit(state, "one")
+            self.assertFalse(state.active)
+            self.assertEqual(state.events[-1]["outcome"], "insufficient_margin")
+
+    def test_stop_prevents_depletion(self):
+        for config, state, execute in self.runtimes():
+            self.submit(state, "one")
+            result = execute(
+                state, symbol="X", timestamp_ms=60000, prices=(100, 100, 1, 50), config=config
+            )
+            self.assertFalse(result.depleted)
+            self.assertEqual(result.fills[-1].price, 95)
+
+    def test_intrabar_depletion_closes_position_and_cancels_orders(self):
+        for config, state, execute in self.runtimes(
+            sizing=SizingPolicy("units", 20, 10), stop_loss=ProtectionSetting("none")
+        ):
+            self.submit(state, "one")
+            result = execute(
+                state, symbol="X", timestamp_ms=60000, prices=(100, 100, 40, 80), config=config
+            )
+            self.assertTrue(result.depleted)
+            self.assertEqual(result.position, 0)
+            self.assertFalse(result.active)
+            self.assertEqual(result.fills[-1].price, 50)
+            self.assertEqual(result.fills[-1].exit_reason.value, "account_depleted")
+
+    def test_gap_preserves_negative_equity(self):
+        for config, state, execute in self.runtimes(
+            sizing=SizingPolicy("units", 20, 10), stop_loss=ProtectionSetting("none")
+        ):
+            self.submit(state, "one")
+            result = execute(
+                state, symbol="X", timestamp_ms=60000, prices=(100, 100, 100, 100), config=config
+            )
+            result = execute(
+                result, symbol="X", timestamp_ms=120000, prices=(40, 40, 40, 40), config=config
+            )
+            self.assertEqual(config.initial_capital + result.cash, -200)
+            self.assertTrue(result.depleted)
+
+    def test_addition_keeps_shared_stop_and_uses_its_distance(self):
+        for config, state, execute in self.runtimes():
+            self.submit(state, "one")
+            state = execute(
+                state, symbol="X", timestamp_ms=60000, prices=(100, 101, 99, 100), config=config
+            )
+            self.submit(state, "two", price=105)
+            self.assertEqual(state.active["two"].quantity, 10)
+            state = execute(
+                state, symbol="X", timestamp_ms=120000, prices=(105, 105, 104, 105), config=config
+            )
+            self.assertEqual(state.position, 30)
+            self.assertEqual(state.stop_price, 95)
+
+    def test_reduction_does_not_turn_into_a_reversal(self):
+        for config, state, execute in self.runtimes():
+            self.submit(state, "one")
+            state = execute(
+                state, symbol="X", timestamp_ms=60000, prices=(100, 100, 100, 100), config=config
+            )
+            state.command(
+                OrderCommand(
+                    120000,
+                    OrderAction.SUBMIT,
+                    "reduce",
+                    LimitOrder("reduce", OrderSide.SELL, 100, 5),
+                )
+            )
+            state = execute(
+                state, symbol="X", timestamp_ms=120000, prices=(100, 100, 100, 100), config=config
+            )
+            self.assertEqual(state.position, 15)

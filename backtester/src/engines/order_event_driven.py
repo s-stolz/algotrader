@@ -33,6 +33,11 @@ def run_order_event_driven(  # noqa: C901
         }[config.intrabar_exit_policy]
     )
     matching = EventOrderConfig(
+        instrument=request.instrument,
+        sizing=config.sizing,
+        stop_loss=config.stop_loss,
+        take_profit=config.take_profit,
+        initial_capital=request.initial_capital,
         spread=config.spread,
         candle_quote=str(config.candle_quote),
         policy=policy,
@@ -46,7 +51,7 @@ def run_order_event_driven(  # noqa: C901
     )
     closes = close_timestamps(strategy_bars, request.timeframe)
     decisions = strategy_bars.drop(columns=["symbol", "timestamp_ms"]).to_dict("records")
-    state = EventOrderState()
+    state = EventOrderState(config=matching)
     cursor = 0
     previous = None
     fills = []
@@ -100,25 +105,35 @@ def run_order_event_driven(  # noqa: C901
             PortfolioSnapshot(
                 timestamp,
                 request.initial_capital + state.cash,
-                request.initial_capital + state.cash + state.position * float(closing),
+                request.initial_capital
+                + state.cash
+                + state.position
+                * float(closing)
+                * (request.instrument.contract_multiplier if request.instrument else 1.0),
                 {symbol: state.position} if state.position else {},
             )
         )
         previous_end = timestamp + 60_000
-    if previous_end < request.end_ms:
+        if state.depleted:
+            break
+    if previous_end < request.end_ms and not state.depleted:
         if config.gap_policy == GapPolicy.ERROR:
             raise ValueError(f"Missing minute execution data at {previous_end}")
         state.record(previous_end, "", "execution_gap")
     for key in state.active:
         state.record(request.end_ms, key, "run_end_expired")
-    while cursor < len(closes):
+    while cursor < len(closes) and not state.depleted:
         current = {str(key): float(value) for key, value in decisions[cursor].items()}
         for command in model.evaluate_close(closes[cursor], previous, current):
             state.record(request.end_ms, command.order_id, "run_end_unexecuted")
         previous = current
         cursor += 1
     events.extend(state.events)
-    trades = build_trades_from_fills(fills, protection_at_exit=True)
+    trades = build_trades_from_fills(
+        fills,
+        protection_at_exit=True,
+        contract_multiplier=request.instrument.contract_multiplier if request.instrument else 1.0,
+    )
     return BacktestResult(
         request=request,
         fills=fills,
@@ -129,6 +144,11 @@ def run_order_event_driven(  # noqa: C901
             "engine": "event_driven",
             "execution_mode": "orders",
             "execution_timeframe": "M1",
+            "termination_reason": (
+                "account_depleted"
+                if any(event["outcome"] == "account_depleted" for event in events)
+                else None
+            ),
             "order_events": events,
             "intrabar_execution_policy": policy.value,
             "intrabar_ambiguous_bar_count": state.ambiguous_minutes,

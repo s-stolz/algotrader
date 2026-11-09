@@ -87,7 +87,7 @@ def load_raw_market_data(
         warmup_bars=warmup_bars,
     )
 
-    adapter = data_adapter or DatabaseAccessorHistoricalDataAdapter()
+    adapter = data_adapter or DatabaseAccessorHistoricalDataAdapter.for_request(request)
     resolved_exchange = exchange if exchange is not None else request.exchange
     raw_bars = adapter.fetch_bars(
         symbol=symbol,
@@ -167,7 +167,7 @@ def load_market_data_bundle(
     if len(request.symbols) != 1:
         raise ValueError("Market data requires exactly one traded symbol")
     symbol = str(request.symbols[0])
-    adapter = data_adapter or DatabaseAccessorHistoricalDataAdapter()
+    adapter = data_adapter or DatabaseAccessorHistoricalDataAdapter.for_request(request)
     sources = {symbol}
     start = compute_fetch_start_ms(
         start_ms=int(request.start_ms),

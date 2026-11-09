@@ -35,7 +35,12 @@ function copyName(value: string | null | undefined): string {
 
 export function reuseRun(
   run: BacktestRun,
-  markets: { symbol_id: number; symbol: string; exchange: string }[],
+  markets: {
+    symbol_id: number;
+    symbol: string;
+    exchange: string;
+    aliases?: Array<{ symbol: string; exchange: string }>;
+  }[],
 ): ReuseDraft {
   const request: BacktestCreationRequest = copyJson(run.request);
   request.name = '';
@@ -45,10 +50,16 @@ export function reuseRun(
     selections: {
       parameters: {},
       marketIds: markets
-        .filter(
-          (market) =>
-            market.symbol === request.symbols[0] &&
-            market.exchange === request.exchange,
+        .filter((market) =>
+          request.instrument
+            ? market.symbol_id === request.instrument.symbol_id
+            : (market.symbol === request.symbols[0] &&
+                market.exchange === request.exchange) ||
+              !!market.aliases?.some(
+                (alias) =>
+                  alias.symbol === request.symbols[0] &&
+                  alias.exchange === request.exchange,
+              ),
         )
         .map((market) => market.symbol_id),
       timeframes: [request.timeframe],

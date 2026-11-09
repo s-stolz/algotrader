@@ -132,6 +132,8 @@ class LimitOrder:
     replace_group: str | None = None
     lifetime_bars: int | None = None
     price_offset_ticks: int = 0
+    market: bool = False
+    planned_risk: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.order_id, str) or not self.order_id.strip():

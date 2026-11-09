@@ -49,13 +49,15 @@ def build_rsi_range_limit(  # noqa: C901
             ),
         ),
     ] = 0,
-    quantity: Annotated[float, ParameterInfo(minimum=0, exclusive_minimum=True)] = 1.0,
+    quantity: Annotated[
+        float, ParameterInfo(purpose="sizing", minimum=0, exclusive_minimum=True)
+    ] = 1.0,
     lifetime_bars: Annotated[
         int,
         ParameterInfo(minimum=1, description="Pending lifetime in strategy timeframe intervals."),
     ] = 10,
-    stop_loss_ticks: Annotated[int, ParameterInfo(minimum=1)] = 100,
-    take_profit_ticks: Annotated[int, ParameterInfo(minimum=1)] = 200,
+    stop_loss_ticks: Annotated[int, ParameterInfo(purpose="stop_loss", minimum=1)] = 100,
+    take_profit_ticks: Annotated[int, ParameterInfo(purpose="take_profit", minimum=1)] = 200,
 ) -> StrategyDefinition:
     """Buy a low-RSI cross at the trailing low; sell a high-RSI cross at the high.
 

@@ -32,6 +32,7 @@ class ParameterInfo:
     exclusive_maximum: bool = False
     choices: tuple[int | float | str, ...] | None = None
     description: str | None = None
+    purpose: str | None = None
     display_name: str | None = None
 
 
@@ -154,6 +155,7 @@ def _parameter_schema(entry: RegisteredStrategy) -> list[dict[str, object]]:
             ("choices", list(metadata.choices) if metadata.choices is not None else None),
             ("description", metadata.description),
             ("display_name", metadata.display_name),
+            ("purpose", metadata.purpose),
         ):
             if value is not None:
                 field[key] = value
@@ -196,6 +198,8 @@ def _parameter_type(
 
 
 def _validate_metadata(name: str, kind: str, metadata: ParameterInfo) -> None:
+    if metadata.purpose not in (None, "sizing", "stop_loss", "take_profit"):
+        raise ValueError(f"Unknown parameter purpose for {name}")
     _validate_bounds(name, metadata)
     if metadata.choices is None:
         return

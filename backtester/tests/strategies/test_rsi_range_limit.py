@@ -1,4 +1,5 @@
 import unittest
+from typing import Any, cast
 
 from domain.enums import OrderSide
 from domain.types import FeatureMatrix
@@ -79,4 +80,4 @@ class RsiRangeLimitTests(unittest.TestCase):
             {"limit_offset_ticks": 1.5},
         ):
             with self.subTest(overrides=overrides), self.assertRaises(ValueError):
-                build_rsi_range_limit(**overrides)
+                build_rsi_range_limit(**cast(dict[str, Any], overrides))

@@ -11,7 +11,7 @@
     </p>
     <div class="parameters-grid">
       <div
-        v-for="parameter in selectedStrategy?.parameters ?? []"
+        v-for="parameter in visibleParameters"
         :key="parameter.name"
         class="parameter-field"
       >
@@ -26,6 +26,7 @@
           <CreationParameterChange :name="parameter.name" />
         </label>
         <BaseSelect
+          v-if="!executionSettings"
           size="small"
           class="parameter-mode"
           :aria-label="`${parameter.display_name || parameter.name} mode`"
@@ -35,7 +36,9 @@
           @update:value="changeParameterMode(parameter, $event)"
         />
         <label
-          v-if="parameterInput(parameter).mode === 'constant'"
+          v-if="
+            executionSettings || parameterInput(parameter).mode === 'constant'
+          "
           class="parameter-value"
           >Value
           <BaseSelect
@@ -207,6 +210,7 @@
   </section>
 </template>
 <script setup lang="ts">
+const props = defineProps<{ executionSettings?: boolean }>();
 import { computed } from 'vue';
 import CreationParameterChange from './CreationParameterChange.vue';
 import { NButton, NInput, NInputNumber } from 'naive-ui';
@@ -235,6 +239,18 @@ const {
   setNumericValues,
   numericEntryValid,
 } = useCreation();
+const visibleParameters = computed(() =>
+  (selectedStrategy.value?.parameters ?? []).filter((parameter) => {
+    if (!props.executionSettings) return !parameter.purpose;
+    const purpose = parameter.purpose;
+    if (!purpose) return false;
+    const source =
+      purpose === 'sizing'
+        ? draft.value.execution.sizing
+        : draft.value.execution[purpose];
+    return !source || source.mode === 'strategy';
+  }),
+);
 function parameterError(name: string): string | undefined {
   return (
     fieldErrors.value[name] ??

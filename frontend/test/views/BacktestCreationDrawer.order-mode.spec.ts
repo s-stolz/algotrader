@@ -26,7 +26,9 @@ describe('strategy execution mode', () => {
     await flushPromises();
     const store = useBacktestWorkspaceStore();
     expect(store.creationDraft?.execution.execution_mode).toBe('orders');
-    expect(document.body.textContent).toContain('Spread (price units)');
+    expect(
+      document.body.textContent?.match(/Spread \(price units\)/g),
+    ).toHaveLength(1);
     expect(document.querySelector('[aria-label="Execution mode"]')).toBeNull();
     wrapper
       .findAllComponents(NSelect)

@@ -78,6 +78,22 @@ const closedTrades: BacktestClosedTrade[] = [
 ];
 
 describe('backtestOverlayStore', () => {
+  it('keeps historical overlays attached after a symbol rename', async () => {
+    useMarketsStore().all = [
+      {
+        ...eurUsdMarket,
+        symbol: 'EURUSDNEW',
+        aliases: [{ symbol: 'EURUSD', exchange: 'FX' }],
+      },
+    ];
+    vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
+    const store = useBacktestOverlayStore();
+    await store.selectRun(backtestRun());
+    expect(useCurrentMarketStore().symbol).toBe('EURUSDNEW');
+    expect(store.matchesChart).toBe(true);
+    expect(store.selectedRun?.request.symbols).toEqual(['EURUSD']);
+  });
+
   it('loads and clears fills alongside trades for an open position', async () => {
     useMarketsStore().all = [eurUsdMarket];
     const fills = [

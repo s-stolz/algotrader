@@ -161,3 +161,13 @@ price distances, mutually exclusive with the corresponding fixed/percentage
 mode. At attachment they resolve against the net average entry; for this flat-only
 example that is the actual entry fill including price improvement and slippage.
 Resolved levels stay fixed. Nonpositive resulting protection prices reject execution.
+
+## Sized order execution
+
+New Runs apply the [shared sizing and margin contract](../docs/contracts/backtests.md#sizing-instrument-valuation-and-margin)
+to exposure-increasing orders at submission. Partial reductions keep their requested
+quantity. A replacement releases the previous reservation before sizing the new
+order; cancelling or expiring an order releases its reservation. Shared protection
+is authoritative on its selected side even if a strategy submits a protection
+update. Strategy-owned initial stops are resolved at submission for sizing.
+Depletion participates in both candidate OHLC paths and their closing-equity score.

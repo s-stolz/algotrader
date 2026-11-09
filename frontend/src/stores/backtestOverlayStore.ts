@@ -80,6 +80,16 @@ function findMarketForRun(run: BacktestRun, markets: Market[]): Market | null {
 
   return (
     markets.find((market) => {
+      if (run.request.instrument)
+        return market.symbol_id === run.request.instrument.symbol_id;
+      if (
+        market.aliases?.some(
+          (alias) =>
+            alias.symbol === symbol &&
+            (!exchange || alias.exchange === exchange),
+        )
+      )
+        return true;
       if (market.symbol !== symbol) {
         return false;
       }
@@ -134,8 +144,13 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     const market = useCurrentMarketStore();
     return (
       !!run &&
-      run.request.symbols[0] === market.symbol &&
-      (!run.request.exchange || run.request.exchange === market.exchange) &&
+      (run.request.instrument
+        ? run.request.instrument.symbol_id === market.symbol_id
+        : (run.request.symbols[0] === market.symbol &&
+            (!run.request.exchange ||
+              run.request.exchange === market.exchange)) ||
+          findMarketForRun(run, useMarketsStore().all)?.symbol_id ===
+            market.symbol_id) &&
       normalizeTimeframeCode(run.request.timeframe) ===
         useCurrentTimeframeStore().value
     );

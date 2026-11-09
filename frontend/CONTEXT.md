@@ -187,3 +187,9 @@ and behavior that is easy to break when changing them.
 Frontend gate: `make test frontend`. For targeted commands and test conventions,
 read [commands](../docs/agent/COMMANDS.md) and
 [coding conventions](../docs/agent/CODING-CONVENTIONS.md).
+
+Sizing and protective sources live in `BacktestRiskFields.vue`; dedicated strategy
+parameters use catalog `purpose` metadata to appear in Setup as constants.
+`SizingDetails.vue` displays persisted sizing/rejection events in execution logs.
+The symbol menu edits specifications through stable IDs. Refresh selected Market
+metadata after edits and resolve historical Run selections by saved ID or aliases.

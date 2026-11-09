@@ -36,13 +36,21 @@ def build_sma_crossover_strategy(
     *,
     fast_window: Annotated[int, ParameterInfo(minimum=1)] = 5,
     slow_window: Annotated[int, ParameterInfo(minimum=1)] = 20,
-    quantity: Annotated[float, ParameterInfo(minimum=0.0, exclusive_minimum=True)] = 1.0,
+    quantity: Annotated[
+        float, ParameterInfo(purpose="sizing", minimum=0.0, exclusive_minimum=True)
+    ] = 1.0,
     stop_loss_pct: Annotated[
         float | None,
-        ParameterInfo(minimum=0.0, maximum=100.0, exclusive_minimum=True, exclusive_maximum=True),
+        ParameterInfo(
+            purpose="stop_loss",
+            minimum=0.0,
+            maximum=100.0,
+            exclusive_minimum=True,
+            exclusive_maximum=True,
+        ),
     ] = None,
     take_profit_pct: Annotated[
-        float | None, ParameterInfo(minimum=0.0, exclusive_minimum=True)
+        float | None, ParameterInfo(purpose="take_profit", minimum=0.0, exclusive_minimum=True)
     ] = None,
 ) -> StrategyDefinition:
     """Build a direction-neutral SMA crossover strategy definition."""

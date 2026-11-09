@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Any, Literal
 
 from app.backtest_definitions import BacktestDefinition
@@ -19,6 +20,7 @@ from domain.enums import (
 )
 from domain.experiment_names import normalize_experiment_name
 from domain.orders import IntrabarExecutionPolicy
+from domain.risk import ProtectionSetting, SizingPolicy
 from domain.schedule import DailyTradingSchedule
 from domain.types import (
     BacktestFillRecord,
@@ -99,7 +101,46 @@ class DailyTradingScheduleRequestSchema(ApiContractModel):
         return self
 
 
+class SizingSchema(ApiContractModel):
+    mode: Literal["strategy", "units", "exposure", "equity_exposure", "risk", "equity_risk"] = (
+        "strategy"
+    )
+    value: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    leverage: float = Field(default=1, ge=1, allow_inf_nan=False)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload = handler(self)
+        if self.value is None:
+            payload.pop("value", None)
+        return payload
+
+
+class ProtectionSchema(ApiContractModel):
+    mode: Literal["none", "strategy", "percent", "distance", "ticks"] = "strategy"
+    value: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload = handler(self)
+        if self.value is None:
+            payload.pop("value", None)
+        return payload
+
+
+class InstrumentSchema(ApiContractModel):
+    symbol_id: StrictInt = Field(gt=0)
+    settlement_currency: str = Field(min_length=1)
+    contract_multiplier: float = Field(gt=0, allow_inf_nan=False)
+    minimum_quantity: float = Field(gt=0, allow_inf_nan=False)
+    quantity_step: float = Field(gt=0, allow_inf_nan=False)
+    min_move: float = Field(gt=0, allow_inf_nan=False)
+
+
 class ExecutionRequestSchema(ApiContractModel):
+    sizing: SizingSchema | None = None
+    stop_loss: ProtectionSchema | None = None
+    take_profit: ProtectionSchema | None = None
     signal_timing: Literal["close"] = "close"
     fill_timing: Literal["next_open"] = "next_open"
     price_source: Literal["open", "close"] = "open"
@@ -127,6 +168,9 @@ class ExecutionRequestSchema(ApiContractModel):
     def serialize_execution(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         value = handler(self)
         for key in (
+            "sizing",
+            "stop_loss",
+            "take_profit",
             "execution_mode",
             "spread",
             "candle_quote",
@@ -175,6 +219,17 @@ class BacktestRunRequestSchema(ApiContractModel):
                 strategy_version=self.strategy.strategy_version,
             ),
             execution=ExecutionConfig(
+                sizing=SizingPolicy(**execution.sizing.model_dump()) if execution.sizing else None,
+                stop_loss=(
+                    ProtectionSetting(**execution.stop_loss.model_dump())
+                    if execution.stop_loss
+                    else None
+                ),
+                take_profit=(
+                    ProtectionSetting(**execution.take_profit.model_dump())
+                    if execution.take_profit
+                    else None
+                ),
                 signal_timing=SignalTiming(execution.signal_timing),
                 fill_timing=FillTiming(execution.fill_timing),
                 price_source=PriceSource(execution.price_source),
@@ -260,6 +315,10 @@ class BacktestPreviewRequestSchema(ApiContractModel):
         shared_fields["symbols"] = ["_preview_"]
         shared_fields["timeframe"] = "M1"
         shared = BacktestRunRequestSchema.model_validate(shared_fields).to_domain()
+        shared = replace(
+            shared,
+            execution=replace(shared.execution, sizing=shared.execution.sizing or SizingPolicy()),
+        )
         return BacktestDefinition(
             shared_request=shared,
             market_ids=tuple(self.markets),
@@ -293,6 +352,7 @@ class StoredStrategyRequestSchema(ApiContractModel):
 
 
 class StoredBacktestRequestSchema(BacktestRunRequestSchema):
+    instrument: InstrumentSchema | None = None
     strategy: StoredStrategyRequestSchema
     market_min_move: float | None = Field(default=None, gt=0)
 
@@ -305,7 +365,7 @@ class BacktestFillResponseSchema(ApiContractModel):
     quantity: float
     price: float
     fees: float
-    exit_reason: Literal["signal", "stop_loss", "take_profit"] | None = None
+    exit_reason: Literal["signal", "stop_loss", "take_profit", "account_depleted"] | None = None
 
     @classmethod
     def from_domain(cls, fill: BacktestFillRecord) -> "BacktestFillResponseSchema":
@@ -333,7 +393,7 @@ class BacktestTradeResponseSchema(ApiContractModel):
     exit_price: float
     realized_pnl: float
     fees: float
-    exit_reason: Literal["signal", "stop_loss", "take_profit"]
+    exit_reason: Literal["signal", "stop_loss", "take_profit", "account_depleted"]
     stop_loss_price: float | None = None
     take_profit_price: float | None = None
 

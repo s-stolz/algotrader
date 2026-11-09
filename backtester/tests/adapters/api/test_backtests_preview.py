@@ -39,8 +39,26 @@ class TestBacktestPreviewRoutes(unittest.TestCase):
         self.repository = _FakeRunRepository()
         self.service = BacktestPreviewService(
             markets=lambda: [
-                {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX"},
-                {"symbol_id": 2, "symbol": "USDJPY", "exchange": "FX"},
+                {
+                    "settlement_currency": "USD",
+                    "contract_multiplier": 1.0,
+                    "minimum_quantity": 1.0,
+                    "quantity_step": 1.0,
+                    "min_move": 0.00001,
+                    "symbol_id": 1,
+                    "symbol": "EURUSD",
+                    "exchange": "FX",
+                },
+                {
+                    "settlement_currency": "USD",
+                    "contract_multiplier": 1.0,
+                    "minimum_quantity": 1.0,
+                    "quantity_step": 1.0,
+                    "min_move": 0.00001,
+                    "symbol_id": 2,
+                    "symbol": "USDJPY",
+                    "exchange": "FX",
+                },
             ],
             max_candidate_count=200,
         )
@@ -68,8 +86,26 @@ class TestBacktestPreviewRoutes(unittest.TestCase):
         definition["allowed_directions"] = ["long_and_short"]
         definition["execution"].update(execution_mode="orders", candle_quote="bid")
         markets = [
-            {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX", "min_move": 0.00001},
-            {"symbol_id": 2, "symbol": "USDJPY", "exchange": "FX", "min_move": 0.001},
+            {
+                "settlement_currency": "USD",
+                "contract_multiplier": 1.0,
+                "minimum_quantity": 1.0,
+                "quantity_step": 1.0,
+                "symbol_id": 1,
+                "symbol": "EURUSD",
+                "exchange": "FX",
+                "min_move": 0.00001,
+            },
+            {
+                "settlement_currency": "USD",
+                "contract_multiplier": 1.0,
+                "minimum_quantity": 1.0,
+                "quantity_step": 1.0,
+                "symbol_id": 2,
+                "symbol": "USDJPY",
+                "exchange": "FX",
+                "min_move": 0.001,
+            },
         ]
         with patch.object(self.service, "_markets", return_value=markets):
             response = self.client.post("/backtests/preview", json=definition)
@@ -100,7 +136,16 @@ class TestBacktestPreviewRoutes(unittest.TestCase):
             self.service,
             "_markets",
             return_value=[
-                {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX", "min_move": 0.00001}
+                {
+                    "settlement_currency": "USD",
+                    "contract_multiplier": 1.0,
+                    "minimum_quantity": 1.0,
+                    "quantity_step": 1.0,
+                    "symbol_id": 1,
+                    "symbol": "EURUSD",
+                    "exchange": "FX",
+                    "min_move": 0.00001,
+                }
             ],
         ):
             response = self.client.post("/backtests/preview", json=definition)
@@ -126,7 +171,16 @@ class TestBacktestPreviewRoutes(unittest.TestCase):
                     self.service,
                     "_markets",
                     return_value=[
-                        {"symbol_id": 1, "symbol": "EURUSD", "exchange": "FX", "min_move": min_move}
+                        {
+                            "settlement_currency": "USD",
+                            "contract_multiplier": 1.0,
+                            "minimum_quantity": 1.0,
+                            "quantity_step": 1.0,
+                            "symbol_id": 1,
+                            "symbol": "EURUSD",
+                            "exchange": "FX",
+                            "min_move": min_move,
+                        }
                     ],
                 ),
             ):

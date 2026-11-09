@@ -76,6 +76,67 @@ def run_event_driven_backtest(
     normalized = normalized.sort_values("timestamp_ms", kind="mergesort")
     normalized = normalized.reset_index(drop=True)
 
+    if request.execution.sizing is not None:
+        from data.order_bars import close_timestamps
+
+        from engines.sized_targets_event_driven import run_sized_targets
+
+        model = strategy.require_v1_parity_model()
+        stream = EventDrivenFeatureStream(
+            strategy=strategy,
+            symbol=symbol,
+            timeframe=request.timeframe,
+            bars=normalized if needs_source_inputs(strategy) else None,
+            feature_bars=feature_bars,
+        )
+        boundaries = close_timestamps(normalized, request.timeframe)
+
+        def decisions():
+            previous = None
+            started = False
+            for row, boundary in zip(normalized.itertuples(index=False), boundaries):
+                bar = _bar_from_row(row)
+                snapshot = stream.update(bar)
+                if snapshot is None:
+                    continue
+                current = dict(snapshot.features)
+                if bar.timestamp_ms < request.start_ms:
+                    previous = current
+                    continue
+                if not started and needs_source_inputs(strategy):
+                    previous = None
+                started = True
+                signal = model.evaluate_sequential_signal(
+                    previous=previous,
+                    current=current,
+                    allowed_directions=request.execution.allowed_directions,
+                )
+                previous = current
+                target_quantity = _target_quantity_for_signal(
+                    signal=int(signal),
+                    target_quantity=model.target_quantity,
+                    allowed_directions=request.execution.allowed_directions,
+                )
+                target_quantity = _apply_single_target_transforms(
+                    strategy=strategy,
+                    symbol=symbol,
+                    timestamp_ms=int(bar.timestamp_ms),
+                    target_quantity=target_quantity,
+                    allowed_directions=request.execution.allowed_directions,
+                )
+                yield (
+                    int(bar.timestamp_ms),
+                    float(bar.open),
+                    float(bar.high),
+                    float(bar.low),
+                    float(bar.close),
+                    int(signal),
+                    boundary,
+                    target_quantity,
+                )
+
+        return run_sized_targets(request, strategy, decisions())
+
     run_result = _run_event_driven_loop(
         request=request,
         bars=normalized,

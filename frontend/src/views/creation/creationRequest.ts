@@ -51,7 +51,7 @@ export function buildBacktestRequest(
   const parameter_axes: Record<string, ParameterAxis> = {};
   for (const parameter of selected.parameters) {
     const input = parameterInput(parameter);
-    if (input.mode === 'constant') {
+    if (input.mode === 'constant' || parameter.purpose) {
       const value = draft.strategy.parameters[parameter.name];
       if (value === undefined) {
         if (parameter.required)
@@ -112,10 +112,12 @@ export function buildBacktestRequest(
     timeframe: _timeframe,
     exchange: _exchange,
     market_min_move: _marketMinMove,
+    instrument: _instrument,
     name: _name,
     ...shared
   } = draft;
   const execution = { ...shared.execution };
+  execution.sizing ??= { mode: 'strategy', value: null, leverage: 1 };
   delete execution.daily_schedule;
   if (execution.execution_mode === 'orders') {
     execution.intrabar_execution_policy ??=
@@ -178,6 +180,9 @@ export function initialDraft(): DraftRequest {
     run_metadata: null,
     name: '',
     execution: {
+      sizing: { mode: 'strategy', value: null, leverage: 1 },
+      stop_loss: { mode: 'strategy', value: null },
+      take_profit: { mode: 'strategy', value: null },
       signal_timing: 'close',
       fill_timing: 'next_open',
       price_source: 'open',

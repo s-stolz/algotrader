@@ -6,7 +6,7 @@ as a stable tie-breaker. This is a model, not reconstruction of tick history.
 """
 
 import math
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from typing import Sequence
 
 from domain.enums import AllowedDirections, ExitReason, GapPolicy, OrderSide
@@ -17,12 +17,18 @@ from domain.orders import (
     OrderCommand,
     OrderProtection,
 )
+from domain.risk import InstrumentSpec, ProtectionSetting, SizingPolicy, size_entry
 from domain.schedule import DAY_MS, DailyTradingSchedule
 from domain.types import Fill
 
 
 @dataclass(frozen=True)
 class EventOrderConfig:
+    instrument: InstrumentSpec | None = None
+    sizing: SizingPolicy | None = None
+    stop_loss: ProtectionSetting | None = None
+    take_profit: ProtectionSetting | None = None
+    initial_capital: float = 0.0
     spread: float = 0.0
     candle_quote: str = "bid"
     slippage_bps: float = 0.0
@@ -56,6 +62,9 @@ class EventOrderConfig:
 
 @dataclass
 class EventOrderState:
+    config: EventOrderConfig | None = None
+    last_price: float | None = None
+    depleted: bool = False
     active: dict[str, LimitOrder] = field(default_factory=dict)
     submitted_ids: set[str] = field(default_factory=set)
     position: float = 0.0
@@ -77,11 +86,40 @@ class EventOrderState:
             if active.expires_at_ms is not None and active.expires_at_ms <= command.effective_at_ms:
                 del self.active[identity]
                 self.record(active.expires_at_ms, identity, "expired")
+        if self.depleted:
+            return
         key = command.order_id
         if command.action == OrderAction.PROTECT:
             if self.position:
                 assert command.protection is not None
-                self.set_protection(command.protection, abs(self.position))
+                protection = command.protection
+                if self.config is not None:
+                    if (
+                        self.config.stop_loss is not None
+                        and self.config.stop_loss.mode != "strategy"
+                    ):
+                        protection = replace(
+                            protection,
+                            stop_price=self.stop_price,
+                            stop_loss_pct=None,
+                            stop_loss_distance=None,
+                        )
+                    if (
+                        self.config.take_profit is not None
+                        and self.config.take_profit.mode != "strategy"
+                    ):
+                        from domain.orders import TakeProfitTier
+
+                        protection = replace(
+                            protection,
+                            take_profits=tuple(
+                                TakeProfitTier(level, quantity=quantity)
+                                for level, quantity in self.targets
+                            ),
+                            take_profit_pct=None,
+                            take_profit_distance=None,
+                        )
+                self.set_protection(protection, abs(self.position))
                 self.record(command.effective_at_ms, key, "protection_updated")
             else:
                 self.record(command.effective_at_ms, key, "inactive_noop")
@@ -108,7 +146,123 @@ class EventOrderState:
         else:
             assert command.order is not None
             self.active[key] = command.order
+        if command.action != OrderAction.CANCEL and not self.prepare_order(
+            key, command.effective_at_ms
+        ):
+            return
         self.record(command.effective_at_ms, key, command.action.value)
+
+    def reserved_margin(self) -> float:
+        config = self.config
+        if config is None or config.instrument is None or config.sizing is None:
+            return 0.0
+        return sum(
+            config.instrument.notional(
+                max(
+                    0.0,
+                    order.quantity
+                    - (
+                        abs(self.position)
+                        if self.position * (1 if order.side == OrderSide.BUY else -1) < 0
+                        else 0.0
+                    ),
+                ),
+                order.price,
+            )
+            / config.sizing.leverage
+            for order in self.active.values()
+            if not order.reduce_only
+        )
+
+    def prepare_order(self, key: str, timestamp: int) -> bool:  # noqa: C901
+        config = self.config
+        if config is None or config.instrument is None or config.sizing is None:
+            return True
+        order = self.active.pop(key)
+        direction = 1 if order.side == OrderSide.BUY else -1
+        if order.reduce_only or (
+            self.position * direction < 0 and order.quantity <= abs(self.position)
+        ):
+            self.active[key] = order
+            return True
+        spec = config.instrument
+        direction = 1 if order.side == OrderSide.BUY else -1
+        mark = self.last_price if self.last_price is not None else order.price
+        equity = (
+            config.initial_capital + self.cash + self.position * mark * spec.contract_multiplier
+        )
+        protection = order.protection or OrderProtection()
+        stop = protection.stop_price
+        if protection.stop_loss_pct is not None:
+            stop = order.price * (1 - direction * protection.stop_loss_pct / 100)
+        if protection.stop_loss_distance is not None:
+            stop = order.price - direction * protection.stop_loss_distance
+        setting = config.stop_loss
+        if setting is not None and setting.mode != "strategy":
+            stop = (
+                self.stop_price
+                if self.position * direction > 0
+                else setting.level(order.price, direction, spec, stop=True)
+            )
+        decision = size_entry(
+            config.sizing,
+            spec,
+            equity=equity,
+            entry_price=order.price,
+            direction=direction,
+            strategy_quantity=order.quantity
+            - (abs(self.position) if self.position * direction < 0 else 0.0),
+            stop_price=stop,
+        )
+        self.events.append(
+            {"timestamp_ms": timestamp, "order_id": key, "outcome": "sizing", **asdict(decision)}
+        )
+        if decision.reason:
+            self.record(timestamp, key, decision.reason)
+            if self.position * direction < 0:
+                self.active[key] = replace(
+                    order, quantity=abs(self.position), reduce_only=True, protection=None
+                )
+                return True
+            return False
+        quantity = decision.quantity
+        # Opposite orders close existing exposure before opening the sized entry.
+        closing = abs(self.position) if self.position * direction < 0 else 0.0
+        required = spec.notional(quantity, order.price) / config.sizing.leverage
+        used = 0.0 if closing else spec.notional(self.position, mark) / config.sizing.leverage
+        if required > equity - used - self.reserved_margin():
+            self.record(timestamp, key, "insufficient_margin")
+            if closing:
+                self.active[key] = replace(
+                    order, quantity=closing, reduce_only=True, protection=None
+                )
+                return True
+            return False
+        protection = replace(
+            protection, stop_price=stop, stop_loss_pct=None, stop_loss_distance=None
+        )
+        target = config.take_profit
+        if target is not None and target.mode != "strategy":
+            from domain.orders import TakeProfitTier
+
+            level = (
+                self.targets[0][0]
+                if self.position * direction > 0 and self.targets
+                else target.level(order.price, direction, spec, stop=False)
+            )
+            protection = replace(
+                protection,
+                take_profit_pct=None,
+                take_profit_distance=None,
+                take_profits=(TakeProfitTier(level, fraction=1.0),) if level is not None else (),
+            )
+        self.active[key] = replace(
+            order,
+            quantity=quantity + closing,
+            protection=protection,
+            planned_risk=decision.planned_risk,
+        )
+        return True
 
     def set_protection(self, protection: OrderProtection, quantity: float) -> None:
         self.stop_price = protection.stop_price
@@ -238,13 +392,15 @@ def execute_order_event(  # noqa: C901
     )
     if different and config.policy == IntrabarExecutionPolicy.ERROR:
         raise ValueError(f"Ambiguous intrabar execution at {timestamp_ms}")
-    score = [s.cash + s.position * closing for s in outcomes]
+    multiplier = config.instrument.contract_multiplier if config.instrument else 1.0
+    score = [s.cash + s.position * closing * multiplier for s in outcomes]
     choose_right = (
         score[1] > score[0]
         if config.policy == IntrabarExecutionPolicy.OPTIMISTIC
         else score[1] < score[0]
     )
     result = right if choose_right else left
+    result.last_price = closing
     if different:
         result.ambiguous_minutes += 1
         result.record(timestamp_ms, "", "ambiguous")
@@ -263,9 +419,11 @@ def _path(
     current = path[0]
     _at_price(state, current, symbol, timestamp, config)
     for end in path[1:]:
-        while current != end:
+        while current != end and not state.depleted:
             levels = [
-                order.price - config.quote_offset(order.side) for order in state.active.values()
+                order.price - config.quote_offset(order.side)
+                for order in state.active.values()
+                if not order.market
             ]
             if state.position:
                 side = OrderSide.SELL if state.position > 0 else OrderSide.BUY
@@ -273,6 +431,11 @@ def _path(
                 levels.extend(price - offset for price, _ in state.targets)
                 if state.stop_price is not None:
                     levels.append(state.stop_price - offset)
+                if config.instrument is not None and config.sizing is not None:
+                    levels.append(
+                        -(config.initial_capital + state.cash)
+                        / (state.position * config.instrument.contract_multiplier)
+                    )
             crossed = [
                 level
                 for level in levels
@@ -290,14 +453,18 @@ def _at_price(  # noqa: C901
     timestamp: int,
     config: EventOrderConfig,
 ) -> None:
+    if _deplete(state, price, symbol, timestamp, config):
+        return
     _protect(state, price, symbol, timestamp, config)
+    if _deplete(state, price, symbol, timestamp, config):
+        return
     for key in list(state.active):
         order = state.active.get(key)
         if order is None:
             continue
         quote = price + config.quote_offset(order.side)
         touched = quote <= order.price if order.side == OrderSide.BUY else quote >= order.price
-        if not touched:
+        if not touched and not order.market:
             continue
         del state.active[key]
         direction = 1 if order.side == OrderSide.BUY else -1
@@ -310,6 +477,27 @@ def _at_price(  # noqa: C901
         if not quantity:
             state.record(timestamp, key, "reduce_only_cancelled")
             continue
+        if state.position * direction > 0 and order.protection is not None:
+            protection = order.protection
+            if config.stop_loss is not None and config.stop_loss.mode != "strategy":
+                protection = replace(
+                    protection,
+                    stop_price=state.stop_price,
+                    stop_loss_pct=None,
+                    stop_loss_distance=None,
+                )
+            if config.take_profit is not None and config.take_profit.mode != "strategy":
+                from domain.orders import TakeProfitTier
+
+                protection = replace(
+                    protection,
+                    take_profits=tuple(
+                        TakeProfitTier(level, fraction=1.0) for level, _ in state.targets
+                    ),
+                    take_profit_pct=None,
+                    take_profit_distance=None,
+                )
+            order = replace(order, protection=protection)
         new_position = state.position + direction * quantity
         increasing = state.position * direction >= 0 or quantity > abs(state.position)
         if state.entry_day != timestamp // DAY_MS:
@@ -335,23 +523,100 @@ def _at_price(  # noqa: C901
         if invalid:
             state.record(timestamp, key, "constraint_cancelled")
             continue
-        _fill(state, symbol, timestamp, order.side, quantity, quote, config, limit=order.price)
+        if increasing and config.instrument is not None and config.sizing is not None:
+            spec = config.instrument
+            equity = (
+                config.initial_capital
+                + state.cash
+                + state.position * price * spec.contract_multiplier
+            )
+            fill_price = quote * (1 + direction * config.slippage_bps / 10000)
+            if not order.market:
+                fill_price = (
+                    min(fill_price, order.price) if direction > 0 else max(fill_price, order.price)
+                )
+            required = spec.notional(new_position, fill_price) / config.sizing.leverage
+            equity -= spec.notional(quantity, fill_price) * config.commission_bps / 10000
+            equity -= direction * quantity * (fill_price - price) * spec.contract_multiplier
+            stop = order.protection.stop_price if order.protection else None
+            invalid_stop = config.sizing.mode in ("risk", "equity_risk") and (
+                stop is None or direction * (fill_price - stop) <= 0
+            )
+            if invalid_stop or required > equity - state.reserved_margin():
+                if state.position * direction < 0:
+                    _fill(
+                        state,
+                        symbol,
+                        timestamp,
+                        order.side,
+                        abs(state.position),
+                        quote,
+                        config,
+                        limit=None if order.market else order.price,
+                    )
+                state.record(
+                    timestamp, key, "invalid_stop" if invalid_stop else "insufficient_margin"
+                )
+                continue
+        _fill(
+            state,
+            symbol,
+            timestamp,
+            order.side,
+            quantity,
+            quote,
+            config,
+            limit=None if order.market else order.price,
+        )
         if increasing:
             state.entries_today += 1
         state.record(timestamp, key, "filled")
+        if config.instrument is not None and increasing:
+            stop = order.protection.stop_price if order.protection else state.stop_price
+            fill_price = state.fills[-1].price
+            risk_at_fill = (
+                (
+                    direction
+                    * (fill_price - stop)
+                    * min(quantity, abs(state.position))
+                    * config.instrument.contract_multiplier
+                )
+                if stop is not None
+                else None
+            )
+            state.events[-1].update(
+                fill_price=fill_price,
+                quantity=quantity,
+                stop_price=stop,
+                risk_at_fill=risk_at_fill,
+                risk_difference=(
+                    (risk_at_fill - order.planned_risk)
+                    if risk_at_fill is not None and order.planned_risk is not None
+                    else None
+                ),
+            )
         if order.oco_group is not None:
             for sibling, pending in list(state.active.items()):
                 if pending.oco_group == order.oco_group:
                     del state.active[sibling]
                     state.record(timestamp, sibling, "oco_cancelled")
         if order.protection is not None and state.position:
-            state.set_protection(order.protection, order.quantity)
+            state.set_protection(
+                order.protection,
+                (
+                    abs(state.position)
+                    if config.take_profit is not None and config.take_profit.mode != "strategy"
+                    else order.quantity
+                ),
+            )
             state.fills[-1] = replace(
                 state.fills[-1],
                 stop_loss_price=state.stop_price,
                 take_profit_price=state.targets[0][0] if state.targets else None,
             )
         _protect(state, price, symbol, timestamp, config)
+        if _deplete(state, price, symbol, timestamp, config):
+            return
 
 
 def _protect(
@@ -420,7 +685,8 @@ def _fill(
         price = min(price, limit) if direction > 0 else max(price, limit)
     if price <= 0:
         raise ValueError("Execution costs produced a nonpositive fill price")
-    fees = quantity * price * config.commission_bps / 10_000
+    multiplier = config.instrument.contract_multiplier if config.instrument else 1.0
+    fees = quantity * price * multiplier * config.commission_bps / 10_000
     before = state.position
     state.position += direction * quantity
     if before * direction >= 0:
@@ -431,7 +697,7 @@ def _fill(
         state.average_entry = price
     if before == 0 or before * state.position < 0:
         state.entry_timestamp_ms = timestamp
-    state.cash -= direction * quantity * price + fees
+    state.cash -= direction * quantity * price * multiplier + fees
     state.fills.append(
         Fill(
             timestamp,
@@ -459,3 +725,37 @@ def _fill(
     else:
         state.entry_timestamp_ms = None
         state.average_entry = 0.0
+
+
+def _deplete(
+    state: EventOrderState, price: float, symbol: str, timestamp: int, config: EventOrderConfig
+) -> bool:
+    if state.depleted:
+        return True
+    if config.instrument is None or config.sizing is None:
+        return False
+    equity = (
+        config.initial_capital
+        + state.cash
+        + state.position * price * config.instrument.contract_multiplier
+    )
+    if equity > 1e-9:
+        return False
+    for key in state.active:
+        state.record(timestamp, key, "account_depleted_cancelled")
+    state.active.clear()
+    if state.position:
+        side = OrderSide.SELL if state.position > 0 else OrderSide.BUY
+        _fill(
+            state,
+            symbol,
+            timestamp,
+            side,
+            abs(state.position),
+            price + config.quote_offset(side),
+            config,
+            reason=ExitReason.ACCOUNT_DEPLETED,
+        )
+    state.depleted = True
+    state.record(timestamp, "", "account_depleted")
+    return True

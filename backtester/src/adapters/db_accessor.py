@@ -31,6 +31,7 @@ class CandleSourceClient(Protocol):
         end_ms: int | None = None,
         limit: int | None = None,
         include_timestamp_ms: bool = False,
+        market_id: int | None = None,
     ) -> pd.DataFrame: ...
 
 
@@ -54,6 +55,18 @@ class DatabaseAccessorHistoricalDataAdapter:
 
     def __init__(self, client: CandleSourceClient | None = None) -> None:
         self._client = client
+        self._market_identity: tuple[str, str | None, int] | None = None
+
+    @classmethod
+    def for_request(cls, request):
+        adapter = cls()
+        if request.instrument is not None:
+            adapter._market_identity = (
+                request.symbols[0],
+                request.exchange,
+                request.instrument.symbol_id,
+            )
+        return adapter
 
     def fetch_bars(
         self,
@@ -97,6 +110,8 @@ class DatabaseAccessorHistoricalDataAdapter:
             "include_timestamp_ms": True,
         }
 
+        if self._market_identity is not None and (symbol, exchange) == self._market_identity[:2]:
+            kwargs["market_id"] = self._market_identity[2]
         if self._client is not None:
             return self._client.get_candles(**kwargs)
 

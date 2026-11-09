@@ -159,3 +159,10 @@ Engine changes need no-lookahead, warmup, gap, accounting, protective-exit, and
 parity coverage, including guards against substituting one runtime for the other.
 For deployed lifecycle checks use `make smoke-backtester`. Shared client/indicator
 changes also need their affected consumer tests; see [commands](../docs/agent/COMMANDS.md).
+
+Sized Runs use `domain/risk.py` for linear valuation and submission-time decisions.
+The independent order matchers enforce reservations, fill affordability, and
+intrabar depletion. `sized_targets_vectorized.py` consumes array-derived signals;
+`sized_targets_event_driven.py` consumes sequential feature decisions. Legacy Runs
+without sizing continue through their original target execution paths. The full
+policy is owned by [sizing and margin](../docs/contracts/backtests.md#sizing-instrument-valuation-and-margin).

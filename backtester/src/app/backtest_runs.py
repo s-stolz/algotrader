@@ -148,7 +148,7 @@ class BacktestRunService:
             or not valid_descriptor(saved)
         ):
             return _unavailable_curve("unsupported_replay_shape")
-        adapter = self._data_adapter or DatabaseAccessorHistoricalDataAdapter()
+        adapter = self._data_adapter or DatabaseAccessorHistoricalDataAdapter.for_request(request)
         try:
             bars = adapter.fetch_bars(
                 symbol=request.symbols[0],
@@ -169,6 +169,8 @@ class BacktestRunService:
 
                 bars = minute_bars(request, bars)
             closes = executable_closes(bars, first_timestamp_ms=int(saved["first_timestamp_ms"]))
+            if request.execution.sizing is not None:
+                closes = [point for point in closes if point[0] <= int(saved["last_timestamp_ms"])]
             fills = self._repository.get_fills(run_id)
             points = replay(request, saved, closes, fills)
         except ReplayUnavailableError as exc:
@@ -224,6 +226,11 @@ def _validate_request_shape(request: BacktestRequest) -> None:
 
 def _validate_execution(request: BacktestRequest) -> None:
     execution = request.execution
+    if execution.sizing is not None and request.instrument is None:
+        raise InvalidBacktestRequestError("Sizing requires saved instrument specifications")
+    if execution.sizing is not None and execution.sizing.mode in ("risk", "equity_risk"):
+        if execution.stop_loss is not None and execution.stop_loss.mode == "none":
+            raise InvalidBacktestRequestError("Risk sizing requires an initial stop")
     supported_execution = (
         execution.signal_timing == SignalTiming.CLOSE
         and execution.fill_timing == FillTiming.NEXT_OPEN
@@ -235,7 +242,7 @@ def _validate_execution(request: BacktestRequest) -> None:
         raise InvalidBacktestRequestError("Unsupported execution configuration")
 
 
-def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
+def _validate_strategy(request: BacktestRequest) -> BacktestRequest:  # noqa: C901
     if request.strategy.strategy_version is None:
         raise InvalidBacktestRequestError("strategy_version is required")
     try:
@@ -262,6 +269,15 @@ def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
         return replace(request, strategy=resolved)
     if strategy.order_model is not None:
         raise InvalidBacktestRequestError("Order strategies require execution_mode=orders")
+    sizing = request.execution.sizing
+    stop = request.execution.stop_loss
+    if (
+        sizing is not None
+        and sizing.mode in ("risk", "equity_risk")
+        and (stop is None or stop.mode == "strategy")
+    ):
+        if strategy.bar_model is None or strategy.bar_model.protective_exit.stop_loss_pct is None:
+            raise InvalidBacktestRequestError("Selected strategy does not provide an initial stop")
     if not strategy.is_v1_parity_compatible:
         raise InvalidBacktestRequestError("Backtest requests require a v1 declarative bar strategy")
     return replace(request, strategy=resolved)

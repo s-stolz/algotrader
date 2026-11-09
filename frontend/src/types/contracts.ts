@@ -75,6 +75,12 @@ export interface TimeframeOption {
 }
 
 export interface Market {
+  aliases?: Array<{ symbol: string; exchange: string }>;
+  settlement_currency?: string;
+  contract_multiplier?: number;
+  minimum_quantity?: number;
+  quantity_step?: number;
+
   symbol_id: number;
   symbol: string;
   exchange: string;
@@ -84,6 +90,11 @@ export interface Market {
 }
 
 export interface MarketCreatePayload {
+  settlement_currency: string;
+  contract_multiplier: number;
+  minimum_quantity: number;
+  quantity_step: number;
+
   symbol: string;
   exchange: string;
   market_type: string;

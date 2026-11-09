@@ -16,6 +16,7 @@
         <div class="run-identity"
           ><span>Run ID</span><code>{{ run.run_id }}</code></div
         >
+        <SizingDetails :run="run" />
         <p
           v-if="loading"
           role="status"
@@ -126,6 +127,7 @@
 </template>
 
 <script setup lang="ts">
+import SizingDetails from './SizingDetails.vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { NDrawerContent, NTab, NTabs, type DataTableColumns } from 'naive-ui';
 
@@ -216,6 +218,7 @@ const exitReasonOptions = [
   { label: 'Signal', value: 'signal' },
   { label: 'Stop loss', value: 'stop_loss' },
   { label: 'Take profit', value: 'take_profit' },
+  { label: 'Account depleted', value: 'account_depleted' },
 ];
 const filteredTrades = computed(() =>
   (trades.value ?? []).filter(

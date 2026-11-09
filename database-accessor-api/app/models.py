@@ -29,6 +29,38 @@ markets = Table(
     Column("market_type", String(20), nullable=False),
     Column("min_move", Float, nullable=False),
     Column("timezone", String(64), nullable=False, server_default="UTC"),
+    Column("settlement_currency", String(12), nullable=False),
+    Column("contract_multiplier", Float, nullable=False),
+    Column("minimum_quantity", Float, nullable=False),
+    Column("quantity_step", Float, nullable=False),
+    UniqueConstraint("symbol", "exchange", name="markets_symbol_exchange_key"),
+    CheckConstraint(
+        "contract_multiplier > 0 AND minimum_quantity > 0 AND quantity_step > 0 AND min_move > 0",
+        name="markets_positive_specification",
+    ),
+)
+
+market_aliases = Table(
+    "market_aliases",
+    metadata,
+    Column("symbol", String(10), primary_key=True),
+    Column("exchange", String(20), primary_key=True),
+    Column(
+        "symbol_id", Integer, ForeignKey("markets.symbol_id", ondelete="CASCADE"), nullable=False
+    ),
+)
+
+Index(
+    "markets_normalized_identity_key",
+    func.upper(func.trim(markets.c.symbol)),
+    func.upper(func.trim(markets.c.exchange)),
+    unique=True,
+)
+Index(
+    "market_aliases_normalized_identity_key",
+    func.upper(func.trim(market_aliases.c.symbol)),
+    func.upper(func.trim(market_aliases.c.exchange)),
+    unique=True,
 )
 
 candles = Table(
@@ -232,7 +264,8 @@ backtest_fills = Table(
     PrimaryKeyConstraint("run_id", "fill_sequence"),
     CheckConstraint("side IN ('buy', 'sell')", name="backtest_fills_side_check"),
     CheckConstraint(
-        "exit_reason IS NULL OR exit_reason IN ('signal', 'stop_loss', 'take_profit')",
+        "exit_reason IS NULL OR "
+        "exit_reason IN ('signal', 'stop_loss', 'take_profit', 'account_depleted')",
         name="backtest_fills_exit_reason_check",
     ),
     Index(
@@ -269,7 +302,7 @@ backtest_closed_trades = Table(
     PrimaryKeyConstraint("run_id", "trade_sequence"),
     UniqueConstraint("run_id", "trade_id", name="uq_backtest_closed_trades_identity"),
     CheckConstraint(
-        "exit_reason IN ('signal', 'stop_loss', 'take_profit')",
+        "exit_reason IN ('signal', 'stop_loss', 'take_profit', 'account_depleted')",
         name="backtest_closed_trades_exit_reason_check",
     ),
     CheckConstraint(

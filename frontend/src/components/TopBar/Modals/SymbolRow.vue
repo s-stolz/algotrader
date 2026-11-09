@@ -55,9 +55,11 @@ const emit = defineEmits<{
   (event: 'market-click', market: Market): void;
   (event: 'remove-market', market: Market): void;
   (event: 'upload-data', market: Market): void;
+  (event: 'edit-market', market: Market): void;
 }>();
 
 const menuOptions: DropdownOption[] = [
+  { label: 'Edit symbol', key: 'edit' },
   {
     label: 'Upload Data',
     key: 'upload',
@@ -75,7 +77,9 @@ function onRowClick(): void {
 }
 
 function onMenuSelect(key: string | number): void {
-  if (key === 'remove') {
+  if (key === 'edit') {
+    emit('edit-market', props.market);
+  } else if (key === 'remove') {
     emit('remove-market', props.market);
   } else if (key === 'upload') {
     emit('upload-data', props.market);

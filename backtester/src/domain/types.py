@@ -22,6 +22,7 @@ from domain.enums import (
     TradeDirection,
 )
 from domain.orders import IntrabarExecutionPolicy
+from domain.risk import InstrumentSpec, ProtectionSetting, SizingPolicy
 from domain.schedule import DailyTradingSchedule
 
 BACKTEST_REQUEST_SCHEMA_VERSION = 3
@@ -77,6 +78,9 @@ class ExecutionConfig:
     spread: float = 0.0
     candle_quote: Literal["bid", "ask", "mid"] | None = None
     max_position_quantity: float | None = None
+    sizing: SizingPolicy | None = None
+    stop_loss: ProtectionSetting | None = None
+    take_profit: ProtectionSetting | None = None
 
     def __post_init__(self) -> None:  # noqa: C901
         if self.execution_mode not in ("targets", "orders"):
@@ -157,6 +161,7 @@ class BacktestRequest:
     run_metadata: Optional[Dict[str, Any]] = None
     engine: BacktestEngine = BacktestEngine.VECTORIZED
     market_min_move: float | None = None
+    instrument: InstrumentSpec | None = None
 
     def __post_init__(self) -> None:
         if self.market_min_move is not None and (
@@ -421,6 +426,7 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
             if request.market_min_move is not None
             else {}
         ),
+        **({"instrument": asdict(request.instrument)} if request.instrument else {}),
         "timeframe": str(request.timeframe),
         "start_ms": int(request.start_ms),
         "end_ms": int(request.end_ms),
@@ -437,6 +443,11 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
             ),
         },
         "execution": {
+            **{
+                name: {key: item for key, item in asdict(value).items() if item is not None}
+                for name in ("sizing", "stop_loss", "take_profit")
+                if (value := getattr(execution, name)) is not None
+            },
             "signal_timing": _enum_value(execution.signal_timing),
             "fill_timing": _enum_value(execution.fill_timing),
             "price_source": _enum_value(execution.price_source),
@@ -485,7 +496,9 @@ def _backtest_request_from_payload(
     payload: Mapping[str, Any], *, schema_version: int
 ) -> BacktestRequest:
     _validate_payload_fields(
-        "Backtest request", payload, _REQUEST_PAYLOAD_FIELDS | (set(payload) & {"market_min_move"})
+        "Backtest request",
+        payload,
+        _REQUEST_PAYLOAD_FIELDS | (set(payload) & {"market_min_move", "instrument"}),
     )
     strategy = _mapping_field(payload, "strategy")
     execution = _mapping_field(payload, "execution")
@@ -501,6 +514,9 @@ def _backtest_request_from_payload(
         | (
             set(execution)
             & {
+                "sizing",
+                "stop_loss",
+                "take_profit",
                 "daily_schedule",
                 "max_entries_per_day",
                 "execution_mode",
@@ -534,6 +550,7 @@ def _backtest_request_from_payload(
         symbols=list(symbols),
         exchange=exchange,
         market_min_move=payload.get("market_min_move"),
+        instrument=InstrumentSpec(**payload["instrument"]) if payload.get("instrument") else None,
         timeframe=str(payload["timeframe"]),
         start_ms=int(payload["start_ms"]),
         end_ms=int(payload["end_ms"]),
@@ -543,6 +560,15 @@ def _backtest_request_from_payload(
             strategy_version=(int(strategy["strategy_version"]) if schema_version == 3 else None),
         ),
         execution=ExecutionConfig(
+            sizing=SizingPolicy(**execution["sizing"]) if execution.get("sizing") else None,
+            stop_loss=(
+                ProtectionSetting(**execution["stop_loss"]) if execution.get("stop_loss") else None
+            ),
+            take_profit=(
+                ProtectionSetting(**execution["take_profit"])
+                if execution.get("take_profit")
+                else None
+            ),
             signal_timing=SignalTiming(execution["signal_timing"]),
             fill_timing=FillTiming(execution["fill_timing"]),
             price_source=PriceSource(execution["price_source"]),

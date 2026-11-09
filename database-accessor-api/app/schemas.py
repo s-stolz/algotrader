@@ -15,10 +15,23 @@ from pydantic import (
 
 
 class MarketIn(BaseModel):
-    symbol: str
-    exchange: str
-    market_type: str
-    min_move: float
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    symbol: str = Field(min_length=1, max_length=10)
+    exchange: str = Field(min_length=1, max_length=20)
+    market_type: str = Field(min_length=1, max_length=20)
+    min_move: float = Field(gt=0)
+    settlement_currency: str = Field(min_length=1, max_length=12)
+    contract_multiplier: float = Field(gt=0)
+    minimum_quantity: float = Field(gt=0)
+    quantity_step: float = Field(gt=0)
+
+    @field_validator("symbol", "exchange", "settlement_currency", mode="before")
+    @classmethod
+    def normalize_identifier(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Identifiers must be strings")
+        return value.strip().upper()
+
     timezone: str = "UTC"
 
     @field_validator("timezone")
@@ -75,7 +88,46 @@ class BacktestDailySchedulePayload(BacktestContractModel):
         return self
 
 
+class SizingSchema(BacktestContractModel):
+    mode: Literal["strategy", "units", "exposure", "equity_exposure", "risk", "equity_risk"] = (
+        "strategy"
+    )
+    value: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    leverage: float = Field(default=1, ge=1, allow_inf_nan=False)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload = handler(self)
+        if self.value is None:
+            payload.pop("value", None)
+        return payload
+
+
+class ProtectionSchema(BacktestContractModel):
+    mode: Literal["none", "strategy", "percent", "distance", "ticks"] = "strategy"
+    value: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload = handler(self)
+        if self.value is None:
+            payload.pop("value", None)
+        return payload
+
+
+class InstrumentSchema(BacktestContractModel):
+    symbol_id: StrictInt = Field(gt=0)
+    settlement_currency: str = Field(min_length=1)
+    contract_multiplier: float = Field(gt=0, allow_inf_nan=False)
+    minimum_quantity: float = Field(gt=0, allow_inf_nan=False)
+    quantity_step: float = Field(gt=0, allow_inf_nan=False)
+    min_move: float = Field(gt=0, allow_inf_nan=False)
+
+
 class BacktestExecutionPayload(BacktestContractModel):
+    sizing: SizingSchema | None = None
+    stop_loss: ProtectionSchema | None = None
+    take_profit: ProtectionSchema | None = None
     signal_timing: Literal["close"]
     fill_timing: Literal["next_open"]
     price_source: Literal["open", "close"]
@@ -109,6 +161,9 @@ class BacktestExecutionPayload(BacktestContractModel):
     def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         payload: dict[str, Any] = handler(self)
         for field in (
+            "sizing",
+            "stop_loss",
+            "take_profit",
             "daily_schedule",
             "max_entries_per_day",
             "execution_mode",
@@ -123,6 +178,7 @@ class BacktestExecutionPayload(BacktestContractModel):
 
 
 class BacktestRequestPayload(BacktestContractModel):
+    instrument: InstrumentSchema | None = None
     symbols: list[str]
     exchange: str | None
     timeframe: str
@@ -140,6 +196,8 @@ class BacktestRequestPayload(BacktestContractModel):
     @model_serializer(mode="wrap")
     def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         payload: dict[str, Any] = handler(self)
+        if self.instrument is None:
+            payload.pop("instrument", None)
         if self.market_min_move is None:
             payload.pop("market_min_move", None)
         return payload
@@ -160,7 +218,7 @@ class BacktestFillIn(BacktestContractModel):
     quantity: float
     price: float
     fees: float
-    exit_reason: Literal["signal", "stop_loss", "take_profit"] | None = None
+    exit_reason: Literal["signal", "stop_loss", "take_profit", "account_depleted"] | None = None
 
 
 class BacktestFillOut(BacktestFillIn):
@@ -179,7 +237,7 @@ class BacktestClosedTradeIn(BacktestContractModel):
     exit_price: float
     realized_pnl: float
     fees: float
-    exit_reason: Literal["signal", "stop_loss", "take_profit"]
+    exit_reason: Literal["signal", "stop_loss", "take_profit", "account_depleted"]
     stop_loss_price: float | None = None
     take_profit_price: float | None = None
 

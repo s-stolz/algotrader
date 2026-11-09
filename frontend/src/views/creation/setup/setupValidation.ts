@@ -43,6 +43,32 @@ export function setupIssues(
     issues.dates = 'End date must be after start date.';
   if (!Number.isFinite(draft.initial_capital) || draft.initial_capital <= 0)
     issues.capital = 'Initial capital must be greater than zero.';
+  const sizing = draft.execution.sizing;
+  if (sizing) {
+    if (!Number.isFinite(sizing.leverage) || sizing.leverage < 1)
+      issues.sizing = 'Leverage must be at least 1.';
+    if (
+      sizing.mode !== 'strategy' &&
+      (sizing.value === null ||
+        !Number.isFinite(sizing.value) ||
+        sizing.value <= 0)
+    )
+      issues.sizing = 'Enter a positive sizing amount.';
+    if (
+      ['risk', 'equity_risk'].includes(sizing.mode) &&
+      draft.execution.stop_loss?.mode === 'none'
+    )
+      issues.sizing = 'Risk sizing requires an initial stop.';
+  }
+  for (const key of ['stop_loss', 'take_profit'] as const) {
+    const exit = draft.execution[key];
+    if (
+      exit &&
+      !['none', 'strategy'].includes(exit.mode) &&
+      (exit.value === null || !Number.isFinite(exit.value) || exit.value <= 0)
+    )
+      issues[key] = 'Enter a positive protective distance.';
+  }
   const entryIssue = dailyEntryLimitIssue(draft.execution.max_entries_per_day);
   if (entryIssue) issues.entryLimit = entryIssue;
   Object.assign(issues, scheduleDraftIssues(selections.dailySchedule));

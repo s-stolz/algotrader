@@ -99,3 +99,20 @@ export async function deleteMarket(
 
   return payload;
 }
+
+export async function updateMarket(
+  symbolId: number,
+  payload: MarketCreatePayload,
+): Promise<MarketCreateResponse> {
+  const result = await parseJsonResponse(
+    await fetch(`${MARKETS_BASE_URL}/id/${symbolId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Failed to update symbol',
+  );
+  if (!isMarketCreateResponse(result))
+    throw new Error('Invalid market update response');
+  return result;
+}

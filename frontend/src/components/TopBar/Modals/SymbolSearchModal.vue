@@ -113,6 +113,7 @@
               @market-click="onMarketClick"
               @remove-market="$emit('remove-market', $event)"
               @upload-data="$emit('upload-data', $event)"
+              @edit-market="$emit('edit-market', $event)"
             />
           </tbody>
         </BaseDataTable>
@@ -174,6 +175,7 @@ const emit = defineEmits<{
   (event: 'open-symbol-form-modal'): void;
   (event: 'remove-market', market: Market): void;
   (event: 'upload-data', market: Market): void;
+  (event: 'edit-market', market: Market): void;
 }>();
 
 const baseModal = ref<BaseModalExpose | null>(null);

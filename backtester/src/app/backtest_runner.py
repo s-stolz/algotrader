@@ -143,7 +143,7 @@ def _execute_backtest_with_market_data(
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
 
     if request.execution.execution_mode == "orders":
-        adapter = data_adapter or DatabaseAccessorHistoricalDataAdapter()
+        adapter = data_adapter or DatabaseAccessorHistoricalDataAdapter.for_request(request)
         if needs_source_inputs(resolved_strategy):
             bundle = load_market_data_bundle(
                 request=request, strategy=resolved_strategy, exchange=exchange, data_adapter=adapter

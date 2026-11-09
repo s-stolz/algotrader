@@ -108,6 +108,7 @@ const BACKTEST_EXIT_REASON_SET: ReadonlySet<string> = new Set([
   'signal',
   'stop_loss',
   'take_profit',
+  'account_depleted',
 ]);
 
 const BACKTEST_TRADE_DIRECTION_SET: ReadonlySet<string> = new Set([

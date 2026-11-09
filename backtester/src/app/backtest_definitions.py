@@ -6,10 +6,11 @@ import math
 from dataclasses import asdict, dataclass, replace
 from decimal import Decimal, InvalidOperation
 from itertools import product
-from typing import Callable, Iterable, Mapping, TypeVar, cast
+from typing import Any, Callable, Iterable, Mapping, TypeVar, cast
 
 from db_accessor_client import normalize_timeframe_code
 from domain.enums import AllowedDirections
+from domain.risk import InstrumentSpec
 from domain.schedule import DailyTradingSchedule
 from domain.types import BacktestRequest, BacktestRequestSnapshot, StrategyConfig
 from strategies.registry import (
@@ -77,6 +78,7 @@ class BacktestPreviewService:
             shared,
             symbols=[str(selected_markets[0]["symbol"])],
             exchange=str(selected_markets[0]["exchange"]),
+            instrument=_instrument(selected_markets[0]) if shared.execution.sizing else None,
             timeframe=timeframes[0],
             execution=replace(
                 shared.execution, allowed_directions=AllowedDirections(directions[0])
@@ -174,6 +176,16 @@ def _selection_axes(
             )
         selected_markets.append(
             {
+                **{
+                    key: market[key]
+                    for key in (
+                        "settlement_currency",
+                        "contract_multiplier",
+                        "minimum_quantity",
+                        "quantity_step",
+                    )
+                    if key in market
+                },
                 "symbol_id": market_id,
                 "symbol": market["symbol"],
                 "exchange": market["exchange"],
@@ -253,6 +265,7 @@ def _candidate_rows(
             symbols=[str(market["symbol"])],
             exchange=str(market["exchange"]),
             market_min_move=cast(float | None, market.get("min_move")),
+            instrument=_instrument(market) if shared.execution.sizing else None,
             timeframe=str(timeframe),
             strategy=StrategyConfig(
                 shared.strategy.strategy_id, parameters, shared.strategy.strategy_version
@@ -328,3 +341,22 @@ def _range_values(name: str, axis: Mapping[str, object], kind: str, limit: int) 
         raise
     except (KeyError, ValueError, InvalidOperation, OverflowError) as exc:
         raise InvalidStrategyParameterError(name, f"Invalid range for {name}") from exc
+
+
+def _instrument(market: dict[str, object]) -> InstrumentSpec:
+    try:
+        return InstrumentSpec(
+            **{
+                key: cast(Any, market[key])
+                for key in (
+                    "symbol_id",
+                    "settlement_currency",
+                    "contract_multiplier",
+                    "minimum_quantity",
+                    "quantity_step",
+                    "min_move",
+                )
+            }
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        raise InvalidBacktestRequestError(f"Invalid instrument specifications: {exc}") from exc

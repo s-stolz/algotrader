@@ -57,6 +57,11 @@ def run_order_vectorized(
         start_ms=max(request.start_ms, int(strategy_bars.timestamp_ms.iloc[0])),
         end_ms=request.end_ms,
         config=OrderExecutionConfig(
+            instrument=request.instrument,
+            sizing=config.sizing,
+            stop_loss=config.stop_loss,
+            take_profit=config.take_profit,
+            initial_capital=request.initial_capital,
             spread=config.spread,
             candle_quote=str(config.candle_quote),
             policy=policy,
@@ -77,8 +82,23 @@ def run_order_vectorized(
         executed_notional=result.executed_notional,
         executed_fees=result.executed_fees,
         initial_capital=request.initial_capital,
+        contract_multiplier=request.instrument.contract_multiplier if request.instrument else 1.0,
     )
-    trades = build_trades_from_fills(result.fills, protection_at_exit=True)
+    depleted = next(
+        (
+            event["timestamp_ms"]
+            for event in result.events
+            if event["outcome"] == "account_depleted"
+        ),
+        None,
+    )
+    if isinstance(depleted, int):
+        equity = [point for point in equity if point.timestamp_ms <= int(depleted)]
+    trades = build_trades_from_fills(
+        result.fills,
+        protection_at_exit=True,
+        contract_multiplier=request.instrument.contract_multiplier if request.instrument else 1.0,
+    )
     return BacktestResult(
         request=request,
         fills=result.fills,
@@ -89,6 +109,11 @@ def run_order_vectorized(
             "engine": "vectorized",
             "execution_mode": "orders",
             "execution_timeframe": "M1",
+            "termination_reason": (
+                "account_depleted"
+                if any(event["outcome"] == "account_depleted" for event in result.events)
+                else None
+            ),
             "order_events": result.events,
             "intrabar_execution_policy": policy.value,
             "intrabar_ambiguous_bar_count": result.ambiguous_minutes,

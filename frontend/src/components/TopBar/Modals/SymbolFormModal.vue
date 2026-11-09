@@ -2,7 +2,7 @@
   <BaseModal
     ref="symbolForm"
     :modalId="'symbolForm'"
-    :title="'New Symbol'"
+    :title="market ? 'Edit symbol' : 'New symbol'"
   >
     <div id="new-symbol-input-wrapper">
       <n-input
@@ -41,6 +41,36 @@
         "
         :options="options"
       />
+      <n-input
+        v-model:value="timezone"
+        placeholder="Timezone"
+        aria-label="Timezone"
+      />
+      <n-input
+        v-model:value="currency"
+        placeholder="Settlement currency"
+        aria-label="Settlement currency"
+      />
+      <n-input-number
+        v-model:value="multiplier"
+        placeholder="Contract multiplier"
+        aria-label="Contract multiplier"
+      />
+      <n-input-number
+        v-model:value="minimum"
+        placeholder="Minimum quantity"
+        aria-label="Minimum quantity"
+      />
+      <n-input-number
+        v-model:value="step"
+        placeholder="Quantity increment"
+        aria-label="Quantity increment"
+      />
+      <p
+        v-if="error"
+        role="alert"
+        >{{ error }}</p
+      >
     </div>
 
     <template #footer>
@@ -49,7 +79,7 @@
         class="new-symbol-button"
         @click="addSymbol"
       >
-        Add Symbol
+        {{ market ? 'Save symbol' : 'Add symbol' }}
       </n-button>
     </template>
   </BaseModal>
@@ -61,10 +91,10 @@ import { computed, ref } from 'vue';
 import type { SelectOption } from 'naive-ui';
 import { NButton, NInput, NInputNumber } from 'naive-ui';
 
-import { createMarket } from '@/api/marketClient';
+import { createMarket, updateMarket } from '@/api/marketClient';
 import BaseModal from '@/components/Common/BaseModal.vue';
 import { useMarketsStore } from '@/stores/marketsStore';
-import type { MarketCreatePayload } from '@/types/contracts';
+import type { Market, MarketCreatePayload } from '@/types/contracts';
 
 defineOptions({
   name: 'SymbolFormModal',
@@ -74,12 +104,21 @@ interface BaseModalExpose {
   close: () => void;
 }
 
+const props = defineProps<{ market?: Market | null }>();
 const marketsStore = useMarketsStore();
 const symbolForm = ref<BaseModalExpose | null>(null);
-const symbol = ref<string | null | undefined>(undefined);
-const exchange = ref<string | null | undefined>(undefined);
-const minMove = ref<number | null>(0.00001);
-const marketType = ref<string | null | undefined>(undefined);
+const symbol = ref<string | null | undefined>(props.market?.symbol);
+const exchange = ref<string | null | undefined>(props.market?.exchange);
+const minMove = ref<number | null>(props.market?.min_move ?? 0.00001);
+const marketType = ref<string | null | undefined>(props.market?.market_type);
+const timezone = ref(props.market?.timezone ?? 'UTC');
+const currency = ref(props.market?.settlement_currency ?? '');
+const multiplier = ref<number | null>(
+  props.market?.contract_multiplier ?? null,
+);
+const minimum = ref<number | null>(props.market?.minimum_quantity ?? null);
+const step = ref<number | null>(props.market?.quantity_step ?? null);
+const error = ref('');
 const options: SelectOption[] = [
   { label: 'Forex', value: 'Forex' },
   { label: 'Crypto', value: 'Crypto' },
@@ -107,6 +146,20 @@ function setInvalidInputs(): void {
 }
 
 async function addSymbol(): Promise<void> {
+  error.value = '';
+  setInvalidInputs();
+  if (
+    !currency.value.trim() ||
+    !timezone.value.trim() ||
+    ![multiplier.value, minimum.value, step.value].every(
+      (value) =>
+        typeof value === 'number' && Number.isFinite(value) && value > 0,
+    )
+  ) {
+    error.value =
+      'Complete the currency, timezone, and positive instrument specifications.';
+    return;
+  }
   if (
     !validSymbol.value ||
     !validExchange.value ||
@@ -123,12 +176,22 @@ async function addSymbol(): Promise<void> {
     exchange: exchange.value!.toUpperCase().trim(),
     min_move: minMove.value!,
     market_type: marketType.value!.trim(),
-    timezone: 'UTC',
+    timezone: timezone.value.trim(),
+    settlement_currency: currency.value.trim().toUpperCase(),
+    contract_multiplier: multiplier.value!,
+    minimum_quantity: minimum.value!,
+    quantity_step: step.value!,
   };
 
-  await createMarket(newMarket);
-  symbolForm.value?.close();
-  await marketsStore.fetch();
+  try {
+    if (props.market) await updateMarket(props.market.symbol_id, newMarket);
+    else await createMarket(newMarket);
+    await marketsStore.fetch();
+    symbolForm.value?.close();
+  } catch (cause) {
+    error.value =
+      cause instanceof Error ? cause.message : 'Unable to save symbol';
+  }
 }
 </script>
 

@@ -18,13 +18,29 @@ def build_limit_reversion(
     offset_pct: Annotated[
         float, ParameterInfo(minimum=0, maximum=100, exclusive_minimum=True, exclusive_maximum=True)
     ] = 1.0,
-    quantity: Annotated[float, ParameterInfo(minimum=0, exclusive_minimum=True)] = 1.0,
+    quantity: Annotated[
+        float, ParameterInfo(purpose="sizing", minimum=0, exclusive_minimum=True)
+    ] = 1.0,
     lifetime_minutes: Annotated[int, ParameterInfo(minimum=1)] = 10,
     stop_pct: Annotated[
-        float, ParameterInfo(minimum=0, maximum=100, exclusive_minimum=True, exclusive_maximum=True)
+        float,
+        ParameterInfo(
+            purpose="stop_loss",
+            minimum=0,
+            maximum=100,
+            exclusive_minimum=True,
+            exclusive_maximum=True,
+        ),
     ] = 2.0,
     profit_pct: Annotated[
-        float, ParameterInfo(minimum=0, maximum=50, exclusive_minimum=True, exclusive_maximum=True)
+        float,
+        ParameterInfo(
+            purpose="take_profit",
+            minimum=0,
+            maximum=50,
+            exclusive_minimum=True,
+            exclusive_maximum=True,
+        ),
     ] = 1.0,
 ) -> StrategyDefinition:
     def commands(boundary: int, buy: float, sell: float) -> list[OrderCommand]:

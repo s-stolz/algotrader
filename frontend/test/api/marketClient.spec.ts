@@ -70,6 +70,10 @@ describe('market API client', () => {
           market_type: 'stock',
           min_move: 0.01,
           timezone: 'America/New_York',
+          settlement_currency: 'USD',
+          contract_multiplier: 1,
+          minimum_quantity: 1,
+          quantity_step: 1,
         }),
       )
       .mockResolvedValueOnce(
@@ -83,6 +87,10 @@ describe('market API client', () => {
         market_type: 'stock',
         min_move: 0.01,
         timezone: 'America/New_York',
+        settlement_currency: 'USD',
+        contract_multiplier: 1,
+        minimum_quantity: 1,
+        quantity_step: 1,
       }),
     ).resolves.toEqual({ symbol_id: 3, status: 'created' });
 
@@ -109,6 +117,10 @@ describe('market API client', () => {
         market_type: 'stock',
         min_move: 0.01,
         timezone: 'America/New_York',
+        settlement_currency: 'USD',
+        contract_multiplier: 1,
+        minimum_quantity: 1,
+        quantity_step: 1,
       }),
     });
     expect(fetchMock).toHaveBeenNthCalledWith(

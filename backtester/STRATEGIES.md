@@ -214,3 +214,17 @@ on their actual fill day, subject to any separately enabled schedule restriction
 
 See [order strategy contracts](ORDERS.md) for the dual evaluator interface, minute
 execution, protective tiers, costs, and the registered `limit_reversion` example.
+
+## Setup-owned sizing and protective settings
+
+Annotate dedicated builder parameters with `ParameterInfo(purpose="sizing")`,
+`purpose="stop_loss"`, or `purpose="take_profit"` to place them in Setup. The
+builder still receives resolved values, so old saved parameter dictionaries remain
+readable. These controls are constants in the creation UI. Shared sizing and exit
+sources are selected independently of these strategy-provided values; strategy
+signal exits remain active. See [sizing and margin](../docs/contracts/backtests.md#sizing-instrument-valuation-and-margin)
+for submission-time sizing, pending-order reservations, and account depletion.
+
+Quantities are instrument units rather than lots. `contract_multiplier` supplies
+the value per quantity unit; do not apply leverage to a strategy's requested size.
+The engine rounds quantities and enforces margin for strategy-defined sizing too.
