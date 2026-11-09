@@ -601,8 +601,29 @@ def _at_price(  # noqa: C901
                     del state.active[sibling]
                     state.record(timestamp, sibling, "oco_cancelled")
         if order.protection is not None and state.position:
+            protection = order.protection
+            if not increasing:
+                if config.stop_loss is not None and config.stop_loss.mode != "strategy":
+                    protection = replace(
+                        protection,
+                        stop_price=state.stop_price,
+                        stop_loss_pct=None,
+                        stop_loss_distance=None,
+                    )
+                if config.take_profit is not None and config.take_profit.mode != "strategy":
+                    from domain.orders import TakeProfitTier
+
+                    protection = replace(
+                        protection,
+                        take_profits=tuple(
+                            TakeProfitTier(level, quantity=min(quantity, abs(state.position)))
+                            for level, quantity in state.targets
+                        ),
+                        take_profit_pct=None,
+                        take_profit_distance=None,
+                    )
             state.set_protection(
-                order.protection,
+                protection,
                 (
                     abs(state.position)
                     if config.take_profit is not None and config.take_profit.mode != "strategy"

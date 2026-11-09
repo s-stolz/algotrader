@@ -2,7 +2,7 @@ import unittest
 from typing import Any, Iterator
 
 from domain.enums import OrderSide
-from domain.orders import LimitOrder, OrderAction, OrderCommand
+from domain.orders import LimitOrder, OrderAction, OrderCommand, OrderProtection, TakeProfitTier
 from domain.risk import InstrumentSpec, ProtectionSetting, SizingPolicy
 from engines.order_events import EventOrderConfig, EventOrderState, execute_order_event
 from execution.orders import OrderExecutionConfig, OrderExecutionState, execute_minute
@@ -117,3 +117,69 @@ class OrderRiskTests(unittest.TestCase):
                 state, symbol="X", timestamp_ms=120000, prices=(100, 100, 100, 100), config=config
             )
             self.assertEqual(state.position, 15)
+
+    def test_reductions_respect_each_protection_source(self):
+        for stop_mode, target_mode in (
+            ("distance", "distance"),
+            ("none", "none"),
+            ("strategy", "distance"),
+            ("distance", "strategy"),
+        ):
+            for reduce_only in (True, False):
+                for config, state, execute in self.runtimes(
+                    sizing=SizingPolicy("units", 10, 10),
+                    stop_loss=ProtectionSetting(stop_mode, 5 if stop_mode == "distance" else None),
+                    take_profit=ProtectionSetting(
+                        target_mode, 10 if target_mode == "distance" else None
+                    ),
+                ):
+                    with self.subTest(
+                        runtime=type(state).__name__,
+                        stop=stop_mode,
+                        target=target_mode,
+                        reduce_only=reduce_only,
+                    ):
+                        self.submit(state, "entry")
+                        state = execute(
+                            state,
+                            symbol="X",
+                            timestamp_ms=60000,
+                            prices=(100, 100, 100, 100),
+                            config=config,
+                        )
+                        state.command(
+                            OrderCommand(
+                                120000,
+                                OrderAction.SUBMIT,
+                                "reduce",
+                                LimitOrder(
+                                    "reduce",
+                                    OrderSide.SELL,
+                                    100,
+                                    5,
+                                    reduce_only=reduce_only,
+                                    protection=OrderProtection(
+                                        stop_price=90,
+                                        take_profits=(TakeProfitTier(120, fraction=1),),
+                                    ),
+                                ),
+                            )
+                        )
+                        state = execute(
+                            state,
+                            symbol="X",
+                            timestamp_ms=120000,
+                            prices=(100, 100, 100, 100),
+                            config=config,
+                        )
+                        self.assertEqual(state.position, 5)
+                        self.assertEqual(
+                            state.stop_price,
+                            {"distance": 95, "none": None, "strategy": 90}[stop_mode],
+                        )
+                        self.assertEqual(
+                            state.targets,
+                            {"distance": [(110, 5)], "none": [], "strategy": [(120, 5)]}[
+                                target_mode
+                            ],
+                        )
