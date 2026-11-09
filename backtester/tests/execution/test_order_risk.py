@@ -3,7 +3,7 @@ from typing import Any, Iterator
 
 from domain.enums import OrderSide
 from domain.orders import LimitOrder, OrderAction, OrderCommand, OrderProtection, TakeProfitTier
-from domain.risk import InstrumentSpec, ProtectionSetting, SizingPolicy
+from domain.risk import InstrumentSpec, ProtectionMode, ProtectionSetting, SizingPolicy
 from engines.order_events import EventOrderConfig, EventOrderState, execute_order_event
 from execution.orders import OrderExecutionConfig, OrderExecutionState, execute_minute
 
@@ -119,12 +119,13 @@ class OrderRiskTests(unittest.TestCase):
             self.assertEqual(state.position, 15)
 
     def test_reductions_respect_each_protection_source(self):
-        for stop_mode, target_mode in (
+        modes: tuple[tuple[ProtectionMode, ProtectionMode], ...] = (
             ("distance", "distance"),
             ("none", "none"),
             ("strategy", "distance"),
             ("distance", "strategy"),
-        ):
+        )
+        for stop_mode, target_mode in modes:
             for reduce_only in (True, False):
                 for config, state, execute in self.runtimes(
                     sizing=SizingPolicy("units", 10, 10),
