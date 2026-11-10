@@ -17,6 +17,9 @@ const timeline = computed(() =>
     order: item.kind === 'unexecuted_order' ? item.order : null,
   })),
 );
+const executionNumber = new Intl.NumberFormat('en-GB', {
+  maximumSignificantDigits: 17,
+});
 function time(value: number) {
   return new Date(value).toLocaleString('en-GB', {
     timeZone: 'UTC',
@@ -87,11 +90,13 @@ function time(value: number) {
           >
           <td class="leg">Exit</td
           ><td>{{ time(row.trade.exit_timestamp_ms) }}</td
-          ><td class="number">{{ row.trade.exit_price.toLocaleString() }}</td>
+          ><td class="number">{{
+            executionNumber.format(row.trade.exit_price)
+          }}</td>
           <td
             rowspan="2"
             class="number"
-            >{{ row.trade.quantity.toLocaleString() }}</td
+            >{{ executionNumber.format(row.trade.quantity) }}</td
           >
           <td
             rowspan="2"
@@ -121,7 +126,7 @@ function time(value: number) {
           ><td
             class="number"
             data-interior-cell
-            >{{ row.trade.entry_price.toLocaleString() }}</td
+            >{{ executionNumber.format(row.trade.entry_price) }}</td
           ></tr
         >
       </template>
