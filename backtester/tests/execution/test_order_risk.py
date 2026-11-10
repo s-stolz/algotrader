@@ -48,6 +48,49 @@ class OrderRiskTests(unittest.TestCase):
             self.assertFalse(state.active)
             self.assertEqual(state.events[-1]["outcome"], "insufficient_margin")
 
+    def test_rejected_reversal_records_its_executed_close(self):
+        for sizing, stop, rejection in (
+            (SizingPolicy("units", 10, 1), ProtectionSetting("none"), "insufficient_margin"),
+            (SizingPolicy("risk", 50, 10), ProtectionSetting("distance", 5), "invalid_stop"),
+        ):
+            for config, state, execute in self.runtimes(sizing=sizing, stop_loss=stop):
+                with self.subTest(runtime=type(state).__name__, rejection=rejection):
+                    state.position = 1
+                    state.cash = -100
+                    state.average_entry = 100
+                    state.entry_timestamp_ms = 1
+                    state.command(
+                        OrderCommand(
+                            60000,
+                            OrderAction.SUBMIT,
+                            "flip",
+                            LimitOrder("flip", OrderSide.SELL, 100, 2),
+                        )
+                    )
+                    self.assertEqual(state.active["flip"].quantity, 11)
+                    result = execute(
+                        state,
+                        symbol="X",
+                        timestamp_ms=60000,
+                        prices=(200, 200, 200, 200),
+                        config=config,
+                    )
+                    self.assertEqual(result.position, 0)
+                    self.assertEqual(len(result.fills), 1)
+                    self.assertEqual(result.fills[0].quantity, 1)
+                    self.assertEqual(result.fills[0].side, OrderSide.SELL)
+                    self.assertEqual(
+                        result.events[-2],
+                        dict(
+                            timestamp_ms=60000,
+                            order_id="flip",
+                            outcome="filled",
+                            quantity=1,
+                            fill_price=200,
+                        ),
+                    )
+                    self.assertEqual(result.events[-1]["outcome"], rejection)
+
     def test_stop_prevents_depletion(self):
         for config, state, execute in self.runtimes():
             self.submit(state, "one")

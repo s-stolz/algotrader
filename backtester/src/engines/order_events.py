@@ -566,6 +566,10 @@ def _at_price(  # noqa: C901
                         config,
                         limit=None if order.market else order.price,
                     )
+                    state.record(timestamp, key, "filled")
+                    state.events[-1].update(
+                        quantity=state.fills[-1].quantity, fill_price=state.fills[-1].price
+                    )
                 state.record(
                     timestamp, key, "invalid_stop" if invalid_stop else "insufficient_margin"
                 )

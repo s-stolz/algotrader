@@ -168,6 +168,13 @@ at or before the terminal event; explicit null clears an older value. Legacy
 missing intent remains null. New sizing/submit/ignored-position events retain
 side and planned price/quantity where available in both engines.
 
+When a reversal closes an existing Position but its opening portion is rejected,
+both engines record the closing `filled` event before the rejection, including
+actual filled quantity and price. This excludes partially executed Orders from
+the unexecuted list. Historical Runs saved without this event cannot be repaired
+unambiguously because saved Fills have no Order identity; rerun them to obtain
+complete execution evidence. Do not infer Order/Fill links from timestamps.
+
 Pages sort descending by trade exit/order terminal timestamp, then trade before
 order, descending saved sequence/event ordinal, and ascending identity. The
 accessor performs the combined projection, count, and LIMIT/OFFSET in one
