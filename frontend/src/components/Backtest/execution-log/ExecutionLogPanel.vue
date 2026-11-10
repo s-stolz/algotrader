@@ -100,39 +100,39 @@ const label = computed(() =>
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: var(--design-space-lg);
   flex-wrap: wrap;
-  padding: 16px 24px;
+  padding: var(--design-space-lg) var(--design-space-xl);
   border-bottom: 1px solid var(--design-color-border);
 }
 .log-identity {
   display: flex;
-  gap: 16px;
+  gap: var(--design-space-lg);
   align-items: baseline;
   min-width: 0;
 }
 h2 {
-  font-size: 18px;
+  font-size: var(--design-text-heading);
   font-weight: 500;
   margin: 0;
 }
 .log-identity span {
   color: var(--design-color-muted);
-  font-size: 12px;
+  font-size: var(--design-text-secondary);
   overflow-wrap: anywhere;
 }
 .order-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  font-size: var(--design-text-secondary);
 }
 .log-scroll {
   flex: 1;
   min-height: 0;
 }
 .notice {
-  padding: 24px;
+  padding: var(--design-space-xl);
 }
 .floating-pagination {
   position: absolute;
@@ -141,8 +141,8 @@ h2 {
   padding: 10px 14px;
   background: var(--design-color-fixed);
   border: 1px solid var(--design-color-border);
-  border-radius: 999px;
-  box-shadow: 0 4px 24px #0005;
+  border-radius: var(--design-radius-control);
+  box-shadow: var(--design-shadow-overlay);
   opacity: 0.22;
   transition: opacity 0.18s ease;
 }

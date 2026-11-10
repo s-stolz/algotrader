@@ -291,12 +291,12 @@ watch(
 }
 .edge-left .edge-control-panel {
   transform: translateX(-100%);
-  border-radius: 0 16px 16px 0;
+  border-radius: 0 var(--design-radius-edge) var(--design-radius-edge) 0;
   border-left: none;
 }
 .edge-right .edge-control-panel {
   transform: translateX(100%);
-  border-radius: 16px 0 0 16px;
+  border-radius: var(--design-radius-edge) 0 0 var(--design-radius-edge);
   border-right: none;
 }
 /* The standalone link remains keyboard reachable while its surface is offscreen. */
