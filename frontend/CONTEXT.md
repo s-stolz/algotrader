@@ -192,4 +192,4 @@ Sizing and protective sources live in `BacktestRiskFields.vue`; dedicated strate
 parameters use catalog `purpose` metadata to appear in Setup as constants.
 `SizingDetails.vue` displays persisted sizing/rejection events in execution logs.
 The symbol menu edits specifications through stable IDs. Refresh selected Market
-metadata after edits and resolve historical Run selections by saved ID or aliases.
+metadata after edits and resolve Run selections by saved ID or current Market names.

@@ -46,15 +46,6 @@ ALTER TABLE markets ADD CONSTRAINT markets_positive_specification CHECK (
     AND length(trim(settlement_currency)) > 0
 );
 
--- Preserve old name-based replay reads without rewriting immutable requests.
-CREATE TABLE market_aliases (
-    symbol VARCHAR(10) NOT NULL,
-    exchange VARCHAR(20) NOT NULL,
-    symbol_id INTEGER NOT NULL REFERENCES markets(symbol_id) ON DELETE CASCADE,
-    PRIMARY KEY (symbol, exchange)
-);
-INSERT INTO market_aliases SELECT symbol, exchange, symbol_id FROM markets;
-
 ALTER TABLE backtest_fills DROP CONSTRAINT backtest_fills_exit_reason_check;
 ALTER TABLE backtest_fills ADD CONSTRAINT backtest_fills_exit_reason_check
     CHECK (exit_reason IS NULL OR exit_reason IN ('signal','stop_loss','take_profit','account_depleted'));
@@ -64,5 +55,3 @@ ALTER TABLE backtest_closed_trades ADD CONSTRAINT backtest_closed_trades_exit_re
 
 CREATE UNIQUE INDEX markets_normalized_identity_key
     ON markets (upper(trim(symbol)), upper(trim(exchange)));
-CREATE UNIQUE INDEX market_aliases_normalized_identity_key
-    ON market_aliases (upper(trim(symbol)), upper(trim(exchange)));

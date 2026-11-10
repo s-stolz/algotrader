@@ -93,10 +93,11 @@ history. See the [guard contract](../docs/contracts/recovery.md#durable-live-wri
 
 ## Editable instrument specifications
 
-`PUT /markets/id/{symbol_id}` edits metadata without modifying Candles. Market
-aliases reserve historical symbol/exchange pairs for their original stable ID;
-new Candle queries may supply `market_id` to avoid name resolution. Old queries
-fall back to aliases. Market creation and editing require positive finite valuation
+`PUT /markets/id/{symbol_id}` edits metadata without modifying Candles. The
+`markets` table is the source of truth for current names.
+Candle queries may supply `market_id` to retain identity across metadata edits;
+name-based queries resolve current names only. Previous names are not reserved.
+Market creation and editing require positive finite valuation
 and quantity specifications. V022 backfills verified IC Trading unit quantities
 before enforcing required columns; unknown existing instruments need an explicit
 verified migration input rather than placeholder values. Backtest snapshots retain

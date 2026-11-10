@@ -1,11 +1,12 @@
 import unittest
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 import httpx
 from app import market_cache
 from app.database import get_db
-from app.models import candles, market_aliases, markets
+from app.models import candles, markets
 from main import app
 from sqlalchemy import create_engine, insert, select
 
@@ -13,7 +14,7 @@ from sqlalchemy import create_engine, insert, select
 class MarketEditingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_engine("sqlite+pysqlite:///:memory:")
-        for table in (markets, market_aliases, candles):
+        for table in (markets, candles):
             table.create(self.engine)
         self.connection = self.engine.connect()
         self.session = Session(self.connection)
@@ -52,7 +53,7 @@ class MarketEditingTests(unittest.IsolatedAsyncioTestCase):
         self.connection.close()
         self.engine.dispose()
 
-    async def test_edit_keeps_identity_candles_and_historical_alias(self):
+    async def test_edit_keeps_identity_and_candles_but_releases_old_name(self):
         created = await self.client.post("/markets", json=self.spec)
         self.assertEqual(created.status_code, 200, created.text)
         identity = created.json()["symbol_id"]
@@ -77,12 +78,38 @@ class MarketEditingTests(unittest.IsolatedAsyncioTestCase):
             row = (await session.execute(select(candles))).mappings().one()
             self.assertEqual(row["symbol_id"], identity)
             self.assertEqual(row["close"], 2)
-            alias = await session.scalar(
-                select(market_aliases.c.symbol_id).where(market_aliases.c.symbol == "EURUSD")
+        listed = await self.client.get("/markets")
+        self.assertEqual(listed.json()[0]["symbol"], "EURUSDNEW")
+        self.assertNotIn("aliases", listed.json()[0])
+        for path, params in (
+            ("/candles/EURUSD", {"timeframe": "M1"}),
+            ("/candles/EURUSD/latest", {}),
+        ):
+            response = await self.client.get(path, params=params)
+            self.assertEqual(response.status_code, 404, response.text)
+        with patch("app.crud.get_latest_m1_candle", new=AsyncMock(return_value={})) as latest:
+            current = await self.client.get("/candles/EURUSDNEW/latest")
+            self.assertEqual(current.status_code, 200, current.text)
+            latest.assert_awaited_once_with(self.session, identity)
+        with patch("app.crud.get_candles", new=AsyncMock(return_value=[])) as history:
+            stable = await self.client.get(
+                "/candles/EURUSD", params={"timeframe": "M1", "market_id": identity}
             )
-            self.assertEqual(alias, identity)
-        duplicate = await self.client.post("/markets", json=self.spec)
-        self.assertEqual(duplicate.status_code, 409)
+            self.assertEqual(stable.status_code, 200, stable.text)
+            history.assert_awaited_once_with(self.session, identity, 1, None, None, None)
+        reused = await self.client.post("/markets", json=self.spec)
+        self.assertEqual(reused.status_code, 200, reused.text)
+        self.assertNotEqual(reused.json()["symbol_id"], identity)
+
+    async def test_current_names_remain_unique_on_create_and_edit(self):
+        created = await self.client.post("/markets", json=self.spec)
+        self.assertEqual(created.status_code, 200, created.text)
+        duplicate = await self.client.post("/markets", json={**self.spec, "exchange": "ic trading"})
+        self.assertEqual(duplicate.status_code, 409, duplicate.text)
+        other = await self.client.post("/markets", json={**self.spec, "symbol": "GBPUSD"})
+        identity = other.json()["symbol_id"]
+        duplicate_edit = await self.client.put(f"/markets/id/{identity}", json=self.spec)
+        self.assertEqual(duplicate_edit.status_code, 409, duplicate_edit.text)
 
     async def test_missing_specs_and_invalid_values_are_rejected(self):
         for key in (

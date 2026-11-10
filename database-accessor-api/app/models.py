@@ -40,29 +40,12 @@ markets = Table(
     ),
 )
 
-market_aliases = Table(
-    "market_aliases",
-    metadata,
-    Column("symbol", String(10), primary_key=True),
-    Column("exchange", String(20), primary_key=True),
-    Column(
-        "symbol_id", Integer, ForeignKey("markets.symbol_id", ondelete="CASCADE"), nullable=False
-    ),
-)
-
 Index(
     "markets_normalized_identity_key",
     func.upper(func.trim(markets.c.symbol)),
     func.upper(func.trim(markets.c.exchange)),
     unique=True,
 )
-Index(
-    "market_aliases_normalized_identity_key",
-    func.upper(func.trim(market_aliases.c.symbol)),
-    func.upper(func.trim(market_aliases.c.exchange)),
-    unique=True,
-)
-
 candles = Table(
     "candles",
     metadata,

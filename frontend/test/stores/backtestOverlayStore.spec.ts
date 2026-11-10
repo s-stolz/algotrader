@@ -78,14 +78,13 @@ const closedTrades: BacktestClosedTrade[] = [
 ];
 
 describe('backtestOverlayStore', () => {
-  it.each(['alias', 'unspecified-exchange', 'stable-id'])(
-    'keeps renamed overlays attached via %s',
+  it.each(['current-name', 'unspecified-exchange', 'stable-id'])(
+    'matches overlays through %s',
     async (identity) => {
       useMarketsStore().all = [
         {
           ...eurUsdMarket,
-          symbol: 'EURUSDNEW',
-          aliases: [{ symbol: 'EURUSD', exchange: 'FX' }],
+          symbol: identity === 'stable-id' ? 'EURUSDNEW' : 'EURUSD',
         },
       ];
       vi.mocked(fetchBacktestClosedTrades).mockResolvedValue(closedTrades);
@@ -102,7 +101,9 @@ describe('backtestOverlayStore', () => {
           min_move: 0.01,
         };
       await store.selectRun(run);
-      expect(useCurrentMarketStore().symbol).toBe('EURUSDNEW');
+      expect(useCurrentMarketStore().symbol).toBe(
+        identity === 'stable-id' ? 'EURUSDNEW' : 'EURUSD',
+      );
       expect(store.matchesChart).toBe(true);
       expect(store.selectedRun?.request.symbols).toEqual(['EURUSD']);
     },

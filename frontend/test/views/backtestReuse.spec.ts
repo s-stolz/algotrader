@@ -48,7 +48,7 @@ const copyNames = [
 ] as const;
 
 describe('saved configuration reuse', () => {
-  it('preserves saved IDs, aliases, and explicit exchange matching', () => {
+  it('uses saved IDs and current names with explicit exchange matching', () => {
     const run = {
       run_id: 'saved',
       request_schema_version: 3,
@@ -59,10 +59,9 @@ describe('saved configuration reuse', () => {
         symbol_id: 1,
         symbol: 'RENAMED',
         exchange: 'NEW',
-        aliases: [{ symbol: 'EURUSD', exchange: 'FX' }],
       },
     ];
-    expect(reuseRun(run, markets).selections.marketIds).toEqual([1]);
+    expect(reuseRun(run, markets).selections.marketIds).toEqual([]);
     run.request.exchange = null;
     expect(reuseRun(run, markets).selections.marketIds).toEqual([]);
     run.request.instrument = {

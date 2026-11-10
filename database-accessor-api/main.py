@@ -374,8 +374,6 @@ async def read_aggregated_candles_by_symbol(
         await market_cache.refresh_market_cache(db)
         symbol_id = market_cache.resolve_symbol_id(symbol, exchange)
     if symbol_id is None:
-        symbol_id = await crud.resolve_market_alias(db, symbol, exchange)
-    if symbol_id is None:
         raise HTTPException(status_code=404, detail="Market not found")
 
     return await crud.get_candles(

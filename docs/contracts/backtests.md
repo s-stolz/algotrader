@@ -361,5 +361,6 @@ thresholds or margin-call warnings.
 
 Sizing and rejection events are saved in diagnostics and displayed in execution
 logs. Replay uses the saved contract multiplier and ends at the saved final point.
-New historical Candle reads use stable Market IDs. A symbol rename retains aliases
-for legacy name-based reads without rewriting saved requests or Candle data.
+Historical Candle reads use stable Market IDs. Market names come only from the
+current `markets` row; renamed symbols and exchanges have no alias lookup.
+Metadata edits do not rewrite saved requests or Candle data.

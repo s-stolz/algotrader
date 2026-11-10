@@ -5,13 +5,12 @@ const market = {
   symbol_id: 1,
   symbol: 'RENAMED',
   exchange: 'NEW',
-  aliases: [{ symbol: 'EURUSD', exchange: 'FX' }],
 };
 const request = { symbols: ['EURUSD'], exchange: 'FX' };
 
 describe('saved backtest market identity', () => {
-  it('matches current names and historical aliases with the requested exchange', () => {
-    expect(matchesBacktestMarket(market, request, 'exact')).toBe(true);
+  it('matches only current names with the requested exchange', () => {
+    expect(matchesBacktestMarket(market, request, 'exact')).toBe(false);
     expect(
       matchesBacktestMarket(
         market,
@@ -25,12 +24,16 @@ describe('saved backtest market identity', () => {
   });
   it('lets callers choose whether an unspecified exchange can match', () => {
     expect(
-      matchesBacktestMarket(market, { ...request, exchange: null }, 'exact'),
+      matchesBacktestMarket(
+        market,
+        { symbols: ['RENAMED'], exchange: null },
+        'exact',
+      ),
     ).toBe(false);
     expect(
       matchesBacktestMarket(
         market,
-        { ...request, exchange: null },
+        { symbols: ['RENAMED'], exchange: null },
         'allow-unspecified',
       ),
     ).toBe(true);

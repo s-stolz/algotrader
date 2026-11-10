@@ -10,7 +10,6 @@ from app.models import (
     backtest_runs,
     backtests,
     candles,
-    market_aliases,
     markets,
 )
 from sqlalchemy import cast, delete, exists, func, insert, select, text, update
@@ -44,59 +43,15 @@ async def insert_market(session, market_data: dict):
     :return: The symbol_id of the newly inserted market
     :rtype: int
     """
-    alias = await session.scalar(
-        select(market_aliases.c.symbol_id).where(
-            func.upper(func.trim(market_aliases.c.symbol)) == market_data["symbol"].strip().upper(),
-            func.upper(func.trim(market_aliases.c.exchange))
-            == market_data["exchange"].strip().upper(),
-        )
-    )
-    if alias is not None:
-        raise ValueError("Symbol and exchange are reserved by existing history")
     stmt = insert(markets).values(**market_data).returning(markets.c.symbol_id)
     result = await session.execute(stmt)
     identity = result.scalar_one()
-    await session.execute(
-        insert(market_aliases).values(
-            symbol=market_data["symbol"], exchange=market_data["exchange"], symbol_id=identity
-        )
-    )
     await session.commit()
     return identity
 
 
 async def update_market(session, symbol_id: int, market_data: dict):
     """Update metadata in place; candle identities and values are untouched."""
-    alias = await session.scalar(
-        select(market_aliases.c.symbol_id).where(
-            func.upper(func.trim(market_aliases.c.symbol)) == market_data["symbol"].strip().upper(),
-            func.upper(func.trim(market_aliases.c.exchange))
-            == market_data["exchange"].strip().upper(),
-        )
-    )
-    if alias is not None and alias != symbol_id:
-        raise ValueError("Symbol and exchange are reserved by existing history")
-    current = (
-        (
-            await session.execute(
-                select(markets).where(markets.c.symbol_id == symbol_id).with_for_update()
-            )
-        )
-        .mappings()
-        .first()
-    )
-    if current is not None and alias is None:
-        await session.execute(
-            insert(market_aliases).values(
-                symbol=market_data["symbol"], exchange=market_data["exchange"], symbol_id=symbol_id
-            )
-        )
-    if current is not None:
-        await session.execute(
-            pg_insert(market_aliases)
-            .values(symbol=current["symbol"], exchange=current["exchange"], symbol_id=symbol_id)
-            .on_conflict_do_nothing()
-        )
     stmt = (
         update(markets)
         .where(markets.c.symbol_id == symbol_id)
@@ -107,13 +62,6 @@ async def update_market(session, symbol_id: int, market_data: dict):
     identity = result.scalar_one_or_none()
     await session.commit()
     return identity
-
-
-async def resolve_market_alias(session, symbol: str, exchange: str | None):
-    query = select(market_aliases.c.symbol_id).where(market_aliases.c.symbol == symbol)
-    if exchange is not None:
-        query = query.where(market_aliases.c.exchange == exchange)
-    return await session.scalar(query.order_by(market_aliases.c.symbol_id).limit(1))
 
 
 async def delete_market(session, symbol_id: int):
@@ -156,18 +104,7 @@ async def get_markets(session, symbol: Optional[str] = None, exchange: Optional[
 
     result = await session.execute(stmt)
     rows = result.fetchall()
-    aliases = (await session.execute(select(market_aliases))).mappings().all()
-    return [
-        {
-            **dict(row._mapping),
-            "aliases": [
-                {"symbol": alias["symbol"], "exchange": alias["exchange"]}
-                for alias in aliases
-                if alias["symbol_id"] == row._mapping["symbol_id"]
-            ],
-        }
-        for row in rows
-    ]
+    return [dict(row._mapping) for row in rows]
 
 
 async def insert_candles(session, symbol_id: int, candles_data: list[dict]):

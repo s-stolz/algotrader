@@ -4,7 +4,6 @@ export interface MarketIdentity {
   symbol_id: number | null;
   symbol: string | null;
   exchange: string | null;
-  aliases?: Array<{ symbol: string; exchange: string }>;
 }
 
 export function matchesBacktestMarket(
@@ -18,5 +17,5 @@ export function matchesBacktestMarket(
     name.symbol === request.symbols[0] &&
     (name.exchange === request.exchange ||
       (exchangePolicy === 'allow-unspecified' && !request.exchange));
-  return matchesName(market) || !!market.aliases?.some(matchesName);
+  return matchesName(market);
 }
