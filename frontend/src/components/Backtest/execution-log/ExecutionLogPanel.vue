@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { EXECUTION_LOG_PAGE_SIZE } from '@/types/backtest/executionLog';
 import { NButton, NPagination, NScrollbar, NSwitch } from 'naive-ui';
 import ExecutionLogTable from './ExecutionLogTable.vue';
 import { useExecutionLogStore } from '@/stores/executionLogStore';
@@ -70,14 +71,14 @@ const label = computed(() =>
       />
     </n-scrollbar>
     <nav
-      v-if="log.total > 10"
+      v-if="log.total > EXECUTION_LOG_PAGE_SIZE"
       class="floating-pagination"
       aria-label="Execution log pages"
     >
       <n-pagination
         :page="log.page"
         :item-count="log.total"
-        :page-size="10"
+        :page-size="EXECUTION_LOG_PAGE_SIZE"
         :page-slot="5"
         :disabled="log.loading"
         @update:page="log.setPage"

@@ -5,6 +5,8 @@ import {
   isNullableNumber,
 } from '../transportValues';
 
+export const EXECUTION_LOG_PAGE_SIZE = 10;
+
 export interface UnexecutedOrder {
   order_id: string;
   outcome: string;

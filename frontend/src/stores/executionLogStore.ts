@@ -2,7 +2,10 @@ import { computed, ref, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 import { fetchExecutionLog } from '@/api/executionLogClient';
 import type { BacktestRun } from '@/types/backtesterContracts';
-import type { ExecutionLogItem } from '@/types/backtest/executionLog';
+import {
+  EXECUTION_LOG_PAGE_SIZE,
+  type ExecutionLogItem,
+} from '@/types/backtest/executionLog';
 
 export interface ExecutionLogSelection {
   run_id: string;
@@ -76,7 +79,7 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
     if (
       !Number.isSafeInteger(value) ||
       value < 1 ||
-      value > Math.max(1, Math.ceil(total.value / 10)) ||
+      value > Math.max(1, Math.ceil(total.value / EXECUTION_LOG_PAGE_SIZE)) ||
       value === page.value
     )
       return;
