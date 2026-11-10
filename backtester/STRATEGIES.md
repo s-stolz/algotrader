@@ -227,4 +227,4 @@ for submission-time sizing, pending-order reservations, and account depletion.
 
 Quantities are instrument units rather than lots. `contract_multiplier` supplies
 the value per quantity unit; do not apply leverage to a strategy's requested size.
-The engine rounds quantities and enforces margin for strategy-defined sizing too.
+The engine rounds quantities and enforces margin for strategy-provided sizing too.

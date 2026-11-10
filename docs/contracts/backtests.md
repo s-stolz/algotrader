@@ -376,6 +376,8 @@ Setup owns execution sizing (`strategy`, `units`, `exposure`, `equity_exposure`,
 `strategy`, `percent`, `distance`, or `ticks`). Strategy parameter catalog metadata
 `purpose` places dedicated sizing and exit parameters in Setup; those fields are
 submitted as constants. Signal parameters remain in Parameters.
+The `strategy` mode is labeled **Strategy-provided** for sizing, stop-loss, and
+take-profit: the strategy supplies the corresponding quantity or protective value.
 
 Sizing uses submission-time equity including unrealized PnL. Money risk is the
 entry-to-stop loss excluding costs, per entry rather than a combined-position cap.

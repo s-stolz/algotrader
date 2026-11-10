@@ -18,7 +18,7 @@ const sizing = computed(
     },
 );
 const modes = [
-  { label: 'Strategy-defined', value: 'strategy' },
+  { label: 'Strategy-provided', value: 'strategy' },
   { label: 'Fixed quantity', value: 'units' },
   { label: 'Fixed exposure', value: 'exposure' },
   { label: 'Exposure (% of equity)', value: 'equity_exposure' },
@@ -63,7 +63,7 @@ function changeExit(
           <span>Sizing mode</span>
           <BacktestFieldHelp label="sizing modes">
             <p
-              ><strong>Strategy-defined:</strong> Use the quantity supplied by
+              ><strong>Strategy-provided:</strong> Use the quantity supplied by
               the strategy and its sizing settings.</p
             >
             <p

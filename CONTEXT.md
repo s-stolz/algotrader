@@ -24,6 +24,9 @@ streams live charts, and runs historical backtests.
   and lifecycle; displayed by ordinal as `Run #N`.
 - **Experiment Name:** optional organizational name of a Backtest, separate from
   immutable execution snapshots.
+- **Strategy-provided:** sizing or protective values supplied by the strategy,
+  rather than an explicit execution override. Use this term for sizing, stop-loss,
+  and take-profit sources. _Avoid_: Strategy-defined.
 - **Backtest Workspace:** UI for creating, monitoring, inspecting, and comparing
   Backtests and their Runs.
 
