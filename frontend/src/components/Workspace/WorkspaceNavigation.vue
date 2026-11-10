@@ -36,10 +36,11 @@ watch(
   <div class="workspace-navigation">
     <Teleport to="body">
       <div
+        class="edge-navigation-group"
         :tabindex="showTradeAction ? 0 : undefined"
         :class="[
           {
-            'edge-navigation-group': showTradeAction,
+            'edge-navigation-group--with-trades': showTradeAction,
           },
           isChart ? 'edge-right' : 'edge-left',
         ]"
@@ -170,40 +171,13 @@ watch(
 }
 
 .workspace-edge-link {
-  position: fixed;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1100;
-  width: 64px;
+  position: relative;
+  display: block;
+  width: 100%;
   height: 176px;
+  flex-shrink: 0;
   color: var(--design-color-interactive);
 }
-
-.workspace-edge-link::before {
-  content: '';
-  position: absolute;
-  inset-block: 0;
-  width: 5px;
-  background: var(--design-color-edge-rail);
-  border: 1px solid var(--design-color-edge-border);
-  box-sizing: border-box;
-}
-
-.workspace-edge-link--left {
-  left: 0;
-}
-.workspace-edge-link--right {
-  right: 0;
-}
-.workspace-edge-link--left::before {
-  left: 0;
-  border-radius: 0 5px 5px 0;
-}
-.workspace-edge-link--right::before {
-  right: 0;
-  border-radius: 5px 0 0 5px;
-}
-
 .workspace-edge-face {
   position: absolute;
   inset: 0;
@@ -213,39 +187,7 @@ watch(
   justify-content: center;
   gap: var(--design-space-xl);
   box-sizing: border-box;
-  background: var(--design-color-fixed);
-  border: 1px solid var(--design-color-border);
-  opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-}
-
-.workspace-edge-link--left .workspace-edge-face {
-  border-left: none;
-  border-radius: 0 var(--design-radius-edge) var(--design-radius-edge) 0;
-  transform: translateX(-100%);
-}
-
-.workspace-edge-link--right .workspace-edge-face {
-  border-right: none;
-  border-radius: var(--design-radius-edge) 0 0 var(--design-radius-edge);
-  transform: translateX(100%);
-}
-
-/* The hit area stays at the final size; only entry animates, so exit hides immediately. */
-.workspace-edge-link:hover .workspace-edge-face,
-.workspace-edge-link:focus-visible .workspace-edge-face {
-  opacity: 1;
-  visibility: visible;
-  transform: translateX(0);
-  transition:
-    transform 0.14s ease-out,
-    opacity 0.14s;
-}
-
-.workspace-edge-link:hover::before,
-.workspace-edge-link:focus-visible::before {
-  opacity: 0;
 }
 .workspace-edge-link:focus-visible {
   outline: none;
@@ -254,7 +196,6 @@ watch(
   outline: 2px solid currentColor;
   outline-offset: -4px;
 }
-
 .destination-icon {
   width: 23px;
   height: 23px;
@@ -298,28 +239,23 @@ watch(
   .workspace-screen {
     animation: none;
   }
-  .workspace-edge-link:hover .workspace-edge-face,
-  .workspace-edge-link:focus-visible .workspace-edge-face {
-    transition: none;
-  }
 }
 .edge-navigation-group {
   position: fixed;
   top: 50%;
   width: 64px;
-  height: 224px;
+  height: 176px;
   transform: translateY(-50%);
   z-index: 1100;
+}
+.edge-navigation-group--with-trades {
+  height: 224px;
 }
 .edge-left {
   left: 0;
 }
 .edge-right {
   right: 0;
-}
-/* One moving surface keeps both actions aligned throughout the reveal. */
-.edge-control-panel {
-  display: contents;
 }
 .edge-navigation-group::before {
   content: '';
@@ -333,11 +269,17 @@ watch(
 }
 .edge-left::before {
   left: 0;
+  border-radius: 0 5px 5px 0;
 }
 .edge-right::before {
   right: 0;
+  border-radius: 5px 0 0 5px;
 }
-.edge-navigation-group .edge-control-panel {
+.edge-navigation-group--with-trades::before {
+  border-radius: 0;
+}
+/* One surface reveals all available actions; pointer exit hides it immediately. */
+.edge-control-panel {
   display: flex;
   flex-direction: column;
   position: absolute;
@@ -350,10 +292,20 @@ watch(
 .edge-left .edge-control-panel {
   transform: translateX(-100%);
   border-radius: 0 16px 16px 0;
+  border-left: none;
 }
 .edge-right .edge-control-panel {
   transform: translateX(100%);
   border-radius: 16px 0 0 16px;
+  border-right: none;
+}
+/* The standalone link remains keyboard reachable while its surface is offscreen. */
+.edge-navigation-group:not(.edge-navigation-group--with-trades)
+  .edge-control-panel {
+  visibility: visible;
+}
+.edge-navigation-group--with-trades .edge-control-panel {
+  border: 1px solid var(--design-color-border);
 }
 .edge-navigation-group:hover .edge-control-panel,
 .edge-navigation-group:focus-visible .edge-control-panel,
@@ -369,27 +321,6 @@ watch(
 .edge-navigation-group:focus-visible::before,
 .edge-navigation-group:has(:focus-visible)::before {
   opacity: 0;
-}
-.edge-navigation-group .workspace-edge-link {
-  display: block;
-  position: relative;
-  top: auto;
-  transform: none;
-  width: 100%;
-  height: 176px;
-  flex-shrink: 0;
-}
-.edge-navigation-group .workspace-edge-link::before {
-  display: none;
-}
-.edge-navigation-group .workspace-edge-face {
-  opacity: 1;
-  visibility: inherit;
-  transform: none;
-  transition: none;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
 }
 .edge-trades-action {
   width: 100%;
