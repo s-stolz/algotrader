@@ -129,6 +129,38 @@ beforeEach(() => {
 });
 
 describe('execution-log drawer', () => {
+  it('finishes loading a run with a large collapsed diagnostic log', async () => {
+    vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
+    vi.mocked(fetchBacktestFills).mockResolvedValue([]);
+    const largeRun = run('large-log');
+    largeRun.request.execution.sizing = {
+      mode: 'risk',
+      value: 100,
+      leverage: 1,
+    };
+    largeRun.diagnostics = {
+      order_events: Array.from({ length: 47006 }, (_, i) => ({
+        timestamp_ms: 60000 * i,
+        order_id: `entry-${i}`,
+        outcome: 'insufficient_margin',
+      })),
+    };
+    const wrapper = mount(ExecutionLogDrawer, {
+      props: { run: largeRun, show: true },
+    });
+    await flushPromises();
+    expect(document.body.textContent).not.toContain('Loading execution log');
+    expect(document.body.textContent).toContain(
+      'This successful run has no executions.',
+    );
+    expect(
+      document.body.querySelectorAll(
+        '[data-testid="execution-log-drawer"] tbody tr',
+      ),
+    ).toHaveLength(0);
+    wrapper.unmount();
+  });
+
   it(
     'shows one flip Fill closing a long and opening a short without ' +
       'deriving Trade Direction from Fill side',

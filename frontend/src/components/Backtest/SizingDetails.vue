@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import {
@@ -7,6 +7,17 @@ import {
   type SavedOrderEvent,
 } from '@/types/backtest/orderEvents';
 const props = defineProps<{ run: BacktestRun }>();
+const expanded = ref(false);
+const pagination = { pageSize: 50 };
+watch(
+  () => props.run.run_id,
+  () => {
+    expanded.value = false;
+  },
+);
+function toggle(event: Event) {
+  expanded.value = (event.target as HTMLDetailsElement).open;
+}
 const parsed = computed(() => readOrderEvents(props.run.diagnostics));
 const rows = computed(() => parsed.value.events);
 const columns = [
@@ -53,9 +64,15 @@ const depleted = computed(() =>
       Some saved order events could not be displayed because their data is
       invalid.
     </p>
-    <details v-if="rows.length">
+    <details
+      v-if="rows.length"
+      :open="expanded"
+      @toggle="toggle"
+    >
       <summary>Sizing decisions and order events</summary>
       <BaseDataTable
+        v-if="expanded"
+        :pagination="pagination"
         :columns="columns"
         :data="rows"
         :row-key="(row) => row.index"
