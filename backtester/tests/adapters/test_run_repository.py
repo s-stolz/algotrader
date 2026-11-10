@@ -40,7 +40,7 @@ class _FakeRunClient:
         self.runs_by_id[run["run_id"]] = dict(run)
         return dict(run)
 
-    def get_backtest_run(self, run_id: str) -> dict:
+    def get_backtest_run(self, run_id: str, *, include_diagnostics: bool = True) -> dict:
         return dict(self.runs_by_id[run_id])
 
     def rename_backtest_run(self, run_id: str, name: str | None) -> dict:
@@ -74,7 +74,7 @@ class _FakeRunClient:
 
 
 class _MissingRunClient(_FakeRunClient):
-    def get_backtest_run(self, run_id: str) -> dict:
+    def get_backtest_run(self, run_id: str, *, include_diagnostics: bool = True) -> dict:
         raise DatabaseAccessorClientError("not found", status_code=404)
 
 

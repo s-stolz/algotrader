@@ -16,6 +16,7 @@ from app.backtest_runs import (
 )
 from app.backtests import BacktestService
 from app.config import BacktesterConfig
+from app.execution_log import ExecutionLogService
 from db_accessor_client import DatabaseAccessorClient, DatabaseAccessorClientError
 from domain.enums import BacktestEngine, BacktestRunStatus
 from domain.types import BacktestRunQuery
@@ -28,6 +29,7 @@ from strategies.registry import (
     strategy_catalog,
 )
 
+from adapters.api.execution_log import ExecutionLogPageSchema, get_execution_log_service
 from adapters.api.schemas import (
     BacktestFillResponseSchema,
     BacktestNameResponseSchema,
@@ -47,8 +49,10 @@ from adapters.persistence import (
 router = APIRouter(prefix="/backtests", tags=["backtests"])
 
 
-def get_backtest_run_service() -> BacktestRunService:
-    return BacktestRunService(repository=DatabaseAccessorBacktestRunRepository())
+def get_backtest_run_service(include_diagnostics: bool = True) -> BacktestRunService:
+    return BacktestRunService(
+        repository=DatabaseAccessorBacktestRunRepository(include_diagnostics=include_diagnostics)
+    )
 
 
 def get_backtest_queue_service() -> BacktestQueueService:
@@ -201,6 +205,7 @@ def list_backtest_runs(
     submitted_from_ms: int | None = None,
     submitted_to_ms: int | None = None,
     backtest_id: str | None = None,
+    include_diagnostics: bool = True,
     service: BacktestRunService = Depends(get_backtest_run_service),
 ) -> list[BacktestRunResponseSchema]:
     query = BacktestRunQuery(
@@ -214,7 +219,10 @@ def list_backtest_runs(
         backtest_id=backtest_id,
     )
     try:
-        return [BacktestRunResponseSchema.from_domain(run) for run in service.list(query)]
+        return [
+            BacktestRunResponseSchema.from_domain(run, include_diagnostics=include_diagnostics)
+            for run in service.list(query)
+        ]
     except InvalidBacktestRequestError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -245,16 +253,22 @@ def get_backtest(
     response_model_exclude_none=True,
 )
 def get_backtest_members(
-    backtest_id: str, service: BacktestService = Depends(get_backtest_service)
+    backtest_id: str,
+    include_diagnostics: bool = True,
+    service: BacktestService = Depends(get_backtest_service),
 ) -> list[BacktestRunResponseSchema]:
     try:
         return [
-            BacktestRunResponseSchema.from_domain(_run_record_from_response(member))
-            for member in service.members(backtest_id)
+            BacktestRunResponseSchema.from_domain(
+                _run_record_from_response(member), include_diagnostics=include_diagnostics
+            )
+            for member in service.members(backtest_id, include_diagnostics=include_diagnostics)
         ]
     except DatabaseAccessorClientError as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Backtest not found") from exc
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
+    except ValueError as exc:
         raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
@@ -357,11 +371,12 @@ def preview_backtest(
 )
 def get_backtest_run(
     run_id: str,
+    include_diagnostics: bool = True,
     service: BacktestRunService = Depends(get_backtest_run_service),
 ) -> BacktestRunResponseSchema:
     try:
         run = service.get(run_id)
-        return BacktestRunResponseSchema.from_domain(run)
+        return BacktestRunResponseSchema.from_domain(run, include_diagnostics=include_diagnostics)
     except BacktestRunNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -407,6 +422,24 @@ def get_backtest_equity_curve(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (BacktestCandleUnavailableError, BacktestRunPersistenceError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/runs/{run_id}/execution-log", response_model=ExecutionLogPageSchema)
+def get_backtest_execution_log(
+    run_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    include_unexecuted: bool = False,
+    service: ExecutionLogService = Depends(get_execution_log_service),
+) -> dict[str, Any]:
+    try:
+        return service.get_page(run_id, page, page_size, include_unexecuted)
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Backtest run not found") from exc
+    except BacktestRunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (BacktestRunPersistenceError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
 @router.get(

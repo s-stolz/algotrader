@@ -12,7 +12,7 @@ from app.models import (
     candles,
     markets,
 )
-from sqlalchemy import cast, delete, exists, func, insert, select, text, update
+from sqlalchemy import cast, delete, exists, func, insert, null, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -503,8 +503,17 @@ async def rename_backtest(session, backtest_id: str, name: str | None):
         raise
 
 
-async def get_backtest_run(session, run_id: str):
-    stmt = select(backtest_runs).where(backtest_runs.c.run_id == run_id)
+def _run_columns(include_diagnostics: bool):
+    return [
+        column
+        if include_diagnostics or column.name != "diagnostics"
+        else null().label("diagnostics")
+        for column in backtest_runs.c
+    ]
+
+
+async def get_backtest_run(session, run_id: str, *, include_diagnostics: bool = True):
+    stmt = select(*_run_columns(include_diagnostics)).where(backtest_runs.c.run_id == run_id)
     result = await session.execute(stmt)
     row = result.fetchone()
     return dict(row._mapping) if row else None
@@ -665,9 +674,9 @@ async def list_backtests(session):
     return [dict(row._mapping) for row in result.fetchall()]
 
 
-async def list_backtest_members(session, backtest_id: str):
+async def list_backtest_members(session, backtest_id: str, *, include_diagnostics: bool = True):
     result = await session.execute(
-        select(backtest_runs)
+        select(*_run_columns(include_diagnostics))
         .where(backtest_runs.c.backtest_id == backtest_id)
         .order_by(backtest_runs.c.run_ordinal.asc())
     )
@@ -694,8 +703,9 @@ async def list_backtest_runs(
     submitted_from: datetime | None = None,
     submitted_to: datetime | None = None,
     backtest_id: str | None = None,
+    include_diagnostics: bool = True,
 ):
-    stmt = select(backtest_runs)
+    stmt = select(*_run_columns(include_diagnostics))
     if backtest_id is not None:
         stmt = stmt.where(backtest_runs.c.backtest_id == backtest_id)
     if status is not None:

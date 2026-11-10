@@ -4,6 +4,7 @@ from typing import Literal, Optional
 
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
 from app import backtest_execution, crud, historical_candles, market_cache, recovery
+from app.backtest_execution_log import get_execution_log
 from app.database import get_db
 from app.schemas import (
     BacktestClosedTradeOut,
@@ -203,6 +204,7 @@ async def list_backtest_runs(
     submitted_from: datetime | None = None,
     submitted_to: datetime | None = None,
     backtest_id: str | None = None,
+    include_diagnostics: bool = True,
     db: AsyncSession = Depends(get_db),
 ):
     return await crud.list_backtest_runs(
@@ -215,6 +217,7 @@ async def list_backtest_runs(
         submitted_from=submitted_from,
         submitted_to=submitted_to,
         backtest_id=backtest_id,
+        include_diagnostics=include_diagnostics,
     )
 
 
@@ -250,10 +253,14 @@ async def get_backtest(backtest_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/backtests/{backtest_id}/members", response_model=list[BacktestRunOut])
-async def list_backtest_members(backtest_id: str, db: AsyncSession = Depends(get_db)):
+async def list_backtest_members(
+    backtest_id: str, include_diagnostics: bool = True, db: AsyncSession = Depends(get_db)
+):
     if await crud.get_backtest(db, backtest_id) is None:
         raise HTTPException(status_code=404, detail="Backtest not found")
-    return await crud.list_backtest_members(db, backtest_id)
+    return await crud.list_backtest_members(
+        db, backtest_id, include_diagnostics=include_diagnostics
+    )
 
 
 @app.get("/backtests/{backtest_id}/events", response_model=list[BacktestEventOut])
@@ -297,11 +304,29 @@ async def control_backtest(
 
 
 @app.get("/backtest-runs/{run_id}", response_model=BacktestRunOut)
-async def get_backtest_run(run_id: str, db: AsyncSession = Depends(get_db)):
-    run = await crud.get_backtest_run(db, run_id)
+async def get_backtest_run(
+    run_id: str, include_diagnostics: bool = True, db: AsyncSession = Depends(get_db)
+):
+    run = await crud.get_backtest_run(db, run_id, include_diagnostics=include_diagnostics)
     if run is None:
         raise HTTPException(status_code=404, detail="Backtest run not found")
     return run
+
+
+@app.get("/backtest-runs/{run_id}/execution-log")
+async def get_backtest_execution_log(
+    run_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    include_unexecuted: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await get_execution_log(
+        db, run_id, page=page, page_size=page_size, include_unexecuted=include_unexecuted
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    return result
 
 
 @app.get("/backtest-runs/{run_id}/fills", response_model=list[BacktestFillOut])

@@ -131,6 +131,11 @@ class OrderExecutionState:
             self.submitted_ids.add(key)
             if command.order.only_when_flat and self.position:
                 self.record(command.effective_at_ms, key, "position_open_ignored")
+                self.events[-1].update(
+                    side=command.order.side.value,
+                    limit_price=command.order.price,
+                    quantity=command.order.quantity,
+                )
                 return
             if command.order.replace_group is not None:
                 for identity, pending in list(self.active.items()):
@@ -215,7 +220,14 @@ class OrderExecutionState:
             stop_price=stop,
         )
         self.events.append(
-            {"timestamp_ms": timestamp, "order_id": key, "outcome": "sizing", **asdict(decision)}
+            {
+                "timestamp_ms": timestamp,
+                "order_id": key,
+                "outcome": "sizing",
+                "side": order.side.value,
+                "limit_price": order.price,
+                **asdict(decision),
+            }
         )
         if decision.reason:
             self.record(timestamp, key, decision.reason)
@@ -308,7 +320,7 @@ class OrderExecutionState:
         }
         if outcome in ("submit", "update"):
             order = self.active[order_id]
-            event.update(limit_price=order.price, side=order.side.value)
+            event.update(limit_price=order.price, side=order.side.value, quantity=order.quantity)
         self.events.append(event)
 
 

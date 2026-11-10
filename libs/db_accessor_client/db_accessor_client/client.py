@@ -193,8 +193,14 @@ class DatabaseAccessorClient(_BaseClient):
     def get_backtest(self, backtest_id: str) -> dict[str, Any]:
         return self._request("GET", f"/backtests/{backtest_id}")
 
-    def list_backtest_members(self, backtest_id: str) -> list[dict[str, Any]]:
-        return self._request("GET", f"/backtests/{backtest_id}/members")
+    def list_backtest_members(
+        self, backtest_id: str, *, include_diagnostics: bool = True
+    ) -> list[dict[str, Any]]:
+        if include_diagnostics:
+            return self._request("GET", f"/backtests/{backtest_id}/members")
+        return self._request(
+            "GET", f"/backtests/{backtest_id}/members", params={"include_diagnostics": False}
+        )
 
     def list_backtest_events(self, backtest_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/backtests/{backtest_id}/events")
@@ -208,11 +214,33 @@ class DatabaseAccessorClient(_BaseClient):
             json={"command_id": command_id, "policy": policy},
         )
 
-    def get_backtest_run(self, run_id: str) -> dict[str, Any]:
-        return self._request("GET", f"/backtest-runs/{run_id}")
+    def get_backtest_run(self, run_id: str, *, include_diagnostics: bool = True) -> dict[str, Any]:
+        if include_diagnostics:
+            return self._request("GET", f"/backtest-runs/{run_id}")
+        return self._request(
+            "GET", f"/backtest-runs/{run_id}", params={"include_diagnostics": False}
+        )
 
     def get_backtest_fills(self, run_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/backtest-runs/{run_id}/fills")
+
+    def get_backtest_execution_log(
+        self,
+        run_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 10,
+        include_unexecuted: bool = False,
+    ) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            f"/backtest-runs/{run_id}/execution-log",
+            params={
+                "page": page,
+                "page_size": page_size,
+                "include_unexecuted": include_unexecuted,
+            },
+        )
 
     def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/backtest-runs/{run_id}/trades")
@@ -228,6 +256,7 @@ class DatabaseAccessorClient(_BaseClient):
         submitted_from: str | None = None,
         submitted_to: str | None = None,
         backtest_id: str | None = None,
+        include_diagnostics: bool = True,
     ) -> list[dict[str, Any]]:
         params = _build_params(
             status=status,
@@ -239,6 +268,8 @@ class DatabaseAccessorClient(_BaseClient):
             submitted_to=submitted_to,
             backtest_id=backtest_id,
         )
+        if not include_diagnostics:
+            params["include_diagnostics"] = False
         return self._request("GET", "/backtest-runs", params=params)
 
     def get_backtest_execution_slot(self) -> dict[str, Any]:
@@ -498,8 +529,14 @@ class AsyncDatabaseAccessorClient(_BaseClient):
     async def get_backtest(self, backtest_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/backtests/{backtest_id}")
 
-    async def list_backtest_members(self, backtest_id: str) -> list[dict[str, Any]]:
-        return await self._request("GET", f"/backtests/{backtest_id}/members")
+    async def list_backtest_members(
+        self, backtest_id: str, *, include_diagnostics: bool = True
+    ) -> list[dict[str, Any]]:
+        if include_diagnostics:
+            return await self._request("GET", f"/backtests/{backtest_id}/members")
+        return await self._request(
+            "GET", f"/backtests/{backtest_id}/members", params={"include_diagnostics": False}
+        )
 
     async def list_backtest_events(self, backtest_id: str) -> list[dict[str, Any]]:
         return await self._request("GET", f"/backtests/{backtest_id}/events")
@@ -513,11 +550,35 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             json={"command_id": command_id, "policy": policy},
         )
 
-    async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/backtest-runs/{run_id}")
+    async def get_backtest_run(
+        self, run_id: str, *, include_diagnostics: bool = True
+    ) -> dict[str, Any]:
+        if include_diagnostics:
+            return await self._request("GET", f"/backtest-runs/{run_id}")
+        return await self._request(
+            "GET", f"/backtest-runs/{run_id}", params={"include_diagnostics": False}
+        )
 
     async def get_backtest_fills(self, run_id: str) -> list[dict[str, Any]]:
         return await self._request("GET", f"/backtest-runs/{run_id}/fills")
+
+    async def get_backtest_execution_log(
+        self,
+        run_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 10,
+        include_unexecuted: bool = False,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/backtest-runs/{run_id}/execution-log",
+            params={
+                "page": page,
+                "page_size": page_size,
+                "include_unexecuted": include_unexecuted,
+            },
+        )
 
     async def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
         return await self._request("GET", f"/backtest-runs/{run_id}/trades")
@@ -533,6 +594,7 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         submitted_from: str | None = None,
         submitted_to: str | None = None,
         backtest_id: str | None = None,
+        include_diagnostics: bool = True,
     ) -> list[dict[str, Any]]:
         params = _build_params(
             status=status,
@@ -544,6 +606,8 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             submitted_to=submitted_to,
             backtest_id=backtest_id,
         )
+        if not include_diagnostics:
+            params["include_diagnostics"] = False
         return await self._request("GET", "/backtest-runs", params=params)
 
     async def get_backtest_execution_slot(self) -> dict[str, Any]:

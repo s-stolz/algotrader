@@ -437,7 +437,9 @@ class BacktestRunResponseSchema(ApiContractModel):
     error_message: str | None = None
 
     @classmethod
-    def from_domain(cls, run: BacktestRunRecord) -> "BacktestRunResponseSchema":
+    def from_domain(
+        cls, run: BacktestRunRecord, *, include_diagnostics: bool = True
+    ) -> "BacktestRunResponseSchema":
         payload: dict[str, Any] = {
             "run_id": run.run_id,
             "status": run.status.value,
@@ -458,11 +460,17 @@ class BacktestRunResponseSchema(ApiContractModel):
             payload["cancellation_reason"] = run.cancellation_reason
 
         if run.status.value == "succeeded":
-            if run.result_schema_version is None or run.metrics is None or run.diagnostics is None:
+            if (
+                run.result_schema_version is None
+                or run.metrics is None
+                or (include_diagnostics and run.diagnostics is None)
+            ):
                 raise ValueError("Succeeded backtest run is missing result artifacts")
             payload["result_schema_version"] = run.result_schema_version
             payload["metrics"] = dict(run.metrics)
-            payload["diagnostics"] = dict(run.diagnostics)
+            if include_diagnostics:
+                assert run.diagnostics is not None
+                payload["diagnostics"] = dict(run.diagnostics)
         elif run.status.value == "failed":
             payload["error_code"] = _public_error_code(run.error_code)
             payload["error_message"] = _public_error_message(run.error_message)

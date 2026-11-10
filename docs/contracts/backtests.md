@@ -147,6 +147,39 @@ rechecks all Runs under the execution-slot lock and removes parent, Runs, result
 events, and command receipts atomically. Accepted requests and membership remain
 immutable until whole-Backtest deletion.
 
+## Execution-log inspection
+
+`GET /backtests/runs/{run_id}/execution-log` is a bounded inspection API for
+succeeded result-v3 Runs. Query parameters are `page` (one-based, default 1),
+`page_size` (default 10, maximum 100), and `include_unexecuted` (default false).
+Invalid bounds return 422; missing Runs return 404; ineligible Runs return 409.
+The response is `{run_id, page, page_size, total, items}`. Out-of-range pages
+return empty items and retain the total. Existing full Fill/Closed Trade APIs
+remain unchanged for chart overlays and analysis.
+
+Each item is either `{kind: "trade", timestamp_ms, trade}` with the existing
+Closed Trade payload, or `{kind: "unexecuted_order", timestamp_ms, order}`.
+The latter carries `order_id`, `outcome`, nullable `side` (`buy`/`sell`),
+`planned_price`, and `planned_quantity`; it is intended activity, not a Fill or
+Closed Trade. Only explicit terminal outcomes qualify, one latest terminal event
+per order; any recorded Fill event excludes that order. Unknown outcomes and
+invalid event timestamps are excluded. Metadata uses the latest explicit field
+at or before the terminal event; explicit null clears an older value. Legacy
+missing intent remains null. New sizing/submit/ignored-position events retain
+side and planned price/quantity where available in both engines.
+
+Pages sort descending by trade exit/order terminal timestamp, then trade before
+order, descending saved sequence/event ordinal, and ascending identity. The
+accessor performs the combined projection, count, and LIMIT/OFFSET in one
+PostgreSQL statement; diagnostics never cross the service boundary for this
+read. Including unexecuted orders still scans the saved diagnostic array inside
+PostgreSQL; this is bounded transport, not an indexed order-event store.
+
+Run detail, Run list, and Backtest member reads accept `include_diagnostics=false`
+to omit diagnostic data at the storage projection. The default remains true for
+existing artifact consumers. Backtest outcome summaries always use lightweight
+member reads. No result-schema version or storage migration is required.
+
 ## Shared execution controls
 
 `execution.max_entries_per_day` is an optional positive integer; omitted/null

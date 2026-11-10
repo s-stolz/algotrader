@@ -18,7 +18,9 @@ class BacktestClient(Protocol):
     def rename_backtest(self, backtest_id: str, name: str | None) -> Mapping[str, Any]: ...
     def list_backtests(self) -> list[dict[str, Any]]: ...
     def get_backtest(self, backtest_id: str) -> Mapping[str, Any]: ...
-    def list_backtest_members(self, backtest_id: str) -> list[dict[str, Any]]: ...
+    def list_backtest_members(
+        self, backtest_id: str, *, include_diagnostics: bool = True
+    ) -> list[dict[str, Any]]: ...
     def list_backtest_events(self, backtest_id: str) -> list[dict[str, Any]]: ...
     def delete_backtest(self, backtest_id: str) -> None: ...
     def control_backtest(
@@ -159,8 +161,16 @@ class BacktestService:
         name = normalize_experiment_name(name)
         return self._with_client(lambda client: dict(client.rename_backtest(backtest_id, name)))
 
-    def members(self, backtest_id: str) -> list[dict[str, Any]]:
-        return self._with_client(lambda client: client.list_backtest_members(backtest_id))
+    def members(
+        self, backtest_id: str, *, include_diagnostics: bool = True
+    ) -> list[dict[str, Any]]:
+        return self._with_client(
+            lambda client: (
+                client.list_backtest_members(backtest_id)
+                if include_diagnostics
+                else client.list_backtest_members(backtest_id, include_diagnostics=False)
+            )
+        )
 
     def events(self, backtest_id: str) -> list[dict[str, Any]]:
         return self._with_client(
@@ -193,7 +203,9 @@ class BacktestService:
     def _backtest_with_outcomes(
         client: BacktestClient, backtest: Mapping[str, Any]
     ) -> dict[str, Any]:
-        members = client.list_backtest_members(str(backtest["backtest_id"]))
+        members = client.list_backtest_members(
+            str(backtest["backtest_id"]), include_diagnostics=False
+        )
         return _project_backtest(backtest, members)
 
     def _with_client(self, operation: Callable[[BacktestClient], Any]) -> Any:

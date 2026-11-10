@@ -226,6 +226,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
                 "submitted_from_ms",
                 "submitted_to_ms",
                 "backtest_id",
+                "include_diagnostics",
             },
         )
 

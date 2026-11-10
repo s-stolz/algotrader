@@ -28,7 +28,9 @@ from domain.types import (
 class BacktestRunRepositoryClient(Protocol):
     """Client protocol for queued run creation and status retrieval."""
 
-    def get_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
+    def get_backtest_run(
+        self, run_id: str, *, include_diagnostics: bool = True
+    ) -> Mapping[str, Any]: ...
 
     def cancel_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
 
@@ -58,8 +60,11 @@ class BacktestLifecycleClient(Protocol):
 class DatabaseAccessorBacktestRunRepository:
     """Maps durable run domain records to the database-accessor client contract."""
 
-    def __init__(self, client: BacktestRunRepositoryClient | None = None) -> None:
+    def __init__(
+        self, client: BacktestRunRepositoryClient | None = None, *, include_diagnostics: bool = True
+    ) -> None:
         self._client = client
+        self._include_diagnostics = include_diagnostics
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
         try:
@@ -99,7 +104,10 @@ class DatabaseAccessorBacktestRunRepository:
         return self.get(str(entries[0]["run_id"]))
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
-        responses = self._list_runs(_run_query_params(query))
+        params = _run_query_params(query)
+        if not self._include_diagnostics:
+            params["include_diagnostics"] = False
+        responses = self._list_runs(params)
         return [_run_record_from_response(response) for response in responses]
 
     def get_fills(self, run_id: str) -> list[BacktestFillRecord]:
@@ -110,11 +118,19 @@ class DatabaseAccessorBacktestRunRepository:
 
     def _get_run(self, run_id: str) -> Mapping[str, Any]:
         if self._client is not None:
-            return self._client.get_backtest_run(run_id)
+            return (
+                self._client.get_backtest_run(run_id)
+                if self._include_diagnostics
+                else self._client.get_backtest_run(run_id, include_diagnostics=False)
+            )
 
         client_cls = _import_database_accessor_client()
         with client_cls() as client:
-            return client.get_backtest_run(run_id)
+            return (
+                client.get_backtest_run(run_id)
+                if self._include_diagnostics
+                else client.get_backtest_run(run_id, include_diagnostics=False)
+            )
 
     def _list_runs(self, query: dict[str, Any]) -> Sequence[Mapping[str, Any]]:
         if self._client is not None:

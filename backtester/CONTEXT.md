@@ -6,6 +6,8 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
 
 ## Entry Points and Boundaries
 
+- `src/app/execution_log.py` owns eligibility for bounded saved execution-log pages; the accessor performs pagination and optional unexecuted-order projection. See the shared contract.
+
 - `src/app/backtest_runner.py` orchestrates simulations for worker child execution
   and callers supplying historical bars. API submission validates and queues
   without loading Candles or running an engine.

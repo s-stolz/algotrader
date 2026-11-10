@@ -16,6 +16,9 @@ semantics live in [backtest contracts](../docs/contracts/backtests.md).
 
 ## Backtest Storage
 
+`app/backtest_execution_log.py` projects and paginates saved trades and optional terminal unexecuted orders in PostgreSQL without transferring diagnostics. Run/member reads can omit diagnostics at the column projection.
+
+
 `app/backtest_execution.py` owns slot-serialized execution operations;
 `app/crud.py` also handles Backtest/Run creation and history. `app/models.py` and
 `app/schemas.py` define storage and transport shapes. Backtester supplies
