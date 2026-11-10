@@ -1,4 +1,7 @@
-import type { BacktestSelectionsDraft } from '@/types/backtesterContracts';
+import type {
+  BacktestSelectionsDraft,
+  StrategyCatalogEntry,
+} from '@/types/backtesterContracts';
 import { dailyEntryLimitIssue } from '@/types/backtest/entryLimit';
 import { scheduleDraftIssues } from '@/types/backtest/schedule';
 import { TIMEFRAME_CODES } from '@/types/contracts';
@@ -10,6 +13,7 @@ export function setupIssues(
   selections: BacktestSelectionsDraft,
   strategyNeedsReview: boolean,
   missingMarkets: string[],
+  selectedStrategy?: StrategyCatalogEntry,
 ): Record<string, string> {
   const issues: Record<string, string> = {};
   const nameIssue = experimentNameIssue(draft.name);
@@ -54,11 +58,29 @@ export function setupIssues(
         sizing.value <= 0)
     )
       issues.sizing = 'Enter a positive sizing amount.';
-    if (
-      ['risk', 'equity_risk'].includes(sizing.mode) &&
-      draft.execution.stop_loss?.mode === 'none'
-    )
-      issues.sizing = 'Risk sizing requires an initial stop.';
+    if (['risk', 'equity_risk'].includes(sizing.mode)) {
+      const stopMode = draft.execution.stop_loss?.mode ?? 'strategy';
+      const stopParameters =
+        selectedStrategy?.parameters.filter(
+          (parameter) => parameter.purpose === 'stop_loss',
+        ) ?? [];
+      const missingStrategyStop =
+        stopMode === 'strategy' &&
+        stopParameters.length > 0 &&
+        stopParameters.every((parameter) => {
+          const value =
+            draft.strategy.parameters[parameter.name] === undefined
+              ? parameter.default
+              : draft.strategy.parameters[parameter.name];
+          return (
+            typeof value !== 'number' || !Number.isFinite(value) || value <= 0
+          );
+        });
+      if (stopMode === 'none' || missingStrategyStop)
+        issues.stop_loss =
+          'Risk sizing requires an initial stop. ' +
+          'Set a stop-loss distance or configure the strategy stop.';
+    }
   }
   for (const key of ['stop_loss', 'take_profit'] as const) {
     const exit = draft.execution[key];

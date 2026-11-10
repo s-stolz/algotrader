@@ -44,6 +44,7 @@ export function useCreationNavigation(inputs: NavigationInputs) {
       selections.value,
       strategyNeedsReview.value,
       missingMarkets.value,
+      selectedStrategy.value,
     ),
   );
   const setupErrors = computed(() =>
@@ -67,6 +68,7 @@ export function useCreationNavigation(inputs: NavigationInputs) {
     const row = scheduleRow(field);
     if (row) touchedSchedules.value.add(row);
     else touchedSetup.value[field] = true;
+    if (field === 'sizing') touchedSetup.value.stop_loss = true;
   }
   function resetSetupValidation() {
     setupAttempted.value = false;

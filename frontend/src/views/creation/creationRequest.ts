@@ -44,6 +44,7 @@ export function buildBacktestRequest(
     selections,
     !selected || selected.strategy_version !== draft.strategy.strategy_version,
     missingMarkets,
+    selected,
   );
   const firstIssue = Object.values(issues)[0];
   if (firstIssue) throw new Error(firstIssue);

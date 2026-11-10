@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
+import AlertCircleOutline from '@vicons/ionicons5/es/AlertCircleOutline';
 import InformationCircleOutline from '@vicons/ionicons5/es/InformationCircleOutline';
 import BasePopover from '@/components/Common/BasePopover.vue';
-defineProps<{ label: string }>();
+defineProps<{ label: string; error?: boolean }>();
 const show = ref(false);
 </script>
 <template>
@@ -15,14 +16,15 @@ const show = ref(false);
     <template #trigger>
       <n-button
         text
-        :aria-label="`About ${label}`"
+        :aria-label="error ? `Error: ${label}` : `About ${label}`"
+        :type="error ? 'error' : 'default'"
         @focus="show = true"
         @blur="show = false"
         @click="show = true"
         @keydown.esc="show = false"
       >
         <n-icon
-          :component="InformationCircleOutline"
+          :component="error ? AlertCircleOutline : InformationCircleOutline"
           :size="17"
         />
       </n-button>

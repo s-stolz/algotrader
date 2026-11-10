@@ -57,11 +57,6 @@ function changeExit(
     class="risk-fields"
     data-setup-field="sizing"
   >
-    <p
-      v-if="errors.sizing"
-      role="alert"
-      >{{ errors.sizing }}</p
-    >
     <div class="risk-row">
       <div class="sizing-field">
         <div class="field-label">
@@ -101,6 +96,18 @@ function changeExit(
               symbol’s increment; orders below its minimum or without enough
               margin are skipped.</p
             >
+            <p>Money amounts use each symbol’s settlement currency.</p>
+            <p
+              >Each entry has its own risk budget; combined position risk can be
+              higher.</p
+            >
+          </BacktestFieldHelp>
+          <BacktestFieldHelp
+            v-if="errors.sizing"
+            label="sizing"
+            error
+          >
+            <p>{{ errors.sizing }}</p>
           </BacktestFieldHelp>
         </div>
         <BaseSelect
@@ -117,26 +124,59 @@ function changeExit(
           Sizing amount<n-input-number
             :value="sizing.value"
             :min="0"
+            :status="
+              errors.sizing &&
+              (!sizing.value ||
+                sizing.value <= 0 ||
+                !Number.isFinite(sizing.value))
+                ? 'error'
+                : undefined
+            "
+            :input-props="{
+              'aria-invalid':
+                !!errors.sizing &&
+                (!sizing.value ||
+                  sizing.value <= 0 ||
+                  !Number.isFinite(sizing.value)),
+            }"
             aria-label="Sizing amount"
+            @blur="emit('change', 'sizing')"
             @update:value="execution.sizing = { ...sizing, value: $event }"
           />
         </label>
       </div>
       <label>
-        Leverage<n-input-number
+        <span class="field-label">
+          Leverage
+          <BacktestFieldHelp label="leverage">
+            <p
+              >Leverage determines required margin; it does not multiply the
+              requested position size.</p
+            >
+          </BacktestFieldHelp>
+        </span>
+        <n-input-number
           :value="sizing.leverage"
           :min="1"
+          :status="
+            errors.sizing &&
+            (!Number.isFinite(sizing.leverage) || sizing.leverage < 1)
+              ? 'error'
+              : undefined
+          "
+          :input-props="{
+            'aria-invalid':
+              !!errors.sizing &&
+              (!Number.isFinite(sizing.leverage) || sizing.leverage < 1),
+          }"
           aria-label="Leverage"
+          @blur="emit('change', 'sizing')"
           @update:value="
             execution.sizing = { ...sizing, leverage: $event ?? 1 }
           "
         />
       </label>
     </div>
-    <p
-      >Money amounts use each symbol’s settlement currency. Leverage determines
-      required margin; it does not multiply the requested position size.</p
-    >
     <div class="risk-row">
       <div
         v-for="key in exits"
@@ -144,21 +184,35 @@ function changeExit(
         class="protection-field"
         :data-setup-field="key"
       >
-        <p
+        <div class="field-label">
+          <span>{{ key === 'stop_loss' ? 'Stop-loss' : 'Take-profit' }}</span>
+          <BacktestFieldHelp
+            v-if="errors[key]"
+            :label="key === 'stop_loss' ? 'stop-loss' : 'take-profit'"
+            error
+          >
+            <p>{{ errors[key] }}</p>
+          </BacktestFieldHelp>
+        </div>
+        <span
           v-if="errors[key]"
-          role="alert"
-          >{{ errors[key] }}</p
+          :id="`setup-${key}-error`"
+          hidden
+          >{{ errors[key] }}</span
         >
-        <label
-          >{{ key === 'stop_loss' ? 'Stop-loss' : 'Take-profit'
-          }}<BaseSelect
-            :value="execution[key]?.mode ?? 'strategy'"
-            :options="protectionModes"
-            :aria-label="
-              key === 'stop_loss' ? 'Stop-loss source' : 'Take-profit source'
-            "
-            @update:value="changeExit(key, $event)"
-        /></label>
+        <BaseSelect
+          :value="execution[key]?.mode ?? 'strategy'"
+          :options="protectionModes"
+          :status="errors[key] ? 'error' : undefined"
+          :input-props="{
+            'aria-invalid': !!errors[key],
+            'aria-describedby': errors[key] ? `setup-${key}-error` : undefined,
+          }"
+          :aria-label="
+            key === 'stop_loss' ? 'Stop-loss source' : 'Take-profit source'
+          "
+          @update:value="changeExit(key, $event)"
+        />
         <slot
           v-if="(execution[key]?.mode ?? 'strategy') === 'strategy'"
           :name="key"
@@ -169,7 +223,13 @@ function changeExit(
             !['none', 'strategy'].includes(execution[key]!.mode)
           "
           :value="execution[key]!.value"
+          :status="errors[key] ? 'error' : undefined"
+          :input-props="{
+            'aria-invalid': !!errors[key],
+            'aria-describedby': errors[key] ? `setup-${key}-error` : undefined,
+          }"
           :min="0"
+          @blur="emit('change', key)"
           :aria-label="
             key === 'stop_loss' ? 'Stop-loss distance' : 'Take-profit distance'
           "
@@ -177,10 +237,6 @@ function changeExit(
         />
       </div>
     </div>
-    <p v-if="sizing.mode === 'risk' || sizing.mode === 'equity_risk'"
-      >Planned risk uses entry-to-stop distance, excluding costs. Each entry has
-      its own budget; combined position risk can be higher.</p
-    >
   </div>
 </template>
 <style scoped>

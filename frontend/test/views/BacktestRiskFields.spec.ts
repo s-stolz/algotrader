@@ -22,7 +22,11 @@ describe('Backtest risk settings', () => {
     await wrapper.vm.$nextTick();
     expect(execution.stop_loss).toEqual({ mode: 'ticks', value: 1 });
     expect(execution.take_profit?.mode).toBe('strategy');
-    expect(wrapper.text()).toContain('Each entry has its own budget');
+    expect(wrapper.text()).not.toContain('Each entry has its own risk budget');
+    await wrapper.get('[aria-label="About sizing modes"]').trigger('focus');
+    expect(document.body.textContent).toContain(
+      'Each entry has its own risk budget',
+    );
     wrapper.unmount();
   });
 });
