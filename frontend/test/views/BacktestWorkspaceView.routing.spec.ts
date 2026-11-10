@@ -4,7 +4,7 @@ import {
   backtest,
 } from './backtestWorkspaceRoutingFixtures';
 import router from '@/router';
-import { flushPromises } from '@vue/test-utils';
+import { DOMWrapper, flushPromises } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import {
   getBacktest,
@@ -65,7 +65,9 @@ describe('Backtest workspace routes', () => {
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('member-0');
     expect(window.location.pathname).toBe('/backtests/backtest-1');
 
-    await wrapper.get('[aria-label="Return to Chart"]').trigger('click');
+    await new DOMWrapper(document.body)
+      .get('[aria-label="Return to Chart"]')
+      .trigger('click');
     await flushPromises();
     expect(window.location.pathname).toBe('/');
     window.history.back();
@@ -75,9 +77,13 @@ describe('Backtest workspace routes', () => {
     await flushPromises();
     expect(useBacktestWorkspaceStore().selectedRunId).toBe('member-0');
 
-    await wrapper.get('[aria-label="Return to Chart"]').trigger('click');
+    await new DOMWrapper(document.body)
+      .get('[aria-label="Return to Chart"]')
+      .trigger('click');
     await flushPromises();
-    await wrapper.get('[aria-label="Open Backtests"]').trigger('click');
+    await new DOMWrapper(document.body)
+      .get('[aria-label="Open Backtests"]')
+      .trigger('click');
     await flushPromises();
     expect(window.location.pathname).toBe('/backtests');
     await wrapper

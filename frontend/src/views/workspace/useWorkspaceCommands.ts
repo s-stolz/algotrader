@@ -40,7 +40,7 @@ export function useWorkspaceCommands(context: {
       if (selectedBacktestId.value === run.backtest_id) {
         receiveMembers(
           run.backtest_id,
-          await listBacktestMembers(run.backtest_id),
+          await listBacktestMembers(run.backtest_id, false),
         );
       }
     } catch (error) {

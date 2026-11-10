@@ -1,3 +1,4 @@
+import { useExecutionLogStore } from '@/stores/executionLogStore';
 import { useBacktestEvents } from '@/utils/useBacktestEvents';
 import {
   computed,
@@ -73,7 +74,10 @@ export function useBacktestWorkspace() {
     page.value = 'analysis';
     void router.push(`/backtests/${encodeURIComponent(id)}`);
   }
-  const logRun = ref<BacktestRun | null>(null);
+  const executionLog = useExecutionLogStore();
+  function openExecutionLog(run: BacktestRun): void {
+    if (executionLogAvailable(run)) executionLog.selectRun(run);
+  }
   const openingChartRunId = ref<string | null>(null);
   function chartUnavailableReason(run: BacktestRun): string | null {
     return marketsStore.all.length === 0
@@ -91,7 +95,7 @@ export function useBacktestWorkspace() {
     pendingDetailId = runId;
     const sequence = ++detailSequence;
     try {
-      const detail = await getBacktestRun(runId);
+      const detail = await getBacktestRun(runId, false);
       if (
         sequence === detailSequence &&
         workspaceStore.selectedRunId === runId
@@ -122,14 +126,11 @@ export function useBacktestWorkspace() {
     const changed =
       JSON.stringify(backtestMembers.value) !== JSON.stringify(members);
     if (changed) backtestMembers.value = members;
-    if (logRun.value?.backtest_id === backtestId) {
-      const updatedLogRun = members.find(
-        (run) => run.run_id === logRun.value?.run_id,
+    if (executionLog.selectedRun?.backtest_id === backtestId) {
+      const current = members.find(
+        (run) => run.run_id === executionLog.selectedRun?.run_id,
       );
-      logRun.value =
-        updatedLogRun && executionLogAvailable(updatedLogRun)
-          ? updatedLogRun
-          : null;
+      if (!current || !executionLogAvailable(current)) executionLog.clear();
     }
     const eligible = selectedComparisonIds.value.filter((id) =>
       members.some((run) => run.run_id === id && run.status === 'succeeded'),
@@ -140,6 +141,14 @@ export function useBacktestWorkspace() {
   }
 
   function reconcileHistory(latestBacktests: Backtest[]): void {
+    if (
+      executionLog.selectedRun &&
+      !latestBacktests.some(
+        (backtest) =>
+          backtest.backtest_id === executionLog.selectedRun?.backtest_id,
+      )
+    )
+      executionLog.clear();
     if (
       overlayStore.selectedRun &&
       !latestBacktests.some(
@@ -165,9 +174,10 @@ export function useBacktestWorkspace() {
       void loadSelected(selectedRunId.value, true);
   }
   function redirectUnavailableBacktest(backtestId: string): void {
+    if (executionLog.selectedRun?.backtest_id === backtestId)
+      executionLog.clear();
     if (selectedBacktestId.value === backtestId) {
       resetInspection(null);
-      logRun.value = null;
     }
     if (router.currentRoute?.value.params.id === backtestId) {
       void router.replace('/');
@@ -254,7 +264,6 @@ export function useBacktestWorkspace() {
       );
     if (selectedBacktestId.value === backtest.backtest_id) {
       resetInspection(null);
-      logRun.value = null;
     }
     if (overlayBelongsToBacktest) {
       overlayStore.clearOverlay();
@@ -272,8 +281,12 @@ export function useBacktestWorkspace() {
     selectionNotice.value = null;
     try {
       if (marketsStore.all.length === 0) await marketsStore.fetch();
-      const selection = await overlayStore.selectRun(run);
-      if (selection.selectable) await router.push('/');
+      const chartRun = await getBacktestRun(run.run_id);
+      const selection = await overlayStore.selectRun(chartRun);
+      if (selection.selectable) {
+        const navigationFailure = await router.push('/');
+        if (!navigationFailure) executionLog.selectRun(chartRun, false);
+      }
     } catch (error) {
       selectionNotice.value =
         `Could not open run ${runName(run)} on chart: ` + errorMessage(error);
@@ -297,7 +310,6 @@ export function useBacktestWorkspace() {
     ++detailSequence;
     pendingDetailId = null;
     inspection.stop();
-    logRun.value = null;
   }
 
   watch(
@@ -349,7 +361,7 @@ export function useBacktestWorkspace() {
     creationSession,
     page,
     queueHealth,
-    logRun,
+    openExecutionLog,
     openingChartRunId,
     backToHistory,
     showAnalysis,

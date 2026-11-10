@@ -1,3 +1,4 @@
+import { fetchExecutionLog } from '@/api/executionLogClient';
 import { installBacktestSocket } from '../backtestEventSocket';
 import { flushPromises, mount } from '@vue/test-utils';
 import { h } from 'vue';
@@ -34,7 +35,19 @@ import type {
 import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
-vi.mock('vue-router', () => ({ useRouter: () => routerMock }));
+vi.mock('vue-router', () => ({
+  useRouter: () => routerMock,
+  useRoute: () => ({ path: '/backtests', query: {} }),
+}));
+vi.mock('@/api/executionLogClient', () => ({
+  fetchExecutionLog: vi.fn(async (runId: string, page: number) => ({
+    run_id: runId,
+    page,
+    page_size: 10,
+    total: 0,
+    items: [],
+  })),
+}));
 vi.mock('@/api/backtesterClient', () => ({
   fetchStrategyCatalog: vi.fn().mockResolvedValue([
     {
@@ -258,6 +271,15 @@ export function setupWorkspaceTests() {
     setActivePinia(pinia);
     localStorage.clear();
     routerMock.push.mockReset();
+    vi.mocked(fetchExecutionLog)
+      .mockReset()
+      .mockImplementation(async (runId, page) => ({
+        run_id: runId,
+        page,
+        page_size: 10,
+        total: 0,
+        items: [],
+      }));
     vi.mocked(listBacktestRuns).mockReset();
     vi.mocked(listBacktests).mockReset().mockResolvedValue([]);
     vi.mocked(getBacktest).mockReset();

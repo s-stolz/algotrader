@@ -164,4 +164,9 @@ export default defineComponent({
   outline: 2px solid var(--table-focus);
   outline-offset: -2px;
 }
+/* Rowspans can make a row's last DOM cell an interior table column. */
+.base-data-table
+  :deep(.n-table:not(.n-table--single-line) td[data-interior-cell]) {
+  border-right: 1px solid var(--n-merged-border-color);
+}
 </style>

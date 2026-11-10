@@ -84,12 +84,6 @@
       :workspace="workspace"
       :comparison="comparison"
     />
-    <ExecutionLogDrawer
-      v-if="logRun"
-      :run="logRun"
-      :show="logRun !== null"
-      @close="logRun = null"
-    />
   </main>
 </template>
 
@@ -101,7 +95,6 @@ import {
   RefreshOutline,
 } from '@vicons/ionicons5';
 import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
-import ExecutionLogDrawer from '@/components/Backtest/ExecutionLogDrawer.vue';
 import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
 import BacktestHistory from './workspace/BacktestHistory.vue';
 import BacktestInspection from './workspace/BacktestInspection.vue';
@@ -115,7 +108,6 @@ const {
   creationSession,
   page,
   queueHealth,
-  logRun,
   backToHistory,
   showAnalysis,
   refreshWorkspace,

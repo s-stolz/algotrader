@@ -55,7 +55,7 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
       };
       void (async () => {
         try {
-          const detail = await getBacktestRun(id);
+          const detail = await getBacktestRun(id, false);
           if (detail.status !== 'succeeded')
             throw new Error('Run is no longer successful');
           if (analysisTokens.get(id) === token)

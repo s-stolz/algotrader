@@ -15,7 +15,7 @@ import {
 import type { BacktestWorkspace } from '../useBacktestWorkspace';
 export function createComparisonRunActions(workspace: BacktestWorkspace) {
   const {
-    logRun,
+    openExecutionLog,
     openingChartRunId,
     overlayStore,
     chartUnavailableReason,
@@ -44,7 +44,7 @@ export function createComparisonRunActions(workspace: BacktestWorkspace) {
               onClick: (event: MouseEvent) => {
                 event.stopPropagation();
                 if (!available) return;
-                logRun.value = run;
+                openExecutionLog(run);
               },
             },
             {

@@ -1,9 +1,11 @@
+import { useExecutionLogStore } from '@/stores/executionLogStore';
 import {
   setupWorkspaceTests,
   run,
   backtest,
   mountWorkspace,
   routerMock,
+  seedBacktest,
 } from './backtestWorkspaceFixtures';
 import { flushPromises } from '@vue/test-utils';
 
@@ -31,6 +33,8 @@ describe('production Backtest Workspace: chart-navigation', () => {
       'selection and comparison',
 
     async () => {
+      const executionLog = useExecutionLogStore();
+      executionLog.selectRun(run('previous-log'));
       const members = [
         run('z-first', { backtest_id: 'direct', run_ordinal: 0 }),
         run('a-tenth', { backtest_id: 'direct', run_ordinal: 9 }),
@@ -75,6 +79,8 @@ describe('production Backtest Workspace: chart-navigation', () => {
       expect(useBacktestOverlayStore().selectedRunId).toBe('a-tenth');
       expect(fetchBacktestClosedTrades).toHaveBeenCalledWith('a-tenth');
       expect(routerMock.push).toHaveBeenCalledWith('/');
+      expect(executionLog.selectedRun?.run_id).toBe('a-tenth');
+      expect(executionLog.isOpen).toBe(false);
       expect(useBacktestWorkspaceStore().selectedRunId).toBe('z-first');
       expect(
         wrapper.get<HTMLInputElement>(
@@ -89,4 +95,23 @@ describe('production Backtest Workspace: chart-navigation', () => {
       wrapper.unmount();
     },
   );
+  it('retains the selected log when chart navigation fails', async () => {
+    const member = run('next');
+    seedBacktest([member]);
+    vi.mocked(getBacktestRun).mockResolvedValue(member);
+    routerMock.push.mockRejectedValue(new Error('Navigation unavailable'));
+    const wrapper = mountWorkspace(true);
+    await flushPromises();
+    await wrapper
+      .get('[data-testid="workspace-backtest-next"]')
+      .trigger('click');
+    await flushPromises();
+    const log = useExecutionLogStore();
+    log.selectRun(run('previous-log'));
+    await wrapper.get('[data-testid="workspace-chart-next"]').trigger('click');
+    await flushPromises();
+    expect(log.selectedRun?.run_id).toBe('previous-log');
+    expect(log.isOpen).toBe(true);
+    wrapper.unmount();
+  });
 });

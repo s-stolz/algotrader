@@ -175,7 +175,7 @@ export function useBacktestInspection(
     try {
       const [backtest, loadedMembers, loadedEvents] = await Promise.all([
         getBacktest(backtestId).catch(reportMissingBacktest),
-        listBacktestMembers(backtestId).catch(reportMissingBacktest),
+        listBacktestMembers(backtestId, false).catch(reportMissingBacktest),
         listBacktestEvents(backtestId).catch(reportMissingBacktest),
       ]);
       if (revision !== detailRevision) return;

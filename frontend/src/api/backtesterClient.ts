@@ -183,9 +183,17 @@ export async function getBacktest(backtestId: string): Promise<Backtest> {
 
 export async function listBacktestMembers(
   backtestId: string,
+  includeDiagnostics = true,
 ): Promise<BacktestRun[]> {
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/${encodeURIComponent(backtestId)}/runs`),
+    await fetch(
+      withQuery(
+        `${BACKTESTS_BASE_URL}/${encodeURIComponent(backtestId)}/runs`,
+        {
+          include_diagnostics: includeDiagnostics ? undefined : 'false',
+        },
+      ),
+    ),
     'Failed to fetch Backtest members',
   );
   if (
@@ -301,9 +309,16 @@ export async function previewBacktest(
   return payload;
 }
 
-export async function getBacktestRun(runId: string): Promise<BacktestRun> {
+export async function getBacktestRun(
+  runId: string,
+  includeDiagnostics = true,
+): Promise<BacktestRun> {
   const payload = await parseJsonResponse(
-    await fetch(`${BACKTESTS_BASE_URL}/runs/${encodeURIComponent(runId)}`),
+    await fetch(
+      withQuery(`${BACKTESTS_BASE_URL}/runs/${encodeURIComponent(runId)}`, {
+        include_diagnostics: includeDiagnostics ? undefined : 'false',
+      }),
+    ),
     'Failed to fetch backtest run',
   );
 
@@ -419,10 +434,12 @@ export async function fetchBacktestFills(
 
 export async function listBacktestRuns(
   query: BacktestRunListQuery = {},
+  includeDiagnostics = true,
 ): Promise<BacktestRun[]> {
   const payload = await parseJsonResponse(
     await fetch(
       withQuery(`${BACKTESTS_BASE_URL}/runs`, {
+        include_diagnostics: includeDiagnostics ? undefined : 'false',
         status: query.status,
         symbol: query.symbol,
         timeframe: query.timeframe,

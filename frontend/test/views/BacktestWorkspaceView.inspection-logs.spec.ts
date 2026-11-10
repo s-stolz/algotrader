@@ -2,135 +2,59 @@ import {
   setupWorkspaceTests,
   seedBacktest,
   run,
-  trade,
-  fill,
   mountWorkspace,
 } from './backtestWorkspaceFixtures';
 import { flushPromises } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  fetchBacktestClosedTrades,
-  fetchBacktestFills,
-} from '@/api/backtesterClient';
+import { fetchExecutionLog } from '@/api/executionLogClient';
+import { useExecutionLogStore } from '@/stores/executionLogStore';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
-import type { BacktestClosedTrade } from '@/types/backtesterContracts';
+import { deferred, logPage } from '../executionLogFixtures';
+import type { ExecutionLogPage } from '@/types/backtest/executionLog';
 
-function pendingTrades() {
-  let resolve!: (trades: BacktestClosedTrade[]) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<BacktestClosedTrade[]>((onResolve, onReject) => {
-    resolve = onResolve;
-    reject = onReject;
-  });
-  return {
-    promise,
-    resolve,
-    settle(outcome: 'success' | 'failure') {
-      if (outcome === 'success') resolve([trade(0, 'long', 'signal')]);
-      else reject(new Error('Old log unavailable'));
-    },
-  };
-}
-
-async function openFirstLog() {
-  seedBacktest([run('first'), run('second')]);
-  vi.mocked(fetchBacktestFills).mockResolvedValue([fill(0, 'sell')]);
-  const wrapper = mountWorkspace(true);
-  await flushPromises();
-  await wrapper
-    .get('[data-testid="workspace-backtest-first"]')
-    .trigger('click');
-  await flushPromises();
-  await wrapper.get('[data-testid="workspace-member-first"]').trigger('click');
-  await flushPromises();
-  const action = wrapper.get('[data-testid="workspace-log-first"]');
-  expect(action.attributes('aria-label')).toBe('View execution log for Run #1');
-  await action.trigger('click');
-  await flushPromises();
-  expect(document.body.textContent).toContain('Loading execution log');
-  expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
-  return wrapper;
-}
-
-function logContent() {
-  return document.body.querySelector('[data-testid="execution-log-drawer"]');
-}
-
-function expectSecondLog() {
-  expect(document.body.textContent).toContain('Execution log · Run #2');
-  expect(logContent()?.querySelector('.run-identity code')?.textContent).toBe(
-    'second',
-  );
-  expect(logContent()?.textContent).toContain('short');
-  expect(logContent()?.textContent).not.toContain('long');
-  expect(logContent()?.textContent).not.toContain('Old log unavailable');
-  expect(fetchBacktestClosedTrades).toHaveBeenLastCalledWith('second');
-  expect(fetchBacktestFills).toHaveBeenLastCalledWith('second');
-}
-
-describe('Backtest Workspace execution-log races', () => {
+describe('Backtest Workspace paginated execution logs', () => {
   setupWorkspaceTests();
-
-  it.each(['success', 'failure'] as const)(
-    'ignores a late %s after closing a log and preserves later selection',
+  it.each(['resolve', 'reject'] as const)(
+    'selects the action run without changing inspected run and ignores stale %s',
     async (outcome) => {
-      const first = pendingTrades();
-      vi.mocked(fetchBacktestClosedTrades).mockImplementation((id) =>
-        id === 'first'
-          ? first.promise
-          : Promise.resolve([trade(1, 'short', 'stop_loss')]),
+      const first = deferred<ExecutionLogPage>();
+      vi.mocked(fetchExecutionLog).mockImplementation((id) =>
+        id === 'first' ? first.promise : Promise.resolve(logPage('second')),
       );
-      const wrapper = await openFirstLog();
-      document.body
-        .querySelector<HTMLButtonElement>('.n-drawer-header__close')!
-        .click();
+      seedBacktest([run('first'), run('second')]);
+      const wrapper = mountWorkspace(true);
       await flushPromises();
-      expect(logContent()).toBeNull();
-      first.settle(outcome);
-      await flushPromises();
-      expect(logContent()).toBeNull();
-      expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
-
       await wrapper
-        .get('[data-testid="workspace-member-second"]')
+        .get('[data-testid="workspace-backtest-first"]')
         .trigger('click');
       await flushPromises();
+      await wrapper
+        .get('[data-testid="workspace-member-first"]')
+        .trigger('click');
+      await flushPromises();
+      await wrapper.get('[data-testid="workspace-log-first"]').trigger('click');
+      const store = useExecutionLogStore();
+      expect(store.selectedRun?.run_id).toBe('first');
+      expect(store.isOpen).toBe(true);
+      expect(store.loading).toBe(true);
       await wrapper
         .get('[data-testid="workspace-log-second"]')
         .trigger('click');
       await flushPromises();
-      expectSecondLog();
-      expect(useBacktestWorkspaceStore().selectedRunId).toBe('second');
-    },
-  );
-
-  it.each(['success', 'failure'] as const)(
-    'ignores a previous Run’s %s while the next log is still loading',
-    async (outcome) => {
-      const first = pendingTrades();
-      const second = pendingTrades();
-      vi.mocked(fetchBacktestClosedTrades).mockImplementation((id) =>
-        id === 'first' ? first.promise : second.promise,
+      if (outcome === 'resolve') first.resolve(logPage('first'));
+      else first.reject(new Error('old error'));
+      await flushPromises();
+      expect(store.selectedRun?.run_id).toBe('second');
+      expect(store.items).toEqual(logPage('second').items);
+      expect(store.error).toBeNull();
+      expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
+      expect(fetchExecutionLog).toHaveBeenLastCalledWith(
+        'second',
+        1,
+        false,
+        expect.any(AbortSignal),
       );
-      const wrapper = await openFirstLog();
-      await wrapper
-        .get('[data-testid="workspace-log-second"]')
-        .trigger('click');
-      await flushPromises();
-      first.settle(outcome);
-      await flushPromises();
-      expect(
-        logContent()?.querySelector('.run-identity code')?.textContent,
-      ).toBe('second');
-      expect(logContent()?.textContent).toContain('Loading execution log');
-      expect(logContent()?.textContent).not.toContain('Old log unavailable');
-      expect(logContent()?.querySelector('table')).toBeNull();
-      expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
-
-      second.resolve([trade(1, 'short', 'stop_loss')]);
-      await flushPromises();
-      expectSecondLog();
-      expect(useBacktestWorkspaceStore().selectedRunId).toBe('first');
+      wrapper.unmount();
     },
   );
 });

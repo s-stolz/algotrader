@@ -17,6 +17,7 @@ import {
   listBacktestRuns,
 } from '@/api/backtesterClient';
 
+import { useExecutionLogStore } from '@/stores/executionLogStore';
 import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
 
 describe('production Backtest Workspace: history-deletion', () => {
@@ -58,6 +59,9 @@ describe('production Backtest Workspace: history-deletion', () => {
         run_ordinal: 0,
       });
 
+      const log = useExecutionLogStore();
+      log.selectRun(overlay.selectedRun, false);
+
       await wrapper
         .find('[data-testid="workspace-delete-backtest-delete-me"]')
         .trigger('click');
@@ -66,6 +70,7 @@ describe('production Backtest Workspace: history-deletion', () => {
         wrapper.find('[data-testid="workspace-backtest-delete-me"]').exists(),
       ).toBe(true);
       expect(wrapper.text()).toContain('Conflict');
+      expect(log.selectedRun?.run_id).toBe('member-1');
       expect(listBacktests).toHaveBeenCalledTimes(1);
 
       await wrapper
@@ -77,6 +82,8 @@ describe('production Backtest Workspace: history-deletion', () => {
         wrapper.find('[data-testid="workspace-backtest-delete-me"]').exists(),
       ).toBe(false);
       expect(overlay.selectedRunId).toBeNull();
+      expect(log.selectedRun).toBeNull();
+      expect(log.isOpen).toBe(false);
       expect(wrapper.text()).not.toContain('Conflict');
       wrapper.unmount();
     },

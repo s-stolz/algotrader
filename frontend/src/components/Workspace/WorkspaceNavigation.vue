@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
+import { useExecutionLogStore } from '@/stores/executionLogStore';
+const executionLog = useExecutionLogStore();
+const showTradeAction = computed(() => executionLog.selectedRun !== null);
+const tradeActionLabel = computed(
+  () =>
+    `${executionLog.isOpen ? 'Hide' : 'Show'} trades for Run #` +
+    `${(executionLog.selectedRun?.run_ordinal ?? 0) + 1}`,
+);
 
 const backtestIconPath = [
   'M9 3h6M10 3v6L4 19a1.3 1.3 0 0 0 1.2 2h13.6',
@@ -26,52 +34,98 @@ watch(
 
 <template>
   <div class="workspace-navigation">
-    <RouterLink
-      :key="destination"
-      :to="destination"
-      :aria-label="destinationLabel"
-      aria-controls="workspace-screen"
-      class="workspace-edge-link"
-      :class="
-        isChart ? 'workspace-edge-link--right' : 'workspace-edge-link--left'
-      "
-    >
-      <span
-        class="workspace-edge-face"
-        aria-hidden="true"
+    <Teleport to="body">
+      <div
+        :tabindex="showTradeAction ? 0 : undefined"
+        :class="[
+          {
+            'edge-navigation-group': showTradeAction,
+          },
+          isChart ? 'edge-right' : 'edge-left',
+        ]"
       >
-        <svg
-          class="destination-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path
-            v-if="isChart"
-            :d="backtestIconPath"
-          />
-          <path
-            v-else
-            d="M3 3v18h18M7 15l4-5 4 3 6-8"
-          />
-        </svg>
-        <span class="icon-divider" />
-        <svg
-          class="direction-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="m9 6 6 6-6 6" />
-        </svg>
-      </span>
-    </RouterLink>
+        <div class="edge-control-panel">
+          <RouterLink
+            :key="destination"
+            :to="destination"
+            :aria-label="destinationLabel"
+            aria-controls="workspace-screen"
+            class="workspace-edge-link"
+            :class="
+              isChart
+                ? 'workspace-edge-link--right'
+                : 'workspace-edge-link--left'
+            "
+          >
+            <span
+              class="workspace-edge-face"
+              aria-hidden="true"
+            >
+              <svg
+                class="destination-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  v-if="isChart"
+                  :d="backtestIconPath"
+                />
+                <path
+                  v-else
+                  d="M3 3v18h18M7 15l4-5 4 3 6-8"
+                />
+              </svg>
+              <span class="icon-divider" />
+              <svg
+                class="direction-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m9 6 6 6-6 6" />
+              </svg>
+            </span>
+          </RouterLink>
+          <button
+            v-if="showTradeAction"
+            class="edge-trades-action"
+            :aria-expanded="executionLog.isOpen"
+            :aria-label="tradeActionLabel"
+            :title="tradeActionLabel"
+            aria-controls="execution-log-panel"
+            @click="executionLog.isOpen = !executionLog.isOpen"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="23"
+              height="23"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 15h16v6H4z" />
+              <path
+                :d="
+                  executionLog.isOpen
+                    ? 'M12 3v8m-4-4 4 4 4-4'
+                    : 'M12 11V3m-4 4 4-4 4 4'
+                "
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </Teleport>
 
     <section
       id="workspace-screen"
@@ -90,8 +144,8 @@ watch(
 
 <style scoped>
 .workspace-navigation {
-  position: fixed;
-  inset: 0;
+  position: relative;
+  height: 100%;
   padding: var(--design-space-md);
   box-sizing: border-box;
   overflow: hidden;
@@ -119,7 +173,7 @@ watch(
   position: fixed;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 20;
+  z-index: 1100;
   width: 64px;
   height: 176px;
   color: var(--design-color-interactive);
@@ -246,6 +300,124 @@ watch(
   }
   .workspace-edge-link:hover .workspace-edge-face,
   .workspace-edge-link:focus-visible .workspace-edge-face {
+    transition: none;
+  }
+}
+.edge-navigation-group {
+  position: fixed;
+  top: 50%;
+  width: 64px;
+  height: 224px;
+  transform: translateY(-50%);
+  z-index: 1100;
+}
+.edge-left {
+  left: 0;
+}
+.edge-right {
+  right: 0;
+}
+/* One moving surface keeps both actions aligned throughout the reveal. */
+.edge-control-panel {
+  display: contents;
+}
+.edge-navigation-group::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--design-color-edge-rail);
+  border: 1px solid var(--design-color-edge-border);
+  box-sizing: border-box;
+}
+.edge-left::before {
+  left: 0;
+}
+.edge-right::before {
+  right: 0;
+}
+.edge-navigation-group .edge-control-panel {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  inset: 0;
+  background: var(--design-color-fixed);
+  border: 1px solid var(--design-color-border);
+  opacity: 0;
+  visibility: hidden;
+}
+.edge-left .edge-control-panel {
+  transform: translateX(-100%);
+  border-radius: 0 16px 16px 0;
+}
+.edge-right .edge-control-panel {
+  transform: translateX(100%);
+  border-radius: 16px 0 0 16px;
+}
+.edge-navigation-group:hover .edge-control-panel,
+.edge-navigation-group:focus-visible .edge-control-panel,
+.edge-navigation-group:has(:focus-visible) .edge-control-panel {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+  transition:
+    transform 0.14s ease-out,
+    opacity 0.14s;
+}
+.edge-navigation-group:hover::before,
+.edge-navigation-group:focus-visible::before,
+.edge-navigation-group:has(:focus-visible)::before {
+  opacity: 0;
+}
+.edge-navigation-group .workspace-edge-link {
+  display: block;
+  position: relative;
+  top: auto;
+  transform: none;
+  width: 100%;
+  height: 176px;
+  flex-shrink: 0;
+}
+.edge-navigation-group .workspace-edge-link::before {
+  display: none;
+}
+.edge-navigation-group .workspace-edge-face {
+  opacity: 1;
+  visibility: inherit;
+  transform: none;
+  transition: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.edge-trades-action {
+  width: 100%;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--design-color-border);
+  background: transparent;
+  color: var(--design-color-interactive);
+  font: inherit;
+  cursor: pointer;
+  border-radius: inherit;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.edge-trades-action:hover {
+  background: var(--design-color-hover);
+}
+.edge-trades-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .edge-navigation-group:hover .edge-control-panel,
+  .edge-navigation-group:focus-visible .edge-control-panel,
+  .edge-navigation-group:has(:focus-visible) .edge-control-panel {
     transition: none;
   }
 }

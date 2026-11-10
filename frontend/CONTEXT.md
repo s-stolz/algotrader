@@ -190,6 +190,13 @@ read [commands](../docs/agent/COMMANDS.md) and
 
 Sizing and protective sources live in `BacktestRiskFields.vue`; dedicated strategy
 parameters use catalog `purpose` metadata to appear in Setup as constants.
-`SizingDetails.vue` displays persisted sizing/rejection events in execution logs.
+`executionLogStore` owns the explicitly selected Run and paginated execution log across
+Chart/Backtests navigation. `App.vue` docks `ExecutionLogPanel` using Naive UI `NSplit`;
+its proportional height preserves mounted chart/workspace instances. Inspection fetches
+10 records per page through the dedicated execution-log endpoint, with optional terminal
+unexecuted Orders. Normal workspace/member reads omit diagnostics. Opening a Run on the
+Chart still fetches full diagnostics and execution artifacts because chart indicators,
+pending-entry lines and execution overlays need them; it selects the log without opening it.
+The log selection is session-only and separate from persisted chart overlay selection.
 The symbol menu edits specifications through stable IDs. Refresh selected Market
 metadata after edits and resolve Run selections by saved ID or current Market names.

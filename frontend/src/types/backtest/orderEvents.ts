@@ -1,6 +1,7 @@
 import { isFiniteNumber, isRecord } from '../transportValues';
 
 const numericFields = [
+  'limit_price',
   'equity',
   'requested_budget',
   'entry_price',
@@ -12,7 +13,7 @@ const numericFields = [
   'risk_at_fill',
   'risk_difference',
 ] as const;
-const textFields = ['mode', 'reason'] as const;
+const textFields = ['mode', 'reason', 'side'] as const;
 
 export type SavedOrderEvent = {
   index: number;
