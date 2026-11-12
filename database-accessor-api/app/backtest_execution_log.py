@@ -25,49 +25,89 @@ TERMINAL_OUTCOMES = (
     "rejected",
 )
 
-# The full diagnostic array is inspected only inside PostgreSQL and only when requested.
+# Count and sort narrow identities before loading any page payloads.
+_TRADE_CTE = """
+WITH trade_rows AS (
+    SELECT exit_timestamp_ms AS timestamp_ms, 0 AS kind_order,
+           trade_sequence AS sequence, trade_id AS identity, NULL::text AS outcome
+    FROM backtest_closed_trades WHERE run_id = :run_id
+)
+"""
+
+
+# Keep only eligibility fields from the full diagnostic scan.
 _ORDER_CTES = """
 , raw_events AS (
-    SELECT event, ordinal
+    SELECT event->>'order_id' AS order_id, event->>'outcome' AS outcome, ordinal,
+           event->'timestamp_ms' AS event_timestamp
     FROM backtest_runs r,
          jsonb_array_elements(CASE WHEN jsonb_typeof(r.diagnostics->'order_events') = 'array'
              THEN r.diagnostics->'order_events' ELSE '[]'::jsonb END)
          WITH ORDINALITY AS e(event, ordinal)
     WHERE r.run_id = :run_id
       AND jsonb_typeof(event->'order_id') = 'string' AND event->>'order_id' <> ''
-), terminals AS (
-    SELECT DISTINCT ON (event->>'order_id') event, ordinal
+), filled_orders AS MATERIALIZED (
+    SELECT DISTINCT order_id FROM raw_events WHERE outcome = 'filled'
+), order_rows AS (
+    SELECT DISTINCT ON (order_id)
+           (event_timestamp #>> '{}')::bigint AS timestamp_ms, 1 AS kind_order,
+           ordinal AS sequence, order_id AS identity, outcome
     FROM raw_events e
-    WHERE event->>'outcome' = ANY(:terminal_outcomes)
-      AND jsonb_typeof(event->'timestamp_ms') = 'number'
-      AND CASE WHEN jsonb_typeof(event->'timestamp_ms') = 'number' THEN
-          abs((event->>'timestamp_ms')::numeric) <= 8640000000000000
-          AND trunc((event->>'timestamp_ms')::numeric) = (event->>'timestamp_ms')::numeric
+    WHERE outcome = ANY(:terminal_outcomes)
+      AND jsonb_typeof(event_timestamp) = 'number'
+      AND CASE WHEN jsonb_typeof(event_timestamp) = 'number' THEN
+          abs((event_timestamp #>> '{}')::numeric) <= 8640000000000000
+          AND trunc((event_timestamp #>> '{}')::numeric) = (event_timestamp #>> '{}')::numeric
           ELSE false END
       AND NOT EXISTS (
-          SELECT 1 FROM raw_events filled
-          WHERE filled.event->>'order_id' = e.event->>'order_id'
-            AND filled.event->>'outcome' = 'filled'
+          SELECT 1 FROM filled_orders filled WHERE filled.order_id = e.order_id
       )
-    ORDER BY event->>'order_id', ordinal DESC
+    ORDER BY order_id, ordinal DESC
+)
+"""
+
+
+_TRADE_ITEMS_CTE = """
+, trade_items AS (
+    SELECT p.timestamp_ms, p.kind_order, p.sequence, p.identity,
+           jsonb_build_object(
+               'kind', 'trade', 'timestamp_ms', p.timestamp_ms,
+               'trade', (to_jsonb(t) - 'run_id' - 'trade_sequence') ||
+                   jsonb_build_object('sequence', t.trade_sequence)
+           ) AS item
+    FROM page_rows p JOIN backtest_closed_trades t
+      ON t.run_id = :run_id AND t.trade_sequence = p.sequence
+    WHERE p.kind_order = 0
+)
+"""
+
+
+_ORDER_ITEMS_CTES = """
+, page_order_events AS MATERIALIZED (
+    SELECT p.identity AS order_id, e.ordinal, e.event
+    FROM backtest_runs r
+    CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(r.diagnostics->'order_events') = 'array'
+             THEN r.diagnostics->'order_events' ELSE '[]'::jsonb END
+    ) WITH ORDINALITY AS e(event, ordinal)
+    JOIN page_rows p ON p.kind_order = 1 AND p.identity = e.event->>'order_id'
+                   AND e.ordinal <= p.sequence
+    WHERE r.run_id = :run_id AND jsonb_typeof(e.event->'order_id') = 'string'
 ), latest_fields AS (
-    SELECT DISTINCT ON (e.event->>'order_id', field.key)
-           e.event->>'order_id' AS order_id, field.key, field.value
-    FROM raw_events e JOIN terminals t ON e.event->>'order_id' = t.event->>'order_id'
-         AND e.ordinal <= t.ordinal
+    SELECT DISTINCT ON (e.order_id, field.key) e.order_id, field.key, field.value
+    FROM page_order_events e
     CROSS JOIN LATERAL jsonb_each(e.event) AS field
     WHERE field.key IN ('side', 'limit_price', 'entry_price', 'quantity', 'requested_quantity')
-    ORDER BY e.event->>'order_id', field.key, e.ordinal DESC
+    ORDER BY e.order_id, field.key, e.ordinal DESC
 ), order_metadata AS (
     SELECT order_id, jsonb_object_agg(key, value) AS fields
     FROM latest_fields GROUP BY order_id
-), order_rows AS (
-    SELECT (t.event->>'timestamp_ms')::bigint AS timestamp_ms,
-           1 AS kind_order, t.ordinal AS sequence, t.event->>'order_id' AS identity,
+), order_items AS (
+    SELECT p.timestamp_ms, p.kind_order, p.sequence, p.identity,
            jsonb_build_object(
-             'kind', 'unexecuted_order', 'timestamp_ms', (t.event->>'timestamp_ms')::bigint,
+             'kind', 'unexecuted_order', 'timestamp_ms', p.timestamp_ms,
              'order', jsonb_build_object(
-                'order_id', t.event->>'order_id', 'outcome', t.event->>'outcome',
+                'order_id', p.identity, 'outcome', p.outcome,
                 'side', CASE WHEN metadata.fields->>'side' IN ('buy', 'sell')
                              THEN metadata.fields->'side' ELSE NULL END,
                 'planned_price', CASE WHEN jsonb_typeof(COALESCE(metadata.fields->'limit_price',
@@ -81,22 +121,8 @@ _ORDER_CTES = """
                     ELSE NULL END
              )
            ) AS item
-    FROM terminals t LEFT JOIN order_metadata metadata
-      ON metadata.order_id = t.event->>'order_id'
-)
-
-"""
-
-_TRADE_CTE = """
-WITH trade_rows AS (
-    SELECT exit_timestamp_ms AS timestamp_ms, 0 AS kind_order,
-           trade_sequence AS sequence, trade_id AS identity,
-           jsonb_build_object(
-               'kind', 'trade', 'timestamp_ms', exit_timestamp_ms,
-               'trade', (to_jsonb(t) - 'run_id' - 'trade_sequence') ||
-                   jsonb_build_object('sequence', trade_sequence)
-           ) AS item
-    FROM backtest_closed_trades t WHERE run_id = :run_id
+    FROM page_rows p LEFT JOIN order_metadata metadata ON metadata.order_id = p.identity
+    WHERE p.kind_order = 1
 )
 """
 
@@ -109,20 +135,27 @@ async def get_execution_log(
         raise ValueError("Invalid execution-log pagination")
     order_ctes = _ORDER_CTES if include_unexecuted else ""
     union = " UNION ALL SELECT * FROM order_rows" if include_unexecuted else ""
+    order_items_ctes = _ORDER_ITEMS_CTES if include_unexecuted else ""
+    items_union = " UNION ALL SELECT * FROM order_items" if include_unexecuted else ""
     sql = (
         _TRADE_CTE
         + order_ctes
         + f"""
 , timeline AS (SELECT * FROM trade_rows{union}),
-page_rows AS (
+page_rows AS MATERIALIZED (
     SELECT * FROM timeline
     ORDER BY timestamp_ms DESC, kind_order ASC, sequence DESC, identity ASC
     LIMIT :page_size OFFSET :offset
 )
+"""
+        + _TRADE_ITEMS_CTE
+        + order_items_ctes
+        + f"""
+, page_items AS (SELECT * FROM trade_items{items_union})
 SELECT r.run_id, r.status, r.result_schema_version,
        (SELECT count(*) FROM timeline) AS total,
        COALESCE((SELECT jsonb_agg(item ORDER BY timestamp_ms DESC, kind_order ASC,
-                                sequence DESC, identity ASC) FROM page_rows), '[]'::jsonb) AS items
+                                sequence DESC, identity ASC) FROM page_items), '[]'::jsonb) AS items
 FROM backtest_runs r WHERE r.run_id = :run_id
 """
     )
