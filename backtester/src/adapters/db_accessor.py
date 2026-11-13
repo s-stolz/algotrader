@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -20,6 +21,17 @@ REQUIRED_CANDLE_COLUMNS = (
 
 class CandleSourceClient(Protocol):
     """Protocol for the subset of db accessor client behavior used by the backtester."""
+
+    def stream_candles(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+        market_id: int | None = None,
+    ) -> Iterator[list[dict[str, Any]]]: ...
 
     def get_candles(
         self,
@@ -113,11 +125,26 @@ class DatabaseAccessorHistoricalDataAdapter:
         if self._market_identity is not None and (symbol, exchange) == self._market_identity[:2]:
             kwargs["market_id"] = self._market_identity[2]
         if self._client is not None:
-            return self._client.get_candles(**kwargs)
+            return _fetch_candle_frame(self._client, kwargs)
 
         client_cls = _import_database_accessor_client()
         with client_cls() as client:
-            return client.get_candles(**kwargs)
+            return _fetch_candle_frame(client, kwargs)
+
+
+def _fetch_candle_frame(client: CandleSourceClient, kwargs: dict[str, Any]) -> pd.DataFrame:
+    if kwargs["start_ms"] is None or kwargs["end_ms"] is None or kwargs["limit"] is not None:
+        return client.get_candles(**kwargs)
+
+    stream_kwargs = {
+        key: value for key, value in kwargs.items() if key not in ("limit", "include_timestamp_ms")
+    }
+    # Exhaust the stream inside the client context, including its completion check.
+    # Concatenate once to avoid repeatedly copying the accumulated history.
+    frames = [pd.DataFrame(batch) for batch in client.stream_candles(**stream_kwargs) if batch]
+    if not frames:
+        return pd.DataFrame(columns=pd.Index(REQUIRED_CANDLE_COLUMNS))
+    return pd.concat(frames, ignore_index=True)
 
 
 def _import_database_accessor_client() -> type[Any]:
