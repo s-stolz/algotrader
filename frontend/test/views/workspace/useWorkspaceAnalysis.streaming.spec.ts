@@ -69,9 +69,17 @@ describe('stream lifecycle', () => {
     expect(options.signal.aborted).toBe(true);
     expect(model.analysis.value.a.preview).toEqual([]);
     expect(model.analysis.value.b.curve).toEqual(exact);
-    model.loadAnalysis();
+    model.loadAnalysis(true);
+    await flushPromises();
+    expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(3);
+    model.start();
     await flushPromises();
     expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(5);
+    expect(
+      vi
+        .mocked(fetchBacktestEquityCurve)
+        .mock.calls.filter((call) => call[0] === 'b'),
+    ).toHaveLength(1);
     model.stop();
   });
   it('aborts deselected runs and drops their previews', async () => {

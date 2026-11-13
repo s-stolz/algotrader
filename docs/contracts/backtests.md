@@ -313,12 +313,14 @@ available. Order-mode replay continues to consume all required M1 Candles, with
 immutable instrument identity, multiplier, and the existing sizing cutoff.
 
 The Workspace admits at most two active replay streams and queues other selected
-Runs. Leaving the Workspace, applying to the chart, or deselecting a Run aborts
+Runs. Returning to All backtests (including browser navigation), leaving the
+Workspace, applying to the chart, or deselecting a Run aborts
 its stream. Backtester closes its downstream Candle stream, releasing the
 accessor cursor/session. A request already performing a bounded batch may finish
 that batch; cancellation does not cancel a Backtest or change durable Run state.
 Interrupted replays restart on return; completed curves remain cached in the
-Workspace. Failed reads and unavailable replay require explicit Retry.
+Workspace. Background refreshes and member changes do not resume hidden analysis.
+Failed reads and unavailable replay require explicit Retry.
 
 Partial curves use the chart library's normal fit-to-data timeline, which may
 rescale as previews arrive, and the existing loading animation until verification

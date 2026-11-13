@@ -235,7 +235,12 @@ export function useBacktestWorkspace() {
     const select = () => {
       selectionNotice.value = null;
       showAnalysis(rowKey(entry));
-      resetInspection(entry.backtest.backtest_id);
+      if (selectedBacktestId.value !== entry.backtest.backtest_id)
+        resetInspection(entry.backtest.backtest_id);
+      else {
+        workspaceStore.clearSelection();
+        ++detailSequence;
+      }
     };
     return {
       'data-testid': `workspace-backtest-${entry.backtest.backtest_id}`,
@@ -297,7 +302,8 @@ export function useBacktestWorkspace() {
         `Could not open run ${runName(run)} on chart: ` + errorMessage(error);
     } finally {
       openingChartRunId.value = null;
-      if (!navigated && isActive) loadAnalysis();
+      if (!navigated && isActive && page.value === 'analysis')
+        inspection.start();
     }
   }
 
@@ -307,7 +313,7 @@ export function useBacktestWorkspace() {
     historyRefresh.start();
     if (marketsStore.all.length === 0) void marketsStore.fetch();
     void loadHistory();
-    loadAnalysis();
+    if (page.value === 'analysis') inspection.start();
   }
 
   function stopUpdates(): void {
@@ -317,6 +323,15 @@ export function useBacktestWorkspace() {
     pendingDetailId = null;
     inspection.stop();
   }
+
+  watch(
+    page,
+    (nextPage) => {
+      if (nextPage === 'analysis' && isActive) inspection.start();
+      else inspection.stop();
+    },
+    { immediate: true },
+  );
 
   watch(
     () => router.currentRoute?.value.params,

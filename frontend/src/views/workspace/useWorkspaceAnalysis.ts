@@ -86,8 +86,8 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
   }
 
   function loadAnalysis(refresh = false): void {
-    active = true;
-    tradeResults.start();
+    if (!active) refresh = false;
+    if (active) tradeResults.start();
     const ids = selectedComparisonIds.value;
     for (const id of controllers.keys()) {
       if (!ids.includes(id)) cancel(id);
@@ -157,6 +157,11 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
     );
   }
 
+  function start() {
+    active = true;
+    loadAnalysis();
+  }
+
   function stop() {
     tradeResults.stop();
     active = false;
@@ -174,6 +179,7 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
     retryAnalysis,
     setComparison,
     toggleComparison,
+    start,
     stop,
   };
 }
