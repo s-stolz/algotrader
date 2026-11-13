@@ -85,7 +85,6 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import ReplayLoading from './workspace/comparison/ReplayLoading.vue';
-import { extendReplayRange } from './workspace/comparison/replayRange';
 import ReplayLegend from './workspace/comparison/ReplayLegend.vue';
 import type { ReplaySeries } from './backtestComparison';
 import { designTokens } from '@/design/tokens';
@@ -95,14 +94,12 @@ const props = defineProps<{
   series: ReplaySeries[];
   sampled?: boolean;
   loading?: boolean;
-  timeRange?: { from: number; to: number };
 }>();
 const equityContainer = ref<HTMLElement | null>(null);
 const drawdownContainer = ref<HTMLElement | null>(null);
 let equityChart: IChartApi | null = null;
 let drawdownChart: IChartApi | null = null;
 let resizeObserver: ResizeObserver | null = null;
-let renderedRange = '';
 let cancelFontWait: (() => void) | null = null;
 
 function seriesColor(run: ReplaySeries): string {
@@ -138,7 +135,6 @@ function fitCharts(): void {
 
 function render(): void {
   if (!equityChart || !drawdownChart) return;
-  const rangeKey = JSON.stringify(props.timeRange);
   let maxDrawdown = 0;
   for (const run of props.series) {
     for (const point of run.points)
@@ -195,28 +191,21 @@ function render(): void {
           `${(Math.abs(value) < minMove / 2 ? 0 : value).toFixed(drawdownPrecision)}%`,
       },
     });
-    if (series.points === run.points && renderedRange === rangeKey) continue;
+    if (series.points === run.points) continue;
     series.equity.setData(
-      extendReplayRange(
-        run.points.map((point) => ({
-          time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp,
-          value: point.equity,
-        })),
-        props.timeRange,
-      ),
+      run.points.map((point) => ({
+        time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp,
+        value: point.equity,
+      })),
     );
     series.drawdown.setData(
-      extendReplayRange(
-        run.points.map((point) => ({
-          time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp,
-          value: point.drawdown_pct,
-        })),
-        props.timeRange,
-      ),
+      run.points.map((point) => ({
+        time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp,
+        value: point.drawdown_pct,
+      })),
     );
     series.points = run.points;
   }
-  renderedRange = rangeKey;
   fitCharts();
 }
 
@@ -292,7 +281,7 @@ onMounted(() => {
     resizeObserver.observe(drawdownContainer.value);
   }
 });
-watch(() => [props.series, props.timeRange], render);
+watch(() => props.series, render);
 onUnmounted(() => {
   cancelFontWait?.();
   resizeObserver?.disconnect();

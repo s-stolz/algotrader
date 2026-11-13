@@ -354,11 +354,10 @@ describe('EquityReplayCharts', () => {
 });
 
 describe('progressive replay presentation', () => {
-  it('keeps the animation over partial charts and reserves the full time range', async () => {
+  it('keeps the animation over partial charts without padding the time range', async () => {
     const wrapper = mount(EquityReplayCharts, {
       props: {
         loading: true,
-        timeRange: { from: 1000, to: 10000 },
         series: [
           {
             runId: 'a',
@@ -370,11 +369,7 @@ describe('progressive replay presentation', () => {
     });
     await flushPromises();
     expect(wrapper.findAll('.replay-loading.overlay')).toHaveLength(2);
-    expect(setData).toHaveBeenCalledWith([
-      { time: 1 },
-      { time: 2, value: 100 },
-      { time: 10 },
-    ]);
+    expect(setData).toHaveBeenCalledWith([{ time: 2, value: 100 }]);
     await wrapper.setProps({ loading: false });
     expect(wrapper.find('.replay-loading').exists()).toBe(false);
     wrapper.unmount();

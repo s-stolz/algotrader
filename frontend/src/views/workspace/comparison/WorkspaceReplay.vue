@@ -47,7 +47,6 @@
       :series="chartSeries"
       :sampled="hasSampledCurve"
       :loading="pendingReplayCount > 0"
-      :time-range="timeRange"
     />
   </div>
 </template>
@@ -66,7 +65,6 @@ const {
   curveStatusIds,
   hasSampledCurve,
   chartSeries,
-  timeRange,
   analysisRunName,
 } = workspaceReplay(props.inspection);
 </script>

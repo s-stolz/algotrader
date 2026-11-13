@@ -47,14 +47,6 @@ export function workspaceReplay(inspection: BacktestWorkspace['inspection']) {
         : [];
     }),
   );
-  const timeRange = computed(() => ({
-    from: Math.min(
-      ...selectedComparisonRuns.value.map((run) => run.request.start_ms),
-    ),
-    to: Math.max(
-      ...selectedComparisonRuns.value.map((run) => run.request.end_ms),
-    ),
-  }));
   function analysisRunName(id: string): string {
     const run = currentRows.value.find((candidate) => candidate.run_id === id);
     return run ? comparisonRunLabel(run) : id;
@@ -66,7 +58,6 @@ export function workspaceReplay(inspection: BacktestWorkspace['inspection']) {
     curveStatusIds,
     hasSampledCurve,
     chartSeries,
-    timeRange,
     analysisRunName,
   };
 }

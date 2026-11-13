@@ -320,8 +320,9 @@ that batch; cancellation does not cancel a Backtest or change durable Run state.
 Interrupted replays restart on return; completed curves remain cached in the
 Workspace. Failed reads and unavailable replay require explicit Retry.
 
-Partial curves use the full selected time range and the existing loading
-animation until verification completes. No additional loading text is required.
+Partial curves use the chart library's normal fit-to-data timeline, which may
+rescale as previews arrive, and the existing loading animation until verification
+completes. No additional loading text is required.
 Read failure or unavailability removes the affected partial curve and exposes
 Retry, preserving other verified curves and saved metrics.
 
