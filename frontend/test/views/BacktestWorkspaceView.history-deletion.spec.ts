@@ -69,13 +69,11 @@ describe('production Backtest Workspace: history-deletion', () => {
       expect(
         wrapper.find('[data-testid="workspace-backtest-delete-me"]').exists(),
       ).toBe(true);
-      expect(wrapper.text()).toContain('Conflict');
+      expect(wrapper.text()).toContain('Couldn’t complete this action.');
       expect(log.selectedRun?.run_id).toBe('member-1');
       expect(listBacktests).toHaveBeenCalledTimes(1);
 
-      await wrapper
-        .find('[data-testid="workspace-delete-backtest-delete-me"]')
-        .trigger('click');
+      await wrapper.get('[aria-label="Retry: Action failed"]').trigger('click');
       await flushPromises();
       expect(deleteBacktest).toHaveBeenCalledTimes(2);
       expect(
@@ -84,7 +82,7 @@ describe('production Backtest Workspace: history-deletion', () => {
       expect(overlay.selectedRunId).toBeNull();
       expect(log.selectedRun).toBeNull();
       expect(log.isOpen).toBe(false);
-      expect(wrapper.text()).not.toContain('Conflict');
+      expect(wrapper.text()).not.toContain('Couldn’t complete this action.');
       wrapper.unmount();
     },
   );

@@ -1,3 +1,5 @@
+import { refreshBacktestActivityKey } from '@/components/Backtest/activity/activityContext';
+export const refreshActivity = vi.fn();
 import { fetchExecutionLog } from '@/api/executionLogClient';
 import { installBacktestSocket } from '../backtestEventSocket';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -199,6 +201,7 @@ export function mountWorkspace(includeBacktestDetail = false) {
     slots: { default: () => h(BacktestWorkspaceView) },
     global: {
       plugins: [pinia],
+      provide: { [refreshBacktestActivityKey as symbol]: refreshActivity },
       stubs: {
         EquityReplayCharts: true,
         BacktestOverview: !includeBacktestDetail,
@@ -266,6 +269,7 @@ export function fill(sequence: number, side: 'buy' | 'sell'): BacktestFill {
 export let pinia: Pinia;
 export function setupWorkspaceTests() {
   beforeEach(() => {
+    refreshActivity.mockClear();
     installBacktestSocket();
     pinia = createPinia();
     setActivePinia(pinia);

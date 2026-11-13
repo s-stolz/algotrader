@@ -2,6 +2,7 @@ import { useExecutionLogStore } from '@/stores/executionLogStore';
 import { useBacktestEvents } from '@/utils/useBacktestEvents';
 import {
   computed,
+  inject,
   ref,
   watch,
   onMounted,
@@ -18,7 +19,7 @@ import {
 } from '@/stores/backtestOverlayStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { BacktestRun, Backtest } from '@/types/backtesterContracts';
-import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
+import { refreshBacktestActivityKey } from '@/components/Backtest/activity/activityContext';
 import { reuseBacktest, reuseRun } from '../backtestReuse';
 import { runName } from '../backtestWorkspaceRuns';
 import { type HistoryEntry, rowKey } from './backtestHistoryRows';
@@ -34,9 +35,7 @@ export function useBacktestWorkspace() {
   const workspaceStore = useBacktestWorkspaceStore();
   const overlayStore = useBacktestOverlayStore();
   const marketsStore = useMarketsStore();
-  const queueHealth = ref<InstanceType<typeof BacktestQueueHealth> | null>(
-    null,
-  );
+  const refreshActivity = inject(refreshBacktestActivityKey, () => {});
   const detailError = ref<string | null>(null);
   const selectionNotice = ref<string | null>(null);
   const backtestMembers = ref<BacktestRun[]>([]);
@@ -59,7 +58,7 @@ export function useBacktestWorkspace() {
     selectedBacktestId,
     receiveMembers,
     refreshWorkspace,
-    refreshQueue,
+    refreshActivity,
     loadHistory,
     onBacktestDeleted,
   });
@@ -194,7 +193,7 @@ export function useBacktestWorkspace() {
   function refreshWorkspace(): Promise<void> {
     isRefreshing.value = true;
     if (selectedComparisonIds.value.length) loadAnalysis(true);
-    void queueHealth.value?.refresh();
+    refreshActivity();
     return loadHistory();
   }
 
@@ -257,9 +256,6 @@ export function useBacktestWorkspace() {
     };
   }
 
-  function refreshQueue(): void {
-    void queueHealth.value?.refresh();
-  }
   function onBacktestDeleted(backtest: Backtest): void {
     selectionNotice.value = null;
     const overlayBelongsToBacktest =
@@ -359,6 +355,7 @@ export function useBacktestWorkspace() {
   return {
     history,
     historyActions: {
+      refresh: refreshWorkspace,
       create: () => {
         creationOpen.value = true;
       },
@@ -377,11 +374,14 @@ export function useBacktestWorkspace() {
     selectedBacktestId,
     backtestMembers,
     detailError,
+    retrySelectedRun: () =>
+      selectedRunId.value
+        ? loadSelected(selectedRunId.value)
+        : Promise.resolve(),
     selectionNotice,
     creationOpen,
     creationSession,
     page,
-    queueHealth,
     openExecutionLog,
     openingChartRunId,
     backToHistory,

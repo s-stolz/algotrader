@@ -47,7 +47,7 @@ describe('docked execution workspace', () => {
       await router.push('/');
       const pinia = createPinia();
       const wrapper = mount(App, {
-        global: { plugins: [pinia, router] },
+        global: { plugins: [pinia, router], stubs: { BacktestActivity: true } },
         attachTo: document.body,
       });
       try {

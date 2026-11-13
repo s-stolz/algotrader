@@ -108,7 +108,9 @@ describe('backtest submission', () => {
     submit.click();
     await flushPromises();
     expect(submitBacktest).toHaveBeenCalledTimes(1);
-    expect(document.body.textContent).toContain('Connection lost');
+    expect(document.body.textContent).toContain(
+      'Couldn’t create this backtest.',
+    );
     await advancePreview();
     submit.click();
     await flushPromises();

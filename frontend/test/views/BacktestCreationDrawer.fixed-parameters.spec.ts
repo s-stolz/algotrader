@@ -204,7 +204,7 @@ describe('fixed parameters', () => {
         new BacktestSubmissionError(
           'strategy_version_unavailable',
           [],
-          'Strategy version is unavailable',
+          'Couldn’t create this backtest.',
         ),
       );
       const wrapper = openDrawer();
@@ -223,7 +223,7 @@ describe('fixed parameters', () => {
         useBacktestWorkspaceStore().creationDraft?.strategy.strategy_version,
       ).toBe(1);
       expect(document.body.textContent).toContain(
-        'Strategy version is unavailable',
+        'Couldn’t create this backtest.',
       );
       wrapper.unmount();
     },

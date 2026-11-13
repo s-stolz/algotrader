@@ -7,12 +7,19 @@ import {
   onMounted,
   onUnmounted,
   ref,
+  shallowRef,
+  watch,
 } from 'vue';
 
-import { fetchBacktestQueue } from '@/api/backtesterClient';
+import { fetchBacktestQueue, getBacktest } from '@/api/backtesterClient';
+import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
+import type { Backtest } from '@/types/backtesterContracts';
 import type { BacktestQueueSnapshot } from '@/types/backtesterContracts';
 
-export function useBacktestQueueHealth() {
+export function useBacktestActivity() {
+  const workspaceStore = useBacktestWorkspaceStore();
+  const backtests = shallowRef<Backtest[]>([]);
+  const isRefreshing = ref(false);
   const CLOCK_INTERVAL_MS = 1000;
   const snapshot = ref<BacktestQueueSnapshot | null>(null);
   const requestError = ref<string | null>(null);
@@ -40,25 +47,39 @@ export function useBacktestQueueHealth() {
       heartbeatAge + nowMs.value - receivedAtMs.value > current.stale_after_ms
     );
   });
-  const healthType = computed(() => {
-    if (isUnknown.value) return 'warning';
-    if (snapshot.value?.availability === 'healthy') return 'success';
-    if (snapshot.value?.availability === 'faulted') return 'error';
-    return snapshot.value ? 'warning' : 'default';
-  });
   let generation = 0;
   let readPending = false;
   let isActive = false;
   let refreshAfterRead = false;
   let clockTimer: ReturnType<typeof setInterval> | null = null;
 
-  function elapsed(sinceMs: number): string {
-    const seconds = Math.max(0, Math.floor((nowMs.value - sinceMs) / 1000));
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  async function loadActivityDetails(
+    latest: BacktestQueueSnapshot,
+    revision: number,
+  ) {
+    const ids = [
+      ...new Set([
+        ...(latest.active_run ? [latest.active_run.backtest_id] : []),
+        ...latest.queued.map((entry) => entry.backtest_id),
+      ]),
+    ];
+    const nameRevision = workspaceStore.nameRevision;
+    const results = await Promise.allSettled(ids.map((id) => getBacktest(id)));
+    if (!isActive || revision !== generation) return;
+    backtests.value = results.flatMap((result) =>
+      result.status === 'fulfilled'
+        ? [workspaceStore.preserveBacktestName(result.value, nameRevision)]
+        : [],
+    );
   }
+  watch(
+    () => workspaceStore.nameRevision,
+    () => {
+      backtests.value = backtests.value.map((backtest) =>
+        workspaceStore.preserveBacktestName(backtest, -1),
+      );
+    },
+  );
 
   async function refresh(background = false): Promise<void> {
     if (!isActive) return;
@@ -67,12 +88,14 @@ export function useBacktestQueueHealth() {
       return;
     }
     readPending = true;
+    isRefreshing.value = true;
     const request = ++generation;
     const requestedAtMs = Date.now();
     try {
       const latest = await fetchBacktestQueue();
       if (!isActive || request !== generation) return;
       snapshot.value = latest;
+      void loadActivityDetails(latest, request);
       requestError.value = null;
       receivedAtMs.value = requestedAtMs;
       nowMs.value = Date.now();
@@ -83,6 +106,7 @@ export function useBacktestQueueHealth() {
     } finally {
       if (request === generation) {
         readPending = false;
+        isRefreshing.value = false;
         if (refreshAfterRead && isActive) {
           refreshAfterRead = false;
           void refresh(true);
@@ -137,6 +161,7 @@ export function useBacktestQueueHealth() {
     isActive = false;
     ++generation;
     readPending = false;
+    isRefreshing.value = false;
     if (clockTimer) clearInterval(clockTimer);
     refreshAfterRead = false;
     clockTimer = null;
@@ -148,11 +173,11 @@ export function useBacktestQueueHealth() {
   onUnmounted(stop);
   return {
     snapshot,
+    backtests,
+    connected,
+    isRefreshing,
     readError,
-    nowMs,
     isUnknown,
-    healthType,
-    elapsed,
     refresh,
   };
 }

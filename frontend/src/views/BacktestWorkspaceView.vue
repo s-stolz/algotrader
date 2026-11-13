@@ -35,43 +35,22 @@
       @submitted="createdBacktest"
     />
 
-    <BacktestQueueHealth
-      ref="queueHealth"
-      :backtests="backtests"
-      @inspect="showAnalysis"
+    <BaseAsyncState
+      v-if="deleteError || cancelError"
+      kind="error"
+      compact
+      label="Action failed"
+      message="Couldn’t complete this action."
+      retry
+      @retry="workspace.commands.retryFailedAction()"
     />
-    <p
-      v-if="readError"
-      role="alert"
-    >
-      Run history unavailable; current lifecycle status is unknown.
-      {{ readError }}
-      <n-button
-        data-testid="workspace-refresh"
-        size="small"
-        quaternary
-        :loading="isRefreshing"
-        @click="refreshWorkspace"
-      >
-        <template #icon><n-icon :component="RefreshOutline" /></template>Retry
-        now
-      </n-button>
-    </p>
-    <p
-      v-if="deleteError"
-      role="alert"
-      >{{ deleteError }}</p
-    >
-    <p
+    <BaseAsyncState
       v-if="selectionNotice"
-      role="status"
-      >{{ selectionNotice }}</p
-    >
-    <p
-      v-if="cancelError"
-      role="alert"
-      >{{ cancelError }}</p
-    >
+      kind="info"
+      compact
+      label="Selection changed"
+      :message="selectionNotice"
+    />
 
     <BacktestHistory
       v-show="page === 'history'"
@@ -88,18 +67,15 @@
 </template>
 
 <script setup lang="ts">
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+
 import { NButton, NIcon } from 'naive-ui';
-import {
-  ArrowBackOutline,
-  AddOutline,
-  RefreshOutline,
-} from '@vicons/ionicons5';
-import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
-import BacktestCreationDrawer from './BacktestCreationDrawer.vue';
-import BacktestHistory from './workspace/BacktestHistory.vue';
-import BacktestInspection from './workspace/BacktestInspection.vue';
-import { useBacktestWorkspace } from './workspace/useBacktestWorkspace';
-import { useWorkspaceComparison } from './workspace/comparison/useWorkspaceComparison';
+import { ArrowBackOutline, AddOutline } from '@vicons/ionicons5';
+import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
+import BacktestHistory from '@/views/workspace/BacktestHistory.vue';
+import BacktestInspection from '@/views/workspace/BacktestInspection.vue';
+import { useBacktestWorkspace } from '@/views/workspace/useBacktestWorkspace';
+import { useWorkspaceComparison } from '@/views/workspace/comparison/useWorkspaceComparison';
 defineOptions({ name: 'BacktestWorkspaceView' });
 const workspace = useBacktestWorkspace();
 const comparison = useWorkspaceComparison(workspace);
@@ -107,14 +83,10 @@ const {
   creationOpen,
   creationSession,
   page,
-  queueHealth,
   backToHistory,
-  showAnalysis,
-  refreshWorkspace,
   createdBacktest,
   selectionNotice,
 } = workspace;
-const { backtests, isRefreshing, readError } = workspace.history;
 const { cancelError, deleteError } = workspace.commands;
 </script>
 <style scoped>
@@ -136,12 +108,6 @@ const { cancelError, deleteError } = workspace.commands;
   gap: var(--design-space-xl);
   min-height: 36px;
   margin-bottom: var(--design-space-xl);
-}
-.section-heading p {
-  margin: var(--design-space-sm) 0 0;
-  color: var(--design-color-muted);
-  font-size: var(--design-text-body);
-  overflow-wrap: anywhere;
 }
 .workspace-create {
   flex-shrink: 0;

@@ -50,10 +50,12 @@ describe('execution log panel', () => {
     useExecutionLogStore().selectRun(backtestRun());
     const wrapper = mount(ExecutionLogPanel);
     await flushPromises();
-    expect(wrapper.get('[role="alert"]').text()).toContain('offline');
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'Couldn’t load trades.',
+    );
     await wrapper.get('button').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('No closed trades');
+    expect(wrapper.text()).toContain('No trades yet');
     expect(wrapper.findComponent(NPagination).exists()).toBe(false);
     wrapper.unmount();
   });

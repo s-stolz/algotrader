@@ -57,11 +57,11 @@ describe('Backtest Workspace replay loading', () => {
       .get('[data-testid="comparison-select-loading-0"]')
       .setValue(true);
     await flushPromises();
-    expect(wrapper.findAll('.chart-skeleton')).toHaveLength(2);
-    expect(wrapper.get('.replay-loading').attributes('aria-busy')).toBe('true');
-    expect(wrapper.get('.replay-loading').text()).not.toContain(
-      'Loading equity and drawdown',
-    );
+    expect(
+      wrapper
+        .get('[aria-label="Loading equity replay"]')
+        .attributes('aria-busy'),
+    ).toBe('true');
     resolveFirst({
       availability: 'exact',
       reason: null,
@@ -80,7 +80,6 @@ describe('Backtest Workspace replay loading', () => {
       .setValue(true);
     await flushPromises();
     expect(chart.props('loading')).toBe(true);
-    expect(wrapper.findAll('.chart-skeleton')).toHaveLength(0);
     expect(wrapper.getComponent({ name: 'EquityReplayCharts' }).vm).toBe(
       chart.vm,
     );
@@ -89,7 +88,7 @@ describe('Backtest Workspace replay loading', () => {
     expect(wrapper.find('.replay-loading').exists()).toBe(false);
     expect(
       wrapper.get('[data-testid="curve-status-loading-1"]').text(),
-    ).toContain('Replay unavailable');
+    ).toContain('Couldn’t load replay.');
     expect(wrapper.getComponent({ name: 'EquityReplayCharts' }).vm).toBe(
       chart.vm,
     );

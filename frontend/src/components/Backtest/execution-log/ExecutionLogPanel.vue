@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+
 import { computed } from 'vue';
 import { EXECUTION_LOG_PAGE_SIZE } from '@/types/backtest/executionLog';
-import { NButton, NPagination, NScrollbar, NSwitch } from 'naive-ui';
-import ExecutionLogTable from './ExecutionLogTable.vue';
+import { NPagination, NScrollbar, NSwitch } from 'naive-ui';
+import ExecutionLogTable from '@/components/Backtest/execution-log/ExecutionLogTable.vue';
 import { useExecutionLogStore } from '@/stores/executionLogStore';
 const log = useExecutionLogStore();
 const label = computed(() =>
@@ -34,36 +36,14 @@ const label = computed(() =>
       >
     </header>
     <n-scrollbar class="log-scroll">
-      <p
-        v-if="log.loading"
-        class="notice"
-        role="status"
-        >Loading execution log…</p
-      >
-      <div
-        v-else-if="log.error"
-        class="notice"
-        role="alert"
-      >
-        <p>Execution log unavailable. {{ log.error }}</p>
-        <n-button
-          size="small"
-          @click="log.retry"
-          >Retry</n-button
-        >
-      </div>
-      <p
-        v-else-if="!log.items.length"
-        class="notice"
-        role="status"
-        >{{
-          log.total > 0
-            ? 'No records on this page.'
-            : log.includeUnexecuted
-              ? 'No trades or unexecuted orders in this run.'
-              : 'No closed trades in this run.'
-        }}</p
-      >
+      <BaseAsyncState
+        v-if="log.loading || log.error || !log.items.length"
+        :kind="log.loading ? 'loading' : log.error ? 'error' : 'empty'"
+        label="Execution log"
+        :message="log.error ? 'Couldn’t load trades.' : 'No trades yet'"
+        :retry="!!log.error"
+        @retry="log.retry"
+      />
       <ExecutionLogTable
         v-else
         :items="log.items"
@@ -130,9 +110,6 @@ h2 {
 .log-scroll {
   flex: 1;
   min-height: 0;
-}
-.notice {
-  padding: var(--design-space-xl);
 }
 .floating-pagination {
   position: absolute;

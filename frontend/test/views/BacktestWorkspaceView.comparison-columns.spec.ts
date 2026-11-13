@@ -206,7 +206,7 @@ describe('production Backtest Workspace: comparison-columns', () => {
         const ending = wrapper.get('td[data-col-key="ending"]');
         expect(ending.text()).toBe(outcome === 'exact' ? '10123' : '—');
         if (outcome === 'error')
-          expect(wrapper.text()).toContain('Replay offline');
+          expect(wrapper.text()).toContain('Couldn’t load replay.');
       } finally {
         wrapper.unmount();
       }

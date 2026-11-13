@@ -35,6 +35,8 @@ export function useBacktestInspection(
   const selectedBacktest = shallowRef<Backtest | null>(null);
   const members = ref<BacktestRun[] | null>(null);
   const events = ref<BacktestEvent[] | null>(null);
+  const membersError = ref<string | null>(null);
+  const membersPending = ref(false);
   const detailError = ref<string | null>(null);
   const controlError = ref<string | null>(null);
   const controlPending = ref(false);
@@ -157,10 +159,18 @@ export function useBacktestInspection(
       return;
     }
     readPending = true;
+    membersPending.value = members.value === null || !background;
+    if (!background) {
+      membersError.value = null;
+      if (!selectedBacktest.value) detailError.value = null;
+    }
     const revision = ++detailRevision;
     const nameReadRevision = workspaceStore.nameRevision;
     let isUnavailable = false;
-    function reportMissingBacktest(error: unknown): never {
+    function reportReadFailure(
+      error: unknown,
+      target: 'detail' | 'members',
+    ): never {
       if (
         revision === detailRevision &&
         !isUnavailable &&
@@ -170,33 +180,69 @@ export function useBacktestInspection(
         isUnavailable = true;
         callbacks.unavailable(backtestId);
       }
+      if (revision === detailRevision && !isUnavailable) {
+        if (target === 'members') membersError.value = 'Couldn’t load runs';
+        else detailError.value = 'Couldn’t load this backtest.';
+      }
       throw error;
     }
     try {
-      const [backtest, loadedMembers, loadedEvents] = await Promise.all([
-        getBacktest(backtestId).catch(reportMissingBacktest),
-        listBacktestMembers(backtestId, false).catch(reportMissingBacktest),
-        listBacktestEvents(backtestId).catch(reportMissingBacktest),
-      ]);
-      if (revision !== detailRevision) return;
-      for (const command of ['pause', 'resume', 'cancel'] as const) {
-        const pending = commandIds[command];
-        if (
-          pending &&
-          loadedEvents.some((event) => event.command_id === pending)
-        ) {
-          delete commandIds[command];
-          controlError.value = null;
-        }
+      const [backtestResult, membersResult, eventsResult] =
+        await Promise.allSettled([
+          getBacktest(backtestId)
+            .then((backtest) => {
+              if (revision === detailRevision && !isUnavailable) {
+                selectedBacktest.value = workspaceStore.preserveBacktestName(
+                  backtest,
+                  nameReadRevision,
+                );
+              }
+              return backtest;
+            })
+            .catch((error) => reportReadFailure(error, 'detail')),
+          listBacktestMembers(backtestId, false)
+            .catch((error) => reportReadFailure(error, 'members'))
+            .finally(() => {
+              if (revision === detailRevision) membersPending.value = false;
+            }),
+          listBacktestEvents(backtestId).catch((error) =>
+            reportReadFailure(error, 'detail'),
+          ),
+        ]);
+      if (revision !== detailRevision || isUnavailable) return;
+      if (backtestResult.status === 'fulfilled') {
+        selectedBacktest.value = workspaceStore.preserveBacktestName(
+          backtestResult.value,
+          nameReadRevision,
+        );
+        detailError.value = null;
+      } else {
+        detailError.value = 'Couldn’t load this backtest.';
       }
-      detailError.value = null;
-      selectedBacktest.value = workspaceStore.preserveBacktestName(
-        backtest,
-        nameReadRevision,
-      );
-      members.value = loadedMembers;
-      events.value = loadedEvents;
-      callbacks.members(backtestId, loadedMembers);
+      if (membersResult.status === 'fulfilled') {
+        members.value = membersResult.value;
+        membersError.value = membersResult.value.length
+          ? null
+          : 'Couldn’t load runs';
+        callbacks.members(backtestId, membersResult.value);
+      } else {
+        membersError.value = 'Couldn’t load runs';
+      }
+      if (eventsResult.status === 'fulfilled') {
+        events.value = eventsResult.value;
+        for (const command of ['pause', 'resume', 'cancel'] as const) {
+          const pending = commandIds[command];
+          if (
+            pending &&
+            eventsResult.value.some((event) => event.command_id === pending)
+          ) {
+            delete commandIds[command];
+            controlError.value = null;
+          }
+        }
+      } else {
+        detailError.value = 'Couldn’t refresh this backtest.';
+      }
     } catch (error) {
       if (revision === detailRevision && !isUnavailable) {
         detailError.value =
@@ -205,6 +251,7 @@ export function useBacktestInspection(
     } finally {
       if (revision === detailRevision) {
         readPending = false;
+        membersPending.value = false;
         if (refreshAfterRead && isActive && props.backtestId) {
           refreshAfterRead = false;
           void loadDetail(props.backtestId, true);
@@ -213,11 +260,13 @@ export function useBacktestInspection(
     }
   }
 
+  let failedCommand: BacktestCommand | null = null;
   async function control(command: BacktestCommand): Promise<void> {
     const backtestId = props.backtestId;
     if (!backtestId || controlPending.value) return;
     controlPending.value = true;
     controlError.value = null;
+    failedCommand = null;
     const pending = commandIds[command] ?? crypto.randomUUID();
     commandIds[command] = pending;
     try {
@@ -231,6 +280,7 @@ export function useBacktestInspection(
       }
     } catch (error) {
       if (props.backtestId === backtestId) {
+        failedCommand = command;
         controlError.value =
           error instanceof Error ? error.message : 'Backtest command failed';
         await loadDetail(backtestId);
@@ -271,6 +321,9 @@ export function useBacktestInspection(
       detailError.value = null;
       selectedBacktest.value = null;
       members.value = null;
+      membersError.value = null;
+      membersPending.value = false;
+      failedCommand = null;
       events.value = null;
       controlError.value = null;
       delete commandIds.pause;
@@ -283,6 +336,12 @@ export function useBacktestInspection(
 
   return {
     selectedBacktest,
+    membersError,
+    membersPending,
+    refresh: () =>
+      props.backtestId ? loadDetail(props.backtestId) : Promise.resolve(),
+    retryControl: () =>
+      failedCommand ? control(failedCommand) : Promise.resolve(),
     members,
     events,
     detailError,

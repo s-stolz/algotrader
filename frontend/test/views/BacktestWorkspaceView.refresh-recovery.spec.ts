@@ -10,14 +10,15 @@ import { listBacktests } from '@/api/backtesterClient';
 
 describe('production Backtest Workspace: refresh-recovery', () => {
   setupWorkspaceTests();
-  it('reports an unavailable initial history read without calling it empty', async () => {
+  it('shows a retryable error for an unavailable history read', async () => {
     vi.mocked(listBacktests).mockRejectedValue(
       new Error('Service unavailable'),
     );
     const wrapper = mountWorkspace();
     await flushPromises();
-    expect(wrapper.text()).toContain('current lifecycle status is unknown');
-    expect(wrapper.text()).not.toContain('No saved Backtest Runs.');
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'Couldn’t load backtests.',
+    );
     wrapper.unmount();
   });
 
@@ -38,9 +39,9 @@ describe('production Backtest Workspace: refresh-recovery', () => {
     rejectRead(new Error('Slow service failure'));
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Slow service failure');
-    expect(wrapper.text()).toContain('current lifecycle status is unknown');
-    expect(wrapper.text()).not.toContain('Loading saved runs');
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'Couldn’t load backtests.',
+    );
     wrapper.unmount();
   });
 });

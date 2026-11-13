@@ -1,22 +1,27 @@
+import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchBacktestQueue } from '@/api/backtesterClient';
-import { useBacktestQueueHealth } from '@/components/Backtest/useBacktestQueueHealth';
+import { useBacktestActivity } from '@/components/Backtest/activity/useBacktestActivity';
 import {
   emitBacktestEvent,
   installBacktestSocket,
-} from '../../backtestEventSocket';
-import { healthySnapshot, NOW } from './backtestQueueFixtures';
+} from '../../../backtestEventSocket';
+import { healthySnapshot, NOW } from './backtestActivityFixtures';
 
-vi.mock('@/api/backtesterClient', () => ({ fetchBacktestQueue: vi.fn() }));
+vi.mock('@/api/backtesterClient', () => ({
+  fetchBacktestQueue: vi.fn(),
+  getBacktest: vi.fn().mockRejectedValue(new Error('Unavailable')),
+}));
 const Host = defineComponent({
-  setup: useBacktestQueueHealth,
+  setup: useBacktestActivity,
   template: '<div />',
 });
 
 describe('queue health events', () => {
   beforeEach(() => {
+    setActivePinia(createPinia());
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     installBacktestSocket();
@@ -36,10 +41,9 @@ describe('queue health events', () => {
       });
       const host = mount(Host);
       await flushPromises();
-      expect(host.vm.healthType).toBe('success');
+      expect(host.vm.isUnknown).toBe(false);
       vi.advanceTimersByTime(2000);
       expect(host.vm.isUnknown).toBe(true);
-      expect(host.vm.healthType).toBe('warning');
       expect(fetchBacktestQueue).toHaveBeenCalledOnce();
       host.unmount();
     },

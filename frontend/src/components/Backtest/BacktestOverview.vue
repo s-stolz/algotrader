@@ -4,25 +4,23 @@
     aria-label="Backtest"
     class="backtest-history"
   >
-    <p
-      v-if="detailError"
-      class="notice error"
-      role="alert"
+    <div
+      v-if="!selectedBacktest || detailError"
+      class="backtest-detail"
     >
-      Live status unavailable.
-      {{
-        selectedBacktest
-          ? 'Showing the last saved snapshot.'
-          : 'Retrying automatically.'
-      }}
-      {{ detailError }}
-    </p>
-    <p
-      v-if="!selectedBacktest && !detailError"
-      class="loading"
-      role="status"
-      >Loading backtest…</p
-    >
+      <BaseAsyncState
+        :kind="detailError ? 'error' : 'loading'"
+        :label="detailError ? 'Backtest unavailable' : 'Loading backtest'"
+        :message="
+          selectedBacktest
+            ? 'Couldn’t refresh this backtest. Showing saved data.'
+            : 'Couldn’t load this backtest.'
+        "
+        :retry="!!detailError"
+        :retrying="inspection.membersPending.value"
+        @retry="inspection.refresh()"
+      />
+    </div>
     <section
       v-if="selectedBacktest"
       aria-label="Accepted Backtest"
@@ -81,50 +79,34 @@
         v-if="!isTerminal"
         :inspection="inspection"
       />
-      <p
-        v-if="selectedBacktest.outcome_counts.failed > 0"
-        class="notice warning"
-        role="status"
-      >
-        {{ selectedBacktest.outcome_counts.failed }} run{{
-          selectedBacktest.outcome_counts.failed === 1 ? '' : 's'
-        }}
-        failed. Successful results remain available in Results below.
-      </p>
-      <p
-        v-if="controlPending"
-        class="notice"
-        role="status"
-        >Applying backtest command…</p
-      >
-      <p
-        v-if="controlError"
-        class="notice error"
-        role="alert"
-        >{{ controlError }}</p
-      >
-      <p
-        v-if="members && members.length === 0"
-        class="notice error"
-        role="alert"
-        >Accepted Backtest has no members.</p
-      >
-
+      <BaseAsyncState
+        v-if="controlPending || controlError"
+        compact
+        :kind="controlPending ? 'loading' : 'error'"
+        label="Backtest action"
+        message="Couldn’t update this backtest."
+        :retry="!!controlError"
+        @retry="inspection.retryControl()"
+      />
       <BacktestSavedDetails :inspection="inspection" />
     </section>
   </section>
 </template>
 
 <script setup lang="ts">
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+
+import { watch } from 'vue';
 import { NButton, NIcon, NTag } from 'naive-ui';
 import { PauseOutline, PlayOutline } from '@vicons/ionicons5';
 import type { BacktestRun } from '@/types/backtesterContracts';
-import ExperimentName from './ExperimentName.vue';
-import BacktestProgress from './inspection/BacktestProgress.vue';
-import BacktestSavedDetails from './inspection/BacktestSavedDetails.vue';
-import { useBacktestInspection } from './inspection/useBacktestInspection';
+import ExperimentName from '@/components/Backtest/ExperimentName.vue';
+import BacktestProgress from '@/components/Backtest/inspection/BacktestProgress.vue';
+import BacktestSavedDetails from '@/components/Backtest/inspection/BacktestSavedDetails.vue';
+import { useBacktestInspection } from '@/components/Backtest/inspection/useBacktestInspection';
 const emit = defineEmits<{
   members: [backtestId: string, runs: BacktestRun[]];
+  'runs-state': [backtestId: string, state: 'loading' | 'error' | 'ready'];
   cancelled: [];
   unavailable: [backtestId: string];
 }>();
@@ -134,9 +116,30 @@ const inspection = useBacktestInspection(props, {
   cancelled: () => emit('cancelled'),
   unavailable: (backtestId) => emit('unavailable', backtestId),
 });
+defineExpose({ refresh: inspection.refresh });
+watch(
+  [
+    () => props.backtestId,
+    inspection.members,
+    inspection.membersError,
+    inspection.membersPending,
+  ],
+  ([id]) => {
+    if (!id) return;
+    const state =
+      inspection.membersPending.value && !inspection.members.value?.length
+        ? 'loading'
+        : inspection.membersError.value
+          ? 'error'
+          : inspection.members.value
+            ? 'ready'
+            : 'loading';
+    emit('runs-state', id, state);
+  },
+  { immediate: true },
+);
 const {
   selectedBacktest,
-  members,
   detailError,
   controlPending,
   controlError,
@@ -228,27 +231,6 @@ p {
     var(--design-color-warning) 12%,
     var(--design-color-inset)
   );
-}
-.notice {
-  margin: var(--design-space-md) var(--design-space-xl);
-  padding: var(--design-space-md) var(--design-space-lg);
-  border: 1px solid var(--design-color-border);
-  border-radius: var(--design-radius-panel);
-  line-height: 1.6;
-}
-.notice.error {
-  color: var(--design-color-error);
-  background: var(--design-color-inset);
-  border-color: var(--design-color-border);
-}
-.notice.warning {
-  color: var(--design-color-warning);
-  background: var(--design-color-inset);
-  border-color: var(--design-color-border);
-}
-.loading {
-  padding: var(--design-space-xl);
-  color: var(--design-color-muted);
 }
 @media (max-width: 600px) {
   .backtest-header {

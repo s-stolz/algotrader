@@ -180,7 +180,7 @@ describe('accepted backtest inspection: commands', () => {
     );
     await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('Connection lost');
+    expect(wrapper.text()).toContain('Couldn’t update this backtest.');
     await wrapper.get('.header-actions button').trigger('click');
     await flushPromises();
     const calls = vi.mocked(controlBacktest).mock.calls;

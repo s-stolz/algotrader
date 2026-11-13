@@ -180,7 +180,7 @@ describe('production Backtest Workspace: comparison-settings', () => {
       ).toContain('Market');
       expect(
         wrapper.find('[data-testid="curve-status-member-1"]').text(),
-      ).toContain('Replay service unavailable');
+      ).toContain('Couldn’t load replay.');
       expect(
         wrapper.find('[data-testid="curve-status-member-2"]').text(),
       ).toContain('Candle data changed');

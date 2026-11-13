@@ -270,6 +270,23 @@ export function useBacktestCreation(emit: CreationEvents) {
     if (previewTimer) clearTimeout(previewTimer);
   });
 
+  async function retryPreview(): Promise<void> {
+    if (previewPending.value) return;
+    if (previewTimer) clearTimeout(previewTimer);
+    const revision = ++previewRevision;
+    previewError.value = null;
+    previewPending.value = true;
+    try {
+      await refreshPreview(buildBacktestRequest(), revision);
+    } catch (error) {
+      if (revision === previewRevision) {
+        previewError.value =
+          error instanceof Error ? error.message : 'Backtest preview failed.';
+        previewPending.value = false;
+      }
+    }
+  }
+
   async function refreshPreview(
     request: BacktestPreviewRequest,
     revision: number,
@@ -281,8 +298,7 @@ export function useBacktestCreation(emit: CreationEvents) {
       candidateLimit.value = result.max_backtest_candidate_count;
     } catch (error) {
       if (revision !== previewRevision) return;
-      previewError.value =
-        error instanceof Error ? error.message : 'Backtest preview failed.';
+      previewError.value = 'Couldn’t preview candidates.';
       if (
         error instanceof BacktestSubmissionError &&
         error.code === 'strategy_version_unavailable'
@@ -443,6 +459,7 @@ export function useBacktestCreation(emit: CreationEvents) {
     preview,
     previewPending,
     previewError,
+    retryPreview,
     candidateLimit,
     previewFilter,
     selectedStrategy,

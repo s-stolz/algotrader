@@ -1,5 +1,6 @@
 import {
   setupWorkspaceTests,
+  refreshActivity,
   run,
   backtest,
   mountWorkspace,
@@ -11,7 +12,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   cancelBacktestRun,
   controlBacktest,
-  fetchBacktestQueue,
   getBacktest,
   listBacktestEvents,
   listBacktestMembers,
@@ -147,7 +147,7 @@ describe('production Backtest Workspace: history-cancellation', () => {
       expect.any(String),
     );
     expect(listBacktests).toHaveBeenCalledTimes(2);
-    expect(fetchBacktestQueue).toHaveBeenCalledTimes(2);
+    expect(refreshActivity).toHaveBeenCalledOnce();
     expect(
       wrapper.find('[data-testid="workspace-backtest-whole-backtest"]').text(),
     ).toContain('cancelled');

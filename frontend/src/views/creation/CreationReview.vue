@@ -12,18 +12,16 @@
           >Limit: {{ candidateLimit }} candidates</n-tag
         >
       </div>
-      <p
-        v-if="previewError"
-        role="alert"
-        >{{ previewError }}</p
-      >
-      <p
-        v-if="previewPending"
-        role="status"
-        >Refreshing preview…</p
-      >
+      <BaseAsyncState
+        v-if="previewPending || previewError"
+        :kind="previewPending ? 'loading' : 'error'"
+        label="Candidate preview"
+        :message="previewError ?? undefined"
+        :retry="!!previewError"
+        @retry="retryPreview"
+      />
       <section
-        v-if="preview"
+        v-if="preview && !previewPending && !previewError"
         class="preview-review"
         data-testid="selections-review"
       >
@@ -65,16 +63,19 @@
   </div>
 </template>
 <script setup lang="ts">
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+
 import { computed } from 'vue';
 import { NTag, NScrollbar } from 'naive-ui';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
-import { previewFilterOptions } from './creationOptions';
-import { previewColumns as buildPreviewColumns } from './creationPreview';
-import { useCreation } from './creationContext';
+import { previewFilterOptions } from '@/views/creation/creationOptions';
+import { previewColumns as buildPreviewColumns } from '@/views/creation/creationPreview';
+import { useCreation } from '@/views/creation/creationContext';
 const {
   candidateLimit,
   previewError,
+  retryPreview,
   previewPending,
   preview,
   previewFilter,

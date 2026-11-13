@@ -113,6 +113,13 @@ and behavior that is easy to break when changing them.
   active consumers. Change/reconnect events refresh saved reads; health events
   update matching worker freshness without polling. The socket restores desired
   subscriptions after reconnect. See [delivery contracts](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
+- `App.vue` owns the shared `BacktestActivity` menu across chart and backtest routes.
+  It shows current running/queued work with experiment progress; idle healthy status
+  has no popup. Workspace commands request a refresh through its injected callback.
+- Use `BaseAsyncState` for centered loading, empty, and error states. Loading has
+  an accessible label without visible copy; failures use short messages and an
+  icon retry wired to the failed read/action. Run-list failures belong in Runs,
+  separately from experiment metadata. Keep field validation actionable.
 - Failed reads or disconnected delivery retain the last good data and mark live status unknown.
   Ignore superseded responses after changing the inspected Run, Backtest, or draft.
   Background refresh preserves settled charts and inspection state.

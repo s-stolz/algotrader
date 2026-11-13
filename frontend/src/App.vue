@@ -46,11 +46,17 @@
         /></template>
       </n-split>
     </div>
+    <BacktestActivity
+      ref="activity"
+      @inspect="$router.push(`/backtests/${encodeURIComponent($event)}`)"
+    />
   </DesignScope>
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue';
+import { defineComponent, provide, ref } from 'vue';
+import BacktestActivity from '@/components/Backtest/activity/BacktestActivity.vue';
+import { refreshBacktestActivityKey } from '@/components/Backtest/activity/activityContext';
 import { NSplit } from 'naive-ui';
 import { useExecutionLogStore } from '@/stores/executionLogStore';
 import ExecutionLogPanel from '@/components/Backtest/execution-log/ExecutionLogPanel.vue';
@@ -63,13 +69,18 @@ export default defineComponent({
 
   components: {
     DesignScope,
+    BacktestActivity,
     NSplit,
     ExecutionLogPanel,
     WorkspaceNavigation,
   },
 
   setup() {
-    return { executionLog: useExecutionLogStore() };
+    const activity = ref<InstanceType<typeof BacktestActivity> | null>(null);
+    provide(refreshBacktestActivityKey, () => {
+      void activity.value?.refresh();
+    });
+    return { executionLog: useExecutionLogStore(), activity };
   },
 
   beforeUnmount() {

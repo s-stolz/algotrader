@@ -9,6 +9,7 @@
           <div class="history-title">
             <h2>Experiment history</h2>
             <n-tag
+              v-if="!isLoading && !readError"
               :bordered="false"
               size="small"
               >{{ filteredHistory.length }} experiments</n-tag
@@ -28,59 +29,76 @@
       </div>
       <BacktestHistoryFilters :history="history" />
 
-      <p
-        v-if="isLoading"
-        role="status"
-        >Loading saved runs…</p
-      >
-
-      <p
-        v-if="backtests !== null && historyRows.length === 0 && !readError"
-        role="status"
-      >
-        No saved Backtests.
-      </p>
-      <p
-        v-else-if="
-          backtests !== null && filteredHistory.length === 0 && !readError
-        "
-        role="status"
-      >
-        No Backtests match these filters.
-      </p>
-
+      <BaseAsyncState
+        v-if="readError && filteredHistory.length"
+        kind="error"
+        compact
+        label="Backtests unavailable"
+        message="Couldn’t load backtests."
+        retry
+        :retrying="isRefreshing"
+        @retry="actions.refresh"
+      />
       <BaseDataTable
-        v-if="backtests !== null"
         data-testid="workspace-history"
         :columns="historyColumns"
         :data="filteredHistory"
         :row-key="rowKey"
         :row-props="historyRowProps"
-        :pagination="historyPagination"
+        :pagination="
+          !isLoading && !readError && filteredHistory.length
+            ? historyPagination
+            : false
+        "
         :scroll-x="1470"
         :max-height="540"
         size="medium"
         striped
-      />
+      >
+        <template #empty>
+          <BaseAsyncState
+            :kind="isLoading ? 'loading' : readError ? 'error' : 'empty'"
+            :label="
+              isLoading
+                ? 'Loading backtests'
+                : readError
+                  ? 'Backtests unavailable'
+                  : 'No backtests'
+            "
+            :message="
+              readError
+                ? 'Couldn’t load backtests.'
+                : historyRows.length
+                  ? 'No matching backtests'
+                  : 'No backtests yet'
+            "
+            :retry="!!readError"
+            :retrying="isRefreshing"
+            @retry="actions.refresh"
+          />
+        </template>
+      </BaseDataTable>
     </div>
   </section>
 </template>
 <script setup lang="ts">
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+
 import { NButton, NIcon, NTag } from 'naive-ui';
 import { AddOutline } from '@vicons/ionicons5';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
-import BacktestHistoryFilters from './BacktestHistoryFilters.vue';
-import { createHistoryColumns } from './backtestHistoryColumns';
-import { rowKey } from './backtestHistoryRows';
-import type { BacktestWorkspace } from './useBacktestWorkspace';
+import BacktestHistoryFilters from '@/views/workspace/BacktestHistoryFilters.vue';
+import { createHistoryColumns } from '@/views/workspace/backtestHistoryColumns';
+import { rowKey } from '@/views/workspace/backtestHistoryRows';
+import type { BacktestWorkspace } from '@/views/workspace/useBacktestWorkspace';
 const props = defineProps<{
   history: BacktestWorkspace['history'];
   actions: BacktestWorkspace['historyActions'];
   canCreate: boolean;
 }>();
 const {
-  backtests,
   isLoading,
+  isRefreshing,
   readError,
   historyRows,
   filteredHistory,

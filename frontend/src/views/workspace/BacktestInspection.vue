@@ -5,24 +5,36 @@
     aria-label="Current Backtest"
   >
     <BacktestOverview
+      ref="overview"
+      @runs-state="receiveRunsState"
       :backtest-id="selectedBacktestId"
       @members="receiveMembers"
       @cancelled="refreshWorkspace"
       @unavailable="redirectUnavailableBacktest"
     />
-    <div class="table-panel">
+    <div
+      v-if="selectedBacktestId"
+      class="table-panel"
+    >
       <div class="section-heading"><h2>Runs</h2></div>
-      <p v-if="!selectedBacktestId">Select a Backtest to inspect its Runs.</p>
-      <p
-        v-if="detailError"
-        role="alert"
-        >{{ detailError }}</p
-      >
-      <p
-        v-if="overlayStore.error"
-        role="alert"
-        >{{ overlayStore.error }}</p
-      >
+
+      <BaseAsyncState
+        v-if="runsState !== 'ready'"
+        :kind="runsState"
+        :label="runsState === 'loading' ? 'Loading runs' : 'Runs unavailable'"
+        message="Couldn’t load runs"
+        :retry="runsState === 'error'"
+        @retry="overview?.refresh()"
+      />
+      <BaseAsyncState
+        v-else-if="detailError || overlayStore.error"
+        kind="error"
+        compact
+        label="Run unavailable"
+        message="Couldn’t load this run."
+        :retry="!!detailError"
+        @retry="workspace.retrySelectedRun()"
+      />
       <template v-if="currentRows.length">
         <BacktestComparison
           :inspection="workspace.inspection"
@@ -30,12 +42,13 @@
         />
       </template>
       <template v-if="selectedRun">
-        <p
+        <BaseAsyncState
           v-if="selectedRun.error_message"
-          class="run-error"
-        >
-          {{ selectedRun.error_message }}
-        </p>
+          kind="error"
+          compact
+          label="Run failed"
+          :message="selectedRun.error_message"
+        />
         <details class="request-details">
           <summary>Saved request and execution settings</summary>
           <dl>
@@ -71,11 +84,14 @@
   </section>
 </template>
 <script setup lang="ts">
+import { ref, watch } from 'vue';
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+
 import BacktestOverview from '@/components/Backtest/BacktestOverview.vue';
 import { scheduleLabel } from '@/types/backtest/schedule';
-import BacktestComparison from './comparison/BacktestComparison.vue';
-import type { BacktestWorkspace } from './useBacktestWorkspace';
-import type { WorkspaceComparison } from './comparison/useWorkspaceComparison';
+import BacktestComparison from '@/views/workspace/comparison/BacktestComparison.vue';
+import type { BacktestWorkspace } from '@/views/workspace/useBacktestWorkspace';
+import type { WorkspaceComparison } from '@/views/workspace/comparison/useWorkspaceComparison';
 const props = defineProps<{
   workspace: BacktestWorkspace;
   comparison: WorkspaceComparison;
@@ -91,6 +107,18 @@ const {
   overlayStore,
 } = props.workspace;
 const { currentRows } = props.workspace.inspection;
+const overview = ref<InstanceType<typeof BacktestOverview> | null>(null);
+const runsState = ref<'loading' | 'error' | 'ready'>('loading');
+watch(
+  selectedBacktestId,
+  () => {
+    runsState.value = 'loading';
+  },
+  { flush: 'sync' },
+);
+function receiveRunsState(id: string, state: 'loading' | 'error' | 'ready') {
+  if (id === selectedBacktestId.value) runsState.value = state;
+}
 function formatTimestamp(timestamp: number | null | undefined): string {
   return timestamp == null ? '—' : new Date(timestamp).toISOString();
 }
@@ -101,12 +129,6 @@ function formatTimestamp(timestamp: number | null | undefined): string {
   align-items: center;
   justify-content: space-between;
   gap: var(--design-space-xl);
-}
-.section-heading p {
-  margin: var(--design-space-sm) 0 0;
-  color: var(--design-color-muted);
-  font-size: var(--design-text-body);
-  overflow-wrap: anywhere;
 }
 .table-panel {
   border: 1px solid var(--design-color-border);
@@ -122,24 +144,6 @@ function formatTimestamp(timestamp: number | null | undefined): string {
 }
 .current-backtest {
   margin-top: var(--design-space-xl);
-}
-.run-heading h2 {
-  margin: 0 0 var(--design-space-md);
-  font-size: var(--design-text-heading);
-  font-weight: 600;
-  letter-spacing: -0.3px;
-  overflow-wrap: anywhere;
-}
-.strategy-name {
-  text-transform: capitalize;
-}
-.analysis-context {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--design-space-md);
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
 }
 .request-details {
   margin-top: var(--design-space-xl);
@@ -168,12 +172,6 @@ function formatTimestamp(timestamp: number | null | undefined): string {
 .technical-value {
   font-family: var(--design-font-mono);
   font-size: var(--design-text-id);
-}
-.run-error {
-  color: var(--design-color-error);
-  padding: var(--design-space-md) var(--design-space-lg);
-  border-radius: var(--design-radius-panel);
-  background: var(--design-color-inset);
 }
 @media (max-width: 700px) {
   .table-panel {

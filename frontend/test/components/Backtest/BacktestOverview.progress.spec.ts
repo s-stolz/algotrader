@@ -136,7 +136,9 @@ describe('accepted backtest inspection: progress', () => {
         props: { backtestId: 'backtest-1' },
       });
       await flushPromises();
-      expect(wrapper.text()).toContain('1 run failed');
+      expect(
+        wrapper.get('[role="progressbar"]').attributes('aria-valuenow'),
+      ).toBe('1');
       expect(wrapper.get('.status-badge').text()).toBe('Running');
       expect(wrapper.emitted('members')?.[0]?.[1]).toEqual([
         { ...member(0), status: 'failed', error_message: 'Data unavailable' },
@@ -229,7 +231,7 @@ describe('accepted backtest inspection: progress', () => {
     await flushPromises();
     expect(wrapper.get('.status-badge').text()).toBe('Status unknown');
     expect(wrapper.get('[role="alert"]').text()).toContain(
-      'last saved snapshot',
+      'Couldn’t refresh this backtest. Showing saved data.',
     );
     expect(
       wrapper.get('[role="progressbar"]').attributes('aria-valuemax'),

@@ -28,7 +28,7 @@
       >
         <ReplayLoading
           v-if="loading"
-          :show-skeleton="false"
+          overlay
         />
         <div
           ref="equityContainer"
@@ -61,7 +61,7 @@
       >
         <ReplayLoading
           v-if="loading"
-          :show-skeleton="false"
+          overlay
         />
         <div
           ref="drawdownContainer"

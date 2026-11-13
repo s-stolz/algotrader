@@ -1,0 +1,130 @@
+.worker-health {
+  position: fixed;
+  right: 32px;
+  bottom: 16px;
+  z-index: 101;
+  color: var(--design-color-body);
+  font-size: var(--design-text-secondary);
+}
+.health-pill {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--design-color-border);
+  border-radius: var(--design-radius-control);
+  background: var(--design-color-inset);
+  color: var(--design-color-body);
+  box-shadow: var(--design-shadow-overlay);
+  font: inherit;
+  cursor: pointer;
+}
+.health-pill:not(:disabled):hover {
+  background: var(--design-color-hover);
+}
+.health-pill:disabled {
+  cursor: default;
+}
+.health-pill:focus-visible {
+  outline: 2px solid var(--design-color-interactive);
+  outline-offset: 3px;
+}
+.health-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--design-color-positive);
+  flex-shrink: 0;
+}
+.warning .health-dot {
+  background: var(--design-color-warning);
+}
+.error .health-dot {
+  background: var(--design-color-error);
+}
+.health-detail {
+  padding: 4px;
+}
+.health-detail p {
+  margin: 0;
+  color: var(--design-color-body);
+  font-size: var(--design-text-secondary);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.health-detail .n-button {
+  margin-top: 12px;
+}
+.active-work {
+  max-height: 240px;
+  overflow-y: auto;
+}
+.after-notice {
+  margin-top: 12px;
+}
+.work-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--design-color-body);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.work-row + .work-row {
+  border-top: 1px solid var(--design-color-border);
+}
+.work-row:hover .work-name {
+  color: var(--design-color-interactive);
+}
+.work-row:focus-visible {
+  outline: 2px solid var(--design-color-interactive);
+  outline-offset: -2px;
+}
+.work-name {
+  overflow-wrap: anywhere;
+  font-size: var(--design-text-secondary);
+}
+.work-meta,
+.last-known {
+  color: var(--design-color-muted);
+  font-size: var(--design-text-id);
+}
+.experiment-progress {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--design-color-muted);
+  font-size: var(--design-text-id);
+}
+progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  appearance: none;
+  border: none;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--design-color-border);
+  color: var(--design-color-positive);
+  accent-color: var(--design-color-positive);
+}
+progress::-webkit-progress-bar {
+  background: var(--design-color-border);
+}
+progress::-webkit-progress-value {
+  background: var(--design-color-positive);
+  border-radius: 4px;
+}
+progress::-moz-progress-bar {
+  background: var(--design-color-positive);
+}
+@media (max-width: 420px) {
+  .worker-health {
+    right: 16px;
+  }
+}

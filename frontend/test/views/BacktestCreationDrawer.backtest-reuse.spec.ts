@@ -202,7 +202,7 @@ describe('backtest reuse', () => {
       market!.vm.$emit('update:value', [1]);
       await advancePreview();
       expect(document.body.textContent).toContain(
-        'Raw candidate count exceeds current limit',
+        'Couldn’t preview candidates.',
       );
       expect(submitBacktest).not.toHaveBeenCalled();
       const capital = wrapper

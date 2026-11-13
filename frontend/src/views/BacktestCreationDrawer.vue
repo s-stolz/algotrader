@@ -9,22 +9,21 @@
     @update:step="navigateStep"
     @update:show="emit('update:show', $event)"
   >
-    <p
-      v-if="catalogPending"
-      role="status"
-      >Loading strategies…</p
+    <BaseAsyncState
+      v-if="catalogPending || catalogError"
+      :kind="catalogPending ? 'loading' : 'error'"
+      label="Strategy catalog"
+      :message="
+        catalog.length
+          ? 'Couldn’t refresh strategies.'
+          : 'Strategies unavailable.'
+      "
+      :retry="!!catalogError"
+      @retry="loadCatalog"
+    />
+    <template
+      v-if="draft && catalog.length && !catalogPending && !catalogError"
     >
-    <p
-      v-if="catalogError"
-      role="alert"
-      >Strategy catalog unavailable. {{ catalogError }}</p
-    >
-    <n-button
-      v-if="catalogError"
-      @click="loadCatalog"
-      >Retry catalog</n-button
-    >
-    <template v-if="draft && catalog.length">
       <p
         v-if="
           store.reuseSource &&
@@ -45,15 +44,22 @@
         <CreationSetup v-show="step === 0" />
         <CreationParameters v-show="step === 1" />
       </div>
-      <p
-        v-if="submitError"
-        role="alert"
-        >{{ submitError }}</p
-      >
+      <BaseAsyncState
+        v-if="submitError && !submitting"
+        kind="error"
+        compact
+        label="Submission failed"
+        message="Couldn’t create this backtest."
+        :retry="!previewPending && !previewError && !!preview?.ready_count"
+        @retry="submit"
+      />
       <CreationReview v-show="step === 2" />
     </template>
     <template #footer>
-      <div class="creation-footer">
+      <div
+        v-if="!catalogPending && !catalogError"
+        class="creation-footer"
+      >
         <n-tag
           round
           :bordered="false"
@@ -102,14 +108,16 @@
 </template>
 
 <script setup lang="ts">
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+
 import { provide } from 'vue';
 import { NButton, NTag } from 'naive-ui';
 import BaseStepModal from '@/components/Common/BaseStepModal.vue';
-import CreationSetup from './creation/CreationSetup.vue';
-import CreationParameters from './creation/CreationParameters.vue';
-import CreationReview from './creation/CreationReview.vue';
-import { creationKey } from './creation/creationContext';
-import { useBacktestCreation } from './creation/useBacktestCreation';
+import CreationSetup from '@/views/creation/CreationSetup.vue';
+import CreationParameters from '@/views/creation/CreationParameters.vue';
+import CreationReview from '@/views/creation/CreationReview.vue';
+import { creationKey } from '@/views/creation/creationContext';
+import { useBacktestCreation } from '@/views/creation/useBacktestCreation';
 defineProps<{ show: boolean }>();
 const emit = defineEmits<{
   'update:show': [show: boolean];
@@ -140,4 +148,4 @@ const {
   hasPendingNumericEntry,
 } = creation;
 </script>
-<style scoped src="./creation/creation.css"></style>
+<style scoped src="@/views/creation/creation.css"></style>

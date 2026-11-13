@@ -116,7 +116,9 @@ describe('Backtest workspace routes', () => {
     vi.mocked(getBacktest).mockRejectedValue(error);
     const wrapper = await openWorkspace();
     expect(window.location.pathname).toBe('/backtests/backtest-1');
-    expect(wrapper.text()).toContain(error.message);
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'Couldn’t load this backtest.',
+    );
   });
 
   it('keeps a valid detail page when an older history response omits it', async () => {
@@ -143,7 +145,7 @@ describe('Backtest workspace routes', () => {
       );
       const wrapper = await openWorkspace();
       expect(window.location.pathname).toBe('/backtests/backtest-1');
-      expect(wrapper.text()).toContain('Service unavailable');
+      expect(wrapper.get('[role="alert"]').text()).toContain('Couldn’t');
       rejectMissing(new HttpResponseError('Backtest not found', 404));
       await flushPromises();
       expect(window.location.pathname).toBe('/');

@@ -11,36 +11,25 @@
     v-if="selectedComparisonIds.length > 0"
     class="curve-inspection"
   >
-    <ul
-      v-if="curveStatusIds.length"
-      class="curve-status"
-    >
-      <li
-        v-for="id in curveStatusIds"
-        :key="id"
-        :data-testid="`curve-status-${id}`"
-      >
-        {{ analysisRunName(id) }}:
-        <template v-if="analysis[id]?.error"
-          >Exact Equity Replay read failed: {{ analysis[id]?.error }}. Saved
-          metrics remain available.</template
-        >
-        <template
-          v-else-if="analysis[id]?.curve?.availability === 'unavailable'"
-          >Exact Equity Replay unavailable:
-          {{ equityUnavailableReason(analysis[id]?.curve?.reason) }}. Saved
-          metrics remain available.</template
-        >
-        <NButton
-          size="small"
-          @click="inspection.retryAnalysis(id)"
-          >Retry</NButton
-        >
-      </li>
-    </ul>
-    <ReplayLoading
+    <BaseAsyncState
       v-if="pendingReplayCount && !chartSeries.length"
-      :show-skeleton="!chartSeries.length"
+      kind="loading"
+      label="Loading equity replay"
+    />
+    <BaseAsyncState
+      v-for="id in curveStatusIds"
+      :key="id"
+      :data-testid="`curve-status-${id}`"
+      :compact="!!chartSeries.length"
+      :kind="analysis[id]?.error ? 'error' : 'info'"
+      :label="`${analysisRunName(id)} replay`"
+      :message="
+        analysis[id]?.error
+          ? `${analysisRunName(id)} · Couldn’t load replay.`
+          : `${analysisRunName(id)} · ${equityUnavailableReason(analysis[id]?.curve?.reason)}`
+      "
+      retry
+      @retry="inspection.retryAnalysis(id)"
     />
     <EquityReplayCharts
       v-if="chartSeries.length"
@@ -51,12 +40,12 @@
   </div>
 </template>
 <script setup lang="ts">
-import { NButton } from 'naive-ui';
-import ReplayLoading from './ReplayLoading.vue';
-import EquityReplayCharts from '../../EquityReplayCharts.vue';
-import { equityUnavailableReason } from '../../backtestWorkspaceRuns';
-import { workspaceReplay } from './workspaceReplay';
-import type { BacktestWorkspace } from '../useBacktestWorkspace';
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+
+import EquityReplayCharts from '@/views/EquityReplayCharts.vue';
+import { equityUnavailableReason } from '@/views/backtestWorkspaceRuns';
+import { workspaceReplay } from '@/views/workspace/comparison/workspaceReplay';
+import type { BacktestWorkspace } from '@/views/workspace/useBacktestWorkspace';
 const props = defineProps<{ inspection: BacktestWorkspace['inspection'] }>();
 const { selectedComparisonIds, analysis } = props.inspection;
 const {
@@ -69,15 +58,6 @@ const {
 } = workspaceReplay(props.inspection);
 </script>
 <style scoped>
-.curve-status {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--design-space-sm) var(--design-space-xl);
-  padding: 0;
-  font-size: var(--design-text-secondary);
-  color: var(--design-color-muted);
-}
 .curve-inspection {
   width: 100%;
   margin-top: var(--design-space-xl);

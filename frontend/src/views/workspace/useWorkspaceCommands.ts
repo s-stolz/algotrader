@@ -10,7 +10,7 @@ export function useWorkspaceCommands(context: {
   selectedBacktestId: Ref<string | null>;
   receiveMembers: (id: string, members: BacktestRun[]) => void;
   refreshWorkspace: () => Promise<void>;
-  refreshQueue: () => void;
+  refreshActivity: () => void;
   loadHistory: () => Promise<void>;
   onBacktestDeleted: (backtest: Backtest) => void;
 }) {
@@ -18,10 +18,11 @@ export function useWorkspaceCommands(context: {
     selectedBacktestId,
     receiveMembers,
     refreshWorkspace,
-    refreshQueue,
+    refreshActivity,
     loadHistory,
     onBacktestDeleted,
   } = context;
+  let failedAction: (() => Promise<void>) | null = null;
   const deleteError = ref<string | null>(null);
   const cancelError = ref<string | null>(null);
   const cancellingRunIds = ref<ReadonlySet<string>>(new Set());
@@ -34,6 +35,7 @@ export function useWorkspaceCommands(context: {
       return;
     cancellingRunIds.value = new Set([...cancellingRunIds.value, run.run_id]);
     cancelError.value = null;
+    failedAction = null;
     try {
       await cancelBacktestRun(run.run_id);
       await refreshWorkspace();
@@ -45,6 +47,7 @@ export function useWorkspaceCommands(context: {
       }
     } catch (error) {
       cancelError.value = errorMessage(error);
+      failedAction = () => cancelRun(run);
       await refreshWorkspace();
     } finally {
       const pending = new Set(cancellingRunIds.value);
@@ -70,13 +73,15 @@ export function useWorkspaceCommands(context: {
       backtest.backtest_id,
     ]);
     deleteError.value = null;
+    failedAction = null;
     try {
       await deleteSavedBacktest(backtest.backtest_id);
       onBacktestDeleted(backtest);
-      refreshQueue();
+      refreshActivity();
       await loadHistory();
     } catch (error) {
       deleteError.value = errorMessage(error);
+      failedAction = () => deleteBacktest(backtest);
     } finally {
       const stillDeleting = new Set(deletingBacktestIds.value);
       stillDeleting.delete(backtest.backtest_id);
@@ -85,6 +90,7 @@ export function useWorkspaceCommands(context: {
   }
 
   return {
+    retryFailedAction: () => failedAction?.(),
     deleteError,
     cancelError,
     cancellingRunIds,

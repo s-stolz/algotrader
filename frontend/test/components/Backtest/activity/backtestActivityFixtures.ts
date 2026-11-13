@@ -1,29 +1,7 @@
-import { onTestFinished } from 'vitest';
-import { defineComponent } from 'vue';
-import { flushPromises, mount } from '@vue/test-utils';
-import BacktestQueueHealth from '@/components/Backtest/BacktestQueueHealth.vue';
 import type {
   Backtest,
   BacktestQueueSnapshot,
 } from '@/types/backtesterContracts';
-export const PopoverStub = defineComponent({
-  props: ['show'],
-  emits: ['update:show'],
-  template:
-    '<div><div @click="$emit(\'update:show\', !show)"><slot ' +
-    'name="trigger" /></div><div v-if="show"><slot /></div></div>',
-});
-export async function openQueue(props: { backtests?: Backtest[] } = {}) {
-  const wrapper = mount(BacktestQueueHealth, {
-    props,
-    global: { stubs: { BasePopover: PopoverStub } },
-  });
-  onTestFinished(() => wrapper.unmount());
-  await flushPromises();
-  await wrapper.get('[data-testid="queue-toggle"]').trigger('click');
-  return wrapper;
-}
-
 export const backtest: Backtest = {
   backtest_id: 'backtest-1',
   submission_id: 'submit-1',
