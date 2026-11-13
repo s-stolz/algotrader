@@ -75,7 +75,11 @@ describe('production Backtest Workspace: comparison-selection', () => {
       wrapper.get<HTMLInputElement>('[data-testid="comparison-select-failed"]')
         .element.checked,
     ).toBe(false);
-    expect(fetchBacktestEquityCurve).not.toHaveBeenCalledWith('failed');
+    expect(fetchBacktestEquityCurve).not.toHaveBeenCalledWith(
+      'failed',
+      2000,
+      expect.any(Object),
+    );
 
     header().vm.$emit('update:checked', false);
     await flushPromises();
@@ -129,6 +133,8 @@ describe('production Backtest Workspace: comparison-selection', () => {
       expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(20);
       expect(fetchBacktestEquityCurve).not.toHaveBeenCalledWith(
         'page-selection-20',
+        2000,
+        expect.any(Object),
       );
       pagination().vm.$emit('update:page', 2);
       await flushPromises();
@@ -144,6 +150,8 @@ describe('production Backtest Workspace: comparison-selection', () => {
       expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(24);
       expect(fetchBacktestEquityCurve).not.toHaveBeenCalledWith(
         'page-selection-24',
+        2000,
+        expect.any(Object),
       );
       expect(header().props('checked')).toBe(true);
       header().vm.$emit('update:checked', false);

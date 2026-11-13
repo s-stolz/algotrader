@@ -277,6 +277,8 @@ export function useBacktestWorkspace() {
       chartUnavailableReason(run)
     )
       return;
+    inspection.stop();
+    let navigated = false;
     openingChartRunId.value = run.run_id;
     selectionNotice.value = null;
     try {
@@ -285,13 +287,17 @@ export function useBacktestWorkspace() {
       const selection = await overlayStore.selectRun(chartRun);
       if (selection.selectable) {
         const navigationFailure = await router.push('/');
-        if (!navigationFailure) executionLog.selectRun(chartRun, false);
+        if (!navigationFailure) {
+          navigated = true;
+          executionLog.selectRun(chartRun, false);
+        }
       }
     } catch (error) {
       selectionNotice.value =
         `Could not open run ${runName(run)} on chart: ` + errorMessage(error);
     } finally {
       openingChartRunId.value = null;
+      if (!navigated && isActive) loadAnalysis();
     }
   }
 

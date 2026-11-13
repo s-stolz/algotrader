@@ -6,12 +6,14 @@ import {
 import type {
   BacktestRun,
   EquityReplayResponse,
+  EquityReplayPoint,
 } from '@/types/backtesterContracts';
 import { useRunResults } from './results/useRunResults';
 import { errorMessage } from './workspaceErrors';
 export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
   type AnalysisState = {
     loading: boolean;
+    preview: EquityReplayPoint[];
     error: string | null;
     curve: EquityReplayResponse | null;
     detail: BacktestRun | null;
@@ -24,14 +26,71 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
     ),
   );
   const tradeResults = useRunResults(currentRows);
-  let analysisSequence = 0;
-  const analysisTokens = new Map<string, number>();
+  const controllers = new Map<string, AbortController>();
+  let active = true;
+  let inflight = 0;
+
+  function cancel(id: string) {
+    controllers.get(id)?.abort();
+    controllers.delete(id);
+  }
+
+  function pump(): void {
+    if (!active) return;
+    while (inflight < 2) {
+      const id = selectedComparisonIds.value.find(
+        (id) => analysis.value[id]?.loading && !controllers.has(id),
+      );
+      if (!id) return;
+      const controller = new AbortController();
+      controllers.set(id, controller);
+      inflight++;
+      const isCurrent = () => active && controllers.get(id) === controller;
+      void (async () => {
+        try {
+          const detail = await getBacktestRun(id, false);
+          if (!isCurrent()) return;
+          if (detail.status !== 'succeeded')
+            throw new Error('Run is no longer successful');
+          analysis.value[id].detail = detail;
+          const curve = await fetchBacktestEquityCurve(id, 2000, {
+            signal: controller.signal,
+            onPreview: (points) => {
+              if (isCurrent()) analysis.value[id].preview = points;
+            },
+          });
+          if (isCurrent())
+            analysis.value[id] = {
+              loading: false,
+              error: null,
+              preview: [],
+              curve,
+              detail,
+            };
+        } catch (error) {
+          if (isCurrent())
+            analysis.value[id] = {
+              loading: false,
+              error: errorMessage(error),
+              preview: [],
+              curve: null,
+              detail: analysis.value[id]?.detail ?? null,
+            };
+        } finally {
+          if (controllers.get(id) === controller) controllers.delete(id);
+          inflight--;
+          pump();
+        }
+      })();
+    }
+  }
+
   function loadAnalysis(refresh = false): void {
+    active = true;
     tradeResults.start();
-    const ids = [...selectedComparisonIds.value];
-    const kept = new Set(ids);
-    for (const id of analysisTokens.keys()) {
-      if (!kept.has(id)) analysisTokens.delete(id);
+    const ids = selectedComparisonIds.value;
+    for (const id of controllers.keys()) {
+      if (!ids.includes(id)) cancel(id);
     }
     analysis.value = Object.fromEntries(
       ids.flatMap((id) =>
@@ -39,51 +98,38 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
       ),
     );
     for (const id of ids) {
+      const previous = analysis.value[id];
+      // Failed reads retry only on explicit action, never on background refresh.
       if (
-        !refresh &&
-        analysis.value[id] &&
-        (!analysis.value[id].loading || analysisTokens.has(id))
+        previous &&
+        (!refresh ||
+          previous.error ||
+          previous.curve?.availability === 'unavailable')
       )
         continue;
-      const token = ++analysisSequence;
-      analysisTokens.set(id, token);
+      cancel(id);
       analysis.value[id] = {
         loading: true,
         error: null,
-        curve: analysis.value[id]?.curve ?? null,
-        detail: analysis.value[id]?.detail ?? null,
+        preview: [],
+        curve: previous?.curve ?? null,
+        detail: previous?.detail ?? null,
       };
-      void (async () => {
-        try {
-          const detail = await getBacktestRun(id, false);
-          if (detail.status !== 'succeeded')
-            throw new Error('Run is no longer successful');
-          if (analysisTokens.get(id) === token)
-            analysis.value[id] = {
-              loading: true,
-              error: null,
-              curve: analysis.value[id]?.curve ?? null,
-              detail,
-            };
-          const curve = await fetchBacktestEquityCurve(id);
-          if (analysisTokens.get(id) === token)
-            analysis.value[id] = {
-              loading: false,
-              error: null,
-              curve,
-              detail,
-            };
-        } catch (error) {
-          if (analysisTokens.get(id) === token)
-            analysis.value[id] = {
-              loading: false,
-              error: errorMessage(error),
-              curve: analysis.value[id]?.curve ?? null,
-              detail: analysis.value[id]?.detail ?? null,
-            };
-        }
-      })();
     }
+    pump();
+  }
+
+  function retryAnalysis(id: string) {
+    if (!selectedComparisonIds.value.includes(id)) return;
+    cancel(id);
+    analysis.value[id] = {
+      loading: true,
+      error: null,
+      preview: [],
+      curve: null,
+      detail: analysis.value[id]?.detail ?? null,
+    };
+    pump();
   }
 
   function setComparison(ids: string[], refresh = false): void {
@@ -113,7 +159,11 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
 
   function stop() {
     tradeResults.stop();
-    analysisTokens.clear();
+    active = false;
+    for (const id of controllers.keys()) cancel(id);
+    for (const state of Object.values(analysis.value)) {
+      state.preview = [];
+    }
   }
   return {
     analysis,
@@ -121,6 +171,7 @@ export function useWorkspaceAnalysis(backtestMembers: Ref<BacktestRun[]>) {
     selectedComparisonIds,
     currentRows,
     loadAnalysis,
+    retryAnalysis,
     setComparison,
     toggleComparison,
     stop,

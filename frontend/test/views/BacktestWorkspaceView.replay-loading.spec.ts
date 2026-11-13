@@ -79,7 +79,7 @@ describe('Backtest Workspace replay loading', () => {
       .get('[data-testid="comparison-select-loading-1"]')
       .setValue(true);
     await flushPromises();
-    expect(wrapper.get('.replay-loading').text()).toBe('');
+    expect(chart.props('loading')).toBe(true);
     expect(wrapper.findAll('.chart-skeleton')).toHaveLength(0);
     expect(wrapper.getComponent({ name: 'EquityReplayCharts' }).vm).toBe(
       chart.vm,

@@ -22,7 +22,14 @@
           :color-for-run="seriesColor"
         />
       </header>
-      <div class="chart-panel">
+      <div
+        class="chart-panel"
+        :aria-busy="loading || undefined"
+      >
+        <ReplayLoading
+          v-if="loading"
+          :show-skeleton="false"
+        />
         <div
           ref="equityContainer"
           class="chart"
@@ -48,7 +55,14 @@
           :color-for-run="seriesColor"
         />
       </header>
-      <div class="chart-panel">
+      <div
+        class="chart-panel"
+        :aria-busy="loading || undefined"
+      >
+        <ReplayLoading
+          v-if="loading"
+          :show-skeleton="false"
+        />
         <div
           ref="drawdownContainer"
           class="chart"
@@ -70,17 +84,25 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import ReplayLoading from './workspace/comparison/ReplayLoading.vue';
+import { extendReplayRange } from './workspace/comparison/replayRange';
 import ReplayLegend from './workspace/comparison/ReplayLegend.vue';
 import type { ReplaySeries } from './backtestComparison';
 import { designTokens } from '@/design/tokens';
 import { whenChartFontReady } from '@/utils/chart/chartFonts';
 
-const props = defineProps<{ series: ReplaySeries[]; sampled?: boolean }>();
+const props = defineProps<{
+  series: ReplaySeries[];
+  sampled?: boolean;
+  loading?: boolean;
+  timeRange?: { from: number; to: number };
+}>();
 const equityContainer = ref<HTMLElement | null>(null);
 const drawdownContainer = ref<HTMLElement | null>(null);
 let equityChart: IChartApi | null = null;
 let drawdownChart: IChartApi | null = null;
 let resizeObserver: ResizeObserver | null = null;
+let renderedRange = '';
 let cancelFontWait: (() => void) | null = null;
 
 function seriesColor(run: ReplaySeries): string {
@@ -116,6 +138,7 @@ function fitCharts(): void {
 
 function render(): void {
   if (!equityChart || !drawdownChart) return;
+  const rangeKey = JSON.stringify(props.timeRange);
   let maxDrawdown = 0;
   for (const run of props.series) {
     for (const point of run.points)
@@ -172,21 +195,28 @@ function render(): void {
           `${(Math.abs(value) < minMove / 2 ? 0 : value).toFixed(drawdownPrecision)}%`,
       },
     });
-    if (series.points === run.points) continue;
+    if (series.points === run.points && renderedRange === rangeKey) continue;
     series.equity.setData(
-      run.points.map((point) => ({
-        time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp,
-        value: point.equity,
-      })),
+      extendReplayRange(
+        run.points.map((point) => ({
+          time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp,
+          value: point.equity,
+        })),
+        props.timeRange,
+      ),
     );
     series.drawdown.setData(
-      run.points.map((point) => ({
-        time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp,
-        value: point.drawdown_pct,
-      })),
+      extendReplayRange(
+        run.points.map((point) => ({
+          time: Math.floor(point.timestamp_ms / 1000) as UTCTimestamp,
+          value: point.drawdown_pct,
+        })),
+        props.timeRange,
+      ),
     );
     series.points = run.points;
   }
+  renderedRange = rangeKey;
   fitCharts();
 }
 
@@ -262,7 +292,7 @@ onMounted(() => {
     resizeObserver.observe(drawdownContainer.value);
   }
 });
-watch(() => props.series, render);
+watch(() => [props.series, props.timeRange], render);
 onUnmounted(() => {
   cancelFontWait?.();
   resizeObserver?.disconnect();
@@ -301,6 +331,7 @@ onUnmounted(() => {
   color: var(--design-color-body);
 }
 .chart-panel {
+  position: relative;
   padding: var(--design-space-lg) var(--design-space-md) var(--design-space-sm);
   border: 1px solid var(--design-color-border);
   border-radius: var(--design-radius-panel);

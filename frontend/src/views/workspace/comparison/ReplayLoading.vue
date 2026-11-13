@@ -2,6 +2,7 @@
   <div
     aria-busy="true"
     class="replay-loading"
+    :class="{ overlay: !showSkeleton }"
   >
     <template v-if="showSkeleton">
       <section
@@ -17,6 +18,12 @@
         /></div>
       </section>
     </template>
+    <div
+      v-else
+      class="chart-skeleton"
+      aria-hidden="true"
+      ><span
+    /></div>
   </div>
 </template>
 <script setup lang="ts">
@@ -26,6 +33,18 @@ defineProps<{ showSkeleton: boolean }>();
 .replay-loading {
   display: grid;
   gap: var(--design-space-xl);
+}
+.overlay {
+  z-index: 1;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.overlay .chart-skeleton {
+  height: 100%;
+  border: 0;
+  background: none;
+  opacity: 0.35;
 }
 h2 {
   font-size: var(--design-text-heading);

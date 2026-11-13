@@ -171,3 +171,7 @@ intrabar depletion. `sized_targets_vectorized.py` consumes array-derived signals
 `sized_targets_event_driven.py` consumes sequential feature decisions. Legacy Runs
 without sizing continue through their original target execution paths. The full
 policy is owned by [sizing and margin](../docs/contracts/backtests.md#sizing-instrument-valuation-and-margin).
+
+For progressive Equity Replay, `src/app/equity_stream.py` owns provisional
+reconstruction and final verification. The API closes downstream Candle streams
+on disconnect. See [streaming replay contracts](../docs/contracts/backtests.md#streaming-equity-replay).

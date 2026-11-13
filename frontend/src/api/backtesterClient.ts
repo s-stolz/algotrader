@@ -1,4 +1,8 @@
 import {
+  readEquityReplayStream,
+  type ReplayStreamOptions,
+} from './equityReplayStream';
+import {
   BACKTEST_STATUSES,
   normalizeExperimentName,
   type BacktestClosedTrade,
@@ -398,7 +402,16 @@ export async function fetchBacktestClosedTrades(
 export async function fetchBacktestEquityCurve(
   runId: string,
   maxPoints = 2000,
+  stream?: ReplayStreamOptions,
 ): Promise<EquityReplayResponse> {
+  if (stream)
+    return readEquityReplayStream(
+      withQuery(
+        `${BACKTESTS_BASE_URL}/runs/${encodeURIComponent(runId)}/equity-curve/stream`,
+        { max_points: maxPoints },
+      ),
+      stream,
+    );
   const payload = await parseJsonResponse(
     await fetch(
       withQuery(

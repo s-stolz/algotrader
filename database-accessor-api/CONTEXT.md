@@ -105,3 +105,7 @@ and quantity specifications. V022 backfills verified IC Trading unit quantities
 before enforcing required columns; unknown existing instruments need an explicit
 verified migration input rather than placeholder values. Backtest snapshots retain
 specifications independently of subsequent Market edits.
+
+For historical streaming reads, `app/candle_stream.py` owns bounded cursor
+consumption, response frames, and cursor cleanup. See
+[historical Candle streams](../docs/contracts/candles.md#historical-candle-streams).

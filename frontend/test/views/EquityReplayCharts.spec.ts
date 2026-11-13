@@ -352,3 +352,31 @@ describe('EquityReplayCharts', () => {
     expect(remove).not.toHaveBeenCalled();
   });
 });
+
+describe('progressive replay presentation', () => {
+  it('keeps the animation over partial charts and reserves the full time range', async () => {
+    const wrapper = mount(EquityReplayCharts, {
+      props: {
+        loading: true,
+        timeRange: { from: 1000, to: 10000 },
+        series: [
+          {
+            runId: 'a',
+            name: 'A',
+            points: [{ timestamp_ms: 2000, equity: 100, drawdown_pct: 0 }],
+          },
+        ],
+      },
+    });
+    await flushPromises();
+    expect(wrapper.findAll('.replay-loading.overlay')).toHaveLength(2);
+    expect(setData).toHaveBeenCalledWith([
+      { time: 1 },
+      { time: 2, value: 100 },
+      { time: 10 },
+    ]);
+    await wrapper.setProps({ loading: false });
+    expect(wrapper.find('.replay-loading').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});

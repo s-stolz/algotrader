@@ -34,18 +34,27 @@ export function workspaceReplay(inspection: BacktestWorkspace['inspection']) {
   const chartSeries = computed<ReplaySeries[]>(() =>
     selectedComparisonRuns.value.flatMap((run) => {
       const curve = analysis.value[run.run_id]?.curve;
-      return curve?.availability === 'exact'
+      const preview = analysis.value[run.run_id]?.preview ?? [];
+      return curve?.availability === 'exact' || preview.length > 0
         ? [
             {
               runId: run.run_id,
               name: comparisonRunLabel(run),
               ordinal: run.run_ordinal,
-              points: curve.equity_curve,
+              points: preview.length ? preview : curve!.equity_curve,
             },
           ]
         : [];
     }),
   );
+  const timeRange = computed(() => ({
+    from: Math.min(
+      ...selectedComparisonRuns.value.map((run) => run.request.start_ms),
+    ),
+    to: Math.max(
+      ...selectedComparisonRuns.value.map((run) => run.request.end_ms),
+    ),
+  }));
   function analysisRunName(id: string): string {
     const run = currentRows.value.find((candidate) => candidate.run_id === id);
     return run ? comparisonRunLabel(run) : id;
@@ -57,6 +66,7 @@ export function workspaceReplay(inspection: BacktestWorkspace['inspection']) {
     curveStatusIds,
     hasSampledCurve,
     chartSeries,
+    timeRange,
     analysisRunName,
   };
 }

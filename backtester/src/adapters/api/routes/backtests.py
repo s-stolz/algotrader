@@ -408,6 +408,41 @@ def cancel_backtest(
         raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
 
 
+@router.get("/runs/{run_id}/equity-curve/stream")
+async def stream_backtest_equity_curve(
+    run_id: str,
+    max_points: int = Query(default=2000, ge=100, le=10000),
+    service: BacktestRunService = Depends(get_backtest_run_service),
+):
+    import asyncio
+    import json
+    from contextlib import aclosing
+
+    from app.equity_stream import stream_equity
+    from starlette.responses import StreamingResponse
+
+    try:
+        run = await asyncio.to_thread(service.get, run_id)
+        if run.status != BacktestRunStatus.SUCCEEDED:
+            raise HTTPException(status_code=409, detail="Equity Replay requires a successful run")
+        fills = await asyncio.to_thread(service.get_fills, run_id)
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Backtest run not found") from exc
+    except BacktestRunPersistenceError as exc:
+        raise HTTPException(status_code=503, detail="Backtest persistence unavailable") from exc
+
+    async def messages():
+        async with aclosing(stream_equity(run, fills, max_points)) as events:
+            async for event in events:
+                yield json.dumps(event, allow_nan=False) + "\n"
+
+    return StreamingResponse(
+        messages(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/runs/{run_id}/equity-curve")
 def get_backtest_equity_curve(
     run_id: str,

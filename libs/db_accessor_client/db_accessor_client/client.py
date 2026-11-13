@@ -9,6 +9,7 @@ from typing import Any, Iterable
 import httpx
 import pandas as pd
 
+from .candle_stream import parse_candle_frame
 from .errors import DatabaseAccessorClientError
 from .timeframes import normalize_timeframe_code
 
@@ -95,6 +96,47 @@ class DatabaseAccessorClient(_BaseClient):
     ) -> dict[str, Any]:
         params = _build_params(exchange=exchange)
         return self._request("GET", f"/markets/{symbol}", params=params)
+
+    def stream_candles(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+        market_id: int | None = None,
+    ):
+        params = _build_params(
+            timeframe=normalize_timeframe_code(timeframe),
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exchange=exchange,
+            market_id=market_id,
+        )
+        try:
+            with self.client.stream(
+                "GET",
+                self._url(f"/candles/{symbol}/stream"),
+                params=params,
+                headers={"Accept-Encoding": "identity"},
+            ) as response:
+                response.raise_for_status()
+                complete = False
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    if complete:
+                        raise DatabaseAccessorClientError("Data after Candle stream completion")
+                    candles = parse_candle_frame(line)
+                    if candles is None:
+                        complete = True
+                    else:
+                        yield candles
+                if not complete:
+                    raise DatabaseAccessorClientError("Incomplete Candle stream")
+        except httpx.HTTPError as exc:
+            raise DatabaseAccessorClientError("Candle stream request failed") from exc
 
     def get_candles(
         self,
@@ -425,6 +467,47 @@ class AsyncDatabaseAccessorClient(_BaseClient):
     ) -> dict[str, Any]:
         params = _build_params(exchange=exchange)
         return await self._request("GET", f"/markets/{symbol}", params=params)
+
+    async def stream_candles(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+        market_id: int | None = None,
+    ):
+        params = _build_params(
+            timeframe=normalize_timeframe_code(timeframe),
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exchange=exchange,
+            market_id=market_id,
+        )
+        try:
+            async with self.client.stream(
+                "GET",
+                self._url(f"/candles/{symbol}/stream"),
+                params=params,
+                headers={"Accept-Encoding": "identity"},
+            ) as response:
+                response.raise_for_status()
+                complete = False
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    if complete:
+                        raise DatabaseAccessorClientError("Data after Candle stream completion")
+                    candles = parse_candle_frame(line)
+                    if candles is None:
+                        complete = True
+                    else:
+                        yield candles
+                if not complete:
+                    raise DatabaseAccessorClientError("Incomplete Candle stream")
+        except httpx.HTTPError as exc:
+            raise DatabaseAccessorClientError("Candle stream request failed") from exc
 
     async def get_candles(
         self,

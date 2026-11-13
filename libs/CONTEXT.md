@@ -62,3 +62,8 @@ the [recovery contract](../docs/contracts/recovery.md).
 live Candle write. Partial commits and lost receipts cannot hide it behind a
 newer latest Candle; normal successful live writes retire it without scheduling
 history. See the [guard contract](../docs/contracts/recovery.md#durable-live-write-guards).
+
+For Candle streaming, both accessor clients expose context-managed stream
+consumption through their generators; close an unfinished generator explicitly.
+They require the completion frame and reject truncated responses. See
+[historical Candle streams](../docs/contracts/candles.md#historical-candle-streams).

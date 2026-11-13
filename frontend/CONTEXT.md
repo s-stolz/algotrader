@@ -200,3 +200,8 @@ pending-entry lines and execution overlays need them; it selects the log without
 The log selection is session-only and separate from persisted chart overlay selection.
 The symbol menu edits specifications through stable IDs. Refresh selected Market
 metadata after edits and resolve Run selections by saved ID or current Market names.
+
+For progressive Equity Replay, `useWorkspaceAnalysis` owns stream admission,
+cancellation, provisional previews, and manual retry. Transport parsing lives in
+`api/equityReplayStream.ts`; verified results remain separate from previews. See
+[streaming replay contracts](../docs/contracts/backtests.md#streaming-equity-replay).

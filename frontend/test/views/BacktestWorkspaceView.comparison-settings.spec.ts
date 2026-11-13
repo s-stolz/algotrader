@@ -164,8 +164,16 @@ describe('production Backtest Workspace: comparison-settings', () => {
           .setValue(true);
       }
       await flushPromises();
-      expect(fetchBacktestEquityCurve).toHaveBeenCalledWith('member-0');
-      expect(fetchBacktestEquityCurve).toHaveBeenCalledWith('member-9');
+      expect(fetchBacktestEquityCurve).toHaveBeenCalledWith(
+        'member-0',
+        2000,
+        expect.any(Object),
+      );
+      expect(fetchBacktestEquityCurve).toHaveBeenCalledWith(
+        'member-9',
+        2000,
+        expect.any(Object),
+      );
       expect(fetchBacktestEquityCurve).toHaveBeenCalledTimes(10);
       expect(
         wrapper.find('[data-testid="comparison-compatibility"]').text(),

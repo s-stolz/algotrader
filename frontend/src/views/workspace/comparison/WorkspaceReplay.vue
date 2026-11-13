@@ -31,20 +31,28 @@
           {{ equityUnavailableReason(analysis[id]?.curve?.reason) }}. Saved
           metrics remain available.</template
         >
+        <NButton
+          size="small"
+          @click="inspection.retryAnalysis(id)"
+          >Retry</NButton
+        >
       </li>
     </ul>
     <ReplayLoading
-      v-if="pendingReplayCount"
+      v-if="pendingReplayCount && !chartSeries.length"
       :show-skeleton="!chartSeries.length"
     />
     <EquityReplayCharts
       v-if="chartSeries.length"
       :series="chartSeries"
       :sampled="hasSampledCurve"
+      :loading="pendingReplayCount > 0"
+      :time-range="timeRange"
     />
   </div>
 </template>
 <script setup lang="ts">
+import { NButton } from 'naive-ui';
 import ReplayLoading from './ReplayLoading.vue';
 import EquityReplayCharts from '../../EquityReplayCharts.vue';
 import { equityUnavailableReason } from '../../backtestWorkspaceRuns';
@@ -58,6 +66,7 @@ const {
   curveStatusIds,
   hasSampledCurve,
   chartSeries,
+  timeRange,
   analysisRunName,
 } = workspaceReplay(props.inspection);
 </script>

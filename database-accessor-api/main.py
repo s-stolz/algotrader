@@ -378,6 +378,42 @@ async def delete_market(
     return {"status": "not found"}
 
 
+@app.get("/candles/{symbol}/stream")
+async def stream_candles(
+    symbol: str,
+    timeframe: TimeframeCode,
+    start_ms: int,
+    end_ms: int,
+    exchange: Optional[str] = None,
+    market_id: Optional[int] = Query(None, gt=0),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.candle_stream import candle_messages
+    from app.database import AsyncSessionLocal
+    from starlette.responses import StreamingResponse
+
+    if start_ms >= end_ms:
+        raise HTTPException(status_code=422, detail="start_ms must precede end_ms")
+    await market_cache.ensure_market_cache(db)
+    symbol_id = (
+        market_id
+        if isinstance(market_id, int)
+        else market_cache.resolve_symbol_id(symbol, exchange)
+    )
+    if symbol_id is None:
+        await market_cache.refresh_market_cache(db)
+        symbol_id = market_cache.resolve_symbol_id(symbol, exchange)
+    if symbol_id is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    return StreamingResponse(
+        candle_messages(
+            AsyncSessionLocal, symbol_id, timeframe_to_minutes(timeframe), start_ms, end_ms
+        ),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/candles/{symbol}")
 async def read_aggregated_candles_by_symbol(
     symbol: str,

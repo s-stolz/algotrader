@@ -290,6 +290,46 @@ exchange (empty if absent), symbol, and Timeframe, then signed big-endian int64
 executable timestamps and big-endian binary64 finite closes. Negative zero is
 normalized to positive zero. Fingerprint compatibility must survive code changes.
 
+### Streaming Equity Replay
+
+`GET /backtests/runs/{run_id}/equity-curve/stream?max_points=2000` returns
+`application/x-ndjson`. Each newline terminates one complete JSON frame:
+
+- `{"type":"preview","equity_curve":[...]}` replaces the previous provisional
+  preview. Points use the existing timestamp/equity/drawdown shape. Previews are
+  bounded by `max_points` and emitted at most about ten times per second.
+- `{"type":"complete","result":{...}}` carries the existing Equity Replay
+  response, either `exact` or `unavailable`. Only `exact` is verified and may
+  supply Ending equity. Final sampling preserves the existing extrema/anchors;
+  previews can change when the final sample replaces them.
+- `{"type":"error","message":"..."}` reports a failed read after HTTP headers
+  have been sent. EOF without a terminal frame is also a failed read.
+
+A **Replay Preview** is provisional equity reconstructed from a prefix of current
+Candles and saved Fills. It is not a saved result or a verified Equity Replay.
+Verification compares the complete existing descriptor before issuing an exact
+terminal frame. Fingerprint mismatch discards the preview; saved metrics remain
+available. Order-mode replay continues to consume all required M1 Candles, with
+immutable instrument identity, multiplier, and the existing sizing cutoff.
+
+The Workspace admits at most two active replay streams and queues other selected
+Runs. Leaving the Workspace, applying to the chart, or deselecting a Run aborts
+its stream. Backtester closes its downstream Candle stream, releasing the
+accessor cursor/session. A request already performing a bounded batch may finish
+that batch; cancellation does not cancel a Backtest or change durable Run state.
+Interrupted replays restart on return; completed curves remain cached in the
+Workspace. Failed reads and unavailable replay require explicit Retry.
+
+Partial curves use the full selected time range and the existing loading
+animation until verification completes. No additional loading text is required.
+Read failure or unavailability removes the affected partial curve and exposes
+Retry, preserving other verified curves and saved metrics.
+
+The existing nonstreaming equity endpoint remains available for compatibility.
+The new streaming path avoids its unbounded Candle response; callers that keep
+using legacy bulk Candle reads can still incur large-response processing costs.
+
+
 ## Real-time delivery and recovery
 
 The public API durably accepts cancellation before returning `cancelling`; worker
