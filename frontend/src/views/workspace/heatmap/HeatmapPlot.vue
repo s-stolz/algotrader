@@ -21,7 +21,16 @@
       :option="options"
       autoresize
       @click="chartClick"
+      @mouseover="chartHover"
+      @globalout="hoverDescription = ''"
     />
+    <p
+      class="hover-description"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      >{{ hoverDescription }}</p
+    >
     <div
       v-if="!pending && bounds"
       class="scale"
@@ -58,7 +67,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { whenChartFontReady } from '@/utils/chart/chartFonts';
 import { NSpin } from 'naive-ui';
 import { use } from 'echarts/core';
@@ -98,6 +107,17 @@ const props = defineProps<{
   selectedIds: string[];
   emptyReason: string | null;
 }>();
+const hoverDescription = ref('');
+watch(
+  () => [props.cells, props.pending],
+  () => {
+    hoverDescription.value = '';
+  },
+);
+function chartHover(event: { data?: unknown }) {
+  const data = event.data as { cell?: HeatmapCell } | undefined;
+  hoverDescription.value = data?.cell?.description ?? '';
+}
 const fontReady = ref(false);
 let cancelFontWait: (() => void) | undefined;
 onMounted(() => {
@@ -130,6 +150,16 @@ function chartClick(event: { data?: unknown }) {
 }
 </script>
 <style scoped>
+.hover-description {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .chart {
   height: 400px;
   width: 100%;

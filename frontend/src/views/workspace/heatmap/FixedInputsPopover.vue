@@ -7,7 +7,10 @@
   >
     <template #trigger
       ><n-button
+        ref="trigger"
         :aria-expanded="open"
+        :aria-controls="open ? dialogId : undefined"
+        @keydown.esc.stop="close"
         aria-haspopup="dialog"
       >
         <template #icon><n-icon :component="OptionsOutline" /></template>Fixed
@@ -15,10 +18,13 @@
       </n-button></template
     >
     <div
+      ref="dialog"
+      :id="dialogId"
+      tabindex="-1"
       class="fixed-popover"
       role="dialog"
       aria-label="Fixed inputs"
-      @keydown.esc.stop="open = false"
+      @keydown.esc.stop="close"
     >
       <div class="popover-heading"
         ><strong>Fixed inputs</strong>
@@ -26,7 +32,7 @@
           quaternary
           circle
           aria-label="Close fixed inputs"
-          @click="open = false"
+          @click="close"
         >
           <template #icon><n-icon :component="CloseOutline" /></template>
         </n-button>
@@ -50,7 +56,7 @@
   </BasePopover>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue';
+import { nextTick, ref, useId, watch } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
 import { OptionsOutline, CloseOutline } from '@vicons/ionicons5';
 import BasePopover from '@/components/Common/BasePopover.vue';
@@ -59,6 +65,18 @@ import type { HeatmapDimension } from '@/types/backtest/heatmapSnapshot';
 defineProps<{ fields: HeatmapDimension[]; values: Record<string, string> }>();
 const emit = defineEmits<{ change: [key: string, value: string] }>();
 const open = ref(false);
+const dialogId = useId();
+const dialog = ref<HTMLElement | null>(null);
+const trigger = ref<{ $el: HTMLButtonElement } | null>(null);
+watch(open, async (shown) => {
+  if (!shown) return;
+  await nextTick();
+  if (open.value) dialog.value?.focus();
+});
+function close() {
+  open.value = false;
+  trigger.value?.$el.focus();
+}
 </script>
 <style scoped>
 .fixed-popover {
