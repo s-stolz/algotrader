@@ -88,17 +88,27 @@ def dependency_name(requirement: str) -> str:
 
 
 def service_install_arguments(
-    target: str, *, dependencies_only: bool = False, root: Path = ROOT
+    target: str,
+    *,
+    dependencies_only: bool = False,
+    third_party_only: bool = False,
+    root: Path = ROOT,
 ) -> list[str]:
     libraries = local_libraries(root)
     dependencies = project(root / target)["dependencies"]
     selected: dict[str, Path] = {}
+    external: list[str] = []
     pending = list(dependencies)
     while pending:
-        name = dependency_name(pending.pop())
+        requirement = pending.pop()
+        name = dependency_name(requirement)
+        if name not in libraries:
+            external.append(requirement)
         if name in libraries and name not in selected:
             selected[name] = libraries[name]
             pending.extend(project(libraries[name]).get("dependencies", []))
+    if third_party_only:
+        return sorted(set(external))
     arguments = [argument for path in selected.values() for argument in ("-e", str(path))]
     if dependencies_only:
         arguments.extend(dependencies)
@@ -107,12 +117,20 @@ def service_install_arguments(
     return arguments
 
 
-def install(target: str, *, dependencies_only: bool = False, dev: bool = False) -> None:
+def install(
+    target: str,
+    *,
+    dependencies_only: bool = False,
+    third_party_only: bool = False,
+    dev: bool = False,
+) -> None:
     pins = effective_pins(target)
     arguments = (
         ["-r", str(ROOT / "requirements.root.txt")]
         if target == "root"
-        else service_install_arguments(target, dependencies_only=dependencies_only)
+        else service_install_arguments(
+            target, dependencies_only=dependencies_only, third_party_only=third_party_only
+        )
     )
     if dev and target != "root":
         arguments.extend(project(ROOT / target).get("optional-dependencies", {}).get("dev", []))
@@ -124,7 +142,7 @@ def install(target: str, *, dependencies_only: bool = False, dev: bool = False) 
             cwd=ROOT,
             check=True,
         )
-    check(target, require_service=not dependencies_only)
+    check(target, require_service=not (dependencies_only or third_party_only))
 
 
 def check(target: str, *, require_service: bool = True) -> None:
@@ -153,16 +171,31 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("install", "check", "version"))
     parser.add_argument("target", nargs="?", choices=("root", *SERVICES))
-    parser.add_argument("--dependencies-only", action="store_true")
-    parser.add_argument("--dev", action="store_true", help="Install service development dependencies")
+    installation = parser.add_mutually_exclusive_group()
+    installation.add_argument("--dependencies-only", action="store_true")
+    installation.add_argument(
+        "--third-party-only",
+        action="store_true",
+        help="Preinstall external dependencies from package metadata for Docker caching",
+    )
+    parser.add_argument(
+        "--dev", action="store_true", help="Install service development dependencies"
+    )
     args = parser.parse_args()
     require_supported_python()
     if args.command == "version":
         return
     if args.target is None:
         parser.error("install/check requires a target")
+    if args.third_party_only and (args.command != "install" or args.target == "root" or args.dev):
+        parser.error("--third-party-only requires install with a service target and no --dev")
     if args.command == "install":
-        install(args.target, dependencies_only=args.dependencies_only, dev=args.dev)
+        install(
+            args.target,
+            dependencies_only=args.dependencies_only,
+            third_party_only=args.third_party_only,
+            dev=args.dev,
+        )
     else:
         check(args.target, require_service=not args.dependencies_only)
 

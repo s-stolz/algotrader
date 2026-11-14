@@ -191,6 +191,12 @@ Use a root virtual environment for shared library/test tooling and per-service v
 - `scripts/python_environment.py` merges pins before a single pip resolution.
   Host setup and Docker builds use the same policy. Bare `pip install` does not
   apply repository constraints; use the setup command below.
+- Docker first caches third-party dependencies from all library manifests, the
+  service manifest, and shared/service constraints. It then copies all library
+  and service source and performs the full package installation and validation.
+  Source edits still rebuild the image; dependency edits invalidate the earlier
+  layer. Pip downloads use a persistent BuildKit cache outside the image.
+  Builds require BuildKit with Dockerfile syntax 1.20 support.
 - Python services and local tooling support Python 3.12–3.15; containers use Python 3.15.2. Set `PYTHON` to a specific
   supported executable if `python3.15` is not on PATH. Use `--recreate` when replacing
   an environment created with another Python version.

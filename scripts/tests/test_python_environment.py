@@ -74,6 +74,42 @@ class DependencyPolicyTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Python 3.12"):
                     environment.require_supported_python()
 
+    def test_third_party_preinstall_follows_library_metadata_without_source(self):
+        for directory, name, dependencies in (
+            ("service", "service", '["local-client", "httpx>=1"]'),
+            ("libs/client", "local-client", '["local-model", "httpx<3"]'),
+            (
+                "libs/model",
+                "local-model",
+                '["local-client", "numpy>=2; python_version >= \'3.12\'"]',
+            ),
+            ("libs/unrelated", "unrelated", '["unused-package"]'),
+        ):
+            path = self.root / directory
+            path.mkdir(parents=True, exist_ok=True)
+            (path / "pyproject.toml").write_text(
+                f'[project]\nname = "{name}"\ndependencies = {dependencies}\n'
+            )
+        self.assertEqual(
+            environment.service_install_arguments("service", root=self.root, third_party_only=True),
+            ["httpx<3", "httpx>=1", "numpy>=2; python_version >= '3.12'"],
+        )
+
+    def test_third_party_preinstall_applies_constraints_without_requiring_service(self):
+        def capture_install(arguments, **kwargs):
+            constraints = Path(arguments[arguments.index("-c") + 1])
+            self.assertEqual(constraints.read_text(), "httpx==1.0\n")
+            self.assertEqual(arguments[-1], "httpx>=1")
+
+        with (
+            patch.object(environment, "effective_pins", return_value={"httpx": "1.0"}),
+            patch.object(environment, "service_install_arguments", return_value=["httpx>=1"]),
+            patch.object(environment.subprocess, "run", side_effect=capture_install),
+            patch.object(environment, "check") as check,
+        ):
+            environment.install("backtester", third_party_only=True)
+        check.assert_called_once_with("backtester", require_service=False)
+
     def test_check_rejects_version_drift_even_if_pip_would_accept_it(self):
         with (
             patch.object(environment, "effective_pins", return_value={"httpx": "0.28.1"}),
