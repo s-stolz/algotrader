@@ -62,6 +62,11 @@ describe('Backtest Workspace replay loading', () => {
         .get('[aria-label="Loading equity replay"]')
         .attributes('aria-busy'),
     ).toBe('true');
+    expect(wrapper.findAll('.chart-skeleton')).toHaveLength(2);
+    expect(wrapper.get('[aria-label="Equity loading"]').text()).toBe('Equity');
+    expect(wrapper.get('[aria-label="Drawdown loading"]').text()).toBe(
+      'Drawdown',
+    );
     resolveFirst({
       availability: 'exact',
       reason: null,

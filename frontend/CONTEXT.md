@@ -126,7 +126,9 @@ and behavior that is easy to break when changing them.
 - Use `BaseAsyncState` for centered loading, empty, and error states. Loading has
   an accessible label without visible copy; failures use short messages and an
   icon retry wired to the failed read/action. Run-list failures belong in Runs,
-  separately from experiment metadata. Keep field validation actionable.
+  separately from experiment metadata. Keep field validation actionable. Equity
+  Replay uses animated chart skeletons initially and a shimmer over loaded charts
+  while additional replays load.
 - Failed reads or disconnected delivery retain the last good data and mark live status unknown.
   Ignore superseded responses after changing the inspected Run, Backtest, or draft.
   Background refresh preserves settled charts and inspection state.

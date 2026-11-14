@@ -11,11 +11,7 @@
     v-if="selectedComparisonIds.length > 0"
     class="curve-inspection"
   >
-    <BaseAsyncState
-      v-if="pendingReplayCount && !chartSeries.length"
-      kind="loading"
-      label="Loading equity replay"
-    />
+    <ReplayLoading v-if="pendingReplayCount && !chartSeries.length" />
     <BaseAsyncState
       v-for="id in curveStatusIds"
       :key="id"
@@ -41,6 +37,7 @@
 </template>
 <script setup lang="ts">
 import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
+import ReplayLoading from './ReplayLoading.vue';
 
 import EquityReplayCharts from '@/views/EquityReplayCharts.vue';
 import { equityUnavailableReason } from '@/views/backtestWorkspaceRuns';
