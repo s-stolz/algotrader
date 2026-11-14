@@ -17,7 +17,7 @@ vi.mock('@/api/backtesterClient', () => ({
 }));
 
 describe('application activity', () => {
-  it('keeps activity across routes and opens selected work', async () => {
+  it('shows activity only in the upper backtest pane and opens selected work', async () => {
     installBacktestSocket();
     vi.mocked(fetchBacktestQueue).mockResolvedValue({
       ...healthySnapshot,
@@ -46,7 +46,13 @@ describe('application activity', () => {
     });
     try {
       await flushPromises();
+      expect(wrapper.findComponent(BacktestActivity).exists()).toBe(false);
+      await router.push('/backtests');
+      await flushPromises();
       const activity = wrapper.getComponent(BacktestActivity);
+      expect(
+        wrapper.get('.primary-workspace').element.contains(activity.element),
+      ).toBe(true);
       expect(activity.get('[data-testid="activity-toggle"]').text()).toBe(
         '1 running · 1 queued',
       );
@@ -58,9 +64,7 @@ describe('application activity', () => {
       );
       await router.push('/');
       await flushPromises();
-      expect(wrapper.getComponent(BacktestActivity).element).toBe(
-        activity.element,
-      );
+      expect(wrapper.findComponent(BacktestActivity).exists()).toBe(false);
       expect(fetchBacktestQueue).toHaveBeenCalledOnce();
     } finally {
       wrapper.unmount();

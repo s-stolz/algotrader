@@ -1,5 +1,5 @@
 .worker-health {
-  position: fixed;
+  position: absolute;
   right: 32px;
   bottom: 16px;
   z-index: 101;

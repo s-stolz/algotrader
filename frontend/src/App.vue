@@ -11,13 +11,22 @@
         @update:size="executionLog.resize"
       >
         <template #1>
-          <WorkspaceNavigation>
-            <router-view v-slot="{ Component }">
-              <keep-alive>
-                <component :is="Component" />
-              </keep-alive>
-            </router-view>
-          </WorkspaceNavigation>
+          <div class="primary-workspace">
+            <WorkspaceNavigation>
+              <router-view v-slot="{ Component }">
+                <keep-alive>
+                  <component :is="Component" />
+                </keep-alive>
+              </router-view>
+            </WorkspaceNavigation>
+            <BacktestActivity
+              v-if="$route.path.startsWith('/backtests')"
+              ref="activity"
+              @inspect="
+                $router.push(`/backtests/${encodeURIComponent($event)}`)
+              "
+            />
+          </div>
         </template>
         <template #resize-trigger
           ><div
@@ -46,10 +55,6 @@
         /></template>
       </n-split>
     </div>
-    <BacktestActivity
-      ref="activity"
-      @inspect="$router.push(`/backtests/${encodeURIComponent($event)}`)"
-    />
   </DesignScope>
 </template>
 
@@ -93,6 +98,10 @@ export default defineComponent({
 .app-split-workspace {
   position: fixed;
   inset: 0;
+}
+.primary-workspace {
+  position: relative;
+  height: 100%;
 }
 .trade-split-grip {
   height: 100%;

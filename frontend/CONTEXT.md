@@ -113,7 +113,8 @@ and behavior that is easy to break when changing them.
   active consumers. Change/reconnect events refresh saved reads; health events
   update matching worker freshness without polling. The socket restores desired
   subscriptions after reconnect. See [delivery contracts](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
-- `App.vue` owns the shared `BacktestActivity` menu across chart and backtest routes.
+- `App.vue` owns the `BacktestActivity` menu on backtest routes, anchored to the
+  upper workspace pane above the separate trade-history pane.
   It shows current running/queued work with experiment progress; idle healthy status
   has no popup. Workspace commands request a refresh through its injected callback.
 - Use `BaseAsyncState` for centered loading, empty, and error states. Loading has
