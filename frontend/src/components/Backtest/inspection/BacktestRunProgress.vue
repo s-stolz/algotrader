@@ -3,9 +3,6 @@
     class="run-progress"
     :aria-label="`Run #${ordinal} progress`"
   >
-    <div class="run-label"
-      >Run #{{ ordinal }} · {{ stages[stageIndex]?.label }}</div
-    >
     <div
       class="milestone-track"
       role="progressbar"
@@ -74,14 +71,9 @@ const fillPercent = computed(
 .run-progress {
   margin-top: var(--design-space-lg);
 }
-.run-label {
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
-}
 .milestone-track {
   position: relative;
   height: 4px;
-  margin-top: var(--design-space-lg);
   border-radius: var(--design-radius-panel);
   background: var(--design-color-disabled);
 }
