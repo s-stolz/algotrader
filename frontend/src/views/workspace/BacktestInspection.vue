@@ -49,36 +49,6 @@
           label="Run failed"
           :message="selectedRun.error_message"
         />
-        <details class="request-details">
-          <summary>Saved request and execution settings</summary>
-          <dl>
-            <dt>Run ID</dt
-            ><dd class="technical-value">{{ selectedRun.run_id }}</dd>
-            <dt>Strategy parameters</dt>
-            <dd class="technical-value">{{
-              JSON.stringify(selectedRun.request.strategy.parameters)
-            }}</dd>
-            <dt>Engine</dt><dd>{{ selectedRun.request.engine }}</dd>
-            <dt>Data granularity</dt
-            ><dd>{{ selectedRun.request.data_granularity }}</dd>
-            <dt>Allowed Directions</dt>
-            <dd>{{ selectedRun.request.execution.allowed_directions }}</dd>
-            <dt>Daily schedule · UTC (start / last entry / exit)</dt>
-            <dd>{{
-              scheduleLabel(selectedRun.request.execution.daily_schedule)
-            }}</dd>
-            <dt>Execution settings</dt>
-            <dd class="technical-value">{{
-              JSON.stringify(selectedRun.request.execution)
-            }}</dd>
-            <dt>Submitted</dt
-            ><dd>{{ formatTimestamp(selectedRun.submitted_at_ms) }}</dd>
-            <dt>Started</dt
-            ><dd>{{ formatTimestamp(selectedRun.started_at_ms) }}</dd>
-            <dt>Completed</dt
-            ><dd>{{ formatTimestamp(selectedRun.completed_at_ms) }}</dd>
-          </dl>
-        </details>
       </template>
     </div>
   </section>
@@ -88,7 +58,6 @@ import { ref, watch } from 'vue';
 import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 
 import BacktestOverview from '@/components/Backtest/BacktestOverview.vue';
-import { scheduleLabel } from '@/types/backtest/schedule';
 import BacktestComparison from '@/views/workspace/comparison/BacktestComparison.vue';
 import type { BacktestWorkspace } from '@/views/workspace/useBacktestWorkspace';
 import type { WorkspaceComparison } from '@/views/workspace/comparison/useWorkspaceComparison';
@@ -119,9 +88,6 @@ watch(
 function receiveRunsState(id: string, state: 'loading' | 'error' | 'ready') {
   if (id === selectedBacktestId.value) runsState.value = state;
 }
-function formatTimestamp(timestamp: number | null | undefined): string {
-  return timestamp == null ? '—' : new Date(timestamp).toISOString();
-}
 </script>
 <style scoped>
 .section-heading {
@@ -144,34 +110,6 @@ function formatTimestamp(timestamp: number | null | undefined): string {
 }
 .current-backtest {
   margin-top: var(--design-space-xl);
-}
-.request-details {
-  margin-top: var(--design-space-xl);
-  padding: var(--design-space-lg);
-  border: 1px solid var(--design-color-border);
-  border-radius: var(--design-radius-panel);
-  background: var(--design-color-inset);
-}
-.request-details summary {
-  cursor: pointer;
-  color: var(--design-color-body);
-}
-.request-details dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: var(--design-space-sm) var(--design-space-xl);
-  font-size: var(--design-text-secondary);
-}
-.request-details dt {
-  color: var(--design-color-muted);
-}
-.request-details dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.technical-value {
-  font-family: var(--design-font-mono);
-  font-size: var(--design-text-id);
 }
 @media (max-width: 700px) {
   .table-panel {

@@ -34,7 +34,9 @@ describe('Backtest inspection', () => {
         .get('[data-testid="workspace-member-run-0"]')
         .trigger('click');
       await flushPromises();
-      expect(wrapper.text()).toContain('Saved request and execution settings');
+      expect(wrapper.text()).not.toContain(
+        'Saved request and execution settings',
+      );
       expect(useBacktestWorkspaceStore().selectedRunId).toBe('run-0');
       await wrapper
         .get('[data-testid="workspace-create-from-run-run-0"]')
