@@ -66,8 +66,9 @@ class BacktestEventBridge:
                     list[tuple[str, dict[str, str]]], await self._redis.xrevrange(_STREAM, count=1)
                 )
                 cursor = tail[0][0] if tail else "0-0"
-                await self._restore_progress()
+                # Subscribers joining either fanout must restore their own snapshot.
                 await self._connection(True)
+                await self._restore_progress()
                 while True:
                     rows = cast(
                         list[tuple[str, list[tuple[str, dict[str, str]]]]],

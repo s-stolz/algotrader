@@ -63,6 +63,47 @@ class BacktestBridgeTests(unittest.IsolatedAsyncioTestCase):
             await bridge.close()
         redis.aclose.assert_awaited_once()
 
+    async def test_subscriber_joining_recovery_fanout_restores_latest_progress(self):
+        progress = {"type": "backtestProgress", "run_id": "run-a", "stage": "simulating"}
+        snapshot_started = asyncio.Event()
+        release_snapshot = asyncio.Event()
+        reading_started = asyncio.Event()
+
+        async def send(payload):
+            if json.loads(payload) == progress:
+                snapshot_started.set()
+                await release_snapshot.wait()
+
+        async def read(*args, **kwargs):
+            reading_started.set()
+            await asyncio.Future()
+
+        redis = Mock(
+            xrevrange=AsyncMock(return_value=[("10-0", {"payload": json.dumps(progress)})]),
+            get=AsyncMock(return_value=json.dumps(progress)),
+            xread=AsyncMock(side_effect=read),
+            aclose=AsyncMock(),
+        )
+        bridge = BacktestEventBridge(redis)
+        existing = Mock(send=AsyncMock(side_effect=send), close=AsyncMock())
+        await bridge.subscribe(existing)
+        bridge.start()
+        try:
+            await asyncio.wait_for(snapshot_started.wait(), timeout=3)
+            joining = Mock(send=AsyncMock(), close=AsyncMock())
+            await bridge.subscribe(joining)
+            release_snapshot.set()
+            await asyncio.wait_for(reading_started.wait(), timeout=3)
+            messages = [json.loads(call.args[0]) for call in joining.send.call_args_list]
+            self.assertIn(progress, messages)
+            self.assertIn({"type": "backtestConnection", "connected": True}, messages)
+            redis.xread.assert_awaited_once_with(
+                {"backtests:events:v1": "10-0"}, block=1000, count=100
+            )
+        finally:
+            release_snapshot.set()
+            await bridge.close()
+
     async def test_subscriber_restores_latest_progress_without_lifecycle_refresh(self):
         progress = {"type": "backtestProgress", "run_id": "run-a", "stage": "simulating"}
         redis = Mock(get=AsyncMock(return_value=json.dumps(progress)))
