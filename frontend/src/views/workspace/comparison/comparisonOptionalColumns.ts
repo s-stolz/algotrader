@@ -1,10 +1,10 @@
 import { h } from 'vue';
-import { NSkeleton } from 'naive-ui';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import { scheduleLabel } from '@/types/backtest/schedule';
 import {
   displayWinRate,
   formatSigned,
+  savedMetric,
   formatUtcDate,
   runMarket,
   strategyVersion,
@@ -27,7 +27,6 @@ export type ComparisonColumn = {
 };
 export function createOptionalColumns(
   currentRows: BacktestWorkspace['inspection']['currentRows'],
-  analysis: BacktestWorkspace['inspection']['analysis'],
 ): ComparisonColumn[] {
   const parameterKeys = [
     ...new Set(
@@ -179,31 +178,14 @@ export function createOptionalColumns(
       group: 'Performance',
       width: 155,
       render: (run) =>
-        analysis.value[run.run_id]?.loading &&
-        !analysis.value[run.run_id]?.curve
-          ? h(
-              'span',
-              {
-                role: 'status',
-                'aria-label': 'Loading ending equity',
-                'data-testid': `ending-loading-${run.run_id}`,
-              },
-              h(NSkeleton, {
-                width: 90,
-                height: 16,
-              }),
-            )
-          : cell(
-              run.status === 'succeeded' &&
-                analysis.value[run.run_id]?.curve?.availability === 'exact'
-                ? formatSigned(
-                    analysis.value[run.run_id]?.curve?.equity_curve.at(-1)
-                      ?.equity,
-                  ).replace(/^\+/, '')
-                : '—',
-              'Final point of exact Equity Replay, in account units. Unavailable ' +
-                'replay leaves this missing.',
-            ),
+        cell(
+          formatSigned(
+            run.status === 'succeeded'
+              ? savedMetric(run, 'ending_equity')
+              : null,
+          ).replace(/^\+/, ''),
+          'Saved final equity at run completion, in account units.',
+        ),
     },
     {
       title: 'Trades',

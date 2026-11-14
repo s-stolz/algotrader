@@ -1095,7 +1095,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                     result_schema_version=3,
                     replay_descriptor=_replay_descriptor(),
-                    metrics={"trade_count": 3},
+                    metrics={"trade_count": 3, "ending_equity": 10000.0},
                     diagnostics={"bars": 100},
                     fills=fills,
                     trades=trades,
@@ -1146,7 +1146,7 @@ class BacktestRunApiTests(unittest.IsolatedAsyncioTestCase):
                     completed_at=datetime(2026, 6, 8, 12, 35, tzinfo=timezone.utc),
                     result_schema_version=3,
                     replay_descriptor=_replay_descriptor(),
-                    metrics={"trade_count": 0},
+                    metrics={"trade_count": 0, "ending_equity": 10000.0},
                     diagnostics={"bars": 0},
                 )
             ),
@@ -1439,7 +1439,7 @@ class BacktestExecutionApiTests(unittest.IsolatedAsyncioTestCase):
             status="succeeded",
             completed_at=self.completed_at,
             result_schema_version=3,
-            metrics={"trade_count": 1},
+            metrics={"trade_count": 1, "ending_equity": 10000.0},
             diagnostics={},
             replay_descriptor=_replay_descriptor(),
             fills=[
@@ -1542,6 +1542,25 @@ class BacktestExecutionApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(await main.get_backtest_fills("run-a", db=self.db)), 1)
         self.assertEqual(await self._claim("run-b", "owner-b"), {"updated": True})
 
+    def test_success_requires_finite_ending_equity(self):
+        payload = self._successful_settlement().model_dump()
+        for metrics in (
+            {},
+            *(
+                {"ending_equity": value}
+                for value in (None, True, "10000", float("nan"), float("inf"))
+            ),
+        ):
+            with self.subTest(metrics=metrics):
+                with self.assertRaisesRegex(ValueError, "metrics.ending_equity"):
+                    BacktestExecutionSettleIn.model_validate({**payload, "metrics": metrics})
+        for value in (10000.0, 0.0, -25.0):
+            with self.subTest(value=value):
+                result = BacktestExecutionSettleIn.model_validate(
+                    {**payload, "metrics": {"ending_equity": value}}
+                )
+                self.assertEqual(result.metrics, {"ending_equity": value})
+
     async def test_settlement_rejects_missing_invalid_or_failed_replay_metadata(self):
         await self._create_queue()
         await self._claim("run-a", "owner-a")
@@ -1591,7 +1610,7 @@ class BacktestExecutionApiTests(unittest.IsolatedAsyncioTestCase):
                     status="succeeded",
                     completed_at=self.completed_at,
                     result_schema_version=3,
-                    metrics={},
+                    metrics={"ending_equity": 10000.0},
                     diagnostics={},
                     replay_descriptor=_replay_descriptor(),
                     fills=[fill, fill],

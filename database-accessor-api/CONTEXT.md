@@ -54,8 +54,9 @@ lifecycle policy; the accessor applies it against locked current state.
 - Filter request attributes from immutable JSON, including collection membership
   for symbol matching. Keep lifecycle fields normalized rather than copying
   request attributes into columns.
-- Successful worker settlement validates and stores the replay descriptor with
-  metrics, diagnostics, Fills, and Closed Trades. Failed settlement rejects result
+- Successful worker settlement requires finite `metrics.ending_equity` and
+  validates and stores the replay descriptor with metrics, diagnostics, Fills,
+  and Closed Trades. Failed settlement rejects result
   artifacts. Worker lifecycle writes use only the owner-token-fenced execution
   endpoints; the tokenless update and completion endpoints have been retired.
 - Fill/trade reads use sequence order: missing parent is 404, existing parent with

@@ -154,6 +154,7 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         self.assertEqual(payload["completed_at"], "2026-06-08T12:35:00+00:00")
         self.assertEqual(payload["result_schema_version"], 3)
         self.assertEqual(payload["metrics"], result.metrics)
+        self.assertEqual(payload["metrics"]["ending_equity"], 25_002.5)
         self.assertEqual(payload["diagnostics"]["execution_duration_ms"], 275)
         self.assertEqual(payload["fills"][1]["exit_reason"], "take_profit")
         self.assertEqual(payload["trades"][0]["exit_reason"], "take_profit")
@@ -257,6 +258,7 @@ def _build_result(
             )
         ],
         metrics={
+            "ending_equity": 25_002.5,
             "total_return_pct": 0.01,
             "max_drawdown_pct": -0.005,
             "trade_count": 1.0,

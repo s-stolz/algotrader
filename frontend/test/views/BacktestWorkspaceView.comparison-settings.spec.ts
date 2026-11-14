@@ -43,6 +43,7 @@ describe('production Backtest Workspace: comparison-settings', () => {
           metrics: {
             ...run('base').metrics,
             total_return_pct: ordinal % 2 ? -1.25 : 2.5,
+            ending_equity: ordinal === 0 ? 10200 : 9800,
           },
         }),
       );

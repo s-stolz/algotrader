@@ -580,7 +580,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
             status="succeeded",
             completed_at=at,
             result_schema_version=3,
-            metrics={},
+            metrics={"ending_equity": 10000.0},
             diagnostics={},
             fills=fills,
             trades=trades,
@@ -799,7 +799,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
             "status": "succeeded",
             "completed_at": accepted_at,
             "result_schema_version": 3,
-            "metrics": {"trade_count": 1},
+            "metrics": {"trade_count": 1, "ending_equity": 10000.0},
             "diagnostics": {},
             "replay_descriptor": {"fingerprint_digest": "saved"},
             "fills": [

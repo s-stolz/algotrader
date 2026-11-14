@@ -37,6 +37,7 @@ def compute_metrics(
     max_drawdown_pct = float(np.min(drawdown) * 100.0)
 
     return {
+        "ending_equity": final,
         "total_return_pct": float(total_return_pct),
         "max_drawdown_pct": max_drawdown_pct,
         **direction_metrics,

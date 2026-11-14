@@ -101,6 +101,7 @@ describe('production Backtest Workspace: comparison-columns', () => {
 
   it('updates column settings during pending replay without rebuilding the table', async () => {
     const saved = run('column-loading');
+    saved.metrics = { ...saved.metrics, ending_equity: 10234 };
     seedBacktest([saved]);
     vi.mocked(getBacktestRun).mockResolvedValue(saved);
     vi.mocked(fetchBacktestEquityCurve).mockReturnValue(new Promise(() => {}));
@@ -137,9 +138,7 @@ describe('production Backtest Workspace: comparison-columns', () => {
       expect(
         wrapper.get('[data-testid="workspace-current-backtest"]').element,
       ).toBe(table);
-      expect(
-        wrapper.find('[data-testid="ending-loading-column-loading"]').exists(),
-      ).toBe(true);
+      expect(wrapper.get('td[data-col-key="ending"]').text()).toBe('10234');
       checkbox.click();
       checkbox.click();
       await nextTick();
@@ -150,9 +149,10 @@ describe('production Backtest Workspace: comparison-columns', () => {
   });
 
   it.each(['exact', 'unavailable', 'error'] as const)(
-    'settles the ending-equity skeleton after %s replay without changing column settings',
+    'keeps saved ending equity before and after %s replay',
     async (outcome) => {
       const saved = run('skeleton');
+      saved.metrics = { ...saved.metrics, ending_equity: 10234 };
       seedBacktest([saved]);
       vi.mocked(getBacktestRun).mockResolvedValue(saved);
       let resolveReplay!: (response: EquityReplayResponse) => void;
@@ -170,13 +170,13 @@ describe('production Backtest Workspace: comparison-columns', () => {
           .get('[data-testid="workspace-backtest-skeleton"]')
           .trigger('click');
         await flushPromises();
+        expect(wrapper.get('td[data-col-key="ending"]').text()).toBe('10234');
+        expect(fetchBacktestEquityCurve).not.toHaveBeenCalled();
         await wrapper
           .get('[data-testid="comparison-select-skeleton"]')
           .setValue(true);
         await flushPromises();
-        expect(
-          wrapper.find('[data-testid="ending-loading-skeleton"]').exists(),
-        ).toBe(true);
+        expect(wrapper.get('td[data-col-key="ending"]').text()).toBe('10234');
         await toggleAnalysisColumns(wrapper, ['ending']);
         expect(
           wrapper.find('[data-testid="ending-loading-skeleton"]').exists(),
@@ -204,7 +204,7 @@ describe('production Backtest Workspace: comparison-columns', () => {
           wrapper.find('[data-testid="ending-loading-skeleton"]').exists(),
         ).toBe(false);
         const ending = wrapper.get('td[data-col-key="ending"]');
-        expect(ending.text()).toBe(outcome === 'exact' ? '10123' : '—');
+        expect(ending.text()).toBe('10234');
         if (outcome === 'error')
           expect(wrapper.text()).toContain('Couldn’t load replay.');
       } finally {

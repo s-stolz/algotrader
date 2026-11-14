@@ -6,6 +6,18 @@ from reporting.metrics import compute_metrics
 
 
 class TestReportingMetrics(unittest.TestCase):
+    def test_ending_equity_uses_final_mark_to_market_value(self) -> None:
+        for final in (1250.0, 0.0, -25.0):
+            with self.subTest(final=final):
+                metrics = compute_metrics(
+                    equity_curve=[
+                        PortfolioSnapshot(timestamp_ms=1, cash=1000.0, equity=990.0),
+                        PortfolioSnapshot(timestamp_ms=2, cash=900.0, equity=final),
+                    ],
+                    trades=[],
+                )
+                self.assertEqual(metrics["ending_equity"], final)
+
     def test_direction_metrics_split_counts_win_rates_and_realized_pnl(self) -> None:
         trades = [
             Trade(

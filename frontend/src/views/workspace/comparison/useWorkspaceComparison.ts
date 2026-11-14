@@ -25,7 +25,6 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
     selectedComparisonIds,
     setComparison,
     toggleComparison,
-    analysis,
   } = workspace.inspection;
   const ALL_ANALYSIS_ROWS = Number.MAX_SAFE_INTEGER;
   const defaultColumns = [
@@ -115,7 +114,7 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
     },
   );
   const optionalColumns = computed(() => [
-    ...createOptionalColumns(currentRows, analysis),
+    ...createOptionalColumns(currentRows),
     ...createResultColumns(workspace.inspection.tradeResults),
   ]);
   const analysisRunActions = createComparisonRunActions(workspace);

@@ -134,10 +134,10 @@ and behavior that is easy to break when changing them.
   with a complete ` (copy)` suffix, shortening by Unicode characters to fit the
   existing limit. Unnamed sources leave the draft empty; copied names use the
   ordinary creation contract and survive draft navigation and mode changes.
-- Treat missing metrics separately from zero. Ending equity comes from the last
-  exact Equity Replay point; saved Return uses its first-recorded-equity baseline,
-  separately from request Initial capital. Tables display maximum drawdown as a
-  positive magnitude; replay charts display nonpositive drawdown. Preserve
+- Treat missing metrics separately from zero. Ending equity comes from saved
+  `metrics.ending_equity`, independently of replay; saved Return uses its
+  first-recorded-equity baseline, separately from request Initial capital. Tables
+  display maximum drawdown as a positive magnitude; replay charts display nonpositive drawdown. Preserve
   backend sampling and expose replay unavailability separately from read errors.
   Comparison helpers live in `src/views/backtestComparison.ts`.
 - `BacktestEntryLimitField.vue` edits the independent daily entry cap; empty means

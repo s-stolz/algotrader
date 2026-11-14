@@ -278,6 +278,11 @@ migrations remain immutable. See the [upgrade procedure](../operations/backtest-
 A **Backtest Equity Curve** is time-ordered simulated equity. Successful current
 single-Market bar runs atomically store an Equity Replay descriptor alongside
 metrics, diagnostics, Fills, and Closed Trades, rather than a full curve.
+Successful settlement requires a finite `metrics.ending_equity`, taken from the
+final simulated portfolio snapshot (including unrealized PnL). The table reads
+this saved metric independently of replay availability. No historical backfill
+or replay fallback is provided for this metric.
+
 The **Equity Replay Fingerprint** identifies executable Candle timestamps and
 closes, excluding warmup. Reads verify current Candles and replay saved ordered
 Fills; they do not reevaluate strategy or indicators. Older successes retain
@@ -299,8 +304,9 @@ normalized to positive zero. Fingerprint compatibility must survive code changes
   preview. Points use the existing timestamp/equity/drawdown shape. Previews are
   bounded by `max_points` and emitted at most about ten times per second.
 - `{"type":"complete","result":{...}}` carries the existing Equity Replay
-  response, either `exact` or `unavailable`. Only `exact` is verified and may
-  supply Ending equity. Final sampling preserves the existing extrema/anchors;
+  response, either `exact` or `unavailable`. Only `exact` is a verified curve.
+  Ending equity uses the saved metric, independently of these frames. Final
+  sampling preserves the existing extrema/anchors;
   previews can change when the final sample replaces them.
 - `{"type":"error","message":"..."}` reports a failed read after HTTP headers
   have been sent. EOF without a terminal frame is also a failed read.

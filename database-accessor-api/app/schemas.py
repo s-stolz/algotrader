@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 from typing import Any, List, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -373,6 +374,13 @@ class BacktestExecutionSettleIn(BacktestContractModel):
         if self.status == "succeeded":
             if self.result_schema_version != 3 or self.metrics is None or self.diagnostics is None:
                 raise ValueError("successful settlement requires schema version 3 and results")
+            ending_equity = self.metrics.get("ending_equity")
+            if (
+                isinstance(ending_equity, bool)
+                or not isinstance(ending_equity, (int, float))
+                or not math.isfinite(ending_equity)
+            ):
+                raise ValueError("successful settlement requires finite metrics.ending_equity")
             if self.replay_descriptor is None:
                 raise ValueError("successful settlement requires replay_descriptor")
             if self.error_code is not None or self.error_message is not None:
