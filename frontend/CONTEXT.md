@@ -183,6 +183,14 @@ and behavior that is easy to break when changing them.
   equity. Year totals sum covered months; uncovered/unavailable months stay missing.
   Exact bars per trade are not inferred from elapsed time across market gaps.
 
+- `views/workspace/heatmap/` owns terminal-only parameter slicing and comparison
+  toggles. `types/backtest/heatmapSnapshot.ts` validates complete saved domains and
+  unique input tuples; current catalogs and table pages never define the grid.
+  Inspection starts the complete member read after the overview resolves, and
+  retains the last-good terminal pair through refresh failures. All colors use
+  saved member metrics independently of trade/replay reads. Heatmap clicks share
+  comparison membership with the table and do not invoke detail-selection defaults.
+
 ## Shared UI and Transport
 
 - Shared visual values, root provider, overlay typography, and justified control
