@@ -48,17 +48,13 @@ class CandleStreamPostgresTests(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine(url)
         self.session = async_sessionmaker(self.engine)()
         await self.session.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
-        await self.session.execute(
-            text("""CREATE TEMP TABLE candles (
+        await self.session.execute(text("""CREATE TEMP TABLE candles (
             symbol_id integer, timestamp_utc timestamptz, open double precision,
             high double precision, low double precision, close double precision,
-            volume double precision)""")
-        )
-        await self.session.execute(
-            text("""INSERT INTO candles SELECT 1,
+            volume double precision)"""))
+        await self.session.execute(text("""INSERT INTO candles SELECT 1,
             to_timestamp(i * 60), 1, 2, .5, 1.5 + i * .0001, 10
-            FROM generate_series(0, 4096) i""")
-        )
+            FROM generate_series(0, 4096) i"""))
         await self.session.commit()
 
     async def asyncTearDown(self):

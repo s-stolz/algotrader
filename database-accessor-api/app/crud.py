@@ -505,9 +505,11 @@ async def rename_backtest(session, backtest_id: str, name: str | None):
 
 def _run_columns(include_diagnostics: bool):
     return [
-        column
-        if include_diagnostics or column.name != "diagnostics"
-        else null().label("diagnostics")
+        (
+            column
+            if include_diagnostics or column.name != "diagnostics"
+            else null().label("diagnostics")
+        )
         for column in backtest_runs.c
     ]
 
