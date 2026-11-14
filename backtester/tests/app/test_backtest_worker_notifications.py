@@ -34,8 +34,10 @@ class NotificationWorkerTests(unittest.TestCase):
         testcase = self
 
         class Child(ProcessBacktestChildExecutor):
-            def execute(self, snapshot, *, on_poll=None):
+            def execute(self, snapshot, *, on_poll=None, on_progress=None):
                 assert on_poll is not None
+                assert on_progress is not None
+                on_progress("simulating")
                 testcase.assertFalse(on_poll())
                 for _ in range(100):
                     testcase.assertFalse(on_poll())

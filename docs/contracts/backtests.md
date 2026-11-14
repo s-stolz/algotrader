@@ -356,7 +356,8 @@ scanner is needed. Worker claims and settlement also publish invalidations.
   `{"type":"reconcile"}`. This wakes queue discovery and active cancellation
   checks. Each deployment instance uses its own stable consumer group, with the
   consumer name `worker`; group identities must never be shared by live workers.
-- `backtests:events:v1`: JSON `payload` is `backtestChanged` or `backtestHealth`.
+- `backtests:events:v1`: JSON `payload` is `backtestChanged`, `backtestHealth`,
+  or `backtestProgress`.
   Changes invalidate saved Workspace reads. Health carries `run_id` (nullable),
   `heartbeat_at_ms` from the persisted database heartbeat, and nullable
   `fault_code`/`fault_message`. Only matching active-run health may refresh the
@@ -380,6 +381,43 @@ triggers snapshot refreshes. Browser sockets receive broadcasts independently;
 they do not compete with worker consumer groups. Changed events coalesce refreshes
 of history, selected Backtest and Run, and queue; result artifacts retain their existing
 on-demand loading rules. Health updates require no recurring queue read.
+
+### Run stage progress
+
+`backtestProgress` carries `run_id` and `stage`: `loading_data`,
+`preparing_indicators`, `simulating`, `calculating_results`, or `saving`.
+These are ordered milestones, not elapsed-time estimates or equally weighted
+work percentages. Both engines use this sequence, including sized-target and
+order execution. Event-driven preparation initializes indicators and warmup;
+in-window indicator updates remain part of simulation. Saving starts in the
+worker parent before durable result settlement. Only lifecycle success means
+saving has completed.
+
+The execution child reports monotonically increasing stage indices through a
+single shared integer inherited through the supervisor. It never publishes to
+Redis. The parent observes it during existing cancellation checks and queues
+coalesced publication. Fast stages may be skipped by observers. No extra
+heartbeat, timer, per-candle stream, or change to terminal child-result messages
+is introduced. Progress cannot release an execution slot or settle a Run.
+
+The worker publisher atomically stores the latest progress payload at
+`backtests:progress:v1` and appends its notification to the event stream. The
+single verified execution slot means one latest-run snapshot per deployment is
+sufficient; a new Run replaces it. This bounded Redis snapshot survives event
+stream trimming but is advisory and is not a PostgreSQL lifecycle record. If
+Redis loses it, the next stage update repopulates it; no progress is invented.
+
+The gateway restores this snapshot on browser subscription and Redis reconnect,
+after establishing the event-stream cursor. Browsers cache progress by Run ID
+and ignore duplicate or earlier stages, since a snapshot can race a newer event.
+Stage events update only the progress display and do not refresh saved results.
+The milestone row appears beneath the existing overall settled-runs bar only
+for a running member with known progress. All five labels remain visible;
+loading starts at the left edge and saving ends at the right edge. The fill
+reaches the last completed dot and the current dot is outlined. Terminal or
+cancelling Runs hide the row even if late progress arrives. The latest stage
+remains displayed indefinitely during long work; no progress timeout or ETA is
+shown.
 
 HTTP commands and reads remain on backtester-api. The browser retains last-good
 data when disconnected, restores subscriptions automatically, and marks missing

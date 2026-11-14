@@ -14,6 +14,7 @@ from data.market_data import load_market_data, load_market_data_bundle, load_raw
 from data.normalization import normalize_bar_data
 from data.warmup import trim_bars_for_execution
 from domain.enums import BacktestEngine, DataGranularity
+from domain.progress import report_progress
 from domain.types import BacktestRequest, BacktestResult
 from engines.event_driven import run_event_driven_backtest
 from engines.vectorized import run_vectorized_backtest
@@ -52,6 +53,7 @@ def _execute_backtest(
     feature_bars: Mapping[str, pd.DataFrame] | None = None,
     execution_bars: pd.DataFrame | None = None,
 ) -> tuple[BacktestResult, int]:
+    report_progress("preparing_indicators")
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
 
     if request.execution.execution_mode == "orders":
@@ -140,6 +142,7 @@ def _execute_backtest_with_market_data(
     exchange: str | None = None,
     data_adapter: HistoricalBarDataAdapter | None = None,
 ) -> tuple[BacktestResult, int]:
+    report_progress("loading_data")
     resolved_strategy = _resolve_strategy_for_request(request=request, strategy=strategy)
 
     if request.execution.execution_mode == "orders":

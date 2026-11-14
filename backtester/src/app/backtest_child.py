@@ -15,10 +15,11 @@ from multiprocessing.process import BaseProcess
 from pathlib import Path
 from time import perf_counter
 from time import sleep as default_sleep
-from typing import Callable
+from typing import Callable, Protocol, cast
 
 from adapters.db_accessor import HistoricalBarDataAdapter
 from data.normalization import HistoricalDataUnavailableError
+from domain.progress import STAGES, ProgressStage, observe_progress
 from domain.types import BacktestRequest, BacktestRequestSnapshot, BacktestResult, Fill, Trade
 from strategies.registry import (
     StrategyVersionUnavailableError,
@@ -31,6 +32,10 @@ from app.backtest_runner import run_backtest_with_market_data
 _LOGGER = logging.getLogger("app.backtest_worker")
 _DEFAULT_FAILURE_CODE = "backtest_failed"
 _DEFAULT_FAILURE_MESSAGE = "Backtest execution failed"
+
+
+class ProgressCounter(Protocol):
+    value: int
 
 
 @dataclass(frozen=True)
@@ -111,19 +116,35 @@ class ProcessBacktestChildExecutor:
         snapshot: BacktestRequestSnapshot,
         *,
         on_poll: Callable[[], bool | None] | None = None,
+        on_progress: Callable[[ProgressStage], None] | None = None,
     ) -> CompactBacktestResult | CompactBacktestFailure | CompactBacktestCancelled:
         if sys.platform != "linux":
             raise ChildExitUnconfirmedError("Backtest supervision requires Linux child subreaping")
         context = get_context("spawn")
         cancel_requested = context.Event()
+        # One writer, one reader, no locks or queues that cancellation could strand.
+        progress = cast(ProgressCounter, context.RawValue("i", -1))
+        last_stage = -1
+
+        def poll() -> bool | None:
+            nonlocal last_stage
+            index = progress.value
+            if 0 <= index < len(STAGES) and index > last_stage:
+                last_stage = index
+                if on_progress is not None:
+                    on_progress(STAGES[index])
+            return on_poll() if on_poll is not None else None
+
         parent, child = context.Pipe(duplex=False)
         process = context.Process(
-            target=_run_child, args=(child, self._execute_fn, snapshot, cancel_requested)
+            target=_run_child, args=(child, self._execute_fn, snapshot, cancel_requested, progress)
         )
         try:
             process.start()
             child.close()
-            return self._wait_for_child(process, parent, on_poll, cancel_requested)
+            outcome = self._wait_for_child(process, parent, poll, cancel_requested)
+            poll()
+            return outcome
         except ChildExitUnconfirmedError:
             raise
         except BaseException as exc:
@@ -181,6 +202,7 @@ def _run_child(
     execute_fn: Callable[[BacktestRequestSnapshot], CompactBacktestResult | CompactBacktestFailure],
     snapshot: BacktestRequestSnapshot,
     cancel_requested,
+    progress: ProgressCounter | None = None,
 ) -> None:
     try:
         os.setsid()
@@ -197,7 +219,7 @@ def _run_child(
         # even when a descendant double-forks or creates a new session.
         if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
             raise ChildExitUnconfirmedError("Cannot enable backtest child subreaping")
-        result = _supervise_execution(execute_fn, snapshot, cancel_requested)
+        result = _supervise_execution(execute_fn, snapshot, cancel_requested, progress)
         _reap_descendants()
         connection.send(_ReapedChildResult(result))
     except BaseException:
@@ -211,10 +233,11 @@ def _supervise_execution(
     execute_fn: Callable[[BacktestRequestSnapshot], CompactBacktestResult | CompactBacktestFailure],
     snapshot: BacktestRequestSnapshot,
     cancel_requested,
+    progress: ProgressCounter | None = None,
 ) -> CompactBacktestResult | CompactBacktestFailure | CompactBacktestCancelled:
     context = get_context("spawn")
     parent, child = context.Pipe(duplex=False)
-    process = context.Process(target=_execute_child, args=(child, execute_fn, snapshot))
+    process = context.Process(target=_execute_child, args=(child, execute_fn, snapshot, progress))
     outcome = None
     received = False
     try:
@@ -257,9 +280,15 @@ def _execute_child(
     connection: Connection,
     execute_fn: Callable[[BacktestRequestSnapshot], CompactBacktestResult | CompactBacktestFailure],
     snapshot: BacktestRequestSnapshot,
+    progress: ProgressCounter | None = None,
 ) -> None:
+    def advance(stage: ProgressStage) -> None:
+        if progress is not None:
+            progress.value = STAGES.index(stage)
+
     try:
-        connection.send(execute_fn(snapshot))
+        with observe_progress(advance):
+            connection.send(execute_fn(snapshot))
     finally:
         connection.close()
 

@@ -9,6 +9,7 @@ from data.order_bars import (
 )
 from domain.enums import IntrabarExitPolicy
 from domain.orders import IntrabarExecutionPolicy
+from domain.progress import report_progress
 from domain.types import BacktestRequest, BacktestResult
 from execution.order_scan import scan_orders
 from execution.orders import OrderExecutionConfig
@@ -25,6 +26,7 @@ def run_order_vectorized(
     execution_bars: pd.DataFrame,
     strategy: StrategyDefinition,
 ) -> BacktestResult:
+    report_progress("simulating")
     model = strategy.order_model
     if model is None:
         raise ValueError("Order execution requires an order strategy")
@@ -74,6 +76,7 @@ def run_order_vectorized(
             max_entries_per_day=config.max_entries_per_day,
         ),
     )
+    report_progress("calculating_results")
     equity = build_equity_curve(
         symbol=symbol,
         timestamp_ms=execution_bars.timestamp_ms,

@@ -1,5 +1,6 @@
 """Delivery tests use a private Redis socket, never the running stack."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -7,11 +8,12 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 from adapters.backtest_events import (
     CONTROL_STREAM,
     EVENT_STREAM,
+    PROGRESS_KEY,
     BacktestControlInbox,
     BacktestEventPublisher,
 )
@@ -66,6 +68,21 @@ class RedisDeliveryTests(unittest.TestCase):
     def setUp(self):
         self.redis.flushdb()
 
+    def test_latest_progress_survives_stream_trimming(self):
+        publisher = BacktestEventPublisher(self.redis)
+        publisher.progress("run-a", "loading_data")
+        publisher.flush()
+        publisher.progress("run-a", "simulating")
+        publisher.flush()
+        self.redis.delete(EVENT_STREAM)
+        self.assertEqual(
+            json.loads(self.redis.get(PROGRESS_KEY) or "null"),
+            {"type": "backtestProgress", "run_id": "run-a", "stage": "simulating"},
+        )
+        publisher.progress("run-b", "loading_data")
+        publisher.flush()
+        self.assertEqual(json.loads(self.redis.get(PROGRESS_KEY) or "null")["run_id"], "run-b")
+
     def test_offline_worker_reads_retained_message_and_recovers_it_until_ack(self):
         publisher = BacktestEventPublisher(self.redis)
         publisher.changed()
@@ -117,6 +134,24 @@ class RedisDeliveryTests(unittest.TestCase):
 
 
 class PublisherRetryTests(unittest.TestCase):
+    def test_progress_retry_retains_latest_stage_and_writes_snapshot_with_event(self):
+        redis = MagicMock()
+        transaction = redis.pipeline.return_value.__enter__.return_value
+        transaction.execute.side_effect = [ConnectionError("offline"), []]
+        publisher = BacktestEventPublisher(redis)
+        publisher.progress("run-a", "loading_data")
+        with self.assertRaises(ConnectionError):
+            publisher.flush()
+        publisher.progress("run-a", "saving")
+        publisher.flush()
+        self.assertEqual(json.loads(transaction.set.call_args.args[1])["stage"], "saving")
+        self.assertEqual(
+            transaction.set.call_args.args[1], transaction.xadd.call_args.args[1]["payload"]
+        )
+        publisher.flush()
+        self.assertEqual(transaction.execute.call_count, 2)
+        redis.xadd.assert_not_called()
+
     def test_failed_publication_is_retained_and_retry_coalesces_changes(self):
         redis = Mock()
         redis.xadd.side_effect = [ConnectionError("offline"), "1-0", "2-0"]

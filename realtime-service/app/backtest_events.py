@@ -1,4 +1,4 @@
-"""Fan out backtest invalidations and health on the shared browser socket."""
+"""Fan out backtest invalidations, progress, and health on the shared browser socket."""
 
 import asyncio
 import json
@@ -9,6 +9,7 @@ from redis.asyncio import Redis
 
 _LOGGER = logging.getLogger(__name__)
 _STREAM = "backtests:events:v1"
+_PROGRESS_KEY = "backtests:progress:v1"
 
 
 class BacktestEventBridge:
@@ -23,9 +24,19 @@ class BacktestEventBridge:
 
     async def subscribe(self, websocket) -> None:
         self._clients.add(websocket)
+        if self._connected:
+            await self._restore_progress(websocket)
         await websocket.send(
             json.dumps({"type": "backtestConnection", "connected": self._connected})
         )
+
+    async def _restore_progress(self, websocket=None) -> None:
+        payload = await self._redis.get(_PROGRESS_KEY)
+        if payload:
+            if websocket is None:
+                await self._broadcast(json.loads(payload))
+            else:
+                await self._send(websocket, json.dumps(json.loads(payload)))
 
     def unsubscribe(self, websocket) -> None:
         self._clients.discard(websocket)
@@ -55,6 +66,7 @@ class BacktestEventBridge:
                     list[tuple[str, dict[str, str]]], await self._redis.xrevrange(_STREAM, count=1)
                 )
                 cursor = tail[0][0] if tail else "0-0"
+                await self._restore_progress()
                 await self._connection(True)
                 while True:
                     rows = cast(
@@ -64,7 +76,11 @@ class BacktestEventBridge:
                     for _, messages in rows:
                         for message_id, fields in messages:
                             message = json.loads(fields["payload"])
-                            if message.get("type") in {"backtestChanged", "backtestHealth"}:
+                            if message.get("type") in {
+                                "backtestChanged",
+                                "backtestHealth",
+                                "backtestProgress",
+                            }:
                                 await self._broadcast(message)
                             cursor = message_id
             except asyncio.CancelledError:

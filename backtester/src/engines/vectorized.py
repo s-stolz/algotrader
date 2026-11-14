@@ -17,6 +17,7 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
+from domain.progress import report_progress
 from domain.types import (
     BacktestRequest,
     BacktestResult,
@@ -80,6 +81,7 @@ def run_vectorized_backtest(
     symbol = request.symbols[0]
     normalized = _normalize_bars(bars=bars, symbol=symbol)
 
+    report_progress("simulating")
     feature_matrix = _build_feature_matrix(normalized)
     execution_targets = strategy.build_execution_targets(
         feature_matrix,
@@ -162,6 +164,7 @@ def run_vectorized_backtest(
             commission_bps=float(request.execution.commission_bps),
         )
 
+    report_progress("calculating_results")
     equity_curve = build_equity_curve(
         symbol=symbol,
         timestamp_ms=timestamp_ms,

@@ -1,4 +1,4 @@
-"""Redis delivery and recovery for backtest invalidations.
+"""Redis delivery and recovery for backtest invalidations and progress.
 
 Messages request authoritative reads, never lifecycle transitions. Each worker
 instance has its own durable group so an idle worker cannot steal cancellation
@@ -21,6 +21,7 @@ from redis.retry import Retry
 
 CONTROL_STREAM = "backtests:control:v1"
 EVENT_STREAM = "backtests:events:v1"
+PROGRESS_KEY = "backtests:progress:v1"
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -64,6 +65,9 @@ class BacktestEventPublisher:
     def health(self, payload: dict[str, Any]) -> None:
         self._enqueue("health", {"type": "backtestHealth", **payload})
 
+    def progress(self, run_id: str, stage: str) -> None:
+        self._enqueue("progress", {"type": "backtestProgress", "run_id": run_id, "stage": stage})
+
     def _enqueue(self, key: str, payload: dict[str, Any]) -> None:
         with self._lock:
             self._pending[key] = payload
@@ -74,7 +78,15 @@ class BacktestEventPublisher:
             pending = dict(self._pending)
         for key, payload in pending.items():
             stream = CONTROL_STREAM if key == "control" else EVENT_STREAM
-            self._client.xadd(stream, {"payload": json.dumps(payload)}, maxlen=10000)
+            if key == "progress":
+                # The verified execution slot permits one active run. Retain its
+                # latest stage separately from the bounded notification stream.
+                with self._client.pipeline(transaction=True) as transaction:
+                    transaction.set(PROGRESS_KEY, json.dumps(payload))
+                    transaction.xadd(stream, {"payload": json.dumps(payload)}, maxlen=10000)
+                    transaction.execute()
+            else:
+                self._client.xadd(stream, {"payload": json.dumps(payload)}, maxlen=10000)
             with self._lock:
                 if self._pending.get(key) is payload:
                     del self._pending[key]

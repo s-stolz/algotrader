@@ -1,7 +1,9 @@
+import { BACKTEST_PROGRESS_STAGES } from '@/types/backtestEventContracts';
 import type {
   BacktestChangedMessage,
   BacktestConnectionMessage,
   BacktestHealthMessage,
+  BacktestProgressMessage,
 } from '@/types/backtestEventContracts';
 import mitt, { type Emitter, type EventType, type Handler } from 'mitt';
 
@@ -19,6 +21,7 @@ export interface WebSocketServiceEventMap {
   backtestChanged: BacktestChangedMessage;
   backtestConnection: BacktestConnectionMessage;
   backtestHealth: BacktestHealthMessage;
+  backtestProgress: BacktestProgressMessage;
   error: Event;
   disconnected: CloseEvent | Event;
   candleUpdate: CandleUpdateMessage;
@@ -64,6 +67,7 @@ export class WebSocketService {
   private retryDelay = 500;
   private subscriptions = new Map<string, string>();
   backtestsConnected = false;
+  readonly backtestProgress = new Map<string, BacktestProgressMessage>();
   private isReady = false;
   private readyPromise: Promise<void> | null = null;
   private readyResolve: (() => void) | null = null;
@@ -115,6 +119,23 @@ export class WebSocketService {
         case 'backtestChanged':
           this.emit('backtestChanged', message);
           return;
+        case 'backtestProgress': {
+          const previous = this.backtestProgress.get(message.run_id);
+          // Snapshot restoration can race a newer streamed stage.
+          if (
+            previous &&
+            BACKTEST_PROGRESS_STAGES.indexOf(previous.stage) >=
+              BACKTEST_PROGRESS_STAGES.indexOf(message.stage)
+          )
+            return;
+          this.backtestProgress.set(message.run_id, message);
+          if (this.backtestProgress.size > 64) {
+            const oldest = this.backtestProgress.keys().next().value;
+            if (oldest !== undefined) this.backtestProgress.delete(oldest);
+          }
+          this.emit('backtestProgress', message);
+          return;
+        }
         case 'backtestHealth':
           this.emit('backtestHealth', message);
           return;
@@ -179,6 +200,7 @@ export class WebSocketService {
   }
 
   close(): void {
+    this.backtestProgress.clear();
     this.stopped = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;

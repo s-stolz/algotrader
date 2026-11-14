@@ -18,6 +18,7 @@ class BacktestBridgeTests(unittest.IsolatedAsyncioTestCase):
 
         redis = Mock(
             xrevrange=AsyncMock(return_value=[]),
+            get=AsyncMock(return_value=None),
             xread=AsyncMock(side_effect=read),
             aclose=AsyncMock(),
         )
@@ -38,6 +39,10 @@ class BacktestBridgeTests(unittest.IsolatedAsyncioTestCase):
             await wait_for(lambda: bridge._connected)
             await incoming.put([("stream", [("1-0", {"payload": '{"type":"backtestChanged"}'})])])
             await wait_for(lambda: {"type": "backtestChanged"} in messages())
+            progress = {"type": "backtestProgress", "run_id": "run-a", "stage": "saving"}
+            await incoming.put([("stream", [("2-0", {"payload": json.dumps(progress)})])])
+            await wait_for(lambda: progress in messages())
+            redis.get.return_value = json.dumps(progress)
             with self.assertLogs("app.backtest_events"):
                 await incoming.put(ConnectionError("lost upstream"))
                 await wait_for(lambda: not bridge._connected)
@@ -57,6 +62,17 @@ class BacktestBridgeTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await bridge.close()
         redis.aclose.assert_awaited_once()
+
+    async def test_subscriber_restores_latest_progress_without_lifecycle_refresh(self):
+        progress = {"type": "backtestProgress", "run_id": "run-a", "stage": "simulating"}
+        redis = Mock(get=AsyncMock(return_value=json.dumps(progress)))
+        bridge = BacktestEventBridge(redis)
+        bridge._connected = True
+        client = Mock(send=AsyncMock(), close=AsyncMock())
+        await bridge.subscribe(client)
+        messages = [json.loads(call.args[0]) for call in client.send.call_args_list]
+        self.assertEqual(messages, [progress, {"type": "backtestConnection", "connected": True}])
+        redis.get.assert_awaited_once_with("backtests:progress:v1")
 
     async def test_failed_browser_is_removed_without_interrupting_other_subscribers(self):
         bridge = BacktestEventBridge(Mock())

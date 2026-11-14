@@ -8,6 +8,7 @@ from domain.orders import (
     OrderCommand,
     OrderProtection,
 )
+from domain.progress import report_progress
 from domain.types import BacktestResult, PortfolioSnapshot
 from execution.trades import build_trades_from_fills
 from reporting.metrics import compute_metrics
@@ -133,6 +134,7 @@ def run_sized_targets(request, strategy, decisions):  # noqa: C901
     for key in state.active:
         state.record(curve[-1].timestamp_ms, key, "run_end_expired")
     events.extend(state.events)
+    report_progress("calculating_results")
     trades = build_trades_from_fills(
         fills, protection_at_exit=True, contract_multiplier=instrument.contract_multiplier
     )

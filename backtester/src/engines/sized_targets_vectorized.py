@@ -9,6 +9,7 @@ from domain.orders import (
     OrderCommand,
     OrderProtection,
 )
+from domain.progress import report_progress
 from domain.types import BacktestResult
 from execution.orders import OrderExecutionConfig, OrderExecutionState, execute_minute
 from execution.portfolio import build_equity_curve
@@ -98,6 +99,7 @@ def run_sized_targets(request, strategy, arrays: TargetExecutionArrays):  # noqa
         events.extend(state.events)
         state.events = []
         index = arrays.next_event(next_index, state, config)
+    report_progress("calculating_results")
     curve = build_equity_curve(
         symbol=symbol,
         timestamp_ms=arrays.timestamp_ms[:count],

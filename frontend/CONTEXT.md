@@ -113,6 +113,12 @@ and behavior that is easy to break when changing them.
   active consumers. Change/reconnect events refresh saved reads; health events
   update matching worker freshness without polling. The socket restores desired
   subscriptions after reconnect. See [delivery contracts](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
+- `BacktestRunProgress.vue` inside the inspection progress panel displays the
+  active Run’s five stage milestones beneath overall settled-run progress.
+  `websocketService` retains bounded per-run stage snapshots; `useBacktestEvents`
+  supplies them to inspection without refreshing results. Late or restored
+  earlier stages cannot regress progress. See
+  [run progress](../docs/contracts/backtests.md#run-stage-progress).
 - `App.vue` owns the `BacktestActivity` menu on backtest routes, anchored to the
   upper workspace pane above the separate trade-history pane.
   It shows current running/queued work with experiment progress; idle healthy status

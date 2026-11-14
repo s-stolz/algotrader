@@ -24,6 +24,7 @@ from domain.enums import (
     StrategySignal,
     TradeAccountingPolicy,
 )
+from domain.progress import report_progress
 from domain.schedule import DAY_MS, DailyTradingSchedule
 from domain.types import (
     BacktestRequest,
@@ -66,6 +67,7 @@ def run_event_driven_backtest(
     if strategy.order_model is not None:
         raise ValueError("Order strategies require execution_mode=orders")
 
+    report_progress("preparing_indicators")
     _validate_event_driven_request(request=request, strategy=strategy)
 
     symbol = str(request.symbols[0])
@@ -103,8 +105,9 @@ def run_event_driven_backtest(
                 if bar.timestamp_ms < request.start_ms:
                     previous = current
                     continue
-                if not started and needs_source_inputs(strategy):
-                    previous = None
+                if not started:
+                    previous = None if needs_source_inputs(strategy) else previous
+                    report_progress("simulating")
                 started = True
                 signal = model.evaluate_sequential_signal(
                     previous=previous,
@@ -145,6 +148,7 @@ def run_event_driven_backtest(
         feature_bars=feature_bars,
     )
 
+    report_progress("calculating_results")
     equity_curve = run_result.equity_curve
     trades = build_trades_from_fills(run_result.fill_result.fills)
     metrics = compute_metrics(equity_curve=equity_curve, trades=trades)
@@ -269,6 +273,7 @@ def _run_event_driven_loop(
     if needs_source_inputs(strategy):
         previous_features = None
 
+    report_progress("simulating")
     for row in in_window_bars.itertuples(index=False):
         bar = _bar_from_row(row)
         snapshot = stream.update(bar)

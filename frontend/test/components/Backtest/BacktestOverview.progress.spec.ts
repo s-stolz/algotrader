@@ -1,4 +1,7 @@
-import { emitBacktestChange } from '../../backtestEventSocket';
+import {
+  emitBacktestChange,
+  emitBacktestEvent,
+} from '../../backtestEventSocket';
 import { installBacktestSocket } from '../../backtestEventSocket';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -44,6 +47,53 @@ describe('accepted backtest inspection: progress', () => {
           reason: null,
         },
       ]);
+  });
+
+  it('restores a running stage received before mount and hides it after settlement', async () => {
+    vi.mocked(getBacktest).mockResolvedValue({
+      ...backtest,
+      status: 'running',
+    });
+    vi.mocked(listBacktestMembers).mockResolvedValue([
+      { ...member(0), status: 'running' },
+    ]);
+    emitBacktestEvent({
+      type: 'backtestProgress',
+      run_id: member(0).run_id,
+      stage: 'simulating',
+    });
+    const wrapper = mount(BacktestOverview, {
+      props: { backtestId: 'backtest-1' },
+    });
+    await flushPromises();
+    expect(wrapper.get('.run-progress [aria-current="step"]').text()).toBe(
+      'Simulating',
+    );
+    const reads = vi.mocked(getBacktest).mock.calls.length;
+    emitBacktestEvent({
+      type: 'backtestProgress',
+      run_id: member(0).run_id,
+      stage: 'saving',
+    });
+    await flushPromises();
+    expect(wrapper.get('.run-progress [aria-current="step"]').text()).toBe(
+      'Saving',
+    );
+    expect(vi.mocked(getBacktest).mock.calls).toHaveLength(reads);
+    vi.mocked(listBacktestMembers).mockResolvedValue([
+      { ...member(0), status: 'succeeded' },
+    ]);
+    emitBacktestChange();
+    await flushPromises();
+    expect(wrapper.find('.run-progress').exists()).toBe(false);
+    emitBacktestEvent({
+      type: 'backtestProgress',
+      run_id: member(0).run_id,
+      stage: 'simulating',
+    });
+    await flushPromises();
+    expect(wrapper.find('.run-progress').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it(

@@ -9,6 +9,7 @@ from adapters.db_accessor import (
     DatabaseAccessorHistoricalDataAdapter,
     HistoricalBarDataAdapter,
 )
+from domain.progress import report_progress
 from domain.types import BacktestRequest
 from indicator_engine import get_registry
 from strategies.base import StrategyDefinition
@@ -39,6 +40,7 @@ def load_market_data(
             exchange=exchange,
             data_adapter=data_adapter,
         )
+        report_progress("preparing_indicators")
         featured = build_feature_frame(
             bars=bundle.traded_bars,
             strategy=strategy,
@@ -58,6 +60,7 @@ def load_market_data(
         exchange=exchange,
         data_adapter=data_adapter,
     )
+    report_progress("preparing_indicators")
     featured = build_feature_frame(bars=normalized, strategy=strategy)
     return trim_bars_for_execution(
         bars=featured,

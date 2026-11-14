@@ -170,12 +170,18 @@ class BacktestWorker:
             self._inbox.ready.set()
             return self._execute_claimed(selected, owner_token)
 
+    def _publish_progress(self, run_id: str, stage: str) -> None:
+        if self._events is not None:
+            self._events.progress(run_id, stage)
+
     def _execute_claimed(self, selected: BacktestRunRecord, owner_token: str) -> bool:
+        self._publish_progress(selected.run_id, "loading_data")
         try:
             if isinstance(self._child_executor, ProcessBacktestChildExecutor):
                 outcome = self._child_executor.execute(
                     selected.request_snapshot,
                     on_poll=lambda: self._control_cancellation(selected.run_id),
+                    on_progress=lambda stage: self._publish_progress(selected.run_id, stage),
                 )
             else:
                 outcome = self._child_executor.execute(selected.request_snapshot)
@@ -218,6 +224,7 @@ class BacktestWorker:
             return True
 
         compact_result = outcome
+        self._publish_progress(selected.run_id, "saving")
         try:
             completed = self._lifecycle.settle_success(
                 run_id=selected.run_id,

@@ -252,6 +252,35 @@ class TestBacktestWorker(unittest.TestCase):
 
         self.inbox.take.side_effect = take
 
+    def test_saving_progress_precedes_durable_success_and_is_absent_on_failure(self):
+        for outcome, expected in (
+            (_compact_result(), ["loading_data", "saving"]),
+            (
+                CompactBacktestFailure("backtest_failed", "Backtest execution failed"),
+                ["loading_data"],
+            ),
+        ):
+            stages = []
+            events = Mock()
+            events.progress.side_effect = lambda run_id, stage: stages.append(stage)
+            lifecycle = _FakeLifecycle([True, True], [True])
+            settle = lifecycle.settle_success
+
+            def persist(**kwargs):
+                self.assertEqual(stages[-1], "saving")
+                return settle(**kwargs)
+
+            lifecycle.settle_success = persist
+            worker = BacktestWorker(
+                inbox=self.inbox,
+                repository=_FakeRunRepository([[_queued_run("run-progress", submitted_at_ms=1)]]),
+                lifecycle=lifecycle,
+                child_executor=_FakeChildExecutor(outcome),
+                events=events,
+            )
+            self.assertTrue(worker.run_once())
+            self.assertEqual(stages, expected)
+
     @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
     def test_running_cancellation_escalates_and_reaps_detached_descendant(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1093,9 +1122,11 @@ def _return_with_double_forked_descendant(
     return _return_process_identity(snapshot)
 
 
-def _supervise_with_denied_signals(connection, execute_fn, snapshot, cancel_requested) -> None:
+def _supervise_with_denied_signals(
+    connection, execute_fn, snapshot, cancel_requested, progress=None
+):
     with patch.object(child_module.os, "kill", side_effect=PermissionError("signal denied")):
-        child_module._run_child(connection, execute_fn, snapshot, cancel_requested)
+        child_module._run_child(connection, execute_fn, snapshot, cancel_requested, progress)
 
 
 def _kill_supervisor_with_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:

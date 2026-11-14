@@ -34,13 +34,31 @@
           }"
         />
       </div>
+      <BacktestRunProgress
+        v-if="runningProgress"
+        :ordinal="runningProgress.ordinal"
+        :stage="runningProgress.stage"
+        :key="runningProgress.runId"
+      />
     </div>
   </template>
 </template>
 <script setup lang="ts">
+import { computed } from 'vue';
+import BacktestRunProgress from './BacktestRunProgress.vue';
 import type { BacktestInspection } from './useBacktestInspection';
 const props = defineProps<{ inspection: BacktestInspection }>();
 const { selectedBacktest, progressPercent, outcomes } = props.inspection;
+const runningProgress = computed(() => {
+  const run = props.inspection.members.value?.find(
+    (run) => run.status === 'running',
+  );
+  if (!run) return null;
+  const progress = props.inspection.progress.value.get(run.run_id);
+  return progress
+    ? { runId: run.run_id, ordinal: run.run_ordinal + 1, stage: progress.stage }
+    : null;
+});
 </script>
 <style scoped>
 .progress-panel {

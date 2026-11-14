@@ -59,6 +59,49 @@ describe('WebSocket service', () => {
     vi.unstubAllGlobals();
   });
 
+  it('restores valid stages without regressions or lifecycle refreshes', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+    const progress = vi.fn();
+    const changed = vi.fn();
+    wsService.on('backtestProgress', progress);
+    wsService.on('backtestChanged', changed);
+    wsService.connect('ws://example.test');
+    const [socket] = mockSockets;
+    socket.open();
+    const send = (run_id: string, stage: string) =>
+      socket.receive(
+        JSON.stringify({
+          type: 'backtestProgress',
+          run_id,
+          stage,
+        }),
+      );
+    send('run-a', 'simulating');
+    send('run-a', 'loading_data');
+    send('run-a', 'simulating');
+    send('run-a', 'unknown');
+    send('', 'saving');
+    expect(progress).toHaveBeenCalledTimes(1);
+    expect(wsService.backtestProgress.get('run-a')?.stage).toBe('simulating');
+    send('run-b', 'loading_data');
+    send('run-a', 'saving');
+    expect(wsService.backtestProgress.get('run-b')?.stage).toBe('loading_data');
+    expect(wsService.backtestProgress.get('run-a')?.stage).toBe('saving');
+    expect(changed).not.toHaveBeenCalled();
+    wsService.connect('ws://example.test');
+    mockSockets[1].open();
+    mockSockets[1].receive(
+      JSON.stringify({
+        type: 'backtestProgress',
+        run_id: 'run-a',
+        stage: 'preparing_indicators',
+      }),
+    );
+    expect(wsService.backtestProgress.get('run-a')?.stage).toBe('saving');
+    wsService.close();
+  });
+
   it('waits for readiness before sending JSON payloads', async () => {
     const { wsService } = await loadService();
 

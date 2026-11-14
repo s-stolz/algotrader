@@ -24,7 +24,10 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
   `backtest_child.py` supervises execution. Claims carry the same process identity
   as periodic heartbeats so storage can establish freshness atomically.
   Only the worker parent persists child
-  results. `backtest_queue.py` projects advisory availability from storage and
+  results. Stage observations live in `domain/progress.py`; the execution child
+  writes a shared integer and the parent publishes advisory stage snapshots.
+  See [run progress](../docs/contracts/backtests.md#run-stage-progress).
+  `backtest_queue.py` projects advisory availability from storage and
   heartbeat primitives.
 - `src/domain/types.py`, `enums.py`, and `events.py` own shared runtime concepts.
   `src/adapters/` maps external APIs and persistence into these contracts.

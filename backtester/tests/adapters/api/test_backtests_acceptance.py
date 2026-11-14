@@ -62,7 +62,9 @@ class BacktestClient:
             raise DatabaseAccessorClientError("Backtest not found", status_code=404)
         return backtest
 
-    def list_backtest_members(self, backtest_id: str, *, include_diagnostics: bool = True) -> list[dict]:
+    def list_backtest_members(
+        self, backtest_id: str, *, include_diagnostics: bool = True
+    ) -> list[dict]:
         return self.members[backtest_id]
 
     def list_backtest_events(self, backtest_id: str) -> list[dict]:

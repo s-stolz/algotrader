@@ -20,6 +20,7 @@ from app.backtest_child import (
     execute_backtest_child,
 )
 from domain.enums import BacktestEngine
+from domain.progress import STAGES, observe_progress, report_progress
 from domain.types import (
     BacktestRequest,
     BacktestRequestSnapshot,
@@ -44,6 +45,17 @@ class _FailingHistoricalAdapter:
 
 
 class TestBacktestChildExecution(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
+    def test_progress_crosses_supervisor_without_changing_terminal_protocol(self):
+        stages = []
+        executor = ProcessBacktestChildExecutor(execute_fn=_report_progress_then_return)
+        result = executor.execute(
+            BacktestRequestSnapshot.from_request(_request()), on_progress=stages.append
+        )
+        self.assertIsInstance(result, CompactBacktestResult)
+        self.assertEqual(stages[-1], "calculating_results")
+        self.assertEqual(stages, sorted(set(stages), key=STAGES.index))
+
     def test_cancellation_after_result_still_stops_a_child_waiting_to_exit(self) -> None:
         cancellation = Event()
         parent, child, process = MagicMock(), MagicMock(), MagicMock()
@@ -143,10 +155,13 @@ class TestBacktestChildExecution(unittest.TestCase):
                 request = replace(_request(), engine=engine)
                 adapter = _FakeHistoricalAdapter(_bars())
 
-                compact = execute_backtest_child(
-                    BacktestRequestSnapshot.from_request(request),
-                    data_adapter=adapter,
-                )
+                stages = []
+                with observe_progress(stages.append):
+                    compact = execute_backtest_child(
+                        BacktestRequestSnapshot.from_request(request),
+                        data_adapter=adapter,
+                    )
+                self.assertEqual(stages, list(STAGES[:-1]))
 
                 if not isinstance(compact, CompactBacktestResult):
                     self.fail(f"Expected successful child result, got {compact!r}")
@@ -257,3 +272,10 @@ def _fail_observation() -> None:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _report_progress_then_return(snapshot):
+    for stage in STAGES[:-1]:
+        report_progress(stage)
+        time.sleep(0.3)
+    return _return_process_identity(snapshot)

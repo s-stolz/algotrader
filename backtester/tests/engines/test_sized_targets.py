@@ -4,6 +4,7 @@ from dataclasses import replace
 import pandas as pd
 from app.backtest_runner import run_backtest
 from domain.enums import BacktestEngine
+from domain.progress import observe_progress
 from domain.risk import InstrumentSpec, ProtectionSetting, SizingPolicy
 from domain.types import BacktestRequest, ExecutionConfig, StrategyConfig
 
@@ -37,10 +38,17 @@ class SizedTargetTests(unittest.TestCase):
             ),
             instrument=InstrumentSpec(1, "USD", 1, 1, 1, 0.01),
         )
-        vector = run_backtest(request=request, bars=bars)
-        event = run_backtest(
-            request=replace(request, engine=BacktestEngine.EVENT_DRIVEN), bars=bars
+        vector_stages, event_stages = [], []
+        with observe_progress(vector_stages.append):
+            vector = run_backtest(request=request, bars=bars)
+        with observe_progress(event_stages.append):
+            event = run_backtest(
+                request=replace(request, engine=BacktestEngine.EVENT_DRIVEN), bars=bars
+            )
+        self.assertEqual(
+            vector_stages, ["preparing_indicators", "simulating", "calculating_results"]
         )
+        self.assertEqual(event_stages, vector_stages)
         self.assertTrue(vector.fills)
         self.assertEqual(vector.fills, event.fills)
         self.assertEqual(vector.equity_curve, event.equity_curve)

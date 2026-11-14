@@ -11,6 +11,7 @@ from app.backtest_runs import BacktestRunService
 from app.equity_replay import descriptor
 from domain.enums import BacktestEngine, BacktestRunStatus, GapPolicy
 from domain.orders import IntrabarExecutionPolicy
+from domain.progress import observe_progress
 from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
@@ -60,6 +61,14 @@ class OrderBacktestTests(unittest.TestCase):
             execution_bars=self.minutes if minutes is None else minutes,
             strategy=self.strategy,
         )
+
+    def test_stage_observation_covers_both_order_runtimes(self):
+        for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
+            stages = []
+            with observe_progress(stages.append):
+                result = self.run_engine(engine)
+            self.assertTrue(result.equity_curve)
+            self.assertEqual(stages, ["preparing_indicators", "simulating", "calculating_results"])
 
     def test_engine_parity_and_no_retroactive_entry(self):
         self.minutes.loc[2, "low"] = 98.5

@@ -156,9 +156,9 @@ async def stream_equity(
                     symbol=request.symbols[0],
                     exchange=request.exchange,
                     market_id=request.instrument.symbol_id if request.instrument else None,
-                    timeframe="M1"
-                    if request.execution.execution_mode == "orders"
-                    else request.timeframe,
+                    timeframe=(
+                        "M1" if request.execution.execution_mode == "orders" else request.timeframe
+                    ),
                     start_ms=request.start_ms,
                     end_ms=request.end_ms,
                 )

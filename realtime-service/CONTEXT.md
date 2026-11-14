@@ -52,7 +52,11 @@ and report Redis disconnection even when browser sockets remain open. Browsers
 refresh authoritative snapshots on subscription/reconnection, so old gateway
 messages need not be replayed. Backtest policy remains in backtester-api.
 
-For `subscribeBacktests`, `unsubscribeBacktests`, and the three outbound event
+Stage updates restore the latest Redis progress snapshot on subscription and
+reconnect; they do not request saved-result refreshes. See
+[run progress](../docs/contracts/backtests.md#run-stage-progress).
+
+For `subscribeBacktests`, `unsubscribeBacktests`, and the outbound event
 shapes, read [real-time delivery](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
 
 ## Change Triggers

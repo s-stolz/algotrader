@@ -307,7 +307,7 @@ export function useBacktestInspection(
     if (clockTimer) clearInterval(clockTimer);
     clockTimer = null;
   }
-  useBacktestEvents(() => {
+  const { progress } = useBacktestEvents(() => {
     if (props.backtestId) void loadDetail(props.backtestId, true);
   });
   onMounted(start);
@@ -336,6 +336,7 @@ export function useBacktestInspection(
 
   return {
     selectedBacktest,
+    progress,
     membersError,
     membersPending,
     refresh: () =>
