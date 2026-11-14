@@ -46,17 +46,24 @@
 </template>
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { BacktestProgressStage } from '@/types/backtestEventContracts';
+import {
+  BACKTEST_PROGRESS_STAGES,
+  type BacktestProgressStage,
+} from '@/types/backtestEventContracts';
 const props = defineProps<{ ordinal: number; stage: BacktestProgressStage }>();
-const stages = [
-  { key: 'loading_data', label: 'Loading data' },
-  { key: 'preparing_indicators', label: 'Preparing indicators' },
-  { key: 'simulating', label: 'Simulating' },
-  { key: 'calculating_results', label: 'Calculating results' },
-  { key: 'saving', label: 'Saving' },
-];
+const stageLabels: Record<BacktestProgressStage, string> = {
+  loading_data: 'Loading data',
+  preparing_indicators: 'Preparing indicators',
+  simulating: 'Simulating',
+  calculating_results: 'Calculating results',
+  saving: 'Saving',
+};
+const stages = BACKTEST_PROGRESS_STAGES.map((key) => ({
+  key,
+  label: stageLabels[key],
+}));
 const stageIndex = computed(() =>
-  stages.findIndex((item) => item.key === props.stage),
+  BACKTEST_PROGRESS_STAGES.indexOf(props.stage),
 );
 // Dots mark completed stages; the outlined current stage has not completed yet.
 const fillPercent = computed(
