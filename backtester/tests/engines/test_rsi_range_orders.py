@@ -9,6 +9,7 @@ import pandas as pd
 from data.order_bars import resolve_order_expiry
 from domain.enums import BacktestEngine, OrderSide
 from domain.orders import LimitOrder, OrderAction, OrderCommand, OrderProtection
+from domain.progress import observe_progress
 from domain.types import BacktestRequest, ExecutionConfig, StrategyConfig
 from engines.order_event_driven import run_order_event_driven
 from engines.order_events import EventOrderConfig, EventOrderState, execute_order_event
@@ -74,12 +75,15 @@ class RsiRangeOrderTests(unittest.TestCase):
         vector = run_order_vectorized(
             request=request, strategy_bars=bars, execution_bars=minutes, strategy=strategy
         )
-        event = run_order_event_driven(
-            request=replace(request, engine=BacktestEngine.EVENT_DRIVEN),
-            strategy_bars=bars,
-            execution_bars=minutes,
-            strategy=strategy,
-        )
+        counts = []
+        with observe_progress(lambda stage: None, lambda done, total: counts.append((done, total))):
+            event = run_order_event_driven(
+                request=replace(request, engine=BacktestEngine.EVENT_DRIVEN),
+                strategy_bars=bars,
+                execution_bars=minutes,
+                strategy=strategy,
+            )
+        self.assertEqual(counts, [(0, len(minutes)), (len(minutes), len(minutes))])
         self.assertEqual(vector.fills, event.fills)
         self.assertEqual(vector.trades, event.trades)
         self.assertEqual(vector.equity_curve, event.equity_curve)

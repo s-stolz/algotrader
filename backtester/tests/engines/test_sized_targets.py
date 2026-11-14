@@ -39,9 +39,14 @@ class SizedTargetTests(unittest.TestCase):
             instrument=InstrumentSpec(1, "USD", 1, 1, 1, 0.01),
         )
         vector_stages, event_stages = [], []
-        with observe_progress(vector_stages.append):
+        vector_counts, event_counts = [], []
+        with observe_progress(
+            vector_stages.append, lambda done, total: vector_counts.append((done, total))
+        ):
             vector = run_backtest(request=request, bars=bars)
-        with observe_progress(event_stages.append):
+        with observe_progress(
+            event_stages.append, lambda done, total: event_counts.append((done, total))
+        ):
             event = run_backtest(
                 request=replace(request, engine=BacktestEngine.EVENT_DRIVEN), bars=bars
             )
@@ -49,6 +54,8 @@ class SizedTargetTests(unittest.TestCase):
             vector_stages, ["preparing_indicators", "simulating", "calculating_results"]
         )
         self.assertEqual(event_stages, vector_stages)
+        self.assertEqual(vector_counts, [])
+        self.assertEqual(event_counts, [(0, len(bars)), (len(bars), len(bars))])
         self.assertTrue(vector.fills)
         self.assertEqual(vector.fills, event.fills)
         self.assertEqual(vector.equity_curve, event.equity_curve)
@@ -56,3 +63,19 @@ class SizedTargetTests(unittest.TestCase):
         self.assertTrue(
             any(item["outcome"] == "sizing" for item in vector.diagnostics["order_events"])
         )
+
+        depleted_bars = bars.copy()
+        depleted_bars.loc[5:, ["open", "high", "low", "close"]] = 1.0
+        depleted_request = replace(
+            request,
+            engine=BacktestEngine.EVENT_DRIVEN,
+            initial_capital=100,
+            execution=ExecutionConfig(
+                sizing=SizingPolicy("units", 10, 100), stop_loss=ProtectionSetting("none")
+            ),
+        )
+        counts = []
+        with observe_progress(lambda stage: None, lambda done, total: counts.append((done, total))):
+            depleted = run_backtest(request=depleted_request, bars=depleted_bars)
+        self.assertEqual(depleted.diagnostics["termination_reason"], "account_depleted")
+        self.assertEqual(counts[-1], (6, len(bars)))

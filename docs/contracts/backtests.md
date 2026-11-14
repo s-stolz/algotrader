@@ -393,10 +393,18 @@ in-window indicator updates remain part of simulation. Saving starts in the
 worker parent before durable result settlement. Only lifecycle success means
 saving has completed.
 
-The execution child reports monotonically increasing stage indices through a
-single shared integer inherited through the supervisor. It never publishes to
-Redis. The parent observes it during existing cancellation checks and queues
-coalesced publication. Fast stages may be skipped by observers. No extra
+Event-driven simulation additionally reports optional `processed_candles` and
+`total_candles` integers on `backtestProgress`. Counts measure candles traversed
+in the requested window, including in-window warmup but excluding earlier
+bootstrap history. Order mode counts prepared M1 execution candles. The total is
+fixed for a Run; early account depletion can finish below that total. Vectorized
+Runs retain stage-only feedback.
+
+The execution child reports monotonically increasing stage indices and coarse
+candle counters through shared memory inherited through the supervisor. It never
+publishes to Redis. The parent observes it during existing cancellation checks and queues
+coalesced publication. Fast stages may be skipped by observers. Candle counters
+update every 1,000 completed candles and at loop exit; observers may coalesce the final count into the next stage. No extra
 heartbeat, timer, per-candle stream, or change to terminal child-result messages
 is introduced. Progress cannot release an execution slot or settle a Run.
 
@@ -405,17 +413,22 @@ The worker publisher atomically stores the latest progress payload at
 single verified execution slot means one latest-run snapshot per deployment is
 sufficient; a new Run replaces it. This bounded Redis snapshot survives event
 stream trimming but is advisory and is not a PostgreSQL lifecycle record. If
-Redis loses it, the next stage update repopulates it; no progress is invented.
+Redis loses it, the next progress update repopulates it; no progress is invented.
 
 The gateway restores this snapshot on browser subscription and Redis reconnect,
 after establishing the event-stream cursor. Browsers cache progress by Run ID
-and ignore duplicate or earlier stages, since a snapshot can race a newer event.
+and ignore earlier stages and non-advancing counts within the same stage, since
+a snapshot can race a newer event. Counts with a changed total are ignored.
 Stage events update only the progress display and do not refresh saved results.
 The milestone row appears beneath the existing overall settled-runs bar only
 for a running member with known progress. All five labels remain visible;
-loading starts at the left edge and saving ends at the right edge. The fill
-reaches the last completed dot and the current dot is outlined. Terminal or
-cancelling Runs hide the row even if late progress arrives. The latest stage
+loading starts at the left edge and saving ends at the right edge. Stage-only
+fill reaches the last completed dot and the current dot is outlined.
+For event-driven simulation with counts, numeric `processed / total` appears
+below Simulating and the fill interpolates from that dot toward Calculating
+results. The active stage advances only when the engine reports it. Counts
+disappear after simulation; subsequent stages do not move the fill backward.
+Terminal or cancelling Runs hide the row even if late progress arrives. The latest stage
 remains displayed indefinitely during long work; no progress timeout or ETA is
 shown.
 

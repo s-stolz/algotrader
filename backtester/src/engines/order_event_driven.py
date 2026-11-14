@@ -4,7 +4,7 @@ import pandas as pd
 from data.order_bars import close_timestamps, resolve_order_expiry, resolve_order_ticks
 from domain.enums import GapPolicy, IntrabarExitPolicy
 from domain.orders import IntrabarExecutionPolicy
-from domain.progress import report_progress
+from domain.progress import CandleProgress, report_progress
 from domain.types import BacktestRequest, BacktestResult, PortfolioSnapshot
 from execution.trades import build_trades_from_fills
 from reporting.metrics import compute_metrics
@@ -76,9 +76,11 @@ def run_order_event_driven(  # noqa: C901
         previous = current
         cursor += 1
 
+    progress = CandleProgress(len(execution_bars))
     for timestamp_value, opening, high, low, closing in execution_bars[
         ["timestamp_ms", "open", "high", "low", "close"]
     ].itertuples(index=False, name=None):
+        progress.begin_candle()
         timestamp = int(timestamp_value)
         while cursor < len(closes) and closes[cursor] < timestamp:
             decide(closes[cursor])
@@ -118,6 +120,7 @@ def run_order_event_driven(  # noqa: C901
         previous_end = timestamp + 60_000
         if state.depleted:
             break
+    progress.report()
     if previous_end < request.end_ms and not state.depleted:
         if config.gap_policy == GapPolicy.ERROR:
             raise ValueError(f"Missing minute execution data at {previous_end}")

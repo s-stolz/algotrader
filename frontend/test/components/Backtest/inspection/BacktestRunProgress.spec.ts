@@ -33,3 +33,26 @@ describe('run stage milestones', () => {
     expect(wrapper.get('[aria-current="step"]').text()).toBe('Saving');
   });
 });
+
+describe('simulation candle counts', () => {
+  it('interpolates only simulation and hides counts on early completion', async () => {
+    const wrapper = mount(BacktestRunProgress, {
+      props: {
+        ordinal: 1,
+        stage: 'simulating',
+        processedCandles: 5000,
+        totalCandles: 10000,
+      },
+    });
+    expect(wrapper.get('.candle-count').text()).toBe('5,000 / 10,000');
+    expect(wrapper.get('.milestone-fill').attributes('style')).toContain(
+      'width: 62.5%',
+    );
+    expect(wrapper.get('[aria-current="step"]').text()).toContain('Simulating');
+    await wrapper.setProps({ stage: 'calculating_results' });
+    expect(wrapper.find('.candle-count').exists()).toBe(false);
+    expect(wrapper.get('.milestone-fill').attributes('style')).toContain(
+      'width: 75%',
+    );
+  });
+});

@@ -117,7 +117,8 @@ and behavior that is easy to break when changing them.
   active Run’s five stage milestones beneath overall settled-run progress.
   `websocketService` retains bounded per-run stage snapshots; `useBacktestEvents`
   supplies them to inspection without refreshing results. Late or restored
-  earlier stages cannot regress progress. See
+  earlier stages or lower candle counts cannot regress progress. During event-driven
+  simulation, numeric candle counts interpolate the segment toward the next stage. See
   [run progress](../docs/contracts/backtests.md#run-stage-progress).
 - `App.vue` owns the `BacktestActivity` menu on backtest routes, anchored to the
   upper workspace pane above the separate trade-history pane.

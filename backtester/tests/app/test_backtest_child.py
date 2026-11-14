@@ -20,7 +20,7 @@ from app.backtest_child import (
     execute_backtest_child,
 )
 from domain.enums import BacktestEngine
-from domain.progress import STAGES, observe_progress, report_progress
+from domain.progress import STAGES, CandleProgress, observe_progress, report_progress
 from domain.types import (
     BacktestRequest,
     BacktestRequestSnapshot,
@@ -48,11 +48,15 @@ class TestBacktestChildExecution(unittest.TestCase):
     @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
     def test_progress_crosses_supervisor_without_changing_terminal_protocol(self):
         stages = []
+        counts = []
         executor = ProcessBacktestChildExecutor(execute_fn=_report_progress_then_return)
         result = executor.execute(
-            BacktestRequestSnapshot.from_request(_request()), on_progress=stages.append
+            BacktestRequestSnapshot.from_request(_request()),
+            on_progress=stages.append,
+            on_simulation=lambda done, total: counts.append((done, total)),
         )
         self.assertIsInstance(result, CompactBacktestResult)
+        self.assertEqual(counts[-1], (5017, 10000))
         self.assertEqual(stages[-1], "calculating_results")
         self.assertEqual(stages, sorted(set(stages), key=STAGES.index))
 
@@ -277,5 +281,10 @@ if __name__ == "__main__":
 def _report_progress_then_return(snapshot):
     for stage in STAGES[:-1]:
         report_progress(stage)
+        if stage == "simulating":
+            progress = CandleProgress(10000)
+            for _ in range(5017):
+                progress.begin_candle()
+            progress.report()
         time.sleep(0.3)
     return _return_process_identity(snapshot)

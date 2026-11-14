@@ -38,6 +38,8 @@
         v-if="runningProgress"
         :ordinal="runningProgress.ordinal"
         :stage="runningProgress.stage"
+        :processed-candles="runningProgress.processed_candles"
+        :total-candles="runningProgress.total_candles"
         :key="runningProgress.runId"
       />
     </div>
@@ -56,7 +58,7 @@ const runningProgress = computed(() => {
   if (!run) return null;
   const progress = props.inspection.progress.value.get(run.run_id);
   return progress
-    ? { runId: run.run_id, ordinal: run.run_ordinal + 1, stage: progress.stage }
+    ? { runId: run.run_id, ordinal: run.run_ordinal + 1, ...progress }
     : null;
 });
 </script>

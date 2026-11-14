@@ -10,7 +10,11 @@
       :aria-valuenow="stageIndex"
       :aria-valuemin="0"
       :aria-valuemax="stages.length"
-      :aria-valuetext="`${stageIndex} of ${stages.length} stages complete`"
+      :aria-valuetext="
+        hasCounts
+          ? `${processedCandles} of ${totalCandles} candles processed`
+          : `${stageIndex} of ${stages.length} stages complete`
+      "
     >
       <span
         class="milestone-fill"
@@ -37,6 +41,13 @@
         :style="{ left: `${(index / (stages.length - 1)) * 100}%` }"
       >
         {{ item.label }}
+        <span
+          v-if="item.key === 'simulating' && hasCounts"
+          class="candle-count"
+        >
+          {{ processedCandles?.toLocaleString() }} /
+          {{ totalCandles?.toLocaleString() }}
+        </span>
       </li>
     </ol>
   </section>
@@ -47,7 +58,18 @@ import {
   BACKTEST_PROGRESS_STAGES,
   type BacktestProgressStage,
 } from '@/types/backtestEventContracts';
-const props = defineProps<{ ordinal: number; stage: BacktestProgressStage }>();
+const props = defineProps<{
+  ordinal: number;
+  stage: BacktestProgressStage;
+  processedCandles?: number;
+  totalCandles?: number;
+}>();
+const hasCounts = computed(
+  () =>
+    props.stage === 'simulating' &&
+    props.processedCandles !== undefined &&
+    (props.totalCandles ?? 0) > 0,
+);
 const stageLabels: Record<BacktestProgressStage, string> = {
   loading_data: 'Loading data',
   preparing_indicators: 'Preparing indicators',
@@ -62,14 +84,25 @@ const stages = BACKTEST_PROGRESS_STAGES.map((key) => ({
 const stageIndex = computed(() =>
   BACKTEST_PROGRESS_STAGES.indexOf(props.stage),
 );
-// Dots mark completed stages; the outlined current stage has not completed yet.
-const fillPercent = computed(
-  () => (Math.max(0, stageIndex.value - 1) / (stages.length - 1)) * 100,
-);
+// Stage-only runs retain milestone feedback; candle counts interpolate simulation.
+const fillPercent = computed(() => {
+  const position = hasCounts.value
+    ? stageIndex.value +
+      Math.min(1, props.processedCandles! / props.totalCandles!)
+    : props.totalCandles !== undefined && stageIndex.value >= 3
+      ? stageIndex.value
+      : Math.max(0, stageIndex.value - 1);
+  return (position / (stages.length - 1)) * 100;
+});
 </script>
 <style scoped>
 .run-progress {
   margin-top: var(--design-space-lg);
+}
+.candle-count {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .milestone-track {
   position: relative;

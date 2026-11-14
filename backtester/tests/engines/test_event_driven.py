@@ -17,6 +17,7 @@ from domain.enums import (
     PriceSource,
     TradeDirection,
 )
+from domain.progress import observe_progress
 from domain.types import (
     BacktestRequest,
     BacktestResult,
@@ -153,6 +154,25 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertTrue(
             all(fill.timestamp_ms > bars["timestamp_ms"].iloc[2] for fill in results[1].fills)
         )
+
+    def test_progress_counts_in_window_warmup_and_excludes_bootstrap(self):
+        bars = self._build_bars()
+        for start_index in (0, 3):
+            updates = []
+            request = self._build_request(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                start_ms=int(bars.timestamp_ms.iloc[start_index]),
+                end_ms=int(bars.timestamp_ms.iloc[-1]) + 60_000,
+            )
+            with observe_progress(
+                lambda stage: None, lambda done, total: updates.append((done, total))
+            ):
+                observed = run_backtest(request=request, bars=bars)
+            plain = run_backtest(request=request, bars=bars)
+            self.assertEqual(observed.fills, plain.fills)
+            self.assertEqual(observed.equity_curve, plain.equity_curve)
+            total = len(bars) - start_index
+            self.assertEqual(updates, [(0, total), (total, total)])
 
     def test_indicator_strategy_rejects_window_that_never_completes_warmup(self) -> None:
         with self.assertRaisesRegex(

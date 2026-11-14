@@ -8,7 +8,7 @@ from domain.orders import (
     OrderCommand,
     OrderProtection,
 )
-from domain.progress import report_progress
+from domain.progress import CandleProgress, report_progress
 from domain.types import BacktestResult, PortfolioSnapshot
 from execution.trades import build_trades_from_fills
 from reporting.metrics import compute_metrics
@@ -16,7 +16,9 @@ from reporting.metrics import compute_metrics
 from engines.order_events import EventOrderConfig, EventOrderState, execute_order_event
 
 
-def run_sized_targets(request, strategy, decisions):  # noqa: C901
+def run_sized_targets(  # noqa: C901
+    request, strategy, decisions, *, progress: CandleProgress | None = None
+):
     """Consume causal completed-candle decisions; fill pending intent next open."""
     instrument = request.instrument
     if instrument is None:
@@ -129,6 +131,8 @@ def run_sized_targets(request, strategy, decisions):  # noqa: C901
         )
         events.extend(state.events)
         state.events = []
+    if progress is not None:
+        progress.report()
     if not curve:
         raise ValueError("No executable bars remain after warmup")
     for key in state.active:

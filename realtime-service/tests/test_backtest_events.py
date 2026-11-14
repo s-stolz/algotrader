@@ -64,7 +64,13 @@ class BacktestBridgeTests(unittest.IsolatedAsyncioTestCase):
         redis.aclose.assert_awaited_once()
 
     async def test_subscriber_joining_recovery_fanout_restores_latest_progress(self):
-        progress = {"type": "backtestProgress", "run_id": "run-a", "stage": "simulating"}
+        progress = {
+            "type": "backtestProgress",
+            "run_id": "run-a",
+            "stage": "simulating",
+            "processed_candles": 5000,
+            "total_candles": 20000,
+        }
         snapshot_started = asyncio.Event()
         release_snapshot = asyncio.Event()
         reading_started = asyncio.Event()
@@ -105,7 +111,13 @@ class BacktestBridgeTests(unittest.IsolatedAsyncioTestCase):
             await bridge.close()
 
     async def test_subscriber_restores_latest_progress_without_lifecycle_refresh(self):
-        progress = {"type": "backtestProgress", "run_id": "run-a", "stage": "simulating"}
+        progress = {
+            "type": "backtestProgress",
+            "run_id": "run-a",
+            "stage": "simulating",
+            "processed_candles": 5000,
+            "total_candles": 20000,
+        }
         redis = Mock(get=AsyncMock(return_value=json.dumps(progress)))
         bridge = BacktestEventBridge(redis)
         bridge._connected = True

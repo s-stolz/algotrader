@@ -102,6 +102,55 @@ describe('WebSocket service', () => {
     wsService.close();
   });
 
+  it('accepts advancing candle counts but rejects stale or invalid snapshots', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+    const progress = vi.fn();
+    const changed = vi.fn();
+    wsService.on('backtestProgress', progress);
+    wsService.on('backtestChanged', changed);
+    wsService.connect('ws://example.test');
+    const [socket] = mockSockets;
+    socket.open();
+    const send = (
+      processed_candles: unknown,
+      total_candles: unknown,
+      stage = 'simulating',
+    ) =>
+      socket.receive(
+        JSON.stringify({
+          type: 'backtestProgress',
+          run_id: 'run-a',
+          stage,
+          processed_candles,
+          total_candles,
+        }),
+      );
+    send(0, 20000);
+    send(5000, 20000);
+    send(0, 20000);
+    send(5000, 20000);
+    send(undefined, undefined);
+    send(10000, 30000);
+    send(-1, 20000);
+    send(30000, 20000);
+    send(1.5, 20000);
+    send(10000, undefined);
+    send(10000, 20000);
+    expect(progress).toHaveBeenCalledTimes(3);
+    expect(wsService.backtestProgress.get('run-a')?.processed_candles).toBe(
+      10000,
+    );
+    send(undefined, undefined, 'calculating_results');
+    send(15000, 20000);
+    expect(progress).toHaveBeenCalledTimes(4);
+    expect(wsService.backtestProgress.get('run-a')?.stage).toBe(
+      'calculating_results',
+    );
+    expect(changed).not.toHaveBeenCalled();
+    wsService.close();
+  });
+
   it('waits for readiness before sending JSON payloads', async () => {
     const { wsService } = await loadService();
 

@@ -134,6 +134,21 @@ class RedisDeliveryTests(unittest.TestCase):
 
 
 class PublisherRetryTests(unittest.TestCase):
+    def test_candle_updates_coalesce_and_restore_as_one_snapshot(self):
+        redis = MagicMock()
+        transaction = redis.pipeline.return_value.__enter__.return_value
+        publisher = BacktestEventPublisher(redis)
+        publisher.progress("run-a", "simulating", processed=5000, total=20000)
+        publisher.progress("run-a", "simulating", processed=10000, total=20000)
+        publisher.flush()
+        payload = json.loads(transaction.set.call_args.args[1])
+        self.assertEqual(payload["processed_candles"], 10000)
+        self.assertEqual(payload["total_candles"], 20000)
+        self.assertEqual(
+            transaction.set.call_args.args[1], transaction.xadd.call_args.args[1]["payload"]
+        )
+        self.assertEqual(transaction.execute.call_count, 1)
+
     def test_progress_retry_retains_latest_stage_and_writes_snapshot_with_event(self):
         redis = MagicMock()
         transaction = redis.pipeline.return_value.__enter__.return_value

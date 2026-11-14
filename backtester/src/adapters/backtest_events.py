@@ -65,8 +65,13 @@ class BacktestEventPublisher:
     def health(self, payload: dict[str, Any]) -> None:
         self._enqueue("health", {"type": "backtestHealth", **payload})
 
-    def progress(self, run_id: str, stage: str) -> None:
-        self._enqueue("progress", {"type": "backtestProgress", "run_id": run_id, "stage": stage})
+    def progress(
+        self, run_id: str, stage: str, *, processed: int | None = None, total: int | None = None
+    ) -> None:
+        payload: dict[str, Any] = {"type": "backtestProgress", "run_id": run_id, "stage": stage}
+        if processed is not None and total is not None:
+            payload.update(processed_candles=processed, total_candles=total)
+        self._enqueue("progress", payload)
 
     def _enqueue(self, key: str, payload: dict[str, Any]) -> None:
         with self._lock:

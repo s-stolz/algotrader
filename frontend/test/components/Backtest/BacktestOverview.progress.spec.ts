@@ -73,12 +73,25 @@ describe('accepted backtest inspection: progress', () => {
     emitBacktestEvent({
       type: 'backtestProgress',
       run_id: member(0).run_id,
+      stage: 'simulating',
+      processed_candles: 5000,
+      total_candles: 10000,
+    });
+    await flushPromises();
+    expect(wrapper.get('.candle-count').text()).toBe('5,000 / 10,000');
+    expect(wrapper.get('.milestone-fill').attributes('style')).toContain(
+      '62.5%',
+    );
+    emitBacktestEvent({
+      type: 'backtestProgress',
+      run_id: member(0).run_id,
       stage: 'saving',
     });
     await flushPromises();
     expect(wrapper.get('.run-progress [aria-current="step"]').text()).toBe(
       'Saving',
     );
+    expect(wrapper.find('.candle-count').exists()).toBe(false);
     expect(vi.mocked(getBacktest).mock.calls).toHaveLength(reads);
     vi.mocked(listBacktestMembers).mockResolvedValue([
       { ...member(0), status: 'succeeded' },

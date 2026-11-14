@@ -25,7 +25,9 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
   as periodic heartbeats so storage can establish freshness atomically.
   Only the worker parent persists child
   results. Stage observations live in `domain/progress.py`; the execution child
-  writes a shared integer and the parent publishes advisory stage snapshots.
+  writes shared stage and candle counters and the parent publishes advisory progress
+  snapshots. Event-driven loops report coarse counts through `CandleProgress`;
+  the child performs no network publication.
   See [run progress](../docs/contracts/backtests.md#run-stage-progress).
   `backtest_queue.py` projects advisory availability from storage and
   heartbeat primitives.

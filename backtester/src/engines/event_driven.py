@@ -24,7 +24,7 @@ from domain.enums import (
     StrategySignal,
     TradeAccountingPolicy,
 )
-from domain.progress import report_progress
+from domain.progress import CandleProgress, report_progress
 from domain.schedule import DAY_MS, DailyTradingSchedule
 from domain.types import (
     BacktestRequest,
@@ -40,7 +40,7 @@ from reporting.metrics import compute_metrics
 from strategies.base import StrategyDefinition
 
 
-def run_event_driven_backtest(
+def run_event_driven_backtest(  # noqa: C901
     *,
     request: BacktestRequest,
     bars: pd.DataFrame,
@@ -93,11 +93,17 @@ def run_event_driven_backtest(
         )
         boundaries = close_timestamps(normalized, request.timeframe)
 
+        progress = CandleProgress(int((normalized["timestamp_ms"] >= request.start_ms).sum()))
+
         def decisions():
             previous = None
             started = False
             for row, boundary in zip(normalized.itertuples(index=False), boundaries):
                 bar = _bar_from_row(row)
+                if bar.timestamp_ms >= request.start_ms:
+                    if progress.processed == 0:
+                        report_progress("simulating")
+                    progress.begin_candle()
                 snapshot = stream.update(bar)
                 if snapshot is None:
                     continue
@@ -107,7 +113,6 @@ def run_event_driven_backtest(
                     continue
                 if not started:
                     previous = None if needs_source_inputs(strategy) else previous
-                    report_progress("simulating")
                 started = True
                 signal = model.evaluate_sequential_signal(
                     previous=previous,
@@ -138,7 +143,7 @@ def run_event_driven_backtest(
                     target_quantity,
                 )
 
-        return run_sized_targets(request, strategy, decisions())
+        return run_sized_targets(request, strategy, decisions(), progress=progress)
 
     run_result = _run_event_driven_loop(
         request=request,
@@ -274,7 +279,9 @@ def _run_event_driven_loop(
         previous_features = None
 
     report_progress("simulating")
+    progress = CandleProgress(len(in_window_bars))
     for row in in_window_bars.itertuples(index=False):
+        progress.begin_candle()
         bar = _bar_from_row(row)
         snapshot = stream.update(bar)
         if snapshot is None:
@@ -368,6 +375,7 @@ def _run_event_driven_loop(
             close_price=float(bar.close),
         )
 
+    progress.report()
     if not state.snapshots:
         raise ValueError(
             "No executable bars remain after warmup/feature trimming for the requested window"

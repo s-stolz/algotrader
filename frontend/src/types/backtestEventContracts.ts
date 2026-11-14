@@ -12,6 +12,8 @@ export interface BacktestProgressMessage {
   type: 'backtestProgress';
   run_id: string;
   stage: BacktestProgressStage;
+  processed_candles?: number;
+  total_candles?: number;
 }
 
 export interface BacktestChangedMessage {
@@ -42,7 +44,17 @@ export function isBacktestEventMessage(
     return (
       typeof value.run_id === 'string' &&
       value.run_id.length > 0 &&
-      BACKTEST_PROGRESS_STAGES.some((stage) => stage === value.stage)
+      BACKTEST_PROGRESS_STAGES.some((stage) => stage === value.stage) &&
+      ((value.processed_candles === undefined &&
+        value.total_candles === undefined) ||
+        (value.stage === 'simulating' &&
+          typeof value.processed_candles === 'number' &&
+          Number.isSafeInteger(value.processed_candles) &&
+          typeof value.total_candles === 'number' &&
+          Number.isSafeInteger(value.total_candles) &&
+          value.processed_candles >= 0 &&
+          value.total_candles > 0 &&
+          value.processed_candles <= value.total_candles))
     );
   if (value.type === 'backtestChanged') return true;
   if (value.type === 'backtestConnection')

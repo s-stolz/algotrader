@@ -36,6 +36,12 @@ _DEFAULT_FAILURE_MESSAGE = "Backtest execution failed"
 
 class ProgressCounter(Protocol):
     value: int
+    processed: int
+    total: int
+
+
+class _SharedProgress(ctypes.Structure):
+    _fields_ = [("value", ctypes.c_int), ("processed", ctypes.c_int64), ("total", ctypes.c_int64)]
 
 
 @dataclass(frozen=True)
@@ -117,22 +123,29 @@ class ProcessBacktestChildExecutor:
         *,
         on_poll: Callable[[], bool | None] | None = None,
         on_progress: Callable[[ProgressStage], None] | None = None,
+        on_simulation: Callable[[int, int], None] | None = None,
     ) -> CompactBacktestResult | CompactBacktestFailure | CompactBacktestCancelled:
         if sys.platform != "linux":
             raise ChildExitUnconfirmedError("Backtest supervision requires Linux child subreaping")
         context = get_context("spawn")
         cancel_requested = context.Event()
         # One writer, one reader, no locks or queues that cancellation could strand.
-        progress = cast(ProgressCounter, context.RawValue("i", -1))
+        progress = cast(ProgressCounter, context.RawValue(_SharedProgress, -1, 0, 0))
         last_stage = -1
+        last_processed = -1
 
         def poll() -> bool | None:
-            nonlocal last_stage
+            nonlocal last_stage, last_processed
             index = progress.value
             if 0 <= index < len(STAGES) and index > last_stage:
                 last_stage = index
                 if on_progress is not None:
                     on_progress(STAGES[index])
+            if index == STAGES.index("simulating") and on_simulation is not None:
+                processed, total = progress.processed, progress.total
+                if total > 0 and processed > last_processed:
+                    last_processed = processed
+                    on_simulation(processed, total)
             return on_poll() if on_poll is not None else None
 
         parent, child = context.Pipe(duplex=False)
@@ -286,8 +299,14 @@ def _execute_child(
         if progress is not None:
             progress.value = STAGES.index(stage)
 
+    def simulation(processed: int, total: int) -> None:
+        if progress is not None:
+            # Total is fixed for the run and published before the advancing count.
+            progress.total = total
+            progress.processed = processed
+
     try:
-        with observe_progress(advance):
+        with observe_progress(advance, simulation):
             connection.send(execute_fn(snapshot))
     finally:
         connection.close()

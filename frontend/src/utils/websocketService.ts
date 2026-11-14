@@ -124,16 +124,22 @@ export class WebSocketService {
           // Snapshot restoration can race a newer streamed stage.
           if (
             previous &&
-            BACKTEST_PROGRESS_STAGES.indexOf(previous.stage) >=
-              BACKTEST_PROGRESS_STAGES.indexOf(message.stage)
+            (BACKTEST_PROGRESS_STAGES.indexOf(previous.stage) >
+              BACKTEST_PROGRESS_STAGES.indexOf(message.stage) ||
+              (previous.stage === message.stage &&
+                ((message.processed_candles ?? -1) <=
+                  (previous.processed_candles ?? -1) ||
+                  (previous.total_candles !== undefined &&
+                    message.total_candles !== previous.total_candles))))
           )
             return;
-          this.backtestProgress.set(message.run_id, message);
+          const progress = { ...previous, ...message };
+          this.backtestProgress.set(message.run_id, progress);
           if (this.backtestProgress.size > 64) {
             const oldest = this.backtestProgress.keys().next().value;
             if (oldest !== undefined) this.backtestProgress.delete(oldest);
           }
-          this.emit('backtestProgress', message);
+          this.emit('backtestProgress', progress);
           return;
         }
         case 'backtestHealth':

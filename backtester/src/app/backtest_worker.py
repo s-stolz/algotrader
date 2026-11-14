@@ -170,6 +170,10 @@ class BacktestWorker:
             self._inbox.ready.set()
             return self._execute_claimed(selected, owner_token)
 
+    def _publish_simulation(self, run_id: str, processed: int, total: int) -> None:
+        if self._events is not None:
+            self._events.progress(run_id, "simulating", processed=processed, total=total)
+
     def _publish_progress(self, run_id: str, stage: str) -> None:
         if self._events is not None:
             self._events.progress(run_id, stage)
@@ -182,6 +186,9 @@ class BacktestWorker:
                     selected.request_snapshot,
                     on_poll=lambda: self._control_cancellation(selected.run_id),
                     on_progress=lambda stage: self._publish_progress(selected.run_id, stage),
+                    on_simulation=lambda processed, total: self._publish_simulation(
+                        selected.run_id, processed, total
+                    ),
                 )
             else:
                 outcome = self._child_executor.execute(selected.request_snapshot)
