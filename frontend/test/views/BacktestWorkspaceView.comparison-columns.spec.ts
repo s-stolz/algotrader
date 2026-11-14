@@ -101,7 +101,11 @@ describe('production Backtest Workspace: comparison-columns', () => {
 
   it('updates column settings during pending replay without rebuilding the table', async () => {
     const saved = run('column-loading');
-    saved.metrics = { ...saved.metrics, ending_equity: 10234 };
+    saved.metrics = {
+      ...saved.metrics,
+      profit_factor: null,
+      ending_equity: 10234,
+    };
     seedBacktest([saved]);
     vi.mocked(getBacktestRun).mockResolvedValue(saved);
     vi.mocked(fetchBacktestEquityCurve).mockReturnValue(new Promise(() => {}));
@@ -152,7 +156,11 @@ describe('production Backtest Workspace: comparison-columns', () => {
     'keeps saved ending equity before and after %s replay',
     async (outcome) => {
       const saved = run('skeleton');
-      saved.metrics = { ...saved.metrics, ending_equity: 10234 };
+      saved.metrics = {
+        ...saved.metrics,
+        profit_factor: null,
+        ending_equity: 10234,
+      };
       seedBacktest([saved]);
       vi.mocked(getBacktestRun).mockResolvedValue(saved);
       let resolveReplay!: (response: EquityReplayResponse) => void;

@@ -69,6 +69,7 @@ describe('saved Backtest Run presentation', () => {
   it('keeps signed saved values and separates zero trades from missing results', () => {
     const noTrades = run('none', {
       metrics: {
+        profit_factor: null,
         long_trade_count: 0,
         long_win_rate_pct: 0,
         long_realized_pnl: 0,

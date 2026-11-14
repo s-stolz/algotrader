@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from domain.enums import TradeDirection
@@ -6,6 +7,24 @@ from reporting.metrics import compute_metrics
 
 
 class TestReportingMetrics(unittest.TestCase):
+    def test_profit_factor_realized_pnl_cases_are_strict_json(self) -> None:
+        for pnls, expected in [
+            ([120, -40, 0], 3.0),
+            ([-40, 0], 0.0),
+            ([10, 0], "infinity"),
+            ([], None),
+            ([0, 0], None),
+        ]:
+            with self.subTest(pnls=pnls):
+                trades = [
+                    Trade(str(i), "X", TradeDirection.LONG, 1, 1, 100, realized_pnl=pnl, fees=2)
+                    for i, pnl in enumerate(pnls)
+                ]
+                for curve in ([], [PortfolioSnapshot(1, 100, 100)]):
+                    metrics = compute_metrics(equity_curve=curve, trades=trades)
+                    self.assertEqual(metrics["profit_factor"], expected)
+                    self.assertEqual(json.loads(json.dumps(metrics, allow_nan=False)), metrics)
+
     def test_ending_equity_uses_final_mark_to_market_value(self) -> None:
         for final in (1250.0, 0.0, -25.0):
             with self.subTest(final=final):

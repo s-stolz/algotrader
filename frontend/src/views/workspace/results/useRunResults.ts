@@ -2,6 +2,7 @@ import { computed, ref, watch, onScopeDispose, type Ref } from 'vue';
 import { fetchBacktestClosedTrades } from '@/api/backtesterClient';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import { summarizeTrades, type RunResults } from './runResults';
+import { decodeProfitFactor } from '@/types/backtest/results';
 import { errorMessage } from '../workspaceErrors';
 export interface RunResultState {
   status: 'loading' | 'ready' | 'error';
@@ -31,11 +32,17 @@ export function useRunResults(runs: Ref<BacktestRun[]>) {
       void (async () => {
         try {
           const trades = await fetchBacktestClosedTrades(id);
-          if (active && requests.get(id) === token)
+          if (active && requests.get(id) === token) {
+            const run = runs.value.find((run) => run.run_id === id);
+            const result = summarizeTrades(
+              trades,
+              decodeProfitFactor(run?.metrics?.profit_factor),
+            );
             states.value[id] = {
               status: 'ready',
-              result: summarizeTrades(trades),
+              result,
             };
+          }
         } catch (error) {
           if (active && requests.get(id) === token)
             states.value[id] = { status: 'error', error: errorMessage(error) };

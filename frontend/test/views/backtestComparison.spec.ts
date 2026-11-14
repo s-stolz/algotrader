@@ -37,7 +37,7 @@ function savedRun(id: string, ordinal: number): BacktestRun {
         slippage_bps: 0.5,
       },
     },
-    metrics: { total_return_pct: 2, max_drawdown_pct: -3 },
+    metrics: { profit_factor: null, total_return_pct: 2, max_drawdown_pct: -3 },
   };
 }
 
@@ -75,8 +75,8 @@ describe('within-backtest comparison', () => {
   it('sorts drawdown by its displayed positive loss magnitude', () => {
     const shallow = savedRun('shallow', 0);
     const deep = savedRun('deep', 1);
-    shallow.metrics = { max_drawdown_pct: -2 };
-    deep.metrics = { max_drawdown_pct: -20 };
+    shallow.metrics = { profit_factor: null, max_drawdown_pct: -2 };
+    deep.metrics = { profit_factor: null, max_drawdown_pct: -20 };
     expect(
       [deep, shallow]
         .sort((a, b) => compareRuns(a, b, 'drawdown'))

@@ -1,4 +1,5 @@
 import { computed, h, ref, watch } from 'vue';
+import { decodeProfitFactor } from '@/types/backtest/results';
 import type { DataTableColumns, PaginationProps } from 'naive-ui';
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import { designTokens } from '@/design/tokens';
@@ -54,6 +55,13 @@ export function useWorkspaceComparison(workspace: BacktestWorkspace) {
     key: string,
     order: 'ascend' | 'descend',
   ) {
+    if (key === 'profit-factor') {
+      const value = (run: BacktestRun) =>
+        run.status === 'succeeded'
+          ? decodeProfitFactor(run.metrics?.profit_factor)
+          : null;
+      return compareResultValues(value(left), value(right), order);
+    }
     if (resultMetrics.some((metric) => metric.key === key)) {
       const value = (run: BacktestRun) =>
         run.status === 'succeeded'

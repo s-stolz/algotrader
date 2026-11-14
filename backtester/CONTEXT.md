@@ -40,6 +40,8 @@ For Backtest/Run commands, queue invariants, versions, or replay format, read
   [private workspace contract](STRATEGIES.md#private-strategy-workspace).
 - `src/reporting/metrics.py` records ending equity from the final portfolio
   snapshot in saved metrics; table inspection does not need Equity Replay.
+  It also owns [saved profit factor](../docs/contracts/backtests.md#saved-profit-factor)
+  for every engine path; child handoff preserves the explicit JSON union.
 - Replay changes: start at `src/app/equity_replay.py` and the shared fingerprint
   contract. Persist descriptors and Fills, reconstruct curves on read.
 

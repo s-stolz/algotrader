@@ -173,7 +173,7 @@ class TestDomainTypes(unittest.TestCase):
             fills=[fill],
             trades=[trade],
             equity_curve=[snapshot],
-            metrics={"return_pct": 0.01},
+            metrics={"profit_factor": None, "return_pct": 0.01},
             diagnostics={"engine": "vectorized"},
         )
 

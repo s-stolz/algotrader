@@ -8,11 +8,10 @@ import {
 import { resultRun, resultTrade } from './resultFixtures';
 describe('run trade results', () => {
   it('uses net P&L once, includes breakevens and measures elapsed holding time', () => {
-    const result = summarizeTrades([
-      resultTrade(120),
-      resultTrade(-40),
-      resultTrade(0),
-    ]);
+    const result = summarizeTrades(
+      [resultTrade(120), resultTrade(-40), resultTrade(0)],
+      3,
+    );
     expect(result.metrics).toMatchObject({
       'net-profit': 80,
       'profit-factor': 3,
@@ -22,24 +21,27 @@ describe('run trade results', () => {
     expect(result.metrics['win-rate']).toBeCloseTo(100 / 3);
   });
   it('distinguishes no trades, no losses, and all breakevens', () => {
-    expect(summarizeTrades([]).metrics).toMatchObject({
+    expect(summarizeTrades([], null).metrics).toMatchObject({
       'net-profit': 0,
       'win-rate': null,
       'profit-factor': null,
     });
-    expect(summarizeTrades([resultTrade(10)]).metrics['profit-factor']).toBe(
-      Infinity,
-    );
     expect(
-      summarizeTrades([resultTrade(0)]).metrics['profit-factor'],
+      summarizeTrades([resultTrade(10)], Infinity).metrics['profit-factor'],
+    ).toBe(Infinity);
+    expect(
+      summarizeTrades([resultTrade(0)], null).metrics['profit-factor'],
     ).toBeNull();
     expect(formatResult(Infinity, 'ratio')).toBe('∞');
   });
   it('groups by UTC exit month and excludes the end boundary from coverage', () => {
-    const result = summarizeTrades([
-      resultTrade(100, Date.UTC(2024, 11, 31, 23, 59)),
-      resultTrade(-30, Date.UTC(2025, 0, 1)),
-    ]);
+    const result = summarizeTrades(
+      [
+        resultTrade(100, Date.UTC(2024, 11, 31, 23, 59)),
+        resultTrade(-30, Date.UTC(2025, 0, 1)),
+      ],
+      100 / 30,
+    );
     const run = resultRun('run', Date.UTC(2024, 11, 15), Date.UTC(2025, 2));
     expect(periodProfit(run, result, 2024)).toBe(100);
     expect(periodProfit(run, result, 2025)).toBe(-30);

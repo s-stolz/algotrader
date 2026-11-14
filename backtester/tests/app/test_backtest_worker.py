@@ -1037,7 +1037,7 @@ def _compact_result() -> CompactBacktestResult:
                 equity=request.initial_capital,
             )
         ],
-        metrics={"total_return_pct": 1.25},
+        metrics={"profit_factor": None, "total_return_pct": 1.25},
         diagnostics={"engine": "vectorized"},
     )
     return CompactBacktestResult.from_result(result, execution_duration_ms=17)
@@ -1050,7 +1050,9 @@ def _return_process_identity(
         request=snapshot.to_request(),
         fills=[],
         trades=[],
-        metrics={},
+        metrics={
+            "profit_factor": None,
+        },
         diagnostics={"process_id": os.getpid()},
         execution_duration_ms=0,
     )

@@ -15,7 +15,7 @@ from multiprocessing.process import BaseProcess
 from pathlib import Path
 from time import perf_counter
 from time import sleep as default_sleep
-from typing import Callable, Protocol, cast
+from typing import Callable, Literal, Protocol, cast
 
 from adapters.db_accessor import HistoricalBarDataAdapter
 from data.normalization import HistoricalDataUnavailableError
@@ -51,7 +51,7 @@ class CompactBacktestResult:
     request: BacktestRequest
     fills: list[Fill]
     trades: list[Trade]
-    metrics: dict[str, float]
+    metrics: dict[str, float | Literal["infinity"] | None]
     diagnostics: dict[str, object]
     execution_duration_ms: int
     replay_descriptor: dict[str, object] | None = None

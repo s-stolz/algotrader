@@ -11,6 +11,7 @@ from typing import Any, Mapping, Protocol, Sequence
 
 from db_accessor_client import DatabaseAccessorClientError
 from domain.enums import BacktestRunStatus, ExitReason, OrderSide, TradeDirection
+from domain.metrics import validate_profit_factor
 from domain.types import (
     BACKTEST_RESULT_SCHEMA_VERSION,
     BacktestFillRecord,
@@ -297,6 +298,7 @@ def build_successful_completion_payload(
 ) -> dict[str, Any]:
     """Build the atomic completion payload without the non-persisted equity curve."""
 
+    validate_profit_factor(result.metrics)
     diagnostics = deepcopy(result.diagnostics)
     diagnostics["execution_duration_ms"] = _execution_duration_ms(
         result=result,

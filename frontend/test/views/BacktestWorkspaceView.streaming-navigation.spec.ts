@@ -21,6 +21,7 @@ describe('replay navigation cancellation', () => {
       const runs = [0, 1, 2].map((i) => ({
         ...member(i),
         status: 'succeeded' as const,
+        metrics: { profit_factor: null },
       }));
       vi.mocked(listBacktestMembers).mockResolvedValue(runs);
       vi.mocked(getBacktestRun).mockImplementation(async (id) =>

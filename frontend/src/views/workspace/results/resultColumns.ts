@@ -1,3 +1,4 @@
+import { decodeProfitFactor } from '@/types/backtest/results';
 import { cell } from '../comparison/comparisonCells';
 import { resultMetrics, formatResult } from './runResults';
 import type { ComparisonColumn } from '../comparison/comparisonOptionalColumns';
@@ -13,6 +14,13 @@ export function createResultColumns(
     render: (run) => {
       const state = results.states.value[run.run_id];
       if (run.status !== 'succeeded') return cell('—');
+      if (metric.key === 'profit-factor')
+        return cell(
+          formatResult(
+            decodeProfitFactor(run.metrics?.profit_factor),
+            metric.unit,
+          ),
+        );
       if (!state || state.status === 'loading')
         return cell('…', 'Loading trade statistics');
       if (state.status === 'error') return cell('—', state.error);

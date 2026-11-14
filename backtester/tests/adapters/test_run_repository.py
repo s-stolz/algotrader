@@ -150,7 +150,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
             "request_schema_version": 2,
             "request": dict(BacktestRequestSnapshot.from_request(_request()).payload),
             "result_schema_version": 3,
-            "metrics": {"total_return_pct": 1.25},
+            "metrics": {"profit_factor": None, "total_return_pct": 1.25},
             "diagnostics": {"execution_duration_ms": 240_000},
         }
         repository = DatabaseAccessorBacktestRunRepository(client=client)
@@ -165,7 +165,7 @@ class TestDatabaseAccessorBacktestRunRepository(unittest.TestCase):
         self.assertEqual(run.completed_at_ms, 1_780_922_100_000)
         self.assertEqual(run.request_snapshot.to_request(), _request())
         self.assertEqual(run.result_schema_version, 3)
-        self.assertEqual(run.metrics, {"total_return_pct": 1.25})
+        self.assertEqual(run.metrics, {"profit_factor": None, "total_return_pct": 1.25})
         self.assertEqual(run.diagnostics, {"execution_duration_ms": 240_000})
 
     def test_get_maps_accessor_not_found_to_absent_record(self) -> None:

@@ -239,7 +239,7 @@ class TestBacktestRunService(unittest.TestCase):
             started_at_ms=1_780_921_860_000,
             completed_at_ms=1_780_922_100_000,
             result_schema_version=3,
-            metrics={"trade_count": 1},
+            metrics={"profit_factor": None, "trade_count": 1},
             diagnostics={"bars": 10},
         )
         fills = [

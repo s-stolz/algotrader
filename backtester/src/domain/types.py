@@ -383,7 +383,7 @@ class BacktestResult:
     fills: List[Fill] = field(default_factory=list)
     trades: List[Trade] = field(default_factory=list)
     equity_curve: List[PortfolioSnapshot] = field(default_factory=list)
-    metrics: Dict[str, float] = field(default_factory=dict)
+    metrics: Dict[str, float | Literal["infinity"] | None] = field(default_factory=dict)
     diagnostics: Dict[str, Any] = field(default_factory=dict)
     replay_descriptor: Optional[Mapping[str, Any]] = None
 

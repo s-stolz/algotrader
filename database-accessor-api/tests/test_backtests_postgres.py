@@ -303,7 +303,7 @@ class BacktestPostgresTests(unittest.IsolatedAsyncioTestCase):
                         "status": "succeeded",
                         "completed_at": now,
                         "result_schema_version": 3,
-                        "metrics": {"total_return_pct": 2.5},
+                        "metrics": {"profit_factor": None, "total_return_pct": 2.5},
                         "diagnostics": {"source": "draining-test"},
                         "replay_descriptor": {
                             "schema_version": 1,
@@ -319,7 +319,9 @@ class BacktestPostgresTests(unittest.IsolatedAsyncioTestCase):
             saved_member = await crud.get_backtest_run(session, "member-0")
             assert saved_member is not None
             self.assertEqual(saved_member["status"], "succeeded")
-            self.assertEqual(saved_member["metrics"], {"total_return_pct": 2.5})
+            self.assertEqual(
+                saved_member["metrics"], {"profit_factor": None, "total_return_pct": 2.5}
+            )
             self.assertEqual(saved_member["replay_descriptor"]["source_point_count"], 1)
             backtest = await self._backtest(session, "backtest-pause")
             self.assertEqual((backtest["status"], backtest["lifecycle_revision"]), ("paused", 3))
@@ -824,7 +826,7 @@ class BacktestPostgresTests(unittest.IsolatedAsyncioTestCase):
                         "status": "succeeded",
                         "completed_at": now,
                         "result_schema_version": 3,
-                        "metrics": {"total_return_pct": 2.5},
+                        "metrics": {"profit_factor": None, "total_return_pct": 2.5},
                         "diagnostics": {},
                         "replay_descriptor": {"schema_version": 1},
                     },
@@ -847,7 +849,9 @@ class BacktestPostgresTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(backtest["cancellation_source"], "user")
             members = await crud.list_backtest_members(session, "backtest-partial")
             self.assertEqual([member["status"] for member in members], ["succeeded", "cancelled"])
-            self.assertEqual(members[0]["metrics"], {"total_return_pct": 2.5})
+            self.assertEqual(
+                members[0]["metrics"], {"profit_factor": None, "total_return_pct": 2.5}
+            )
             self.assertEqual(members[1]["cancellation_source"], "backtest")
             self.assertEqual(
                 (await backtest_execution.read_queue_state(session))["queued_entries"], []
@@ -1124,7 +1128,9 @@ definition['parameter_axes'] = {
     'quantity': {'mode': 'constant', 'value': 0.1},
 }
 preview_service = BacktestPreviewService(
-    markets=lambda: [{'symbol_id': 1, 'symbol': 'EURUSD', 'exchange': 'FX'}],
+    markets=lambda: [{'symbol_id': 1, 'symbol': 'EURUSD', 'exchange': 'FX',
+        'settlement_currency': 'USD', 'contract_multiplier': 1.0,
+        'minimum_quantity': 0.1, 'quantity_step': 0.1, 'min_move': 0.00001}],
     max_candidate_count=100,
 )
 def app():

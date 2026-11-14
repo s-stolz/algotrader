@@ -172,8 +172,10 @@ and behavior that is easy to break when changing them.
 - Creation calendar dates convert explicitly to UTC midnight. Chart timestamp
   conversion follows the root transport contract.
 
-- `views/workspace/results/` derives net realized profit, win rate, profit factor,
+- `views/workspace/results/` derives net realized profit, win rate,
   expectancy, holding time, and UTC exit-month totals from saved Closed Trades.
+  Profit factor is decoded from saved metrics at the transport boundary; see
+  [saved profit factor](../docs/contracts/backtests.md#saved-profit-factor).
   `useWorkspaceAnalysis` owns those reads independently of replay selection so
   all successful Runs can be sorted before comparison. Results load with bounded
   concurrency, reject stale workspace responses, and expose retryable failures.

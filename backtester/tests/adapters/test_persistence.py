@@ -1,8 +1,13 @@
+import json
+import pickle
 import unittest
+from dataclasses import replace
 
 from adapters.persistence import (
     BacktestRunLifecyclePersistenceAdapter,
+    build_successful_completion_payload,
 )
+from app.backtest_child import CompactBacktestResult
 from domain.enums import (
     BacktestEngine,
     ExitReason,
@@ -62,6 +67,21 @@ class _FailingRunClient:
 
 
 class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
+    def test_profit_factor_survives_child_handoff_and_strict_json_payload(self):
+        for value in (2.5, 0.0, "infinity", None):
+            with self.subTest(value=value):
+                result = _build_result()
+                result = replace(result, metrics={**result.metrics, "profit_factor": value})
+                compact = CompactBacktestResult.from_result(result, execution_duration_ms=5)
+                restored = pickle.loads(pickle.dumps(compact)).to_result()
+                payload = build_successful_completion_payload(
+                    completed_at_ms=1714525500000, result=restored, execution_duration_ms=5
+                )
+                self.assertEqual(
+                    json.loads(json.dumps(payload, allow_nan=False))["metrics"]["profit_factor"],
+                    value,
+                )
+
     def test_execution_operations_carry_owner_token_and_reconciliation_reason(self) -> None:
         client = _FakeLifecycleClient()
         adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
@@ -258,6 +278,7 @@ def _build_result(
             )
         ],
         metrics={
+            "profit_factor": None,
             "ending_equity": 25_002.5,
             "total_return_pct": 0.01,
             "max_drawdown_pct": -0.005,

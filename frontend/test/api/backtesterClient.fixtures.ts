@@ -45,6 +45,7 @@ export function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
     },
     result_schema_version: 3,
     metrics: {
+      profit_factor: null,
       total_return_pct: 1.25,
       trade_count: 1,
       long_trade_count: 1,

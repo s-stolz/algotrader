@@ -212,6 +212,23 @@ Supplying both a list and a non-null shared schedule is rejected as ambiguous.
 An omitted/null list does not change legacy normalization or retry identity. See
 [engine timing](../../backtester/STRATEGIES.md#daily-execution-schedule).
 
+## Saved profit factor
+
+Shared reporting calculates `metrics.profit_factor` for every engine path from
+Closed Trades: sum positive realized PnL divided by the absolute sum of negative
+realized PnL. The required JSON value is a finite nonnegative number (including
+zero for losses only), `"infinity"` for profits without losses, or explicit `null`
+for no trades or only breakevens. Missing values, booleans, negative numbers,
+NaN, numeric infinity, and other strings are invalid; null is not zero.
+
+Child handoff, successful settlement, JSONB storage, and public Run/member reads
+preserve this union. Failed/cancelled Runs need no successful-result metrics.
+Frontend decoding displays infinity as ∞ and null as unavailable. Comparison
+uses the saved value without a trade-derived fallback; other trade-based analysis
+still loads Closed Trades. Return, drawdown, and ending-equity semantics remain
+unchanged. No historical fallback or backfill is provided. Removing temporary
+Runs is a user-owned deployment precondition; implementation never deletes data.
+
 ## Saved chart indicators
 
 Successful runs produced by the application runner include a **Chart Indicator

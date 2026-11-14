@@ -148,7 +148,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
             started_at_ms=1_780_921_900_000,
             completed_at_ms=1_780_922_100_000,
             result_schema_version=2,
-            metrics={"trade_count": 1},
+            metrics={"profit_factor": None, "trade_count": 1},
             diagnostics={},
         )
         repository.runs_by_id["legacy"] = legacy
@@ -270,7 +270,7 @@ class TestBacktestStatusRoute(unittest.TestCase):
                 started_at_ms=1_780_921_860_000,
                 completed_at_ms=1_780_922_100_000,
                 result_schema_version=3,
-                metrics={"total_return_pct": 1.25},
+                metrics={"profit_factor": None, "total_return_pct": 1.25},
                 diagnostics={"execution_duration_ms": 240_000},
             ),
             "run-failed": replace(
@@ -341,7 +341,9 @@ class TestBacktestStatusRoute(unittest.TestCase):
         self.assertEqual(succeeded_response.status_code, 200)
         self.assertEqual(succeeded_body["completed_at_ms"], 1_780_922_100_000)
         self.assertEqual(succeeded_body["result_schema_version"], 3)
-        self.assertEqual(succeeded_body["metrics"], {"total_return_pct": 1.25})
+        self.assertEqual(
+            succeeded_body["metrics"], {"profit_factor": None, "total_return_pct": 1.25}
+        )
         self.assertEqual(
             succeeded_body["diagnostics"],
             {"execution_duration_ms": 240_000},
@@ -579,7 +581,7 @@ def _terminal_run_service(run_id: str) -> tuple[_FakeRunRepository, BacktestRunS
         started_at_ms=1_780_921_860_000,
         completed_at_ms=1_780_922_100_000,
         result_schema_version=3,
-        metrics={"trade_count": 0},
+        metrics={"profit_factor": None, "trade_count": 0},
         diagnostics={"bars": 10},
     )
     return repository, BacktestRunService(repository=repository)

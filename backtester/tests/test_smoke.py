@@ -96,7 +96,7 @@ class _BacktesterClient:
                     "run_id": "run-success",
                     "backtest_id": "run-success",
                     "status": "succeeded",
-                    "metrics": {"trade_count": 1.0},
+                    "metrics": {"profit_factor": None, "trade_count": 1.0},
                     "diagnostics": {"bars": 9},
                 }
             )

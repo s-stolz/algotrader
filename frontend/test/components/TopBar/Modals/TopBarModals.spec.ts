@@ -290,6 +290,7 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
     },
     result_schema_version: 3,
     metrics: {
+      profit_factor: null,
       total_return_pct: 1.25,
       trade_count: 3,
       long_trade_count: 2,

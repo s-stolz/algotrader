@@ -86,6 +86,7 @@ describe('backtest chart overlay utilities', () => {
       },
       result_schema_version: BACKTEST_RESULT_SCHEMA_VERSION,
       metrics: {
+        profit_factor: null,
         total_return_pct: -0.0046845,
         max_drawdown_pct: -0.0046845,
         trade_count: 1,
