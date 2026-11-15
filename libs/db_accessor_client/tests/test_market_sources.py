@@ -37,7 +37,7 @@ class BrokerMarketTests(unittest.TestCase):
             {"broker_symbol_id": None},
         ):
             with self.subTest(fields=fields), self.assertRaises(ValueError):
-                require_broker_market(broker_market(**fields), "123", "demo")
+                require_broker_market(broker_market() | fields, "123", "demo")
 
     def test_dependencies_use_same_exchange_and_reject_missing_or_ambiguous_sources(self):
         chart = broker_market()
