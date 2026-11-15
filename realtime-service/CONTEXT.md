@@ -67,6 +67,20 @@ reconnect; they do not request saved-result refreshes. See
 For `subscribeBacktests`, `unsubscribeBacktests`, and the outbound event
 shapes, read [real-time delivery](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
 
+## History download delivery
+
+`subscribeHistoryDownloads` and `unsubscribeHistoryDownloads` require `market_id`.
+Only connected Broker Markets may subscribe. `historyDownloadChanged` carries
+`market_id`, `job_id`, and `revision`; clients read authoritative job snapshots
+from ingestion rather than treating events as state.
+
+`historyDownloadsConnection` carries `market_id` and `connected`. Browsers
+refresh snapshots on subscription and reconnection, including Redis recovery
+while the browser socket stays open. The bridge establishes its cursor on
+`history:downloads:events` before reporting connected. Each Redis row has an
+`event` JSON field. Every gateway reads independently and fans out only to
+subscribers for the event's Market.
+
 ## Change Triggers
 
 - Add tests before changing duplicate subscription handling, disconnect cleanup,

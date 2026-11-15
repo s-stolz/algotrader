@@ -11,6 +11,7 @@ from aiohttp import web
 from algotrader_logger import bind_context, configure_logging
 from app.backtest_events import BacktestEventBridge
 from app.broker_client import BrokerClient
+from app.history_download_events import HistoryDownloadEventBridge
 from app.indicator_api_client import IndicatorApiClient
 from app.redis_consumer import RedisConsumer
 from app.subscription_manager import SubscriptionManager
@@ -38,6 +39,7 @@ class WebSocketServer:
         self._shutdown_lock = asyncio.Lock()
         self._is_shutdown = False
         self.backtest_events: BacktestEventBridge | None = None
+        self.history_download_events: HistoryDownloadEventBridge | None = None
 
     async def initialize(self):
         self.broker_client = BrokerClient(
@@ -79,6 +81,19 @@ class WebSocketServer:
             )
         )
         self.backtest_events.start()
+        self.history_download_events = HistoryDownloadEventBridge(
+            Redis.from_url(
+                os.getenv(
+                    "REDIS_URL",
+                    f"redis://{self.config['redis_host']}:{self.config['redis_port']}/0",
+                ),
+                decode_responses=True,
+                protocol=2,
+                socket_connect_timeout=3,
+                socket_timeout=5,
+            )
+        )
+        self.history_download_events.start()
 
     async def handle_client(self, websocket: ServerConnection):
         assert self.subscription_manager is not None
@@ -98,14 +113,14 @@ class WebSocketServer:
         finally:
             if self.backtest_events is not None:
                 self.backtest_events.unsubscribe(websocket)
+            if self.history_download_events is not None:
+                self.history_download_events.unsubscribe(websocket)
             await self.subscription_manager.unregister_client(client_id)
 
     async def handle_message(
         self, websocket: ServerConnection, client_id: int, message_data: Union[str, bytes]
     ):
         assert self.subscription_manager is not None
-        if isinstance(message_data, bytes):
-            message_data = message_data.decode("utf-8")
         message = json.loads(message_data)
         message_type = message.get("type")
 
@@ -116,6 +131,9 @@ class WebSocketServer:
         elif message_type == "unsubscribeBacktests":
             if self.backtest_events is not None:
                 self.backtest_events.unsubscribe(websocket)
+
+        elif message_type in {"subscribeHistoryDownloads", "unsubscribeHistoryDownloads"}:
+            await self._handle_history_download_message(websocket, message)
 
         elif message_type == "subscribeCandles":
             await self._handle_subscribe_candles_message(websocket, client_id, message)
@@ -131,6 +149,16 @@ class WebSocketServer:
 
         else:
             logger.warning(f"Unknown message type: {message_type}")
+
+    async def _handle_history_download_message(self, websocket: ServerConnection, message: dict):
+        assert self.subscription_manager is not None
+        market_id = self._market_id(message)
+        if message["type"] == "subscribeHistoryDownloads":
+            await self.subscription_manager.market_resolver.resolve(market_id)
+            if self.history_download_events is not None:
+                await self.history_download_events.subscribe(websocket, market_id)
+        elif self.history_download_events is not None:
+            self.history_download_events.unsubscribe(websocket, market_id)
 
     async def _handle_subscribe_candles_message(
         self,
@@ -284,6 +312,10 @@ class WebSocketServer:
             if self.backtest_events is not None:
                 await self.backtest_events.close()
                 self.backtest_events = None
+
+            if self.history_download_events is not None:
+                await self.history_download_events.close()
+                self.history_download_events = None
 
             if self.redis_consumer:
                 await self.redis_consumer.disconnect()
