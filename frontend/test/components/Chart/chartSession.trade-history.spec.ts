@@ -19,15 +19,16 @@ function fixture() {
   const history: TradeHistoryAdapter = {
     prepare: vi.fn(),
     fetchBefore: vi.fn(async () => [chartCandle(300_000)]),
-    stream: vi.fn(async (_key, _start, _end, _signal, onBatch) => {
+    fetchAfter: vi.fn(async () => {
       await done.promise;
-      await onBatch([chartCandle(300_000)]);
+      return Array.from({ length: 500 }, (_, i) =>
+        chartCandle((i + 1) * 300_000),
+      );
     }),
-    append: vi.fn(),
+    install: vi.fn(),
     initializeIndicators: vi.fn(async () => {}),
     extendIndicators: vi.fn(async () => {}),
-    finish: vi.fn(),
-    cancel: vi.fn(),
+    historical: vi.fn(),
     loading: vi.fn(),
   };
   base.adapter.tradeHistory = new TradeHistory(history);
@@ -49,12 +50,12 @@ describe('chart session trade history ownership', () => {
     expect(f.adapter.renderCandles).not.toHaveBeenCalled();
     f.done.resolve();
     await jump;
-    expect(f.history.append).toHaveBeenCalledWith(
-      [chartCandle(300_000)],
+    expect(f.history.install).toHaveBeenCalledWith(
+      expect.arrayContaining([chartCandle(300_000)]),
       300_001,
     );
   });
-  it('stops the stream and prevents late commits on page or context exit', async () => {
+  it('cancels the page and prevents late commits on page or context exit', async () => {
     const f = fixture();
     const receive = vi.fn();
     const jump = f.session.setSession(key, receive, 300_001);
@@ -62,33 +63,21 @@ describe('chart session trade history ownership', () => {
     expect(f.adapter.fetchCandles).not.toHaveBeenCalled();
     for (const handler of f.handlers) handler(candleUpdate(900_000));
     expect(receive).not.toHaveBeenCalled();
-    const signal = vi.mocked(f.history.stream).mock.calls[0][3];
+    const signal = vi.mocked(f.history.fetchAfter).mock.calls[0][2];
     await f.session.stop();
     expect(signal.aborted).toBe(true);
     f.done.resolve();
     await jump;
-    expect(f.history.append).not.toHaveBeenCalled();
-    expect(f.history.finish).not.toHaveBeenCalled();
+    expect(f.history.install).not.toHaveBeenCalled();
     expect(f.handlers.size).toBe(0);
   });
-  it('recovers from the last historical candle after a reconnect during streaming', async () => {
+  it('does not recover historical windows through today after reconnect', async () => {
     const f = fixture();
     const jump = f.session.setSession(key, vi.fn(), 300_001);
     await flushPromises();
-    const listeners = vi.mocked(f.adapter.recovery.on).mock.calls;
-    const disconnect = listeners
-      .filter(([event]) => event === 'disconnected')
-      .at(-1)![1];
-    const ready = listeners.filter(([event]) => event === 'ready').at(-1)![1];
-    disconnect();
-    ready();
     f.done.resolve();
     await jump;
-    await flushPromises();
-    expect(f.adapter.recovery.fetch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        startMs: 300_000,
-      }),
-    );
+    expect(f.adapter.recovery.fetch).not.toHaveBeenCalled();
+    expect(f.adapter.recovery.on).not.toHaveBeenCalled();
   });
 });

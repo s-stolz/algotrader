@@ -54,12 +54,11 @@
       </div>
     </Teleport>
 
-    <span
-      v-if="tradeNavigation.loading"
-      class="history-loading"
-      role="status"
-      >Loading history…</span
-    >
+    <ChartGoLive
+      :ready="chartReady"
+      :loading="tradeNavigation.loading"
+      @activate="goToLatest"
+    />
 
     <span class="legend">
       <span class="legend-value">O: <span ref="legendOpen">-</span></span>
@@ -96,6 +95,8 @@ import {
   type PropType,
 } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
+import ChartGoLive from './trade-navigation/ChartGoLive.vue';
+import { createLatestChart } from './trade-navigation/latestChart';
 import { TradeHistory } from './trade-navigation/tradeHistory';
 import { waitForIndicatorRequest } from '@/stores/indicators/pendingRequests';
 import { createTradeHistoryAdapter } from './trade-navigation/tradeHistoryAdapter';
@@ -121,7 +122,14 @@ import { CloseCircleOutline, SyncOutline } from '@/icons';
 
 export default defineComponent({
   name: 'ChartArea',
-  components: { CloseCircleOutline, SyncOutline, Indicator, NButton, NIcon },
+  components: {
+    ChartGoLive,
+    CloseCircleOutline,
+    SyncOutline,
+    Indicator,
+    NButton,
+    NIcon,
+  },
   props: {
     interactionMode: {
       type: String as PropType<ChartInteractionMode>,
@@ -255,10 +263,21 @@ export default defineComponent({
         }),
       ),
     );
+    const latestChart = createLatestChart({
+      session,
+      navigation: tradeNavigation,
+      key: currentChartSessionKey,
+      receive: rendering.updateCurrentCandle,
+      sync: syncChartSession,
+      rendering,
+      candles: candlesticksStore,
+      loadedSession,
+    });
     let consumedDestination: number | null = null;
     function syncChartSession() {
       if (
         !active ||
+        latestChart.pending ||
         (tradeNavigation.preparing && !tradeNavigation.destination)
       )
         return;
@@ -387,6 +406,7 @@ export default defineComponent({
     });
     return {
       tradeNavigation,
+      goToLatest: latestChart.open,
       chartContainer,
       restoreBacktestView,
       runIndicatorError: runIndicators.error,
@@ -405,15 +425,6 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.history-loading {
-  position: absolute;
-  right: var(--design-space-md);
-  top: var(--design-space-sm);
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
-  pointer-events: none;
-}
-
 .chart-wrapper {
   position: relative;
   width: 100%;

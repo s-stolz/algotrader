@@ -1,12 +1,8 @@
 import { requestIndicator } from '@/api/indicatorClient';
 import type { ChartRecoveryQuery } from '@/types/chartRecovery';
-import type {
-  ChartCandle,
-  IndicatorUpdateMessage,
-  IndicatorDataPoint,
-} from '@/types/contracts';
+import type { ChartCandle, IndicatorDataPoint } from '@/types/contracts';
 import { extractParameterValues } from './configuration';
-import { mergeIndicatorData, mergeLivePoint } from './historyData';
+import { mergeIndicatorData } from './historyData';
 import { waitForIndicatorRequest } from './pendingRequests';
 import type { StoreIndicator } from './types';
 import { timeframeToMinutes } from '@/utils/timeframes';
@@ -53,52 +49,4 @@ export async function extendIndicatorHistory(
       );
     }),
   );
-}
-
-export function createIndicatorLiveBuffer() {
-  let active = false;
-  let accepting = false;
-  const points = new Map<string, Map<number, IndicatorDataPoint>>();
-  return {
-    get active() {
-      return active;
-    },
-    begin() {
-      active = true;
-      accepting = true;
-      points.clear();
-    },
-    discard(hold = false) {
-      active = hold;
-      accepting = false;
-      points.clear();
-    },
-    receive(message: IndicatorUpdateMessage) {
-      if (!active) return false;
-      if (!accepting) return true;
-      let series = points.get(message.clientIndicatorId);
-      if (!series) {
-        series = new Map();
-        points.set(message.clientIndicatorId, series);
-      }
-      const point = mergeLivePoint(
-        series.get(message.timestamp_ms) ?? null,
-        message,
-      );
-      if (point) series.set(point.timestamp_ms, point);
-      return true;
-    },
-    finish(store: ForwardHistoryStore) {
-      active = false;
-      for (const [id, series] of points) {
-        const indicator = store.getById(id);
-        if (indicator)
-          store.updateIndicatorData(
-            id,
-            mergeIndicatorData([...series.values()], indicator.data, null),
-          );
-      }
-      points.clear();
-    },
-  };
 }

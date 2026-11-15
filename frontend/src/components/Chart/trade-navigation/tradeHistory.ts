@@ -1,180 +1,202 @@
+import { ChartRecovery, type ChartRecoveryAdapter } from '../chartRecovery';
+import { timeframeToMinutes } from '@/utils/timeframes';
 import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
 import type { ChartSessionKey } from '../chartSession';
+
+export interface ChartSessionOlderHistorySignal {
+  barsBefore: number;
+  barsAfter?: number;
+  nowMs: number;
+  scrollToRealtime?: boolean;
+}
 
 export interface TradeHistoryAdapter {
   prepare(): void;
   fetchBefore(
     key: ChartSessionKey,
-    timestampMs: number,
+    endMs: number,
+    limit: number,
     signal: AbortSignal,
   ): Promise<ChartCandle[]>;
-  stream(
+  fetchAfter(
     key: ChartSessionKey,
     startMs: number,
-    endMs: number,
     signal: AbortSignal,
-    onBatch: (candles: ChartCandle[]) => Promise<void>,
-  ): Promise<void>;
-  append(
-    candles: readonly ChartCandle[],
-    targetMs: number | null,
-  ): void | Promise<void>;
+  ): Promise<ChartCandle[]>;
+  install(candles: readonly ChartCandle[], targetMs: number | null): void;
   initializeIndicators(key: ChartSessionKey): Promise<void>;
   extendIndicators(
     key: ChartSessionKey,
     candles: readonly ChartCandle[],
     signal: AbortSignal,
   ): Promise<void>;
-  waitForInteraction?(): Promise<void>;
-  finish(live: readonly CandleUpdateMessage[]): void;
-  cancel(hold?: boolean): void;
+  historical(value: boolean): void;
   loading(value: boolean): void;
 }
 
-// The received prefix is usable chart history, but is never treated as caught up
-// until the stream explicitly completes. Live candles stay separate until then.
 export class TradeHistory {
+  onPresent: ((timestamp: number | null) => void) | null = null;
   lastTimestamp: number | null = null;
+  private firstTimestamp: number | null = null;
   private controller: AbortController | null = null;
-  private live = new Map<number, CandleUpdateMessage>();
-  private holdingLive = false;
+  private key: ChartSessionKey | null = null;
+  private busy = false;
+  private historical = false;
+  private olderExhausted = false;
+  private range: ChartSessionOlderHistorySignal | null = null;
 
   constructor(private readonly adapter: TradeHistoryAdapter) {}
 
-  get blocksOlderHistory(): boolean {
-    return this.holdingLive;
+  get blocksOlderHistory() {
+    return this.historical;
+  }
+  receive(_message: CandleUpdateMessage): boolean {
+    return this.historical;
   }
 
-  receive(message: CandleUpdateMessage): boolean {
-    if (!this.holdingLive) return false;
-    if (this.controller && !this.controller.signal.aborted)
-      this.live.set(message.timestamp_ms, { ...message });
-    return true;
-  }
-
-  cancel(hold = false): void {
+  cancel(): void {
     this.controller?.abort();
     this.controller = null;
-    this.live.clear();
-    this.holdingLive = hold;
-    this.adapter.cancel(hold);
+    this.key = null;
+    this.busy = false;
+    this.historical = false;
+    this.range = null;
+    this.adapter.historical(false);
     this.adapter.loading(false);
   }
 
   async load(key: ChartSessionKey, timestampMs: number): Promise<boolean> {
     this.cancel();
-    this.lastTimestamp = null;
-    const controller = new AbortController();
-    this.controller = controller;
-    const { signal } = controller;
-    this.holdingLive = true;
+    this.key = key;
+    this.controller = new AbortController();
+    const { signal } = this.controller;
+    this.historical = true;
+    this.olderExhausted = false;
+    this.firstTimestamp = this.lastTimestamp = null;
+    this.adapter.historical(true);
     this.adapter.prepare();
-    this.adapter.loading(true);
-    let indicatorWork = Promise.resolve();
-    let indicatorFailure: unknown = null;
-    let initialized = false;
-    const enqueue = (candles: readonly ChartCandle[]) => {
-      indicatorWork = indicatorWork
-        .then(async () => {
-          signal.throwIfAborted();
-          await this.adapter.extendIndicators(key, candles, signal);
-        })
-        .catch((error: unknown) => {
-          indicatorFailure = error;
-        });
-    };
+    this.setBusy(true);
     try {
-      const endMs = Date.now();
-      const before = await this.adapter.fetchBefore(key, timestampMs, signal);
+      const before = await this.adapter.fetchBefore(
+        key,
+        timestampMs + 1,
+        11,
+        signal,
+      );
       signal.throwIfAborted();
-      if (!before.length) throw new Error('Trade candle is unavailable');
-      const target = before.at(-1)!;
-      const pending = before.slice(0, -1);
-      const install = async (candles: ChartCandle[]) => {
-        signal.throwIfAborted();
-        await this.adapter.append(candles, initialized ? null : timestampMs);
-        signal.throwIfAborted();
-        if (!initialized) {
-          initialized = true;
-          indicatorWork = this.adapter
-            .initializeIndicators(key)
-            .catch((error: unknown) => {
-              indicatorFailure = error;
-            });
-        }
-        enqueue(candles);
-      };
-      let receivedTarget = false;
-      const consume = async (batch: ChartCandle[]) => {
-        signal.throwIfAborted();
-        if (!receivedTarget && batch.length) {
-          if (batch[0].timestamp_ms !== target.timestamp_ms)
-            throw new Error('Trade candle is unavailable');
-          receivedTarget = true;
-        }
-        this.lastTimestamp = batch.at(-1)?.timestamp_ms ?? this.lastTimestamp;
-        pending.push(...batch);
-        while (pending.length >= 510) {
-          await install(pending.splice(0, 510));
-          await new Promise<void>((resolve) => setTimeout(resolve, 0));
-          signal.throwIfAborted();
-        }
-      };
-      await this.adapter.stream(
+      const target = before.at(-1);
+      if (!target) throw new Error('Trade candle is unavailable');
+      const after = await this.adapter.fetchAfter(
         key,
         target.timestamp_ms,
-        endMs,
         signal,
-        async (batch) => {
-          // A range crossing the aggregate retention boundary can begin after the
-          // known target. A separate prefix stream uses the accessor's raw fallback.
-          if (!receivedTarget && batch[0]?.timestamp_ms > target.timestamp_ms) {
-            await this.adapter.stream(
-              key,
-              target.timestamp_ms,
-              batch[0].timestamp_ms,
-              signal,
-              consume,
-            );
-            signal.throwIfAborted();
-            if (!receivedTarget) throw new Error('Trade candle is unavailable');
-            if (pending.length) await install(pending.splice(0));
-          }
-          await consume(batch);
-        },
       );
       signal.throwIfAborted();
-      if (
-        !initialized &&
-        !pending.some((candle) => candle.timestamp_ms >= target.timestamp_ms)
-      )
+      if (after[0]?.timestamp_ms !== target.timestamp_ms)
         throw new Error('Trade candle is unavailable');
-      if (pending.length) await install(pending);
-      await indicatorWork;
+      const candles = [...before.slice(0, -1), ...after];
+      this.firstTimestamp = candles[0].timestamp_ms;
+      this.lastTimestamp = candles.at(-1)!.timestamp_ms;
+      this.adapter.install(candles, timestampMs);
+      await this.adapter.initializeIndicators(key);
       signal.throwIfAborted();
-      if (indicatorFailure)
-        console.error('Failed to extend trade indicators:', indicatorFailure);
-      await this.adapter.waitForInteraction?.();
-      signal.throwIfAborted();
-      this.adapter.finish(
-        [...this.live.values()].sort((a, b) => a.timestamp_ms - b.timestamp_ms),
-      );
-      signal.throwIfAborted();
-      this.live.clear();
-      this.holdingLive = false;
+      if (after.length < 500) this.reachedPresent();
       return true;
     } catch (error) {
-      if (!signal.aborted) {
+      if (!signal.aborted)
         console.error('Failed to load trade history:', error);
-        this.adapter.cancel(true);
-      }
       return false;
     } finally {
-      if (this.controller === controller) {
-        this.adapter.loading(false);
-        controller.abort();
-        this.live.clear();
-      }
+      if (!signal.aborted) this.setBusy(false);
     }
   }
+
+  requestHistory(range: ChartSessionOlderHistorySignal): boolean {
+    if (!this.historical) return false;
+    void this.requestPage(range);
+    return true;
+  }
+
+  async requestPage(range: ChartSessionOlderHistorySignal): Promise<void> {
+    const previous = this.range;
+    this.range = range;
+    if (
+      !this.historical ||
+      this.busy ||
+      !this.key ||
+      !this.controller ||
+      !previous
+    )
+      return;
+    const older =
+      range.barsBefore < 100 &&
+      range.barsBefore < previous.barsBefore &&
+      !this.olderExhausted;
+    const newer =
+      range.barsAfter !== undefined &&
+      range.barsAfter < 100 &&
+      previous.barsAfter !== undefined &&
+      range.barsAfter < previous.barsAfter;
+    if (!older && !newer) return;
+    const { signal } = this.controller;
+    const key = this.key;
+    if (this.firstTimestamp === null || this.lastTimestamp === null) return;
+    this.setBusy(true);
+    try {
+      const candles = older
+        ? await this.adapter.fetchBefore(key, this.firstTimestamp, 500, signal)
+        : await this.adapter.fetchAfter(
+            key,
+            this.lastTimestamp + timeframeToMinutes(key.timeframe) * 60_000,
+            signal,
+          );
+      signal.throwIfAborted();
+      this.adapter.install(candles, null);
+      if (candles.length) {
+        this.firstTimestamp = Math.min(
+          this.firstTimestamp,
+          candles[0].timestamp_ms,
+        );
+        this.lastTimestamp = Math.max(
+          this.lastTimestamp,
+          candles.at(-1)!.timestamp_ms,
+        );
+        await this.adapter.extendIndicators(key, candles, signal);
+        signal.throwIfAborted();
+      }
+      if (older) this.olderExhausted = candles.length < 500;
+      else if (candles.length < 500) this.reachedPresent();
+    } catch (error) {
+      if (!signal.aborted)
+        console.error('Failed to page trade history:', error);
+    } finally {
+      if (!signal.aborted) this.setBusy(false);
+    }
+  }
+
+  private reachedPresent() {
+    this.historical = false;
+    this.adapter.historical(false);
+    this.onPresent?.(this.lastTimestamp);
+  }
+  private setBusy(value: boolean) {
+    this.busy = value;
+    this.adapter.loading(value);
+  }
+}
+
+export function createHistoryRecovery(
+  options: { recovery: ChartRecoveryAdapter; tradeHistory?: TradeHistory },
+  getKey: () => ChartSessionKey | null,
+): ChartRecovery {
+  const recovery = new ChartRecovery(options.recovery);
+  const history = options.tradeHistory;
+  if (history)
+    history.onPresent = (timestamp) => {
+      const key = getKey();
+      if (!key) return;
+      recovery.start(key);
+      recovery.historyLoaded(timestamp);
+    };
+  return recovery;
 }

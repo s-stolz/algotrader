@@ -11,6 +11,21 @@ import { useTradeNavigationStore } from '@/stores/tradeNavigationStore';
 
 describe('chart navigation lifecycle', () => {
   setupChartAreaTests();
+  it('offers a floating action to reload the live chart', async () => {
+    setupStores();
+    const wrapper = mount(ChartArea, {
+      global: { stubs: { Indicator: true } },
+    });
+    await flushPromises();
+    await wrapper.get('[aria-label="Go to latest candle"]').trigger('click');
+    await flushPromises();
+    expect(latestChartSession().setSession).toHaveBeenLastCalledWith(
+      { symbol: 'EURUSD', timeframe: 'M5', exchange: 'FX' },
+      expect.any(Function),
+    );
+    expect(useTradeNavigationStore().destination).toBeNull();
+    wrapper.unmount();
+  });
   it('stops while hidden and resumes in the current chart context', async () => {
     const { currentTimeframeStore } = setupStores();
     const visible = ref(true);

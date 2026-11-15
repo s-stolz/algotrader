@@ -1,5 +1,9 @@
-import type { TradeHistory } from './trade-navigation/tradeHistory';
-import { ChartRecovery, type ChartRecoveryAdapter } from './chartRecovery';
+import {
+  createHistoryRecovery,
+  type TradeHistory,
+  type ChartSessionOlderHistorySignal,
+} from './trade-navigation/tradeHistory';
+import type { ChartRecovery, ChartRecoveryAdapter } from './chartRecovery';
 import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
 
 export interface ChartSessionKeyInput {
@@ -26,11 +30,7 @@ const LIVE_TAIL_BUFFER_CAP = 3;
 const OLDER_HISTORY_BARS_BEFORE_THRESHOLD = 100;
 const HISTORY_LOAD_COOLDOWN_MS = 400;
 
-export interface ChartSessionOlderHistorySignal {
-  barsBefore: number;
-  nowMs: number;
-  scrollToRealtime?: boolean;
-}
+export type { ChartSessionOlderHistorySignal } from './trade-navigation/tradeHistory';
 
 export interface ChartSessionSubscriptionsAdapter {
   recovery: ChartRecoveryAdapter;
@@ -146,7 +146,7 @@ export class ChartSession {
   private readonly recovery: ChartRecovery;
 
   constructor(private readonly adapter: ChartSessionSubscriptionsAdapter) {
-    this.recovery = new ChartRecovery(adapter.recovery);
+    this.recovery = createHistoryRecovery(adapter, () => this.activeKey);
   }
 
   getActiveKey(): ChartSessionKey | null {
@@ -198,7 +198,7 @@ export class ChartSession {
 
     this.adapter.resetIndicatorHistory?.();
     this.activeKey = cloneSessionKey(nextKey);
-    this.recovery.start(this.activeKey);
+    if (tradeTimestampMs === undefined) this.recovery.start(this.activeKey);
     this.liveCandleReceiver = receiveLiveCandle;
     this.listener = (message) => {
       this.handleCandleUpdate(message);
@@ -258,17 +258,16 @@ export class ChartSession {
   async jumpToTrade(timestampMs: number): Promise<void> {
     const key = this.activeKey;
     if (!key || !this.adapter.tradeHistory) return;
-    const revision = ++this.revision;
+    this.revision += 1;
     this.resetOlderHistoryPagingState();
-    this.recovery.start(key);
-    const complete = await this.adapter.tradeHistory.load(key, timestampMs);
-    if (complete && this.isCurrentSession(key, revision))
-      this.recovery.historyLoaded(this.adapter.tradeHistory.lastTimestamp);
+    this.recovery.stop();
+    this.inFlightCandleFetch = null;
+    await this.adapter.tradeHistory.load(key, timestampMs);
   }
 
   requestOlderHistory(signal: ChartSessionOlderHistorySignal): void {
-    if (!this.activeKey || this.adapter.tradeHistory?.blocksOlderHistory)
-      return;
+    if (!this.activeKey) return;
+    if (this.adapter.tradeHistory?.requestHistory(signal)) return;
     if (signal.scrollToRealtime) return;
     if (signal.barsBefore >= OLDER_HISTORY_BARS_BEFORE_THRESHOLD) return;
 

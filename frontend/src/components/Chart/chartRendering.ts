@@ -442,6 +442,7 @@ export function createChartRendering({
 
       requestOlderHistory({
         barsBefore: barsInfo.barsBefore,
+        barsAfter: barsInfo.barsAfter,
         nowMs: now,
         scrollToRealtime: state.shouldScrollToRealTime,
       });

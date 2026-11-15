@@ -1,4 +1,3 @@
-import { createIndicatorLiveBuffer } from './indicators/forwardHistory';
 import { trackIndicatorRequests } from './indicators/pendingRequests';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
@@ -60,7 +59,7 @@ export type {
 } from './indicators/types';
 
 export const useIndicatorsStore = defineStore('indicators', () => {
-  const forwardLive = createIndicatorLiveBuffer();
+  const historicalMode = ref(false);
   const requestIndicator = trackIndicatorRequests(loadIndicator, getById);
   const indicators = reactive(new Map<string, StoreIndicator>());
   const paneCount = ref(1);
@@ -292,7 +291,6 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     exchange: string | null,
     options: IndicatorCoverageOptions,
   ): Promise<void> {
-    if (forwardLive.active) return;
     const indicator = indicators.get(_id);
     const range = getLoadedCandleRange(options);
     if (!indicator || !range || !indicator.data.length) return;
@@ -385,7 +383,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     message: IndicatorUpdateMessage | null | undefined,
   ): IndicatorDataPoint | null {
     if (!message || message.type !== 'indicatorUpdate') return null;
-    if (forwardLive.receive(message)) return null;
+    if (historicalMode.value) return null;
 
     const indicator = indicators.get(message.clientIndicatorId);
     if (!indicator) return null;
@@ -526,7 +524,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
   }
 
   return {
-    forwardHistory: forwardLive,
+    historicalMode,
     indicators,
     restorePersistedIndicators,
     paneCount,

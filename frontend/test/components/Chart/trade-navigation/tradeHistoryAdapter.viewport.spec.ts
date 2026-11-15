@@ -75,10 +75,11 @@ it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }, { drag: true }])(
         Array.from({ length: 510 }, (_, i) =>
           chartCandle((start + i + 1) * 300_000),
         );
+      adapter.historical(true);
       adapter.prepare();
-      adapter.append(batch(0), 11 * 300_000);
-      adapter.append(batch(510), null);
-      adapter.append(batch(1020), null);
+      adapter.install(batch(0), 11 * 300_000);
+      adapter.install(batch(510), null);
+      adapter.install(batch(1020), null);
       vi.advanceTimersByTime(50);
       const range = chart.timeScale().getVisibleLogicalRange()!;
       expect(range.from).toBeCloseTo(0);
@@ -107,7 +108,7 @@ it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }, { drag: true }])(
         const moved = chart.timeScale().getVisibleLogicalRange()!;
         const delta = moved.from - started.from;
         expect(delta).not.toBe(0);
-        const pending = adapter.append(batch(1530), null);
+        const pending = adapter.install(batch(1530), null);
         vi.advanceTimersByTime(20);
         mouse('mousemove', 340);
         vi.advanceTimersByTime(20);
@@ -121,7 +122,7 @@ it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }, { drag: true }])(
         );
         return;
       }
-      adapter.append(batch(1530), null);
+      adapter.install(batch(1530), null);
       const beforeWheel = chart.timeScale().getVisibleLogicalRange()!;
       container.firstElementChild!.dispatchEvent(
         new WheelEvent('wheel', { ...gesture, clientX: 300, bubbles: true }),
@@ -129,12 +130,17 @@ it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }, { drag: true }])(
       await Promise.resolve();
       const scrolled = chart.timeScale().getVisibleLogicalRange()!;
       expect(scrolled.from).not.toBeCloseTo(100);
-      adapter.append(batch(2040), null);
-      await adapter.finish([]);
+      adapter.install(batch(2040), null);
+
       vi.advanceTimersByTime(50);
       const panned = chart.timeScale().getVisibleLogicalRange()!;
       expect(panned.from).toBeCloseTo(100 + scrolled.from - beforeWheel.from);
       expect(panned.to).toBeCloseTo(180 + scrolled.to - beforeWheel.to);
+      const visible = chart.timeScale().getVisibleRange();
+      adapter.install(batch(-510), null);
+      vi.advanceTimersByTime(50);
+      expect(chart.timeScale().getVisibleRange()).toEqual(visible);
+      adapter.historical(false);
     } finally {
       chart.remove();
       container.remove();

@@ -193,6 +193,7 @@ describe('ChartArea sessions', () => {
 
     expect(latestChartSession().requestOlderHistory).toHaveBeenCalledWith({
       barsBefore: 99,
+      barsAfter: 0,
       nowMs: 1_000,
       scrollToRealtime: false,
     });

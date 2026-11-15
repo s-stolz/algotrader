@@ -73,10 +73,10 @@ describe('forward indicator history', () => {
     await work;
     expect(store.getById(id)?.data).toEqual([]);
   });
-  it('keeps live values out of historical series and lets them win on completion', () => {
+  it('ignores live values while historical and accepts them after returning live', () => {
     const store = useIndicatorsStore();
     const id = store.addIndicator(info, [], 1);
-    store.forwardHistory.begin();
+    store.historicalMode = true;
     expect(
       store.handleLiveUpdate({
         type: 'indicatorUpdate',
@@ -87,7 +87,13 @@ describe('forward indicator history', () => {
     ).toBeNull();
     expect(store.getById(id)?.data).toEqual([]);
     store.updateIndicatorData(id, [{ timestamp_ms: 600_000, sma: 2 }]);
-    store.forwardHistory.finish(store);
+    store.historicalMode = false;
+    store.handleLiveUpdate({
+      type: 'indicatorUpdate',
+      clientIndicatorId: id,
+      timestamp_ms: 600_000,
+      values: { sma: 3 },
+    });
     expect(store.getById(id)?.data).toEqual([
       { timestamp_ms: 600_000, sma: 3 },
     ]);

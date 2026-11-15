@@ -29,20 +29,22 @@ and behavior that is easy to break when changing them.
   `stores/indicators/pendingRequests.ts` orders recovery after pending initial or
   parameter loads so late snapshots cannot erase repaired points.
 - Trade entry/exit navigation starts in `stores/tradeNavigationStore.ts`, reuses
-  run selection/context restoration, and leaves the execution log selection and
-  pagination untouched. `components/Chart/trade-navigation/` loads ten actual
-  predecessor bars and the first forward window, then progressively consumes the
-  [ascending Candle stream](../docs/contracts/candles.md#historical-candle-streams).
-  It retains zoom and preserves the current viewport on subsequent batches.
-  `chartSession.ts` owns cancellation and excludes ordinary older-page loading
-  during forward catch-up. Page deactivation, context changes, and replacement
-  destinations invalidate pending work. A failed prefix remains historical;
-  it is never joined directly to present-day live data across an unfilled gap.
-- Forward indicator coverage lives in `stores/indicators/forwardHistory.ts`.
-  Candle rendering proceeds independently while bounded indicator ranges load
-  sequentially. Initial run/manual indicator loads settle before forward merges;
-  generation guards reject superseded responses. Candle and indicator live tails
-  are held separately during catch-up and win duplicate timestamps on completion.
+  run selection/context restoration, and leaves execution-log pagination untouched.
+  `components/Chart/trade-navigation/` loads ten predecessor bars and up to 500
+  candles from the event, then pages 500 bars toward the edge the user approaches.
+  No automatic catch-up stream runs. Historical windows ignore live candle and
+  indicator messages, and reconnect recovery stays off until the window reaches
+  the present. `chartSession.ts` owns cancellation; `trade-navigation/latestChart.ts`
+  clears the historical window and reuses the normal latest-500 snapshot and live
+  workflow for return-to-live.
+- Historical paging uses Lightweight Charts' `shiftVisibleRangeOnNewBar: false`.
+  Version 5.3.0 fixes base-index compensation during dragging; rely on that behavior
+  rather than restoring the viewport after each page or intercepting gestures.
+  Only the initial jump positions the trade with the retained zoom. Paging preserves
+  the viewport through the chart library, including prepend and append operations.
+- `stores/indicators/forwardHistory.ts` extends indicator coverage for each loaded
+  page, with request cancellation and calculation-generation guards. Initial run
+  and manual indicator requests settle before additional page merges.
 - Historical Indicators cover the loaded Candle range: load the latest batch
   first, backfill older batches, and trim points outside that range.
 - Opening ranges render as per-session primitives on the Candle series through
