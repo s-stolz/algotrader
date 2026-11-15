@@ -10,6 +10,22 @@ vi.mock('@/api/backtesterClient', () => ({
 }));
 afterEach(() => vi.resetAllMocks());
 describe('saved trade result loading', () => {
+  it.each([0, 2.5, 'infinity', null] as const)(
+    'uses saved %s even when trades disagree',
+    async (value) => {
+      vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([resultTrade(99)]);
+      const run = resultRun();
+      run.metrics = { profit_factor: value };
+      const scope = effectScope();
+      const results = scope.run(() => useRunResults(ref([run])))!;
+      await flushPromises();
+      expect(results.states.value.run.result?.metrics['profit-factor']).toBe(
+        value === 'infinity' ? Infinity : value,
+      );
+      expect(results.states.value.run.result?.metrics['net-profit']).toBe(99);
+      scope.stop();
+    },
+  );
   it('limits concurrency, loads unselected runs, and ignores old Backtest responses', async () => {
     const pending: ((value: BacktestClosedTrade[]) => void)[] = [];
     vi.mocked(fetchBacktestClosedTrades).mockImplementation(

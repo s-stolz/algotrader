@@ -190,3 +190,18 @@ export function isBacktestFillArray(value: unknown): value is BacktestFill[] {
     )
   );
 }
+
+export type ProfitFactor = number | 'infinity' | null;
+
+export function isProfitFactor(value: unknown): value is ProfitFactor {
+  return (
+    value === null ||
+    value === 'infinity' ||
+    (isFiniteNumber(value) && value >= 0)
+  );
+}
+
+export function decodeProfitFactor(value: unknown): number | null {
+  if (!isProfitFactor(value)) throw new Error('Invalid saved profit factor.');
+  return value === 'infinity' ? Infinity : value;
+}

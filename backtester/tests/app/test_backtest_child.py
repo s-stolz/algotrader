@@ -259,7 +259,9 @@ def _return_process_identity(
         request=snapshot.to_request(),
         fills=[],
         trades=[],
-        metrics={},
+        metrics={
+            "profit_factor": None,
+        },
         diagnostics={"process_id": os.getpid()},
         execution_duration_ms=0,
     )

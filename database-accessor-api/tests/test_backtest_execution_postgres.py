@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import unittest
@@ -533,6 +534,58 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await engine.dispose()
 
+    async def test_profit_factor_union_survives_jsonb_settlement_and_reads(self) -> None:
+        engine = create_async_engine(
+            URL.create(
+                "postgresql+asyncpg",
+                username=self.connection_options["user"],
+                **{key: value for key, value in self.connection_options.items() if key != "user"},
+            )
+        )
+        at = datetime.fromisoformat("2026-06-08T12:32:00+00:00")
+        try:
+            for i, value in enumerate((2.5, 0.0, "infinity", None)):
+                run_id = f"profit-{i}"
+                await self._insert_run(run_id, "queued", "2026-06-08T12:30:00Z")
+                async with engine.connect() as connection:
+                    await connection.execute(text(f'SET search_path TO "{self.schema}"'))
+                    await connection.commit()
+                    async with AsyncSession(bind=connection) as session:
+                        self.assertTrue(
+                            await backtest_execution.claim(
+                                session,
+                                run_id=run_id,
+                                owner_token=run_id,
+                                started_at=at,
+                                worker_id="worker-test",
+                            )
+                        )
+                        self.assertTrue(
+                            await backtest_execution.settle(
+                                session,
+                                run_id=run_id,
+                                owner_token=run_id,
+                                terminal={
+                                    "status": "succeeded",
+                                    "completed_at": at,
+                                    "result_schema_version": 3,
+                                    "metrics": {"ending_equity": 10000.0, "profit_factor": value},
+                                    "diagnostics": {},
+                                    "fills": [],
+                                    "trades": [],
+                                },
+                            )
+                        )
+                        saved = await crud.get_backtest_run(session, run_id)
+                        assert saved is not None
+                        self.assertEqual(saved["metrics"]["profit_factor"], value)
+                raw = await self.db.fetchval(
+                    "SELECT metrics FROM backtest_runs WHERE run_id=$1", run_id
+                )
+                self.assertEqual(json.loads(raw)["profit_factor"], value)
+        finally:
+            await engine.dispose()
+
     async def test_large_result_settlement_preserves_artifacts_and_atomicity(self) -> None:
         await self._insert_run("large", "queued", "2026-06-08T12:30:00Z")
         await self._insert_run("waiting", "queued", "2026-06-08T12:31:00Z")
@@ -580,7 +633,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
             status="succeeded",
             completed_at=at,
             result_schema_version=3,
-            metrics={"ending_equity": 10000.0},
+            metrics={"profit_factor": None, "ending_equity": 10000.0},
             diagnostics={},
             fills=fills,
             trades=trades,
@@ -799,7 +852,7 @@ class BacktestExecutionPostgresTests(unittest.IsolatedAsyncioTestCase):
             "status": "succeeded",
             "completed_at": accepted_at,
             "result_schema_version": 3,
-            "metrics": {"trade_count": 1, "ending_equity": 10000.0},
+            "metrics": {"profit_factor": None, "trade_count": 1, "ending_equity": 10000.0},
             "diagnostics": {},
             "replay_descriptor": {"fingerprint_digest": "saved"},
             "fills": [

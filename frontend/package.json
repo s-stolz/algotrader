@@ -18,12 +18,14 @@
     "test:tooling": "node --test scripts/*.test.mjs"
   },
   "dependencies": {
+    "@vue/devtools-api": "8.2.1",
+    "echarts": "6.1.0",
     "lightweight-charts": "5.2.1",
     "mitt": "3.0.1",
     "pinia": "4.1.0",
     "vue": "3.5.45",
-    "vue-router": "5.4.0",
-    "@vue/devtools-api": "8.2.1"
+    "vue-echarts": "8.3.2",
+    "vue-router": "5.4.0"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

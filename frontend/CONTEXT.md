@@ -187,14 +187,24 @@ and behavior that is easy to break when changing them.
 - Creation calendar dates convert explicitly to UTC midnight. Chart timestamp
   conversion follows the root transport contract.
 
-- `views/workspace/results/` derives net realized profit, win rate, profit factor,
+- `views/workspace/results/` derives net realized profit, win rate,
   expectancy, holding time, and UTC exit-month totals from saved Closed Trades.
+  Profit factor is decoded from saved metrics at the transport boundary; see
+  [saved profit factor](../docs/contracts/backtests.md#saved-profit-factor).
   `useWorkspaceAnalysis` owns those reads independently of replay selection so
   all successful Runs can be sorted before comparison. Results load with bounded
   concurrency, reject stale workspace responses, and expose retryable failures.
   Calendar percentages use each Run's request Initial capital, not month-end
   equity. Year totals sum covered months; uncovered/unavailable months stay missing.
   Exact bars per trade are not inferred from elapsed time across market gaps.
+
+- `views/workspace/heatmap/` owns terminal-only parameter slicing and comparison
+  toggles. `types/backtest/heatmapSnapshot.ts` validates complete saved domains and
+  unique input tuples; current catalogs and table pages never define the grid.
+  Inspection starts the complete member read after the overview resolves, and
+  retains the last-good terminal pair through refresh failures. All colors use
+  saved member metrics independently of trade/replay reads. Heatmap clicks share
+  comparison membership with the table and do not invoke detail-selection defaults.
 
 ## Shared UI and Transport
 

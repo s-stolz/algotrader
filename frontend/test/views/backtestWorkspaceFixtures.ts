@@ -127,6 +127,7 @@ export function run(
     },
     result_schema_version: 3,
     metrics: {
+      profit_factor: null,
       total_return_pct: -1.25,
       max_drawdown_pct: -2.5,
       trade_count: 0,

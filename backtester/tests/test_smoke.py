@@ -37,12 +37,18 @@ class _StorageClient:
 
     def post(self, path: str, **kwargs: object) -> _Response:
         if path == "/markets":
+            payload = kwargs["json"]
+            assert isinstance(payload, dict)
+            assert payload["settlement_currency"] == "USD"
+            for field in ("contract_multiplier", "minimum_quantity", "quantity_step"):
+                assert payload[field] == 1.0
             return _Response(payload={"symbol_id": 1, "status": "created"})
         self.assert_path(path, "/candles")
         payload = kwargs["json"]
         assert isinstance(payload, dict)
         candles = payload["candles"]
         assert isinstance(candles, list)
+        assert all(candle["timestamp_ms"] % 60_000 == 0 for candle in candles)
         self.seeded_candles = candles
         return _Response(payload={"status": "ok", "added_candles": len(candles)})
 
@@ -96,7 +102,7 @@ class _BacktesterClient:
                     "run_id": "run-success",
                     "backtest_id": "run-success",
                     "status": "succeeded",
-                    "metrics": {"trade_count": 1.0},
+                    "metrics": {"profit_factor": None, "trade_count": 1.0},
                     "diagnostics": {"bars": 9},
                 }
             )

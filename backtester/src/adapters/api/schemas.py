@@ -19,6 +19,7 @@ from domain.enums import (
     TradeAccountingPolicy,
 )
 from domain.experiment_names import normalize_experiment_name
+from domain.metrics import validate_profit_factor
 from domain.orders import IntrabarExecutionPolicy
 from domain.risk import ProtectionSetting, SizingPolicy
 from domain.schedule import DailyTradingSchedule
@@ -435,6 +436,14 @@ class BacktestRunResponseSchema(ApiContractModel):
     diagnostics: dict[str, Any] | None = None
     error_code: str | None = None
     error_message: str | None = None
+
+    @model_validator(mode="after")
+    def validate_saved_metrics(self) -> "BacktestRunResponseSchema":
+        if self.metrics is not None:
+            validate_profit_factor(self.metrics)
+        elif self.status == "succeeded":
+            raise ValueError("successful Run requires metrics.profit_factor")
+        return self
 
     @classmethod
     def from_domain(

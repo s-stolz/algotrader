@@ -15,7 +15,7 @@ import httpx
 
 FIXTURE_SYMBOL = "BTESMOKE"
 FIXTURE_EXCHANGE = "SMOKE"
-FIXTURE_START_MS = 1_700_000_000_000
+FIXTURE_START_MS = 1_700_000_040_000
 _TERMINAL_STATUSES = {"succeeded", "failed"}
 
 
@@ -158,6 +158,10 @@ def _exercise_paths(
             "exchange": FIXTURE_EXCHANGE,
             "market_type": "fixture",
             "min_move": 0.01,
+            "settlement_currency": "USD",
+            "contract_multiplier": 1.0,
+            "minimum_quantity": 1.0,
+            "quantity_step": 1.0,
             "timezone": "UTC",
         },
     )
@@ -279,6 +283,10 @@ def _seed_fixture(client: HttpClient, cleanup: _CleanupState) -> int:
                 "exchange": FIXTURE_EXCHANGE,
                 "market_type": "fixture",
                 "min_move": 0.01,
+                "settlement_currency": "USD",
+                "contract_multiplier": 1.0,
+                "minimum_quantity": 1.0,
+                "quantity_step": 1.0,
                 "timezone": "UTC",
             },
         )

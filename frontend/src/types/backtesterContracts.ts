@@ -54,6 +54,9 @@ export {
 
 export {
   BACKTEST_RESULT_SCHEMA_VERSION,
+  type ProfitFactor,
+  isProfitFactor,
+  decodeProfitFactor,
   type EquityReplayPoint,
   type EquityReplayResponse,
   isEquityReplayResponse,

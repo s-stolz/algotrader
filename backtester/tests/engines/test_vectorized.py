@@ -97,7 +97,8 @@ class TestVectorizedBacktestIntegration(unittest.TestCase):
         self.assertAlmostEqual(result.trades[0].realized_pnl, 3.0)
         self.assertEqual(result.equity_curve[-1].positions, {"AAPL": -1.0})
         self.assertEqual(result.equity_curve[-1].equity, 10_008.0)
-        self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
+        self.assertEqual(result.metrics["trade_count"], 1.0)
+        self.assertEqual(result.metrics["profit_factor"], "infinity")
 
     def test_request_only_vectorized_run_resolves_strategy_from_registry(self) -> None:
         bars = self._build_bars()

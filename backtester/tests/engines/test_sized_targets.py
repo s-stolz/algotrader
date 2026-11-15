@@ -56,6 +56,8 @@ class SizedTargetTests(unittest.TestCase):
         self.assertEqual(event_stages, vector_stages)
         self.assertEqual(vector_counts, [])
         self.assertEqual(event_counts, [(0, len(bars)), (len(bars), len(bars))])
+        self.assertIn("profit_factor", vector.metrics)
+        self.assertEqual(vector.metrics, event.metrics)
         self.assertTrue(vector.fills)
         self.assertEqual(vector.fills, event.fills)
         self.assertEqual(vector.equity_curve, event.equity_curve)

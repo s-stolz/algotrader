@@ -99,7 +99,7 @@ import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 import { watch } from 'vue';
 import { NButton, NIcon, NTag } from 'naive-ui';
 import { PauseOutline, PlayOutline } from '@vicons/ionicons5';
-import type { BacktestRun } from '@/types/backtesterContracts';
+import type { Backtest, BacktestRun } from '@/types/backtesterContracts';
 import ExperimentName from '@/components/Backtest/ExperimentName.vue';
 import BacktestProgress from '@/components/Backtest/inspection/BacktestProgress.vue';
 import BacktestSavedDetails from '@/components/Backtest/inspection/BacktestSavedDetails.vue';
@@ -107,6 +107,12 @@ import { useBacktestInspection } from '@/components/Backtest/inspection/useBackt
 const emit = defineEmits<{
   members: [backtestId: string, runs: BacktestRun[]];
   'runs-state': [backtestId: string, state: 'loading' | 'error' | 'ready'];
+  'heatmap-state': [
+    backtestId: string,
+    snapshot: { backtest: Backtest; runs: BacktestRun[] } | null,
+    pending: boolean,
+    error: string | null,
+  ];
   cancelled: [];
   unavailable: [backtestId: string];
 }>();
@@ -117,6 +123,25 @@ const inspection = useBacktestInspection(props, {
   unavailable: (backtestId) => emit('unavailable', backtestId),
 });
 defineExpose({ refresh: inspection.refresh });
+watch(
+  [
+    () => props.backtestId,
+    inspection.terminalSnapshot,
+    inspection.membersPending,
+    inspection.membersError,
+  ],
+  ([id]) => {
+    if (id)
+      emit(
+        'heatmap-state',
+        id,
+        inspection.terminalSnapshot.value,
+        inspection.membersPending.value,
+        inspection.membersError.value,
+      );
+  },
+  { immediate: true },
+);
 watch(
   [
     () => props.backtestId,

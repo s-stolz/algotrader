@@ -116,6 +116,7 @@ describe('backtester contract validators', () => {
         request: backtestRequest(),
         result_schema_version: BACKTEST_RESULT_SCHEMA_VERSION,
         metrics: {
+          profit_factor: null,
           total_return_pct: 1.25,
           trade_count: 1,
           long_trade_count: 1,
@@ -155,7 +156,7 @@ describe('backtester contract validators', () => {
         request_schema_version: 2,
         request: backtestRequest(),
         result_schema_version: 2,
-        metrics: { total_return_pct: 1.25 },
+        metrics: { profit_factor: null, total_return_pct: 1.25 },
       }),
     ).toBe(true);
 

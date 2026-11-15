@@ -14,10 +14,13 @@ it('stacks selected runs and both units in read-only year rows', async () => {
     selectedComparisonIds: selection,
     tradeResults: {
       states: ref({
-        first: { status: 'ready', result: summarizeTrades([resultTrade(100)]) },
+        first: {
+          status: 'ready',
+          result: summarizeTrades([resultTrade(100)], Infinity),
+        },
         second: {
           status: 'ready',
-          result: summarizeTrades([resultTrade(-50)]),
+          result: summarizeTrades([resultTrade(-50)], 0),
         },
       }),
       retry: vi.fn(),

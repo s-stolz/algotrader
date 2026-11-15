@@ -13,8 +13,11 @@
     size="small"
     @update:sorter="updateComparisonSort"
   />
-  <WorkspaceReplay :inspection="inspection" />
-  <MonthlyResults :inspection="inspection" />
+  <slot />
+  <div data-testid="workspace-analysis"
+    ><WorkspaceReplay :inspection="inspection" />
+    <MonthlyResults :inspection="inspection"
+  /></div>
 </template>
 <script setup lang="ts">
 import MonthlyResults from '../results/MonthlyResults.vue';

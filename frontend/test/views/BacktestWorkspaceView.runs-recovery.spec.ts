@@ -39,7 +39,11 @@ describe('Backtest runs recovery', () => {
         .trigger('click');
       await flushPromises();
       const runs = wrapper.get('.current-backtest .table-panel');
-      expect(runs.get('[role="alert"]').text()).toBe('Couldn’t load runs');
+      expect(runs.get('[role="alert"]').text()).toBe(
+        result === 'empty'
+          ? 'The saved member list is incomplete.'
+          : 'Couldn’t load runs',
+      );
       await runs.get('[aria-label="Retry: Runs unavailable"]').trigger('click');
       await flushPromises();
       expect(listBacktestMembers).toHaveBeenCalledTimes(2);

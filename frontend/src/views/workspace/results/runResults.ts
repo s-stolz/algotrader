@@ -14,7 +14,10 @@ export interface RunResults {
   metrics: Record<ResultMetricKey, number | null>;
   months: Record<string, number>;
 }
-export function summarizeTrades(trades: BacktestClosedTrade[]): RunResults {
+export function summarizeTrades(
+  trades: BacktestClosedTrade[],
+  profitFactor: number | null,
+): RunResults {
   let wins = 0,
     profit = 0,
     loss = 0,
@@ -35,7 +38,7 @@ export function summarizeTrades(trades: BacktestClosedTrade[]): RunResults {
     metrics: {
       'net-profit': profit - loss,
       'win-rate': trades.length ? (wins / trades.length) * 100 : null,
-      'profit-factor': loss ? profit / loss : profit ? Infinity : null,
+      'profit-factor': profitFactor,
       expectancy: trades.length ? (profit - loss) / trades.length : null,
       'holding-time': trades.length ? hours / trades.length : null,
     },

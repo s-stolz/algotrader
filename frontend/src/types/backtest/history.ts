@@ -8,7 +8,11 @@ import {
   type BacktestRequestPayload,
   isBacktestRequestPayload,
 } from './requests';
-import { BACKTEST_RESULT_SCHEMA_VERSION } from './results';
+import {
+  BACKTEST_RESULT_SCHEMA_VERSION,
+  isProfitFactor,
+  type ProfitFactor,
+} from './results';
 import {
   isOptionalNullableNumber,
   isOptionalNullableString,
@@ -26,6 +30,11 @@ export const BACKTEST_RUN_STATUSES = [
 
 export type BacktestRunStatus = (typeof BACKTEST_RUN_STATUSES)[number];
 
+export interface BacktestMetrics {
+  [key: string]: unknown;
+  profit_factor: ProfitFactor;
+}
+
 export interface BacktestRun {
   run_id: string;
   backtest_id: string;
@@ -40,7 +49,7 @@ export interface BacktestRun {
   request_schema_version: 2 | 3;
   request: BacktestRequestPayload;
   result_schema_version?: 1 | 2 | typeof BACKTEST_RESULT_SCHEMA_VERSION | null;
-  metrics?: JsonObject | null;
+  metrics?: BacktestMetrics | null;
   diagnostics?: JsonObject | null;
   error_code?: string | null;
   error_message?: string | null;
@@ -95,6 +104,10 @@ export function isBacktestRun(value: unknown): value is BacktestRun {
     isBacktestRequestPayload(value.request) &&
     isOptionalBacktestResultSchemaVersion(value) &&
     isOptionalNullableJsonObject(value, 'metrics') &&
+    (value.metrics == null
+      ? value.status !== 'succeeded'
+      : isRecord(value.metrics) &&
+        isProfitFactor(value.metrics.profit_factor)) &&
     isOptionalNullableJsonObject(value, 'diagnostics') &&
     isOptionalNullableString(value, 'error_code') &&
     isOptionalNullableString(value, 'error_message')

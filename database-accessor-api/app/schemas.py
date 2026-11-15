@@ -1,6 +1,6 @@
 import math
 from datetime import datetime
-from typing import Any, List, Literal
+from typing import Any, List, Literal, Mapping
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
@@ -13,6 +13,23 @@ from pydantic import (
     model_serializer,
     model_validator,
 )
+
+
+def validate_profit_factor(metrics: Mapping[str, Any]) -> None:
+    """Require the saved JSON union without coercing missing or invalid values."""
+    if "profit_factor" not in metrics:
+        raise ValueError("metrics.profit_factor is required")
+    value = metrics["profit_factor"]
+    if value is None or value == "infinity":
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(
+            "metrics.profit_factor must be a nonnegative finite number, infinity, or null"
+        )
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(
+            "metrics.profit_factor must be a nonnegative finite number, infinity, or null"
+        )
 
 
 class MarketIn(BaseModel):
@@ -306,6 +323,14 @@ class BacktestRunBase(BacktestContractModel):
     diagnostics: dict[str, Any] | None = None
     replay_descriptor: EquityReplayDescriptor | None = None
 
+    @model_validator(mode="after")
+    def validate_saved_metrics(self) -> "BacktestRunBase":
+        if self.metrics is not None:
+            validate_profit_factor(self.metrics)
+        elif self.status == "succeeded":
+            raise ValueError("successful Run requires metrics.profit_factor")
+        return self
+
     @field_validator("request_schema_version")
     @classmethod
     def validate_request_schema_version(cls, value: int) -> int:
@@ -374,6 +399,7 @@ class BacktestExecutionSettleIn(BacktestContractModel):
         if self.status == "succeeded":
             if self.result_schema_version != 3 or self.metrics is None or self.diagnostics is None:
                 raise ValueError("successful settlement requires schema version 3 and results")
+            validate_profit_factor(self.metrics)
             ending_equity = self.metrics.get("ending_equity")
             if (
                 isinstance(ending_equity, bool)

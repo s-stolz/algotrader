@@ -24,7 +24,7 @@ class LightweightRunRoutesTests(unittest.TestCase):
             queued,
             status=BacktestRunStatus.SUCCEEDED,
             result_schema_version=3,
-            metrics={"trade_count": 0},
+            metrics={"profit_factor": None, "trade_count": 0},
             diagnostics=None,
         )
         repository.runs_by_id[self.record.run_id] = self.record
@@ -40,7 +40,7 @@ class LightweightRunRoutesTests(unittest.TestCase):
                 "request_schema_version": self.record.request_snapshot.schema_version,
                 "request": dict(self.record.request_snapshot.payload),
                 "result_schema_version": 3,
-                "metrics": {"trade_count": 0},
+                "metrics": {"profit_factor": None, "trade_count": 0},
                 "diagnostics": None,
             }
         ]
@@ -55,10 +55,36 @@ class LightweightRunRoutesTests(unittest.TestCase):
             response = self.client.get(path + "?include_diagnostics=false")
             self.assertEqual(response.status_code, 200, response.text)
             run = response.json()[0] if is_list else response.json()
-            self.assertEqual(run["metrics"], {"trade_count": 0})
+            self.assertEqual(run["metrics"], {"profit_factor": None, "trade_count": 0})
             self.assertEqual(run["result_schema_version"], 3)
             self.assertNotIn("diagnostics", run)
         self.members.members.assert_called_with("backtest-1", include_diagnostics=False)
+
+    def test_profit_factor_public_run_and_member_round_trips(self):
+        for value in (0.0, 2.5, "infinity", None):
+            with self.subTest(value=value):
+                assert isinstance(self.record.metrics, dict)
+                self.record.metrics["profit_factor"] = value
+                self.members.members.return_value[0]["metrics"]["profit_factor"] = value
+                for path in ("/backtests/runs/run-1", "/backtests/backtest-1/runs"):
+                    response = self.client.get(path + "?include_diagnostics=false")
+                    self.assertEqual(response.status_code, 200, response.text)
+                    body = response.json()
+                    run = body[0] if isinstance(body, list) else body
+                    self.assertEqual(run["metrics"]["profit_factor"], value)
+
+    def test_public_projection_rejects_missing_or_invalid_profit_factor(self):
+        for metrics in (
+            {},
+            *(
+                {"profit_factor": value}
+                for value in (True, False, -1, float("nan"), float("inf"), "2", "Infinity")
+            ),
+        ):
+            with self.subTest(metrics=metrics), self.assertRaisesRegex(ValueError, "profit_factor"):
+                BacktestRunResponseSchema.from_domain(
+                    replace(self.record, metrics=metrics), include_diagnostics=False
+                )
 
     def test_full_projection_still_requires_diagnostics(self):
         for path in ["/backtests/runs/run-1", "/backtests/runs", "/backtests/backtest-1/runs"]:

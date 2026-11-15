@@ -31,6 +31,7 @@ export function resultRun(
   return {
     run_id: id,
     status: 'succeeded',
+    metrics: { profit_factor: null },
     run_ordinal: 0,
     request: { start_ms: start, end_ms: end, initial_capital: 10000 },
   } as BacktestRun;

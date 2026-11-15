@@ -241,6 +241,8 @@ class RsiRangeOrderTests(unittest.TestCase):
                         "expired",
                         [event["outcome"] for event in expired.diagnostics["order_events"]],
                     )
+            self.assertIn("profit_factor", results[0].metrics)
+            self.assertEqual(results[0].metrics, results[1].metrics)
             self.assertEqual(results[0].fills, results[1].fills)
             self.assertEqual(
                 results[0].diagnostics["order_events"], results[1].diagnostics["order_events"]

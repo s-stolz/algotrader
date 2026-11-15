@@ -1,3 +1,4 @@
+import { terminalMembersIssue } from '@/types/backtest/heatmapSnapshot';
 import { useBacktestEvents } from '@/utils/useBacktestEvents';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import { HttpResponseError } from '@/api/http';
@@ -34,6 +35,10 @@ export function useBacktestInspection(
   const workspaceStore = useBacktestWorkspaceStore();
   const selectedBacktest = shallowRef<Backtest | null>(null);
   const members = ref<BacktestRun[] | null>(null);
+  const terminalSnapshot = shallowRef<{
+    backtest: Backtest;
+    runs: BacktestRun[];
+  } | null>(null);
   const events = ref<BacktestEvent[] | null>(null);
   const membersError = ref<string | null>(null);
   const membersPending = ref(false);
@@ -159,7 +164,7 @@ export function useBacktestInspection(
       return;
     }
     readPending = true;
-    membersPending.value = members.value === null || !background;
+    membersPending.value = true;
     if (!background) {
       membersError.value = null;
       if (!selectedBacktest.value) detailError.value = null;
@@ -187,24 +192,31 @@ export function useBacktestInspection(
       throw error;
     }
     try {
+      // A member read starts after the overview resolves. A newly terminal overview
+      // can therefore never be paired with an earlier active member snapshot.
+      const overviewRead = getBacktest(backtestId)
+        .then((backtest) => {
+          if (revision === detailRevision && !isUnavailable) {
+            selectedBacktest.value = workspaceStore.preserveBacktestName(
+              backtest,
+              nameReadRevision,
+            );
+          }
+          return backtest;
+        })
+        .catch((error) => reportReadFailure(error, 'detail'));
+      const memberRead = overviewRead
+        .catch(() => null)
+        .then(() => {
+          if (revision !== detailRevision || isUnavailable) return null;
+          return listBacktestMembers(backtestId, false).catch((error) =>
+            reportReadFailure(error, 'members'),
+          );
+        });
       const [backtestResult, membersResult, eventsResult] =
         await Promise.allSettled([
-          getBacktest(backtestId)
-            .then((backtest) => {
-              if (revision === detailRevision && !isUnavailable) {
-                selectedBacktest.value = workspaceStore.preserveBacktestName(
-                  backtest,
-                  nameReadRevision,
-                );
-              }
-              return backtest;
-            })
-            .catch((error) => reportReadFailure(error, 'detail')),
-          listBacktestMembers(backtestId, false)
-            .catch((error) => reportReadFailure(error, 'members'))
-            .finally(() => {
-              if (revision === detailRevision) membersPending.value = false;
-            }),
+          overviewRead,
+          memberRead,
           listBacktestEvents(backtestId).catch((error) =>
             reportReadFailure(error, 'detail'),
           ),
@@ -219,12 +231,27 @@ export function useBacktestInspection(
       } else {
         detailError.value = 'Couldn’t load this backtest.';
       }
-      if (membersResult.status === 'fulfilled') {
-        members.value = membersResult.value;
-        membersError.value = membersResult.value.length
-          ? null
-          : 'Couldn’t load runs';
-        callbacks.members(backtestId, membersResult.value);
+      if (membersResult.status === 'fulfilled' && membersResult.value) {
+        const terminalBacktest =
+          backtestResult.status === 'fulfilled' &&
+          ['completed', 'cancelled'].includes(backtestResult.value.status)
+            ? backtestResult.value
+            : null;
+        const issue = terminalBacktest
+          ? terminalMembersIssue(terminalBacktest, membersResult.value)
+          : null;
+        membersError.value =
+          issue ?? (membersResult.value.length ? null : 'Couldn’t load runs');
+        // Failed reconciliation must not discard established table/comparison membership.
+        if (!issue || members.value === null) {
+          members.value = membersResult.value;
+          callbacks.members(backtestId, membersResult.value);
+        }
+        if (terminalBacktest && !issue)
+          terminalSnapshot.value = {
+            backtest: terminalBacktest,
+            runs: membersResult.value,
+          };
       } else {
         membersError.value = 'Couldn’t load runs';
       }
@@ -321,6 +348,8 @@ export function useBacktestInspection(
       detailError.value = null;
       selectedBacktest.value = null;
       members.value = null;
+      terminalSnapshot.value = null;
+      refreshAfterRead = false;
       membersError.value = null;
       membersPending.value = false;
       failedCommand = null;
@@ -336,6 +365,7 @@ export function useBacktestInspection(
 
   return {
     selectedBacktest,
+    terminalSnapshot,
     progress,
     membersError,
     membersPending,
