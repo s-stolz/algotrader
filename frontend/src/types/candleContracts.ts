@@ -14,6 +14,7 @@ export interface ChartCandle extends Candle {
 }
 
 export interface CandleFetchOptions {
+  fromStart?: boolean;
   startMs?: number | null;
   endMs?: number | null;
   limit?: number | null;

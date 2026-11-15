@@ -5,6 +5,7 @@ from typing import Literal, Optional
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
 from app import backtest_execution, crud, historical_candles, market_cache, recovery
 from app.backtest_execution_log import get_execution_log
+from app.candle_pages import forward_candles
 from app.database import get_db
 from app.schemas import (
     BacktestClosedTradeOut,
@@ -423,6 +424,7 @@ async def read_aggregated_candles_by_symbol(
     start_ms: Optional[int] = Query(None, description="Start timestamp in epoch ms (UTC)"),
     end_ms: Optional[int] = Query(None, description="End timestamp in epoch ms (UTC)"),
     limit: Optional[int] = Query(None),
+    from_start: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ):
     await market_cache.ensure_market_cache(db)
@@ -436,6 +438,23 @@ async def read_aggregated_candles_by_symbol(
         symbol_id = market_cache.resolve_symbol_id(symbol, exchange)
     if symbol_id is None:
         raise HTTPException(status_code=404, detail="Market not found")
+
+    if from_start is True:
+        if (
+            not isinstance(start_ms, int)
+            or not isinstance(end_ms, int)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= 500
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Forward pages require start_ms, end_ms and limit between 1 and 500",
+            )
+        if start_ms >= end_ms:
+            raise HTTPException(status_code=422, detail="start_ms must precede end_ms")
+        return await forward_candles(
+            db, symbol_id, timeframe_to_minutes(timeframe), start_ms, end_ms, limit
+        )
 
     return await crud.get_candles(
         db,

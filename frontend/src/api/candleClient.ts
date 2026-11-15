@@ -24,6 +24,7 @@ export async function fetchCandles(
     await fetch(
       withQuery(`${CANDLES_BASE_URL}/${encodeURIComponent(symbol)}`, {
         timeframe,
+        from_start: options.fromStart ? 'true' : undefined,
         start_ms: options.startMs,
         end_ms: options.endMs,
         limit: options.limit,

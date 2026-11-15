@@ -57,6 +57,28 @@ describe('candle API client', () => {
     );
   });
 
+  it('opts into bounded forward pages and propagates cancellation', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse([]));
+    const signal = new AbortController().signal;
+    await fetchCandles(
+      'EURUSD',
+      'M5',
+      {
+        startMs: 300_000,
+        endMs: 900_000,
+        limit: 500,
+        fromStart: true,
+      },
+      signal,
+    );
+    const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://test');
+    expect(url.searchParams.get('from_start')).toBe('true');
+    expect(url.searchParams.get('limit')).toBe('500');
+    expect(fetchMock.mock.calls[0][1]?.signal).toBe(signal);
+  });
+
   it('rejects malformed candle payloads and non-OK uploads clearly', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       jsonResponse([{ timestamp_ms: 'bad' }]),

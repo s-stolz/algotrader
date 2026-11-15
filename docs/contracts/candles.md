@@ -77,3 +77,17 @@ responsiveness/disconnect test with 362,117 fixture Candles. Set
 `equity_stream_test` for real cursor and bulk/stream parity checks. Run from
 `database-accessor-api/` with `.venv/bin/python -m unittest discover -s tests
 -p test_candle_stream.py`. These opt-in checks never use production tables.
+
+## Forward Candle pages
+
+`GET /candles/{symbol}?from_start=true` returns the first `limit` candles in
+ascending order within inclusive `start_ms` and exclusive `end_ms`. This mode
+requires both bounds and a limit of 1–500. Omitted or false `from_start` preserves
+the existing latest-first selection (returned chronologically) for limited reads.
+An underfilled page means no more stored candles exist inside the requested bounds;
+it does not assert historical completeness or that ingestion is current.
+
+`app/candle_pages.py` uses raw M1 data and direct bucketing for higher timeframes,
+so missing aggregate retention cannot skip the prefix of a forward page. Chart
+paging passes full bucket boundaries to avoid partial first bars. No storage or
+streaming contract changes are required.

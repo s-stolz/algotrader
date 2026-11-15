@@ -111,3 +111,7 @@ specifications independently of subsequent Market edits.
 For historical streaming reads, `app/candle_stream.py` owns bounded cursor
 consumption, response frames, and cursor cleanup. See
 [historical Candle streams](../docs/contracts/candles.md#historical-candle-streams).
+
+For bounded forward chart paging, `app/candle_pages.py` selects the earliest
+500-or-fewer bars from raw history, including beyond aggregate retention. The
+opt-in HTTP contract is documented under [forward Candle pages](../docs/contracts/candles.md#forward-candle-pages).
