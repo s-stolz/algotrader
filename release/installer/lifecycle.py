@@ -26,6 +26,14 @@ APPLICATION_SERVICES = [
     "broker-service",
     "database-accessor-api",
 ]
+INTERNAL_SERVICES = [
+    "database-accessor-api",
+    "broker-service",
+    "ingestion-service",
+    "realtime-service",
+    "indicator-api",
+]
+ADMISSION_SERVICES = ["backtester-api", "backtester-worker", "frontend"]
 BUSY_QUERY = """SELECT EXISTS (
     SELECT 1 FROM backtest_runs WHERE status IN ('queued', 'running', 'cancelling')
 ) OR EXISTS (
@@ -59,7 +67,7 @@ class Lifecycle:
             )
         return record
 
-    def check_ready(self, record: dict[str, Any]) -> None:
+    def check_ready(self, record: dict[str, Any], *, announce: bool = True) -> None:
         response = self.docker.compose(
             record,
             [
@@ -79,8 +87,9 @@ class Lifecycle:
             or connection.get("environment") != record["environment"]
         ):
             raise InstallationError("The running broker did not authenticate the selected account.")
-        print(f"AlgoTrader is ready at http://localhost:{record['ui_port']}")
-        print("Add a broker market in the application to collect live candles or request history.")
+        if announce:
+            print(f"AlgoTrader is ready at http://localhost:{record['ui_port']}")
+            print("Add a broker market to collect live candles or request history.")
 
     def setup(self, release: Release) -> None:
         if self.locations.record.exists():
@@ -287,13 +296,38 @@ class Lifecycle:
             ],
         )
         try:
-            self.docker.compose(candidate, ["up", "--detach", "--wait", "--wait-timeout", "240"])
-            self.check_ready(candidate)
+            self.docker.compose(
+                candidate,
+                [
+                    "up",
+                    "--detach",
+                    "--wait",
+                    "--wait-timeout",
+                    "240",
+                    *INTERNAL_SERVICES,
+                ],
+            )
+            self.check_ready(candidate, announce=False)
             candidate.pop("pending_upgrade")
             if record.get("stopped"):
                 self.docker.compose(candidate, ["stop", "--timeout", "60"])
             write_json(self.locations.record, candidate)
         except BaseException:
-            self.docker.compose(candidate, ["stop", "--timeout", "60", *APPLICATION_SERVICES])
+            self.docker.compose(candidate, ["stop", "--timeout", "60", *INTERNAL_SERVICES])
             raise
+        # New work is admitted only after the candidate is durably accepted. A
+        # later startup failure must never stop workers that may have accepted it.
+        if not record.get("stopped"):
+            self.docker.compose(
+                candidate,
+                [
+                    "up",
+                    "--detach",
+                    "--wait",
+                    "--wait-timeout",
+                    "240",
+                    *ADMISSION_SERVICES,
+                ],
+            )
+            print(f"AlgoTrader is ready at http://localhost:{candidate['ui_port']}")
         print(f"Upgraded to {target.version}. Backup: {backup}")

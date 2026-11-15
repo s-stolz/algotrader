@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from release.installer.lifecycle import APPLICATION_SERVICES, Lifecycle
+from release.installer.lifecycle import ADMISSION_SERVICES, APPLICATION_SERVICES, Lifecycle
 from release.installer.model import InstallationError, Locations, Release, write_json
 from release.tests.test_model import manifest
 
@@ -82,7 +82,7 @@ class LifecycleTests(unittest.TestCase):
     def test_success_changes_version_only_after_migration_and_readiness(self):
         observed = []
 
-        def ready(record):
+        def ready(record, **kwargs):
             observed.append(self.locations.installed()["version"])
 
         with (
@@ -116,3 +116,40 @@ class LifecycleTests(unittest.TestCase):
         self.assertFalse(any(args[0] == "up" and "broker-service" in args for args in commands))
         with self.assertRaisesRegex(InstallationError, "reconnect again"):
             self.lifecycle.start()
+
+    def test_admission_stays_closed_until_candidate_is_durably_accepted(self):
+        observed = []
+
+        def compose(record, args, **kwargs):
+            if args[0] == "up" and any(service in args for service in ADMISSION_SERVICES):
+                observed.append(self.locations.installed()["version"])
+            return ""
+
+        self.docker.compose.side_effect = compose
+        with (
+            patch.object(
+                self.lifecycle, "backup", return_value=self.locations.state / "backups/one"
+            ),
+            patch.object(self.lifecycle, "check_ready"),
+        ):
+            self.lifecycle.upgrade(self.target)
+        self.assertEqual(observed, [self.target.version])
+
+    def test_failure_after_admission_never_stops_a_newly_active_worker(self):
+        def compose(record, args, **kwargs):
+            if args[0] == "up" and "frontend" in args:
+                raise InstallationError("frontend startup failed after new work was accepted")
+            return ""
+
+        self.docker.compose.side_effect = compose
+        with (
+            patch.object(
+                self.lifecycle, "backup", return_value=self.locations.state / "backups/one"
+            ),
+            patch.object(self.lifecycle, "check_ready"),
+        ):
+            with self.assertRaisesRegex(InstallationError, "frontend startup"):
+                self.lifecycle.upgrade(self.target)
+        self.assertEqual(self.locations.installed()["version"], self.target.version)
+        last_command = self.docker.compose.call_args_list[-1].args[1]
+        self.assertEqual(last_command[0], "up")
