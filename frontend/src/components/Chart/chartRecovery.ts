@@ -60,6 +60,18 @@ export class ChartRecovery {
     if (this.pending) this.ready();
   }
 
+  catchUp(
+    lastTimestamp: number | null,
+    live: readonly CandleUpdateMessage[],
+  ): void {
+    this.disconnectedAt = Date.now();
+    this.anchor = lastTimestamp ?? this.disconnectedAt;
+    this.historyLoaded(lastTimestamp);
+    this.ready();
+    for (const message of live) this.record(message);
+    if (live.length) this.adapter.merge([], live);
+  }
+
   record(message: CandleUpdateMessage): void {
     this.live?.set(message.timestamp_ms, { ...message });
   }
@@ -116,10 +128,7 @@ export class ChartRecovery {
     this.live = null;
     const failures = results.filter((result) => result.status === 'rejected');
     if (failures.length) {
-      console.error(
-        'Failed to recover chart history after reconnect:',
-        failures,
-      );
+      console.error('Failed to recover chart history:', failures);
       return;
     }
     this.anchor = null;

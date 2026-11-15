@@ -35,8 +35,9 @@ and behavior that is easy to break when changing them.
   Retain viewport demand during in-flight reads and recheck the range after each
   page; continue sequentially until the requested edge has enough loaded bars.
   No automatic catch-up stream runs. Historical windows ignore live candle and
-  indicator messages, and reconnect recovery stays off until the window reaches
-  the present. `chartSession.ts` owns cancellation; `trade-navigation/latestChart.ts`
+  indicator messages, retaining only the latest three Candle timestamps. At the
+  present, replay that bounded tail and recover Candles and Indicators inclusively
+  from the final loaded bar so slow indicator requests cannot lose closed bars. `chartSession.ts` owns cancellation; `trade-navigation/latestChart.ts`
   clears the historical window and reuses the normal latest-500 snapshot and live
   workflow for return-to-live only when the present is not loaded. Already-live
   windows retain data and zoom; the action only scrolls if the latest bar is offscreen.

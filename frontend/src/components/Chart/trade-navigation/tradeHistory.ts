@@ -36,7 +36,10 @@ export interface TradeHistoryAdapter {
 }
 
 export class TradeHistory {
-  onPresent: ((timestamp: number | null) => void) | null = null;
+  onPresent:
+    | ((timestamp: number | null, live: readonly CandleUpdateMessage[]) => void)
+    | null = null;
+  private liveTail = new Map<number, CandleUpdateMessage>();
   lastTimestamp: number | null = null;
   private firstTimestamp: number | null = null;
   private controller: AbortController | null = null;
@@ -53,11 +56,16 @@ export class TradeHistory {
   get blocksOlderHistory() {
     return this.historical;
   }
-  receive(_message: CandleUpdateMessage): boolean {
-    return this.historical;
+  receive(message: CandleUpdateMessage): boolean {
+    if (!this.historical) return false;
+    this.liveTail.set(message.timestamp_ms, { ...message });
+    if (this.liveTail.size > 3)
+      this.liveTail.delete(Math.min(...this.liveTail.keys()));
+    return true;
   }
 
   cancel(): void {
+    this.liveTail.clear();
     this.controller?.abort();
     this.controller = null;
     this.key = null;
@@ -210,7 +218,11 @@ export class TradeHistory {
   private reachedPresent() {
     this.historical = false;
     this.adapter.historical(false);
-    this.onPresent?.(this.lastTimestamp);
+    const live = [...this.liveTail.values()].sort(
+      (a, b) => a.timestamp_ms - b.timestamp_ms,
+    );
+    this.liveTail.clear();
+    this.onPresent?.(this.lastTimestamp, live);
   }
   private setBusy(value: boolean) {
     this.busy = value;
@@ -225,11 +237,11 @@ export function createHistoryRecovery(
   const recovery = new ChartRecovery(options.recovery);
   const history = options.tradeHistory;
   if (history)
-    history.onPresent = (timestamp) => {
+    history.onPresent = (timestamp, live) => {
       const key = getKey();
       if (!key) return;
       recovery.start(key);
-      recovery.historyLoaded(timestamp);
+      recovery.catchUp(timestamp, live);
     };
   return recovery;
 }
