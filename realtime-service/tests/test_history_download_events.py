@@ -85,7 +85,12 @@ class HistoryDownloadBridgeTests(unittest.IsolatedAsyncioTestCase):
             with self.assertLogs("app.history_download_events"):
                 await incoming.put(ConnectionError("disconnected"))
                 await wait_for(lambda: not bridge._connected)
-            await wait_for(lambda: bridge._connected)
+            # The connected flag changes before asynchronous client delivery completes.
+            await wait_for(lambda: redis.xread.await_count == 3)
+            redis.xrevrange.assert_awaited_with("history:downloads:events", count=1)
+            redis.xread.assert_awaited_with(
+                {"history:downloads:events": "10-0"}, block=1000, count=100
+            )
             statuses = [
                 message["connected"]
                 for message in messages(client)
