@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { fetchExecutionLog } from '@/api/executionLogClient';
 import type { BacktestRun } from '@/types/backtesterContracts';
@@ -27,12 +27,13 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
   const consumesSpace = computed(
     () => isOpen.value && selectedRun.value !== null,
   );
+  let hasLoaded = false;
   let generation = 0;
   let request: AbortController | null = null;
 
   async function load(): Promise<void> {
     const run = selectedRun.value;
-    if (!run) return;
+    if (!run || !isOpen.value) return;
     const current = ++generation;
     request?.abort();
     request = new AbortController();
@@ -49,6 +50,7 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
       if (current !== generation) return;
       items.value = result.items;
       total.value = result.total;
+      hasLoaded = true;
     } catch (reason) {
       if (current !== generation) return;
       error.value =
@@ -63,6 +65,12 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
       if (error.value) void load();
       return;
     }
+    ++generation;
+    request?.abort();
+    loading.value = false;
+    error.value = null;
+    items.value = [];
+    hasLoaded = false;
     selectedRun.value = {
       run_id: run.run_id,
       backtest_id: run.backtest_id,
@@ -84,10 +92,12 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
     )
       return;
     page.value = value;
+    hasLoaded = false;
     void load();
   }
   function setIncludeUnexecuted(value: boolean): void {
     if (value === includeUnexecuted.value) return;
+    hasLoaded = false;
     includeUnexecuted.value = value;
     page.value = 1;
     total.value = 0;
@@ -104,6 +114,9 @@ export const useExecutionLogStore = defineStore('executionLog', () => {
     loading.value = false;
     error.value = null;
   }
+  watch(consumesSpace, (visible) => {
+    if (visible && !hasLoaded && !loading.value) void load();
+  });
   function resize(value: number | string): void {
     const ratio = Number(value);
     if (Number.isFinite(ratio))

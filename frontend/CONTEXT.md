@@ -249,6 +249,7 @@ unexecuted Orders. Normal workspace/member reads omit diagnostics. Opening a Run
 Chart still fetches full diagnostics and execution artifacts because chart indicators,
 pending-entry lines and execution overlays need them; it selects the log without opening it.
 The log selection is session-only and separate from persisted chart overlay selection.
+Fetch its first page only when the panel opens; preserve loaded pages across toggles.
 On chart startup, restore the persisted overlay after the first current-session
 Candle snapshot loads, so optional backtester reads follow chart history.
 The symbol menu edits specifications through stable IDs. Refresh selected Market
