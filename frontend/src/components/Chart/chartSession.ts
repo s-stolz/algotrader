@@ -5,7 +5,11 @@ import {
   type ChartSessionOlderHistorySignal,
 } from './trade-navigation/tradeHistory';
 import type { ChartRecovery, ChartRecoveryAdapter } from './chartRecovery';
-import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
+import {
+  toChartCandle,
+  type CandleUpdateMessage,
+  type ChartCandle,
+} from '@/types/contracts';
 
 import {
   normalizeSessionKey,
@@ -91,6 +95,10 @@ export class ChartSession {
   private liveCandleReceiver: ChartSessionLiveCandleReceiver | null = null;
   private inFlightCandleFetch: InFlightCandleFetch | null = null;
   private revision = 0;
+  private lastLiveCandle: {
+    key: ChartSessionKey;
+    candle: CandleUpdateMessage;
+  } | null = null;
 
   private readonly recovery: ChartRecovery;
   private readonly olderHistory: ChartOlderHistory;
@@ -110,6 +118,9 @@ export class ChartSession {
     tradeTimestampMs?: number,
   ): Promise<void> {
     const nextKey = normalizeSessionKey(input);
+    if (!sessionKeysEqual(this.lastLiveCandle?.key ?? null, nextKey)) {
+      this.lastLiveCandle = null;
+    }
 
     if (sessionKeysEqual(this.activeKey, nextKey)) {
       this.liveCandleReceiver = receiveLiveCandle;
@@ -227,6 +238,15 @@ export class ChartSession {
     if (!this.activeKey || !this.liveCandleReceiver) return;
     if (!candleMatchesSession(message, this.activeKey)) return;
 
+    if (
+      !this.lastLiveCandle ||
+      message.timestamp_ms >= this.lastLiveCandle.candle.timestamp_ms
+    ) {
+      this.lastLiveCandle = {
+        key: cloneSessionKey(this.activeKey),
+        candle: { ...message },
+      };
+    }
     if (this.adapter.tradeHistory?.receive(message)) return;
     this.recovery.record(message);
     if (this.bufferLiveCandleIfFetchInFlight(message, this.activeKey)) {
@@ -329,6 +349,7 @@ export class ChartSession {
     indicatorCleanup: Promise<void>,
   ): Promise<void> {
     const sessionKey = cloneSessionKey(key);
+    const retainedCandle = this.lastLiveCandle?.candle;
     const inFlight: InFlightCandleFetch = {
       key: sessionKey,
       revision,
@@ -361,6 +382,14 @@ export class ChartSession {
       return;
     }
 
+    // History can omit the open candle when resuming a cached chart.
+    // Closed history stays authoritative once it reaches that timestamp.
+    if (
+      retainedCandle &&
+      retainedCandle.timestamp_ms > (candles.at(-1)?.timestamp_ms ?? -Infinity)
+    ) {
+      candles = [...candles, toChartCandle(retainedCandle)];
+    }
     await this.adapter.renderCandles(cloneSessionKey(sessionKey), candles);
 
     if (!this.isCurrentFetch(inFlight)) {
