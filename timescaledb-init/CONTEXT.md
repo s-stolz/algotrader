@@ -67,3 +67,9 @@ the [recovery contract](../docs/contracts/recovery.md).
 live Candle write. Partial commits and lost receipts cannot hide it behind a
 newer latest Candle; normal successful live writes retire it without scheduling
 history. See the [guard contract](../docs/contracts/recovery.md#durable-live-write-guards).
+
+V023 classifies existing Markets as Custom and adds immutable broker source
+bindings. Database constraints reject incomplete or mixed bindings, and the
+source-preservation trigger prevents changing a broker instrument under existing
+Candles. New broker Markets record a minute-aligned live activation boundary;
+no existing data is deleted or automatically connected to a broker.

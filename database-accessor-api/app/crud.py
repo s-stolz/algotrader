@@ -43,6 +43,12 @@ async def insert_market(session, market_data: dict):
     :return: The symbol_id of the newly inserted market
     :rtype: int
     """
+    market_data = dict(market_data)
+    market_data["live_start_ms"] = (
+        int(datetime.now(timezone.utc).timestamp() * 1000) // 60000 * 60000
+        if market_data.get("source_type") == "broker"
+        else None
+    )
     stmt = insert(markets).values(**market_data).returning(markets.c.symbol_id)
     result = await session.execute(stmt)
     identity = result.scalar_one()
@@ -51,7 +57,16 @@ async def insert_market(session, market_data: dict):
 
 
 async def update_market(session, symbol_id: int, market_data: dict):
-    """Update metadata in place; candle identities and values are untouched."""
+    """Update metadata without rebinding its stored Candle source."""
+    from app.market_sources import validate_source_edit
+
+    result = await session.execute(
+        select(markets).where(markets.c.symbol_id == symbol_id).with_for_update()
+    )
+    current = result.mappings().first()
+    if current is None:
+        return None
+    validate_source_edit(dict(current), market_data)
     stmt = (
         update(markets)
         .where(markets.c.symbol_id == symbol_id)
@@ -105,6 +120,35 @@ async def get_markets(session, symbol: Optional[str] = None, exchange: Optional[
     result = await session.execute(stmt)
     rows = result.fetchall()
     return [dict(row._mapping) for row in rows]
+
+
+async def get_market_by_id(session, market_id: int):
+    result = await session.execute(select(markets).where(markets.c.symbol_id == market_id))
+    row = result.mappings().first()
+    return dict(row) if row is not None else None
+
+
+async def get_market_coverage(session, market_id: int):
+    result = await session.execute(
+        select(
+            func.min(candles.c.timestamp_utc),
+            func.max(candles.c.timestamp_utc),
+            func.count(),
+        ).where(candles.c.symbol_id == market_id)
+    )
+    oldest, latest, count = result.one()
+
+    def timestamp_ms(value):
+        if value is None:
+            return None
+        return int(value.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+    return {
+        "market_id": market_id,
+        "oldest_timestamp_ms": timestamp_ms(oldest),
+        "latest_timestamp_ms": timestamp_ms(latest),
+        "candle_count": count,
+    }
 
 
 async def insert_candles(session, symbol_id: int, candles_data: list[dict]):

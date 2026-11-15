@@ -67,3 +67,7 @@ For Candle streaming, both accessor clients expose context-managed stream
 consumption through their generators; close an unfinished generator explicitly.
 They require the completion frame and reject truncated responses. See
 [historical Candle streams](../docs/contracts/candles.md#historical-candle-streams).
+
+Market reads include their immutable broker/custom source. Both accessor clients
+support `get_market_by_id` and `get_market_coverage`; coverage describes stored M1
+bounds and count without asserting that internal gaps are absent.

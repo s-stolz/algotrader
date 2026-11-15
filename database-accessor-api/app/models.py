@@ -24,8 +24,8 @@ markets = Table(
     "markets",
     metadata,
     Column("symbol_id", Integer, primary_key=True, index=True),
-    Column("symbol", String(10), nullable=False),
-    Column("exchange", String(20), nullable=False),
+    Column("symbol", String(128), nullable=False),
+    Column("exchange", String(128), nullable=False),
     Column("market_type", String(20), nullable=False),
     Column("min_move", Float, nullable=False),
     Column("timezone", String(64), nullable=False, server_default="UTC"),
@@ -33,6 +33,23 @@ markets = Table(
     Column("contract_multiplier", Float, nullable=False),
     Column("minimum_quantity", Float, nullable=False),
     Column("quantity_step", Float, nullable=False),
+    Column("source_type", String(8), nullable=False, server_default="custom"),
+    Column("broker_provider", String(16), nullable=True),
+    Column("broker_account_id", String(128), nullable=True),
+    Column("broker_environment", String(4), nullable=True),
+    Column("broker_symbol_id", BigInteger, nullable=True),
+    Column("live_start_ms", BigInteger, nullable=True),
+    CheckConstraint(
+        "(source_type = 'custom' AND broker_provider IS NULL AND broker_account_id IS NULL "
+        "AND broker_environment IS NULL AND broker_symbol_id IS NULL AND live_start_ms IS NULL) "
+        "OR (source_type = 'broker' AND broker_provider IS NOT NULL "
+        "AND broker_provider = 'ctrader' "
+        "AND broker_account_id IS NOT NULL AND length(broker_account_id) > 0 "
+        "AND broker_environment IS NOT NULL AND broker_environment IN ('demo', 'live') "
+        "AND broker_symbol_id IS NOT NULL AND broker_symbol_id > 0 "
+        "AND live_start_ms IS NOT NULL AND live_start_ms >= 0 AND live_start_ms % 60000 = 0)",
+        name="markets_source_check",
+    ),
     UniqueConstraint("symbol", "exchange", name="markets_symbol_exchange_key"),
     CheckConstraint(
         "contract_multiplier > 0 AND minimum_quantity > 0 AND quantity_step > 0 AND min_move > 0",

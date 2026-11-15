@@ -115,3 +115,17 @@ consumption, response frames, and cursor cleanup. See
 For bounded forward chart paging, `app/candle_pages.py` selects the earliest
 500-or-fewer bars from raw history, including beyond aggregate retention. The
 opt-in HTTP contract is documented under [forward Candle pages](../docs/contracts/candles.md#forward-candle-pages).
+
+## Market sources
+
+Markets are `custom` or bound to a verified cTrader account/environment/instrument.
+`app/market_sources.py` verifies broker creation through the broker catalogue;
+source fields and broker names cannot change after creation. A broker Market's
+server-owned `live_start_ms` records its first eligible live minute independently
+of historical download requests. Legacy rows become Custom without changing IDs
+or stored Candles. Custom rows retain editable names and instrument specifications.
+
+`GET /markets/id/{market_id}` resolves stable identity. Its `/coverage` suffix
+returns raw M1 oldest/latest timestamps and count, not a completeness assertion.
+`POST /candles/upload` accepts CSV batches only for Custom Markets. Internal live
+insertion and authoritative recovery retain their existing separate semantics.

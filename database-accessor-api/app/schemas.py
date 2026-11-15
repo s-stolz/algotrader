@@ -34,14 +34,33 @@ def validate_profit_factor(metrics: Mapping[str, Any]) -> None:
 
 class MarketIn(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    symbol: str = Field(min_length=1, max_length=10)
-    exchange: str = Field(min_length=1, max_length=20)
+    symbol: str = Field(min_length=1, max_length=128)
+    exchange: str = Field(min_length=1, max_length=128)
     market_type: str = Field(min_length=1, max_length=20)
     min_move: float = Field(gt=0)
     settlement_currency: str = Field(min_length=1, max_length=12)
     contract_multiplier: float = Field(gt=0)
     minimum_quantity: float = Field(gt=0)
     quantity_step: float = Field(gt=0)
+    source_type: Literal["custom", "broker"] = "custom"
+    broker_provider: Literal["ctrader"] | None = None
+    broker_account_id: str | None = Field(default=None, min_length=1, max_length=128)
+    broker_environment: Literal["demo", "live"] | None = None
+    broker_symbol_id: StrictInt | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "MarketIn":
+        binding = (
+            self.broker_provider,
+            self.broker_account_id,
+            self.broker_environment,
+            self.broker_symbol_id,
+        )
+        if self.source_type == "broker" and any(value is None for value in binding):
+            raise ValueError("Broker markets require a complete broker instrument binding")
+        if self.source_type == "custom" and any(value is not None for value in binding):
+            raise ValueError("Custom markets cannot have a broker binding")
+        return self
 
     @field_validator("symbol", "exchange", "settlement_currency", mode="before")
     @classmethod

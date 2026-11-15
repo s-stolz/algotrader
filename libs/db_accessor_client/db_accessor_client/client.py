@@ -97,6 +97,12 @@ class DatabaseAccessorClient(_BaseClient):
         params = _build_params(exchange=exchange)
         return self._request("GET", f"/markets/{symbol}", params=params)
 
+    def get_market_by_id(self, market_id: int) -> dict[str, Any]:
+        return self._request("GET", f"/markets/id/{market_id}")
+
+    def get_market_coverage(self, market_id: int) -> dict[str, Any]:
+        return self._request("GET", f"/markets/id/{market_id}/coverage")
+
     def stream_candles(
         self,
         *,
@@ -467,6 +473,12 @@ class AsyncDatabaseAccessorClient(_BaseClient):
     ) -> dict[str, Any]:
         params = _build_params(exchange=exchange)
         return await self._request("GET", f"/markets/{symbol}", params=params)
+
+    async def get_market_by_id(self, market_id: int) -> dict[str, Any]:
+        return await self._request("GET", f"/markets/id/{market_id}")
+
+    async def get_market_coverage(self, market_id: int) -> dict[str, Any]:
+        return await self._request("GET", f"/markets/id/{market_id}/coverage")
 
     async def stream_candles(
         self,

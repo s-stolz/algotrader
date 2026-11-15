@@ -17,6 +17,7 @@ dependencies = [
     "sqlalchemy[asyncio]",
     "asyncpg",
     "pydantic",
+    "httpx>=0.28.1",
 ]
 
 [project.urls]

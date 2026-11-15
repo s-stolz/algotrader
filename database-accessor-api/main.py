@@ -7,6 +7,11 @@ from app import backtest_execution, crud, historical_candles, market_cache, reco
 from app.backtest_execution_log import get_execution_log
 from app.candle_pages import forward_candles
 from app.database import get_db
+from app.market_sources import (
+    BrokerVerificationUnavailableError,
+    MarketSourceConflictError,
+    verify_broker_market,
+)
 from app.schemas import (
     BacktestClosedTradeOut,
     BacktestCommandIn,
@@ -100,7 +105,12 @@ async def get_market(
 @app.post("/markets")
 async def create_market(market: MarketIn, db: AsyncSession = Depends(get_db)):
     try:
+        await verify_broker_market(market.model_dump())
         symbol_id = await crud.insert_market(db, market.model_dump())
+    except BrokerVerificationUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except MarketSourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (IntegrityError, ValueError) as exc:
         await db.rollback()
         raise HTTPException(
@@ -115,6 +125,9 @@ async def create_market(market: MarketIn, db: AsyncSession = Depends(get_db)):
 async def update_market(symbol_id: int, market: MarketIn, db: AsyncSession = Depends(get_db)):
     try:
         updated = await crud.update_market(db, symbol_id, market.model_dump())
+    except MarketSourceConflictError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (IntegrityError, ValueError) as exc:
         await db.rollback()
         raise HTTPException(
@@ -125,6 +138,21 @@ async def update_market(symbol_id: int, market: MarketIn, db: AsyncSession = Dep
         raise HTTPException(status_code=404, detail="Market not found")
     await market_cache.refresh_market_cache(db)
     return {"symbol_id": updated, "status": "updated"}
+
+
+@app.get("/markets/id/{market_id}")
+async def get_market_by_id(market_id: int, db: AsyncSession = Depends(get_db)):
+    market = await crud.get_market_by_id(db, market_id)
+    if market is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    return market
+
+
+@app.get("/markets/id/{market_id}/coverage")
+async def get_market_coverage(market_id: int, db: AsyncSession = Depends(get_db)):
+    if await crud.get_market_by_id(db, market_id) is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    return await crud.get_market_coverage(db, market_id)
 
 
 @app.get("/backtest-execution/slot", response_model=BacktestExecutionSlotOut)
@@ -507,6 +535,18 @@ async def insert_candle_batch(data: CandleBatchIn, db: AsyncSession = Depends(ge
         total_added += added_candles
 
     return {"status": "ok", "added_candles": total_added, "total_candles": len(candles)}
+
+
+@app.post("/candles/upload")
+async def upload_candle_batch(data: CandleBatchIn, db: AsyncSession = Depends(get_db)):
+    matches = await crud.get_markets(db, data.symbol, data.exchange)
+    if not matches:
+        raise HTTPException(status_code=404, detail="Market not found")
+    if len(matches) != 1:
+        raise HTTPException(status_code=409, detail="Provide an exchange for the uploaded market")
+    if matches[0]["source_type"] != "custom":
+        raise HTTPException(status_code=409, detail="CSV uploads require a custom market")
+    return await insert_candle_batch(data, db)
 
 
 @app.delete("/candles/{symbol}")
