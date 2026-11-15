@@ -20,6 +20,8 @@ describe('trade viewport and history', () => {
       const scale = {
         getVisibleLogicalRange: vi.fn(() => ({ from: 20, to: 20 + width })),
         setVisibleLogicalRange: vi.fn(),
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
       };
       const infrastructure = {
         chartManager: { chart: { timeScale: () => scale } },

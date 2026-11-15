@@ -26,22 +26,73 @@ export function createTradeHistoryAdapter(
   let width = 50;
   let pendingRange: { from: number; to: number } | null = null;
   let rangeFrame: number | null = null;
+  let rendering = false;
+  let userInteraction: Event | null = null;
+  const interactionEvents = ['wheel', 'mousemove', 'touchmove'];
+  function markUserInteraction(event: Event) {
+    userInteraction = event;
+  }
+  let observedRange: { from: number; to: number } | null = null;
+  let stopWatchingRange: (() => void) | null = null;
+  function clearPendingRange() {
+    if (rangeFrame !== null) cancelAnimationFrame(rangeFrame);
+    stopWatchingRange?.();
+    stopWatchingRange = null;
+    pendingRange = null;
+    observedRange = null;
+    rangeFrame = null;
+  }
+  function watchUserRange(range: { from: number; to: number } | null) {
+    // Rebase gestures onto the requested viewport: setData can temporarily
+    // clamp the internal range before the queued restoration is painted.
+    const previous = observedRange;
+    observedRange = range;
+    if (
+      userInteraction &&
+      userInteraction.eventPhase !== Event.NONE &&
+      !rendering &&
+      pendingRange &&
+      previous &&
+      range &&
+      (range.from !== pendingRange.from || range.to !== pendingRange.to)
+    ) {
+      restoreRange({
+        from: pendingRange.from + range.from - previous.from,
+        to: pendingRange.to + range.to - previous.to,
+      });
+    }
+  }
   function restoreRange(range: { from: number; to: number }) {
     // The chart applies ranges on its next frame. Fast batches must preserve
     // that pending destination instead of reading the previous viewport.
     pendingRange = range;
-    timeScale()?.setVisibleLogicalRange(range);
+    const scale = timeScale();
+    observedRange = scale?.getVisibleLogicalRange() ?? null;
+    if (scale && !stopWatchingRange) {
+      scale.subscribeVisibleLogicalRangeChange(watchUserRange);
+      for (const event of interactionEvents)
+        window.addEventListener(event, markUserInteraction, true);
+      stopWatchingRange = () => {
+        scale.unsubscribeVisibleLogicalRangeChange(watchUserRange);
+        for (const event of interactionEvents)
+          window.removeEventListener(event, markUserInteraction, true);
+        userInteraction = null;
+      };
+    }
+    scale?.setVisibleLogicalRange(range);
     if (rangeFrame !== null) cancelAnimationFrame(rangeFrame);
-    rangeFrame = requestAnimationFrame(() => {
-      pendingRange = null;
-      rangeFrame = null;
-    });
+    rangeFrame = requestAnimationFrame(clearPendingRange);
   }
   function append(incoming: readonly ChartCandle[], targetMs: number | null) {
     const scale = timeScale();
     const range = pendingRange ?? scale?.getVisibleLogicalRange();
     candles.replace([...candles.data, ...incoming]);
-    options.render(candles.data);
+    rendering = true;
+    try {
+      options.render(candles.data);
+    } finally {
+      rendering = false;
+    }
     if (targetMs !== null) {
       let index = candles.data.length - 1;
       while (index > 0 && candles.data[index].timestamp_ms > targetMs)
@@ -55,6 +106,7 @@ export function createTradeHistoryAdapter(
     prepare() {
       const range = pendingRange ?? timeScale()?.getVisibleLogicalRange();
       if (range) width = range.to - range.from;
+      clearPendingRange();
       options.reset();
       indicators.forwardHistory.begin();
       indicators.resetHistoryFlags();
@@ -106,11 +158,19 @@ export function createTradeHistoryAdapter(
       candles.replace(
         [...merged.values()].sort((a, b) => a.timestamp_ms - b.timestamp_ms),
       );
-      options.render(candles.data);
-      indicators.forwardHistory.finish(indicators);
+      rendering = true;
+      try {
+        options.render(candles.data);
+        indicators.forwardHistory.finish(indicators);
+      } finally {
+        rendering = false;
+      }
       if (range) restoreRange(range);
     },
-    cancel: (hold) => indicators.forwardHistory.discard(hold),
+    cancel: (hold) => {
+      clearPendingRange();
+      indicators.forwardHistory.discard(hold);
+    },
     loading: options.loading,
   };
 }
