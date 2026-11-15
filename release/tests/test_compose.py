@@ -26,6 +26,7 @@ class ReleaseComposeTests(unittest.TestCase):
     def test_persistent_state_is_independent_of_release_files(self):
         compose = yaml.safe_load((ROOT / "release/compose.yaml").read_text())
         self.assertEqual(set(compose["volumes"]), {"timescaledb_data", "redis_data"})
+        self.assertIn("-h 127.0.0.1", compose["services"]["timescaledb"]["healthcheck"]["test"][1])
         self.assertEqual(
             compose["services"]["timescaledb"]["volumes"], ["timescaledb_data:/var/lib/postgresql"]
         )
