@@ -114,6 +114,7 @@
               @remove-market="$emit('remove-market', $event)"
               @upload-data="$emit('upload-data', $event)"
               @edit-market="$emit('edit-market', $event)"
+              @download-history="$emit('download-history', $event)"
             />
           </tbody>
         </BaseDataTable>
@@ -176,6 +177,7 @@ const emit = defineEmits<{
   (event: 'remove-market', market: Market): void;
   (event: 'upload-data', market: Market): void;
   (event: 'edit-market', market: Market): void;
+  (event: 'download-history', market: Market): void;
 }>();
 
 const baseModal = ref<BaseModalExpose | null>(null);

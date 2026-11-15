@@ -1,3 +1,4 @@
+export { default as CloudDownloadOutline } from '@vicons/ionicons5/es/CloudDownloadOutline';
 export { default as SettingsOutline } from '@vicons/ionicons5/es/SettingsOutline';
 export { default as TrashOutline } from '@vicons/ionicons5/es/TrashOutline';
 export { default as SearchOutline } from '@vicons/ionicons5/es/SearchOutline';

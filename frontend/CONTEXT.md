@@ -4,6 +4,28 @@ Vue chart workspace and Backtest Workspace. Domain vocabulary and cross-service
 contracts live in [root context](../CONTEXT.md); this file covers frontend seams
 and behavior that is easy to break when changing them.
 
+## Market sources and history downloads
+
+- A Broker Market is bound to the setup-selected account, environment, and broker
+  instrument. A Custom Market receives CSV data only. Source and broker identity
+  cannot change after creation; existing records without a source are Custom.
+  `TopBar/Modals/markets/BrokerInstrumentPicker.vue` verifies catalogue selection;
+  unresolved tick size and valuation specifications require user input.
+- `chartSessionIdentity.ts` carries local Market identity and source through chart
+  transitions. Candle and indicator subscriptions use `market_id`; symbol names
+  alone never authorize delivery. Custom Markets retain historical chart and
+  indicator reads but do not subscribe to broker updates. Indicator acceptance
+  checks both the current Market and its recorded live subscription.
+- `TopBar/Modals/history/` owns the optional reusable history-download dialog.
+  A start date or M1 count creates a one-time durable request, not a Market setting.
+  Coverage reports earliest/latest stored candles without claiming gap-free data.
+  Closing the dialog removes only its browser subscription; Cancel is explicit.
+- `useHistoryDownloads.ts` reads authoritative snapshots on mount, browser
+  reconnect, upstream `historyDownloadsConnection` recovery, and matching change
+  notifications. Retain newer revisions and accepted submission identity across
+  uncertain acknowledgements; no polling loop drives job progress. The ingestion
+  API owns execution, cancellation, retry, and service-restart recovery.
+
 ## Chart Sessions and Overlays
 
 - Histogram sign palettes follow the shared [catalog presentation contract](../libs/indicator_engine/README.md#adding-an-indicator).

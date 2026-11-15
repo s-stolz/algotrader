@@ -78,4 +78,17 @@ describe('SymbolRow', () => {
     expect(wrapper.emitted('upload-data')).toEqual([[market]]);
     expect(wrapper.emitted('remove-market')).toEqual([[market]]);
   });
+  it('offers broker downloads instead of CSV upload for broker markets', () => {
+    const broker = { ...market, source_type: 'broker' as const };
+    const wrapper = mount(SymbolRow, { props: { market: broker } });
+    const row = wrapper.vm as unknown as {
+      onMenuSelect: (key: string) => void;
+    };
+    row.onMenuSelect('upload');
+    row.onMenuSelect('history');
+    expect(wrapper.emitted('upload-data')).toBeUndefined();
+    expect(wrapper.emitted('download-history')).toEqual([[broker]]);
+    expect(wrapper.text()).toContain('Broker');
+    wrapper.unmount();
+  });
 });

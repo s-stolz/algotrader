@@ -7,11 +7,18 @@
       @remove-market="onRemoveMarket"
       @upload-data="onUploadData"
       @edit-market="onEditMarket"
+      @download-history="onDownloadHistory"
     />
     <IndicatorSearchModal v-if="modalStore.isModalOpen('indicatorSearch')" />
     <SymbolFormModal
       v-if="modalStore.isModalOpen('symbolForm')"
       :market="marketToEdit"
+      @created="onMarketCreated"
+    />
+    <HistoryDownloadModal
+      v-if="modalStore.isModalOpen('historyDownload') && marketToDownload"
+      :market="marketToDownload"
+      :offer="offerDownload"
     />
     <RemoveMarketModal
       v-if="modalStore.isModalOpen('removeMarket') && marketToRemove"
@@ -27,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import HistoryDownloadModal from './history/HistoryDownloadModal.vue';
 import { ref, type ComponentPublicInstance } from 'vue';
 
 import IndicatorSearchModal from '@/components/TopBar/Modals/IndicatorSearchModal.vue';
@@ -47,9 +55,24 @@ type SymbolSearchModalInstance = ComponentPublicInstance & {
 
 const modalStore = useModalStore();
 const symbolSearchModal = ref<SymbolSearchModalInstance | null>(null);
+const marketToDownload = ref<Market | null>(null);
+const offerDownload = ref(false);
 const marketToEdit = ref<Market | null>(null);
 const marketToRemove = ref<Market | null>(null);
 const marketToUpload = ref<Market | null>(null);
+
+function onDownloadHistory(market: Market): void {
+  if (market.source_type !== 'broker') return;
+  marketToDownload.value = market;
+  offerDownload.value = false;
+  modalStore.openModal('historyDownload');
+}
+
+function onMarketCreated(market: Market): void {
+  if (market.source_type !== 'broker') return;
+  onDownloadHistory(market);
+  offerDownload.value = true;
+}
 
 function onEditMarket(market: Market): void {
   marketToEdit.value = market;

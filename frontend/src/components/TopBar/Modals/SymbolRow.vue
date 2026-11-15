@@ -40,6 +40,7 @@ import { NButton, NIcon, type DropdownOption } from 'naive-ui';
 
 import {
   CloudUploadOutline,
+  CloudDownloadOutline,
   CreateOutline,
   EllipsisHorizontalCircleOutline,
   TrashOutline,
@@ -60,6 +61,7 @@ const emit = defineEmits<{
   (event: 'remove-market', market: Market): void;
   (event: 'upload-data', market: Market): void;
   (event: 'edit-market', market: Market): void;
+  (event: 'download-history', market: Market): void;
 }>();
 
 const menuOptions = computed<DropdownOption[]>(() => [
@@ -68,15 +70,22 @@ const menuOptions = computed<DropdownOption[]>(() => [
     key: 'edit',
     icon: () => h(NIcon, null, { default: () => h(CreateOutline) }),
   },
-  ...(props.market.source_type === 'broker'
-    ? []
-    : [
-        {
-          label: 'Upload Data',
-          key: 'upload',
-          icon: () => h(NIcon, null, { default: () => h(CloudUploadOutline) }),
-        },
-      ]),
+  {
+    label:
+      props.market.source_type === 'broker'
+        ? 'Download historical data'
+        : 'Upload Data',
+    key: props.market.source_type === 'broker' ? 'history' : 'upload',
+    icon: () =>
+      h(NIcon, null, {
+        default: () =>
+          h(
+            props.market.source_type === 'broker'
+              ? CloudDownloadOutline
+              : CloudUploadOutline,
+          ),
+      }),
+  },
   {
     label: 'Remove',
     key: 'remove',
@@ -93,6 +102,8 @@ function onMenuSelect(key: string | number): void {
     emit('edit-market', props.market);
   } else if (key === 'remove') {
     emit('remove-market', props.market);
+  } else if (key === 'history' && props.market.source_type === 'broker') {
+    emit('download-history', props.market);
   } else if (key === 'upload' && props.market.source_type !== 'broker') {
     emit('upload-data', props.market);
   }
