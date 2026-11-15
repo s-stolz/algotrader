@@ -9,7 +9,7 @@ import sys
 
 from .docker import Docker
 from .lifecycle import Lifecycle
-from .model import InstallationError, Locations, Release
+from .model import InstallationError, Locations, Release, require_installed_controller
 
 
 def restore_ownership(locations: Locations) -> None:
@@ -39,6 +39,10 @@ def main() -> int:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 raise InstallationError("Another installation command is already running.") from exc
+            if args.command not in {"setup", "upgrade"}:
+                require_installed_controller(
+                    locations, os.environ.get("ALGOTRADER_INSTALLER_IMAGE", "")
+                )
             docker = Docker(locations)
             docker.discover_mounts()
             lifecycle = Lifecycle(locations, docker)

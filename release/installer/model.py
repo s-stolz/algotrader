@@ -116,3 +116,14 @@ class Locations:
         if not VERSION.fullmatch(version):
             raise InstallationError("Invalid release version.")
         return self.data / "releases" / version
+
+
+def require_installed_controller(locations: Locations, image: str) -> None:
+    record = locations.installed()
+    release = Release.read(locations.release_dir(record["version"]) / "release.json")
+    if image != release.images["installer"]:
+        raise InstallationError(
+            f"This launcher does not match installed version {release.version}. "
+            "Use the launcher from that version's release ZIP for lifecycle commands; "
+            "use a newer release ZIP only for an explicit upgrade."
+        )

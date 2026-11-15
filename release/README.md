@@ -72,6 +72,10 @@ bash ./algotrader.sh start
 bash ./algotrader.sh reconnect
 ```
 
+Use the launcher from your **installed version's** release ZIP for these commands.
+An older or newer controller is rejected before changing runtime configuration.
+Use a newer ZIP only for the explicit `upgrade` command.
+
 `stop` preserves volumes. Services resume when Docker restarts unless explicitly
 stopped. `reconnect` can change access permissions or application credentials, but
 must authorize the same account and environment. Create a separate installation
