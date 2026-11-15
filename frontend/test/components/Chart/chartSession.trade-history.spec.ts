@@ -30,6 +30,7 @@ function fixture() {
     initializeIndicators: vi.fn(async () => {}),
     extendIndicators: vi.fn(async () => {}),
     historical: vi.fn(),
+    resumeLive: vi.fn(),
     loading: vi.fn(),
   };
   base.adapter.tradeHistory = new TradeHistory(history);

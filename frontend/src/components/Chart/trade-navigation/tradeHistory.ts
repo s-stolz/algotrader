@@ -32,6 +32,7 @@ export interface TradeHistoryAdapter {
     signal: AbortSignal,
   ): Promise<void>;
   historical(value: boolean): void;
+  resumeLive(key: ChartSessionKey): void;
   loading(value: boolean): void;
 }
 
@@ -222,6 +223,7 @@ export class TradeHistory {
   private reachedPresent() {
     this.historical = false;
     this.adapter.historical(false);
+    if (this.key) this.adapter.resumeLive(this.key);
     const live = [...this.liveTail.values()].sort(
       (a, b) => a.timestamp_ms - b.timestamp_ms,
     );

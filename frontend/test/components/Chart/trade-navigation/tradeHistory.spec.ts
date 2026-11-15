@@ -12,6 +12,7 @@ function fixture() {
     getRange: vi.fn(() => null),
     prepare: vi.fn(),
     historical: vi.fn(),
+    resumeLive: vi.fn(),
     loading: vi.fn(),
     fetchBefore: vi.fn(async () => batch(0, 11)),
     fetchAfter: vi.fn(async () => batch(10)),
@@ -37,6 +38,7 @@ describe('bounded trade history', () => {
       11,
       expect.any(AbortSignal),
     );
+    expect(adapter.resumeLive).not.toHaveBeenCalled();
     expect(adapter.fetchAfter).toHaveBeenCalledOnce();
     expect(adapter.install).toHaveBeenCalledWith(batch(0, 510), 3_000_001);
     expect(history.receive(candleUpdate(9_000_000_000))).toBe(true);
@@ -85,6 +87,7 @@ describe('bounded trade history', () => {
     pending.resolve(batch(510));
     await page;
     expect(adapter.install).toHaveBeenCalledOnce();
+    expect(adapter.resumeLive).not.toHaveBeenCalled();
     expect(adapter.historical).toHaveBeenLastCalledWith(false);
   });
   it('rejects replaced initial reads', async () => {
@@ -103,6 +106,7 @@ describe('bounded trade history', () => {
     await history.requestPage(range(0, 460));
     vi.mocked(adapter.fetchAfter).mockResolvedValue(batch(510, 2));
     await history.requestPage(range(410, 50));
+    expect(adapter.resumeLive).toHaveBeenCalledExactlyOnceWith(key);
     expect(history.blocksOlderHistory).toBe(false);
     expect(history.receive(candleUpdate(512 * 300_000))).toBe(false);
     expect(adapter.historical).toHaveBeenLastCalledWith(false);

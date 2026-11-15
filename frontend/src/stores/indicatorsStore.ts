@@ -402,6 +402,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     }: IndicatorLiveSubscriptionInput,
   ): Promise<void> {
     if (
+      historicalMode.value ||
       !_id ||
       !symbol ||
       !timeframe ||

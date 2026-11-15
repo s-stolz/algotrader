@@ -38,7 +38,16 @@ export function createTradeHistoryAdapter(
     },
     historical(value) {
       indicators.historicalMode = value;
+      if (value) void indicators.unsubscribeAllLive();
       timeScale()?.applyOptions({ shiftVisibleRangeOnNewBar: !value });
+    },
+    resumeLive(key) {
+      for (const indicator of indicators.all)
+        void indicators.subscribeIndicatorLive(indicator._id, {
+          ...key,
+          indicatorId: indicator.indicatorId,
+          parameters: indicators.extractParameterValues(indicator.parameters),
+        });
     },
     prepare() {
       const range = timeScale()?.getVisibleLogicalRange();

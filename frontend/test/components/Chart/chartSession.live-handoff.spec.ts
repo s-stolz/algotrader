@@ -26,6 +26,7 @@ function fixture() {
     initializeIndicators: () => indicators.promise,
     extendIndicators: async () => {},
     historical: vi.fn(),
+    resumeLive: vi.fn(),
     loading: vi.fn(),
   };
   base.adapter.tradeHistory = new TradeHistory(history);
