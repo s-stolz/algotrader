@@ -98,5 +98,8 @@ for the accessor to refresh aggregates for inserted history.
 History invalidations use Redis `history:downloads:events`, field `event` containing
 JSON `historyDownloadChanged` with `market_id`, `job_id`, and `revision`. Failed
 publications remain queued, including terminal changes. Startup and recovery
-republish recent snapshots. The browser reads authoritative state after events
-and WebSocket reconnect; closing it never cancels work.
+reliably publish a global `historyDownloadsResnapshot` hint so every subscribed
+Market rereads authoritative state, including jobs outside recent-list limits.
+Finished worker tasks remain owned until their final snapshot has been queued
+for notification (or their deleted job returns 404). The browser reads after
+change hints and WebSocket reconnect; closing it never cancels work.

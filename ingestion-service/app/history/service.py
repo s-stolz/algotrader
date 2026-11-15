@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
+from db_accessor_client import DatabaseAccessorClientError
 from db_accessor_client.market_sources import require_broker_market
 
 from app.broker_client import BrokerClient
@@ -61,33 +62,34 @@ class HistoryDownloads:
         return job
 
     async def run(self) -> None:
-        reconcile_events = True
         try:
             while not self.stopping:
                 try:
-                    if reconcile_events:
-                        for job in await self.store.list_history_download_jobs(limit=100):
-                            self.events.changed(job)
-                        reconcile_events = False
+                    await self._collect_finished()
                     jobs = await self.store.list_history_download_jobs(active_only=True, limit=100)
                     self._schedule(jobs)
-                    was_connected = self.events.connected
                     await self.events.flush()
-                    if was_connected and not self.events.connected:
-                        reconcile_events = True
                 except Exception:
                     logger.exception("History queue unavailable; durable work remains pending")
-                    reconcile_events = True
+                    self.events.request_resnapshot()
                 await asyncio.sleep(1)
         finally:
             await self.stop()
 
-    def _schedule(self, jobs: list[Job]) -> None:
+    async def _collect_finished(self) -> None:
         for job_id, task in list(self.tasks.items()):
-            if task.done():
-                if not task.cancelled() and task.exception() is not None:
-                    logger.error("History worker failed job=%s: %s", job_id, task.exception())
-                del self.tasks[job_id]
+            if not task.done():
+                continue
+            if not task.cancelled() and task.exception() is not None:
+                logger.error("History worker failed job=%s: %s", job_id, task.exception())
+            try:
+                self.events.changed(await self.store.get_history_download_job(job_id))
+            except DatabaseAccessorClientError as exc:
+                if exc.status_code != 404:
+                    raise
+            del self.tasks[job_id]
+
+    def _schedule(self, jobs: list[Job]) -> None:
         for job in jobs:
             if self.revisions.get(job["id"]) != job["revision"]:
                 self.events.changed(job)

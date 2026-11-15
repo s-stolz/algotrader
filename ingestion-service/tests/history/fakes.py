@@ -55,6 +55,7 @@ class Store:
         self.rows = {}
         self.pages = []
         self.after_commit = lambda: None
+        self.lose_completion_receipt = False
         self.market = market()
 
     async def get_market_by_id(self, market_id):
@@ -121,6 +122,9 @@ class Store:
             failure_reason=data.get("failure_reason"),
             availability_reason=data.get("availability_reason"),
         )
+        if data["status"] == "completed" and self.lose_completion_receipt:
+            self.lose_completion_receipt = False
+            raise OSError("completion receipt lost")
         return deepcopy(self.job)
 
     async def cancel_history_download_job(self, job_id):

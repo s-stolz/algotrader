@@ -15,6 +15,7 @@ class HistoryEvents:
         self.redis = redis
         self.pending: dict[str, dict[str, Any]] = {}
         self.connected = False
+        self.resnapshot_pending = True
 
     def changed(self, job: dict[str, Any]) -> None:
         event = {
@@ -27,7 +28,24 @@ class HistoryEvents:
         if previous is None or previous["revision"] < event["revision"]:
             self.pending[job["id"]] = event
 
+    def request_resnapshot(self) -> None:
+        self.resnapshot_pending = True
+
     async def flush(self) -> None:
+        if self.resnapshot_pending:
+            try:
+                await self.redis.xadd(
+                    EVENT_STREAM,
+                    {"event": json.dumps({"type": "historyDownloadsResnapshot"})},
+                    maxlen=10000,
+                    approximate=True,
+                )
+            except Exception:
+                self.connected = False
+                logger.warning("History notifications unavailable; resnapshot retained")
+                return
+            self.connected = True
+            self.resnapshot_pending = False
         for job_id, event in list(self.pending.items()):
             try:
                 await self.redis.xadd(
@@ -35,6 +53,7 @@ class HistoryEvents:
                 )
             except Exception:
                 self.connected = False
+                self.request_resnapshot()
                 logger.warning("History notifications unavailable; pending changes retained")
                 return
             self.connected = True

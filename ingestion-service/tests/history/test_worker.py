@@ -133,3 +133,11 @@ class HistoryWorkerTests(unittest.IsolatedAsyncioTestCase):
         await self.worker(store, broker).run(store.job["id"])
         self.assertEqual(store.job["status"], "failed")
         self.assertFalse(broker.requests)
+
+    async def test_lost_completion_receipt_still_invalidates_terminal_revision(self):
+        store = Store(job(end=180_000))
+        store.lose_completion_receipt = True
+        worker = self.worker(store, Broker([60_000]))
+        await worker.run(store.job["id"])
+        self.assertEqual(store.job["status"], "completed")
+        self.assertEqual(worker.events.pending[store.job["id"]]["revision"], store.job["revision"])

@@ -51,6 +51,7 @@ class HistoryWorker:
             logger.exception("Historical download failed job=%s", job_id)
             try:
                 current = await self.store.get_history_download_job(job_id)
+                self.events.changed(current)
                 if self._owns(current):
                     await self._transition(
                         current,
@@ -80,6 +81,7 @@ class HistoryWorker:
                 return
             updated = await self._with_heartbeat(job_id, self._download_page(job, source))
             if updated is None:
+                self.events.changed(await self.store.get_history_download_job(job_id))
                 return
             job = updated
             self.events.changed(job)
@@ -185,8 +187,9 @@ class HistoryWorker:
                 "availability_reason": availability,
             },
         )
-        if changed is not None:
-            self.events.changed(changed)
+        if changed is None:
+            changed = await self.store.get_history_download_job(job["id"])
+        self.events.changed(changed)
 
     async def _release(self, job_id: str) -> None:
         try:
