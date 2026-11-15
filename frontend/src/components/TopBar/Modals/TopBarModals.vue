@@ -6,9 +6,13 @@
       @open-symbol-form-modal="onOpenSymbolFormModal"
       @remove-market="onRemoveMarket"
       @upload-data="onUploadData"
+      @edit-market="onEditMarket"
     />
     <IndicatorSearchModal v-if="modalStore.isModalOpen('indicatorSearch')" />
-    <SymbolFormModal v-if="modalStore.isModalOpen('symbolForm')" />
+    <SymbolFormModal
+      v-if="modalStore.isModalOpen('symbolForm')"
+      :market="marketToEdit"
+    />
     <RemoveMarketModal
       v-if="modalStore.isModalOpen('removeMarket') && marketToRemove"
       :market="marketToRemove"
@@ -43,10 +47,17 @@ type SymbolSearchModalInstance = ComponentPublicInstance & {
 
 const modalStore = useModalStore();
 const symbolSearchModal = ref<SymbolSearchModalInstance | null>(null);
+const marketToEdit = ref<Market | null>(null);
 const marketToRemove = ref<Market | null>(null);
 const marketToUpload = ref<Market | null>(null);
 
+function onEditMarket(market: Market): void {
+  marketToEdit.value = market;
+  modalStore.openModal('symbolForm');
+}
+
 function onOpenSymbolFormModal(): void {
+  marketToEdit.value = null;
   modalStore.openModal('symbolForm');
 }
 

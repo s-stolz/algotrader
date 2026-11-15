@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  buildMeasurementOverlayModel,
-  measurementPricePrecision,
-} from '@/utils/chart/measurementOverlay';
+import { buildMeasurementOverlayModel } from '@/utils/chart/measurementOverlay';
 
 describe('measurement overlay model', () => {
   it('builds a positive measurement from raw prices and nearest logical slot centers', () => {
@@ -72,14 +69,16 @@ describe('measurement overlay model', () => {
     expect(model.direction).toBe('neutral');
     expect(model.candleCount).toBe(1);
     expect(model.label.text).toBe('0.00 (0.00%) 1 candle');
-    expect(model.box).toEqual(expect.objectContaining({
-      topPrice: 42,
-      bottomPrice: 42,
-      anchorLogical: 3,
-      endpointLogical: 3,
-      leftLogical: 3,
-      rightLogical: 3,
-    }));
+    expect(model.box).toEqual(
+      expect.objectContaining({
+        topPrice: 42,
+        bottomPrice: 42,
+        anchorLogical: 3,
+        endpointLogical: 3,
+        leftLogical: 3,
+        rightLogical: 3,
+      }),
+    );
   });
 
   it('displays N/A percent for a zero anchor while preserving signed raw price delta', () => {
@@ -107,12 +106,5 @@ describe('measurement overlay model', () => {
     expect(model.priceDelta).toBeCloseTo(0.004);
     expect(model.percentDelta).toBeCloseTo(0.04);
     expect(model.label.text).toBe('+0.00 (+0.04%) 2 candles');
-  });
-
-  it('derives display precision from the active market min move', () => {
-    expect(measurementPricePrecision(1)).toBe(0);
-    expect(measurementPricePrecision(0.01)).toBe(2);
-    expect(measurementPricePrecision(0.00001)).toBe(5);
-    expect(measurementPricePrecision(1e-8)).toBe(8);
   });
 });

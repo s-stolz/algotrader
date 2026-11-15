@@ -54,7 +54,7 @@ describe('frontend bootstrap', () => {
     bootstrapMock.createPinia.mockClear();
   });
 
-  it('connects to the default WebSocket URL, installs app plugins, and mounts without globals', async () => {
+  it('connects the default socket and mounts with plugins and no globals', async () => {
     vi.stubEnv('VITE_WS_URL', '');
 
     await import('@/main');
@@ -64,7 +64,9 @@ describe('frontend bootstrap', () => {
     expect(bootstrapMock.createPinia).toHaveBeenCalledOnce();
     expect(bootstrapMock.app.use).toHaveBeenCalledWith({ name: 'pinia' });
     expect(bootstrapMock.app.mount).toHaveBeenCalledWith('#app');
-    expect(bootstrapMock.app.config.globalProperties).not.toHaveProperty('$wss');
+    expect(bootstrapMock.app.config.globalProperties).not.toHaveProperty(
+      '$wss',
+    );
   });
 
   it('uses the configured WebSocket URL when provided', async () => {
@@ -72,6 +74,8 @@ describe('frontend bootstrap', () => {
 
     await import('@/main');
 
-    expect(bootstrapMock.connect).toHaveBeenCalledWith('ws://configured.example.test');
+    expect(bootstrapMock.connect).toHaveBeenCalledWith(
+      'ws://configured.example.test',
+    );
   });
 });

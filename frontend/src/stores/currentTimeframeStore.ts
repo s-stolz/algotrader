@@ -2,12 +2,15 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
 import {
-  isRecord,
   isStoredCurrentTimeframe,
   type TimeframeCode,
   type TimeframeOption,
 } from '@/types/contracts';
-import { getStoredState, setStoredState, STORAGE_KEYS } from '@/utils/localStorage';
+import {
+  getStoredState,
+  setStoredState,
+  STORAGE_KEYS,
+} from '@/utils/localStorage';
 import { normalizeTimeframeCode } from '@/utils/timeframes';
 
 function readStoredTimeframe(): TimeframeCode {
@@ -15,10 +18,6 @@ function readStoredTimeframe(): TimeframeCode {
 
   if (isStoredCurrentTimeframe(stored)) {
     return stored.value;
-  }
-
-  if (isRecord(stored)) {
-    return normalizeTimeframeCode(stored.value);
   }
 
   return 'M1';

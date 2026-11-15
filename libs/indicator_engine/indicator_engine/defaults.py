@@ -6,6 +6,7 @@ from typing import Optional, cast
 
 import pandas as pd
 
+from .builtin_catalog import BUILTIN_CATALOG
 from .core.bars import BarTensor, DataBundle
 from .core.history import HistoryPolicy
 from .core.params import ParamGrid, ParamSet
@@ -13,23 +14,13 @@ from .core.registry import IndicatorRegistry
 from .core.results import IndicatorResult
 from .engines.batch import BatchEngine
 from .engines.update import UpdateEngine
-from .indicators import BBANDS, MACD, RSI, SMA, CurrencyStrength
 
 _REGISTRY: Optional[IndicatorRegistry] = None
 _BATCH_ENGINE: Optional[BatchEngine] = None
 
 
 def _create_registry() -> IndicatorRegistry:
-    registry = IndicatorRegistry()
-    registry.register_many(
-        [
-            SMA(),
-            RSI(),
-            BBANDS(),
-            MACD(),
-            CurrencyStrength(),
-        ]
-    )
+    registry = BUILTIN_CATALOG.create_registry()
     try:
         registry.load_entry_points()
     except Exception:
@@ -150,9 +141,3 @@ def run(indicator_id: str, df, params: ParamSet | None = None):
     result = run_batch(indicator_id, bar, params=params)
     out_df = result_to_dataframe(result.tensor)
     return _squeeze_result(out_df, result.tensor)
-
-
-def list_indicators() -> list[dict[str, str]]:
-    """Return a list of indicator id/name pairs from the registry."""
-    registry = get_registry()
-    return [{"id": spec.id, "name": spec.name} for spec in registry.list_specs().values()]

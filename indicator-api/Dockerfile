@@ -1,19 +1,21 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1.20
+FROM python:3.15.2-slim
 
-WORKDIR /workspace/indicator-api
+RUN apt-get update && apt-get install -y curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
+COPY constraints-shared.txt ./
+COPY scripts/python_environment.py ./scripts/python_environment.py
+# Dependency metadata changes invalidate this layer; source-only changes do not.
+COPY --parents libs/*/pyproject.toml indicator-api/pyproject.toml indicator-api/constraints*.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python scripts/python_environment.py install indicator-api --third-party-only
 
-# Upgrade pip to latest version
-RUN pip install --upgrade pip
-
-COPY indicator-api/requirements.txt /workspace/indicator-api/requirements.txt
-COPY libs/algotrader_logger /workspace/libs/algotrader_logger
-COPY libs/db_accessor_client /workspace/libs/db_accessor_client
-COPY libs/indicator_engine /workspace/libs/indicator_engine
-
-RUN pip install --no-cache-dir -r requirements.txt
+COPY libs ./libs
+COPY indicator-api ./indicator-api
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python scripts/python_environment.py install indicator-api
 
 WORKDIR /app
 COPY indicator-api /app

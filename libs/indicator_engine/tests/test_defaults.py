@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
-from indicator_engine import list_indicators, run, run_batch
+from indicator_engine import get_registry, run, run_batch
 
 
 class DefaultsTests(unittest.TestCase):
@@ -44,13 +44,19 @@ class DefaultsTests(unittest.TestCase):
         self.assertEqual(list(tensor.coords["output"]), ["sma"])
         self.assertEqual(list(tensor.coords["param"]), ["window=2"])
 
-    def test_list_indicators_contains_expected_defaults(self) -> None:
-        ids = {item["id"] for item in list_indicators()}
-        self.assertIn("sma", ids)
-        self.assertIn("rsi", ids)
-        self.assertIn("macd", ids)
-        self.assertIn("bbands", ids)
-        self.assertIn("currency_strength", ids)
+    def test_default_registry_resolves_builtin_indicators(self) -> None:
+        registry = get_registry()
+        for indicator_id in (
+            "sma",
+            "ema",
+            "rsi",
+            "macd",
+            "bbands",
+            "currency_strength",
+            "opening_range",
+        ):
+            with self.subTest(indicator_id=indicator_id):
+                self.assertEqual(registry.get(indicator_id).spec.id, indicator_id)
 
 
 if __name__ == "__main__":

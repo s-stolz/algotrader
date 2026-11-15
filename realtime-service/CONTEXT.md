@@ -1,0 +1,87 @@
+# Realtime Service Context
+
+Python WebSocket bridge between frontend clients, backtester, broker-service, indicator-api,
+and Redis streams.
+
+## Ownership
+
+`app/subscription_manager.py` owns client subscriptions, source dependency counts,
+rollback, and fanout. `app/redis_consumer.py` expands Redis payloads; `main.py`
+routes WebSocket messages. Broker and indicator HTTP adapters control upstream
+stream start/stop. Shared Redis fields and timestamps live in
+[root context](../CONTEXT.md).
+
+## Contracts
+
+Frontend to realtime-service messages are flat JSON objects:
+
+- `{"type": "subscribeCandles", "symbol": "EURUSD", "timeframe": "M1"}`
+- `{"type": "unsubscribeCandles", "symbol": "EURUSD", "timeframe": "M1"}`
+- `{"type": "subscribeIndicator", "symbol": "...", "timeframe": "...", ...}`
+- `{"type": "unsubscribeIndicator", "symbol": "...", "timeframe": "...", ...}`
+
+Realtime service to frontend live updates are flat JSON objects:
+
+- `candleUpdate` with expanded candle fields.
+- `indicatorUpdate` with `clientIndicatorId`, `streamId`, `timestamp_ms`, and `values`.
+  Optional `replay: true` marks a corrected historical point. Consumers merge it
+  into loaded history and redraw without rewinding the live tail. Redis uses
+  `replay: "1"`; ordinary updates omit the marker.
+
+Realtime service to frontend control messages are flat JSON objects:
+
+- `subscribed` after candle subscription succeeds.
+- `indicatorSubscribed` with `clientIndicatorId` and `streamId` after indicator
+  subscription succeeds.
+- `indicatorUnsubscribed` after indicator unsubscription succeeds.
+- `error` with an `error` string when message handling fails.
+
+Source streams are reference counted; upstream streams are shared across clients.
+Indicator dependencies come from indicator-api's `GET /indicators/{id}` metadata:
+use `inputs` when present, otherwise the chart symbol. Each subscription retains
+all dependencies; partial startup rolls them back, and disconnect releases them.
+Indicator subscription mutations are serialized so concurrent clients share one
+upstream indicator session. Install the metadata endpoint before this consumer.
+
+## Backtest delivery
+
+`app/backtest_events.py` owns the independent backtest stream reader and browser
+fanout. Every subscribed browser receives events; gateway instances do not share a
+worker consumer group. Establish a stream cursor before reporting connected,
+and report Redis disconnection even when browser sockets remain open. Browsers
+refresh authoritative snapshots on subscription/reconnection, so old gateway
+messages need not be replayed. Backtest policy remains in backtester-api.
+
+Stage updates restore the latest Redis progress snapshot on subscription and
+reconnect; they do not request saved-result refreshes. See
+[run progress](../docs/contracts/backtests.md#run-stage-progress).
+
+For `subscribeBacktests`, `unsubscribeBacktests`, and the outbound event
+shapes, read [real-time delivery](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
+
+## Change Triggers
+
+- Add tests before changing duplicate subscription handling, disconnect cleanup,
+  source dependency counts, or indicator parameter sharing.
+- If WebSocket messages change, update `frontend/CONTEXT.md` and
+  `frontend/test/utils/websocketService.spec.ts`.
+- If Redis Candle parsing changes, inspect `broker-service`, `ingestion-service`,
+  and `indicator-api` live parsing.
+
+## Verification
+
+Start with `tests/test_redis_consumer.py` for Redis parsing. Subscription lifecycle
+changes also need coverage for duplicate subscriptions, disconnect cleanup, source
+counts, and rollback using controlled Redis/broker adapters. Run `make test realtime-service`;
+the root backend gate includes this suite.
+
+# Realtime service Candle transport context
+
+**Public Candle:** expanded OHLCV plus `timestamp_ms` delivered to WebSocket
+subscribers. Broker continuity is transport metadata, excluded from this shape.
+
+**Publication continuity:** backend session identity on Redis Candles. Chart fanout
+accepts both legacy and enriched rows; it does not trigger historical refresh.
+
+For the producer/consumer contract and protected upgrade sequence, read
+[live publication continuity](../docs/contracts/recovery.md#live-publication-continuity).

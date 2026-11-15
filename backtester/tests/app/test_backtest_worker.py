@@ -9,9 +9,10 @@ from dataclasses import replace
 from multiprocessing import active_children
 from pathlib import Path
 from threading import Event, Thread
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import app.backtest_child as child_module
+from adapters.backtest_events import BacktestControlInbox
 from app.backtest_child import (
     ChildExitUnconfirmedError,
     CompactBacktestCancelled,
@@ -20,7 +21,6 @@ from app.backtest_child import (
     ProcessBacktestChildExecutor,
 )
 from app.backtest_worker import BacktestWorker, ExecutionOperationalError
-from app.config import BacktesterConfig
 from domain.enums import BacktestRunStatus
 from domain.types import (
     BacktestRequest,
@@ -35,21 +35,19 @@ from domain.types import (
 
 
 class _FakeRunRepository:
-    def __init__(self, batches: list[list[BacktestRunRecord]]) -> None:
-        self._batches = list(batches)
+    def __init__(self, backtests: list[list[BacktestRunRecord]]) -> None:
+        self._backtests = list(backtests)
         self.queries: list[BacktestRunQuery] = []
         self.selected: BacktestRunRecord | None = None
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
         self.queries.append(query)
-        if not self._batches:
+        if not self._backtests:
             return []
-        return self._batches.pop(0)
+        return self._backtests.pop(0)
 
     def next_queued(self) -> BacktestRunRecord | None:
-        queued = self.list(
-            BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
-        )
+        queued = self.list(BacktestRunQuery(status=BacktestRunStatus.QUEUED))
         self.selected = (
             min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
         )
@@ -69,9 +67,7 @@ class _StatusFilteringRunRepository:
         return [run for run in self._runs if run.status is query.status]
 
     def next_queued(self) -> BacktestRunRecord | None:
-        queued = self.list(
-            BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")
-        )
+        queued = self.list(BacktestRunQuery(status=BacktestRunStatus.QUEUED))
         return min(queued, key=lambda run: (run.submitted_at_ms, run.run_id)) if queued else None
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
@@ -87,6 +83,7 @@ class _FakeLifecycle:
         self._claim_results = list(claim_results)
         self._completion_results = list(completion_results or [])
         self.claims: list[dict] = []
+        self.worker_ids: list[str] = []
         self.completions: list[dict] = []
         self.faults: list[dict] = []
         self.reconciliations: list[int] = []
@@ -95,7 +92,10 @@ class _FakeLifecycle:
     def execution_slot(self) -> dict:
         return {"owner_token": None, "run_id": None, "fault_code": None, "fault_message": None}
 
-    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+    def claim_execution(
+        self, *, run_id: str, owner_token: str, started_at_ms: int, worker_id: str
+    ) -> bool:
+        self.worker_ids.append(worker_id)
         return self.conditional_update(
             run_id=run_id,
             expected_status=BacktestRunStatus.QUEUED,
@@ -182,9 +182,11 @@ class _SlotTrackingLifecycle(_FakeLifecycle):
             "fault_message": None,
         }
 
-    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+    def claim_execution(
+        self, *, run_id: str, owner_token: str, started_at_ms: int, worker_id: str
+    ) -> bool:
         claimed = super().claim_execution(
-            run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+            run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms, worker_id=worker_id
         )
         if claimed:
             self.owner_token = owner_token
@@ -240,6 +242,45 @@ class _UnconfirmedExitExecutor:
 
 
 class TestBacktestWorker(unittest.TestCase):
+    def setUp(self) -> None:
+        self.inbox = Mock(spec=BacktestControlInbox)
+        self.inbox.ready = Event()
+
+        def take():
+            self.inbox.ready.clear()
+            return {"1-0"}
+
+        self.inbox.take.side_effect = take
+
+    def test_saving_progress_precedes_durable_success_and_is_absent_on_failure(self):
+        for outcome, expected in (
+            (_compact_result(), ["loading_data", "saving"]),
+            (
+                CompactBacktestFailure("backtest_failed", "Backtest execution failed"),
+                ["loading_data"],
+            ),
+        ):
+            stages = []
+            events = Mock()
+            events.progress.side_effect = lambda run_id, stage: stages.append(stage)
+            lifecycle = _FakeLifecycle([True, True], [True])
+            settle = lifecycle.settle_success
+
+            def persist(**kwargs):
+                self.assertEqual(stages[-1], "saving")
+                return settle(**kwargs)
+
+            lifecycle.settle_success = persist
+            worker = BacktestWorker(
+                inbox=self.inbox,
+                repository=_FakeRunRepository([[_queued_run("run-progress", submitted_at_ms=1)]]),
+                lifecycle=lifecycle,
+                child_executor=_FakeChildExecutor(outcome),
+                events=events,
+            )
+            self.assertTrue(worker.run_once())
+            self.assertEqual(stages, expected)
+
     @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
     def test_running_cancellation_escalates_and_reaps_detached_descendant(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -249,6 +290,7 @@ class TestBacktestWorker(unittest.TestCase):
             lifecycle = _SlotTrackingLifecycle()
             lifecycle.marker = marker
             worker = BacktestWorker(
+                inbox=self.inbox,
                 repository=repository,
                 lifecycle=lifecycle,
                 child_executor=ProcessBacktestChildExecutor(
@@ -272,6 +314,7 @@ class TestBacktestWorker(unittest.TestCase):
                         time.sleep(0.02)
                     self.assertTrue(marker.exists())
                     repository.selected = replace(queued, status=BacktestRunStatus.CANCELLING)
+                    self.inbox.ready.set()
                     thread.join(timeout=12)
                 self.assertFalse(thread.is_alive())
                 self.assertEqual(failures, [])
@@ -293,6 +336,7 @@ class TestBacktestWorker(unittest.TestCase):
                 return _compact_result()
 
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=repository,
             lifecycle=lifecycle,
             child_executor=CompletingAfterCancellation(),
@@ -319,9 +363,12 @@ class TestBacktestWorker(unittest.TestCase):
                     "fault_message": None,
                 }
 
-            def claim_execution(self, *, run_id, owner_token, started_at_ms):
+            def claim_execution(self, *, run_id, owner_token, started_at_ms, worker_id):
                 claimed = super().claim_execution(
-                    run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+                    run_id=run_id,
+                    owner_token=owner_token,
+                    started_at_ms=started_at_ms,
+                    worker_id=worker_id,
                 )
                 if claimed:
                     self.owner_token = owner_token
@@ -345,6 +392,7 @@ class TestBacktestWorker(unittest.TestCase):
 
         lifecycle = FailingCancellation([True])
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=repository,
             lifecycle=lifecycle,
             child_executor=CancelledChild(),
@@ -355,10 +403,10 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertIsNotNone(lifecycle.execution_slot()["owner_token"])
         self.assertEqual(lifecycle.execution_slot()["fault_code"], "terminal_persistence_failed")
 
-    def test_uses_durable_turn_order_for_batch_and_standalone_requests(self) -> None:
+    def test_uses_durable_turn_order_for_backtest_and_standalone_requests(self) -> None:
         standalone = _queued_run("standalone", submitted_at_ms=1)
         member = replace(
-            _queued_run("member", submitted_at_ms=0), batch_id="batch", member_ordinal=0
+            _queued_run("member", submitted_at_ms=0), backtest_id="backtest", run_ordinal=0
         )
 
         class TurnRepository:
@@ -376,16 +424,20 @@ class TestBacktestWorker(unittest.TestCase):
                 super().__init__([True, True])
                 self.turns = ["standalone", "member"]
 
-            def claim_execution(self, *, run_id, owner_token, started_at_ms):
+            def claim_execution(self, *, run_id, owner_token, started_at_ms, worker_id):
                 if run_id != self.turns.pop(0):
                     return False
                 return super().claim_execution(
-                    run_id=run_id, owner_token=owner_token, started_at_ms=started_at_ms
+                    run_id=run_id,
+                    owner_token=owner_token,
+                    started_at_ms=started_at_ms,
+                    worker_id=worker_id,
                 )
 
         lifecycle = TurnLifecycle()
         executor = _FakeChildExecutor(_compact_result())
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=TurnRepository(),
             lifecycle=lifecycle,
             child_executor=executor,
@@ -397,14 +449,14 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertEqual([claim["run_id"] for claim in lifecycle.claims], ["standalone", "member"])
         self.assertEqual(executor.snapshots, [standalone.request_snapshot, member.request_snapshot])
 
-    def test_heartbeat_continues_during_idle_polling_and_long_child(self) -> None:
+    def test_heartbeat_continues_while_idle_and_during_long_child(self) -> None:
         idle_heartbeats: list[dict] = []
         idle = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[]]),
             lifecycle=_FakeLifecycle([]),
             heartbeat_publisher=lambda **fields: idle_heartbeats.append(fields),
             heartbeat_interval_seconds=0.01,
-            sleep=lambda _: time.sleep(0.005),
         )
         idle_thread = Thread(
             target=lambda: idle.run_forever(stop_requested=lambda: len(idle_heartbeats) >= 3)
@@ -427,13 +479,14 @@ class TestBacktestWorker(unittest.TestCase):
                     raise AssertionError("child was not released")
                 return _compact_result()
 
+        active_lifecycle = _FakeLifecycle([True])
         active = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[_queued_run("long", submitted_at_ms=1)], []]),
-            lifecycle=_FakeLifecycle([True]),
+            lifecycle=active_lifecycle,
             child_executor=LongChild(),
             heartbeat_publisher=lambda **fields: active_heartbeats.append(fields),
             heartbeat_interval_seconds=0.01,
-            sleep=lambda _: time.sleep(0.005),
         )
         active_thread = Thread(target=lambda: active.run_forever(stop_requested=finished.is_set))
         active_thread.start()
@@ -447,9 +500,7 @@ class TestBacktestWorker(unittest.TestCase):
         finished.set()
         active_thread.join(timeout=2)
         self.assertFalse(active_thread.is_alive())
-
-    def test_default_poll_interval_is_one_second(self) -> None:
-        self.assertEqual(BacktesterConfig().worker_poll_interval_seconds, 1.0)
+        self.assertEqual(active_lifecycle.worker_ids, [active_heartbeats[0]["worker_id"]])
 
     def test_selects_fifo_with_run_id_tie_breaker_and_persists_completion(self) -> None:
         newer = _queued_run("run-newer", submitted_at_ms=300)
@@ -460,6 +511,7 @@ class TestBacktestWorker(unittest.TestCase):
         compact = _compact_result()
         executor = _FakeChildExecutor(compact)
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=repository,
             lifecycle=lifecycle,
             child_executor=executor,
@@ -471,7 +523,7 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertTrue(processed)
         self.assertEqual(
             repository.queries,
-            [BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")],
+            [BacktestRunQuery(status=BacktestRunStatus.QUEUED)],
         )
         self.assertEqual(executor.snapshots, [selected.request_snapshot])
         self.assertEqual(
@@ -504,6 +556,7 @@ class TestBacktestWorker(unittest.TestCase):
         lifecycle = _FakeLifecycle([False, True])
         executor = _FakeChildExecutor(_compact_result())
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=repository,
             lifecycle=lifecycle,
             child_executor=executor,
@@ -530,6 +583,7 @@ class TestBacktestWorker(unittest.TestCase):
         }
         executor = _FakeChildExecutor(_compact_result())
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[selected]]),
             lifecycle=lifecycle,
             child_executor=executor,
@@ -542,6 +596,7 @@ class TestBacktestWorker(unittest.TestCase):
         selected = _queued_run("run-uncertain", submitted_at_ms=100)
         lifecycle = _FakeLifecycle([True])
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[selected]]),
             lifecycle=lifecycle,
             child_executor=_UnconfirmedExitExecutor(),
@@ -568,6 +623,7 @@ class TestBacktestWorker(unittest.TestCase):
                     lifecycle = _SlotTrackingLifecycle()
                     lifecycle.marker = marker
                     worker = BacktestWorker(
+                        inbox=self.inbox,
                         repository=_FakeRunRepository(
                             [[_queued_run("run-descendant", submitted_at_ms=100)]]
                         ),
@@ -591,6 +647,7 @@ class TestBacktestWorker(unittest.TestCase):
             marker = Path(directory) / "descendant.pid"
             lifecycle = _SlotTrackingLifecycle()
             worker = BacktestWorker(
+                inbox=self.inbox,
                 repository=_FakeRunRepository(
                     [[_queued_run("run-descendant", submitted_at_ms=100)]]
                 ),
@@ -621,6 +678,7 @@ class TestBacktestWorker(unittest.TestCase):
             marker = Path(directory) / "descendant.pid"
             lifecycle = _SlotTrackingLifecycle()
             worker = BacktestWorker(
+                inbox=self.inbox,
                 repository=_FakeRunRepository(
                     [[_queued_run("run-descendant", submitted_at_ms=100)]]
                 ),
@@ -644,6 +702,7 @@ class TestBacktestWorker(unittest.TestCase):
     def test_unavailable_containment_faults_without_starting_execution(self) -> None:
         lifecycle = _SlotTrackingLifecycle()
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[_queued_run("run-descendant", submitted_at_ms=100)]]),
             lifecycle=lifecycle,
             child_executor=ProcessBacktestChildExecutor(execute_fn=_return_process_identity),
@@ -669,6 +728,7 @@ class TestBacktestWorker(unittest.TestCase):
             )
         )
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=repository,
             lifecycle=lifecycle,
             child_executor=executor,
@@ -697,6 +757,7 @@ class TestBacktestWorker(unittest.TestCase):
         lifecycle = _FakeLifecycle([True, True])
         safe_message = "Historical market data is temporarily unavailable. " * 20
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[selected]]),
             lifecycle=lifecycle,
             child_executor=_FakeChildExecutor(
@@ -722,6 +783,7 @@ class TestBacktestWorker(unittest.TestCase):
         selected = _queued_run("run-bounded-code", submitted_at_ms=100)
         lifecycle = _FakeLifecycle([True, True])
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[selected]]),
             lifecycle=lifecycle,
             child_executor=_FakeChildExecutor(
@@ -747,6 +809,7 @@ class TestBacktestWorker(unittest.TestCase):
         selected = _queued_run("run-crashed", submitted_at_ms=100)
         lifecycle = _FakeLifecycle([True, True])
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[selected]]),
             lifecycle=lifecycle,
             child_executor=ProcessBacktestChildExecutor(execute_fn=_exit_abnormally),
@@ -802,6 +865,7 @@ class TestBacktestWorker(unittest.TestCase):
         lifecycle = _FakeLifecycle([True, True, True])
         executor = _FakeChildExecutor(_compact_result())
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=repository,
             lifecycle=lifecycle,
             child_executor=executor,
@@ -813,7 +877,7 @@ class TestBacktestWorker(unittest.TestCase):
         self.assertEqual(lifecycle.reconciliations, [1_000])
         self.assertEqual(
             repository.queries,
-            [BacktestRunQuery(status=BacktestRunStatus.QUEUED, membership="standalone")],
+            [BacktestRunQuery(status=BacktestRunStatus.QUEUED)],
         )
         self.assertEqual(
             lifecycle.claims,
@@ -840,6 +904,7 @@ class TestBacktestWorker(unittest.TestCase):
             )
         )
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[later, selected]]),
             lifecycle=lifecycle,
             child_executor=executor,
@@ -869,6 +934,7 @@ class TestBacktestWorker(unittest.TestCase):
         )
         executor = _FakeChildExecutor(_compact_result())
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[selected]]),
             lifecycle=lifecycle,
             child_executor=executor,
@@ -892,6 +958,7 @@ class TestBacktestWorker(unittest.TestCase):
     def test_terminal_persistence_fault_is_published_before_worker_exit(self) -> None:
         heartbeats: list[dict] = []
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=_FakeRunRepository([[_queued_run("run-fault", submitted_at_ms=100)]]),
             lifecycle=_FakeLifecycle(
                 [True], completion_results=[RuntimeError("storage unavailable")]
@@ -916,38 +983,24 @@ class TestBacktestWorker(unittest.TestCase):
                 error_message="Backtest execution failed",
             )
         )
-        sleeps: list[float] = []
         worker = BacktestWorker(
+            inbox=self.inbox,
             repository=repository,
             lifecycle=lifecycle,
             child_executor=executor,
-            sleep=sleeps.append,
         )
 
-        worker.run_forever(stop_requested=lambda: bool(sleeps))
+        worker.run_forever(stop_requested=lambda: len(repository.queries) >= 2)
 
         self.assertEqual(executor.snapshots, [selected.request_snapshot])
         self.assertEqual(len(lifecycle.claims), 2)
         self.assertEqual(lifecycle.completions, [])
-        self.assertEqual(sleeps, [1.0])
-
-    def test_idle_worker_sleeps_for_configured_interval(self) -> None:
-        sleeps: list[float] = []
-        worker = BacktestWorker(
-            repository=_FakeRunRepository([[]]),
-            lifecycle=_FakeLifecycle([]),
-            child_executor=_FakeChildExecutor(_compact_result()),
-            poll_interval_seconds=2.5,
-            sleep=sleeps.append,
-        )
-
-        worker.run_forever(stop_requested=lambda: bool(sleeps))
-
-        self.assertEqual(sleeps, [2.5])
 
 
 def _queued_run(run_id: str, *, submitted_at_ms: int) -> BacktestRunRecord:
     return BacktestRunRecord(
+        backtest_id="backtest-1",
+        run_ordinal=0,
         run_id=run_id,
         status=BacktestRunStatus.QUEUED,
         submitted_at_ms=submitted_at_ms,
@@ -984,7 +1037,7 @@ def _compact_result() -> CompactBacktestResult:
                 equity=request.initial_capital,
             )
         ],
-        metrics={"total_return_pct": 1.25},
+        metrics={"profit_factor": None, "total_return_pct": 1.25},
         diagnostics={"engine": "vectorized"},
     )
     return CompactBacktestResult.from_result(result, execution_duration_ms=17)
@@ -997,7 +1050,9 @@ def _return_process_identity(
         request=snapshot.to_request(),
         fills=[],
         trades=[],
-        metrics={},
+        metrics={
+            "profit_factor": None,
+        },
         diagnostics={"process_id": os.getpid()},
         execution_duration_ms=0,
     )
@@ -1069,9 +1124,11 @@ def _return_with_double_forked_descendant(
     return _return_process_identity(snapshot)
 
 
-def _supervise_with_denied_signals(connection, execute_fn, snapshot, cancel_requested) -> None:
+def _supervise_with_denied_signals(
+    connection, execute_fn, snapshot, cancel_requested, progress=None
+):
     with patch.object(child_module.os, "kill", side_effect=PermissionError("signal denied")):
-        child_module._run_child(connection, execute_fn, snapshot, cancel_requested)
+        child_module._run_child(connection, execute_fn, snapshot, cancel_requested, progress)
 
 
 def _kill_supervisor_with_descendant(snapshot: BacktestRequestSnapshot) -> CompactBacktestResult:

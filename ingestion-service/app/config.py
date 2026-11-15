@@ -66,8 +66,8 @@ class Config:
 
 def load_config() -> Config:
     """Load configuration from environment variables."""
-    log_level = os.getenv("INGESTION_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO"))
-    log_format = os.getenv("INGESTION_LOG_FORMAT", os.getenv("LOG_FORMAT", "pretty"))
+    log_level = os.getenv("INGESTION_LOG_LEVEL", "INFO")
+    log_format = os.getenv("INGESTION_LOG_FORMAT", "pretty")
     days = os.getenv("INGESTION_HISTORY_LOOKBACK_DAYS", "90").strip()
     start = os.getenv("INGESTION_HISTORY_START_DATE", "").strip()
     config = Config(

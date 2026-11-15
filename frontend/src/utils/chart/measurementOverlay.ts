@@ -1,3 +1,5 @@
+import { marketPricePrecision } from './priceFormatting';
+
 export type MeasurementOverlayDirection = 'positive' | 'negative' | 'neutral';
 
 export interface MeasurementOverlayInput {
@@ -35,50 +37,22 @@ export interface ChartMeasurementOverlayModel {
   label: ChartMeasurementOverlayLabelModel;
 }
 
-const DEFAULT_PRICE_PRECISION = 2;
-
-export function measurementPricePrecision(minMove: number): number {
-  if (!Number.isFinite(minMove) || minMove <= 0) {
-    return DEFAULT_PRICE_PRECISION;
-  }
-
-  const text = minMove.toString().toLowerCase();
-  if (text.includes('e-')) {
-    const [coefficient, exponentText] = text.split('e-');
-    const exponent = Number(exponentText);
-    const coefficientDecimals = coefficient.split('.')[1]?.length ?? 0;
-
-    return Number.isFinite(exponent)
-      ? exponent + coefficientDecimals
-      : DEFAULT_PRICE_PRECISION;
-  }
-
-  if (text.includes('e+')) {
-    return 0;
-  }
-
-  const decimalPart = text.split('.')[1];
-  return decimalPart ? decimalPart.replace(/0+$/, '').length : 0;
-}
-
 export function buildMeasurementOverlayModel(
   input: MeasurementOverlayInput,
 ): ChartMeasurementOverlayModel {
   const anchorLogical = Math.round(input.anchorLogical);
   const endpointLogical = Math.round(input.endpointLogical);
   const priceDelta = input.endpointPrice - input.anchorPrice;
-  const percentDelta = input.anchorPrice === 0
-    ? null
-    : (priceDelta / input.anchorPrice) * 100;
+  const percentDelta =
+    input.anchorPrice === 0 ? null : (priceDelta / input.anchorPrice) * 100;
   const candleCount = Math.abs(endpointLogical - anchorLogical) + 1;
   const direction = measurementDirection(priceDelta);
   const priceDeltaText = formatSignedNumber(
     priceDelta,
-    measurementPricePrecision(input.minMove),
+    marketPricePrecision(input.minMove),
   );
-  const percentDeltaText = percentDelta === null
-    ? 'N/A'
-    : `${formatSignedNumber(percentDelta, 2)}%`;
+  const percentDeltaText =
+    percentDelta === null ? 'N/A' : `${formatSignedNumber(percentDelta, 2)}%`;
   const candleCountText = `${candleCount} ${candleCount === 1 ? 'candle' : 'candles'}`;
 
   return {

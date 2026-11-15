@@ -11,7 +11,7 @@ and shared Python Timeframe helpers. Centralize reusable Timeframe behavior here
   identities, and queue/heartbeat primitives through unchanged. Backtester owns
   policy and public projections; the accessor owns transactions. Read
   [backtest contracts](../docs/contracts/backtests.md) when changing those payloads.
-- Run/batch creation and read payloads preserve top-level experiment `name`
+- Backtest creation and read payloads preserve top-level experiment `name`
   independently of execution JSON; sync and async clients pass it through
   unchanged. Naming policy belongs to the
   [public/storage contract](../docs/contracts/backtests.md#experiment-names).
@@ -23,13 +23,19 @@ and shared Python Timeframe helpers. Centralize reusable Timeframe behavior here
 
 ## Indicator Engine
 
-`indicator_engine` owns NumPy batch/streaming computation. UI metadata and transport
-formatting belong to indicator-api/frontend. Both engines share registry definitions.
+`indicator_engine` owns NumPy batch/streaming computation and a separate application
+catalog for built-in registration identities, live eligibility and presentation.
+Numerical specifications own calculation semantics; indicator-api owns transport
+formatting and frontend owns renderers. Both engines share registry definitions.
+See [ADR-0009](../docs/adr/0009-shared-indicator-registration-catalog.md).
 
 - `BarTensor`: aligned data shaped `(time, asset, field)`.
 - `Tensor`: outputs shaped `(time, asset, output, param)`.
 - `ParamGrid`: deterministic parameter combinations.
 - `HistoryPolicy`: rolling or unbounded streaming history.
+- `InputHistory`: calculation anchor and predecessor requirements, resolved from
+  parameters separately from buffer retention. `SessionWindow` supplies local-day
+  boundaries and the window in which source completeness is required.
 - NaNs propagate; the engine does not forward-fill.
 
 For usage and shape examples, read [indicator engine README](indicator_engine/README.md).
@@ -56,3 +62,8 @@ the [recovery contract](../docs/contracts/recovery.md).
 live Candle write. Partial commits and lost receipts cannot hide it behind a
 newer latest Candle; normal successful live writes retire it without scheduling
 history. See the [guard contract](../docs/contracts/recovery.md#durable-live-write-guards).
+
+For Candle streaming, both accessor clients expose context-managed stream
+consumption through their generators; close an unfinished generator explicitly.
+They require the completion frame and reject truncated responses. See
+[historical Candle streams](../docs/contracts/candles.md#historical-candle-streams).

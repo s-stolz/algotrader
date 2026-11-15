@@ -50,3 +50,44 @@ uses the actual broker completion parser, accessor HTTP client, and database
 writes; controlled upstream responses include incomplete download and a lost
 receipt after a committed historical chunk. A plain run without this URL skips
 these two live scenarios explicitly.
+
+## Historical Candle streams
+
+`GET /candles/{symbol}/stream` requires `timeframe`, inclusive `start_ms`, and
+exclusive `end_ms`. `exchange` resolves the Market; an immutable positive
+`market_id` can identify a saved Run's Market just as for ordinary Candle reads.
+The response is `application/x-ndjson`: `{"type":"candles","candles":[...]}`
+frames contain at most 1024 ascending expanded Candles, followed by exactly one
+`{"type":"complete"}` frame. EOF without completion is a failed read. Stream
+consumers must not treat a received prefix as complete historical data.
+
+The accessor owns a database cursor and session for the stream, closing both on
+completion, failure, or disconnect. Row conversion and JSON encoding are bounded
+by the batch size, with scheduling opportunities between batches. Higher
+Timeframes preserve aggregate selection and empty-aggregate bucketing fallback.
+No pagination request loop or resume token is exposed. Clients close the stream
+when downstream consumers stop and request identity encoding to avoid compression
+buffering. Proxies must preserve streaming and propagate connection closure.
+Existing bulk JSON Candle endpoints and persistence contracts are unchanged.
+
+Streaming checks: `tests/test_candle_stream.py` covers bounded scheduling and
+cursor cleanup. Set `RUN_CANDLE_STREAM_HTTP_TESTS=1` for the loopback HTTP
+responsiveness/disconnect test with 362,117 fixture Candles. Set
+`CANDLE_STREAM_TEST_DATABASE_URL` to a disposable database named
+`equity_stream_test` for real cursor and bulk/stream parity checks. Run from
+`database-accessor-api/` with `.venv/bin/python -m unittest discover -s tests
+-p test_candle_stream.py`. These opt-in checks never use production tables.
+
+## Forward Candle pages
+
+`GET /candles/{symbol}?from_start=true` returns the first `limit` candles in
+ascending order within inclusive `start_ms` and exclusive `end_ms`. This mode
+requires both bounds and a limit of 1–500. Omitted or false `from_start` preserves
+the existing latest-first selection (returned chronologically) for limited reads.
+An underfilled page means no more stored candles exist inside the requested bounds;
+it does not assert historical completeness or that ingestion is current.
+
+`app/candle_pages.py` uses raw M1 data and direct bucketing for higher timeframes,
+so missing aggregate retention cannot skip the prefix of a forward page. Chart
+paging passes full bucket boundaries to avoid partial first bars. No storage or
+streaming contract changes are required.

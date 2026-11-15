@@ -15,9 +15,9 @@ Candle/Tick fields, and stream names are in [root context](../CONTEXT.md).
   heartbeats keep closed Markets connected. `/meta/health` exposes the container
   instance identity used to detect process restarts.
 - `stream_registry.py` and `trendbar_stream_registry.py` under infrastructure
-  own Tick and Candle stream lifecycles. Webserver owns subscriber reference
+  own Tick and Candle stream lifecycles. Realtime service owns subscriber reference
   counts; start/stop changes often cross that boundary.
-- `redis_streams_publisher.py` owns publication. Parsing consumers are webserver,
+- `redis_streams_publisher.py` owns publication. Parsing consumers are realtime-service,
   ingestion, and indicator-api; use the [contract map](../docs/agent/CONTRACT-CHANGES.md)
   for payload or Timeframe changes.
 - Normalize cTrader symbol names to uppercase before broker calls.

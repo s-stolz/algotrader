@@ -5,7 +5,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from itertools import groupby
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 from redis.asyncio import Redis
 
@@ -67,16 +67,6 @@ class StreamConsumer:
             Stream key (e.g., "candles:12345:EURUSD:M1")
         """
         return f"candles:{self.account_id}:{symbol}:{timeframe}"
-
-    def set_last_id(self, stream_key: str, last_id: str) -> None:
-        """Set the last processed message ID for a stream.
-
-        Args:
-            stream_key: Redis stream key
-            last_id: Message ID to start reading after
-        """
-        self._last_ids[stream_key] = last_id
-        logger.debug(f"Set last ID for {stream_key}: {last_id}")
 
     @staticmethod
     def _decode_bytes(value: Union[bytes, str]) -> str:
@@ -210,10 +200,13 @@ class StreamConsumer:
                     interruption = None
                 stage = "redis-read-failure" if messages is None else "live-write-failure"
                 if messages is None:
-                    messages = await self.redis.xread(
-                        {stream_key: last_id},
-                        count=self.batch_size,
-                        block=self.block_ms,
+                    messages = cast(
+                        list[tuple[Any, list[tuple[Any, Any]]]],
+                        await self.redis.xread(
+                            {stream_key: last_id},
+                            count=self.batch_size,
+                            block=self.block_ms,
+                        ),
                     )
 
                 if not messages:
@@ -277,72 +270,6 @@ class StreamConsumer:
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(self.backoff_max_seconds, backoff * 2)
-
-    async def backfill_from_stream(
-        self,
-        stream_key: str,
-        symbol_id: int,
-        start_id: str,
-        end_id: str,
-        callback: CandleBatchCallback,
-    ) -> int:
-        """Backfill historical data from a stream between two message IDs.
-
-        Args:
-            stream_key: Redis stream key
-            symbol_id: Database symbol ID
-            start_id: Starting message ID (exclusive)
-            end_id: Ending message ID (inclusive, or "+" for latest)
-            callback: Async function(symbol_id, candles) called with batched candles
-
-        Returns:
-            Number of candles backfilled
-        """
-        logger.info(f"Backfilling {stream_key} from {start_id} to {end_id}")
-
-        current_id = start_id
-        total_candles = 0
-
-        while True:
-            try:
-                # Use XRANGE for backfilling historical data
-                messages = await self.redis.xrange(
-                    stream_key,
-                    min=f"({current_id}",  # Exclusive start
-                    max=end_id,
-                    count=self.batch_size,
-                )
-
-                if not messages:
-                    break
-
-                candles = []
-                for msg_id, data in messages:
-                    msg_id_str = self._decode_bytes(msg_id)
-
-                    try:
-                        candle = self._parse_redis_candle(data)
-                        candles.append(candle)
-                        current_id = msg_id_str
-                    except Exception as e:
-                        logger.error(f"Error transforming message {msg_id_str}: {e}")
-                        continue
-
-                if candles:
-                    await callback(symbol_id, candles)
-                    total_candles += len(candles)
-                    logger.info(f"Backfilled {len(candles)} candles from {stream_key}")
-
-                if len(messages) < self.batch_size:
-                    # Reached the end
-                    break
-
-            except Exception as e:
-                logger.error(f"Error during backfill of {stream_key}: {e}")
-                break
-
-        logger.info(f"Backfill complete: {total_candles} candles from {stream_key}")
-        return total_candles
 
     def stop(self) -> None:
         """Stop the consumer."""

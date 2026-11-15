@@ -14,6 +14,7 @@ _SRC_PATH_TEXT = str(_SRC_PATH)
 if _SRC_PATH_TEXT not in sys.path:
     sys.path.insert(0, _SRC_PATH_TEXT)
 
+from adapters.backtest_events import BacktestControlInbox, BacktestEventPublisher  # noqa: E402
 from adapters.persistence import (  # noqa: E402
     BacktestRunLifecyclePersistenceAdapter,
     DatabaseAccessorBacktestRunRepository,
@@ -34,7 +35,8 @@ def build_worker(config: BacktesterConfig) -> BacktestWorker:
     return BacktestWorker(
         repository=DatabaseAccessorBacktestRunRepository(),
         lifecycle=lifecycle,
-        poll_interval_seconds=config.worker_poll_interval_seconds,
+        inbox=BacktestControlInbox(),
+        events=BacktestEventPublisher(),
         heartbeat_interval_seconds=config.worker_heartbeat_interval_seconds,
         heartbeat_publisher=lifecycle.record_worker_heartbeat,
     )

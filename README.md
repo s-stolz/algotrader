@@ -1,39 +1,44 @@
 # AlgoTrader
 
-AlgoTrader is an experimental trading project that uses the [Lightweight Charts](https://tradingview.github.io/lightweight-charts/) library to visualize historical market data.
-
-## Documentation Ownership
-
-- Human-facing overview and setup live in this README and area README files.
-- Agent-facing vocabulary, system flow, and cross-service contracts live in
-  [CONTEXT.md](CONTEXT.md) and its focused references.
-- Task-specific context routing lives in [the context map](docs/CONTEXT-MAP.md).
-- Durable architecture decisions live in `docs/adr/`.
+AlgoTrader is an experimental trading project for collecting market data,
+visualizing live and historical charts with
+[Lightweight Charts](https://tradingview.github.io/lightweight-charts/), and running
+historical backtests with fixed or varying parameters.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    Broker[Broker service / cTrader] -->|Ticks and Candles| Redis[Redis streams]
-    Redis --> Ingestion[Ingestion service]
-    Ingestion -->|Backfill requests| Broker
-    Ingestion -->|Closed Candles| DB[Database accessor API]
-    DB <--> Timescale[TimescaleDB]
-    DB -->|Historical Candles| Indicators[Indicator API]
-    Redis -->|Live Candles| Indicators
-    Indicators -->|Live Indicators| Redis
-    Redis --> Bridge[WebSocket bridge]
-    Bridge <-->|Subscriptions and updates| UI[Frontend]
-    Bridge -->|Stream control| Broker
-    Bridge -->|Stream control| Indicators
-    UI -->|History queries| DB
-    UI -->|Indicator queries| Indicators
-    UI -->|Backtests and history| Backtests[Backtester API / worker]
-    Backtests <-->|Candles and durable runs| DB
-```
+flowchart TB
+    User([User]) --> UI[Frontend]
+    UI <-->|WebSocket| Realtime[Realtime service]
 
-Shared Python libraries provide data access, indicator computation, and logging.
-For ownership and transport contracts, see [root context](CONTEXT.md).
+    subgraph External[External market data]
+        CTrader[cTrader Open API]
+    end
+
+    CTrader -->|Open API| Broker[Broker service]
+    Realtime <-->|Stream reads and updates| Redis[(Redis Streams)]
+    Broker -->|Ticks and candles| Redis
+
+    subgraph Services[Processing services]
+        Ingestion[Ingestion service]
+        Indicators[Indicator API]
+        Backtests[Backtester<br/>API + worker]
+    end
+
+    Redis -->|Closed candles| Ingestion
+    Redis <-->|Candles / indicators| Indicators
+    Redis <-->|Notifications / changes and health| Backtests
+
+    UI -.->|HTTP: indicators| Indicators
+    UI -.->|HTTP: backtests| Backtests
+    UI -.->|HTTP: markets and candles| DB[Database accessor API]
+
+    Ingestion -->|Store candles| DB
+    Indicators <-->|Historical candles| DB
+    Backtests <-->|Candles, runs and results| DB
+    DB <--> Timescale[(TimescaleDB / PostgreSQL)]
+```
 
 ## Development Disclaimer
 
@@ -55,14 +60,8 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 
 - [Docker](https://docs.docker.com/get-started/get-docker/) with the Compose v2 plugin (`docker compose`).
 - GNU Make (`make`).
-- Python 3 (`python3`) and PyYAML for host-side config generation.
-
-On Debian/Ubuntu, install the host setup tools (install Docker separately using the link above):
-
-```sh
-sudo apt update
-sudo apt install make python3 python3-yaml
-```
+- Node 26 active LTS for frontend development (`nvm use` reads `.nvmrc`).
+- Python 3.12–3.15 (`python3.15` recommended) with venv support, and PyYAML for host-side config generation.
 
 ## Getting Started
 
@@ -109,19 +108,13 @@ Compose starts two processes from the same backtester image:
 - `backtester-worker` is a singleton worker that claims and executes one durable
   run at a time.
 
-The API port, logging settings, and worker poll interval come from
-`services.backtester` in `config/topology.yaml`. The tracked worker default is
-one second. After the stack
-is healthy, run the fixture-backed success and failure smoke paths:
+Run the backtest smoke checks:
 
 ```sh
 make smoke-backtester
 ```
 
-The smoke command seeds a temporary market and candles through
-`database-accessor-api`, submits through the public backtester API, waits for
-terminal status, verifies metrics/fills/trades for the successful run, verifies
-no partial artifacts for the failed run, and cleans up its terminal runs.
+[Worker recovery guide](docs/operations/backtest-worker-recovery.md)
 
 ## Central Configuration Model
 
@@ -130,12 +123,7 @@ no partial artifacts for the failed run, and cleans up its terminal runs.
 - Generated runtime env files: `config/.env.shared`, `config/.env.secrets.db`, `config/.env.secrets.runtime`, `config/.env.secrets.broker`
 - Generator script: `scripts/generate_env.py`
 
-Topology groups all settings by their owner under `services` or `infrastructure`.
-Each component has `network`, `logging`, `resources`, and runtime tuning groups
-where applicable. Backtester groups its `api` and `worker` beneath
-`services.backtester`; shared logging and sweep settings live alongside them.
-Webserver, broker, and ingestion tuning live inside their service entries.
-See [the topology schema](config/topology.schema.md) for the complete structure.
+See [the topology schema](config/topology.schema.md) for settings and defaults.
 
 ### Validation and overwrite
 
@@ -191,11 +179,27 @@ make up-detached
 
 Use a root virtual environment for shared library/test tooling and per-service virtual environments for service runtime dependencies.
 
-### Shared constraints + service requirements
+### Shared constraints and service packages
 
 - Shared versions live in `constraints-shared.txt`.
-- Each service keeps its own `requirements.txt`.
-- If a service must diverge, add `<service>/constraints.override.txt` with a short rationale comment.
+- Each service's `pyproject.toml` owns its direct dependencies and package metadata.
+- Services install into separate environments from this checkout; shared libraries
+  are resolved from `libs/`, not a public package index.
+- If a service must diverge, add `<service>/constraints.override.txt` with a
+  rationale comment followed by an exact `package==version` replacement for a
+  shared pin. Overrides must satisfy the service's declared dependency ranges.
+- `scripts/python_environment.py` merges pins before a single pip resolution.
+  Host setup and Docker builds use the same policy. Bare `pip install` does not
+  apply repository constraints; use the setup command below.
+- Docker first caches third-party dependencies from all library manifests, the
+  service manifest, and shared/service constraints. It then copies all library
+  and service source and performs the full package installation and validation.
+  Source edits still rebuild the image; dependency edits invalidate the earlier
+  layer. Pip downloads use a persistent BuildKit cache outside the image.
+  Builds require BuildKit with Dockerfile syntax 1.20 support.
+- Python services and local tooling support Python 3.12–3.15; containers use Python 3.15.2. Set `PYTHON` to a specific
+  supported executable if `python3.15` is not on PATH. Use `--recreate` when replacing
+  an environment created with another Python version.
 
 ### Bootstrap all service venvs
 
@@ -211,7 +215,7 @@ Equivalent direct command:
 
 This now creates:
 - root environment: `.venv` using `requirements.root.txt`
-- service environments: `<service>/.venv` using each service `requirements.txt`
+- service environments: `<service>/.venv` using each service package and the effective shared constraints
 
 ### Bootstrap only root venv
 
@@ -232,6 +236,10 @@ make venvs-recreate
 ```
 
 ### Validate existing environments
+
+Checks verify Python 3.12–3.15, installed service packages, effective shared pins, and
+`pip check`. Only packages actually installed in that environment are compared
+with the shared pins.
 
 ```sh
 make venvs-check

@@ -1,12 +1,20 @@
-FROM python:3.11-alpine
+# syntax=docker/dockerfile:1.20
+FROM python:3.15.2-alpine
 
-RUN apk update && apk upgrade --no-cache && apk add --no-cache curl
+RUN apk add --no-cache curl
 
-WORKDIR /workspace/database-accessor-api
+WORKDIR /workspace
+COPY constraints-shared.txt ./
+COPY scripts/python_environment.py ./scripts/python_environment.py
+# Dependency metadata changes invalidate this layer; source-only changes do not.
+COPY --parents libs/*/pyproject.toml database-accessor-api/pyproject.toml database-accessor-api/constraints*.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python scripts/python_environment.py install database-accessor-api --third-party-only
 
-COPY database-accessor-api/requirements.txt /workspace/database-accessor-api/requirements.txt
-COPY libs/algotrader_logger /workspace/libs/algotrader_logger
-RUN pip install --no-cache-dir -r requirements.txt
+COPY libs ./libs
+COPY database-accessor-api ./database-accessor-api
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python scripts/python_environment.py install database-accessor-api
 
 WORKDIR /app
 COPY database-accessor-api /app

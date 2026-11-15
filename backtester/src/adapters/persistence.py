@@ -5,14 +5,13 @@ from __future__ import annotations
 import math
 import sys
 from copy import deepcopy
-from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
-from uuid import uuid4
 
 from db_accessor_client import DatabaseAccessorClientError
 from domain.enums import BacktestRunStatus, ExitReason, OrderSide, TradeDirection
+from domain.metrics import validate_profit_factor
 from domain.types import (
     BACKTEST_RESULT_SCHEMA_VERSION,
     BacktestFillRecord,
@@ -27,20 +26,14 @@ from domain.types import (
 )
 
 
-class BacktestRunClient(Protocol):
-    """Client protocol for durable run persistence through database-accessor-api."""
-
-    def create_backtest_run(self, run: dict[str, Any]) -> Mapping[str, Any]: ...
-
-
-class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
+class BacktestRunRepositoryClient(Protocol):
     """Client protocol for queued run creation and status retrieval."""
 
-    def get_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
+    def get_backtest_run(
+        self, run_id: str, *, include_diagnostics: bool = True
+    ) -> Mapping[str, Any]: ...
 
     def cancel_backtest_run(self, run_id: str) -> Mapping[str, Any]: ...
-
-    def rename_backtest_run(self, run_id: str, name: str | None) -> Mapping[str, Any]: ...
 
     def get_backtest_queue_state(self) -> Mapping[str, Any]: ...
 
@@ -50,23 +43,9 @@ class BacktestRunRepositoryClient(BacktestRunClient, Protocol):
 
     def get_backtest_trades(self, run_id: str) -> Sequence[Mapping[str, Any]]: ...
 
-    def delete_backtest_run(self, run_id: str) -> None: ...
-
 
 class BacktestLifecycleClient(Protocol):
     """Client protocol for lifecycle and transactional result persistence."""
-
-    def conditional_update_backtest_run(
-        self,
-        run_id: str,
-        update: dict[str, Any],
-    ) -> bool: ...
-
-    def complete_backtest_run(
-        self,
-        run_id: str,
-        completion: dict[str, Any],
-    ) -> bool: ...
 
     def get_backtest_execution_slot(self) -> Mapping[str, Any]: ...
 
@@ -79,21 +58,14 @@ class BacktestLifecycleClient(Protocol):
     def record_backtest_execution_fault(self, fault: dict[str, Any]) -> bool: ...
 
 
-@dataclass(frozen=True)
-class BacktestPersistenceMetadata:
-    run_id: str
-    persisted_at: int
-
-
 class DatabaseAccessorBacktestRunRepository:
     """Maps durable run domain records to the database-accessor client contract."""
 
-    def __init__(self, client: BacktestRunRepositoryClient | None = None) -> None:
+    def __init__(
+        self, client: BacktestRunRepositoryClient | None = None, *, include_diagnostics: bool = True
+    ) -> None:
         self._client = client
-
-    def create(self, run: BacktestRunRecord) -> BacktestRunRecord:
-        response = self._create_run(_run_record_payload(run))
-        return _run_record_from_response(response)
+        self._include_diagnostics = include_diagnostics
 
     def get(self, run_id: str) -> BacktestRunRecord | None:
         try:
@@ -102,15 +74,6 @@ class DatabaseAccessorBacktestRunRepository:
             if exc.status_code == 404:
                 return None
             raise
-        return _run_record_from_response(response)
-
-    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
-        if self._client is not None:
-            response = self._client.rename_backtest_run(run_id, name)
-        else:
-            client_cls = _import_database_accessor_client()
-            with client_cls() as client:
-                response = client.rename_backtest_run(run_id, name)
         return _run_record_from_response(response)
 
     def cancel(self, run_id: str) -> BacktestRunCancellation:
@@ -142,7 +105,10 @@ class DatabaseAccessorBacktestRunRepository:
         return self.get(str(entries[0]["run_id"]))
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]:
-        responses = self._list_runs(_run_query_params(query))
+        params = _run_query_params(query)
+        if not self._include_diagnostics:
+            params["include_diagnostics"] = False
+        responses = self._list_runs(params)
         return [_run_record_from_response(response) for response in responses]
 
     def get_fills(self, run_id: str) -> list[BacktestFillRecord]:
@@ -151,36 +117,21 @@ class DatabaseAccessorBacktestRunRepository:
     def get_trades(self, run_id: str) -> list[BacktestTradeRecord]:
         return [_trade_record_from_response(response) for response in self._get_trades(run_id)]
 
-    def delete(self, run_id: str) -> bool:
-        try:
-            self._delete_run(run_id)
-        except DatabaseAccessorClientError as exc:
-            if exc.status_code == 404:
-                return False
-            if exc.status_code == 409:
-                from app.backtest_runs import BacktestRunConflictError
-
-                raise BacktestRunConflictError(
-                    "Cancel and settle this run before deleting it"
-                ) from exc
-            raise
-        return True
-
-    def _create_run(self, run: dict[str, Any]) -> Mapping[str, Any]:
-        if self._client is not None:
-            return self._client.create_backtest_run(run)
-
-        client_cls = _import_database_accessor_client()
-        with client_cls() as client:
-            return client.create_backtest_run(run)
-
     def _get_run(self, run_id: str) -> Mapping[str, Any]:
         if self._client is not None:
-            return self._client.get_backtest_run(run_id)
+            return (
+                self._client.get_backtest_run(run_id)
+                if self._include_diagnostics
+                else self._client.get_backtest_run(run_id, include_diagnostics=False)
+            )
 
         client_cls = _import_database_accessor_client()
         with client_cls() as client:
-            return client.get_backtest_run(run_id)
+            return (
+                client.get_backtest_run(run_id)
+                if self._include_diagnostics
+                else client.get_backtest_run(run_id, include_diagnostics=False)
+            )
 
     def _list_runs(self, query: dict[str, Any]) -> Sequence[Mapping[str, Any]]:
         if self._client is not None:
@@ -205,48 +156,6 @@ class DatabaseAccessorBacktestRunRepository:
         client_cls = _import_database_accessor_client()
         with client_cls() as client:
             return client.get_backtest_trades(run_id)
-
-    def _delete_run(self, run_id: str) -> None:
-        if self._client is not None:
-            self._client.delete_backtest_run(run_id)
-            return
-
-        client_cls = _import_database_accessor_client()
-        with client_cls() as client:
-            client.delete_backtest_run(run_id)
-
-
-class BacktestRunPersistenceAdapter:
-    """Maps a completed synchronous result to a terminal durable run."""
-
-    def __init__(self, client: BacktestRunClient | None = None) -> None:
-        self._client = client
-
-    def save_run(
-        self,
-        *,
-        result: BacktestResult,
-        execution_duration_ms: int | None = None,
-    ) -> BacktestResult:
-        run = build_succeeded_run_payload(
-            result=result,
-            execution_duration_ms=execution_duration_ms,
-        )
-        response = self._create_run(run)
-        metadata = _metadata_from_response(response)
-        return replace(
-            result,
-            backtest_run_id=metadata.run_id,
-            persisted_at=metadata.persisted_at,
-        )
-
-    def _create_run(self, run: dict[str, Any]) -> Mapping[str, Any]:
-        if self._client is not None:
-            return self._client.create_backtest_run(run)
-
-        client_cls = _import_database_accessor_client()
-        with client_cls() as client:
-            return client.create_backtest_run(run)
 
 
 class DatabaseAccessorQueueStateReader:
@@ -274,8 +183,8 @@ class BacktestRunLifecyclePersistenceAdapter:
         owner_token: str | None,
         fault_code: str | None = None,
         fault_message: str | None = None,
-    ) -> None:
-        self._call(
+    ) -> Mapping[str, Any]:
+        return self._call(
             "record_backtest_worker_heartbeat",
             {
                 "worker_id": worker_id,
@@ -285,11 +194,14 @@ class BacktestRunLifecyclePersistenceAdapter:
             },
         )
 
-    def claim_execution(self, *, run_id: str, owner_token: str, started_at_ms: int) -> bool:
+    def claim_execution(
+        self, *, run_id: str, owner_token: str, started_at_ms: int, worker_id: str
+    ) -> bool:
         return bool(
             self._call(
                 "claim_backtest_execution",
                 {
+                    "worker_id": worker_id,
                     "run_id": run_id,
                     "owner_token": owner_token,
                     "started_at": _epoch_ms_to_utc_text(started_at_ms),
@@ -343,12 +255,10 @@ class BacktestRunLifecyclePersistenceAdapter:
         execution_duration_ms: int,
     ) -> bool:
         completion = build_successful_completion_payload(
-            expected_status=BacktestRunStatus.RUNNING,
             completed_at_ms=completed_at_ms,
             result=result,
             execution_duration_ms=execution_duration_ms,
         )
-        completion.pop("expected_status")
         completion.update(run_id=run_id, owner_token=owner_token, status="succeeded")
         return bool(self._call("settle_backtest_execution", completion))
 
@@ -379,146 +289,28 @@ class BacktestRunLifecyclePersistenceAdapter:
         with client_cls() as client:
             return getattr(client, name)(*args)
 
-    def conditional_update(
-        self,
-        *,
-        run_id: str,
-        expected_status: BacktestRunStatus,
-        new_status: BacktestRunStatus,
-        started_at_ms: int | None = None,
-        completed_at_ms: int | None = None,
-        error_code: str | None = None,
-        error_message: str | None = None,
-    ) -> bool:
-        update = {
-            "expected_status": _enum_or_text_value(expected_status),
-            "new_status": _enum_or_text_value(new_status),
-        }
-        if started_at_ms is not None:
-            update["started_at"] = _epoch_ms_to_utc_text(started_at_ms)
-        if completed_at_ms is not None:
-            update["completed_at"] = _epoch_ms_to_utc_text(completed_at_ms)
-        if error_code is not None:
-            update["error_code"] = error_code
-        if error_message is not None:
-            update["error_message"] = error_message
-        return self._conditional_update(run_id, update)
-
-    def complete(
-        self,
-        *,
-        run_id: str,
-        expected_status: BacktestRunStatus,
-        completed_at_ms: int,
-        result: BacktestResult,
-        execution_duration_ms: int | None = None,
-    ) -> bool:
-        completion = build_successful_completion_payload(
-            expected_status=expected_status,
-            completed_at_ms=completed_at_ms,
-            result=result,
-            execution_duration_ms=execution_duration_ms,
-        )
-        return self._complete(run_id, completion)
-
-    def _conditional_update(self, run_id: str, update: dict[str, Any]) -> bool:
-        if self._client is not None:
-            return self._client.conditional_update_backtest_run(run_id, update)
-
-        client_cls = _import_database_accessor_client()
-        with client_cls() as client:
-            return bool(client.conditional_update_backtest_run(run_id, update))
-
-    def _complete(self, run_id: str, completion: dict[str, Any]) -> bool:
-        if self._client is not None:
-            return self._client.complete_backtest_run(run_id, completion)
-
-        client_cls = _import_database_accessor_client()
-        with client_cls() as client:
-            return bool(client.complete_backtest_run(run_id, completion))
-
-
-def build_succeeded_run_payload(
-    *,
-    result: BacktestResult,
-    execution_duration_ms: int | None = None,
-) -> dict[str, Any]:
-    """Build one terminal succeeded-run payload for synchronous persistence."""
-
-    persisted_at = _utc_now_text()
-    diagnostics = deepcopy(result.diagnostics)
-    diagnostics["execution_duration_ms"] = _execution_duration_ms(
-        result=result,
-        execution_duration_ms=execution_duration_ms,
-    )
-    request_snapshot = BacktestRequestSnapshot.from_request(result.request)
-    artifacts = _result_artifact_payload(result)
-
-    return {
-        "run_id": _new_run_id(),
-        "status": "succeeded",
-        "submitted_at": persisted_at,
-        "started_at": persisted_at,
-        "completed_at": persisted_at,
-        "error_code": None,
-        "error_message": None,
-        "request_schema_version": request_snapshot.schema_version,
-        "request": dict(request_snapshot.payload),
-        "result_schema_version": BACKTEST_RESULT_SCHEMA_VERSION,
-        "metrics": deepcopy(result.metrics),
-        "diagnostics": diagnostics,
-        "replay_descriptor": _required_replay_descriptor(result),
-        **artifacts,
-    }
-
 
 def build_successful_completion_payload(
     *,
-    expected_status: BacktestRunStatus,
     completed_at_ms: int,
     result: BacktestResult,
     execution_duration_ms: int | None = None,
 ) -> dict[str, Any]:
     """Build the atomic completion payload without the non-persisted equity curve."""
 
+    validate_profit_factor(result.metrics)
     diagnostics = deepcopy(result.diagnostics)
     diagnostics["execution_duration_ms"] = _execution_duration_ms(
         result=result,
         execution_duration_ms=execution_duration_ms,
     )
     return {
-        "expected_status": _enum_or_text_value(expected_status),
         "completed_at": _epoch_ms_to_utc_text(completed_at_ms),
         "result_schema_version": BACKTEST_RESULT_SCHEMA_VERSION,
         "metrics": deepcopy(result.metrics),
         "diagnostics": diagnostics,
         "replay_descriptor": _required_replay_descriptor(result),
         **_result_artifact_payload(result),
-    }
-
-
-def _run_record_payload(run: BacktestRunRecord) -> dict[str, Any]:
-    return {
-        "run_id": run.run_id,
-        "name": run.name,
-        "status": _enum_or_text_value(run.status),
-        "submitted_at": _epoch_ms_to_utc_text(run.submitted_at_ms),
-        "started_at": (
-            _epoch_ms_to_utc_text(run.started_at_ms) if run.started_at_ms is not None else None
-        ),
-        "completed_at": (
-            _epoch_ms_to_utc_text(run.completed_at_ms) if run.completed_at_ms is not None else None
-        ),
-        "error_code": run.error_code,
-        "error_message": run.error_message,
-        "request_schema_version": run.request_snapshot.schema_version,
-        "request": deepcopy(dict(run.request_snapshot.payload)),
-        "result_schema_version": run.result_schema_version,
-        "metrics": deepcopy(run.metrics),
-        "replay_descriptor": deepcopy(run.replay_descriptor),
-        "diagnostics": deepcopy(run.diagnostics),
-        "fills": [],
-        "trades": [],
     }
 
 
@@ -529,8 +321,7 @@ def _run_query_params(query: BacktestRunQuery) -> dict[str, Any]:
         "timeframe": query.timeframe,
         "strategy": query.strategy_id,
         "engine": (_enum_or_text_value(query.engine) if query.engine is not None else None),
-        "membership": query.membership,
-        "batch_id": query.batch_id,
+        "backtest_id": query.backtest_id,
         "submitted_from": (
             _epoch_ms_to_utc_text(query.submitted_from_ms)
             if query.submitted_from_ms is not None
@@ -558,7 +349,6 @@ def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
 
     return BacktestRunRecord(
         run_id=str(response["run_id"]),
-        name=_optional_text(response.get("name")),
         status=BacktestRunStatus(str(response["status"])),
         submitted_at_ms=_timestamp_to_epoch_ms(response["submitted_at"]),
         started_at_ms=_optional_timestamp_to_epoch_ms(response.get("started_at")),
@@ -577,10 +367,8 @@ def _run_record_from_response(response: Mapping[str, Any]) -> BacktestRunRecord:
         metrics=_optional_mapping(response.get("metrics")),
         diagnostics=_optional_mapping(response.get("diagnostics")),
         replay_descriptor=_optional_mapping(response.get("replay_descriptor")),
-        batch_id=_optional_text(response.get("batch_id")),
-        member_ordinal=(
-            int(response["member_ordinal"]) if response.get("member_ordinal") is not None else None
-        ),
+        backtest_id=str(response["backtest_id"]),
+        run_ordinal=int(response["run_ordinal"]),
     )
 
 
@@ -684,20 +472,6 @@ def _execution_duration_ms(
     return duration
 
 
-def _metadata_from_response(response: Mapping[str, Any]) -> BacktestPersistenceMetadata:
-    run_id = response.get("run_id")
-    if not isinstance(run_id, str) or not run_id:
-        raise ValueError("Backtest persistence response missing run_id")
-
-    if "completed_at" not in response:
-        raise ValueError("Backtest persistence response missing completed_at")
-
-    return BacktestPersistenceMetadata(
-        run_id=run_id,
-        persisted_at=_timestamp_to_epoch_ms(response["completed_at"]),
-    )
-
-
 def _timestamp_to_epoch_ms(value: Any) -> int:
     if isinstance(value, int):
         return value
@@ -745,14 +519,6 @@ def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
 
 def _epoch_ms_to_utc_text(value: int) -> str:
     return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc).isoformat()
-
-
-def _new_run_id() -> str:
-    return str(uuid4())
-
-
-def _utc_now_text() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _import_database_accessor_client() -> type[Any]:

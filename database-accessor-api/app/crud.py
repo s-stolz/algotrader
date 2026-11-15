@@ -2,17 +2,17 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.models import (
-    backtest_batch_events,
-    backtest_batches,
     backtest_closed_trades,
+    backtest_events,
     backtest_execution_slot,
     backtest_fills,
     backtest_queue_turns,
     backtest_runs,
+    backtests,
     candles,
     markets,
 )
-from sqlalchemy import cast, delete, exists, func, insert, select, text, update
+from sqlalchemy import cast, delete, exists, func, insert, null, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -33,22 +33,6 @@ def _epoch_ms_to_utc_datetime(value: int) -> datetime:
     return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
 
 
-async def get_market_by_id(session, symbol_id: int):
-    """
-    Get market by symbol_id
-
-    :param session: SQLAlchemy session
-    :param symbol_id: Market symbol_id
-
-    :return: Market data as a dictionary
-    :rtype: dict or None
-    """
-    stmt = select(markets).where(markets.c.symbol_id == symbol_id)
-    result = await session.execute(stmt)
-    row = result.fetchone()
-    return dict(row._mapping) if row else None
-
-
 async def insert_market(session, market_data: dict):
     """
     Insert a new market into the database
@@ -61,8 +45,23 @@ async def insert_market(session, market_data: dict):
     """
     stmt = insert(markets).values(**market_data).returning(markets.c.symbol_id)
     result = await session.execute(stmt)
+    identity = result.scalar_one()
     await session.commit()
-    return result.scalar_one()
+    return identity
+
+
+async def update_market(session, symbol_id: int, market_data: dict):
+    """Update metadata in place; candle identities and values are untouched."""
+    stmt = (
+        update(markets)
+        .where(markets.c.symbol_id == symbol_id)
+        .values(**market_data)
+        .returning(markets.c.symbol_id)
+    )
+    result = await session.execute(stmt)
+    identity = result.scalar_one_or_none()
+    await session.commit()
+    return identity
 
 
 async def delete_market(session, symbol_id: int):
@@ -106,34 +105,6 @@ async def get_markets(session, symbol: Optional[str] = None, exchange: Optional[
     result = await session.execute(stmt)
     rows = result.fetchall()
     return [dict(row._mapping) for row in rows]
-
-
-async def get_symbol_id(session, symbol: str, exchange: str):
-    """
-    Get symbol_id from the markets table based on symbol and exchange
-
-    :param session: SQLAlchemy session
-    :param symbol: Market symbol
-    :param exchange: Market exchange
-
-    :return: symbol_id if found, None otherwise
-    :rtype: int or None
-
-    :raises ValueError: If symbol or exchange is not provided
-    :raises TypeError: If symbol or exchange is not a string
-    """
-
-    if not symbol or not exchange:
-        raise ValueError("Symbol and exchange must be provided")
-    if not isinstance(symbol, str) or not isinstance(exchange, str):
-        raise TypeError("Symbol and exchange must be strings")
-
-    query = text("""
-        SELECT symbol_id FROM markets WHERE symbol = :symbol AND exchange LIKE :exchange
-    """)
-    result = await session.execute(query, {"symbol": symbol, "exchange": exchange})
-    row = result.first()
-    return row[0] if row else None
 
 
 async def insert_candles(session, symbol_id: int, candles_data: list[dict]):
@@ -512,73 +483,16 @@ async def delete_candles(session, symbol_id: int):
     return result.rowcount
 
 
-async def insert_backtest_run(session, run_data: dict):
-    stored_run = dict(run_data)
-    fills = stored_run.pop("fills", [])
-    trades = stored_run.pop("trades", [])
-    try:
-        if stored_run["status"] == "queued":
-            await session.execute(select(backtest_execution_slot.c.slot_id).with_for_update())
-        stmt = insert(backtest_runs).values(**stored_run).returning(backtest_runs)
-        result = await session.execute(stmt)
-        row = result.fetchone()
-        if stored_run["status"] == "queued":
-            await session.execute(insert(backtest_queue_turns).values(run_id=stored_run["run_id"]))
-        if fills:
-            fill_values = [{"run_id": stored_run["run_id"], **fill} for fill in fills]
-            await session.execute(insert(backtest_fills), fill_values)
-        if trades:
-            trade_values = [{"run_id": stored_run["run_id"], **trade} for trade in trades]
-            await session.execute(insert(backtest_closed_trades), trade_values)
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        raise
-    return dict(row._mapping)
-
-
-class ExperimentNameConflictError(ValueError):
-    """Batch members have no independently editable name."""
-
-
-async def rename_backtest_run(session, run_id: str, name: str | None):
+async def rename_backtest(session, backtest_id: str, name: str | None):
     from app.schemas import ExperimentNameUpdateIn
 
     name = ExperimentNameUpdateIn(name=name).name
     try:
         result = await session.execute(
-            select(backtest_runs).where(backtest_runs.c.run_id == run_id).with_for_update()
-        )
-        row = result.fetchone()
-        if row is None:
-            await session.rollback()
-            return None
-        if row._mapping["batch_id"] is not None:
-            raise ExperimentNameConflictError("Batch members have no experiment name")
-        result = await session.execute(
-            update(backtest_runs)
-            .where(backtest_runs.c.run_id == run_id)
+            update(backtests)
+            .where(backtests.c.backtest_id == backtest_id)
             .values(name=name)
-            .returning(backtest_runs)
-        )
-        saved = dict(result.fetchone()._mapping)
-        await session.commit()
-        return saved
-    except Exception:
-        await session.rollback()
-        raise
-
-
-async def rename_backtest_batch(session, batch_id: str, name: str | None):
-    from app.schemas import ExperimentNameUpdateIn
-
-    name = ExperimentNameUpdateIn(name=name).name
-    try:
-        result = await session.execute(
-            update(backtest_batches)
-            .where(backtest_batches.c.batch_id == batch_id)
-            .values(name=name)
-            .returning(backtest_batches)
+            .returning(backtests)
         )
         row = result.fetchone()
         saved = dict(row._mapping) if row else None
@@ -589,8 +503,19 @@ async def rename_backtest_batch(session, batch_id: str, name: str | None):
         raise
 
 
-async def get_backtest_run(session, run_id: str):
-    stmt = select(backtest_runs).where(backtest_runs.c.run_id == run_id)
+def _run_columns(include_diagnostics: bool):
+    return [
+        (
+            column
+            if include_diagnostics or column.name != "diagnostics"
+            else null().label("diagnostics")
+        )
+        for column in backtest_runs.c
+    ]
+
+
+async def get_backtest_run(session, run_id: str, *, include_diagnostics: bool = True):
+    stmt = select(*_run_columns(include_diagnostics)).where(backtest_runs.c.run_id == run_id)
     result = await session.execute(stmt)
     row = result.fetchone()
     return dict(row._mapping) if row else None
@@ -620,68 +545,30 @@ class BacktestDeletionConflictError(ValueError):
     pass
 
 
-async def delete_backtest_run(session, run_id: str) -> bool:
+async def delete_backtest(session, backtest_id: str) -> bool:
     try:
         slot = (
             await session.execute(select(backtest_execution_slot.c.run_id).with_for_update())
         ).scalar_one()
-        row = (
-            (
-                await session.execute(
-                    select(backtest_runs.c.status, backtest_runs.c.batch_id)
-                    .where(backtest_runs.c.run_id == run_id)
-                    .with_for_update()
-                )
-            )
-            .mappings()
-            .one_or_none()
-        )
-        if row is None:
-            await session.rollback()
-            return False
-        if row["batch_id"] is not None:
-            raise BacktestDeletionConflictError("Batch members cannot be deleted individually")
-        if row["status"] not in {"succeeded", "failed", "cancelled"} or slot == run_id:
-            raise BacktestDeletionConflictError("Cancel and settle this run before deleting it")
-        await session.execute(
-            delete(backtest_queue_turns).where(backtest_queue_turns.c.run_id == run_id)
-        )
-        result = await session.execute(
-            delete(backtest_runs).where(
-                backtest_runs.c.run_id == run_id,
-                backtest_runs.c.batch_id.is_(None),
-                backtest_runs.c.status.in_(["succeeded", "failed", "cancelled"]),
-            )
-        )
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        raise
-    return result.rowcount == 1
-
-
-async def delete_backtest_batch(session, batch_id: str) -> bool:
-    try:
-        slot = (
-            await session.execute(select(backtest_execution_slot.c.run_id).with_for_update())
-        ).scalar_one()
-        batch = (
+        backtest = (
             await session.execute(
-                select(backtest_batches.c.status)
-                .where(backtest_batches.c.batch_id == batch_id)
+                select(backtests.c.status)
+                .where(backtests.c.backtest_id == backtest_id)
                 .with_for_update()
             )
         ).scalar_one_or_none()
-        if batch is None:
+        if backtest is None:
             await session.rollback()
             return False
-        if batch not in {"completed", "cancelled"}:
-            raise BacktestDeletionConflictError("Cancel and settle this batch before deleting it")
+        if backtest not in {"completed", "cancelled"}:
+            raise BacktestDeletionConflictError(
+                "Cancel and settle this backtest before deleting it"
+            )
         members = (
             (
                 await session.execute(
                     select(backtest_runs.c.run_id, backtest_runs.c.status)
-                    .where(backtest_runs.c.batch_id == batch_id)
+                    .where(backtest_runs.c.backtest_id == backtest_id)
                     .with_for_update()
                 )
             )
@@ -692,12 +579,12 @@ async def delete_backtest_batch(session, batch_id: str) -> bool:
             member["status"] not in {"succeeded", "failed", "cancelled"} for member in members
         ):
             raise BacktestDeletionConflictError(
-                "Cancel and settle all batch members before deleting it"
+                "Cancel and settle all backtest members before deleting it"
             )
         result = await session.execute(
-            delete(backtest_batches).where(
-                backtest_batches.c.batch_id == batch_id,
-                backtest_batches.c.status.in_(["completed", "cancelled"]),
+            delete(backtests).where(
+                backtests.c.backtest_id == backtest_id,
+                backtests.c.status.in_(["completed", "cancelled"]),
             )
         )
         await session.commit()
@@ -707,30 +594,30 @@ async def delete_backtest_batch(session, batch_id: str) -> bool:
     return result.rowcount == 1
 
 
-class BatchSubmissionConflictError(ValueError):
+class BacktestSubmissionConflictError(ValueError):
     pass
 
 
-async def create_backtest_batch(session, payload: dict):
-    """Accept a complete materialized batch in one transaction."""
+async def create_backtest(session, payload: dict):
+    """Accept a complete materialized backtest in one transaction."""
     data = dict(payload)
     members = data.pop("members")
-    existing = await get_backtest_batch_by_submission(session, data["submission_id"])
+    existing = await get_backtest_by_submission(session, data["submission_id"])
     if existing is not None:
         if existing["accepted_definition"] != data["accepted_definition"]:
-            raise BatchSubmissionConflictError("submission_id belongs to a different definition")
+            raise BacktestSubmissionConflictError("submission_id belongs to a different definition")
         return existing
     data.update(status="queued", lifecycle_revision=0)
     try:
         await session.execute(select(backtest_execution_slot.c.slot_id).with_for_update())
-        await session.execute(insert(backtest_batches).values(**data))
+        await session.execute(insert(backtests).values(**data))
         await session.execute(
             insert(backtest_runs).values(
                 [
                     {
                         "run_id": member["run_id"],
-                        "batch_id": data["batch_id"],
-                        "member_ordinal": member["member_ordinal"],
+                        "backtest_id": data["backtest_id"],
+                        "run_ordinal": member["run_ordinal"],
                         "status": "queued",
                         "submitted_at": data["accepted_at"],
                         "request_schema_version": member["request_schema_version"],
@@ -741,8 +628,8 @@ async def create_backtest_batch(session, payload: dict):
             )
         )
         await session.execute(
-            insert(backtest_batch_events).values(
-                batch_id=data["batch_id"],
+            insert(backtest_events).values(
+                backtest_id=data["backtest_id"],
                 revision=0,
                 event_type="accepted",
                 prior_status=None,
@@ -750,15 +637,15 @@ async def create_backtest_batch(session, payload: dict):
                 occurred_at=data["accepted_at"],
             )
         )
-        await session.execute(insert(backtest_queue_turns).values(batch_id=data["batch_id"]))
+        await session.execute(insert(backtest_queue_turns).values(backtest_id=data["backtest_id"]))
         await session.commit()
-        return await get_backtest_batch(session, data["batch_id"])
+        return await get_backtest(session, data["backtest_id"])
     except IntegrityError as exc:
         await session.rollback()
-        existing = await get_backtest_batch_by_submission(session, data["submission_id"])
+        existing = await get_backtest_by_submission(session, data["submission_id"])
         if existing is not None:
             if existing["accepted_definition"] != data["accepted_definition"]:
-                raise BatchSubmissionConflictError(
+                raise BacktestSubmissionConflictError(
                     "submission_id belongs to a different definition"
                 ) from exc
             return existing
@@ -768,57 +655,43 @@ async def create_backtest_batch(session, payload: dict):
         raise
 
 
-async def get_backtest_batch_by_submission(session, submission_id: str):
+async def get_backtest_by_submission(session, submission_id: str):
     result = await session.execute(
-        select(backtest_batches).where(backtest_batches.c.submission_id == submission_id)
+        select(backtests).where(backtests.c.submission_id == submission_id)
     )
     row = result.fetchone()
     return dict(row._mapping) if row else None
 
 
-async def get_backtest_batch(session, batch_id: str):
-    result = await session.execute(
-        select(backtest_batches).where(backtest_batches.c.batch_id == batch_id)
-    )
+async def get_backtest(session, backtest_id: str):
+    result = await session.execute(select(backtests).where(backtests.c.backtest_id == backtest_id))
     row = result.fetchone()
     return dict(row._mapping) if row else None
 
 
-async def list_backtest_batches(session):
+async def list_backtests(session):
     result = await session.execute(
-        select(backtest_batches).order_by(
-            backtest_batches.c.accepted_at.desc(), backtest_batches.c.batch_id.asc()
-        )
+        select(backtests).order_by(backtests.c.accepted_at.desc(), backtests.c.backtest_id.asc())
     )
     return [dict(row._mapping) for row in result.fetchall()]
 
 
-async def list_backtest_batch_members(session, batch_id: str):
+async def list_backtest_members(session, backtest_id: str, *, include_diagnostics: bool = True):
     result = await session.execute(
-        select(backtest_runs)
-        .where(backtest_runs.c.batch_id == batch_id)
-        .order_by(backtest_runs.c.member_ordinal.asc())
+        select(*_run_columns(include_diagnostics))
+        .where(backtest_runs.c.backtest_id == backtest_id)
+        .order_by(backtest_runs.c.run_ordinal.asc())
     )
     return [dict(row._mapping) for row in result.fetchall()]
 
 
-async def list_backtest_batch_events(session, batch_id: str):
+async def list_backtest_events(session, backtest_id: str):
     result = await session.execute(
-        select(backtest_batch_events)
-        .where(backtest_batch_events.c.batch_id == batch_id)
-        .order_by(backtest_batch_events.c.revision.asc())
+        select(backtest_events)
+        .where(backtest_events.c.backtest_id == backtest_id)
+        .order_by(backtest_events.c.revision.asc())
     )
     return [dict(row._mapping) for row in result.fetchall()]
-
-
-def _filter_run_membership(stmt, membership: str | None, batch_id: str | None):
-    if membership == "standalone":
-        stmt = stmt.where(backtest_runs.c.batch_id.is_(None))
-    elif membership == "batch":
-        stmt = stmt.where(backtest_runs.c.batch_id.is_not(None))
-    if batch_id is not None:
-        stmt = stmt.where(backtest_runs.c.batch_id == batch_id)
-    return stmt
 
 
 async def list_backtest_runs(
@@ -831,10 +704,12 @@ async def list_backtest_runs(
     engine: str | None = None,
     submitted_from: datetime | None = None,
     submitted_to: datetime | None = None,
-    membership: str | None = None,
-    batch_id: str | None = None,
+    backtest_id: str | None = None,
+    include_diagnostics: bool = True,
 ):
-    stmt = _filter_run_membership(select(backtest_runs), membership, batch_id)
+    stmt = select(*_run_columns(include_diagnostics))
+    if backtest_id is not None:
+        stmt = stmt.where(backtest_runs.c.backtest_id == backtest_id)
     if status is not None:
         stmt = stmt.where(backtest_runs.c.status == status)
     if symbol is not None:
@@ -870,84 +745,3 @@ def _symbol_membership_filter(session, symbol: str):
         "$.symbols",
     ).table_valued("key", "value")
     return exists(select(1).select_from(symbols).where(symbols.c.value == symbol))
-
-
-async def conditional_update_backtest_run(
-    session,
-    *,
-    run_id: str,
-    expected_status: str,
-    updates: dict,
-) -> bool:
-    # Any installed slot requires token-fenced lifecycle writes, even after manual clear.
-    slot = await session.execute(select(backtest_execution_slot.c.slot_id).limit(1))
-    if slot.first() is not None:
-        await session.rollback()
-        return False
-    stmt = (
-        update(backtest_runs)
-        .where(
-            backtest_runs.c.run_id == run_id,
-            backtest_runs.c.status == expected_status,
-        )
-        .values(**updates)
-    )
-    if expected_status == "queued" and updates.get("status") == "running":
-        stmt = stmt.where(backtest_runs.c.batch_id.is_(None))
-    try:
-        result = await session.execute(stmt)
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        raise
-    return result.rowcount == 1
-
-
-async def complete_backtest_run(
-    session,
-    *,
-    run_id: str,
-    expected_status: str,
-    completion: dict,
-) -> bool:
-    # Once the durable slot exists, terminal writes must use token-fenced settlement.
-    slot = await session.execute(select(backtest_execution_slot.c.slot_id).limit(1))
-    if slot.first() is not None:
-        await session.rollback()
-        return False
-    completion_data = dict(completion)
-    fills = completion_data.pop("fills", [])
-    trades = completion_data.pop("trades", [])
-    completion_data.update(
-        {
-            "status": "succeeded",
-            "error_code": None,
-            "error_message": None,
-        }
-    )
-    stmt = (
-        update(backtest_runs)
-        .where(
-            backtest_runs.c.run_id == run_id,
-            backtest_runs.c.status == expected_status,
-        )
-        .values(**completion_data)
-    )
-
-    try:
-        result = await session.execute(stmt)
-        if result.rowcount != 1:
-            await session.rollback()
-            return False
-
-        if fills:
-            fill_values = [{"run_id": run_id, **fill} for fill in fills]
-            await session.execute(insert(backtest_fills), fill_values)
-        if trades:
-            trade_values = [{"run_id": run_id, **trade} for trade in trades]
-            await session.execute(insert(backtest_closed_trades), trade_values)
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        raise
-    return True

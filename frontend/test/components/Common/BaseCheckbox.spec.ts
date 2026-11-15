@@ -1,10 +1,14 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
+import { h } from 'vue';
+import { NCheckbox } from 'naive-ui';
+import DesignScope from '@/components/Common/DesignScope.vue';
+import { designTokens } from '@/design/tokens';
 
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 
 describe('BaseCheckbox', () => {
-  it('updates checked state through its labeled native input and forwards input attributes', async () => {
+  it('updates its labeled input and forwards input attributes', async () => {
     const wrapper = mount(BaseCheckbox, {
       props: { checked: false },
       attrs: { 'data-testid': 'checkbox', name: 'include-null' },
@@ -34,6 +38,33 @@ describe('BaseCheckbox', () => {
     input.element.click();
     expect(onClick).not.toHaveBeenCalled();
     expect(wrapper.emitted('update:checked')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('keeps native and indeterminate selection themed for every caller', async () => {
+    const onUpdateChecked = vi.fn();
+    const wrapper = mount(DesignScope, {
+      slots: {
+        default: () => [
+          h(
+            BaseCheckbox,
+            { checked: false, 'onUpdate:checked': onUpdateChecked },
+            () => 'Include null',
+          ),
+          h(BaseCheckbox, { indeterminate: true, disabled: true }),
+        ],
+      },
+    });
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    expect(onUpdateChecked).toHaveBeenCalledWith(true);
+    expect(wrapper.findComponent(NCheckbox).props('disabled')).toBe(true);
+    expect(
+      wrapper.findComponent(NCheckbox).props('themeOverrides'),
+    ).toMatchObject({
+      colorChecked: designTokens.color.interactive,
+      textColorDisabled: designTokens.color.disabledText,
+      fontSizeMedium: designTokens.text.body,
+    });
     wrapper.unmount();
   });
 });

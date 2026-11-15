@@ -8,7 +8,9 @@ from domain.enums import ExitReason, OrderSide, TradeDirection
 from domain.types import Fill, Trade
 
 
-def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
+def build_trades_from_fills(
+    fills: Sequence[Fill], *, protection_at_exit: bool = False, contract_multiplier: float = 1.0
+) -> List[Trade]:
     """Create closed trades from chronological fills."""
 
     trades: List[Trade] = []
@@ -72,6 +74,7 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
         entry_fee_share = open_entry_fees * (close_qty / open_abs_qty)
         exit_fee_share = fill_fees * (close_qty / qty)
         trade_fees = max(0.0, entry_fee_share + exit_fee_share)
+        gross_pnl *= contract_multiplier
         realized_pnl = gross_pnl - trade_fees
         trade_counter += 1
         trades.append(
@@ -87,8 +90,18 @@ def build_trades_from_fills(fills: Sequence[Fill]) -> List[Trade]:
                 realized_pnl=realized_pnl,
                 fees=trade_fees,
                 exit_reason=_exit_reason_from_fill(fill),
-                stop_loss_price=stop_loss_price,
-                take_profit_price=take_profit_price,
+                stop_loss_price=(
+                    fill.stop_loss_price
+                    if protection_at_exit
+                    and fill.exit_reason in (ExitReason.STOP_LOSS, ExitReason.TAKE_PROFIT)
+                    else stop_loss_price
+                ),
+                take_profit_price=(
+                    fill.take_profit_price
+                    if protection_at_exit
+                    and fill.exit_reason in (ExitReason.STOP_LOSS, ExitReason.TAKE_PROFIT)
+                    else take_profit_price
+                ),
             )
         )
 

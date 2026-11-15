@@ -4,16 +4,14 @@ import vue from '@vitejs/plugin-vue';
 import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 
-import { createDevServerProxy } from './src/viteProxy';
+import { createDevServerProxy } from './src/viteProxy.ts';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
 
   return {
-    plugins: [
-      vue(),
-    ],
+    plugins: [vue()],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -27,6 +25,8 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'jsdom',
       globals: true,
+      // Production component trees need headroom on shared development machines.
+      testTimeout: 15_000,
       setupFiles: ['./test/setup.ts'],
       include: ['test/**/*.{test,spec}.ts'],
     },

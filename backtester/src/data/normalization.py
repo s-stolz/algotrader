@@ -51,7 +51,7 @@ def normalize_bar_data(
         normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
         normalized[column] = normalized[column].replace([np.inf, -np.inf], np.nan)
 
-    normalized.dropna(subset=list(numeric_columns), inplace=True)
+    normalized = normalized.dropna(subset=list(numeric_columns))
     if normalized.empty:
         raise ValueError(f"No valid numeric bars found for symbol {symbol}")
 
@@ -59,7 +59,7 @@ def normalize_bar_data(
     for column in ("open", "high", "low", "close", "volume"):
         normalized[column] = normalized[column].astype("float64")
 
-    normalized.sort_values(by="timestamp_ms", kind="mergesort", inplace=True)
-    normalized.drop_duplicates(subset=["timestamp_ms", "symbol"], keep="last", inplace=True)
-    normalized.reset_index(drop=True, inplace=True)
+    normalized = normalized.sort_values(by="timestamp_ms", kind="mergesort")
+    normalized = normalized.drop_duplicates(subset=["timestamp_ms", "symbol"], keep="last")
+    normalized = normalized.reset_index(drop=True)
     return normalized

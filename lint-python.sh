@@ -33,7 +33,7 @@ SERVICES=(
   "database-accessor-api"
   "indicator-api"
   "ingestion-service"
-  "webserver"
+  "realtime-service"
 )
 
 echo "🔍 Running Ruff checks..."

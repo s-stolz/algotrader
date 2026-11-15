@@ -165,10 +165,19 @@ live data**. Ingestion durably requests `invalid-continuity` recovery before
 acknowledging/discarding those rows, never writes them as live Candles, and clears
 any old open Candle. Historical retrieval recovers broker-available closed data.
 If storage is unavailable, the cursor stays put and retries. This deliberately
-keeps an old producer from silently bypassing protection. Webserver and Indicator
-consumers accept legacy and enriched rows: they ignore transport continuity and
-expose only their existing Candle/Indicator fields. They do not refresh chart
-history or rebuild an existing live Indicator session.
+keeps an old producer from silently bypassing protection. Realtime service and
+Indicator consumers accept legacy and enriched rows; publication continuity is
+not exposed as a Candle/Indicator value. Realtime delivery and rolling
+single-symbol Indicators ignore it. Daily basket Indicators use session changes
+and Redis interruptions to request fresh storage history and rebuild cumulative
+state. Recovery remains pending through the interrupted forming Candle's close;
+missing inputs silently pause output until storage supplies them. Ingestion owns
+durable backfill. Daily snapshots read raw M1 closes and wait while existing
+pending recovery or live write guards overlap their closed input range; newer
+stored rows alone do not establish that backfill finished. Corrected older
+Indicator points carry the optional replay
+marker so charts merge them without rewinding the live tail. See
+[daily basket adaptation](../../indicator-api/CONTEXT.md#historical-and-live-paths).
 
 Authentication, healthy containers and fresh live delivery establish connection
 health only. Historical recovery succeeds only when the finite interval's broker
@@ -239,7 +248,7 @@ Fresh volumes use `01-run-migrations.sh`; existing volumes use `make migrate-db`
 Replay skips identical migrations; missing/renamed files, duplicate versions,
 gaps and checksum drift fail before pending SQL. Applied SQL is immutable;
 later changes require a new forward migration. See the
-[Timescale context](../../timescaledb-init/CONTEXT.md) for legacy baselining.
+[Timescale context](../../timescaledb-init/CONTEXT.md) for database initialization and ledgered upgrades.
 
 For existing volumes:
 
@@ -248,7 +257,7 @@ For existing volumes:
 2. Build/deploy the self-contained Timescale image, then run `make migrate-db`.
    Use the configured database and preserve its migration ledger. For queued or
    running backtests, follow the [worker cutover](../operations/backtest-worker-recovery.md#upgrade-with-queued-or-running-work).
-3. Deploy the compatible accessor/shared client and the webserver/Indicator
+3. Deploy the compatible accessor/shared client and the realtime-service/Indicator
    consumers. Deploy/restart the continuity-producing broker while ingestion stays
    stopped. Retained legacy Redis rows may remain: protected startup snapshots the
    tail and recovers from the database boundary through subscription establishment;

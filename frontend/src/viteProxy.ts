@@ -10,10 +10,15 @@ function serviceTarget(
   portKey: string,
   fallbackPort: string,
 ): string {
-  return env[explicitKey] || `http://${env[hostKey] || fallbackHost}:${env[portKey] || fallbackPort}`;
+  return (
+    env[explicitKey] ||
+    `http://${env[hostKey] || fallbackHost}:${env[portKey] || fallbackPort}`
+  );
 }
 
-export function createDevServerProxy(env: DevServerEnv): Record<string, ProxyOptions> {
+export function createDevServerProxy(
+  env: DevServerEnv,
+): Record<string, ProxyOptions> {
   return {
     '/api/data-accessor': {
       target: serviceTarget(

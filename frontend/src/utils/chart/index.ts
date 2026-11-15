@@ -1,3 +1,4 @@
+export { marketPricePrecision } from './priceFormatting';
 export { ChartManager } from './ChartManager';
 export {
   createChartInfrastructure,
@@ -9,10 +10,12 @@ export {
   type ChartSeriesMarker,
   type ManagedSeriesApi,
 } from './chartInfrastructure';
-export { IndicatorManager, type IndicatorChartManager } from './IndicatorManager';
+export {
+  IndicatorManager,
+  type IndicatorChartManager,
+} from './IndicatorManager';
 export {
   buildMeasurementOverlayModel,
-  measurementPricePrecision,
   type MeasurementOverlayDirection,
   type MeasurementOverlayInput,
 } from './measurementOverlay';

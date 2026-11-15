@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, NoReturn
+from typing import Any, Mapping, NoReturn
 
 import numpy as np
 import pandas as pd
 from data.feature_stream import EventDrivenFeatureStream
+from data.indicator_inputs import needs_source_inputs
 from data.normalization import normalize_bar_data
 from domain.enums import (
     AllowedDirections,
@@ -20,8 +21,11 @@ from domain.enums import (
     OrderSide,
     PriceSource,
     SignalTiming,
+    StrategySignal,
     TradeAccountingPolicy,
 )
+from domain.progress import CandleProgress, report_progress
+from domain.schedule import DAY_MS, DailyTradingSchedule
 from domain.types import (
     BacktestRequest,
     BacktestResult,
@@ -36,14 +40,34 @@ from reporting.metrics import compute_metrics
 from strategies.base import StrategyDefinition
 
 
-def run_event_driven_backtest(
+def run_event_driven_backtest(  # noqa: C901
     *,
     request: BacktestRequest,
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
+    feature_bars: Mapping[str, pd.DataFrame] | None = None,
+    execution_bars: pd.DataFrame | None = None,
 ) -> BacktestResult:
     """Run a single-symbol event-driven bar backtest."""
+    if request.execution.execution_mode == "orders":
+        from data.order_inputs import prepare_order_inputs
 
+        from engines.order_event_driven import run_order_event_driven
+
+        featured, minutes = prepare_order_inputs(
+            request=request,
+            bars=bars,
+            strategy=strategy,
+            execution_bars=execution_bars,
+            feature_bars=feature_bars,
+        )
+        return run_order_event_driven(
+            request=request, strategy_bars=featured, execution_bars=minutes, strategy=strategy
+        )
+    if strategy.order_model is not None:
+        raise ValueError("Order strategies require execution_mode=orders")
+
+    report_progress("preparing_indicators")
     _validate_event_driven_request(request=request, strategy=strategy)
 
     symbol = str(request.symbols[0])
@@ -51,16 +75,85 @@ def run_event_driven_backtest(
     normalized = normalized.loc[normalized["timestamp_ms"] < int(request.end_ms)].copy()
     if normalized.empty:
         raise ValueError("No bars found before request end_ms for event-driven execution")
-    normalized.sort_values("timestamp_ms", kind="mergesort", inplace=True)
-    normalized.reset_index(drop=True, inplace=True)
+    normalized = normalized.sort_values("timestamp_ms", kind="mergesort")
+    normalized = normalized.reset_index(drop=True)
+
+    if request.execution.sizing is not None:
+        from data.order_bars import close_timestamps
+
+        from engines.sized_targets_event_driven import run_sized_targets
+
+        model = strategy.require_v1_parity_model()
+        stream = EventDrivenFeatureStream(
+            strategy=strategy,
+            symbol=symbol,
+            timeframe=request.timeframe,
+            bars=normalized if needs_source_inputs(strategy) else None,
+            feature_bars=feature_bars,
+        )
+        boundaries = close_timestamps(normalized, request.timeframe)
+
+        progress = CandleProgress(int((normalized["timestamp_ms"] >= request.start_ms).sum()))
+
+        def decisions():
+            previous = None
+            started = False
+            for row, boundary in zip(normalized.itertuples(index=False), boundaries):
+                bar = _bar_from_row(row)
+                if bar.timestamp_ms >= request.start_ms:
+                    if progress.processed == 0:
+                        report_progress("simulating")
+                    progress.begin_candle()
+                snapshot = stream.update(bar)
+                if snapshot is None:
+                    continue
+                current = dict(snapshot.features)
+                if bar.timestamp_ms < request.start_ms:
+                    previous = current
+                    continue
+                if not started:
+                    previous = None if needs_source_inputs(strategy) else previous
+                started = True
+                signal = model.evaluate_sequential_signal(
+                    previous=previous,
+                    current=current,
+                    allowed_directions=request.execution.allowed_directions,
+                )
+                previous = current
+                target_quantity = _target_quantity_for_signal(
+                    signal=int(signal),
+                    target_quantity=model.target_quantity,
+                    allowed_directions=request.execution.allowed_directions,
+                )
+                target_quantity = _apply_single_target_transforms(
+                    strategy=strategy,
+                    symbol=symbol,
+                    timestamp_ms=int(bar.timestamp_ms),
+                    target_quantity=target_quantity,
+                    allowed_directions=request.execution.allowed_directions,
+                )
+                yield (
+                    int(bar.timestamp_ms),
+                    float(bar.open),
+                    float(bar.high),
+                    float(bar.low),
+                    float(bar.close),
+                    int(signal),
+                    boundary,
+                    target_quantity,
+                )
+
+        return run_sized_targets(request, strategy, decisions(), progress=progress)
 
     run_result = _run_event_driven_loop(
         request=request,
         bars=normalized,
         strategy=strategy,
         symbol=symbol,
+        feature_bars=feature_bars,
     )
 
+    report_progress("calculating_results")
     equity_curve = run_result.equity_curve
     trades = build_trades_from_fills(run_result.fill_result.fills)
     metrics = compute_metrics(equity_curve=equity_curve, trades=trades)
@@ -108,6 +201,9 @@ class _SequentialRuntimeState:
     desired_target: float = 0.0
     actual_position: float = 0.0
     entry_price: float | None = None
+    position_exit_ms: int | None = None
+    entry_day: int | None = None
+    entries_today: int = 0
     pending: list[_PendingDelta] = field(default_factory=list)
     executed_delta: list[float] = field(default_factory=list)
     executed_notional: list[float] = field(default_factory=list)
@@ -148,24 +244,28 @@ def _run_event_driven_loop(
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
     symbol: str,
+    feature_bars: Mapping[str, pd.DataFrame] | None = None,
 ) -> _SequentialRunResult:
     bar_model = strategy.require_v1_parity_model()
     stream = EventDrivenFeatureStream(
         strategy=strategy,
         symbol=symbol,
         timeframe=request.timeframe,
+        bars=bars if needs_source_inputs(strategy) else None,
+        feature_bars=feature_bars,
     )
 
     start_ms = int(request.start_ms)
     end_ms = int(request.end_ms)
     bootstrap_bars = bars.loc[bars["timestamp_ms"] < start_ms]
-    tradable_bars = bars.loc[(bars["timestamp_ms"] >= start_ms) & (bars["timestamp_ms"] < end_ms)]
+    in_window_bars = bars.loc[(bars["timestamp_ms"] >= start_ms) & (bars["timestamp_ms"] < end_ms)]
 
     previous_features: dict[str, float] | None = None
     processed_bar_count = len(bars)
     feature_snapshot_count = 0
     nonzero_signal_count = 0
     state = _SequentialRuntimeState(initial_capital=float(request.initial_capital))
+    previous_open_ms: int | None = None
 
     for row in bootstrap_bars.itertuples(index=False):
         bar = _bar_from_row(row)
@@ -175,18 +275,39 @@ def _run_event_driven_loop(
         feature_snapshot_count += 1
         previous_features = dict(snapshot.features)
 
-    if strategy.indicator_requirements and previous_features is None:
-        required_features = _format_required_indicator_features(strategy)
-        raise ValueError(
-            "Event-driven bar bootstrap has insufficient warmup before start_ms "
-            f"{start_ms} for strategy '{strategy.strategy_id}'; required feature(s): "
-            f"{required_features}"
-        )
+    if needs_source_inputs(strategy):
+        previous_features = None
 
-    for row in tradable_bars.itertuples(index=False):
+    report_progress("simulating")
+    progress = CandleProgress(len(in_window_bars))
+    for row in in_window_bars.itertuples(index=False):
+        progress.begin_candle()
         bar = _bar_from_row(row)
+        snapshot = stream.update(bar)
+        if snapshot is None:
+            if previous_features is None:
+                continue
+            _raise_runtime_invalid_feature_snapshot(
+                strategy=strategy,
+                symbol=symbol,
+                timestamp_ms=int(bar.timestamp_ms),
+            )
         bar_index = state.start_bar()
         protective_exit = bar_model.protective_exit
+
+        if request.execution.daily_schedule is not None:
+            _apply_daily_schedule_at_open(
+                state=state,
+                schedule=request.execution.daily_schedule,
+                timestamp_ms=int(bar.timestamp_ms),
+                previous_timestamp_ms=previous_open_ms,
+            )
+        _apply_daily_entry_limit_at_open(
+            state=state,
+            timestamp_ms=int(bar.timestamp_ms),
+            maximum=request.execution.max_entries_per_day,
+        )
+        previous_position = state.actual_position
 
         _execute_pending_at_open(
             state=state,
@@ -200,6 +321,18 @@ def _run_event_driven_loop(
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
         )
+
+        state.entries_today += int(
+            state.actual_position * previous_position < 0.0
+            or abs(state.actual_position) > abs(previous_position)
+        )
+        _update_scheduled_exit(
+            state=state,
+            schedule=request.execution.daily_schedule,
+            previous_position=previous_position,
+            timestamp_ms=int(bar.timestamp_ms),
+        )
+        previous_open_ms = int(bar.timestamp_ms)
 
         _execute_protective_exit_if_triggered(
             state=state,
@@ -216,17 +349,11 @@ def _run_event_driven_loop(
             commission_bps=float(request.execution.commission_bps),
         )
 
-        snapshot = stream.update(bar)
-        if snapshot is None:
-            _raise_runtime_invalid_feature_snapshot(
-                strategy=strategy,
-                symbol=symbol,
-                timestamp_ms=int(bar.timestamp_ms),
-            )
         feature_snapshot_count += 1
         signal = bar_model.evaluate_sequential_signal(
             previous=previous_features,
             current=snapshot.features,
+            allowed_directions=request.execution.allowed_directions,
         )
         previous_features = dict(snapshot.features)
         if signal != 0:
@@ -248,6 +375,7 @@ def _run_event_driven_loop(
             close_price=float(bar.close),
         )
 
+    progress.report()
     if not state.snapshots:
         raise ValueError(
             "No executable bars remain after warmup/feature trimming for the requested window"
@@ -260,6 +388,75 @@ def _run_event_driven_loop(
         feature_snapshot_count=feature_snapshot_count,
         nonzero_signal_count=nonzero_signal_count,
     )
+
+
+def _apply_daily_entry_limit_at_open(
+    *,
+    state: _SequentialRuntimeState,
+    timestamp_ms: int,
+    maximum: int | None,
+) -> None:
+    if maximum is None:
+        return
+    day = timestamp_ms // DAY_MS
+    if state.entry_day != day:
+        state.entry_day = day
+        state.entries_today = 0
+    if state.entries_today < maximum:
+        return
+    pending_target = state.actual_position + _pending_total(state.pending)
+    if pending_target * state.actual_position < 0.0:
+        allowed_target = 0.0
+    elif abs(pending_target) > abs(state.actual_position):
+        allowed_target = state.actual_position
+    else:
+        return
+    state.pending.clear()
+    if allowed_target != state.actual_position:
+        state.pending.append(_PendingDelta(quantity=allowed_target - state.actual_position))
+    state.desired_target = allowed_target
+    state.raw_desired_target = allowed_target
+
+
+def _update_scheduled_exit(
+    *,
+    state: _SequentialRuntimeState,
+    schedule: DailyTradingSchedule | None,
+    previous_position: float,
+    timestamp_ms: int,
+) -> None:
+    if schedule is None or state.actual_position == 0.0:
+        state.position_exit_ms = None
+    elif previous_position * state.actual_position <= 0.0:
+        state.position_exit_ms = schedule.exit_timestamp(timestamp_ms)
+
+
+def _apply_daily_schedule_at_open(
+    *,
+    state: _SequentialRuntimeState,
+    schedule: DailyTradingSchedule,
+    timestamp_ms: int,
+    previous_timestamp_ms: int | None,
+) -> None:
+    pending_target = state.actual_position + _pending_total(state.pending)
+    allowed_target = pending_target
+    new_day = (
+        previous_timestamp_ms is not None
+        and timestamp_ms // DAY_MS != previous_timestamp_ms // DAY_MS
+    )
+    if state.position_exit_ms is not None and timestamp_ms >= state.position_exit_ms:
+        allowed_target = 0.0
+    elif not schedule.allows_entry(timestamp_ms) or new_day:
+        if pending_target * state.actual_position < 0.0:
+            allowed_target = 0.0
+        elif abs(pending_target) > abs(state.actual_position):
+            allowed_target = state.actual_position
+    if allowed_target != pending_target or (new_day and state.desired_target != allowed_target):
+        state.pending.clear()
+        if allowed_target != state.actual_position:
+            state.pending.append(_PendingDelta(quantity=allowed_target - state.actual_position))
+        state.desired_target = allowed_target
+        state.raw_desired_target = allowed_target
 
 
 def _execute_pending_at_open(
@@ -389,6 +586,7 @@ def _execute_protective_exit_if_triggered(
     )
     state.raw_desired_target = 0.0
     state.desired_target = 0.0
+    state.position_exit_ms = None
     state.pending.clear()
 
 
@@ -598,6 +796,8 @@ def _target_quantity_for_signal(
     target_quantity: float,
     allowed_directions: AllowedDirections,
 ) -> float:
+    if signal == StrategySignal.FLAT:
+        return 0.0
     if signal > 0:
         if allowed_directions == AllowedDirections.SHORT_ONLY:
             return 0.0
@@ -657,72 +857,6 @@ def _apply_slippage(*, raw_open: float, side: OrderSide, slippage_bps: float) ->
     if side == OrderSide.BUY:
         return float(raw_open * (1.0 + factor))
     return float(raw_open * (1.0 - factor))
-
-
-def _stop_loss_fill_price(
-    *,
-    raw_open: float,
-    low_price: float,
-    entry_price: float | None,
-    stop_loss_pct: float,
-    actual_position: float,
-) -> float | None:
-    if actual_position == 0.0 or entry_price is None:
-        return None
-
-    stop_price = _stop_loss_price(
-        entry_price=entry_price,
-        stop_loss_pct=stop_loss_pct,
-        actual_position=actual_position,
-    )
-    gap_fill_price = _stop_loss_gap_fill_price(
-        raw_open=raw_open,
-        stop_price=stop_price,
-        actual_position=actual_position,
-    )
-    if gap_fill_price is not None:
-        return gap_fill_price
-    if _stop_loss_touched(
-        high_price=None,
-        low_price=low_price,
-        stop_price=stop_price,
-        actual_position=actual_position,
-    ):
-        return float(stop_price)
-    return None
-
-
-def _take_profit_fill_price(
-    *,
-    raw_open: float,
-    high_price: float,
-    entry_price: float | None,
-    take_profit_pct: float,
-    actual_position: float,
-) -> float | None:
-    if actual_position == 0.0 or entry_price is None:
-        return None
-
-    target_price = _take_profit_price(
-        entry_price=entry_price,
-        take_profit_pct=take_profit_pct,
-        actual_position=actual_position,
-    )
-    gap_fill_price = _take_profit_gap_fill_price(
-        raw_open=raw_open,
-        target_price=target_price,
-        actual_position=actual_position,
-    )
-    if gap_fill_price is not None:
-        return gap_fill_price
-    if _take_profit_touched(
-        high_price=high_price,
-        low_price=None,
-        target_price=target_price,
-        actual_position=actual_position,
-    ):
-        return float(target_price)
-    return None
 
 
 @dataclass(frozen=True)

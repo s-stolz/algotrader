@@ -1,16 +1,30 @@
 <template>
-  <div v-if="headerLine.length > 0" class="upload-data-preview">
-    <BaseDataTable :bordered="true" :single-line="false">
+  <div
+    v-if="headerLine.length > 0"
+    class="upload-data-preview"
+  >
+    <BaseDataTable
+      :bordered="true"
+      :single-line="false"
+    >
       <tbody>
         <tr>
-          <td v-for="(column, index) in headerLine" :key="index">{{ column }}</td>
+          <td
+            v-for="(column, index) in headerLine"
+            :key="index"
+            >{{ column }}</td
+          >
         </tr>
         <tr>
-          <td v-for="(column, index) in headerLine" :key="index">
+          <td
+            v-for="(column, index) in headerLine"
+            :key="index"
+          >
             <BaseSelect
               :value="columnMapping[index]"
               :options="columnOptions"
               placeholder="Select field"
+              :aria-label="`Field for ${column}`"
               clearable
               @update:value="(value) => updateColumnMapping(index, value)"
             />
@@ -53,7 +67,10 @@ const columnOptions: SelectOption[] = [
   { label: 'Ignore', value: '' },
 ];
 
-function updateColumnMapping(index: number, value: UploadColumnField | '' | null): void {
+function updateColumnMapping(
+  index: number,
+  value: UploadColumnField | '' | null,
+): void {
   const newMapping: UploadColumnMapping = { ...props.columnMapping };
   newMapping[index] = value;
   emit('update:column-mapping', newMapping);
@@ -62,7 +79,7 @@ function updateColumnMapping(index: number, value: UploadColumnField | '' | null
 
 <style scoped>
 .upload-data-preview {
-  margin-bottom: 24px;
+  margin-bottom: var(--design-space-xl);
 }
 
 td {

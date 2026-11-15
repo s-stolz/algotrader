@@ -18,12 +18,16 @@ export interface MarketFilter {
   exchange?: string | null;
 }
 
-export async function fetchMarkets(filters: MarketFilter = {}): Promise<Market[]> {
+export async function fetchMarkets(
+  filters: MarketFilter = {},
+): Promise<Market[]> {
   const payload = await parseJsonResponse(
-    await fetch(withQuery(MARKETS_BASE_URL, {
-      symbol: filters.symbol,
-      exchange: filters.exchange,
-    })),
+    await fetch(
+      withQuery(MARKETS_BASE_URL, {
+        symbol: filters.symbol,
+        exchange: filters.exchange,
+      }),
+    ),
     'Failed to fetch markets',
   );
 
@@ -34,11 +38,16 @@ export async function fetchMarkets(filters: MarketFilter = {}): Promise<Market[]
   return payload;
 }
 
-export async function fetchMarket(symbol: string, filters: Omit<MarketFilter, 'symbol'> = {}): Promise<Market> {
+export async function fetchMarket(
+  symbol: string,
+  filters: Omit<MarketFilter, 'symbol'> = {},
+): Promise<Market> {
   const payload = await parseJsonResponse(
-    await fetch(withQuery(`${MARKETS_BASE_URL}/${encodeURIComponent(symbol)}`, {
-      exchange: filters.exchange,
-    })),
+    await fetch(
+      withQuery(`${MARKETS_BASE_URL}/${encodeURIComponent(symbol)}`, {
+        exchange: filters.exchange,
+      }),
+    ),
     'Failed to fetch market',
   );
 
@@ -49,7 +58,9 @@ export async function fetchMarket(symbol: string, filters: Omit<MarketFilter, 's
   return payload;
 }
 
-export async function createMarket(payload: MarketCreatePayload): Promise<MarketCreateResponse> {
+export async function createMarket(
+  payload: MarketCreatePayload,
+): Promise<MarketCreateResponse> {
   const responsePayload = await parseJsonResponse(
     await fetch(MARKETS_BASE_URL, {
       method: 'POST',
@@ -66,13 +77,19 @@ export async function createMarket(payload: MarketCreatePayload): Promise<Market
   return responsePayload;
 }
 
-export async function deleteMarket(symbol: string, filters: Omit<MarketFilter, 'symbol'> = {}): Promise<DeleteResponse> {
+export async function deleteMarket(
+  symbol: string,
+  filters: Omit<MarketFilter, 'symbol'> = {},
+): Promise<DeleteResponse> {
   const payload = await parseJsonResponse(
-    await fetch(withQuery(`${MARKETS_BASE_URL}/${encodeURIComponent(symbol)}`, {
-      exchange: filters.exchange,
-    }), {
-      method: 'DELETE',
-    }),
+    await fetch(
+      withQuery(`${MARKETS_BASE_URL}/${encodeURIComponent(symbol)}`, {
+        exchange: filters.exchange,
+      }),
+      {
+        method: 'DELETE',
+      },
+    ),
     'Failed to delete market',
   );
 
@@ -81,4 +98,21 @@ export async function deleteMarket(symbol: string, filters: Omit<MarketFilter, '
   }
 
   return payload;
+}
+
+export async function updateMarket(
+  symbolId: number,
+  payload: MarketCreatePayload,
+): Promise<MarketCreateResponse> {
+  const result = await parseJsonResponse(
+    await fetch(`${MARKETS_BASE_URL}/id/${symbolId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Failed to update symbol',
+  );
+  if (!isMarketCreateResponse(result))
+    throw new Error('Invalid market update response');
+  return result;
 }

@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
-from datetime import datetime, timezone
-from typing import Callable, Protocol
-from uuid import uuid4
+from typing import Protocol
 
 from adapters.db_accessor import DatabaseAccessorHistoricalDataAdapter, HistoricalBarDataAdapter
-from db_accessor_client import DatabaseAccessorClientError, normalize_timeframe_code
+from db_accessor_client import normalize_timeframe_code
 from domain.enums import (
     BacktestEngine,
     BacktestRunStatus,
@@ -19,11 +17,9 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
-from domain.experiment_names import normalize_experiment_name
 from domain.types import (
     BacktestFillRecord,
     BacktestRequest,
-    BacktestRequestSnapshot,
     BacktestRunCancellation,
     BacktestRunQuery,
     BacktestRunRecord,
@@ -48,21 +44,15 @@ from app.equity_replay import (
 class BacktestRunRepository(Protocol):
     """Persistence boundary used by durable run application workflows."""
 
-    def create(self, run: BacktestRunRecord) -> BacktestRunRecord: ...
-
     def get(self, run_id: str) -> BacktestRunRecord | None: ...
 
     def cancel(self, run_id: str) -> BacktestRunCancellation: ...
-
-    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord: ...
 
     def list(self, query: BacktestRunQuery) -> list[BacktestRunRecord]: ...
 
     def get_fills(self, run_id: str) -> list[BacktestFillRecord]: ...
 
     def get_trades(self, run_id: str) -> list[BacktestTradeRecord]: ...
-
-    def delete(self, run_id: str) -> bool: ...
 
 
 class InvalidBacktestRequestError(ValueError):
@@ -92,29 +82,10 @@ class BacktestRunService:
         self,
         *,
         repository: BacktestRunRepository,
-        new_run_id: Callable[[], str] | None = None,
-        now_ms: Callable[[], int] | None = None,
         data_adapter: HistoricalBarDataAdapter | None = None,
     ) -> None:
         self._repository = repository
-        self._new_run_id = new_run_id or _new_run_id
-        self._now_ms = now_ms or _utc_now_ms
         self._data_adapter = data_adapter
-
-    def submit(self, request: BacktestRequest, *, name: str | None = None) -> BacktestRunRecord:
-        request = _validate_submission(request)
-        name = normalize_experiment_name(name)
-        run = BacktestRunRecord(
-            run_id=self._new_run_id(),
-            name=name,
-            status=BacktestRunStatus.QUEUED,
-            submitted_at_ms=self._now_ms(),
-            request_snapshot=BacktestRequestSnapshot.from_request(request),
-        )
-        try:
-            return self._repository.create(run)
-        except Exception as exc:
-            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
     def get(self, run_id: str) -> BacktestRunRecord:
         try:
@@ -124,22 +95,6 @@ class BacktestRunService:
         if run is None:
             raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
         return run
-
-    def rename(self, run_id: str, name: str | None) -> BacktestRunRecord:
-        name = normalize_experiment_name(name)
-        run = self.get(run_id)
-        if run.batch_id is not None:
-            raise BacktestRunConflictError("Batch members have no experiment name")
-        try:
-            return self._repository.rename(run_id, name)
-        except DatabaseAccessorClientError as exc:
-            if exc.status_code == 404:
-                raise BacktestRunNotFoundError("Backtest run not found") from exc
-            if exc.status_code == 409:
-                raise BacktestRunConflictError("Batch members have no experiment name") from exc
-            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
-        except Exception as exc:
-            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
     def cancel(self, run_id: str) -> BacktestRunRecord:
         try:
@@ -175,7 +130,9 @@ class BacktestRunService:
         except Exception as exc:
             raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
 
-    def get_equity_curve(self, run_id: str, max_points: int = 2000) -> dict[str, object]:
+    def get_equity_curve(  # noqa: C901
+        self, run_id: str, max_points: int = 2000
+    ) -> dict[str, object]:
         if not 100 <= max_points <= 10000:
             raise ValueError("max_points must be between 100 and 10000")
         run = self.get(run_id)
@@ -191,11 +148,13 @@ class BacktestRunService:
             or not valid_descriptor(saved)
         ):
             return _unavailable_curve("unsupported_replay_shape")
-        adapter = self._data_adapter or DatabaseAccessorHistoricalDataAdapter()
+        adapter = self._data_adapter or DatabaseAccessorHistoricalDataAdapter.for_request(request)
         try:
             bars = adapter.fetch_bars(
                 symbol=request.symbols[0],
-                timeframe=request.timeframe,
+                timeframe=(
+                    "M1" if request.execution.execution_mode == "orders" else request.timeframe
+                ),
                 start_ms=request.start_ms,
                 end_ms=request.end_ms,
                 exchange=request.exchange,
@@ -205,7 +164,13 @@ class BacktestRunService:
         except Exception as exc:
             raise BacktestCandleUnavailableError("Candle service unavailable") from exc
         try:
+            if request.execution.execution_mode == "orders":
+                from data.order_bars import minute_bars
+
+                bars = minute_bars(request, bars)
             closes = executable_closes(bars, first_timestamp_ms=int(saved["first_timestamp_ms"]))
+            if request.execution.sizing is not None:
+                closes = [point for point in closes if point[0] <= int(saved["last_timestamp_ms"])]
             fills = self._repository.get_fills(run_id)
             points = replay(request, saved, closes, fills)
         except ReplayUnavailableError as exc:
@@ -230,25 +195,6 @@ class BacktestRunService:
             return self._repository.get_trades(run_id)
         except Exception as exc:
             raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
-
-    def delete(self, run_id: str) -> None:
-        run = self.get(run_id)
-        if run.batch_id is not None:
-            raise BacktestRunConflictError("Batch members cannot be deleted individually")
-        if run.status not in (
-            BacktestRunStatus.SUCCEEDED,
-            BacktestRunStatus.FAILED,
-            BacktestRunStatus.CANCELLED,
-        ):
-            raise BacktestRunConflictError("Cancel and settle this run before deleting it")
-        try:
-            deleted = self._repository.delete(run_id)
-        except BacktestRunConflictError:
-            raise
-        except Exception as exc:
-            raise BacktestRunPersistenceError("Backtest persistence unavailable") from exc
-        if not deleted:
-            raise BacktestRunNotFoundError(f"Backtest run not found: {run_id}")
 
 
 def _validate_submission(request: BacktestRequest) -> BacktestRequest:
@@ -280,6 +226,11 @@ def _validate_request_shape(request: BacktestRequest) -> None:
 
 def _validate_execution(request: BacktestRequest) -> None:
     execution = request.execution
+    if execution.sizing is not None and request.instrument is None:
+        raise InvalidBacktestRequestError("Sizing requires saved instrument specifications")
+    if execution.sizing is not None and execution.sizing.mode in ("risk", "equity_risk"):
+        if execution.stop_loss is not None and execution.stop_loss.mode == "none":
+            raise InvalidBacktestRequestError("Risk sizing requires an initial stop")
     supported_execution = (
         execution.signal_timing == SignalTiming.CLOSE
         and execution.fill_timing == FillTiming.NEXT_OPEN
@@ -291,7 +242,7 @@ def _validate_execution(request: BacktestRequest) -> None:
         raise InvalidBacktestRequestError("Unsupported execution configuration")
 
 
-def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
+def _validate_strategy(request: BacktestRequest) -> BacktestRequest:  # noqa: C901
     if request.strategy.strategy_version is None:
         raise InvalidBacktestRequestError("strategy_version is required")
     try:
@@ -304,6 +255,29 @@ def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
         raise
     except ValueError as exc:
         raise InvalidBacktestRequestError(str(exc)) from exc
+    if request.execution.execution_mode == "orders":
+        if strategy.order_model is None:
+            raise InvalidBacktestRequestError("Order execution requires an order strategy")
+        if strategy.order_model.requires_min_move and request.market_min_move is None:
+            raise InvalidBacktestRequestError(
+                "Selected market requires a positive min_move for tick protection"
+            )
+        if strategy.sizing_model is not None or strategy.risk_rules:
+            raise InvalidBacktestRequestError(
+                "Target transforms cannot be used with explicit orders"
+            )
+        return replace(request, strategy=resolved)
+    if strategy.order_model is not None:
+        raise InvalidBacktestRequestError("Order strategies require execution_mode=orders")
+    sizing = request.execution.sizing
+    stop = request.execution.stop_loss
+    if (
+        sizing is not None
+        and sizing.mode in ("risk", "equity_risk")
+        and (stop is None or stop.mode == "strategy")
+    ):
+        if strategy.bar_model is None or strategy.bar_model.protective_exit.stop_loss_pct is None:
+            raise InvalidBacktestRequestError("Selected strategy does not provide an initial stop")
     if not strategy.is_v1_parity_compatible:
         raise InvalidBacktestRequestError("Backtest requests require a v1 declarative bar strategy")
     return replace(request, strategy=resolved)
@@ -311,14 +285,6 @@ def _validate_strategy(request: BacktestRequest) -> BacktestRequest:
 
 def _is_epoch_millisecond(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _new_run_id() -> str:
-    return str(uuid4())
-
-
-def _utc_now_ms() -> int:
-    return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
 def _unavailable_curve(reason: str) -> dict[str, object]:

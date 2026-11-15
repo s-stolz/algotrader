@@ -56,12 +56,42 @@ class RequiredAssetsIndicator(LastCloseIndicator):
     )
 
 
+class AggregateCloseIndicator(LastCloseIndicator):
+    spec = IndicatorSpec(
+        id="test_aggregate_close",
+        name="Test Aggregate Close",
+        outputs=["value"],
+        output_assets=["TOTAL"],
+        required_fields=["close"],
+    )
+
+    def batch(self, data: BarTensor, params: dict) -> Tensor:
+        return Tensor(
+            data=np.sum(data.data, axis=1, keepdims=True),
+            dims=("time", "asset", "output"),
+            coords={
+                "time": data.time,
+                "asset": np.array(["TOTAL"], dtype=object),
+                "output": np.array(["value"], dtype=object),
+            },
+        )
+
+
 class UpdateEngineTests(unittest.TestCase):
     def _registry(self) -> IndicatorRegistry:
         registry = IndicatorRegistry()
         registry.register(LastCloseIndicator())
         registry.register(RequiredAssetsIndicator())
+        registry.register(AggregateCloseIndicator())
         return registry
+
+    def test_batch_fallback_supports_declared_aggregate_output_assets(self) -> None:
+        engine = UpdateEngine(self._registry(), HistoryPolicy(mode="rolling", max_rows=2))
+        engine.register_indicator("test_aggregate_close", "M1", assets=["A", "B"], fields=["close"])
+        result = engine.on_bar("M1", 1000, np.array([[2.0], [3.0]]))["test_aggregate_close"]
+        self.assertEqual(result.coords["asset"].tolist(), ["TOTAL"])
+        self.assertEqual(result.data.shape, (1, 1, 1, 1))
+        self.assertEqual(result.data[0, 0, 0, 0], 5.0)
 
     def _required_row(self, a: float | None = None, b: float | None = None) -> np.ndarray:
         return np.array(

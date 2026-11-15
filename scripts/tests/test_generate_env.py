@@ -27,11 +27,6 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
     def test_component_tuning_changes_only_its_runtime_variables(self) -> None:
         cases = (
             (
-                "services.backtester.worker.poll_interval_seconds",
-                2.5,
-                "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS",
-            ),
-            (
                 "services.backtester.worker.heartbeat.interval_seconds",
                 7.0,
                 "BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS",
@@ -42,14 +37,20 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
                 "BACKTESTER_WORKER_STALE_AFTER_SECONDS",
             ),
             (
-                "services.backtester.sweeps.max_candidate_count",
+                "services.backtester.backtests.max_candidate_count",
                 250,
-                "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT",
+                "BACKTESTER_MAX_BACKTEST_CANDIDATE_COUNT",
             ),
-            ("services.webserver.consumer.block_ms", 1234, "WEBSERVER_REDIS_BLOCK_MS"),
-            ("services.webserver.consumer.batch_size", 17, "WEBSERVER_REDIS_BATCH_SIZE"),
-            ("services.webserver.streams.queue_size", 31, "WEBSERVER_STREAM_QUEUE_SIZE"),
-            ("services.webserver.streams.max_length", 500, "WEBSERVER_MAX_STREAM_LENGTH"),
+            (
+                "services.realtime_service.consumer.block_ms",
+                1234,
+                "REALTIME_SERVICE_REDIS_BLOCK_MS",
+            ),
+            (
+                "services.realtime_service.consumer.batch_size",
+                17,
+                "REALTIME_SERVICE_REDIS_BATCH_SIZE",
+            ),
             ("services.ingestion_service.consumer.block_ms", 2345, "CONSUMER_BLOCK_MS"),
             ("services.ingestion_service.consumer.batch_size", 19, "CONSUMER_BATCH_SIZE"),
             ("services.broker_service.streams.ticks.queue_size", 37, "BROKER_TICK_QUEUE_SIZE"),
@@ -93,7 +94,7 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
             "port": 8100,
             "published_port": 18100,
         }
-        topology["services"]["webserver"]["network"]["websocket"] = {
+        topology["services"]["realtime_service"]["network"]["websocket"] = {
             "port": 8766,
             "published_port": 18766,
         }
@@ -107,10 +108,9 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
 
         shared, _, _, _ = generate_env.build_env(topology, {})
 
-        self.assertEqual(shared["DATABASE_ACCESSOR_BASE_URL"], "http://market-db-api:8100")
         self.assertEqual(shared["VITE_PROXY_DATA_ACCESSOR_TARGET"], "http://market-db-api:8100")
         self.assertEqual(shared["DATABASE_ACCESSOR_PUBLISHED_PORT"], "18100")
-        self.assertEqual(shared["WEBSERVER_WS_PORT"], "8766")
+        self.assertEqual(shared["REALTIME_SERVICE_WS_PORT"], "8766")
         self.assertEqual(shared["VITE_WS_URL"], "ws://workstation.local:18766")
         self.assertEqual(shared["REDIS_URL"], "redis://stream-store:6380/2")
         self.assertEqual(shared["BROKER_REDIS_URL"], "redis://stream-store:6380/3")
@@ -239,10 +239,9 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(shared_env["BACKTESTER_API_PUBLISHED_PORT"], "8020")
         self.assertEqual(shared_env["BACKTESTER_LOG_LEVEL"], "INFO")
         self.assertEqual(shared_env["BACKTESTER_LOG_FORMAT"], "pretty")
-        self.assertEqual(shared_env["BACKTESTER_WORKER_POLL_INTERVAL_SECONDS"], "1.0")
         self.assertEqual(shared_env["BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS"], "5.0")
         self.assertEqual(shared_env["BACKTESTER_WORKER_STALE_AFTER_SECONDS"], "30.0")
-        self.assertEqual(shared_env["BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT"], "1000")
+        self.assertEqual(shared_env["BACKTESTER_MAX_BACKTEST_CANDIDATE_COUNT"], "1000")
         self.assertEqual(
             shared_env["VITE_PROXY_BACKTESTER_TARGET"],
             "http://backtester-api:8020",

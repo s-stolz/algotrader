@@ -26,7 +26,7 @@ describe('candlesticks store', () => {
     vi.mocked(fetchCandles).mockReset();
   });
 
-  it('fetches candles through the typed client and prepends older history when appending', async () => {
+  it('fetches typed Candles and prepends older history', async () => {
     const newest = candle(2_000);
     const oldest = candle(1_000);
     vi.mocked(fetchCandles)
@@ -36,7 +36,12 @@ describe('candlesticks store', () => {
     const store = useCandlesticksStore();
 
     await store.fetch('EURUSD', 'M5', { limit: 1, exchange: 'FX' });
-    await store.fetch('EURUSD', 'M5', { endMs: 2_000, limit: 1, append: true, exchange: 'FX' });
+    await store.fetch('EURUSD', 'M5', {
+      endMs: 2_000,
+      limit: 1,
+      append: true,
+      exchange: 'FX',
+    });
 
     expect(fetchCandles).toHaveBeenNthCalledWith(1, 'EURUSD', 'M5', {
       startMs: null,
@@ -57,13 +62,28 @@ describe('candlesticks store', () => {
     const store = useCandlesticksStore();
     store.data = [candle(1_000, 1.5)];
 
-    store.updateCandle({ ...candle(1_000, 1.6), type: 'candleUpdate', symbol: 'EURUSD', timeframe: 'M1' });
+    store.updateCandle({
+      ...candle(1_000, 1.6),
+      type: 'candleUpdate',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    });
     expect(store.data).toEqual([candle(1_000, 1.6)]);
 
-    store.updateCandle({ ...candle(2_000, 1.7), type: 'candleUpdate', symbol: 'EURUSD', timeframe: 'M1' });
+    store.updateCandle({
+      ...candle(2_000, 1.7),
+      type: 'candleUpdate',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    });
     expect(store.data).toEqual([candle(1_000, 1.6), candle(2_000, 1.7)]);
 
-    store.updateCandle({ ...candle(500, 1.8), type: 'candleUpdate', symbol: 'EURUSD', timeframe: 'M1' });
+    store.updateCandle({
+      ...candle(500, 1.8),
+      type: 'candleUpdate',
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    });
     expect(store.data).toEqual([candle(1_000, 1.6), candle(2_000, 1.7)]);
   });
 

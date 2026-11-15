@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import numpy as np
 import pandas as pd
@@ -15,12 +15,27 @@ def build_feature_frame(
     *,
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
+    timeframe: str | None = None,
+    feature_bars: Mapping[str, pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     """Attach strategy-required indicator features to normalized bars."""
 
     indicator_requirements = _extract_indicator_requirements(strategy)
     if not indicator_requirements:
         return bars.copy()
+
+    from data.indicator_inputs import needs_source_inputs
+    from data.source_features import build_source_features
+
+    if needs_source_inputs(strategy):
+        if timeframe is None:
+            raise ValueError("Source indicators require a timeframe")
+        return build_source_features(
+            bars=bars,
+            strategy=strategy,
+            timeframe=timeframe,
+            feature_bars=feature_bars or {},
+        )
 
     run_indicator = _import_indicator_runner()
     feature_input = _build_indicator_input_frame(bars)
@@ -37,7 +52,7 @@ def build_feature_frame(
 
         resolved_key = _resolve_output_key(
             result_df.columns,
-            output_key=requirement.output_key,
+            output_key=requirement.resolve_output_key(str(bars["symbol"].iloc[0])),
             indicator_id=indicator_id,
         )
         feature_values = np.asarray(

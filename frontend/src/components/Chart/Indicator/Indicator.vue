@@ -5,7 +5,14 @@
       v-if="indicator.paneHtmlElement"
     >
       <div class="indicator-container">
-        <indicator-panel :indicator="indicator" @remove-indicator="onRemoveIndicator" />
+        <indicator-panel
+          :indicator="indicator"
+          @remove-indicator="onRemoveIndicator"
+        />
+        <IndicatorValues
+          :indicator="indicator"
+          :readout="readout"
+        />
       </div>
     </Teleport>
 
@@ -18,32 +25,35 @@
 </template>
 
 <script setup lang="ts">
-import { watch } from "vue";
+import { watch } from 'vue';
 
-import IndicatorPanel from "./IndicatorPanel.vue";
-import IndicatorSettingsModal from "./IndicatorSettingsModal.vue";
+import IndicatorPanel from './IndicatorPanel.vue';
+import IndicatorValues from './IndicatorValues.vue';
+import type { IndicatorReadout } from './indicatorReadout';
+import IndicatorSettingsModal from './IndicatorSettingsModal.vue';
 import {
   getOrCreatePaneOverlayWrapper,
   PANE_OVERLAY_SELECTOR,
-} from "@/utils/chart/paneOverlay";
+} from '@/utils/chart/paneOverlay';
 
 import type {
   IndicatorInstance,
   IndicatorManagerDependency,
   IndicatorStyleUpdatePayload,
-} from "./types";
+} from './types';
 
 defineOptions({
-  name: "Indicator",
+  name: 'Indicator',
 });
 
 const props = defineProps<{
   indicatorManager: IndicatorManagerDependency;
   indicator: IndicatorInstance;
+  readout?: IndicatorReadout;
 }>();
 
 const emit = defineEmits<{
-  "remove-indicator": [indicatorId: string];
+  'remove-indicator': [indicatorId: string];
 }>();
 
 watch(
@@ -88,17 +98,34 @@ watch(
 function onRemoveIndicator(indicatorId: string): void {
   props.indicatorManager.removeIndicatorSeriesAndData(indicatorId);
   void props.indicatorManager.updateMissingPaneHtmlElements();
-  emit("remove-indicator", indicatorId);
+  emit('remove-indicator', indicatorId);
 }
 
-function onUpdateStyles({ outputKey, styles }: IndicatorStyleUpdatePayload): void {
-  props.indicatorManager.updateIndicatorStyles(props.indicator._id, outputKey, styles);
+function onUpdateStyles({
+  outputKey,
+  styles,
+}: IndicatorStyleUpdatePayload): void {
+  props.indicatorManager.updateIndicatorStyles(
+    props.indicator._id,
+    outputKey,
+    styles,
+  );
 }
-
 </script>
 
 <style scoped>
 .indicator-container {
-  margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--design-space-sm) var(--design-space-md);
+  max-width: 100%;
+  margin-bottom: var(--design-space-sm);
+}
+
+.indicator-container :deep(.indicator-panel) {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
 }
 </style>

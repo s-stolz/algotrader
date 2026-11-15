@@ -20,7 +20,6 @@ MIGRATIONS_DIR = ROOT_DIR / "timescaledb-init" / "migrations"
 CONTAINER_MIGRATIONS_DIR = "/docker-entrypoint-initdb.d/migrations"
 MIGRATION_PATTERN = re.compile(r"^V(?P<version>\d{3})__(?P<name>[a-z0-9_]+)\.sql$")
 NON_TRANSACTIONAL_MARKER = "-- migrate-db: no-transaction"
-LEGACY_BASELINE_MAX_VERSION = 2
 MIGRATION_ADVISORY_LOCK_ID = 824_973_244_147_976_327
 LOCK_QUERY_COMPLETE_MARKER = "migration-lock-query-complete"
 
@@ -281,113 +280,23 @@ def ensure_no_checksum_drift(
             )
 
 
-def current_schema_matches_v002(psql: Psql) -> bool:
-    result = psql.run(
+def require_empty_unledgered_database(psql: Psql) -> None:
+    existing_tables = psql.run(
         """
-WITH checks AS (
-    SELECT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'markets'
-          AND column_name = 'timezone'
-    ) AS markets_timezone,
-    EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'candles'
-          AND column_name = 'timestamp_utc'
-    ) AS candles_timestamp_utc,
-    EXISTS (
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name IN ('backtest_runs', 'backtest_fills', 'backtest_closed_trades')
-        HAVING COUNT(*) = 3
-    ) AS backtest_tables,
-    NOT EXISTS (
-        SELECT 1
-        FROM (
-            VALUES
-                ('run_id'),
-                ('trade_sequence'),
-                ('trade_id'),
-                ('symbol'),
-                ('trade_direction'),
-                ('quantity'),
-                ('entry_timestamp_ms'),
-                ('entry_price'),
-                ('exit_timestamp_ms'),
-                ('exit_price'),
-                ('stop_loss_price'),
-                ('take_profit_price'),
-                ('realized_pnl'),
-                ('fees'),
-                ('exit_reason')
-        ) AS required_columns(column_name)
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM information_schema.columns existing_columns
-            WHERE existing_columns.table_schema = 'public'
-              AND existing_columns.table_name = 'backtest_closed_trades'
-              AND existing_columns.column_name = required_columns.column_name
-        )
-    ) AS closed_trade_columns,
-    EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'backtest_closed_trades'
-          AND column_name = 'trade_direction'
-          AND is_nullable = 'NO'
-    ) AS trade_direction_required,
-    EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'backtest_closed_trades_trade_direction_check'
-          AND conrelid = to_regclass('public.backtest_closed_trades')
-          AND contype = 'c'
-          AND convalidated
-          AND pg_get_constraintdef(oid) LIKE '%trade_direction%'
-          AND pg_get_constraintdef(oid) LIKE '%long%'
-          AND pg_get_constraintdef(oid) LIKE '%short%'
-    ) AS trade_direction_check
-)
-SELECT markets_timezone
-   AND candles_timestamp_utc
-   AND backtest_tables
-   AND closed_trade_columns
-   AND trade_direction_required
-   AND trade_direction_check
-FROM checks;
+SELECT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+      AND table_name <> 'schema_migrations'
+);
 """,
         capture=True,
     )
-    return result == "t"
-
-
-def baseline_existing_database(psql: Psql, migrations: list[Migration]) -> bool:
-    if not current_schema_matches_v002(psql):
-        return False
-
-    # V003's policies and compression settings and V004's historical refresh
-    # cannot be inferred reliably from the partial legacy catalog state. Replay
-    # both migrations, as well as every future migration.
-    baseline_migrations = [
-        migration for migration in migrations if migration.version <= LEGACY_BASELINE_MAX_VERSION
-    ]
-    values = ",\n".join(
-        (f"({migration.version}, {sql_literal(migration.name)}, {sql_literal(migration.checksum)})")
-        for migration in baseline_migrations
-    )
-    psql.run(f"""
-INSERT INTO schema_migrations (version, name, checksum_sha256)
-VALUES
-{values};
-""")
-    print(f"Baselined {len(baseline_migrations)} existing migrations.", flush=True)
-    return True
+    if existing_tables == "t":
+        raise SystemExit(
+            "Existing database has no migration history. Automatic adoption is unsupported; "
+            "restore its migration ledger or use a fresh database."
+        )
 
 
 def apply_migration(psql: Psql, migration: Migration) -> None:
@@ -444,8 +353,8 @@ def run_migrations(psql: Psql, migrations: list[Migration]) -> None:
         ensure_applied_files_exist(applied, migrations)
         ensure_no_checksum_drift(applied, migrations)
 
-        if not applied and baseline_existing_database(psql, migrations):
-            applied = read_applied(psql)
+        if not applied:
+            require_empty_unledgered_database(psql)
 
         apply_pending(psql, migrations, applied)
     finally:

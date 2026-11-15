@@ -59,6 +59,98 @@ describe('WebSocket service', () => {
     vi.unstubAllGlobals();
   });
 
+  it('restores valid stages without regressions or lifecycle refreshes', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+    const progress = vi.fn();
+    const changed = vi.fn();
+    wsService.on('backtestProgress', progress);
+    wsService.on('backtestChanged', changed);
+    wsService.connect('ws://example.test');
+    const [socket] = mockSockets;
+    socket.open();
+    const send = (run_id: string, stage: string) =>
+      socket.receive(
+        JSON.stringify({
+          type: 'backtestProgress',
+          run_id,
+          stage,
+        }),
+      );
+    send('run-a', 'simulating');
+    send('run-a', 'loading_data');
+    send('run-a', 'simulating');
+    send('run-a', 'unknown');
+    send('', 'saving');
+    expect(progress).toHaveBeenCalledTimes(1);
+    expect(wsService.backtestProgress.get('run-a')?.stage).toBe('simulating');
+    send('run-b', 'loading_data');
+    send('run-a', 'saving');
+    expect(wsService.backtestProgress.get('run-b')?.stage).toBe('loading_data');
+    expect(wsService.backtestProgress.get('run-a')?.stage).toBe('saving');
+    expect(changed).not.toHaveBeenCalled();
+    wsService.connect('ws://example.test');
+    mockSockets[1].open();
+    mockSockets[1].receive(
+      JSON.stringify({
+        type: 'backtestProgress',
+        run_id: 'run-a',
+        stage: 'preparing_indicators',
+      }),
+    );
+    expect(wsService.backtestProgress.get('run-a')?.stage).toBe('saving');
+    wsService.close();
+  });
+
+  it('accepts advancing candle counts but rejects stale or invalid snapshots', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+    const progress = vi.fn();
+    const changed = vi.fn();
+    wsService.on('backtestProgress', progress);
+    wsService.on('backtestChanged', changed);
+    wsService.connect('ws://example.test');
+    const [socket] = mockSockets;
+    socket.open();
+    const send = (
+      processed_candles: unknown,
+      total_candles: unknown,
+      stage = 'simulating',
+    ) =>
+      socket.receive(
+        JSON.stringify({
+          type: 'backtestProgress',
+          run_id: 'run-a',
+          stage,
+          processed_candles,
+          total_candles,
+        }),
+      );
+    send(0, 20000);
+    send(5000, 20000);
+    send(0, 20000);
+    send(5000, 20000);
+    send(undefined, undefined);
+    send(10000, 30000);
+    send(-1, 20000);
+    send(30000, 20000);
+    send(1.5, 20000);
+    send(10000, undefined);
+    send(10000, 20000);
+    expect(progress).toHaveBeenCalledTimes(3);
+    expect(wsService.backtestProgress.get('run-a')?.processed_candles).toBe(
+      10000,
+    );
+    send(undefined, undefined, 'calculating_results');
+    send(15000, 20000);
+    expect(progress).toHaveBeenCalledTimes(4);
+    expect(wsService.backtestProgress.get('run-a')?.stage).toBe(
+      'calculating_results',
+    );
+    expect(changed).not.toHaveBeenCalled();
+    wsService.close();
+  });
+
   it('waits for readiness before sending JSON payloads', async () => {
     const { wsService } = await loadService();
 
@@ -103,26 +195,35 @@ describe('WebSocket service', () => {
     const [socket] = mockSockets;
     socket.open();
 
-    socket.receive(JSON.stringify({
-      type: 'candleUpdate',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-      timestamp_ms: 1_700_000_000_000,
-      open: 1,
-      high: 2,
-      low: 0.5,
-      close: 1.5,
-      volume: 10,
-    }));
-    socket.receive(JSON.stringify({
-      type: 'indicatorUpdate',
-      clientIndicatorId: 'client-1',
-      timestamp_ms: 1_700_000_000_000,
-      values: { sma: 1.2, signal: null },
-    }));
+    socket.receive(
+      JSON.stringify({
+        type: 'candleUpdate',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+        timestamp_ms: 1_700_000_000_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10,
+      }),
+    );
+    socket.receive(
+      JSON.stringify({
+        type: 'indicatorUpdate',
+        clientIndicatorId: 'client-1',
+        timestamp_ms: 1_700_000_000_000,
+        values: { sma: 1.2, signal: null },
+      }),
+    );
 
     socket.receive(JSON.stringify({ type: 'candleUpdate', symbol: 'EURUSD' }));
-    socket.receive(JSON.stringify({ type: 'indicatorUpdate', clientIndicatorId: 'client-1' }));
+    socket.receive(
+      JSON.stringify({
+        type: 'indicatorUpdate',
+        clientIndicatorId: 'client-1',
+      }),
+    );
     socket.receive(JSON.stringify({ type: 'ready' }));
 
     expect(() => socket.receive('not json')).not.toThrow();
@@ -164,30 +265,57 @@ describe('WebSocket service', () => {
     const [socket] = mockSockets;
     socket.open();
 
-    socket.receive(JSON.stringify({
-      type: 'subscribed',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-    }));
-    socket.receive(JSON.stringify({
-      type: 'indicatorSubscribed',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-      indicatorId: 1,
-      clientIndicatorId: 'client-1',
-      streamId: null,
-    }));
-    socket.receive(JSON.stringify({
-      type: 'indicatorUnsubscribed',
-      symbol: 'EURUSD',
-      timeframe: 'M1',
-      indicatorId: 1,
-      clientIndicatorId: 'client-1',
-    }));
+    socket.receive(
+      JSON.stringify({
+        type: 'subscribed',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+      }),
+    );
+    socket.receive(
+      JSON.stringify({
+        type: 'indicatorSubscribed',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+        indicatorId: 1,
+        clientIndicatorId: 'client-1',
+        streamId: null,
+      }),
+    );
+    socket.receive(
+      JSON.stringify({
+        type: 'indicatorUnsubscribed',
+        symbol: 'EURUSD',
+        timeframe: 'M1',
+        indicatorId: 1,
+        clientIndicatorId: 'client-1',
+      }),
+    );
 
     expect(warn).not.toHaveBeenCalled();
     expect(candleHandler).not.toHaveBeenCalled();
     expect(indicatorHandler).not.toHaveBeenCalled();
+  });
+
+  it('preserves validated historical replay markers on indicator updates', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+    const handler = vi.fn();
+    wsService.on('indicatorUpdate', handler);
+    wsService.connect('ws://example.test');
+    mockSockets[0].open();
+    const message = {
+      type: 'indicatorUpdate',
+      clientIndicatorId: 'strength',
+      timestamp_ms: 1_700_000_000_000,
+      values: { EUR: 1.5 },
+      replay: true,
+    };
+    mockSockets[0].receive(JSON.stringify(message));
+    mockSockets[0].receive(JSON.stringify({ ...message, replay: 'true' }));
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith(message);
+    wsService.close();
   });
 
   it('emits server error messages without classifying them as invalid', async () => {
@@ -203,13 +331,18 @@ describe('WebSocket service', () => {
     const [socket] = mockSockets;
     socket.open();
 
-    socket.receive(JSON.stringify({
-      type: 'error',
-      error: 'Missing symbol or timeframe',
-    }));
+    socket.receive(
+      JSON.stringify({
+        type: 'error',
+        error: 'Missing symbol or timeframe',
+      }),
+    );
 
     expect(warn).not.toHaveBeenCalled();
-    expect(error).toHaveBeenCalledWith('WebSocket server error:', 'Missing symbol or timeframe');
+    expect(error).toHaveBeenCalledWith(
+      'WebSocket server error:',
+      'Missing symbol or timeframe',
+    );
     expect(serverErrorHandler).toHaveBeenCalledWith({
       type: 'error',
       error: 'Missing symbol or timeframe',
@@ -239,5 +372,58 @@ describe('WebSocket service', () => {
     expect(disconnectedHandler).toHaveBeenCalledOnce();
     expect(removedHandler).not.toHaveBeenCalled();
     expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+  });
+  it('reconnects and restores only subscriptions still desired while offline', async () => {
+    vi.useFakeTimers();
+    const { wsService } = await loadService();
+    wsService.connect('ws://example.test');
+    mockSockets[0].open();
+    await wsService.send('subscribeBacktests');
+    await wsService.send('subscribeCandles', {
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    });
+    mockSockets[0].close();
+    await wsService.send('unsubscribeCandles', {
+      symbol: 'EURUSD',
+      timeframe: 'M1',
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mockSockets).toHaveLength(2);
+    mockSockets[1].open();
+    expect(mockSockets[1].sentMessages).toEqual([
+      JSON.stringify({ type: 'subscribeBacktests' }),
+    ]);
+    wsService.close();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(mockSockets).toHaveLength(2);
+    vi.useRealTimers();
+  });
+
+  it('validates backtest events and reports upstream continuity', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { wsService } = await loadService();
+    const health = vi.fn();
+    const changed = vi.fn();
+    wsService.on('backtestHealth', health);
+    wsService.on('backtestChanged', changed);
+    wsService.connect('ws://example.test');
+    mockSockets[0].open();
+    expect(wsService.backtestsConnected).toBe(false);
+    mockSockets[0].receive(
+      JSON.stringify({ type: 'backtestConnection', connected: true }),
+    );
+    expect(wsService.backtestsConnected).toBe(true);
+    mockSockets[0].receive(JSON.stringify({ type: 'backtestChanged' }));
+    mockSockets[0].receive(
+      JSON.stringify({ type: 'backtestHealth', heartbeat_at_ms: 'invalid' }),
+    );
+    expect(changed).toHaveBeenCalledOnce();
+    expect(health).not.toHaveBeenCalled();
+    mockSockets[0].receive(
+      JSON.stringify({ type: 'backtestConnection', connected: false }),
+    );
+    expect(wsService.backtestsConnected).toBe(false);
+    wsService.close();
   });
 });

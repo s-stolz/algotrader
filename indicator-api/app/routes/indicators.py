@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Body, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 
-from app import get_available_indicators
+from app import get_available_indicators, get_indicator_metadata
 from app.schemas import IndicatorParameters
 from app.services.historical_indicator_service import run_historical_indicator
 
@@ -42,3 +42,11 @@ async def run_indicator(
         custom_parameters=custom_parameters,
         candle_cache=candle_cache,
     )
+
+
+@router.get("/{indicator_id}")
+async def get_metadata(indicator_id: int) -> dict:
+    try:
+        return get_indicator_metadata(indicator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown indicator") from exc

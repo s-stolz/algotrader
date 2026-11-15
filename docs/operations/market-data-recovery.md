@@ -9,22 +9,17 @@ owns historical corrections and aggregate behavior.
 
 ## Run the controlled smoke check
 
-Use Python 3.12+, Docker with a running daemon, and a **combined** Python environment
+Use Python 3.12, Docker with a running daemon, and a **combined** Python environment
 containing ingestion, accessor, broker, and backtester dependencies. Child processes use that
 same interpreter; setting only a parent's `PYTHONPATH` to another environment's
 packages is insufficient. From this checkout, one possible setup is:
 
 ```sh
 python3.12 -m venv /tmp/algotrader-recovery-env
-cd ingestion-service
-/tmp/algotrader-recovery-env/bin/pip install -r requirements.txt
-cd ../database-accessor-api
-/tmp/algotrader-recovery-env/bin/pip install -r requirements.txt
-cd ../broker-service
-/tmp/algotrader-recovery-env/bin/pip install -r requirements.txt
-cd ../backtester
-/tmp/algotrader-recovery-env/bin/pip install -r requirements.txt
-cd ..
+for service in ingestion-service database-accessor-api broker-service backtester; do
+  /tmp/algotrader-recovery-env/bin/python scripts/python_environment.py \
+    install "$service" --dependencies-only
+done
 make smoke-recovery PYTHON=/tmp/algotrader-recovery-env/bin/python
 ```
 
@@ -97,7 +92,7 @@ it as described below.
 | New interruption during recovery; stale progress | Process sessions plus real `test_recovery_postgres.py` races reject old identity/revision/cursor and retain newer pending work |
 | Overlap correction, compressed chunks, live/history races | Real `test_historical_candles_postgres.py` validates authoritative values, omission preservation, stale live protection and explicit aggregate refresh |
 | Silent / closed market | `test_silent_weekend_does_not_change_session_or_schedule_more_history` asserts no new history request; `test_failed_market_releases_global_capacity_and_empty_history_completes` accepts supplied empty completion |
-| Metadata consumers | Webserver `tests/test_redis_consumer.py` and Indicator `tests/services/test_live_indicator_manager.py` consume legacy/valid/invalid metadata while preserving public Candle output |
+| Metadata consumers | Realtime service `tests/test_redis_consumer.py` and Indicator `tests/services/test_live_indicator_manager.py` consume legacy/valid/invalid metadata while preserving public Candle output |
 
 Run the repository's full gate and suites from this checkout and retain their
 actual results, including skipped tests:
@@ -109,12 +104,9 @@ make typecheck-python
 make test
 ```
 
-Some repository revisions lack the first two targets; a missing target is an
-unavailable gate, never a pass. Use the release's explicitly approved baseline
-exception if one exists, with affected-code lint/types and no-new-failure evidence.
 `make test` covers only the suites listed in the Makefile. Also run the accessor,
-shared client, broker infrastructure/API, webserver, Indicator service,
-configuration, and migration suites using their service environments. Webserver
+shared client, broker infrastructure/API, realtime-service, Indicator service,
+configuration, and migration suites using their service environments. Realtime service
 and Indicator parsing compatibility are not established by engine tests alone.
 
 The smoke command enables `HISTORY_TEST_DATABASE_URL`, `HISTORY_TEST_ACCESSOR_URL`,
@@ -150,9 +142,9 @@ Do not induce failures in a production broker session for acceptance.
    creates live write guards. Verify all nineteen ledger entries and unchanged
    replay. Preserve applied checksums, existing history and recovery rows; never
    drop or rewrite the ledger to force success.
-3. Build/deploy the compatible accessor and shared clients, then webserver and
+3. Build/deploy the compatible accessor and shared clients, then realtime-service and
    Indicator consumers. Example:
-   `docker compose --env-file config/.env.shared up -d --build database-accessor-api webserver indicator-api`.
+   `docker compose --env-file config/.env.shared up -d --build database-accessor-api realtime-service indicator-api`.
    These consumers preserve the existing public Candle/WebSocket fields while
    accepting the additional Redis metadata. Verify dependency responses; a health
    endpoint alone does not exercise pending-recovery transactions.

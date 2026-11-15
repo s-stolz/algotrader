@@ -1,7 +1,7 @@
 # Database Accessor API Context
 
 FastAPI persistence primitives for Markets, Candles, and backtests in TimescaleDB.
-Transport contracts live in [root context](../CONTEXT.md); durable run/batch
+Transport contracts live in [root context](../CONTEXT.md); durable Backtest/Run
 semantics live in [backtest contracts](../docs/contracts/backtests.md).
 
 ## Candle Queries
@@ -16,39 +16,50 @@ semantics live in [backtest contracts](../docs/contracts/backtests.md).
 
 ## Backtest Storage
 
+`app/backtest_execution_log.py` projects and paginates saved trades and optional terminal unexecuted orders in PostgreSQL without transferring diagnostics. Run/member reads can omit diagnostics at the column projection.
+
+
 `app/backtest_execution.py` owns slot-serialized execution operations;
-`app/crud.py` also handles run/batch creation and history. `app/models.py` and
+`app/crud.py` also handles Backtest/Run creation and history. `app/models.py` and
 `app/schemas.py` define storage and transport shapes. Backtester supplies
 lifecycle policy; the accessor applies it against locked current state.
 
-- Lock the execution slot before batch/run rows for control transactions.
+- `BacktestExecutionPayload` validates persisted execution settings separately
+  from the public backtester schema. Keep optional controls coordinated across
+  both boundaries: order mode, quote convention, spread, intrabar policy, position
+  limits, daily schedules, and entry limits must survive storage HTTP
+  round trips, while disabled controls stay omitted for legacy representations.
+- `BacktestRequestPayload.market_min_move` preserves the server-resolved Market
+  increment through storage. Omit absent/null values when serializing legacy
+  snapshots; validate supplied increments as positive finite numbers.
+- Lock the execution slot before Backtest/Run rows for control transactions.
   Submission turn insertion and queue snapshots use that same lock. Queue reads
   hold it through the read transaction so active ownership and waiting turns
   cannot come from different lifecycle states.
-- Claim verifies the head turn, batch eligibility, and lowest queued member.
-  Settlement requires the owner token and commits artifacts, outcome, batch
+- Claim verifies the head turn, Backtest eligibility, and lowest queued member.
+  Claims require a worker identity and seed the matching heartbeat atomically; heartbeat
+  writes take the slot lock and fence delayed ownership changes.
+  Settlement requires the owner token and commits artifacts, outcome, Backtest
   reconciliation/events, next turn, and slot release together.
 - Cancellation, pause/resume, deletion, and startup reconciliation must preserve
   those transaction boundaries. No-op command receipts retain identity without
   adding a revision/event; retries return the original result after later changes.
-- Run/batch creation persists a normalized top-level name separately from JSON
-  snapshots. Members cannot carry a custom name; legacy name/label request
-  metadata is rejected on new submissions. Apply
-  [experiment-name rules](../docs/contracts/backtests.md#experiment-names) at the storage boundary.
-- Name-only updates validate at the persistence boundary and update only `name`.
-  Member guards run under the run row lock; these writes never acquire or change
-  the execution slot, revisions, event history, or queue turns.
-- Standalone create rejects batch identity. Membership guards reject late member
-  insertion/replacement and direct member deletion while the batch exists.
-- Preserve version-2 request JSON. When `strategy_version` was absent, omit it
-  from serialized responses; synthesizing `null` breaks strict historical readers.
+- Backtest acceptance persists a normalized top-level name separately from JSON
+  snapshots. Runs have required parent IDs and ordinals and no independent names.
+  Apply [naming rules](../docs/contracts/backtests.md#experiment-names) at storage.
+- Name-only updates lock the parent row and change only its name, without changing
+  execution-slot ownership, revisions, events, or queue turns.
+- Membership guards reject late insertion, replacement, and direct Run deletion.
+  Whole-Backtest deletion cascades through all artifacts after settlement.
 - Filter request attributes from immutable JSON, including collection membership
   for symbol matching. Keep lifecycle fields normalized rather than copying
   request attributes into columns.
-- Successful worker settlement validates and stores the replay descriptor with
-  metrics, diagnostics, Fills, and Closed Trades. Failed settlement rejects result
-  artifacts. Tokenless legacy completion returns `updated=false` once the slot
-  exists, even after manual slot clear.
+- Successful worker settlement requires the explicit
+  [saved profit-factor union](../docs/contracts/backtests.md#saved-profit-factor)
+  and finite `metrics.ending_equity`. It validates and stores the replay descriptor with metrics, diagnostics, Fills,
+  and Closed Trades. Failed settlement rejects result
+  artifacts. Worker lifecycle writes use only the owner-token-fenced execution
+  endpoints; the tokenless update and completion endpoints have been retired.
 - Fill/trade reads use sequence order: missing parent is 404, existing parent with
   no children is an empty collection. Deletion is 204, missing is 404, ineligible
   state/membership is 409; recheck eligibility inside the locked transaction.
@@ -84,3 +95,23 @@ the [recovery contract](../docs/contracts/recovery.md).
 live Candle write. Partial commits and lost receipts cannot hide it behind a
 newer latest Candle; normal successful live writes retire it without scheduling
 history. See the [guard contract](../docs/contracts/recovery.md#durable-live-write-guards).
+
+## Editable instrument specifications
+
+`PUT /markets/id/{symbol_id}` edits metadata without modifying Candles. The
+`markets` table is the source of truth for current names.
+Candle queries may supply `market_id` to retain identity across metadata edits;
+name-based queries resolve current names only. Previous names are not reserved.
+Market creation and editing require positive finite valuation
+and quantity specifications. V022 backfills verified IC Trading unit quantities
+before enforcing required columns; unknown existing instruments need an explicit
+verified migration input rather than placeholder values. Backtest snapshots retain
+specifications independently of subsequent Market edits.
+
+For historical streaming reads, `app/candle_stream.py` owns bounded cursor
+consumption, response frames, and cursor cleanup. See
+[historical Candle streams](../docs/contracts/candles.md#historical-candle-streams).
+
+For bounded forward chart paging, `app/candle_pages.py` selects the earliest
+500-or-fewer bars from raw history, including beyond aggregate retention. The
+opt-in HTTP contract is documented under [forward Candle pages](../docs/contracts/candles.md#forward-candle-pages).

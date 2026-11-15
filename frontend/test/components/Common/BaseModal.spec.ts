@@ -5,16 +5,22 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useModalStore } from '@/stores/modalStore';
 
+import DesignScope from '@/components/Common/DesignScope.vue';
 import BaseModal from '@/components/Common/BaseModal.vue';
 
 const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -83,5 +89,31 @@ describe('BaseModal', () => {
 
     expect(wrapper.find('.modal-footer').exists()).toBe(false);
     expect(wrapper.findAll('.separator')).toHaveLength(1);
+  });
+
+  it('preserves backdrop press handling inside the shared provider', async () => {
+    const modalStore = useModalStore();
+    modalStore.openModal('symbolSearch');
+    const wrapper = mount(DesignScope, {
+      slots: {
+        default: () =>
+          h(
+            BaseModal,
+            {
+              modalId: 'symbolSearch',
+              title: 'Symbol',
+            },
+            { default: () => h('p', 'Body') },
+          ),
+      },
+    });
+    const backdrop = wrapper.get('.modal-backdrop');
+    await wrapper.get('.modal').trigger('mousedown');
+    await backdrop.trigger('mouseup');
+    expect(modalStore.activeModal).toBe('symbolSearch');
+    await backdrop.trigger('mousedown');
+    await backdrop.trigger('mouseup');
+    expect(modalStore.activeModal).toBeNull();
+    wrapper.unmount();
   });
 });

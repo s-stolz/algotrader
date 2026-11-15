@@ -1,13 +1,15 @@
+import json
+import pickle
 import unittest
-from unittest.mock import patch
+from dataclasses import replace
 
 from adapters.persistence import (
     BacktestRunLifecyclePersistenceAdapter,
-    BacktestRunPersistenceAdapter,
+    build_successful_completion_payload,
 )
+from app.backtest_child import CompactBacktestResult
 from domain.enums import (
     BacktestEngine,
-    BacktestRunStatus,
     ExitReason,
     GapPolicy,
     IntrabarExitPolicy,
@@ -36,17 +38,7 @@ class _FakeRunClient:
 
 class _FakeLifecycleClient:
     def __init__(self) -> None:
-        self.conditional_updates: list[tuple[str, dict]] = []
-        self.completions: list[tuple[str, dict]] = []
         self.execution_requests: list[tuple[str, dict | None]] = []
-
-    def conditional_update_backtest_run(self, run_id: str, update: dict) -> bool:
-        self.conditional_updates.append((run_id, update))
-        return True
-
-    def complete_backtest_run(self, run_id: str, completion: dict) -> bool:
-        self.completions.append((run_id, completion))
-        return True
 
     def get_backtest_execution_slot(self) -> dict:
         self.execution_requests.append(("slot", None))
@@ -74,171 +66,22 @@ class _FailingRunClient:
         raise RuntimeError("database accessor unavailable")
 
 
-class TestBacktestRunPersistenceAdapter(unittest.TestCase):
-    @patch("adapters.persistence._new_run_id", return_value="run-123")
-    @patch(
-        "adapters.persistence._utc_now_text",
-        return_value="2026-06-08T12:30:05.123000+00:00",
-    )
-    def test_save_run_maps_complete_succeeded_result(
-        self,
-        _utc_now_text,
-        _new_run_id,
-    ) -> None:
-        client = _FakeRunClient()
-        adapter = BacktestRunPersistenceAdapter(client=client)
-        result = _build_result()
-
-        saved_result = adapter.save_run(
-            result=result,
-            execution_duration_ms=275,
-        )
-
-        payload = client.saved_runs[0]
-        self.assertEqual(payload["run_id"], "run-123")
-        self.assertEqual(payload["status"], "succeeded")
-        self.assertEqual(payload["submitted_at"], "2026-06-08T12:30:05.123000+00:00")
-        self.assertEqual(payload["started_at"], "2026-06-08T12:30:05.123000+00:00")
-        self.assertEqual(payload["completed_at"], "2026-06-08T12:30:05.123000+00:00")
-        self.assertIsNone(payload["error_code"])
-        self.assertIsNone(payload["error_message"])
-        self.assertEqual(payload["request_schema_version"], 2)
-        self.assertEqual(payload["request"]["symbols"], ["EURUSD"])
-        self.assertEqual(payload["request"]["exchange"], "FX")
-        self.assertEqual(payload["request"]["timeframe"], "M15")
-        self.assertEqual(payload["request"]["engine"], "event_driven")
-        self.assertEqual(
-            payload["request"]["execution"]["allowed_directions"],
-            "long_and_short",
-        )
-        self.assertNotIn("allow_short", payload["request"]["execution"])
-        self.assertEqual(
-            payload["request"]["strategy"],
-            {
-                "strategy_id": "sma_crossover",
-                "parameters": {
-                    "fast_window": 5,
-                    "slow_window": 20,
-                    "quantity": 1_000.0,
-                },
-            },
-        )
-        self.assertEqual(payload["request"]["execution"]["gap_policy"], "error")
-        self.assertEqual(
-            payload["request"]["execution"]["intrabar_exit_policy"],
-            "take_profit_first",
-        )
-        self.assertEqual(payload["request"]["run_metadata"], {"label": "cli-persist"})
-        self.assertEqual(payload["result_schema_version"], 3)
-        self.assertEqual(payload["metrics"], result.metrics)
-        self.assertEqual(
-            payload["diagnostics"],
-            {
-                "engine": "event_driven",
-                "bars": 25,
-                "execution_duration_ms": 275,
-            },
-        )
-        self.assertEqual(
-            payload["fills"],
-            [
-                {
-                    "fill_sequence": 0,
-                    "timestamp_ms": 1_714_522_500_000,
-                    "symbol": "EURUSD",
-                    "side": "buy",
-                    "quantity": 1_000.0,
-                    "price": 1.0715,
-                    "fees": 0.15,
-                    "exit_reason": None,
-                },
-                {
-                    "fill_sequence": 1,
-                    "timestamp_ms": 1_714_526_100_000,
-                    "symbol": "EURUSD",
-                    "side": "sell",
-                    "quantity": 1_000.0,
-                    "price": 1.074,
-                    "fees": 0.15,
-                    "exit_reason": "signal",
-                },
-            ],
-        )
-        self.assertEqual(
-            payload["trades"],
-            [
-                {
-                    "trade_sequence": 0,
-                    "trade_id": "trade-1",
-                    "symbol": "EURUSD",
-                    "trade_direction": "long",
-                    "quantity": 1_000.0,
-                    "entry_timestamp_ms": 1_714_522_500_000,
-                    "entry_price": 1.0715,
-                    "exit_timestamp_ms": 1_714_526_100_000,
-                    "exit_price": 1.074,
-                    "realized_pnl": 2.5,
-                    "fees": 0.3,
-                    "exit_reason": "signal",
-                    "stop_loss_price": None,
-                    "take_profit_price": None,
-                }
-            ],
-        )
-        self.assertNotIn("equity_curve", payload)
-        self.assertEqual(saved_result.backtest_run_id, "run-123")
-        self.assertEqual(saved_result.persisted_at, 1_780_921_805_123)
-        self.assertIsNone(result.backtest_run_id)
-
-    @patch("adapters.persistence._new_run_id", return_value="run-empty")
-    @patch(
-        "adapters.persistence._utc_now_text",
-        return_value="2026-06-08T12:30:05.123000+00:00",
-    )
-    def test_save_run_preserves_empty_artifact_collections(
-        self,
-        _utc_now_text,
-        _new_run_id,
-    ) -> None:
-        client = _FakeRunClient()
-        adapter = BacktestRunPersistenceAdapter(client=client)
-        result = _build_result(fills=[], trades=[])
-
-        adapter.save_run(result=result)
-
-        self.assertEqual(client.saved_runs[0]["fills"], [])
-        self.assertEqual(client.saved_runs[0]["trades"], [])
-        self.assertEqual(
-            client.saved_runs[0]["diagnostics"]["execution_duration_ms"],
-            0,
-        )
-
-    def test_save_run_rejects_open_trade(self) -> None:
-        adapter = BacktestRunPersistenceAdapter(client=_FakeRunClient())
-        result = _build_result(
-            trades=[
-                Trade(
-                    trade_id="open-1",
-                    symbol="EURUSD",
-                    trade_direction=TradeDirection.LONG,
-                    quantity=1_000.0,
-                    entry_timestamp_ms=1_714_522_500_000,
-                    entry_price=1.0715,
-                )
-            ]
-        )
-
-        with self.assertRaisesRegex(ValueError, "exit_timestamp_ms"):
-            adapter.save_run(result=result)
-
-    def test_save_run_surfaces_persistence_errors(self) -> None:
-        adapter = BacktestRunPersistenceAdapter(client=_FailingRunClient())
-
-        with self.assertRaisesRegex(RuntimeError, "database accessor unavailable"):
-            adapter.save_run(result=_build_result())
-
-
 class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
+    def test_profit_factor_survives_child_handoff_and_strict_json_payload(self):
+        for value in (2.5, 0.0, "infinity", None):
+            with self.subTest(value=value):
+                result = _build_result()
+                result = replace(result, metrics={**result.metrics, "profit_factor": value})
+                compact = CompactBacktestResult.from_result(result, execution_duration_ms=5)
+                restored = pickle.loads(pickle.dumps(compact)).to_result()
+                payload = build_successful_completion_payload(
+                    completed_at_ms=1714525500000, result=restored, execution_duration_ms=5
+                )
+                self.assertEqual(
+                    json.loads(json.dumps(payload, allow_nan=False))["metrics"]["profit_factor"],
+                    value,
+                )
+
     def test_execution_operations_carry_owner_token_and_reconciliation_reason(self) -> None:
         client = _FakeLifecycleClient()
         adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
@@ -246,7 +89,10 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         self.assertIsNone(adapter.execution_slot()["owner_token"])
         self.assertTrue(
             adapter.claim_execution(
-                run_id="run-123", owner_token="owner-123", started_at_ms=1_780_921_860_000
+                run_id="run-123",
+                owner_token="owner-123",
+                started_at_ms=1_780_921_860_000,
+                worker_id="worker-123",
             )
         )
         self.assertTrue(
@@ -277,36 +123,11 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         assert settle_request is not None
         assert reconcile_request is not None
         self.assertEqual(claim_request["owner_token"], "owner-123")
+        self.assertEqual(claim_request["worker_id"], "worker-123")
         self.assertEqual(settle_request["status"], "failed")
         self.assertEqual(reconcile_request["error_code"], "worker_interrupted")
 
-    def test_conditional_update_maps_status_enums_and_lifecycle_fields(self) -> None:
-        client = _FakeLifecycleClient()
-        adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
-
-        updated = adapter.conditional_update(
-            run_id="run-123",
-            expected_status=BacktestRunStatus.QUEUED,
-            new_status=BacktestRunStatus.RUNNING,
-            started_at_ms=1_780_921_860_000,
-        )
-
-        self.assertTrue(updated)
-        self.assertEqual(
-            client.conditional_updates,
-            [
-                (
-                    "run-123",
-                    {
-                        "expected_status": "queued",
-                        "new_status": "running",
-                        "started_at": "2026-06-08T12:31:00+00:00",
-                    },
-                )
-            ],
-        )
-
-    def test_complete_maps_result_without_equity_curve(self) -> None:
+    def test_settle_success_maps_result_without_equity_curve(self) -> None:
         client = _FakeLifecycleClient()
         adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
         result = _build_result()
@@ -335,21 +156,25 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
             take_profit_price=1.08,
         )
 
-        updated = adapter.complete(
+        updated = adapter.settle_success(
             run_id="run-123",
-            expected_status=BacktestRunStatus.RUNNING,
+            owner_token="owner-123",
             completed_at_ms=1_780_922_100_000,
             result=result,
             execution_duration_ms=275,
         )
 
         self.assertTrue(updated)
-        run_id, payload = client.completions[0]
+        _, payload = client.execution_requests[0]
+        assert payload is not None
+        run_id = payload["run_id"]
         self.assertEqual(run_id, "run-123")
-        self.assertEqual(payload["expected_status"], "running")
+        self.assertEqual(payload["owner_token"], "owner-123")
+        self.assertEqual(payload["status"], "succeeded")
         self.assertEqual(payload["completed_at"], "2026-06-08T12:35:00+00:00")
         self.assertEqual(payload["result_schema_version"], 3)
         self.assertEqual(payload["metrics"], result.metrics)
+        self.assertEqual(payload["metrics"]["ending_equity"], 25_002.5)
         self.assertEqual(payload["diagnostics"]["execution_duration_ms"], 275)
         self.assertEqual(payload["fills"][1]["exit_reason"], "take_profit")
         self.assertEqual(payload["trades"][0]["exit_reason"], "take_profit")
@@ -359,18 +184,20 @@ class TestBacktestRunLifecyclePersistenceAdapter(unittest.TestCase):
         self.assertEqual(payload["trades"][0]["take_profit_price"], 1.08)
         self.assertNotIn("equity_curve", payload)
 
-    def test_complete_preserves_empty_artifact_collections(self) -> None:
+    def test_settle_success_preserves_empty_artifact_collections(self) -> None:
         client = _FakeLifecycleClient()
         adapter = BacktestRunLifecyclePersistenceAdapter(client=client)
 
-        adapter.complete(
+        adapter.settle_success(
             run_id="run-empty",
-            expected_status=BacktestRunStatus.RUNNING,
+            owner_token="owner-123",
             completed_at_ms=1_780_922_100_000,
             result=_build_result(fills=[], trades=[]),
+            execution_duration_ms=0,
         )
 
-        payload = client.completions[0][1]
+        payload = client.execution_requests[0][1]
+        assert payload is not None
         self.assertEqual(payload["fills"], [])
         self.assertEqual(payload["trades"], [])
 
@@ -401,8 +228,7 @@ def _build_result(
             slippage_bps=0.75,
         ),
         initial_capital=25_000.0,
-        persist_result=True,
-        run_metadata={"label": "cli-persist"},
+        run_metadata={"label": "persistence-test"},
         engine=BacktestEngine.EVENT_DRIVEN,
     )
     default_fills = [
@@ -452,6 +278,8 @@ def _build_result(
             )
         ],
         metrics={
+            "profit_factor": None,
+            "ending_equity": 25_002.5,
             "total_return_pct": 0.01,
             "max_drawdown_pct": -0.005,
             "trade_count": 1.0,

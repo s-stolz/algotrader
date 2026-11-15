@@ -18,15 +18,20 @@ export async function fetchCandles(
   symbol: string,
   timeframe: string,
   options: CandleFetchOptions = {},
+  signal?: AbortSignal,
 ): Promise<ChartCandle[]> {
   const payload = await parseJsonResponse(
-    await fetch(withQuery(`${CANDLES_BASE_URL}/${encodeURIComponent(symbol)}`, {
-      timeframe,
-      start_ms: options.startMs,
-      end_ms: options.endMs,
-      limit: options.limit,
-      exchange: options.exchange,
-    })),
+    await fetch(
+      withQuery(`${CANDLES_BASE_URL}/${encodeURIComponent(symbol)}`, {
+        timeframe,
+        from_start: options.fromStart ? 'true' : undefined,
+        start_ms: options.startMs,
+        end_ms: options.endMs,
+        limit: options.limit,
+        exchange: options.exchange,
+      }),
+      { signal },
+    ),
     'Failed to fetch candles',
   );
 
@@ -37,7 +42,9 @@ export async function fetchCandles(
   return payload.map(toChartCandle);
 }
 
-export async function uploadCandleBatch(payload: CandleBatchPayload): Promise<CandleBatchResponse> {
+export async function uploadCandleBatch(
+  payload: CandleBatchPayload,
+): Promise<CandleBatchResponse> {
   const responsePayload = await parseJsonResponse(
     await fetch(CANDLES_BASE_URL, {
       method: 'POST',
@@ -59,11 +66,14 @@ export async function deleteCandles(
   options: Pick<CandleFetchOptions, 'exchange'> = {},
 ): Promise<DeleteResponse> {
   const payload = await parseJsonResponse(
-    await fetch(withQuery(`${CANDLES_BASE_URL}/${encodeURIComponent(symbol)}`, {
-      exchange: options.exchange,
-    }), {
-      method: 'DELETE',
-    }),
+    await fetch(
+      withQuery(`${CANDLES_BASE_URL}/${encodeURIComponent(symbol)}`, {
+        exchange: options.exchange,
+      }),
+      {
+        method: 'DELETE',
+      },
+    ),
     'Failed to delete candles',
   );
 

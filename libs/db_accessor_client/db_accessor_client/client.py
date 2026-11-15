@@ -9,6 +9,7 @@ from typing import Any, Iterable
 import httpx
 import pandas as pd
 
+from .candle_stream import parse_candle_frame
 from .errors import DatabaseAccessorClientError
 from .timeframes import normalize_timeframe_code
 
@@ -25,7 +26,7 @@ def _candles_to_dataframe(
     df = pd.DataFrame(data)
     if not df.empty and "timestamp_ms" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp_ms"], unit="ms", utc=True)
-        df.set_index("timestamp", inplace=True)
+        df = df.set_index("timestamp")
         if not include_timestamp_ms:
             df = df.drop(columns=["timestamp_ms"])
     return df
@@ -96,6 +97,47 @@ class DatabaseAccessorClient(_BaseClient):
         params = _build_params(exchange=exchange)
         return self._request("GET", f"/markets/{symbol}", params=params)
 
+    def stream_candles(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+        market_id: int | None = None,
+    ):
+        params = _build_params(
+            timeframe=normalize_timeframe_code(timeframe),
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exchange=exchange,
+            market_id=market_id,
+        )
+        try:
+            with self.client.stream(
+                "GET",
+                self._url(f"/candles/{symbol}/stream"),
+                params=params,
+                headers={"Accept-Encoding": "identity"},
+            ) as response:
+                response.raise_for_status()
+                complete = False
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    if complete:
+                        raise DatabaseAccessorClientError("Data after Candle stream completion")
+                    candles = parse_candle_frame(line)
+                    if candles is None:
+                        complete = True
+                    else:
+                        yield candles
+                if not complete:
+                    raise DatabaseAccessorClientError("Incomplete Candle stream")
+        except httpx.HTTPError as exc:
+            raise DatabaseAccessorClientError("Candle stream request failed") from exc
+
     def get_candles(
         self,
         symbol: str,
@@ -105,8 +147,10 @@ class DatabaseAccessorClient(_BaseClient):
         end_ms: int | None = None,
         limit: int | None = None,
         include_timestamp_ms: bool = False,
+        market_id: int | None = None,
     ) -> pd.DataFrame:
         params = _build_params(
+            market_id=market_id,
             exchange=exchange,
             timeframe=normalize_timeframe_code(timeframe),
             start_ms=start_ms,
@@ -179,47 +223,69 @@ class DatabaseAccessorClient(_BaseClient):
             payload["exchange"] = exchange
         return self._request("POST", "/candles", json=payload)
 
-    def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
-        return self._request("POST", "/backtests", json=run)
+    def create_backtest(self, backtest: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/backtests", json=backtest)
 
-    def create_backtest_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
-        return self._request("POST", "/backtest-batches", json=batch)
+    def rename_backtest(self, backtest_id: str, name: str | None) -> dict[str, Any]:
+        return self._request("PATCH", f"/backtests/{backtest_id}/name", json={"name": name})
 
-    def rename_backtest_run(self, run_id: str, name: str | None) -> dict[str, Any]:
-        return self._request("PATCH", f"/backtests/{run_id}/name", json={"name": name})
+    def list_backtests(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/backtests")
 
-    def rename_backtest_batch(self, batch_id: str, name: str | None) -> dict[str, Any]:
-        return self._request("PATCH", f"/backtest-batches/{batch_id}/name", json={"name": name})
+    def get_backtest(self, backtest_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/backtests/{backtest_id}")
 
-    def list_backtest_batches(self) -> list[dict[str, Any]]:
-        return self._request("GET", "/backtest-batches")
+    def list_backtest_members(
+        self, backtest_id: str, *, include_diagnostics: bool = True
+    ) -> list[dict[str, Any]]:
+        if include_diagnostics:
+            return self._request("GET", f"/backtests/{backtest_id}/members")
+        return self._request(
+            "GET", f"/backtests/{backtest_id}/members", params={"include_diagnostics": False}
+        )
 
-    def get_backtest_batch(self, batch_id: str) -> dict[str, Any]:
-        return self._request("GET", f"/backtest-batches/{batch_id}")
+    def list_backtest_events(self, backtest_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/backtests/{backtest_id}/events")
 
-    def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]:
-        return self._request("GET", f"/backtest-batches/{batch_id}/members")
-
-    def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]:
-        return self._request("GET", f"/backtest-batches/{batch_id}/events")
-
-    def control_backtest_batch(
-        self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
+    def control_backtest(
+        self, backtest_id: str, command: str, command_id: str, policy: dict[str, Any]
     ) -> dict[str, Any]:
         return self._request(
             "POST",
-            f"/backtest-batches/{batch_id}/{command}",
+            f"/backtests/{backtest_id}/{command}",
             json={"command_id": command_id, "policy": policy},
         )
 
-    def get_backtest_run(self, run_id: str) -> dict[str, Any]:
-        return self._request("GET", f"/backtests/{run_id}")
+    def get_backtest_run(self, run_id: str, *, include_diagnostics: bool = True) -> dict[str, Any]:
+        if include_diagnostics:
+            return self._request("GET", f"/backtest-runs/{run_id}")
+        return self._request(
+            "GET", f"/backtest-runs/{run_id}", params={"include_diagnostics": False}
+        )
 
     def get_backtest_fills(self, run_id: str) -> list[dict[str, Any]]:
-        return self._request("GET", f"/backtests/{run_id}/fills")
+        return self._request("GET", f"/backtest-runs/{run_id}/fills")
+
+    def get_backtest_execution_log(
+        self,
+        run_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 10,
+        include_unexecuted: bool = False,
+    ) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            f"/backtest-runs/{run_id}/execution-log",
+            params={
+                "page": page,
+                "page_size": page_size,
+                "include_unexecuted": include_unexecuted,
+            },
+        )
 
     def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
-        return self._request("GET", f"/backtests/{run_id}/trades")
+        return self._request("GET", f"/backtest-runs/{run_id}/trades")
 
     def list_backtest_runs(
         self,
@@ -231,8 +297,8 @@ class DatabaseAccessorClient(_BaseClient):
         engine: str | None = None,
         submitted_from: str | None = None,
         submitted_to: str | None = None,
-        membership: str | None = None,
-        batch_id: str | None = None,
+        backtest_id: str | None = None,
+        include_diagnostics: bool = True,
     ) -> list[dict[str, Any]]:
         params = _build_params(
             status=status,
@@ -242,30 +308,11 @@ class DatabaseAccessorClient(_BaseClient):
             engine=engine,
             submitted_from=submitted_from,
             submitted_to=submitted_to,
-            membership=membership,
-            batch_id=batch_id,
+            backtest_id=backtest_id,
         )
-        return self._request("GET", "/backtests", params=params)
-
-    def conditional_update_backtest_run(
-        self,
-        run_id: str,
-        update: dict[str, Any],
-    ) -> bool:
-        response = self._request("PATCH", f"/backtests/{run_id}", json=update)
-        return _mutation_updated(response)
-
-    def complete_backtest_run(
-        self,
-        run_id: str,
-        completion: dict[str, Any],
-    ) -> bool:
-        response = self._request(
-            "POST",
-            f"/backtests/{run_id}/complete",
-            json=completion,
-        )
-        return _mutation_updated(response)
+        if not include_diagnostics:
+            params["include_diagnostics"] = False
+        return self._request("GET", "/backtest-runs", params=params)
 
     def get_backtest_execution_slot(self) -> dict[str, Any]:
         return self._request("GET", "/backtest-execution/slot")
@@ -285,7 +332,7 @@ class DatabaseAccessorClient(_BaseClient):
         )
 
     def cancel_backtest_run(self, run_id: str) -> dict[str, Any]:
-        return self._request("POST", f"/backtests/{run_id}/cancel")
+        return self._request("POST", f"/backtest-runs/{run_id}/cancel")
 
     def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None:
         response = self._request("POST", "/backtest-execution/reconcile", json=reconciliation)
@@ -294,11 +341,8 @@ class DatabaseAccessorClient(_BaseClient):
     def record_backtest_execution_fault(self, fault: dict[str, Any]) -> bool:
         return _mutation_updated(self._request("POST", "/backtest-execution/fault", json=fault))
 
-    def delete_backtest_run(self, run_id: str) -> None:
-        self._request("DELETE", f"/backtests/{run_id}")
-
-    def delete_backtest_batch(self, batch_id: str) -> None:
-        self._request("DELETE", f"/backtest-batches/{batch_id}")
+    def delete_backtest(self, backtest_id: str) -> None:
+        self._request("DELETE", f"/backtests/{backtest_id}")
 
     def write_historical_candles(
         self,
@@ -424,6 +468,47 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         params = _build_params(exchange=exchange)
         return await self._request("GET", f"/markets/{symbol}", params=params)
 
+    async def stream_candles(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+        market_id: int | None = None,
+    ):
+        params = _build_params(
+            timeframe=normalize_timeframe_code(timeframe),
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exchange=exchange,
+            market_id=market_id,
+        )
+        try:
+            async with self.client.stream(
+                "GET",
+                self._url(f"/candles/{symbol}/stream"),
+                params=params,
+                headers={"Accept-Encoding": "identity"},
+            ) as response:
+                response.raise_for_status()
+                complete = False
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    if complete:
+                        raise DatabaseAccessorClientError("Data after Candle stream completion")
+                    candles = parse_candle_frame(line)
+                    if candles is None:
+                        complete = True
+                    else:
+                        yield candles
+                if not complete:
+                    raise DatabaseAccessorClientError("Incomplete Candle stream")
+        except httpx.HTTPError as exc:
+            raise DatabaseAccessorClientError("Candle stream request failed") from exc
+
     async def get_candles(
         self,
         symbol: str,
@@ -433,8 +518,10 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         end_ms: int | None = None,
         limit: int | None = None,
         include_timestamp_ms: bool = False,
+        market_id: int | None = None,
     ) -> pd.DataFrame:
         params = _build_params(
+            market_id=market_id,
             exchange=exchange,
             timeframe=normalize_timeframe_code(timeframe),
             start_ms=start_ms,
@@ -513,49 +600,71 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             payload["exchange"] = exchange
         return await self._request("POST", "/candles", json=payload)
 
-    async def create_backtest_run(self, run: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", "/backtests", json=run)
+    async def create_backtest(self, backtest: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/backtests", json=backtest)
 
-    async def create_backtest_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", "/backtest-batches", json=batch)
+    async def rename_backtest(self, backtest_id: str, name: str | None) -> dict[str, Any]:
+        return await self._request("PATCH", f"/backtests/{backtest_id}/name", json={"name": name})
 
-    async def rename_backtest_run(self, run_id: str, name: str | None) -> dict[str, Any]:
-        return await self._request("PATCH", f"/backtests/{run_id}/name", json={"name": name})
+    async def list_backtests(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/backtests")
 
-    async def rename_backtest_batch(self, batch_id: str, name: str | None) -> dict[str, Any]:
+    async def get_backtest(self, backtest_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/backtests/{backtest_id}")
+
+    async def list_backtest_members(
+        self, backtest_id: str, *, include_diagnostics: bool = True
+    ) -> list[dict[str, Any]]:
+        if include_diagnostics:
+            return await self._request("GET", f"/backtests/{backtest_id}/members")
         return await self._request(
-            "PATCH", f"/backtest-batches/{batch_id}/name", json={"name": name}
+            "GET", f"/backtests/{backtest_id}/members", params={"include_diagnostics": False}
         )
 
-    async def list_backtest_batches(self) -> list[dict[str, Any]]:
-        return await self._request("GET", "/backtest-batches")
+    async def list_backtest_events(self, backtest_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/backtests/{backtest_id}/events")
 
-    async def get_backtest_batch(self, batch_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/backtest-batches/{batch_id}")
-
-    async def list_backtest_batch_members(self, batch_id: str) -> list[dict[str, Any]]:
-        return await self._request("GET", f"/backtest-batches/{batch_id}/members")
-
-    async def list_backtest_batch_events(self, batch_id: str) -> list[dict[str, Any]]:
-        return await self._request("GET", f"/backtest-batches/{batch_id}/events")
-
-    async def control_backtest_batch(
-        self, batch_id: str, command: str, command_id: str, policy: dict[str, Any]
+    async def control_backtest(
+        self, backtest_id: str, command: str, command_id: str, policy: dict[str, Any]
     ) -> dict[str, Any]:
         return await self._request(
             "POST",
-            f"/backtest-batches/{batch_id}/{command}",
+            f"/backtests/{backtest_id}/{command}",
             json={"command_id": command_id, "policy": policy},
         )
 
-    async def get_backtest_run(self, run_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/backtests/{run_id}")
+    async def get_backtest_run(
+        self, run_id: str, *, include_diagnostics: bool = True
+    ) -> dict[str, Any]:
+        if include_diagnostics:
+            return await self._request("GET", f"/backtest-runs/{run_id}")
+        return await self._request(
+            "GET", f"/backtest-runs/{run_id}", params={"include_diagnostics": False}
+        )
 
     async def get_backtest_fills(self, run_id: str) -> list[dict[str, Any]]:
-        return await self._request("GET", f"/backtests/{run_id}/fills")
+        return await self._request("GET", f"/backtest-runs/{run_id}/fills")
+
+    async def get_backtest_execution_log(
+        self,
+        run_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 10,
+        include_unexecuted: bool = False,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/backtest-runs/{run_id}/execution-log",
+            params={
+                "page": page,
+                "page_size": page_size,
+                "include_unexecuted": include_unexecuted,
+            },
+        )
 
     async def get_backtest_trades(self, run_id: str) -> list[dict[str, Any]]:
-        return await self._request("GET", f"/backtests/{run_id}/trades")
+        return await self._request("GET", f"/backtest-runs/{run_id}/trades")
 
     async def list_backtest_runs(
         self,
@@ -567,8 +676,8 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         engine: str | None = None,
         submitted_from: str | None = None,
         submitted_to: str | None = None,
-        membership: str | None = None,
-        batch_id: str | None = None,
+        backtest_id: str | None = None,
+        include_diagnostics: bool = True,
     ) -> list[dict[str, Any]]:
         params = _build_params(
             status=status,
@@ -578,30 +687,11 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             engine=engine,
             submitted_from=submitted_from,
             submitted_to=submitted_to,
-            membership=membership,
-            batch_id=batch_id,
+            backtest_id=backtest_id,
         )
-        return await self._request("GET", "/backtests", params=params)
-
-    async def conditional_update_backtest_run(
-        self,
-        run_id: str,
-        update: dict[str, Any],
-    ) -> bool:
-        response = await self._request("PATCH", f"/backtests/{run_id}", json=update)
-        return _mutation_updated(response)
-
-    async def complete_backtest_run(
-        self,
-        run_id: str,
-        completion: dict[str, Any],
-    ) -> bool:
-        response = await self._request(
-            "POST",
-            f"/backtests/{run_id}/complete",
-            json=completion,
-        )
-        return _mutation_updated(response)
+        if not include_diagnostics:
+            params["include_diagnostics"] = False
+        return await self._request("GET", "/backtest-runs", params=params)
 
     async def get_backtest_execution_slot(self) -> dict[str, Any]:
         return await self._request("GET", "/backtest-execution/slot")
@@ -623,7 +713,7 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         )
 
     async def cancel_backtest_run(self, run_id: str) -> dict[str, Any]:
-        return await self._request("POST", f"/backtests/{run_id}/cancel")
+        return await self._request("POST", f"/backtest-runs/{run_id}/cancel")
 
     async def reconcile_backtest_execution(self, reconciliation: dict[str, Any]) -> int | None:
         response = await self._request("POST", "/backtest-execution/reconcile", json=reconciliation)
@@ -634,11 +724,8 @@ class AsyncDatabaseAccessorClient(_BaseClient):
             await self._request("POST", "/backtest-execution/fault", json=fault)
         )
 
-    async def delete_backtest_run(self, run_id: str) -> None:
-        await self._request("DELETE", f"/backtests/{run_id}")
-
-    async def delete_backtest_batch(self, batch_id: str) -> None:
-        await self._request("DELETE", f"/backtest-batches/{batch_id}")
+    async def delete_backtest(self, backtest_id: str) -> None:
+        await self._request("DELETE", f"/backtests/{backtest_id}")
 
     async def write_historical_candles(
         self,

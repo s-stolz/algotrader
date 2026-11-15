@@ -225,15 +225,15 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             recovery_backoff_initial_seconds=1,
             recovery_backoff_max_seconds=1,
         )
-        with patch("main.load_config", return_value=config), patch.object(
-            IngestionService, "_utc_now_ms", side_effect=now
+        with (
+            patch("main.load_config", return_value=config),
+            patch.object(IngestionService, "_utc_now_ms", side_effect=now),
         ):
             service = IngestionService()
         service._utc_now_ms = now
         service.db_client.close()
         service.db_client = storage
         await service.broker_client.aclose()
-        service.broker_client.close()
         service.broker_client = broker
         self.services.append(service)
         with patch("main.Redis.from_url", return_value=redis):
@@ -786,7 +786,9 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
         await redis.publish(
             "BTC", [candle(RESUMED), candle(RESUMED + 60000), candle(RESUMED + 120000)]
         )
-        await eventually(lambda: not service._state_by_id[1].live_ready.is_set())
+        await eventually(
+            lambda: 1 in storage.fail_save and not service._state_by_id[1].live_ready.is_set()
+        )
         self.assertIn(RESUMED, storage.rows["BTC"])
         self.assertNotIn(RESUMED + 60000, storage.rows["BTC"])
         # Retry cannot choose the now-newer latest row or skip the failed chunk.

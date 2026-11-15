@@ -4,6 +4,7 @@ from typing import Dict
 
 import numpy as np
 
+from ..catalog import IndicatorRegistration
 from ..core.bars import BarTensor
 from ..core.spec import IndicatorSpec
 from ..core.tensor import Tensor
@@ -13,6 +14,7 @@ from .utils import rolling_mean
 
 class SMA(IndicatorBase):
     """Simple Moving Average (SMA)."""
+
     spec = IndicatorSpec(
         id="sma",
         name="Simple Moving Average",
@@ -50,3 +52,12 @@ class SMA(IndicatorBase):
                 "output": np.array(["sma"], dtype=object),
             },
         )
+
+
+SMA_REGISTRATION = IndicatorRegistration(
+    public_id=1,
+    implementation=SMA,
+    supports_live=True,
+    overlay=True,
+    outputs={"sma": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#FCFC4E"}}},
+)

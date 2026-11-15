@@ -9,7 +9,7 @@ existing generated environment variables; YAML nesting does not change their nam
 | Key | Purpose |
 | --- | --- |
 | `mode` | Runtime mode, such as `development`. |
-| `public.host` | Browser and local CLI host, such as `localhost`. |
+| `public.host` | Browser-facing host, such as `localhost`. |
 | `services` | Application networking, logging, resources, and runtime tuning. |
 | `infrastructure` | Redis and TimescaleDB networking, resources, and database settings. |
 
@@ -19,12 +19,12 @@ existing generated environment variables; YAML nesting does not change their nam
 | --- | --- |
 | `services.database_accessor_api` | `network`, `logging`, `resources` |
 | `services.indicator_api` | `network`, `logging`, `resources` |
-| `services.backtester` | Shared `logging`, `api`, `worker`, `sweeps` |
+| `services.backtester` | Shared `logging`, `api`, `worker`, `backtests` |
 | `services.backtester.api` | `network`, `resources` |
-| `services.backtester.worker` | `resources`, `poll_interval_seconds`, `heartbeat` |
+| `services.backtester.worker` | `resources`, `heartbeat` |
 | `services.broker_service` | `network`, `logging`, `resources`, `streams`, `ctrader` |
 | `services.ingestion_service` | `logging`, `resources`, `consumer`, `history` |
-| `services.webserver` | `network`, `logging`, `resources`, `consumer`, `streams` |
+| `services.realtime_service` | `network`, `logging`, `resources`, `consumer` |
 | `services.frontend` | `network`, `resources` |
 | `infrastructure.redis` | `network`, `resources`, `database` |
 | `infrastructure.timescaledb` | `network`, `resources`, `database` |
@@ -46,15 +46,12 @@ network:
 
 `host` is the internal service hostname. `port` is the internal port;
 `published_port` is the port exposed on the host. Internal URLs and frontend proxy
-targets use the internal host and port. The local backtester CLI uses `public.host`
-and `services.database_accessor_api.network.published_port`, falling back to
-`network.port` when the published port is absent.
+targets use the internal host and port.
 
-Webserver shares one hostname across two named endpoints:
+Realtime service exposes two named endpoints:
 
 ```yaml
 network:
-  host: webserver
   websocket:
     port: 8765
     published_port: 8765
@@ -64,12 +61,12 @@ network:
 ```
 
 The browser WebSocket URL uses `public.host` and `network.websocket.published_port`.
-Ports are integers; hostnames are strings.
+Ports are integers; hostnames are strings. Frontend networking needs only `port`
+and `published_port`; no component consumes a configurable frontend hostname.
 
 ## Logging and resources
 
 `logging` contains `level` (for example `INFO`) and `format` (`pretty` or `json`).
-Ingestion logging also supplies the legacy `LOG_LEVEL` / `LOG_FORMAT` aliases.
 
 Each container owns a `resources` mapping:
 
@@ -97,8 +94,8 @@ runtime-specific constraints. Backtester API/worker tuning is grouped under
 `services.backtester`; stream limits and cTrader settings belong to
 `services.broker_service`.
 
-Worker polling and heartbeat intervals are positive; the stale threshold must
-exceed the heartbeat interval. The sweep candidate limit is a positive integer.
+Worker heartbeat intervals are positive; the stale threshold must exceed the
+heartbeat interval. The backtest candidate limit is a positive integer.
 Broker stream `max_length: null` preserves the existing unlimited retention and
 omits the corresponding `BROKER_*_STREAM_MAXLEN` variable from the generated file.
 Broker `streams.redis_db` selects its Redis database independently of the shared

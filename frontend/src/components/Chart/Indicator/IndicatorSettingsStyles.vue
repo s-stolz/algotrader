@@ -1,33 +1,61 @@
 <template>
-  <BaseDataTable :max-height="300" :row-hover="false">
+  <BaseDataTable
+    :max-height="300"
+    :row-hover="false"
+  >
     <tbody>
-      <template v-for="(output, outputKey) in indicatorInfo.outputs" :key="outputKey">
+      <template
+        v-for="(output, outputKey) in editableOutputs"
+        :key="outputKey"
+      >
         <tr class="output-style-header">
           <td colspan="2">
-            <n-h3 prefix="bar">{{ outputKey }}</n-h3>
+            <n-h3 prefix="bar">{{ output.label || outputKey }}</n-h3>
           </td>
         </tr>
 
-        <template v-for="(value, styleKey) in output.plotOptions" :key="styleKey">
+        <template
+          v-for="(value, styleKey) in output.plotOptions"
+          :key="styleKey"
+        >
           <!-- Handle direct primitive values -->
           <tr
             v-if="typeof value !== 'object' || value === null"
             class="output-style-option"
           >
-            <td>{{ styleKey }}</td>
+            <td>{{
+              styleKey === 'color' && output.plotOptions?.negativeColor
+                ? 'Zero and above'
+                : styleLabel(styleKey)
+            }}</td>
 
-            <td v-if="typeof value === 'string'">
-              <n-color-picker
+            <td v-if="typeof value === 'boolean'">
+              <BaseCheckbox
+                :aria-label="styleLabel(styleKey)"
+                :checked="getOutputPlotOptions(outputKey)[styleKey] === true"
+                @update:checked="
+                  (newValue) => setStyleValue(outputKey, styleKey, newValue)
+                "
+              />
+            </td>
+
+            <td v-else-if="typeof value === 'string'">
+              <BaseColorPicker
                 :value="getStringStyleValue(outputKey, styleKey)"
-                @update:value="(newValue) => setStyleValue(outputKey, styleKey, newValue)"
+                @update:value="
+                  (newValue) => setStyleValue(outputKey, styleKey, newValue)
+                "
               />
             </td>
 
             <td v-else-if="typeof value === 'number'">
               <n-input-number
+                round
                 min="1"
                 :value="getNumberStyleValue(outputKey, styleKey)"
-                @update:value="(newValue) => setStyleValue(outputKey, styleKey, newValue)"
+                @update:value="
+                  (newValue) => setStyleValue(outputKey, styleKey, newValue)
+                "
               />
             </td>
           </tr>
@@ -48,19 +76,27 @@
 
               <td v-if="typeof subValue === 'number'">
                 <n-input-number
+                  round
                   :min="0"
-                  :value="getNestedNumberStyleValue(outputKey, styleKey, subKey)"
+                  :value="
+                    getNestedNumberStyleValue(outputKey, styleKey, subKey)
+                  "
                   @update:value="
-                    (newValue) => setNestedStyleValue(outputKey, styleKey, subKey, newValue)
+                    (newValue) =>
+                      setNestedStyleValue(outputKey, styleKey, subKey, newValue)
                   "
                 />
               </td>
 
               <td v-else-if="typeof subValue === 'string'">
                 <n-input
-                  :value="getNestedStringStyleValue(outputKey, styleKey, subKey)"
+                  round
+                  :value="
+                    getNestedStringStyleValue(outputKey, styleKey, subKey)
+                  "
                   @update:value="
-                    (newValue) => setNestedStyleValue(outputKey, styleKey, subKey, newValue)
+                    (newValue) =>
+                      setNestedStyleValue(outputKey, styleKey, subKey, newValue)
                   "
                 />
               </td>
@@ -73,24 +109,26 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from "vue";
-import { NH3, NColorPicker, NInput, NInputNumber } from "naive-ui";
+import { computed, reactive, watch } from 'vue';
+import { NH3, NInput, NInputNumber } from 'naive-ui';
 
-import BaseDataTable from "@/components/Common/BaseDataTable.vue";
-import type { IndicatorInfo, JsonObject, JsonValue } from "@/types/contracts";
-import type { ChartSeriesOptions } from "@/utils/chart";
+import BaseColorPicker from '@/components/Common/BaseColorPicker.vue';
+import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
+import BaseDataTable from '@/components/Common/BaseDataTable.vue';
+import type { IndicatorInfo, JsonObject, JsonValue } from '@/types/contracts';
+import type { ChartSeriesOptions } from '@/utils/chart';
 
-import type { IndicatorStyleUpdatePayload } from "./types";
+import type { IndicatorStyleUpdatePayload } from './types';
 
 type StyleKey = string | number;
-type EditableStyleValue = string | number | null;
+type EditableStyleValue = string | number | boolean | null;
 
 interface OutputStyleState {
   plotOptions: JsonObject;
 }
 
 defineOptions({
-  name: "IndicatorSettingsStyles",
+  name: 'IndicatorSettingsStyles',
 });
 
 const props = defineProps<{
@@ -98,17 +136,35 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update-styles": [payload: IndicatorStyleUpdatePayload];
+  'update-styles': [payload: IndicatorStyleUpdatePayload];
 }>();
 
 const styles = reactive<Record<string, OutputStyleState>>({});
+const editableOutputs = computed(() =>
+  Object.fromEntries(
+    Object.entries(props.indicatorInfo.outputs).filter(
+      ([, output]) => output.plotOptions,
+    ),
+  ),
+);
+
+function styleLabel(key: StyleKey): string {
+  const labels: Record<string, string> = {
+    showExtensions: 'Show extensions',
+    fillColor: 'Fill color',
+    color: 'Color',
+    negativeColor: 'Below zero',
+    lineWidth: 'Line width',
+  };
+  return labels[String(key)] ?? String(key);
+}
 
 function toStyleKey(key: StyleKey): string {
   return String(key);
 }
 
 function isJsonStyleObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function initializeStyles(): void {
@@ -116,7 +172,9 @@ function initializeStyles(): void {
     delete styles[key];
   }
 
-  for (const [outputKey, output] of Object.entries(props.indicatorInfo.outputs)) {
+  for (const [outputKey, output] of Object.entries(
+    props.indicatorInfo.outputs,
+  )) {
     styles[outputKey] = {
       plotOptions: { ...(output.plotOptions || {}) },
     };
@@ -135,15 +193,21 @@ function getOutputPlotOptions(outputKey: StyleKey): JsonObject {
 
 function getStringStyleValue(outputKey: StyleKey, styleKey: StyleKey): string {
   const value = getOutputPlotOptions(outputKey)[toStyleKey(styleKey)];
-  return typeof value === "string" ? value : "";
+  return typeof value === 'string' ? value : '';
 }
 
-function getNumberStyleValue(outputKey: StyleKey, styleKey: StyleKey): number | null {
+function getNumberStyleValue(
+  outputKey: StyleKey,
+  styleKey: StyleKey,
+): number | null {
   const value = getOutputPlotOptions(outputKey)[toStyleKey(styleKey)];
-  return typeof value === "number" ? value : null;
+  return typeof value === 'number' ? value : null;
 }
 
-function getNestedStyleObject(outputKey: StyleKey, styleKey: StyleKey): JsonObject {
+function getNestedStyleObject(
+  outputKey: StyleKey,
+  styleKey: StyleKey,
+): JsonObject {
   const plotOptions = getOutputPlotOptions(outputKey);
   const normalizedStyleKey = toStyleKey(styleKey);
   const existing = plotOptions[normalizedStyleKey];
@@ -163,7 +227,7 @@ function getNestedStringStyleValue(
   subKey: StyleKey,
 ): string {
   const value = getNestedStyleObject(outputKey, styleKey)[toStyleKey(subKey)];
-  return typeof value === "string" ? value : "";
+  return typeof value === 'string' ? value : '';
 }
 
 function getNestedNumberStyleValue(
@@ -172,7 +236,7 @@ function getNestedNumberStyleValue(
   subKey: StyleKey,
 ): number | null {
   const value = getNestedStyleObject(outputKey, styleKey)[toStyleKey(subKey)];
-  return typeof value === "number" ? value : null;
+  return typeof value === 'number' ? value : null;
 }
 
 function setStyleValue(
@@ -196,33 +260,32 @@ function setNestedStyleValue(
 
 function emitStyles(outputKey: StyleKey): void {
   const normalizedOutputKey = toStyleKey(outputKey);
-  emit("update-styles", {
+  emit('update-styles', {
     outputKey: normalizedOutputKey,
-    styles: { ...getOutputPlotOptions(normalizedOutputKey) } as ChartSeriesOptions,
+    styles: {
+      ...getOutputPlotOptions(normalizedOutputKey),
+    } as ChartSeriesOptions,
   });
 }
 
-watch(
-  () => props.indicatorInfo,
-  initializeStyles,
-  { immediate: true },
-);
+watch(() => props.indicatorInfo, initializeStyles, { immediate: true });
 </script>
 
 <style scoped>
 table tr td {
-  padding: 5px 15px;
+  padding: var(--design-space-sm) var(--design-space-lg);
 }
 
 .output-style-header h3 {
   margin: 0;
+  font-size: var(--design-text-heading);
 }
 
 .output-style-subheader td {
-  padding: 5px 20px;
+  padding: var(--design-space-sm) var(--design-space-xl);
 }
 
 .output-style-option td {
-  padding: 5px 30px;
+  padding: var(--design-space-sm) var(--design-space-xxl);
 }
 </style>

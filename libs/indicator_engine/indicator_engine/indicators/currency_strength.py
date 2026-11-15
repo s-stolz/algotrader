@@ -4,7 +4,9 @@ from typing import Dict
 
 import numpy as np
 
+from ..catalog import IndicatorRegistration
 from ..core.bars import BarTensor
+from ..core.history import UTC_DAY_MS, InputHistory
 from ..core.spec import IndicatorSpec
 from ..core.tensor import Tensor
 from .base import IndicatorBase
@@ -28,9 +30,11 @@ class CurrencyStrength(IndicatorBase):
             "USDCAD",
             "NZDUSD",
         ],
-        supports_update=False,
+        supports_update=True,
         supports_vectorized=False,
         warmup_fn=lambda params: 2,
+        output_assets=["FX"],
+        input_history=InputHistory(anchor="utc_day", predecessor_bars=1),
     )
 
     def batch(self, data: BarTensor, params: Dict) -> Tensor:
@@ -51,6 +55,54 @@ class CurrencyStrength(IndicatorBase):
                 "output": np.array(self.spec.outputs, dtype=object),
             },
         )
+
+    def init_state(self, data: BarTensor, params: Dict) -> Dict:
+        """Seed through the prior candle; the engine applies the current row."""
+        close, prev, pair = _currency_strength_inputs(
+            data, source="close", required_assets=self.spec.required_assets
+        )
+        if len(close) < 2:
+            raise ValueError("Currency strength requires a predecessor candle")
+        timestamps = data.time.astype("datetime64[ms]").astype(np.int64)
+        prior_day = int(timestamps[-2]) // UTC_DAY_MS
+        strength = _raw_currency_strength(close=close[:-1], prev=prev[:-1], pair=pair)
+        running = np.nansum(strength[timestamps[:-1] // UTC_DAY_MS == prior_day], axis=0)
+        return {
+            "indices": [int(np.where(data.assets == asset)[0][0]) for asset in pair],
+            "field_idx": int(np.where(data.fields == "close")[0][0]),
+            "pair": pair,
+            "close": close[-2].copy(),
+            "running": running,
+            "day": prior_day,
+            "timestamp": None,
+        }
+
+    def update(self, state: Dict, *, new_row, asset_mask, timestamp_ms):
+        """Accumulate one return, replacing rather than compounding corrections."""
+        if state["timestamp"] is not None and timestamp_ms < state["timestamp"]:
+            raise ValueError("Currency strength updates must be chronological")
+        if state["timestamp"] == timestamp_ms:
+            previous, running, prior_day = state["prior"]
+        else:
+            previous, running, prior_day = state["close"], state["running"], state["day"]
+        day = int(timestamp_ms) // UTC_DAY_MS
+        close = new_row[state["indices"], state["field_idx"]].copy()
+        strength = _raw_currency_strength(
+            close=close[np.newaxis, :],
+            prev=previous[np.newaxis, :],
+            pair=state["pair"],
+        )[0]
+        baseline = np.zeros_like(running) if day != prior_day else running
+        accumulated = baseline + np.where(np.isnan(strength), 0.0, strength)
+        latest = np.where(np.isnan(strength), np.nan, accumulated)
+        return {
+            **state,
+            "prior": (previous, running, prior_day),
+            "close": close,
+            "running": accumulated,
+            "day": day,
+            "timestamp": timestamp_ms,
+        }, latest[np.newaxis, :]
 
 
 def _currency_strength_inputs(
@@ -283,3 +335,21 @@ def _daily_cumulative_strength(*, strength: np.ndarray, time: np.ndarray) -> np.
             running += value
             out[idx, col] = running
     return out
+
+
+CURRENCY_STRENGTH_REGISTRATION = IndicatorRegistration(
+    public_id=5,
+    implementation=CurrencyStrength,
+    supports_live=True,
+    overlay=False,
+    outputs={
+        "EUR": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#FF5252"}},
+        "GBP": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#4CAF50"}},
+        "JPY": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#00BCD4"}},
+        "AUD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#2962ff"}},
+        "NZD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#E040FB"}},
+        "CAD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#9C27B0"}},
+        "CHF": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#880E4F"}},
+        "USD": {"type": "line", "plotOptions": {"lineWidth": 2, "color": "#FF9800"}},
+    },
+)

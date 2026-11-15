@@ -3,15 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${PYTHON:-python3}"
-SHARED_CONSTRAINTS="${REPO_ROOT}/constraints-shared.txt"
+PYTHON_BIN="${PYTHON:-python3.15}"
+ENVIRONMENT_TOOL="${SCRIPT_DIR}/python_environment.py"
 
 SERVICES=(
   "broker-service"
   "indicator-api"
   "database-accessor-api"
   "ingestion-service"
-  "webserver"
+  "realtime-service"
   "backtester"
 )
 ROOT_TARGET="root"
@@ -26,7 +26,7 @@ Usage:
 Examples:
   ./scripts/setup_venvs.sh all
   ./scripts/setup_venvs.sh root
-  ./scripts/setup_venvs.sh broker-service webserver
+  ./scripts/setup_venvs.sh broker-service realtime-service
   ./scripts/setup_venvs.sh --recreate all
 EOF
 }
@@ -63,13 +63,15 @@ install_root() {
     "${PYTHON_BIN}" -m venv "${venv_dir}"
   fi
 
+  "${python_in_venv}" "${ENVIRONMENT_TOOL}" version
+
   if ! "${python_in_venv}" -m pip install --upgrade pip setuptools wheel; then
     echo "Warning: failed to upgrade pip/setuptools/wheel for ${ROOT_TARGET}; continuing." >&2
   fi
 
   (
     cd "${REPO_ROOT}"
-    "${python_in_venv}" -m pip install -c "${SHARED_CONSTRAINTS}" -r "requirements.root.txt"
+    "${python_in_venv}" "${ENVIRONMENT_TOOL}" install root
   )
 }
 
@@ -78,11 +80,10 @@ install_service() {
   local service_dir="${REPO_ROOT}/${service}"
   local venv_dir="${service_dir}/.venv"
   local python_in_venv="${venv_dir}/bin/python"
-  local requirements_file="${service_dir}/requirements.txt"
-  local override_file="${service_dir}/constraints.override.txt"
+  local project_file="${service_dir}/pyproject.toml"
 
-  if [[ ! -f "${requirements_file}" ]]; then
-    echo "Missing requirements file: ${requirements_file}" >&2
+  if [[ ! -f "${project_file}" ]]; then
+    echo "Missing project metadata: ${project_file}" >&2
     return 1
   fi
 
@@ -94,20 +95,16 @@ install_service() {
     "${PYTHON_BIN}" -m venv "${venv_dir}"
   fi
 
+  "${python_in_venv}" "${ENVIRONMENT_TOOL}" version
+
   if ! "${python_in_venv}" -m pip install --upgrade pip setuptools wheel; then
     echo "Warning: failed to upgrade pip/setuptools/wheel for ${service}; continuing." >&2
   fi
   (
     cd "${service_dir}"
-    "${python_in_venv}" -m pip install -c "${SHARED_CONSTRAINTS}" -r "requirements.txt"
+    "${python_in_venv}" "${ENVIRONMENT_TOOL}" install "${service}" --dev
   )
 
-  if [[ -f "${override_file}" ]]; then
-    (
-      cd "${service_dir}"
-      "${python_in_venv}" -m pip install -r "constraints.override.txt"
-    )
-  fi
 }
 
 RECREATE=0
@@ -121,10 +118,7 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
-if [[ ! -f "${SHARED_CONSTRAINTS}" ]]; then
-  echo "Missing shared constraints: ${SHARED_CONSTRAINTS}" >&2
-  exit 1
-fi
+"${PYTHON_BIN}" "${ENVIRONMENT_TOOL}" version
 
 targets=()
 if [[ "$1" == "all" ]]; then

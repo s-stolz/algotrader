@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
-from data.market_data import load_market_data
+from data.market_data import load_market_data, load_raw_market_data
 from data.normalization import normalize_bar_data
 from domain.types import BacktestRequest, ExecutionConfig, StrategyConfig
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
@@ -18,6 +18,59 @@ class _FakeHistoricalAdapter:
 
 
 class TestMarketDataPipeline(unittest.TestCase):
+    def test_warmup_recovery_counts_normalized_candles_and_continues_past_invalid_history(
+        self,
+    ) -> None:
+        start_ms = 1_700_000_000_000
+        minute = 60_000
+        offsets = [-4, -3, -1, -1, 0, 1, 2]
+        bars = pd.DataFrame(
+            {
+                "timestamp_ms": [start_ms + offset * minute for offset in offsets],
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": [10.0, np.nan, 10.0, 10.0, 10.0, 10.0, 10.0],
+                "volume": 1000.0,
+            }
+        )
+        calls = []
+
+        class Adapter:
+            def fetch_bars(self, **kwargs):
+                calls.append(kwargs)
+                frame = bars.loc[bars.timestamp_ms < kwargs["end_ms"]]
+                if kwargs["start_ms"] is not None:
+                    frame = frame.loc[frame.timestamp_ms >= kwargs["start_ms"]]
+                limit = kwargs.get("limit")
+                return frame.tail(limit).copy() if limit is not None else frame.copy()
+
+        request = BacktestRequest(
+            symbols=["AAPL"],
+            timeframe="M1",
+            start_ms=start_ms,
+            end_ms=start_ms + 2 * minute,
+            strategy=StrategyConfig("sma_crossover"),
+            execution=ExecutionConfig(),
+            initial_capital=10_000.0,
+        )
+        normalized = load_raw_market_data(
+            request=request,
+            strategy=build_sma_crossover_strategy(fast_window=2, slow_window=3),
+            data_adapter=Adapter(),
+        )
+
+        self.assertEqual(
+            normalized.timestamp_ms.tolist(),
+            [start_ms + offset * minute for offset in [-4, -1, 0, 1]],
+        )
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([call["limit"] for call in calls[1:]], [1, 1])
+        self.assertEqual(
+            [call["end_ms"] for call in calls[1:]],
+            [start_ms - 2 * minute, start_ms - 3 * minute],
+        )
+
     def test_load_market_data_normalizes_indicators_and_trimming(self) -> None:
         start_ms = 1_700_000_000_000
         minute = 60_000

@@ -1,5 +1,11 @@
+import importlib
+import sys
 import unittest
+from contextlib import ExitStack
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Annotated, Mapping, cast
+from unittest.mock import patch
 
 from domain.types import StrategyConfig
 from strategies import registry
@@ -17,6 +23,57 @@ from strategies.registry import (
 
 
 class TestStrategyRegistry(unittest.TestCase):
+    def test_catalog_declares_strategy_execution_mode(self) -> None:
+        catalog = {item["strategy_id"]: item for item in strategy_catalog()}
+        self.assertEqual(catalog["limit_reversion"]["execution_mode"], "orders")
+        self.assertEqual(catalog["sma_crossover"]["execution_mode"], "targets")
+
+    def test_local_modules_are_discovered_without_importing_supporting_directories(self) -> None:
+        strategy_catalog()
+        package = importlib.import_module("strategies.custom")
+        module_name = "strategies.custom.local_discovery_fixture"
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "local_discovery_fixture.py").write_text(
+                "from strategies.registry import register_strategy\n"
+                "from strategies.base import StrategyDefinition\n"
+                "from strategies.examples.sma_crossover import build_sma_crossover_strategy\n"
+                "@register_strategy('local_discovery_fixture', 1)\n"
+                "def build(*, quantity: float = 2.0) -> StrategyDefinition:\n"
+                "    result = build_sma_crossover_strategy(quantity=quantity)\n"
+                "    result.strategy_id = 'local_discovery_fixture'\n"
+                "    return result\n",
+                encoding="utf-8",
+            )
+            (root / "tests").mkdir()
+            (root / "tests" / "__init__.py").write_text(
+                "raise AssertionError('supporting files must not be imported')\n",
+                encoding="utf-8",
+            )
+            try:
+                with ExitStack() as stack:
+                    stack.enter_context(patch.object(package, "__path__", [directory]))
+                    stack.enter_context(
+                        patch.object(registry, "_REGISTRY", dict(registry._REGISTRY))
+                    )
+                    stack.enter_context(patch.object(registry, "_DISCOVERED", False))
+                    importlib.invalidate_caches()
+                    catalog = strategy_catalog()
+                    local = next(
+                        item for item in catalog if item["strategy_id"] == "local_discovery_fixture"
+                    )
+                    self.assertEqual(local["strategy_version"], 1)
+                    resolved = resolve_strategy(
+                        StrategyConfig("local_discovery_fixture", {"quantity": 3.0}, 1)
+                    )
+                    self.assertEqual(resolved.require_v1_parity_model().target_quantity, 3.0)
+                    self.assertNotIn("strategies.custom.tests", sys.modules)
+            finally:
+                sys.modules.pop(module_name, None)
+                if hasattr(package, "local_discovery_fixture"):
+                    delattr(package, "local_discovery_fixture")
+                importlib.invalidate_caches()
+
     def test_catalog_derives_order_types_defaults_and_constraints_from_builder(self) -> None:
         def validate(parameters: Mapping[str, object]) -> None:
             if parameters["label"] == "reject":

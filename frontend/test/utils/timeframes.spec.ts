@@ -8,16 +8,14 @@ import {
 } from '@/utils/timeframes';
 
 describe('timeframe utilities', () => {
-  it('normalizes known string and numeric timeframe values', () => {
+  it('normalizes known timeframe codes', () => {
     expect(normalizeTimeframeCode('m5')).toBe('M5');
     expect(normalizeTimeframeCode('H1')).toBe('H1');
-    expect(normalizeTimeframeCode(60)).toBe('H1');
-    expect(normalizeTimeframeCode(43200)).toBe('MN1');
   });
 
   it('falls back to M1 for unsupported inputs', () => {
     expect(normalizeTimeframeCode('bad')).toBe('M1');
-    expect(normalizeTimeframeCode(7)).toBe('M1');
+    expect(normalizeTimeframeCode(60)).toBe('M1');
     expect(timeframeToMinutes('bad')).toBe(1);
   });
 
@@ -35,11 +33,14 @@ describe('timeframe utilities', () => {
 });
 
 describe('groupTimeframeOptions', () => {
-  it('groups and sorts caller-provided options by their complete units without changing the input', () => {
+  it('groups and sorts complete units without mutating options', () => {
     const options = [
-      { label: 'MN1', value: 'MN1' }, { label: 'H12', value: 'H12' },
-      { label: 'M30', value: 'M30' }, { label: 'W1', value: 'W1' },
-      { label: 'H1', value: 'H1' }, { label: 'M2', value: 'M2' },
+      { label: 'MN1', value: 'MN1' },
+      { label: 'H12', value: 'H12' },
+      { label: 'M30', value: 'M30' },
+      { label: 'W1', value: 'W1' },
+      { label: 'H1', value: 'H1' },
+      { label: 'M2', value: 'M2' },
     ] as const;
     const before = [...options];
     expect(groupTimeframeOptions(options)).toEqual([
@@ -54,7 +55,11 @@ describe('groupTimeframeOptions', () => {
   it('omits empty groups and preserves exactly the selectable set', () => {
     expect(groupTimeframeOptions([])).toEqual([]);
     const groups = groupTimeframeOptions(TIMEFRAME_OPTIONS);
-    expect(groups.map(group => group.label)).toEqual(['Minutes', 'Hours', 'Days']);
-    expect(groups.flatMap(group => group.options)).toEqual(TIMEFRAME_OPTIONS);
+    expect(groups.map((group) => group.label)).toEqual([
+      'Minutes',
+      'Hours',
+      'Days',
+    ]);
+    expect(groups.flatMap((group) => group.options)).toEqual(TIMEFRAME_OPTIONS);
   });
 });

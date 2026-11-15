@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import IndicatorPanel from '@/components/Chart/Indicator/IndicatorPanel.vue';
 import { useModalStore } from '@/stores/modalStore';
@@ -12,10 +12,15 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -55,7 +60,9 @@ const indicatorInfo: IndicatorInfo = {
   },
 };
 
-function createIndicator(overrides: Partial<StoreIndicator> = {}): StoreIndicator {
+function createIndicator(
+  overrides: Partial<StoreIndicator> = {},
+): StoreIndicator {
   return {
     _id: 'indicator-1',
     indicatorId: 7,
@@ -101,6 +108,95 @@ describe('IndicatorPanel', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     localStorage.clear();
+  });
+
+  it.each(['sma', 'rsi', 'macd'])(
+    'does not show no-data help for %s while its data is empty',
+    (indicatorId) => {
+      const wrapper = mount(IndicatorPanel, {
+        props: {
+          indicator: createIndicator({
+            info: { ...indicatorInfo, indicator_id: indicatorId },
+            data: [],
+          }),
+        },
+        global: { stubs: { NButton: NButtonStub, NIcon: true } },
+      });
+      expect(wrapper.find('.indicator-empty-state').exists()).toBe(false);
+      wrapper.unmount();
+    },
+  );
+
+  it.each([{ data: [] }, { data: [{ timestamp_ms: 1000, sma: null }] }])(
+    'shows empty-state help after the remove control when no values can be plotted',
+    async ({ data }) => {
+      const indicator = createIndicator({
+        info: { ...indicatorInfo, indicator_id: 'currency_strength' },
+        data,
+      });
+      const wrapper = mount(IndicatorPanel, {
+        props: { indicator },
+        global: { stubs: { NButton: NButtonStub, NIcon: true } },
+      });
+      const message = 'No data available for this symbol and indicator.';
+      const help = wrapper.get('.indicator-empty-state');
+      expect(
+        wrapper
+          .get('.indicator-controls')
+          .findAll('button')
+          .map((button) => button.attributes('aria-label')),
+      ).toEqual(['Indicator settings', 'Remove Indicator', message]);
+      expect(wrapper.text()).not.toContain(message);
+      expect(document.querySelector('.base-popover')).toBeNull();
+      await help.trigger('mouseenter');
+      await vi.waitFor(() => {
+        expect(document.querySelector('.base-popover')?.textContent).toContain(
+          message,
+        );
+      });
+      await help.trigger('mouseleave');
+      await wrapper.get('[aria-label="Indicator settings"]').trigger('click');
+      expect(useModalStore().activeModal).toBe('indicatorSettings_indicator-1');
+      await wrapper.get('[aria-label="Remove Indicator"]').trigger('click');
+      expect(wrapper.emitted('remove-indicator')).toEqual([['indicator-1']]);
+
+      await wrapper.setProps({
+        indicator: { ...indicator, data: createIndicator().data },
+      });
+      expect(wrapper.find('.indicator-empty-state').exists()).toBe(false);
+      await wrapper.setProps({ indicator });
+      expect(wrapper.find('.indicator-empty-state').exists()).toBe(true);
+      await wrapper.setProps({
+        indicator: {
+          ...indicator,
+          lastLivePoint: { timestamp_ms: 2000, sma: 0 },
+        },
+      });
+      expect(wrapper.find('.indicator-empty-state').exists()).toBe(false);
+      wrapper.unmount();
+    },
+  );
+
+  it('omits the historical suffix for live currency strength', async () => {
+    const indicator = createIndicator({
+      info: {
+        ...indicatorInfo,
+        name: 'Currency Strength',
+        supports_live: true,
+      },
+    });
+    const wrapper = mount(IndicatorPanel, {
+      props: { indicator },
+      global: { stubs: { NButton: true, NIcon: true } },
+    });
+    expect(wrapper.text()).toBe('Currency Strength');
+    await wrapper.setProps({
+      indicator: {
+        ...indicator,
+        info: { ...indicator.info, supports_live: false },
+      },
+    });
+    expect(wrapper.text()).toContain('Historical');
   });
 
   it('opens settings from the panel and emits removal with the indicator id', async () => {

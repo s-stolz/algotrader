@@ -299,6 +299,13 @@ def map_symbol_data(info: SymbolDescriptor, symbol_data) -> Symbol:
         pip_position=symbol_data.pipPosition,
         commission=getattr(symbol_data, "commission", 0),
         commission_type=commission_type_name,
+        minimum_quantity=(
+            symbol_data.minVolume / 100 if getattr(symbol_data, "minVolume", 0) > 0 else None
+        ),
+        quantity_step=(
+            symbol_data.stepVolume / 100 if getattr(symbol_data, "stepVolume", 0) > 0 else None
+        ),
+        lot_size=(symbol_data.lotSize / 100 if getattr(symbol_data, "lotSize", 0) > 0 else None),
     )
 
 

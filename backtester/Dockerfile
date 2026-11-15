@@ -1,19 +1,20 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1.20
+FROM python:3.15.2-slim
 
-WORKDIR /workspace/backtester
+WORKDIR /workspace
+COPY constraints-shared.txt ./
+COPY scripts/python_environment.py ./scripts/python_environment.py
+# Dependency metadata changes invalidate this layer; source-only changes do not.
+COPY --parents libs/*/pyproject.toml backtester/pyproject.toml backtester/constraints*.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python scripts/python_environment.py install backtester --third-party-only
 
-# Upgrade pip to latest version
-RUN pip install --upgrade pip
-
-# Install dependencies
-COPY backtester/requirements.txt /workspace/backtester/requirements.txt
-COPY libs/db_accessor_client /workspace/libs/db_accessor_client
-COPY libs/indicator_engine /workspace/libs/indicator_engine
-RUN pip install --no-cache-dir -r requirements.txt
+COPY libs ./libs
+COPY backtester ./backtester
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python scripts/python_environment.py install backtester
 
 WORKDIR /app
-
-# Copy application code
 COPY backtester /app
 
 EXPOSE 8020

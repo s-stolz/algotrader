@@ -4,7 +4,6 @@ import { defineComponent, h } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  deleteBacktestRun,
   fetchBacktestClosedTrades,
   getBacktestRun,
   listBacktestRuns,
@@ -16,8 +15,8 @@ import type { Market } from '@/types/contracts';
 import TopBarModals from '@/components/TopBar/Modals/TopBarModals.vue';
 
 vi.mock('@/api/backtesterClient', () => ({
-  deleteBacktestRun: vi.fn(),
   fetchBacktestClosedTrades: vi.fn(),
+  fetchBacktestFills: vi.fn().mockResolvedValue([]),
   getBacktestRun: vi.fn(),
   listBacktestRuns: vi.fn(),
 }));
@@ -38,20 +37,33 @@ const SymbolSearchModalStub = defineComponent({
   emits: ['open-symbol-form-modal', 'remove-market', 'upload-data'],
   setup(_, { emit, expose }) {
     expose({ updateCurrentMarket });
-    return () => h('div', [
-      h('button', {
-        class: 'open-symbol-form',
-        onClick: () => emit('open-symbol-form-modal'),
-      }, 'Add'),
-      h('button', {
-        class: 'remove-market',
-        onClick: () => emit('remove-market', market),
-      }, 'Remove'),
-      h('button', {
-        class: 'upload-data',
-        onClick: () => emit('upload-data', market),
-      }, 'Upload'),
-    ]);
+    return () =>
+      h('div', [
+        h(
+          'button',
+          {
+            class: 'open-symbol-form',
+            onClick: () => emit('open-symbol-form-modal'),
+          },
+          'Add',
+        ),
+        h(
+          'button',
+          {
+            class: 'remove-market',
+            onClick: () => emit('remove-market', market),
+          },
+          'Remove',
+        ),
+        h(
+          'button',
+          {
+            class: 'upload-data',
+            onClick: () => emit('upload-data', market),
+          },
+          'Upload',
+        ),
+      ]);
   },
 });
 
@@ -59,10 +71,15 @@ const RemoveMarketModalStub = defineComponent({
   name: 'RemoveMarketModal',
   emits: ['market-removed'],
   setup(_, { emit }) {
-    return () => h('button', {
-      class: 'market-removed',
-      onClick: () => emit('market-removed', market),
-    }, 'Removed');
+    return () =>
+      h(
+        'button',
+        {
+          class: 'market-removed',
+          onClick: () => emit('market-removed', market),
+        },
+        'Removed',
+      );
   },
 });
 
@@ -70,10 +87,15 @@ const UploadDataModalStub = defineComponent({
   name: 'UploadDataModal',
   emits: ['upload-successful'],
   setup(_, { emit }) {
-    return () => h('button', {
-      class: 'upload-successful',
-      onClick: () => emit('upload-successful', market),
-    }, 'Uploaded');
+    return () =>
+      h(
+        'button',
+        {
+          class: 'upload-successful',
+          onClick: () => emit('upload-successful', market),
+        },
+        'Uploaded',
+      );
   },
 });
 
@@ -82,10 +104,11 @@ const BaseModalStub = defineComponent({
   setup(_, { expose, slots }) {
     expose({ close: () => undefined });
 
-    return () => h('section', { class: 'base-modal' }, [
-      slots.default?.(),
-      slots.footer?.(),
-    ]);
+    return () =>
+      h('section', { class: 'base-modal' }, [
+        slots.default?.(),
+        slots.footer?.(),
+      ]);
   },
 });
 
@@ -93,10 +116,15 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -114,14 +142,15 @@ const NInputStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { attrs, emit }) {
-    return () => h('input', {
-      ...attrs,
-      ...props.inputProps,
-      value: props.value,
-      onInput: (event: Event) => {
-        emit('update:value', (event.target as HTMLInputElement).value);
-      },
-    });
+    return () =>
+      h('input', {
+        ...attrs,
+        ...props.inputProps,
+        value: props.value,
+        onInput: (event: Event) => {
+          emit('update:value', (event.target as HTMLInputElement).value);
+        },
+      });
   },
 });
 
@@ -129,11 +158,9 @@ describe('TopBarModals', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     updateCurrentMarket.mockReset();
-    vi.mocked(deleteBacktestRun).mockReset();
     vi.mocked(fetchBacktestClosedTrades).mockReset();
     vi.mocked(getBacktestRun).mockReset();
     vi.mocked(listBacktestRuns).mockReset();
-    vi.mocked(deleteBacktestRun).mockResolvedValue();
     vi.mocked(fetchBacktestClosedTrades).mockResolvedValue([]);
     vi.mocked(getBacktestRun).mockResolvedValue(backtestRun());
     vi.mocked(listBacktestRuns).mockResolvedValue([]);
@@ -213,7 +240,9 @@ describe('TopBarModals', () => {
     modalStore.closeModal();
     await flushPromises();
 
-    expect(wrapper.findComponent({ name: 'BacktestRunHistoryModal' }).exists()).toBe(false);
+    expect(
+      wrapper.findComponent({ name: 'BacktestRunHistoryModal' }).exists(),
+    ).toBe(false);
 
     modalStore.openModal('backtestRuns');
     await flushPromises();
@@ -224,6 +253,8 @@ describe('TopBarModals', () => {
 
 function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
   return {
+    backtest_id: 'backtest-1',
+    run_ordinal: 0,
     run_id: 'run-123',
     status: 'succeeded',
     submitted_at_ms: 1_780_921_805_123,
@@ -255,11 +286,16 @@ function backtestRun(overrides: Partial<BacktestRun> = {}): BacktestRun {
         commission_bps: 1,
         slippage_bps: 0.5,
       },
-      persist_result: true,
       run_metadata: null,
     },
     result_schema_version: 3,
-    metrics: { total_return_pct: 1.25, trade_count: 3, long_trade_count: 2, short_trade_count: 1 },
+    metrics: {
+      profit_factor: null,
+      total_return_pct: 1.25,
+      trade_count: 3,
+      long_trade_count: 2,
+      short_trade_count: 1,
+    },
     diagnostics: { execution_duration_ms: 240_000 },
     error_code: null,
     error_message: null,

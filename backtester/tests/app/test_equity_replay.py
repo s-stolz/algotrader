@@ -90,6 +90,42 @@ class EquityReplayTests(unittest.TestCase):
         self.start = self.request.start_ms
         self.closes = [(self.start + i * 60_000, float(10 + i)) for i in range(4)]
 
+    def test_order_replay_fetches_execution_timeframe(self):
+        start = self.start // 60_000 * 60_000
+        closes = [(start + i * 60_000, close) for i, (_, close) in enumerate(self.closes)]
+        request = replace(
+            self.request,
+            timeframe="M10",
+            start_ms=start,
+            end_ms=start + len(closes) * 60_000,
+            execution=ExecutionConfig(execution_mode="orders", candle_quote="bid"),
+        )
+        run = BacktestRunRecord(
+            backtest_id="backtest-1",
+            run_ordinal=0,
+            run_id="run-1",
+            status=BacktestRunStatus.SUCCEEDED,
+            submitted_at_ms=self.start,
+            request_snapshot=BacktestRequestSnapshot.from_request(request),
+            replay_descriptor=descriptor(request, closes),
+        )
+        calls = []
+
+        class MinuteCandles(_Candles):
+            def fetch_bars(self, **kwargs):
+                calls.append(kwargs["timeframe"])
+                frame = super().fetch_bars(**kwargs)
+                for column in ("open", "high", "low"):
+                    frame[column] = frame["close"]
+                frame["volume"] = 1.0
+                return frame
+
+        service = BacktestRunService(
+            repository=_Repository(run, []), data_adapter=MinuteCandles(closes)
+        )
+        self.assertEqual(service.get_equity_curve("run-1", 100)["availability"], "exact")
+        self.assertEqual(calls, ["M1"])
+
     def test_fingerprint_normalizes_negative_zero_and_identifies_market(self):
         zero = [(self.start, -0.0)]
         self.assertEqual(
@@ -178,6 +214,8 @@ class EquityReplayTests(unittest.TestCase):
 
     def test_application_reports_exact_legacy_and_candle_failure(self):
         run = BacktestRunRecord(
+            backtest_id="backtest-1",
+            run_ordinal=0,
             run_id="run-1",
             status=BacktestRunStatus.SUCCEEDED,
             submitted_at_ms=self.start,

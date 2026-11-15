@@ -1,50 +1,76 @@
 <script lang="ts">
 import { computed, defineComponent, h, mergeProps } from 'vue';
-import { NSelect, selectProps } from 'naive-ui';
-import { baseSelectTheme } from './baseSelectTheme';
+import { NPopover, NSelect, selectProps } from 'naive-ui';
+import { designTokens } from '@/design/tokens';
+import { designSelectTheme, designPopoverTheme } from '@/design/naiveTheme';
+import { designCssProperties } from '@/design/cssProperties';
 
 export default defineComponent({
   name: 'BaseSelect',
   inheritAttrs: false,
   props: selectProps,
   setup(props, { attrs, slots }) {
+    const theme = designSelectTheme;
     const mergedTheme = computed(() => ({
-      ...baseSelectTheme,
+      ...theme,
       ...props.themeOverrides,
       peers: {
-        ...baseSelectTheme.peers,
+        ...theme.peers,
         ...props.themeOverrides?.peers,
         InternalSelection: {
-          ...baseSelectTheme.peers?.InternalSelection,
+          ...theme.peers?.InternalSelection,
           ...props.themeOverrides?.peers?.InternalSelection,
         },
         InternalSelectMenu: {
-          ...baseSelectTheme.peers?.InternalSelectMenu,
+          ...theme.peers?.InternalSelectMenu,
           ...props.themeOverrides?.peers?.InternalSelectMenu,
         },
       },
     }));
+    const ellipsisTagPopoverProps = computed(() => {
+      const overrides = props.ellipsisTagPopoverProps as
+        InstanceType<typeof NPopover>['$props'] | undefined;
+      return {
+        placement: 'bottom-start' as const,
+        overlap: false,
+        showArrow: false,
+        ...overrides,
+        class: ['base-select-overflow', overrides?.class],
+        style: [designCssProperties, overrides?.style],
+        themeOverrides: {
+          ...designPopoverTheme,
+          padding: designTokens.space.sm,
+          boxShadow: `0 0 0 1px ${designTokens.color.border}, ${designTokens.shadow.overlay}`,
+          ...overrides?.themeOverrides,
+        },
+      };
+    });
     const menuProps = computed(() => ({
       ...props.menuProps,
       class: ['base-select-menu', props.menuProps?.class],
+      style: [designCssProperties, props.menuProps?.style],
     }));
-    return () => h(NSelect, mergeProps(attrs, props, {
-      class: 'base-select',
-      menuProps: menuProps.value,
-      themeOverrides: mergedTheme.value,
-    }), slots);
+    return () =>
+      h(
+        NSelect,
+        mergeProps(attrs, props, {
+          class: 'base-select',
+          menuProps: menuProps.value,
+          ellipsisTagPopoverProps: ellipsisTagPopoverProps.value,
+          themeOverrides: mergedTheme.value,
+        }),
+        slots,
+      );
   },
 });
 </script>
 
 <style>
-.base-select-menu, .base-select-menu * { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-.base-select-menu {
-  border-radius: 6px;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+.base-select {
+  min-width: 0;
 }
-/* Also covers Naive UI's pagination size selector, which shares baseSelectTheme. */
-.n-select .n-base-selection:not(.n-base-selection--disabled):is(:hover, .n-base-selection--focus) .n-base-selection-input {
-  color: var(--selection-accent);
+.base-select-menu,
+.base-select-overflow {
+  font-family: var(--design-font-ui);
 }
 </style>

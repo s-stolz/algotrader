@@ -5,7 +5,8 @@
   "include": [
     "libs/algotrader_logger",
     "libs/db_accessor_client",
-    "libs/indicator_engine"
+    "libs/indicator_engine",
+    "scripts/python_environment.py"
   ],
   "exclude": [
     "backtester",
@@ -13,7 +14,7 @@
     "database-accessor-api",
     "indicator-api",
     "ingestion-service",
-    "webserver",
+    "realtime-service",
     "frontend",
     "timescaledb-init",
     "**/__pycache__",
@@ -38,5 +39,6 @@
         "libs/indicator_engine"
       ]
     }
-  ]
+  ],
+  "pythonVersion": "3.12"
 }

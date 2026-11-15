@@ -42,10 +42,17 @@ describe('localStorage helpers', () => {
   });
 
   it('returns parsed values and falls back for missing keys', () => {
-    window.localStorage.setItem(STORAGE_KEYS.CURRENT_TIMEFRAME, JSON.stringify({ value: 'M5' }));
+    window.localStorage.setItem(
+      STORAGE_KEYS.CURRENT_TIMEFRAME,
+      JSON.stringify({ value: 'M5' }),
+    );
 
-    expect(getStoredState(STORAGE_KEYS.CURRENT_TIMEFRAME)).toEqual({ value: 'M5' });
-    expect(getStoredState('missing', { fallback: true })).toEqual({ fallback: true });
+    expect(getStoredState(STORAGE_KEYS.CURRENT_TIMEFRAME)).toEqual({
+      value: 'M5',
+    });
+    expect(getStoredState('missing', { fallback: true })).toEqual({
+      fallback: true,
+    });
   });
 
   it('returns defaults for malformed JSON without throwing', () => {
@@ -65,7 +72,9 @@ describe('localStorage helpers', () => {
       throw new Error('quota exceeded');
     });
 
-    expect(() => setStoredState(STORAGE_KEYS.CURRENT_TIMEFRAME, { value: 'H1' })).not.toThrow();
+    expect(() =>
+      setStoredState(STORAGE_KEYS.CURRENT_TIMEFRAME, { value: 'H1' }),
+    ).not.toThrow();
     expect(error).toHaveBeenCalledWith(
       `Failed to save to localStorage key "${STORAGE_KEYS.CURRENT_TIMEFRAME}":`,
       expect.any(Error),

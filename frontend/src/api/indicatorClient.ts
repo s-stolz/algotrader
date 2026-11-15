@@ -11,7 +11,9 @@ import { parseJsonResponse, withQuery } from './http';
 
 const INDICATORS_BASE_URL = '/api/indicator-api/indicators';
 
-export async function fetchAvailableIndicators(): Promise<AvailableIndicator[]> {
+export async function fetchAvailableIndicators(): Promise<
+  AvailableIndicator[]
+> {
   const payload = await parseJsonResponse(
     await fetch(INDICATORS_BASE_URL),
     'Failed to fetch indicators',
@@ -28,20 +30,28 @@ export async function requestIndicator(
   indicatorId: number,
   query: IndicatorQuery,
   body: IndicatorRequestBody = {},
+  signal?: AbortSignal,
 ): Promise<IndicatorResponse> {
   const payload = await parseJsonResponse(
-    await fetch(withQuery(`${INDICATORS_BASE_URL}/${encodeURIComponent(String(indicatorId))}`, {
-      symbol: query.symbol,
-      timeframe: query.timeframe,
-      exchange: query.exchange,
-      start_ms: query.startMs,
-      end_ms: query.endMs,
-      limit: query.limit,
-    }), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }),
+    await fetch(
+      withQuery(
+        `${INDICATORS_BASE_URL}/${encodeURIComponent(String(indicatorId))}`,
+        {
+          symbol: query.symbol,
+          timeframe: query.timeframe,
+          exchange: query.exchange,
+          start_ms: query.startMs,
+          end_ms: query.endMs,
+          limit: query.limit,
+        },
+      ),
+      {
+        signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    ),
     'Failed to request indicator',
   );
 

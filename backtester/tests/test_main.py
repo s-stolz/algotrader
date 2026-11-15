@@ -1,10 +1,17 @@
 import unittest
+from unittest.mock import patch
 
 import main
 from fastapi.testclient import TestClient
 
 
 class TestBacktesterServiceEntrypoint(unittest.TestCase):
+    def setUp(self) -> None:
+        for method in ("start", "close"):
+            patcher = patch(f"adapters.backtest_events.BacktestEventPublisher.{method}")
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_fastapi_app_exposes_submission_and_status_routes(self) -> None:
         with TestClient(main.app) as client:
             response = client.get("/openapi.json")
@@ -13,7 +20,7 @@ class TestBacktesterServiceEntrypoint(unittest.TestCase):
         paths = response.json()["paths"]
         self.assertIn("post", paths["/backtests"])
         self.assertIn("get", paths["/backtests"])
-        self.assertIn("get", paths["/backtests/{run_id}"])
+        self.assertIn("get", paths["/backtests/runs/{run_id}"])
 
     def test_health_endpoint_reports_ready(self) -> None:
         with TestClient(main.app) as client:

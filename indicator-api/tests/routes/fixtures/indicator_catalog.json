@@ -1,0 +1,431 @@
+{
+  "catalog": [
+    {
+      "id": 1,
+      "indicator_id": "sma",
+      "name": "Simple Moving Average"
+    },
+    {
+      "id": 2,
+      "indicator_id": "rsi",
+      "name": "Relative Strength Index"
+    },
+    {
+      "id": 3,
+      "indicator_id": "bbands",
+      "name": "Bollinger Bands"
+    },
+    {
+      "id": 4,
+      "indicator_id": "macd",
+      "name": "Moving Average Convergence Divergence"
+    },
+    {
+      "id": 5,
+      "indicator_id": "currency_strength",
+      "name": "Currency Strength"
+    },
+    {
+      "id": 6,
+      "indicator_id": "ema",
+      "name": "Exponential Moving Average"
+    },
+    {
+      "id": 7,
+      "indicator_id": "opening_range",
+      "name": "Opening Range"
+    },
+    {
+      "id": 8,
+      "indicator_id": "rolling_range",
+      "name": "Rolling High / Low"
+    }
+  ],
+  "metadata": {
+    "1": {
+      "id": 1,
+      "indicator_id": "sma",
+      "inputs": [],
+      "name": "Simple Moving Average",
+      "outputs": {
+        "sma": {
+          "plotOptions": {
+            "color": "#FCFC4E",
+            "lineWidth": 2
+          },
+          "type": "line"
+        }
+      },
+      "overlay": true,
+      "parameters": {
+        "source": {
+          "default": "close",
+          "options": [
+            "close",
+            "open",
+            "high",
+            "low"
+          ],
+          "type": "string"
+        },
+        "window": {
+          "default": 20,
+          "min": 1,
+          "type": "int"
+        }
+      },
+      "supports_live": true
+    },
+    "2": {
+      "id": 2,
+      "indicator_id": "rsi",
+      "inputs": [],
+      "name": "Relative Strength Index",
+      "outputs": {
+        "rsi": {
+          "plotOptions": {
+            "color": "#7E57C2",
+            "lineWidth": 2
+          },
+          "type": "line"
+        }
+      },
+      "overlay": false,
+      "parameters": {
+        "length": {
+          "default": 14,
+          "min": 1,
+          "type": "int"
+        },
+        "source": {
+          "default": "close",
+          "options": [
+            "close",
+            "open",
+            "high",
+            "low"
+          ],
+          "type": "string"
+        }
+      },
+      "supports_live": true
+    },
+    "3": {
+      "id": 3,
+      "indicator_id": "bbands",
+      "inputs": [],
+      "name": "Bollinger Bands",
+      "outputs": {
+        "lower": {
+          "plotOptions": {
+            "color": "#089981",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "mid": {
+          "plotOptions": {
+            "color": "#2962ff",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "upper": {
+          "plotOptions": {
+            "color": "#f23645",
+            "lineWidth": 2
+          },
+          "type": "line"
+        }
+      },
+      "overlay": true,
+      "parameters": {
+        "length": {
+          "default": 20,
+          "min": 1,
+          "type": "int"
+        },
+        "lower_std": {
+          "default": 2.0,
+          "min": 0.0,
+          "type": "float"
+        },
+        "ma_mode": {
+          "default": "SMA",
+          "options": [
+            "SMA",
+            "EMA"
+          ],
+          "type": "string"
+        },
+        "source": {
+          "default": "close",
+          "options": [
+            "close",
+            "open",
+            "high",
+            "low"
+          ],
+          "type": "string"
+        },
+        "upper_std": {
+          "default": 2.0,
+          "min": 0.0,
+          "type": "float"
+        }
+      },
+      "supports_live": true
+    },
+    "4": {
+      "id": 4,
+      "indicator_id": "macd",
+      "inputs": [],
+      "name": "Moving Average Convergence Divergence",
+      "outputs": {
+        "hist": {
+          "plotOptions": {
+            "color": "#089981",
+            "negativeColor": "#f23645",
+            "priceFormat": {
+              "minMove": 1e-05
+            }
+          },
+          "type": "histogram"
+        },
+        "macd": {
+          "plotOptions": {
+            "color": "#2962ff",
+            "lineWidth": 2,
+            "priceFormat": {
+              "minMove": 1e-05
+            }
+          },
+          "type": "line"
+        },
+        "signal": {
+          "plotOptions": {
+            "color": "#f23645",
+            "lineWidth": 2,
+            "priceFormat": {
+              "minMove": 1e-05
+            }
+          },
+          "type": "line"
+        }
+      },
+      "overlay": false,
+      "parameters": {
+        "fast": {
+          "default": 12,
+          "min": 1,
+          "type": "int"
+        },
+        "signal": {
+          "default": 9,
+          "min": 1,
+          "type": "int"
+        },
+        "slow": {
+          "default": 26,
+          "min": 1,
+          "type": "int"
+        },
+        "source": {
+          "default": "close",
+          "options": [
+            "close",
+            "open",
+            "high",
+            "low"
+          ],
+          "type": "string"
+        }
+      },
+      "supports_live": true
+    },
+    "5": {
+      "id": 5,
+      "indicator_id": "currency_strength",
+      "inputs": [
+        "EURUSD",
+        "USDJPY",
+        "USDCHF",
+        "GBPUSD",
+        "AUDUSD",
+        "USDCAD",
+        "NZDUSD"
+      ],
+      "name": "Currency Strength",
+      "outputs": {
+        "AUD": {
+          "plotOptions": {
+            "color": "#2962ff",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "CAD": {
+          "plotOptions": {
+            "color": "#9C27B0",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "CHF": {
+          "plotOptions": {
+            "color": "#880E4F",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "EUR": {
+          "plotOptions": {
+            "color": "#FF5252",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "GBP": {
+          "plotOptions": {
+            "color": "#4CAF50",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "JPY": {
+          "plotOptions": {
+            "color": "#00BCD4",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "NZD": {
+          "plotOptions": {
+            "color": "#E040FB",
+            "lineWidth": 2
+          },
+          "type": "line"
+        },
+        "USD": {
+          "plotOptions": {
+            "color": "#FF9800",
+            "lineWidth": 2
+          },
+          "type": "line"
+        }
+      },
+      "overlay": false,
+      "parameters": {},
+      "supports_live": true
+    },
+    "6": {
+      "id": 6,
+      "indicator_id": "ema",
+      "inputs": [],
+      "name": "Exponential Moving Average",
+      "outputs": {
+        "ema": {
+          "plotOptions": {
+            "color": "#2962ff",
+            "lineWidth": 2
+          },
+          "type": "line"
+        }
+      },
+      "overlay": true,
+      "parameters": {
+        "source": {
+          "default": "close",
+          "options": [
+            "close",
+            "open",
+            "high",
+            "low"
+          ],
+          "type": "string"
+        },
+        "window": {
+          "default": 20,
+          "min": 1,
+          "type": "int"
+        }
+      },
+      "supports_live": true
+    },
+    "7": {
+      "id": 7,
+      "indicator_id": "opening_range",
+      "inputs": [],
+      "name": "Opening Range",
+      "outputs": {
+        "extension_end_ms": {},
+        "range_end_ms": {},
+        "range_high": {
+          "label": "Range",
+          "plotOptions": {
+            "color": "#2962ff",
+            "fillColor": "rgba(41, 98, 255, 0.12)",
+            "lineWidth": 1,
+            "showExtensions": true
+          },
+          "type": "opening_range"
+        },
+        "range_low": {},
+        "range_start_ms": {},
+        "ready": {}
+      },
+      "overlay": true,
+      "parameters": {
+        "end_time": {
+          "default": "01:00",
+          "type": "string"
+        },
+        "extension_end_time": {
+          "default": "24:00",
+          "type": "string"
+        },
+        "start_time": {
+          "default": "00:00",
+          "type": "string"
+        },
+        "timezone": {
+          "default": "UTC",
+          "type": "string"
+        }
+      },
+      "supports_live": false
+    },
+    "8": {
+      "id": 8,
+      "indicator_id": "rolling_range",
+      "name": "Rolling High / Low",
+      "overlay": true,
+      "supports_live": true,
+      "outputs": {
+        "highest_high": {
+          "type": "line",
+          "plotOptions": {
+            "lineWidth": 2,
+            "color": "#EF5350"
+          }
+        },
+        "lowest_low": {
+          "type": "line",
+          "plotOptions": {
+            "lineWidth": 2,
+            "color": "#26A69A"
+          }
+        }
+      },
+      "parameters": {
+        "window": {
+          "type": "int",
+          "default": 20,
+          "min": 1,
+          "max": 5000
+        }
+      },
+      "inputs": []
+    }
+  }
+}

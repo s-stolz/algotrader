@@ -1,0 +1,461 @@
+from __future__ import annotations
+
+import unittest
+from unittest.mock import patch
+
+from adapters.api.app import create_app
+from app.backtest_definitions import BacktestPreviewService
+from app.backtest_runs import BacktestRunService
+from db_accessor_client import DatabaseAccessorClientError
+from fastapi.testclient import TestClient
+from strategies.examples.sma_crossover import build_sma_crossover_strategy
+from strategies.registry import RegisteredStrategy, strategy_catalog
+
+from .test_backtests_routes import _FakeRunRepository, _valid_payload
+
+
+def _definition() -> dict:
+    definition = {
+        **{
+            key: value
+            for key, value in _valid_payload().items()
+            if key not in ("symbols", "timeframe", "exchange")
+        },
+        "markets": [2, 1, 2],
+        "timeframes": ["m5", "M1", "M5"],
+        "parameter_axes": {
+            "fast_window": {"mode": "range", "start": 4, "stop": 6, "step": 1},
+            "slow_window": {"mode": "values", "values": [5, 7]},
+            "quantity": {"mode": "range", "start": 0.1, "stop": 0.3, "step": 0.1},
+        },
+        "allowed_directions": ["long_only", "short_only", "long_only"],
+    }
+    definition["strategy"].pop("parameters")
+    return definition
+
+
+class TestBacktestPreviewRoutes(unittest.TestCase):
+    def setUp(self) -> None:
+        self.repository = _FakeRunRepository()
+        self.service = BacktestPreviewService(
+            markets=lambda: [
+                {
+                    "settlement_currency": "USD",
+                    "contract_multiplier": 1.0,
+                    "minimum_quantity": 1.0,
+                    "quantity_step": 1.0,
+                    "min_move": 0.00001,
+                    "symbol_id": 1,
+                    "symbol": "EURUSD",
+                    "exchange": "FX",
+                },
+                {
+                    "settlement_currency": "USD",
+                    "contract_multiplier": 1.0,
+                    "minimum_quantity": 1.0,
+                    "quantity_step": 1.0,
+                    "min_move": 0.00001,
+                    "symbol_id": 2,
+                    "symbol": "USDJPY",
+                    "exchange": "FX",
+                },
+            ],
+            max_candidate_count=200,
+        )
+        self.client = TestClient(
+            create_app(
+                service=BacktestRunService(repository=self.repository),
+                preview_service=self.service,
+            )
+        )
+
+    def tearDown(self) -> None:
+        self.client.close()
+
+    def test_rsi_uses_selected_market_increment_without_a_parameter(self) -> None:
+        entry = next(
+            item for item in strategy_catalog() if item["strategy_id"] == "rsi_range_limit"
+        )
+        definition = _definition()
+        definition["strategy"] = {
+            "strategy_id": "rsi_range_limit",
+            "strategy_version": entry["strategy_version"],
+        }
+        definition["parameter_axes"] = {}
+        definition["timeframes"] = ["M1"]
+        definition["allowed_directions"] = ["long_and_short"]
+        definition["execution"].update(execution_mode="orders", candle_quote="bid")
+        markets = [
+            {
+                "settlement_currency": "USD",
+                "contract_multiplier": 1.0,
+                "minimum_quantity": 1.0,
+                "quantity_step": 1.0,
+                "symbol_id": 1,
+                "symbol": "EURUSD",
+                "exchange": "FX",
+                "min_move": 0.00001,
+            },
+            {
+                "settlement_currency": "USD",
+                "contract_multiplier": 1.0,
+                "minimum_quantity": 1.0,
+                "quantity_step": 1.0,
+                "symbol_id": 2,
+                "symbol": "USDJPY",
+                "exchange": "FX",
+                "min_move": 0.001,
+            },
+        ]
+        with patch.object(self.service, "_markets", return_value=markets):
+            response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        fields = entry["parameters"]
+        assert isinstance(fields, list)
+        self.assertNotIn("tick_size", [field["name"] for field in fields])
+        rows = response.json()["candidates"]
+        self.assertEqual([row["request"]["market_min_move"] for row in rows], [0.001, 0.00001])
+        self.assertTrue(all("tick_size" not in row["parameters"] for row in rows))
+
+    def test_rsi_limit_offset_is_a_catalog_parameter_and_saved_axis(self) -> None:
+        entry = next(
+            item for item in strategy_catalog() if item["strategy_id"] == "rsi_range_limit"
+        )
+        fields = entry["parameters"]
+        assert isinstance(fields, list)
+        offset = next(field for field in fields if field["name"] == "limit_offset_ticks")
+        self.assertEqual((offset["type"], offset["default"], offset["minimum"]), ("int", 0, 0))
+        definition = _definition()
+        definition["strategy"] = {"strategy_id": "rsi_range_limit", "strategy_version": 3}
+        definition["markets"] = [1]
+        definition["timeframes"] = ["M1"]
+        definition["allowed_directions"] = ["long_and_short"]
+        definition["parameter_axes"] = {"limit_offset_ticks": {"mode": "values", "values": [0, 25]}}
+        definition["execution"].update(execution_mode="orders", candle_quote="bid")
+        with patch.object(
+            self.service,
+            "_markets",
+            return_value=[
+                {
+                    "settlement_currency": "USD",
+                    "contract_multiplier": 1.0,
+                    "minimum_quantity": 1.0,
+                    "quantity_step": 1.0,
+                    "symbol_id": 1,
+                    "symbol": "EURUSD",
+                    "exchange": "FX",
+                    "min_move": 0.00001,
+                }
+            ],
+        ):
+            response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [
+                row["request"]["strategy"]["parameters"]["limit_offset_ticks"]
+                for row in response.json()["candidates"]
+            ],
+            [0, 25],
+        )
+
+    def test_rsi_rejects_missing_invalid_and_client_supplied_increments(self) -> None:
+        definition = _definition()
+        definition["strategy"] = {"strategy_id": "rsi_range_limit", "strategy_version": 3}
+        definition["parameter_axes"] = {}
+        definition["markets"] = [1]
+        definition["execution"].update(execution_mode="orders", candle_quote="bid")
+        for min_move in (None, 0, -1, True, "0.01", float("nan"), float("inf")):
+            with (
+                self.subTest(min_move=min_move),
+                patch.object(
+                    self.service,
+                    "_markets",
+                    return_value=[
+                        {
+                            "settlement_currency": "USD",
+                            "contract_multiplier": 1.0,
+                            "minimum_quantity": 1.0,
+                            "quantity_step": 1.0,
+                            "symbol_id": 1,
+                            "symbol": "EURUSD",
+                            "exchange": "FX",
+                            "min_move": min_move,
+                        }
+                    ],
+                ),
+            ):
+                response = self.client.post("/backtests/preview", json=definition)
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn("min_move", response.text)
+        definition["market_min_move"] = 0.01
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("extra_forbidden", response.text)
+
+    def test_order_mode_preview_preserves_execution_assumptions(self) -> None:
+        definition = _definition()
+        definition["strategy"] = {"strategy_id": "limit_reversion", "strategy_version": 1}
+        definition["parameter_axes"] = {}
+        definition["execution"].update(
+            execution_mode="orders",
+            candle_quote="bid",
+            spread=0.0001,
+            intrabar_execution_policy="conservative",
+        )
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        ready = [row for row in response.json()["candidates"] if row["status"] == "ready"]
+        self.assertTrue(ready)
+        self.assertEqual(ready[0]["request"]["execution"]["execution_mode"], "orders")
+        self.assertEqual(ready[0]["request"]["execution"]["spread"], 0.0001)
+
+    def test_complete_ordered_preview_and_no_history(self) -> None:
+        response = self.client.post("/backtests/preview", json=_definition())
+        self.assertEqual(response.status_code, 200, response.text)
+        preview = response.json()
+        self.assertEqual(
+            self.client.get("/backtests/capabilities").json(),
+            {"max_backtest_candidate_count": 200},
+        )
+        self.assertEqual(preview["raw_count"], 144)
+        self.assertEqual(preview["ready_count"], 96)
+        self.assertEqual(preview["excluded_count"], 48)
+        self.assertEqual(len(preview["candidates"]), 144)
+        self.assertEqual(preview["normalized_selections"]["timeframes"], ["M5", "M1"])
+        self.assertEqual(preview["normalized_selections"]["markets"][0]["symbol_id"], 2)
+        rows = preview["candidates"]
+        self.assertEqual([row["candidate_ordinal"] for row in rows], list(range(144)))
+        self.assertEqual(
+            [row["allowed_directions"] for row in rows[:2]], ["long_only", "short_only"]
+        )
+        self.assertEqual(rows[0]["parameters"]["quantity"], 0.1)
+        self.assertEqual(rows[4]["parameters"]["quantity"], 0.3)
+        self.assertEqual(rows[0]["request"]["symbols"], ["USDJPY"])
+        excluded = [row for row in rows if row["status"] == "excluded"]
+        self.assertTrue(
+            all(
+                row["issues"]
+                == [
+                    {
+                        "code": "invalid_parameter_combination",
+                        "fields": ["fast_window", "slow_window"],
+                        "message": "Fast window must be smaller than slow window",
+                    }
+                ]
+                for row in excluded
+            )
+        )
+        self.assertEqual(
+            [row["run_ordinal"] for row in rows if row["status"] == "ready"], list(range(96))
+        )
+        self.assertEqual(self.repository.runs_by_id, {})
+
+    def test_invalid_value_limit_and_empty_valid_set_reject(self) -> None:
+        definition = _definition()
+        definition["parameter_axes"]["fast_window"] = {"mode": "values", "values": [True, 4]}
+        self.assertEqual(
+            self.client.post("/backtests/preview", json=definition).json()["detail"]["code"],
+            "invalid_strategy_parameter",
+        )
+        definition = _definition()
+        definition["parameter_axes"]["fast_window"] = {
+            "mode": "range",
+            "start": 1,
+            "stop": 1000,
+            "step": 1,
+        }
+        oversized = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(oversized.status_code, 422)
+        self.assertIn("max_backtest_candidate_count", oversized.text)
+        definition = _definition()
+        definition["parameter_axes"]["fast_window"] = {"mode": "constant", "value": 10}
+        definition["parameter_axes"]["slow_window"] = {"mode": "constant", "value": 5}
+        empty = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(empty.status_code, 422)
+        self.assertIn("no Ready", empty.text)
+        self.assertEqual(self.repository.runs_by_id, {})
+
+    def test_schedule_alternatives_keep_triples_and_expand_after_directions(self) -> None:
+        definition = _definition()
+        definition["markets"] = [1]
+        schedules = [
+            {"entry_start_minute_utc": 480, "last_entry_minute_utc": 720, "exit_minute_utc": 1020},
+            {"entry_start_minute_utc": 540, "last_entry_minute_utc": 900, "exit_minute_utc": 1080},
+        ]
+        definition["daily_schedules"] = [*schedules, schedules[0]]
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        preview = response.json()
+        self.assertEqual(preview["normalized_selections"]["daily_schedules"], schedules)
+        self.assertEqual((preview["raw_count"], preview["ready_count"]), (144, 96))
+        rows = preview["candidates"]
+        self.assertEqual([row["daily_schedule"] for row in rows[:4]], schedules * 2)
+        self.assertEqual(
+            [row["allowed_directions"] for row in rows[:4]],
+            ["long_only", "long_only", "short_only", "short_only"],
+        )
+        for row in rows:
+            self.assertIn(row["daily_schedule"], schedules)
+            if row["status"] == "ready":
+                self.assertEqual(
+                    row["request"]["execution"]["daily_schedule"], row["daily_schedule"]
+                )
+        self.assertEqual(self.repository.runs_by_id, {})
+        definition["markets"] = [1, 2]
+        oversized = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(oversized.status_code, 422)
+        self.assertIn("Raw candidate count 288", oversized.text)
+
+    def test_schedule_axis_rejects_invalid_and_ambiguous_values(self) -> None:
+        valid = {
+            "entry_start_minute_utc": 480,
+            "last_entry_minute_utc": 720,
+            "exit_minute_utc": 1020,
+        }
+        for schedules in [
+            [],
+            [None],
+            [valid, {**valid, "last_entry_minute_utc": 480}],
+            [{**valid, "entry_start_minute_utc": True}],
+            [{**valid, "entry_start_minute_utc": "480"}],
+            [{**valid, "exit_minute_utc": 1440}],
+        ]:
+            with self.subTest(schedules=schedules):
+                response = self.client.post(
+                    "/backtests/preview", json={**_definition(), "daily_schedules": schedules}
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+        definition = _definition()
+        definition["execution"]["daily_schedule"] = valid
+        definition["daily_schedules"] = [valid]
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("not both", response.text)
+
+    def test_legacy_shared_schedule_remains_a_single_axis(self) -> None:
+        definition = _definition()
+        schedule = {
+            "entry_start_minute_utc": 0,
+            "last_entry_minute_utc": 720,
+            "exit_minute_utc": 720,
+        }
+        definition["execution"]["daily_schedule"] = schedule
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        preview = response.json()
+        self.assertEqual(preview["raw_count"], 144)
+        self.assertNotIn("daily_schedules", preview["normalized_selections"])
+        self.assertTrue(all(row["daily_schedule"] == schedule for row in preview["candidates"]))
+
+    def test_unreachable_decimal_stop_and_limit_before_pruning(self) -> None:
+        definition = _definition()
+        definition["markets"] = [1]
+        definition["timeframes"] = ["M1"]
+        definition["allowed_directions"] = ["long_only"]
+        definition["parameter_axes"] = {
+            "fast_window": {"mode": "constant", "value": 1},
+            "slow_window": {"mode": "constant", "value": 2},
+            "quantity": {"mode": "range", "start": 0.1, "stop": 0.31, "step": 0.1},
+        }
+        response = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json()["normalized_selections"]["parameters"]["quantity"]["values"],
+            [0.1, 0.2, 0.3],
+        )
+        definition["parameter_axes"]["fast_window"] = {
+            "mode": "range",
+            "start": 1,
+            "stop": 201,
+            "step": 1,
+        }
+        oversize = self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(oversize.status_code, 422)
+        self.assertIn("max_backtest_candidate_count", oversize.text)
+        self.assertEqual(self.repository.runs_by_id, {})
+
+    def test_typed_deduplication_keeps_exact_strings_and_null(self) -> None:
+        from strategies import registry
+
+        def build_probe(
+            *,
+            enabled: bool = True,
+            count: int = 2,
+            ratio: float = 1.0,
+            label: str | None = None,
+        ):
+            return build_sma_crossover_strategy()
+
+        registry.strategy_catalog()
+        probe = RegisteredStrategy("typed_probe", 1, build_probe)
+        definition = _definition()
+        definition["strategy"] = {
+            "strategy_id": "typed_probe",
+            "strategy_version": 1,
+        }
+        definition["markets"] = [1]
+        definition["timeframes"] = ["M1"]
+        definition["allowed_directions"] = ["long_only"]
+        definition["parameter_axes"] = {
+            "enabled": {"mode": "values", "values": [True, False, True]},
+            "count": {"mode": "values", "values": [2, 2]},
+            "ratio": {"mode": "values", "values": [1, 1.0]},
+            "label": {"mode": "values", "values": [" x", "x", None, None]},
+        }
+        with patch.dict(registry._REGISTRY, {"typed_probe": probe}):
+            response = self.client.post("/backtests/preview", json=definition)
+            self.assertEqual(response.status_code, 200, response.text)
+            preview = response.json()
+            self.assertEqual(preview["raw_count"], 6)
+            self.assertEqual(
+                preview["normalized_selections"]["parameters"]["ratio"]["values"], [1.0]
+            )
+            self.assertEqual(
+                preview["normalized_selections"]["parameters"]["label"]["values"], [" x", "x", None]
+            )
+            self.assertEqual(
+                [row["parameters"]["enabled"] for row in preview["candidates"]],
+                [True, True, True, False, False, False],
+            )
+            definition["parameter_axes"]["count"] = {"mode": "values", "values": [True]}
+            self.assertEqual(
+                self.client.post("/backtests/preview", json=definition).status_code, 422
+            )
+        self.assertEqual(self.repository.runs_by_id, {})
+
+    def test_stale_version_and_unexpected_validator_failure(self) -> None:
+        definition = _definition()
+        definition["strategy"]["strategy_version"] = 999
+        self.assertEqual(self.client.post("/backtests/preview", json=definition).status_code, 409)
+        definition = _definition()
+        from strategies import registry
+
+        original = registry.current_strategy("sma_crossover")
+        broken = RegisteredStrategy(
+            original.strategy_id,
+            original.strategy_version,
+            original.builder,
+            original.display_name,
+            lambda _: (_ for _ in ()).throw(RuntimeError("secret")),
+        )
+        with patch.dict(registry._REGISTRY, {"sma_crossover": broken}):
+            with self.assertRaises(RuntimeError):
+                self.client.post("/backtests/preview", json=definition)
+        self.assertEqual(self.repository.runs_by_id, {})
+
+    def test_unavailable_market_catalog_has_safe_service_error(self) -> None:
+        def unavailable():
+            raise DatabaseAccessorClientError("secret connection detail")
+
+        with TestClient(
+            create_app(preview_service=BacktestPreviewService(markets=unavailable))
+        ) as client:
+            response = client.post("/backtests/preview", json=_definition())
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["detail"],
+            {
+                "code": "market_catalog_unavailable",
+                "message": "Market catalog unavailable",
+            },
+        )

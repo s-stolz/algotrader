@@ -132,9 +132,11 @@ class ReconnectTests(unittest.IsolatedAsyncioTestCase):
                 return ProtoOAErrorRes(errorCode="TEMPORARY")
             return ProtoOAAccountAuthRes(ctidTraderAccountId=123)
 
-        with patch.object(self.client, "_send_request", side_effect=respond), patch(
-            "app.infrastructure.ctrader_client.asyncio.sleep", AsyncMock()
-        ), self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"):
+        with (
+            patch.object(self.client, "_send_request", side_effect=respond),
+            patch("app.infrastructure.ctrader_client.asyncio.sleep", AsyncMock()),
+            self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"),
+        ):
             self.client._on_message(self.client._client, ProtoOAApplicationAuthRes())
             await self._finish_restoration()
         self.assertEqual(requests.count("ProtoOASubscribeSpotsReq"), 1)
@@ -142,7 +144,10 @@ class ReconnectTests(unittest.IsolatedAsyncioTestCase):
 
     async def _finish_restoration(self):
         # Application-auth callback is delivered on the owning event loop.
-        await asyncio.get_running_loop().run_in_executor(None, lambda: None)
+        loop = asyncio.get_running_loop()
+        delivered = loop.create_future()
+        loop.call_soon(delivered.set_result, None)
+        await delivered
         assert self.client._subscription_restore_task is not None
         await self.client._subscription_restore_task
 
@@ -176,9 +181,11 @@ class ReconnectTests(unittest.IsolatedAsyncioTestCase):
             delays.append(delay)
             await original_sleep(0)
 
-        with patch.object(self.client._client, "send", side_effect=send), patch(
-            "app.infrastructure.ctrader_client.asyncio.sleep", retry
-        ), self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"):
+        with (
+            patch.object(self.client._client, "send", side_effect=send),
+            patch("app.infrastructure.ctrader_client.asyncio.sleep", retry),
+            self.assertLogs("app.infrastructure.ctrader_client", level="ERROR"),
+        ):
             self.client._on_connected(self.client._client)
             async with asyncio.timeout(1):
                 while not self.client.is_connected:

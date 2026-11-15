@@ -1,5 +1,8 @@
 <template>
-  <tr :aria-selected="isSelected" @click="onRowClick">
+  <tr
+    :aria-selected="isSelected"
+    @click="onRowClick"
+  >
     <td class="symbol-cell">{{ market.symbol }}</td>
     <td class="actions-cell">
       <span class="market-info">
@@ -13,6 +16,7 @@
       >
         <n-button
           text
+          circle
           size="small"
           :aria-label="`Actions for ${market.symbol}`"
           @click.stop
@@ -31,7 +35,12 @@ import { h } from 'vue';
 import BaseDropdown from '@/components/Common/BaseDropdown.vue';
 import { NButton, NIcon, type DropdownOption } from 'naive-ui';
 
-import { CloudUploadOutline, EllipsisHorizontalCircleOutline, TrashOutline } from '@/icons';
+import {
+  CloudUploadOutline,
+  CreateOutline,
+  EllipsisHorizontalCircleOutline,
+  TrashOutline,
+} from '@/icons';
 import type { Market } from '@/types/contracts';
 
 defineOptions({
@@ -47,9 +56,15 @@ const emit = defineEmits<{
   (event: 'market-click', market: Market): void;
   (event: 'remove-market', market: Market): void;
   (event: 'upload-data', market: Market): void;
+  (event: 'edit-market', market: Market): void;
 }>();
 
 const menuOptions: DropdownOption[] = [
+  {
+    label: 'Edit symbol',
+    key: 'edit',
+    icon: () => h(NIcon, null, { default: () => h(CreateOutline) }),
+  },
   {
     label: 'Upload Data',
     key: 'upload',
@@ -67,7 +82,9 @@ function onRowClick(): void {
 }
 
 function onMenuSelect(key: string | number): void {
-  if (key === 'remove') {
+  if (key === 'edit') {
+    emit('edit-market', props.market);
+  } else if (key === 'remove') {
     emit('remove-market', props.market);
   } else if (key === 'upload') {
     emit('upload-data', props.market);
@@ -91,27 +108,28 @@ tr {
 .actions-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--design-space-sm);
   line-height: 20px;
 }
 
 .market-info {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--design-space-xs);
 }
 
 td {
-  padding: 12px 15px;
+  padding: var(--design-space-md) var(--design-space-lg);
   line-height: 20px;
 }
 
 .market-type {
-  font-size: x-small;
+  font-size: var(--design-text-secondary);
+  color: var(--design-color-muted);
   vertical-align: middle;
 }
 
-tr[aria-selected="true"] .symbol-cell {
-  box-shadow: inset 2px 0 var(--selection-accent);
+tr[aria-selected='true'] .symbol-cell {
+  box-shadow: inset 2px 0 var(--design-color-interactive);
 }
 </style>

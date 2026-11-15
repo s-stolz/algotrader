@@ -45,12 +45,12 @@ Count-based responses can extend before `fromTimestamp`; those older bars are
 excluded from output and establish that the lower bound has been reached.
 Duplicate timestamps or bars newer than the page end still fail explicitly.
 Empty windows do not stop retrieval of later windows. Unspecified end time is
-frozen once. Limited nonstreaming queries retain the most recent Candle selection.
+frozen once.
 
 ## Verification
 
 The broker router suite drives the actual ingestion HTTP consumer through the
 FastAPI route and cTrader adapter using controlled provider responses. It covers
 capped short pages, empty windows, empty completion, failure before/after delivery,
-incomplete EOF, count/bound verification, and limited-query compatibility.
+incomplete EOF, and count/bound verification.
 The suite requires broker and ingestion dependencies, including `httpx`.

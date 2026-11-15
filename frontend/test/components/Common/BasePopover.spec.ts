@@ -1,8 +1,10 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { NPopover } from 'naive-ui';
+import { h } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 
 import BasePopover from '@/components/Common/BasePopover.vue';
+import DesignScope from '@/components/Common/DesignScope.vue';
 
 describe('BasePopover', () => {
   it('preserves popover slots, sizing, and show updates with the drawer theme', async () => {
@@ -13,10 +15,17 @@ describe('BasePopover', () => {
     });
     const popover = wrapper.getComponent(NPopover);
     expect(popover.props('width')).toBe(500);
-    expect(document.body.querySelector('.base-popover')?.textContent).toContain('Show columns');
-    expect(popover.props('themeOverrides')).toEqual(expect.objectContaining({
-      color: '#131722', textColor: '#dce4ed', borderRadius: '6px', padding: '16px',
-    }));
+    expect(document.body.querySelector('.base-popover')?.textContent).toContain(
+      'Show columns',
+    );
+    expect(popover.props('themeOverrides')).toEqual(
+      expect.objectContaining({
+        color: '#131722',
+        textColor: '#dce4ed',
+        borderRadius: '6px',
+        padding: '16px',
+      }),
+    );
     await wrapper.get('button').trigger('click');
     expect(onUpdateShow).toHaveBeenCalledWith(false);
     wrapper.unmount();
@@ -27,9 +36,63 @@ describe('BasePopover', () => {
       props: { themeOverrides: { color: '#202c38' } },
       slots: { trigger: '<button>Columns</button>' },
     });
-    expect(wrapper.getComponent(NPopover).props('themeOverrides')).toEqual(expect.objectContaining({
-      color: '#202c38', textColor: '#dce4ed',
-    }));
+    expect(wrapper.getComponent(NPopover).props('themeOverrides')).toEqual(
+      expect.objectContaining({
+        color: '#202c38',
+        textColor: '#dce4ed',
+      }),
+    );
     wrapper.unmount();
+  });
+
+  it('themes overlays equally with and without a surrounding provider', async () => {
+    const standalone = mount(BasePopover, {
+      props: { show: true },
+      slots: {
+        trigger: '<button>Standalone</button>',
+        default: 'Standalone content',
+      },
+    });
+    const scoped = mount(DesignScope, {
+      slots: {
+        default: () =>
+          h(
+            BasePopover,
+            { show: true },
+            {
+              trigger: () => h('button', 'Scoped'),
+              default: () => 'Scoped content',
+            },
+          ),
+      },
+    });
+    try {
+      await flushPromises();
+      const overlays = Array.from(
+        document.querySelectorAll<HTMLElement>('.base-popover'),
+      );
+      const standaloneOverlay = overlays.find((entry) =>
+        entry.textContent?.includes('Standalone content'),
+      );
+      const scopedOverlay = overlays.find((entry) =>
+        entry.textContent?.includes('Scoped content'),
+      );
+      expect(
+        standaloneOverlay?.style.getPropertyValue('--design-font-ui'),
+      ).toBe('Tektur, sans-serif');
+      expect(scopedOverlay?.style.getPropertyValue('--design-font-ui')).toBe(
+        'Tektur, sans-serif',
+      );
+      expect(
+        scoped.getComponent(NPopover).props('themeOverrides'),
+      ).toMatchObject({
+        color: '#131722',
+        textColor: '#dce4ed',
+        fontSize: '13px',
+      });
+    } finally {
+      scoped.unmount();
+      standalone.unmount();
+    }
   });
 });

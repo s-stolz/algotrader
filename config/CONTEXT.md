@@ -14,8 +14,6 @@ holds local secrets. Use their checked-in examples for initial setup.
 - Docker Compose needs generated shared settings plus service-specific secret
   files. Direct calls require `--env-file config/.env.shared`; Make stack targets
   handle this. Database passwords stay in the database secret file.
-- `backtester/cli.py` also reads topology and local overrides. Changes to accessor
-  endpoint paths must update its lookup and CLI tests alongside the generator.
 - Preserve stable generated env names when restructuring topology, including
   Compose resource names and frontend Vite proxy targets.
 - Resource memory reservations are soft MiB reservations, not hard limits. Apply
@@ -29,8 +27,8 @@ Changing the boundary affects future ingestion; it does not delete stored histor
 or fill older history before an existing latest candle. Read
 [ingestion context](../ingestion-service/CONTEXT.md) for recovery semantics.
 
-Backtester heartbeat stale threshold must exceed its heartbeat interval. Polling,
-heartbeat, and sweep-limit defaults belong to topology. Heartbeat configuration
+Backtester heartbeat stale threshold must exceed its heartbeat interval. Heartbeat
+and candidate-limit defaults belong to topology. Heartbeat configuration
 changes availability reporting, never execution-slot ownership.
 
 ## Verification
@@ -51,3 +49,11 @@ lookback or a quoted UTC start date. Accepted pending recovery retains its earli
 boundary when this policy changes. For configuration and deployment obligations,
 read the [recovery contract](../docs/contracts/recovery.md); field types and
 runtime mappings are in [topology schema](topology.schema.md).
+
+## Python environments
+
+Service package metadata owns direct dependencies. The root shared constraints
+and optional service replacements own installed versions. Host and Docker
+installations use `scripts/python_environment.py`; see the
+[installation workflow](../README.md#shared-constraints-and-service-packages).
+Services use separate Python 3.12–3.15 environments (containers use 3.15.2) because several own an `app` package.

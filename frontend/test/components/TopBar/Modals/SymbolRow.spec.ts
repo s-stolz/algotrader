@@ -19,23 +19,32 @@ const NDropdownStub = defineComponent({
   name: 'NDropdown',
   emits: ['select'],
   setup(_, { emit, slots }) {
-    return () => h('div', [
-      slots.default?.(),
-      h('button', {
-        class: 'select-upload',
-        onClick: (event: MouseEvent) => {
-          event.stopPropagation();
-          emit('select', 'upload');
-        },
-      }, 'Upload'),
-      h('button', {
-        class: 'select-remove',
-        onClick: (event: MouseEvent) => {
-          event.stopPropagation();
-          emit('select', 'remove');
-        },
-      }, 'Remove'),
-    ]);
+    return () =>
+      h('div', [
+        slots.default?.(),
+        h(
+          'button',
+          {
+            class: 'select-upload',
+            onClick: (event: MouseEvent) => {
+              event.stopPropagation();
+              emit('select', 'upload');
+            },
+          },
+          'Upload',
+        ),
+        h(
+          'button',
+          {
+            class: 'select-remove',
+            onClick: (event: MouseEvent) => {
+              event.stopPropagation();
+              emit('select', 'remove');
+            },
+          },
+          'Remove',
+        ),
+      ]);
   },
 });
 

@@ -22,15 +22,16 @@ const NInputNumberStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { attrs, emit }) {
-    return () => h('input', {
-      ...attrs,
-      type: 'number',
-      value: props.value ?? '',
-      onInput: (event: Event) => {
-        const input = event.target as HTMLInputElement;
-        emit('update:value', input.value === '' ? null : Number(input.value));
-      },
-    });
+    return () =>
+      h('input', {
+        ...attrs,
+        type: 'number',
+        value: props.value ?? '',
+        onInput: (event: Event) => {
+          const input = event.target as HTMLInputElement;
+          emit('update:value', input.value === '' ? null : Number(input.value));
+        },
+      });
   },
 });
 
@@ -44,12 +45,14 @@ const NInputStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { attrs, emit }) {
-    return () => h('input', {
-      ...attrs,
-      type: 'text',
-      value: props.value,
-      onInput: (event: Event) => emit('update:value', (event.target as HTMLInputElement).value),
-    });
+    return () =>
+      h('input', {
+        ...attrs,
+        type: 'text',
+        value: props.value,
+        onInput: (event: Event) =>
+          emit('update:value', (event.target as HTMLInputElement).value),
+      });
   },
 });
 
@@ -63,12 +66,14 @@ const NColorPickerStub = defineComponent({
   },
   emits: ['update:value'],
   setup(props, { emit }) {
-    return () => h('input', {
-      class: 'color-picker',
-      type: 'color',
-      value: props.value,
-      onInput: (event: Event) => emit('update:value', (event.target as HTMLInputElement).value),
-    });
+    return () =>
+      h('input', {
+        class: 'color-picker',
+        type: 'color',
+        value: props.value,
+        onInput: (event: Event) =>
+          emit('update:value', (event.target as HTMLInputElement).value),
+      });
   },
 });
 
@@ -109,6 +114,59 @@ const indicatorInfo: IndicatorInfo = {
 };
 
 describe('IndicatorSettingsStyles', () => {
+  it('edits the histogram colors independently', async () => {
+    const wrapper = mount(IndicatorSettingsStyles, {
+      props: {
+        indicatorInfo: {
+          ...indicatorInfo,
+          outputs: {
+            hist: {
+              type: 'histogram',
+              plotOptions: {
+                color: '#089981',
+                negativeColor: '#f23645',
+              },
+            },
+          },
+        },
+      },
+      global: { stubs: { BaseColorPicker: NColorPickerStub } },
+    });
+    expect(wrapper.text()).toContain('Zero and above');
+    expect(wrapper.text()).toContain('Below zero');
+    await wrapper.findAll('input.color-picker')[1].setValue('#ff0000');
+    expect(wrapper.emitted('update-styles')).toEqual([
+      [
+        {
+          outputKey: 'hist',
+          styles: { color: '#089981', negativeColor: '#ff0000' },
+        },
+      ],
+    ]);
+  });
+  it('exposes a labeled extension toggle and omits calculation-only outputs', async () => {
+    const wrapper = mount(IndicatorSettingsStyles, {
+      props: {
+        indicatorInfo: {
+          ...indicatorInfo,
+          outputs: {
+            range_high: {
+              label: 'Range',
+              plotOptions: { showExtensions: true },
+            },
+            ready: {},
+            range_start_ms: {},
+          },
+        },
+      },
+    });
+    expect(wrapper.text()).not.toContain('range_start_ms');
+    expect(wrapper.text()).not.toContain('ready');
+    await wrapper.get('input[aria-label="Show extensions"]').setValue(false);
+    expect(wrapper.emitted('update-styles')).toEqual([
+      [{ outputKey: 'range_high', styles: { showExtensions: false } }],
+    ]);
+  });
   it('emits style updates with the changed output styles', async () => {
     const wrapper = mount(IndicatorSettingsStyles, {
       props: {
@@ -118,6 +176,7 @@ describe('IndicatorSettingsStyles', () => {
         stubs: {
           NScrollbar: SlotStub,
           NH3: SlotStub,
+          BaseColorPicker: NColorPickerStub,
           NColorPicker: NColorPickerStub,
           NInput: NInputStub,
           NInputNumber: NInputNumberStub,
@@ -133,17 +192,19 @@ describe('IndicatorSettingsStyles', () => {
     await wrapper.findAll('.n-input-number input')[0].setValue('4');
 
     expect(wrapper.emitted('update-styles')).toEqual([
-      [{
-        outputKey: 'sma',
-        styles: {
-          color: '#3366ff',
-          lineWidth: 4,
-          priceFormat: {
-            precision: 2,
-            minMove: 0.01,
-          },
-        } satisfies JsonObject,
-      }],
+      [
+        {
+          outputKey: 'sma',
+          styles: {
+            color: '#3366ff',
+            lineWidth: 4,
+            priceFormat: {
+              precision: 2,
+              minMove: 0.01,
+            },
+          } satisfies JsonObject,
+        },
+      ],
     ]);
   });
 });

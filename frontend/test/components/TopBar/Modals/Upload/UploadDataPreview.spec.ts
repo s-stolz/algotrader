@@ -32,13 +32,15 @@ describe('UploadDataPreview', () => {
       },
     });
 
-    (wrapper.vm as unknown as {
-      updateColumnMapping: (index: number, value: 'close') => void;
-    }).updateColumnMapping(1, 'close');
+    (
+      wrapper.vm as unknown as {
+        updateColumnMapping: (index: number, value: 'close') => void;
+      }
+    ).updateColumnMapping(1, 'close');
 
-    expect(wrapper.emitted('update:column-mapping')).toEqual([[
-      { 0: 'timestamp', 1: 'close' },
-    ]]);
+    expect(wrapper.emitted('update:column-mapping')).toEqual([
+      [{ 0: 'timestamp', 1: 'close' }],
+    ]);
     expect(mapping).toEqual({ 0: 'timestamp', 1: 'open' });
   });
 });

@@ -6,23 +6,94 @@ and behavior that is easy to break when changing them.
 
 ## Chart Sessions and Overlays
 
+- Histogram sign palettes follow the shared [catalog presentation contract](../libs/indicator_engine/README.md#adding-an-indicator).
+  `utils/chart/indicatorPlotStyle.ts` resolves saved styles over current defaults
+  and colors historical/live points. Palette edits recolor displayed series data.
+
 - `src/components/Chart/ChartArea.vue` wires rendering and lifecycle adapters;
   `chartSession.ts` beside it owns market/timeframe transitions, live Candle
   subscriptions, fetch guards, live-tail buffering, and older-history paging.
   Keep session sequencing there. Related state and rendering live in
   `src/stores/candlesticksStore.ts`, `src/stores/indicatorsStore.ts`, and
   `src/utils/chart/ChartManager.ts`.
+- `chartRecovery.ts` owns browser reconnect recovery within each Chart session.
+  Freeze the last Candle timestamp on disconnect; fetch that timestamp inclusively
+  through reconnect time, without the latest-batch limit. Merge Candles and
+  Indicators in one silent recovery pass, with fresh live values taking precedence.
+  Preserve loaded history; viewport movement follows the chart library's normal
+  data updates, without explicit scrolling or restoration during recovery.
+  Failed requests retain the anchor for the next reconnect; there are no timed
+  retries or database-completeness guarantees.
+  Indicator recovery lives in `stores/indicators/recovery.ts`; it includes run-owned
+  indicators and guards session, removal, and calculation-generation changes.
+  `stores/indicators/pendingRequests.ts` orders recovery after pending initial or
+  parameter loads so late snapshots cannot erase repaired points.
+- Trade entry/exit navigation starts in `stores/tradeNavigationStore.ts`, reuses
+  run selection/context restoration, and leaves execution-log pagination untouched.
+  `components/Chart/trade-navigation/` loads ten predecessor bars and up to 500
+  candles from the event, then pages 500 bars toward the edge the user approaches.
+  No automatic catch-up stream runs. Historical windows ignore live candle and
+  indicator messages, and reconnect recovery stays off until the window reaches
+  the present. `chartSession.ts` owns cancellation; `trade-navigation/latestChart.ts`
+  clears the historical window and reuses the normal latest-500 snapshot and live
+  workflow for return-to-live only when the present is not loaded. Already-live
+  windows retain data and zoom; the action only scrolls if the latest bar is offscreen.
+- Historical paging uses Lightweight Charts' `shiftVisibleRangeOnNewBar: false`.
+  Version 5.3.0 fixes base-index compensation during dragging; rely on that behavior
+  rather than restoring the viewport after each page or intercepting gestures.
+  Only the initial jump positions the trade with the retained zoom. Paging preserves
+  the viewport through the chart library, including prepend and append operations.
+- `stores/indicators/forwardHistory.ts` extends indicator coverage for each loaded
+  page, with request cancellation and calculation-generation guards. Initial run
+  and manual indicator requests settle before additional page merges.
 - Historical Indicators cover the loaded Candle range: load the latest batch
   first, backfill older batches, and trim points outside that range.
+- Opening ranges render as per-session primitives on the Candle series through
+  `src/utils/chart/openingRange/`. Calculation coordinates are not plotted as
+  price series. Style changes redraw without recalculation; extension visibility
+  does not change the range. Historical-only indicators declare `supports_live:
+  false`, skip live subscriptions, and display a Historical label. Currency
+  strength now receives ordinary live updates. Its recovery points carry
+  `replay: true`; the indicator store merges these within the loaded Candle range
+  and redraws without rewinding its live tail or showing recovery status.
 - Backtest overlays use Closed Trades with explicit direction and saved planned
   protective prices. Selecting a run changes Market/Timeframe but preserves the
   normal latest-Candles, live-update, and lazy-history workflow. Render overlays
-  for the loaded range on the main candlestick pane.
+  for the loaded range on the main candlestick pane. Order-mode minute fills
+  anchor to their containing loaded strategy Candle; trade records retain exact
+  minute timestamps and prices.
+  Solid entry-price lines span the actual entry through close; dashed pending
+  limit lines use saved priced order events through fill, cancellation, or expiry.
+  `utils/chart/backtestEntryLines.ts` builds these segments, clipping to loaded
+  history. Saved fills also supply the remaining open position’s entry level
+  through the final run candle; partial closes retain its average entry price.
+  Legacy events without prices do not produce pending lines.
   Start at `src/stores/backtestOverlayStore.ts` and
   `src/utils/chart/backtestOverlay.ts`.
 - Chart overlay eligibility requires a successful, single-symbol run, an
   available Market, and supported version 3 Closed Trades. The selected run ID
-  persists in local storage; validate it again on reload.
+  persists in local storage; validate it again on reload without changing the
+  independently saved Market/Timeframe. Mismatches retain the existing sync action.
+- `components/Chart/backtestIndicators.ts` coordinates the selected run's saved
+  indicator group after matching Candle history loads. Run-owned indicators use
+  distinct local identities, locked calculation parameters, and editable styles;
+  manual indicators remain independent. Changing Market/Timeframe removes the
+  run-owned group and hides trade/protective overlays while retaining selection.
+  The explicit sync action returns to the saved context. Refresh preserves the
+  last chart context and reloads matching groups with their styles.
+  Superseded loads cannot install indicators. Legacy runs without a snapshot
+  retain trade overlays without inferred indicators; see
+  [saved chart indicators](../docs/contracts/backtests.md#saved-chart-indicators).
+- Manual indicator persistence lives in `src/stores/indicators/persistence.ts`.
+  Restore configurations before mounting the chart so the normal Candle session
+  loads their data. Save only configuration, never series, subscriptions, or DOM
+  state; resolve saved indicator names against the current catalog. Indicator
+  metadata is refreshed from the history response before live subscription;
+  saved capability flags must not override the current API. Keep user parameters,
+  styles, and pane positions when refreshing metadata. Run indicator
+  styles and pane positions belong to the selected run and survive mismatched
+  chart contexts. Partial restoration logs failures without new UI warnings;
+  transient read failures retain saved intent for the next refresh.
 - Measurement Overlays are transient pointer-held comparisons on the main pane:
   exact pointer prices, nearest logical bar slots, inclusive Candle count, and
   signed price/percent deltas relative to the anchor. They clear on release,
@@ -34,10 +105,13 @@ and behavior that is easy to break when changing them.
 
 - Start at `src/views/BacktestWorkspaceView.vue` and
   `src/stores/backtestWorkspaceStore.ts`; creation lives in
-  `src/views/BacktestCreationDrawer.vue`. `src/App.vue` keeps routed views alive:
+  `src/views/BacktestCreationDrawer.vue`. Its feature-local `creation/` sections
+  share `useBacktestCreation.ts`, which owns draft/selection retention, reuse revisions,
+  preview generations/debounce cleanup, and submission identity. `src/App.vue`
+  keeps routed views alive:
   navigation preserves drafts, history filters, and comparison selections.
 - Creation retains an optional experiment name alongside draft fields. Names
-  are top-level creation properties; omit them from stateless sweep preview.
+  are top-level creation properties; omit them from stateless preview.
   History/detail names and member labels share `backtestWorkspaceRuns.ts`; use
   that displayed name for search and sorting, with UUIDs beneath history labels.
   Validation and exact unnamed text follow
@@ -47,34 +121,99 @@ and behavior that is easy to break when changing them.
   committed names remain bound to that identity when navigation replaces or
   unmounts the editor; Escape cancels still-unsent queued intent. Workspace
   name revisions protect older reads and names awaiting readback, while allowing
-  fresh confirmed reads to resume normal polling. Apply name acknowledgements
+  fresh confirmed reads to resume normal refreshes. Apply name acknowledgements
   without replacing execution fields from a save response.
 - Read history, commands, logs, and Equity Replay through
   `src/api/backtesterClient.ts`. For lifecycle or API changes, read
   [backtest contracts](../docs/contracts/backtests.md); the public backtester API owns
   those policies. Queue availability and position are advisory telemetry.
-- Failed polling retains the last good data and marks live status unknown.
-  Ignore superseded responses after changing the inspected run, batch, or draft.
+- `src/utils/useBacktestEvents.ts` shares one backtest WebSocket subscription across
+  active consumers. Change/reconnect events refresh saved reads; health events
+  update matching worker freshness without polling. The socket restores desired
+  subscriptions after reconnect. See [delivery contracts](../docs/contracts/backtests.md#real-time-delivery-and-recovery).
+- `BacktestRunProgress.vue` inside the inspection progress panel displays the
+  active Run’s five stage milestones beneath overall settled-run progress.
+  `websocketService` retains bounded per-run stage snapshots; `useBacktestEvents`
+  supplies them to inspection without refreshing results. Late or restored
+  earlier stages or lower candle counts cannot regress progress. During event-driven
+  simulation, numeric candle counts interpolate the segment toward the next stage. See
+  [run progress](../docs/contracts/backtests.md#run-stage-progress).
+- `App.vue` owns the `BacktestActivity` menu on backtest routes, anchored to the
+  upper workspace pane above the separate trade-history pane.
+  It shows current running/queued work with experiment progress; idle healthy status
+  has no popup. Workspace commands request a refresh through its injected callback.
+- Use `BaseAsyncState` for centered loading, empty, and error states. Loading has
+  an accessible label without visible copy; failures use short messages and an
+  icon retry wired to the failed read/action. Run-list failures belong in Runs,
+  separately from experiment metadata. Keep field validation actionable. Equity
+  Replay uses animated chart skeletons initially and a shimmer over loaded charts
+  while additional replays load.
+- Failed reads or disconnected delivery retain the last good data and mark live status unknown.
+  Ignore superseded responses after changing the inspected Run, Backtest, or draft.
   Background refresh preserves settled charts and inspection state.
 - Creation uses the current strategy catalog; historical inspection uses saved
-  requests and metadata. Require review of changed Strategy Versions before
-  reuse. Keep submission/command identities across retries of the same action;
-  submission follows explicit user action and advertised backend capability.
+  requests and metadata. Reuse applies the current Strategy Version automatically,
+  retains all saved resolved values, including values that originally used defaults. Show
+  version changes beside the strategy and schema changes beside parameter fields;
+  invalid values still block submission. Keep submission/command identities across retries;
+  submission follows explicit user action and a successful current preview.
   `src/views/backtestReuse.ts` proposes editable names from saved top-level names
   with a complete ` (copy)` suffix, shortening by Unicode characters to fit the
   existing limit. Unnamed sources leave the draft empty; copied names use the
   ordinary creation contract and survive draft navigation and mode changes.
-- Treat missing metrics separately from zero. Ending equity comes from the last
-  exact Equity Replay point; saved Return uses its first-recorded-equity baseline,
-  separately from request Initial capital. Tables display maximum drawdown as a
-  positive magnitude; replay charts display nonpositive drawdown. Preserve
+- Treat missing metrics separately from zero. Ending equity comes from saved
+  `metrics.ending_equity`, independently of replay; saved Return uses its
+  first-recorded-equity baseline, separately from request Initial capital. Tables
+  display maximum drawdown as a positive magnitude; replay charts display nonpositive drawdown. Preserve
   backend sampling and expose replay unavailability separately from read errors.
   Comparison helpers live in `src/views/backtestComparison.ts`.
+- `BacktestEntryLimitField.vue` edits the independent daily entry cap; empty means
+  unlimited. It counts actual entries, not signals, with a UTC reset per run.
+  Validation, draft retention, and reuse follow the shared execution contract.
+- Setup groups Experiment, Markets & period, Trading rules, Daily schedules,
+  and Execution. `creation/setup/setupValidation.ts` owns the checks shared by
+  step navigation and request construction. Highlight touched fields or all
+  invalid fields after attempted progression, then focus the first error.
+- `BacktestScheduleFields.vue` edits paired UTC schedule alternatives. Each row
+  contributes one candidate alternative, multiplied with the other selection
+  axes. The UI draft retains rows while disabled; serialization omits them.
+  Reuse restores accepted alternatives or a legacy single execution schedule.
+  Creation drafts always include schedule state; legacy snapshots are converted
+  at the saved-record reuse boundary, before validation and serialization.
+  Validate complete, ordered, distinct triples before preview/submission;
+  individual Run requests still contain one execution schedule.
+- `BacktestOrderFields.vue` exposes order execution settings in Setup. Quote
+  convention defaults to Mid when absent and preserves saved Bid/Ask selections; spread uses price units. Execution mode comes from
+  the current strategy catalog, rather than an editable setup field. Request construction omits
+  order-only fields in target mode and aligns the legacy exit policy with the
+  selected order policy. Reuse retains saved execution values.
 - Creation calendar dates convert explicitly to UTC midnight. Chart timestamp
   conversion follows the root transport contract.
 
+- `views/workspace/results/` derives net realized profit, win rate,
+  expectancy, holding time, and UTC exit-month totals from saved Closed Trades.
+  Profit factor is decoded from saved metrics at the transport boundary; see
+  [saved profit factor](../docs/contracts/backtests.md#saved-profit-factor).
+  `useWorkspaceAnalysis` owns those reads independently of replay selection so
+  all successful Runs can be sorted before comparison. Results load with bounded
+  concurrency, reject stale workspace responses, and expose retryable failures.
+  Calendar percentages use each Run's request Initial capital, not month-end
+  equity. Year totals sum covered months; uncovered/unavailable months stay missing.
+  Exact bars per trade are not inferred from elapsed time across market gaps.
+
+- `views/workspace/heatmap/` owns terminal-only parameter slicing and comparison
+  toggles. `types/backtest/heatmapSnapshot.ts` validates complete saved domains and
+  unique input tuples; current catalogs and table pages never define the grid.
+  Inspection starts the complete member read after the overview resolves, and
+  retains the last-good terminal pair through refresh failures. All colors use
+  saved member metrics independently of trade/replay reads. Heatmap clicks share
+  comparison membership with the table and do not invoke detail-selection defaults.
+
 ## Shared UI and Transport
 
+- Shared visual values, root provider, overlay typography, and justified control
+  overrides follow [design ownership](DESIGN.md). `App.vue` provides the theme to
+  every workflow; shared controls have no legacy styling mode.
 - Use themed `Base*` controls in `src/components/Common/` for tables, drawers,
   selects, grouped selects, dropdowns, popovers, and checkboxes. Shared styling
   lives there and in `src/assets/main.css`; extend these surfaces for consistent
@@ -82,7 +221,7 @@ and behavior that is easy to break when changing them.
 - HTTP clients live in `src/api/`; runtime payload validation belongs in
   `src/types/contracts.ts` or focused validation helpers.
 - WebSocket changes start at `src/utils/websocketService.ts`. Read
-  [webserver context](../webserver/CONTEXT.md) for the shared protocol and check
+  [realtime-service context](../realtime-service/CONTEXT.md) for the shared protocol and check
   `test/utils/websocketService.spec.ts` when changing it.
 - Timeframe changes start at `src/utils/timeframes.ts`. Follow
   [contract-change guidance](../docs/agent/CONTRACT-CHANGES.md) for supported
@@ -93,3 +232,21 @@ and behavior that is easy to break when changing them.
 Frontend gate: `make test frontend`. For targeted commands and test conventions,
 read [commands](../docs/agent/COMMANDS.md) and
 [coding conventions](../docs/agent/CODING-CONVENTIONS.md).
+
+Sizing and protective sources live in `BacktestRiskFields.vue`; dedicated strategy
+parameters use catalog `purpose` metadata to appear in Setup as constants.
+`executionLogStore` owns the explicitly selected Run and paginated execution log across
+Chart/Backtests navigation. `App.vue` docks `ExecutionLogPanel` using Naive UI `NSplit`;
+its proportional height preserves mounted chart/workspace instances. Inspection fetches
+10 records per page through the dedicated execution-log endpoint, with optional terminal
+unexecuted Orders. Normal workspace/member reads omit diagnostics. Opening a Run on the
+Chart still fetches full diagnostics and execution artifacts because chart indicators,
+pending-entry lines and execution overlays need them; it selects the log without opening it.
+The log selection is session-only and separate from persisted chart overlay selection.
+The symbol menu edits specifications through stable IDs. Refresh selected Market
+metadata after edits and resolve Run selections by saved ID or current Market names.
+
+For progressive Equity Replay, `useWorkspaceAnalysis` owns stream admission,
+cancellation, provisional previews, and manual retry. Transport parsing lives in
+`api/equityReplayStream.ts`; verified results remain separate from previews. See
+[streaming replay contracts](../docs/contracts/backtests.md#streaming-equity-replay).

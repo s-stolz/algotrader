@@ -1,39 +1,54 @@
 <template>
-  <base-modal
-    :modalId="modalId"
-    :title="indicatorInfo.name || 'Indicator Settings'"
-    closeOnBackdrop
-  >
-    <div>
-      <div id="indicator-tab-wrapper">
-        <n-tabs type="line" animated :tabs-padding="16">
-          <n-tab-pane name="settings" tab="Settings">
-            <indicator-settings-parameters :indicator="indicator" />
-          </n-tab-pane>
-          <n-tab-pane name="style" tab="Style">
-            <indicator-settings-styles
-              :indicatorInfo="indicatorInfo"
-              @update-styles="onUpdateStyles"
-            />
-          </n-tab-pane>
-        </n-tabs>
+  <NConfigProvider :theme-overrides="indicatorControlTheme">
+    <base-modal
+      :modalId="modalId"
+      :title="indicatorInfo.name || 'Indicator Settings'"
+      closeOnBackdrop
+    >
+      <div>
+        <div id="indicator-tab-wrapper">
+          <n-tabs
+            type="line"
+            animated
+            :tabs-padding="16"
+          >
+            <n-tab-pane
+              name="settings"
+              tab="Settings"
+            >
+              <indicator-settings-parameters :indicator="indicator" />
+            </n-tab-pane>
+            <n-tab-pane
+              name="style"
+              tab="Style"
+            >
+              <indicator-settings-styles
+                :indicatorInfo="indicatorInfo"
+                @update-styles="onUpdateStyles"
+              />
+            </n-tab-pane>
+          </n-tabs>
+        </div>
       </div>
-    </div>
-  </base-modal>
+    </base-modal>
+  </NConfigProvider>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { NTabs, NTabPane } from "naive-ui";
+import { NConfigProvider } from 'naive-ui';
+import { indicatorControlTheme } from './indicatorControlTheme';
+import { computed } from 'vue';
+import { resolveIndicatorPlotStyle } from '@/utils/chart/indicatorPlotStyle';
+import { NTabs, NTabPane } from 'naive-ui';
 
-import BaseModal from "@/components/Common/BaseModal.vue";
-import IndicatorSettingsParameters from "@/components/Chart/Indicator/IndicatorSettingsParameters.vue";
-import IndicatorSettingsStyles from "@/components/Chart/Indicator/IndicatorSettingsStyles.vue";
+import BaseModal from '@/components/Common/BaseModal.vue';
+import IndicatorSettingsParameters from './IndicatorSettingsParameters.vue';
+import IndicatorSettingsStyles from './IndicatorSettingsStyles.vue';
 
-import type { IndicatorInstance, IndicatorStyleUpdatePayload } from "./types";
+import type { IndicatorInstance, IndicatorStyleUpdatePayload } from './types';
 
 defineOptions({
-  name: "IndicatorSettingsModal",
+  name: 'IndicatorSettingsModal',
 });
 
 const props = defineProps<{
@@ -42,12 +57,25 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update-styles": [payload: IndicatorStyleUpdatePayload];
+  'update-styles': [payload: IndicatorStyleUpdatePayload];
 }>();
 
-const indicatorInfo = computed(() => props.indicator.info);
+const indicatorInfo = computed(() => ({
+  ...props.indicator.info,
+  outputs: Object.fromEntries(
+    Object.entries(props.indicator.info.outputs).map(([key, output]) => [
+      key,
+      {
+        ...output,
+        ...(output.plotOptions
+          ? { plotOptions: resolveIndicatorPlotStyle(props.indicator, key) }
+          : {}),
+      },
+    ]),
+  ),
+}));
 
 function onUpdateStyles(payload: IndicatorStyleUpdatePayload): void {
-  emit("update-styles", payload);
+  emit('update-styles', payload);
 }
 </script>

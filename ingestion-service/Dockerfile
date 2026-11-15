@@ -1,19 +1,20 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1.20
+FROM python:3.15.2-slim
 
-WORKDIR /workspace/ingestion-service
+WORKDIR /workspace
+COPY constraints-shared.txt ./
+COPY scripts/python_environment.py ./scripts/python_environment.py
+# Dependency metadata changes invalidate this layer; source-only changes do not.
+COPY --parents libs/*/pyproject.toml ingestion-service/pyproject.toml ingestion-service/constraints*.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python scripts/python_environment.py install ingestion-service --third-party-only
 
-# Upgrade pip
-RUN pip install --upgrade pip
-
-# Install dependencies
-COPY ingestion-service/requirements.txt /workspace/ingestion-service/requirements.txt
-COPY libs/algotrader_logger /workspace/libs/algotrader_logger
-COPY libs/db_accessor_client /workspace/libs/db_accessor_client
-RUN pip install --no-cache-dir -r requirements.txt
+COPY libs ./libs
+COPY ingestion-service ./ingestion-service
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python scripts/python_environment.py install ingestion-service
 
 WORKDIR /app
-
-# Copy application code
 COPY ingestion-service /app
 
 # Run the service

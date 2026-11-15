@@ -10,6 +10,14 @@ from app.services.live_indicator_manager import LiveIndicatorManager
 
 
 class LiveCandleCompatibilityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_opening_range_rejects_live_streaming_without_daily_history(self):
+        manager = LiveIndicatorManager(CandleCache())
+        request = LiveIndicatorStreamRequest(
+            account_id="123", symbol="TEST", timeframe="M5", indicator_id=7, parameters={}
+        )
+        with self.assertRaisesRegex(ValueError, "opening_range is not supported"):
+            await manager.start_stream(request)
+
     async def test_live_indicator_values_ignore_continuity_without_exposing_metadata(self):
         cache = CandleCache()
         cache.put(

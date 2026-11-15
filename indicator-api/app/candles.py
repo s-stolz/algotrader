@@ -5,33 +5,10 @@ import pandas as pd
 from algotrader_logger import get_logger
 from db_accessor_client import (
     AsyncDatabaseAccessorClient,
-    DatabaseAccessorClient,
     DatabaseAccessorClientError,
 )
 
 log = get_logger(__name__)
-
-
-def get_candles_sync(
-    symbols: Iterable[str],
-    timeframe: str,
-    start_ms: int | None,
-    end_ms: int | None,
-    limit: int | None,
-    exchange: str | None = None,
-) -> pd.DataFrame:
-    """Synchronous wrapper around the async get_candles function."""
-    all_dataframes = []
-
-    for symbol in symbols:
-        df = _fetch_candles_sync(symbol, timeframe, start_ms, end_ms, limit, exchange)
-
-        df.columns = pd.MultiIndex.from_product([df.columns, [symbol]])
-        all_dataframes.append(df)
-
-    if not all_dataframes:
-        return pd.DataFrame()
-    return pd.concat(all_dataframes, axis=1)
 
 
 async def get_candles(
@@ -101,30 +78,3 @@ async def get_candles(
     if not all_dataframes:
         return pd.DataFrame()
     return pd.concat(all_dataframes, axis=1)
-
-
-def _fetch_candles_sync(
-    symbol: str,
-    timeframe: str,
-    start_ms: int | None,
-    end_ms: int | None,
-    limit: int | None,
-    exchange: str | None = None,
-) -> pd.DataFrame:
-    """Synchronous HTTP fetch and DataFrame construction.
-    Separated to allow running in a thread from async callers.
-    """
-    try:
-        with DatabaseAccessorClient() as client:
-            data = client.get_candles(
-                symbol=symbol,
-                timeframe=timeframe,
-                exchange=exchange,
-                start_ms=start_ms,
-                end_ms=end_ms,
-                limit=limit,
-            )
-        return data
-    except DatabaseAccessorClientError as e:
-        log.error(f"Error in _fetch_candles_sync for symbol {symbol}: {e}")
-        return pd.DataFrame()

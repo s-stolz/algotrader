@@ -42,7 +42,9 @@ describe('currentMarketStore', () => {
     store.setMarket(marketB);
 
     expect(store.exchange).toBe('ALT');
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_MARKET) ?? '{}')).toEqual({
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_MARKET) ?? '{}'),
+    ).toEqual({
       exchange: 'ALT',
       market_type: 'Forex',
       min_move: 0.0001,

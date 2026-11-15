@@ -1,5 +1,7 @@
+import math
 from datetime import datetime
-from typing import Any, List, Literal
+from typing import Any, List, Literal, Mapping
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     BaseModel,
@@ -11,14 +13,43 @@ from pydantic import (
     model_serializer,
     model_validator,
 )
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def validate_profit_factor(metrics: Mapping[str, Any]) -> None:
+    """Require the saved JSON union without coercing missing or invalid values."""
+    if "profit_factor" not in metrics:
+        raise ValueError("metrics.profit_factor is required")
+    value = metrics["profit_factor"]
+    if value is None or value == "infinity":
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(
+            "metrics.profit_factor must be a nonnegative finite number, infinity, or null"
+        )
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(
+            "metrics.profit_factor must be a nonnegative finite number, infinity, or null"
+        )
 
 
 class MarketIn(BaseModel):
-    symbol: str
-    exchange: str
-    market_type: str
-    min_move: float
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    symbol: str = Field(min_length=1, max_length=10)
+    exchange: str = Field(min_length=1, max_length=20)
+    market_type: str = Field(min_length=1, max_length=20)
+    min_move: float = Field(gt=0)
+    settlement_currency: str = Field(min_length=1, max_length=12)
+    contract_multiplier: float = Field(gt=0)
+    minimum_quantity: float = Field(gt=0)
+    quantity_step: float = Field(gt=0)
+
+    @field_validator("symbol", "exchange", "settlement_currency", mode="before")
+    @classmethod
+    def normalize_identifier(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Identifiers must be strings")
+        return value.strip().upper()
+
     timezone: str = "UTC"
 
     @field_validator("timezone")
@@ -29,10 +60,6 @@ class MarketIn(BaseModel):
         except ZoneInfoNotFoundError as exc:
             raise ValueError(f"Invalid IANA timezone: {value}") from exc
         return value
-
-
-class MarketOut(MarketIn):
-    symbol_id: int
 
 
 class CandleIn(BaseModel):
@@ -67,7 +94,58 @@ class BacktestStrategyPayload(BacktestContractModel):
         return payload
 
 
+class BacktestDailySchedulePayload(BacktestContractModel):
+    entry_start_minute_utc: StrictInt = Field(ge=0, lt=1440)
+    last_entry_minute_utc: StrictInt = Field(ge=0, lt=1440)
+    exit_minute_utc: StrictInt = Field(ge=0, lt=1440)
+
+    @model_validator(mode="after")
+    def validate_boundaries(self) -> "BacktestDailySchedulePayload":
+        if not self.entry_start_minute_utc < self.last_entry_minute_utc <= self.exit_minute_utc:
+            raise ValueError("daily schedule requires entry start < last entry <= exit")
+        return self
+
+
+class SizingSchema(BacktestContractModel):
+    mode: Literal["strategy", "units", "exposure", "equity_exposure", "risk", "equity_risk"] = (
+        "strategy"
+    )
+    value: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    leverage: float = Field(default=1, ge=1, allow_inf_nan=False)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload = handler(self)
+        if self.value is None:
+            payload.pop("value", None)
+        return payload
+
+
+class ProtectionSchema(BacktestContractModel):
+    mode: Literal["none", "strategy", "percent", "distance", "ticks"] = "strategy"
+    value: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload = handler(self)
+        if self.value is None:
+            payload.pop("value", None)
+        return payload
+
+
+class InstrumentSchema(BacktestContractModel):
+    symbol_id: StrictInt = Field(gt=0)
+    settlement_currency: str = Field(min_length=1)
+    contract_multiplier: float = Field(gt=0, allow_inf_nan=False)
+    minimum_quantity: float = Field(gt=0, allow_inf_nan=False)
+    quantity_step: float = Field(gt=0, allow_inf_nan=False)
+    min_move: float = Field(gt=0, allow_inf_nan=False)
+
+
 class BacktestExecutionPayload(BacktestContractModel):
+    sizing: SizingSchema | None = None
+    stop_loss: ProtectionSchema | None = None
+    take_profit: ProtectionSchema | None = None
     signal_timing: Literal["close"]
     fill_timing: Literal["next_open"]
     price_source: Literal["open", "close"]
@@ -83,9 +161,42 @@ class BacktestExecutionPayload(BacktestContractModel):
     ]
     commission_bps: float
     slippage_bps: float
+    daily_schedule: BacktestDailySchedulePayload | None = None
+    max_entries_per_day: StrictInt | None = Field(default=None, gt=0)
+    execution_mode: Literal["targets", "orders"] | None = None
+    candle_quote: Literal["bid", "ask", "mid"] | None = None
+    spread: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    max_position_quantity: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    intrabar_execution_policy: Literal["conservative", "optimistic", "error"] | None = None
+
+    @model_validator(mode="after")
+    def require_order_quote(self) -> "BacktestExecutionPayload":
+        if self.execution_mode == "orders" and self.candle_quote is None:
+            raise ValueError("Order execution requires an explicit candle_quote")
+        return self
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload: dict[str, Any] = handler(self)
+        for field in (
+            "sizing",
+            "stop_loss",
+            "take_profit",
+            "daily_schedule",
+            "max_entries_per_day",
+            "execution_mode",
+            "candle_quote",
+            "spread",
+            "max_position_quantity",
+            "intrabar_execution_policy",
+        ):
+            if getattr(self, field) is None:
+                payload.pop(field, None)
+        return payload
 
 
 class BacktestRequestPayload(BacktestContractModel):
+    instrument: InstrumentSchema | None = None
     symbols: list[str]
     exchange: str | None
     timeframe: str
@@ -96,8 +207,18 @@ class BacktestRequestPayload(BacktestContractModel):
     initial_capital: float
     strategy: BacktestStrategyPayload
     execution: BacktestExecutionPayload
-    persist_result: bool
     run_metadata: dict[str, Any] | None
+
+    market_min_move: float | None = Field(default=None, gt=0, allow_inf_nan=False, strict=True)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        payload: dict[str, Any] = handler(self)
+        if self.instrument is None:
+            payload.pop("instrument", None)
+        if self.market_min_move is None:
+            payload.pop("market_min_move", None)
+        return payload
 
     @field_validator("run_metadata")
     @classmethod
@@ -115,7 +236,7 @@ class BacktestFillIn(BacktestContractModel):
     quantity: float
     price: float
     fees: float
-    exit_reason: Literal["signal", "stop_loss", "take_profit"] | None = None
+    exit_reason: Literal["signal", "stop_loss", "take_profit", "account_depleted"] | None = None
 
 
 class BacktestFillOut(BacktestFillIn):
@@ -134,7 +255,7 @@ class BacktestClosedTradeIn(BacktestContractModel):
     exit_price: float
     realized_pnl: float
     fees: float
-    exit_reason: Literal["signal", "stop_loss", "take_profit"]
+    exit_reason: Literal["signal", "stop_loss", "take_profit", "account_depleted"]
     stop_loss_price: float | None = None
     take_profit_price: float | None = None
 
@@ -182,10 +303,10 @@ class ExperimentNameUpdateIn(BacktestContractModel):
     _normalize_name = field_validator("name")(ExperimentNameModel.normalize_name.__func__)
 
 
-class BacktestRunBase(ExperimentNameModel):
+class BacktestRunBase(BacktestContractModel):
     run_id: str
-    batch_id: str | None = None
-    member_ordinal: int | None = None
+    backtest_id: str
+    run_ordinal: int = Field(ge=0)
     status: Literal["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
     submitted_at: datetime
     started_at: datetime | None = None
@@ -202,6 +323,14 @@ class BacktestRunBase(ExperimentNameModel):
     diagnostics: dict[str, Any] | None = None
     replay_descriptor: EquityReplayDescriptor | None = None
 
+    @model_validator(mode="after")
+    def validate_saved_metrics(self) -> "BacktestRunBase":
+        if self.metrics is not None:
+            validate_profit_factor(self.metrics)
+        elif self.status == "succeeded":
+            raise ValueError("successful Run requires metrics.profit_factor")
+        return self
+
     @field_validator("request_schema_version")
     @classmethod
     def validate_request_schema_version(cls, value: int) -> int:
@@ -215,12 +344,6 @@ class BacktestRunBase(ExperimentNameModel):
         if value is not None and value not in (1, 2, 3):
             raise ValueError("result_schema_version must be 1, 2, or 3 when present")
         return value
-
-    @model_validator(mode="after")
-    def prohibit_member_name(self) -> "BacktestRunBase":
-        if self.batch_id is not None and self.name is not None:
-            raise ValueError("Batch members have no experiment name")
-        return self
 
     @model_validator(mode="after")
     def validate_success_result_schema_version(self) -> "BacktestRunBase":
@@ -242,73 +365,8 @@ class BacktestRunBase(ExperimentNameModel):
         return self
 
 
-class BacktestRunCreateIn(BacktestRunBase):
-    @model_validator(mode="after")
-    def prohibit_cancellation_creation(self) -> "BacktestRunCreateIn":
-        if self.status in {"cancelling", "cancelled"} or any(
-            (self.cancel_requested_at, self.cancellation_source, self.cancellation_reason)
-        ):
-            raise ValueError("Cancellation requires the serialized command endpoint")
-        return self
-
-    @model_validator(mode="after")
-    def prohibit_member_creation(self) -> "BacktestRunCreateIn":
-        if self.batch_id is not None or self.member_ordinal is not None:
-            raise ValueError("Batch members can only be created with the batch")
-        return self
-
-    @model_validator(mode="after")
-    def validate_new_success_descriptor(self) -> "BacktestRunCreateIn":
-        if self.status == "succeeded" and self.replay_descriptor is None:
-            raise ValueError("successful runs require replay_descriptor")
-        return self
-
-    fills: list[BacktestFillIn] = Field(default_factory=list)
-    trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def require_current_result_schema(self) -> "BacktestRunCreateIn":
-        if self.result_schema_version is not None and self.result_schema_version != 3:
-            raise ValueError("new succeeded backtest runs must use result_schema_version 3")
-        return self
-
-
 class BacktestRunOut(BacktestRunBase):
     pass
-
-
-class BacktestRunConditionalUpdateIn(BacktestContractModel):
-    expected_status: Literal["queued", "running", "succeeded", "failed"]
-    new_status: Literal["queued", "running", "succeeded", "failed"]
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    error_code: str | None = None
-    error_message: str | None = None
-
-    @field_validator("new_status")
-    @classmethod
-    def validate_new_status(cls, value: str) -> str:
-        if value == "succeeded":
-            raise ValueError("succeeded backtest runs must use the completion endpoint")
-        return value
-
-
-class BacktestRunCompleteIn(BacktestContractModel):
-    expected_status: Literal["running"]
-    completed_at: datetime
-    result_schema_version: int
-    metrics: dict[str, Any]
-    diagnostics: dict[str, Any]
-    replay_descriptor: EquityReplayDescriptor
-    fills: list[BacktestFillIn] = Field(default_factory=list)
-    trades: list[BacktestClosedTradeIn] = Field(default_factory=list)
-
-    @field_validator("result_schema_version")
-    @classmethod
-    def validate_result_schema_version(cls, value: int) -> int:
-        if value != 3:
-            raise ValueError("result_schema_version must be 3")
-        return value
 
 
 class BacktestRunMutationOut(BacktestContractModel):
@@ -316,6 +374,7 @@ class BacktestRunMutationOut(BacktestContractModel):
 
 
 class BacktestExecutionClaimIn(BacktestContractModel):
+    worker_id: str = Field(min_length=1)
     run_id: str
     owner_token: str
     started_at: datetime
@@ -340,6 +399,14 @@ class BacktestExecutionSettleIn(BacktestContractModel):
         if self.status == "succeeded":
             if self.result_schema_version != 3 or self.metrics is None or self.diagnostics is None:
                 raise ValueError("successful settlement requires schema version 3 and results")
+            validate_profit_factor(self.metrics)
+            ending_equity = self.metrics.get("ending_equity")
+            if (
+                isinstance(ending_equity, bool)
+                or not isinstance(ending_equity, (int, float))
+                or not math.isfinite(ending_equity)
+            ):
+                raise ValueError("successful settlement requires finite metrics.ending_equity")
             if self.replay_descriptor is None:
                 raise ValueError("successful settlement requires replay_descriptor")
             if self.error_code is not None or self.error_message is not None:
@@ -414,19 +481,18 @@ class BacktestQueueStateOut(BacktestContractModel):
     slot: BacktestExecutionSlotOut
     active_run: dict[str, Any] | None
     heartbeats: list[BacktestWorkerHeartbeatOut]
-    queued_runs: list[dict[str, Any]]
     queued_entries: list[dict[str, Any]]
 
 
-class BacktestBatchMemberIn(BacktestContractModel):
+class BacktestMemberIn(BacktestContractModel):
     run_id: str
-    member_ordinal: int = Field(ge=0)
+    run_ordinal: int = Field(ge=0)
     request_schema_version: Literal[3]
     request: BacktestRequestPayload
 
 
-class BacktestBatchCreateIn(ExperimentNameModel):
-    batch_id: str
+class BacktestCreateIn(ExperimentNameModel):
+    backtest_id: str
     submission_id: str
     accepted_at: datetime
     definition_schema_version: Literal[1]
@@ -435,10 +501,10 @@ class BacktestBatchCreateIn(ExperimentNameModel):
     raw_count: int = Field(gt=0)
     member_count: int = Field(gt=0)
     excluded_count: int = Field(ge=0)
-    members: list[BacktestBatchMemberIn] = Field(min_length=1)
+    members: list[BacktestMemberIn] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def validate_members(self) -> "BacktestBatchCreateIn":
+    def validate_members(self) -> "BacktestCreateIn":
         shared = self.accepted_definition.get("shared_request", {})
         metadata = shared.get("run_metadata") if isinstance(shared, dict) else None
         if isinstance(metadata, dict) and ("name" in metadata or "label" in metadata):
@@ -447,13 +513,11 @@ class BacktestBatchCreateIn(ExperimentNameModel):
             self.member_count != len(self.members)
             or self.raw_count != self.member_count + self.excluded_count
         ):
-            raise ValueError("Batch counts do not match membership")
-        if sorted(member.member_ordinal for member in self.members) != list(
-            range(self.member_count)
-        ):
-            raise ValueError("Batch ordinals must be contiguous")
+            raise ValueError("Backtest counts do not match membership")
+        if sorted(member.run_ordinal for member in self.members) != list(range(self.member_count)):
+            raise ValueError("Backtest ordinals must be contiguous")
         if len({member.run_id for member in self.members}) != self.member_count:
-            raise ValueError("Batch member run IDs must be unique")
+            raise ValueError("Backtest member run IDs must be unique")
         if any(
             len(member.request.symbols) != 1
             or not member.request.symbols[0]
@@ -463,13 +527,13 @@ class BacktestBatchCreateIn(ExperimentNameModel):
             for member in self.members
         ):
             raise ValueError(
-                "Batch members require one resolved Market, Timeframe, and Strategy Version"
+                "Backtest members require one resolved Market, Timeframe, and Strategy Version"
             )
         return self
 
 
-class BacktestBatchOut(ExperimentNameModel):
-    batch_id: str
+class BacktestOut(ExperimentNameModel):
+    backtest_id: str
     submission_id: str
     status: Literal[
         "queued", "running", "pausing", "paused", "cancelling", "completed", "cancelled"
@@ -489,8 +553,8 @@ class BacktestBatchOut(ExperimentNameModel):
     excluded_count: int
 
 
-class BacktestBatchEventOut(BacktestContractModel):
-    batch_id: str
+class BacktestEventOut(BacktestContractModel):
+    backtest_id: str
     revision: int
     event_type: str
     prior_status: str | None = None
@@ -501,26 +565,26 @@ class BacktestBatchEventOut(BacktestContractModel):
     command_id: str | None = None
 
 
-BatchControlStatus = Literal[
+BacktestControlStatus = Literal[
     "queued", "running", "pausing", "paused", "cancelling", "completed", "cancelled"
 ]
 
 
-class BacktestBatchControlPolicyIn(BacktestContractModel):
-    accepted_statuses: list[BatchControlStatus] = Field(min_length=1)
-    effective_statuses: list[BatchControlStatus] = Field(min_length=1)
-    active_status: BatchControlStatus
-    idle_status: BatchControlStatus
+class BacktestControlPolicyIn(BacktestContractModel):
+    accepted_statuses: list[BacktestControlStatus] = Field(min_length=1)
+    effective_statuses: list[BacktestControlStatus] = Field(min_length=1)
+    active_status: BacktestControlStatus
+    idle_status: BacktestControlStatus
     queue_action: Literal["remove", "append"]
 
 
-class BacktestBatchCommandIn(BacktestContractModel):
+class BacktestCommandIn(BacktestContractModel):
     command_id: str = Field(min_length=1, max_length=36)
-    policy: BacktestBatchControlPolicyIn
+    policy: BacktestControlPolicyIn
 
 
-class BacktestBatchCommandOut(BacktestContractModel):
-    batch_id: str
+class BacktestCommandOut(BacktestContractModel):
+    backtest_id: str
     status: str
     lifecycle_revision: int
     command_id: str | None = None

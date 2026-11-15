@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -21,6 +22,17 @@ REQUIRED_CANDLE_COLUMNS = (
 class CandleSourceClient(Protocol):
     """Protocol for the subset of db accessor client behavior used by the backtester."""
 
+    def stream_candles(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        start_ms: int,
+        end_ms: int,
+        exchange: str | None = None,
+        market_id: int | None = None,
+    ) -> Iterator[list[dict[str, Any]]]: ...
+
     def get_candles(
         self,
         *,
@@ -31,6 +43,7 @@ class CandleSourceClient(Protocol):
         end_ms: int | None = None,
         limit: int | None = None,
         include_timestamp_ms: bool = False,
+        market_id: int | None = None,
     ) -> pd.DataFrame: ...
 
 
@@ -54,6 +67,18 @@ class DatabaseAccessorHistoricalDataAdapter:
 
     def __init__(self, client: CandleSourceClient | None = None) -> None:
         self._client = client
+        self._market_identity: tuple[str, str | None, int] | None = None
+
+    @classmethod
+    def for_request(cls, request):
+        adapter = cls()
+        if request.instrument is not None:
+            adapter._market_identity = (
+                request.symbols[0],
+                request.exchange,
+                request.instrument.symbol_id,
+            )
+        return adapter
 
     def fetch_bars(
         self,
@@ -97,12 +122,29 @@ class DatabaseAccessorHistoricalDataAdapter:
             "include_timestamp_ms": True,
         }
 
+        if self._market_identity is not None and (symbol, exchange) == self._market_identity[:2]:
+            kwargs["market_id"] = self._market_identity[2]
         if self._client is not None:
-            return self._client.get_candles(**kwargs)
+            return _fetch_candle_frame(self._client, kwargs)
 
         client_cls = _import_database_accessor_client()
         with client_cls() as client:
-            return client.get_candles(**kwargs)
+            return _fetch_candle_frame(client, kwargs)
+
+
+def _fetch_candle_frame(client: CandleSourceClient, kwargs: dict[str, Any]) -> pd.DataFrame:
+    if kwargs["start_ms"] is None or kwargs["end_ms"] is None or kwargs["limit"] is not None:
+        return client.get_candles(**kwargs)
+
+    stream_kwargs = {
+        key: value for key, value in kwargs.items() if key not in ("limit", "include_timestamp_ms")
+    }
+    # Exhaust the stream inside the client context, including its completion check.
+    # Concatenate once to avoid repeatedly copying the accumulated history.
+    frames = [pd.DataFrame(batch) for batch in client.stream_candles(**stream_kwargs) if batch]
+    if not frames:
+        return pd.DataFrame(columns=pd.Index(REQUIRED_CANDLE_COLUMNS))
+    return pd.concat(frames, ignore_index=True)
 
 
 def _import_database_accessor_client() -> type[Any]:
@@ -128,8 +170,7 @@ def _map_to_canonical_bar_frame(*, candles: pd.DataFrame, symbol: str) -> pd.Dat
     mapped = candles.copy()
     if "timestamp_ms" not in mapped.columns:
         if isinstance(mapped.index, pd.DatetimeIndex):
-            timestamp_ns = mapped.index.to_series().astype("int64")
-            mapped["timestamp_ms"] = (timestamp_ns // 1_000_000).to_numpy(dtype="int64")
+            mapped["timestamp_ms"] = mapped.index.as_unit("ms").asi8
         else:
             raise ValueError(
                 "Candles payload does not include timestamp_ms and index is not DatetimeIndex"

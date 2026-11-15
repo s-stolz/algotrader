@@ -11,8 +11,11 @@ describe('currentTimeframeStore', () => {
     localStorage.clear();
   });
 
-  it('normalizes and persists the current timeframe', () => {
-    localStorage.setItem(STORAGE_KEYS.CURRENT_TIMEFRAME, JSON.stringify({ value: 'h1' }));
+  it('loads and persists the current timeframe', () => {
+    localStorage.setItem(
+      STORAGE_KEYS.CURRENT_TIMEFRAME,
+      JSON.stringify({ label: 'H1', value: 'H1' }),
+    );
 
     const store = useCurrentTimeframeStore();
     const nextTimeframe: TimeframeOption = { label: 'M5', value: 'M5' };
@@ -24,6 +27,20 @@ describe('currentTimeframeStore', () => {
 
     expect(store.label).toBe('M5');
     expect(store.value).toBe('M5');
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_TIMEFRAME) ?? '{}')).toEqual(nextTimeframe);
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_TIMEFRAME) ?? '{}'),
+    ).toEqual(nextTimeframe);
   });
+
+  it.each([null, {}, { value: 60 }, { value: 'h1' }])(
+    'falls back safely for invalid stored preferences: %j',
+    (stored) => {
+      localStorage.setItem(
+        STORAGE_KEYS.CURRENT_TIMEFRAME,
+        JSON.stringify(stored),
+      );
+      const store = useCurrentTimeframeStore();
+      expect(store.value).toBe('M1');
+    },
+  );
 });

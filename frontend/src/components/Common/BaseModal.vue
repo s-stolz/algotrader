@@ -5,11 +5,20 @@
     @mousedown="onMouseDown"
     @mouseup="onMouseUp"
   >
-    <div class="modal" @click.stop>
+    <div
+      class="modal"
+      @click.stop
+    >
       <header class="modal-header">
         <div class="header-content">
           <h2 class="title">{{ title }}</h2>
-          <n-button text class="close-button" @click="close">
+          <n-button
+            text
+            circle
+            aria-label="Close dialog"
+            class="close-button"
+            @click="close"
+          >
             <n-icon size="24">
               <CloseCircleOutline />
             </n-icon>
@@ -41,14 +50,17 @@ defineOptions({
   name: 'BaseModal',
 });
 
-const props = withDefaults(defineProps<{
-  closeOnBackdrop?: boolean;
-  modalId: string;
-  title?: string;
-}>(), {
-  closeOnBackdrop: true,
-  title: 'Modal Title',
-});
+const props = withDefaults(
+  defineProps<{
+    closeOnBackdrop?: boolean;
+    modalId: string;
+    title?: string;
+  }>(),
+  {
+    closeOnBackdrop: true,
+    title: 'Modal Title',
+  },
+);
 
 const modalStore = useModalStore();
 const isMouseDownInside = ref(false);
@@ -79,71 +91,74 @@ defineExpose({ close });
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--design-color-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
+  box-sizing: border-box;
+  padding: var(--design-space-sm);
+  font-family: var(--design-font-ui);
+  font-size: var(--design-text-body);
+  color: var(--design-color-body);
 }
-
 .modal {
   position: relative;
-  background: var(--surface-panel);
-  border-radius: 15px;
-  border: 1px solid var(--surface-border);
+  display: flex;
+  flex-direction: column;
+  background: var(--design-color-panel);
+  border-radius: var(--design-radius-panel);
+  border: 1px solid var(--design-color-border);
   max-width: 550px;
+  max-height: 100%;
   width: 100%;
   padding: 0;
   overflow: hidden;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--design-shadow-overlay);
 }
-
 .modal-header {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--design-space-sm);
 }
-
+.modal-header,
+.modal-footer {
+  flex-shrink: 0;
+}
 .header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
-.modal-header .title {
+.title {
   margin: 0;
-  padding-top: 10px;
-  padding-left: 15px;
+  padding: var(--design-space-md) var(--design-space-lg);
+  padding-right: calc(var(--design-control-medium) + var(--design-space-lg));
+  font-size: var(--design-text-heading);
 }
-
 .modal .separator {
   border: none;
   height: 1px;
-  background-color: var(--surface-border);
+  background-color: var(--design-color-border);
   margin: 0;
 }
-
 .modal :deep(.separator) {
-  background-color: var(--surface-border);
+  background-color: var(--design-color-border);
 }
-
 .modal-footer {
-  padding: 10px 15px;
+  padding: var(--design-space-md) var(--design-space-lg);
   text-align: right;
 }
-
 .modal-body {
   overflow-y: auto;
   box-sizing: border-box;
 }
-
 .close-button {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: var(--design-space-sm);
+  right: var(--design-space-sm);
 }
-
 .close-button:hover {
-  color: #e98b8b;
+  color: var(--design-color-error);
 }
 </style>

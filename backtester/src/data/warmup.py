@@ -55,7 +55,7 @@ def compute_required_warmup_bars(strategy: StrategyDefinition) -> int:
 
 
 def compute_fetch_start_ms(*, start_ms: int, timeframe: str, warmup_bars: int) -> int:
-    """Shift fetch start backward to cover warmup requirements."""
+    """Estimate the warmup fetch start from nominal candle spacing."""
 
     if warmup_bars <= 1:
         return start_ms
@@ -81,15 +81,18 @@ def trim_bars_for_execution(
             missing_text = ", ".join(missing)
             raise ValueError(f"bars is missing required feature columns: {missing_text}")
 
-        feature_frame = trimmed.loc[:, list(required_features)].replace([np.inf, -np.inf], np.nan)
-        valid_rows = feature_frame.notna().all(axis=1)
-        trimmed = trimmed.loc[valid_rows].copy()
+        if "indicators_available" not in bars.columns:
+            feature_frame = trimmed.loc[:, list(required_features)].replace(
+                [np.inf, -np.inf], np.nan
+            )
+            valid_rows = feature_frame.notna().all(axis=1)
+            trimmed = trimmed.loc[valid_rows].copy()
 
     trimmed = trimmed.loc[
         (trimmed["timestamp_ms"] >= int(start_ms)) & (trimmed["timestamp_ms"] < int(end_ms))
     ].copy()
-    trimmed.sort_values("timestamp_ms", kind="mergesort", inplace=True)
-    trimmed.reset_index(drop=True, inplace=True)
+    trimmed = trimmed.sort_values("timestamp_ms", kind="mergesort")
+    trimmed = trimmed.reset_index(drop=True)
 
     if trimmed.empty:
         raise ValueError(

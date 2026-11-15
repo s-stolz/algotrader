@@ -29,13 +29,13 @@ class TestBacktesterWorkerEntrypoint(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {"BACKTESTER_WORKER_POLL_INTERVAL_SECONDS": "2.5"},
+            {"BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS": "2.5"},
             clear=True,
         ):
             worker.main(worker_factory=build_worker)
 
         self.assertTrue(runtime.started)
-        self.assertEqual(captured_config[0].worker_poll_interval_seconds, 2.5)
+        self.assertEqual(captured_config[0].worker_heartbeat_interval_seconds, 2.5)
 
 
 if __name__ == "__main__":

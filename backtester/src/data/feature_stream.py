@@ -6,11 +6,14 @@ import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Mapping, NamedTuple
 
 import numpy as np
+import pandas as pd
 from domain.types import BarView
 from strategies.base import IndicatorFeatureRequirement, StrategyDefinition
+
+from data.source_features import SourceFeatureStream
 
 BAR_FIELD_ORDER = ("open", "high", "low", "close", "volume")
 
@@ -37,13 +40,24 @@ class EventDrivenFeatureStream:
         symbol: str,
         timeframe: str,
         history_rows: int = 5000,
+        bars: pd.DataFrame | None = None,
+        feature_bars: Mapping[str, pd.DataFrame] | None = None,
     ) -> None:
-        self._strategy = strategy
         self._symbol = str(symbol)
         self._timeframe = str(timeframe)
+        self._source_stream = (
+            None
+            if bars is None
+            else SourceFeatureStream(
+                bars=bars,
+                strategy=strategy,
+                timeframe=timeframe,
+                feature_bars=feature_bars or {},
+            )
+        )
         self._registered_features = tuple(
             self._register_requirement(requirement, history_rows=history_rows)
-            for requirement in strategy.indicator_requirements
+            for requirement in (() if bars is not None else strategy.indicator_requirements)
         )
 
     def update(self, bar: BarView) -> FeatureSnapshot | None:
@@ -61,6 +75,9 @@ class EventDrivenFeatureStream:
 
         row = _bar_to_update_row(bar)
         features = _base_feature_values(bar)
+        if self._source_stream is not None:
+            features.update(self._source_stream.update(int(bar.timestamp_ms)))
+            return FeatureSnapshot(int(bar.timestamp_ms), self._symbol, features)
 
         snapshot_ready = True
         for registered in self._registered_features:
@@ -148,7 +165,7 @@ def _extract_feature_value(
     return float(
         tensor.latest_value(
             asset=symbol,
-            output=requirement.output_key,
+            output=requirement.resolve_output_key(symbol),
         )
     )
 

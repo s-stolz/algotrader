@@ -104,26 +104,6 @@ class FakeMarketDataService:
             running=True, started_at=100.0, last_tick_at=101.0, uptime_seconds=1.0
         )
 
-    async def get_trendbars(
-        self,
-        account_id: AccountId,
-        symbol: str,
-        timeframe: Timeframe,
-        from_ts: int,
-        to_ts: int | None,
-        limit: int | None,
-    ):
-        return [
-            Trendbar(
-                o=Decimal("1.1"),
-                h=Decimal("1.2"),
-                l=Decimal("1.0"),
-                c=Decimal("1.15"),
-                v=10,
-                t=12345,
-            )
-        ]
-
     async def stream_trendbars(
         self,
         account_id: AccountId,

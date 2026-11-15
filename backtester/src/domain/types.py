@@ -2,7 +2,7 @@
 
 import math
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 from domain.enums import (
@@ -21,6 +21,9 @@ from domain.enums import (
     TradeAccountingPolicy,
     TradeDirection,
 )
+from domain.orders import IntrabarExecutionPolicy
+from domain.risk import InstrumentSpec, ProtectionSetting, SizingPolicy
+from domain.schedule import DailyTradingSchedule
 
 BACKTEST_REQUEST_SCHEMA_VERSION = 3
 BACKTEST_RESULT_SCHEMA_VERSION = 3
@@ -68,8 +71,58 @@ class ExecutionConfig:
     intrabar_exit_policy: IntrabarExitPolicy = IntrabarExitPolicy.CONSERVATIVE
     commission_bps: float = 0.0
     slippage_bps: float = 0.0
+    daily_schedule: DailyTradingSchedule | None = None
+    max_entries_per_day: int | None = None
+    execution_mode: Literal["targets", "orders"] = "targets"
+    intrabar_execution_policy: IntrabarExecutionPolicy | None = None
+    spread: float = 0.0
+    candle_quote: Literal["bid", "ask", "mid"] | None = None
+    max_position_quantity: float | None = None
+    sizing: SizingPolicy | None = None
+    stop_loss: ProtectionSetting | None = None
+    take_profit: ProtectionSetting | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) -> None:  # noqa: C901
+        if self.execution_mode not in ("targets", "orders"):
+            raise ValueError("execution_mode must be targets or orders")
+        if not math.isfinite(self.spread) or self.spread < 0:
+            raise ValueError("spread must be nonnegative and finite")
+        if self.candle_quote not in (None, "bid", "ask", "mid"):
+            raise ValueError("candle_quote must be bid, ask, or mid")
+        if self.execution_mode == "orders" and self.candle_quote is None:
+            raise ValueError("Order execution requires an explicit candle_quote")
+        if self.execution_mode == "targets" and (
+            self.spread or self.max_position_quantity is not None
+        ):
+            raise ValueError("spread and max_position_quantity require order execution")
+        if self.max_position_quantity is not None and (
+            not math.isfinite(self.max_position_quantity) or self.max_position_quantity <= 0
+        ):
+            raise ValueError("max_position_quantity must be positive and finite")
+        if self.intrabar_execution_policy is not None:
+            policy = IntrabarExecutionPolicy(self.intrabar_execution_policy)
+            object.__setattr__(self, "intrabar_execution_policy", policy)
+            legacy = {
+                IntrabarExecutionPolicy.CONSERVATIVE: IntrabarExitPolicy.CONSERVATIVE,
+                IntrabarExecutionPolicy.OPTIMISTIC: IntrabarExitPolicy.TAKE_PROFIT_FIRST,
+                IntrabarExecutionPolicy.ERROR: IntrabarExitPolicy.ERROR,
+            }[policy]
+            if (
+                self.intrabar_exit_policy != IntrabarExitPolicy.CONSERVATIVE
+                and self.intrabar_exit_policy != legacy
+            ):
+                raise ValueError("Conflicting intrabar execution and legacy exit policies")
+            object.__setattr__(self, "intrabar_exit_policy", legacy)
+        if self.max_entries_per_day is not None and (
+            isinstance(self.max_entries_per_day, bool)
+            or not isinstance(self.max_entries_per_day, int)
+            or self.max_entries_per_day <= 0
+        ):
+            raise ValueError("max_entries_per_day must be a positive integer or None")
+        if self.daily_schedule is not None and not isinstance(
+            self.daily_schedule, DailyTradingSchedule
+        ):
+            raise ValueError("execution daily_schedule must be a DailyTradingSchedule")
         try:
             allowed_directions = AllowedDirections(self.allowed_directions)
         except ValueError as exc:
@@ -105,9 +158,19 @@ class BacktestRequest:
     initial_capital: float
     exchange: Optional[str] = None
     data_granularity: DataGranularity = DataGranularity.BAR
-    persist_result: bool = False
     run_metadata: Optional[Dict[str, Any]] = None
     engine: BacktestEngine = BacktestEngine.VECTORIZED
+    market_min_move: float | None = None
+    instrument: InstrumentSpec | None = None
+
+    def __post_init__(self) -> None:
+        if self.market_min_move is not None and (
+            isinstance(self.market_min_move, bool)
+            or not isinstance(self.market_min_move, (int, float))
+            or not math.isfinite(self.market_min_move)
+            or self.market_min_move <= 0
+        ):
+            raise ValueError("Market min_move must be positive and finite")
 
 
 @dataclass(frozen=True)
@@ -140,6 +203,8 @@ class BacktestRequestSnapshot:
 @dataclass(frozen=True)
 class BacktestRunRecord:
     run_id: str
+    backtest_id: str
+    run_ordinal: int
     status: BacktestRunStatus
     submitted_at_ms: int
     request_snapshot: BacktestRequestSnapshot
@@ -154,9 +219,6 @@ class BacktestRunRecord:
     metrics: Optional[Mapping[str, Any]] = None
     diagnostics: Optional[Mapping[str, Any]] = None
     replay_descriptor: Optional[Mapping[str, Any]] = None
-    batch_id: Optional[str] = None
-    member_ordinal: Optional[int] = None
-    name: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -213,8 +275,7 @@ class BacktestRunQuery:
     engine: Optional[BacktestEngine] = None
     submitted_from_ms: Optional[int] = None
     submitted_to_ms: Optional[int] = None
-    membership: Optional[str] = None
-    batch_id: Optional[str] = None
+    backtest_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -322,11 +383,9 @@ class BacktestResult:
     fills: List[Fill] = field(default_factory=list)
     trades: List[Trade] = field(default_factory=list)
     equity_curve: List[PortfolioSnapshot] = field(default_factory=list)
-    metrics: Dict[str, float] = field(default_factory=dict)
+    metrics: Dict[str, float | Literal["infinity"] | None] = field(default_factory=dict)
     diagnostics: Dict[str, Any] = field(default_factory=dict)
     replay_descriptor: Optional[Mapping[str, Any]] = None
-    backtest_run_id: Optional[str] = None
-    persisted_at: Optional[int] = None
 
 
 _REQUEST_PAYLOAD_FIELDS = {
@@ -340,7 +399,6 @@ _REQUEST_PAYLOAD_FIELDS = {
     "initial_capital",
     "strategy",
     "execution",
-    "persist_result",
     "run_metadata",
 }
 _STRATEGY_PAYLOAD_FIELDS = {"strategy_id", "parameters"}
@@ -363,6 +421,12 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
     return {
         "symbols": [str(symbol) for symbol in request.symbols],
         "exchange": request.exchange,
+        **(
+            {"market_min_move": request.market_min_move}
+            if request.market_min_move is not None
+            else {}
+        ),
+        **({"instrument": asdict(request.instrument)} if request.instrument else {}),
         "timeframe": str(request.timeframe),
         "start_ms": int(request.start_ms),
         "end_ms": int(request.end_ms),
@@ -379,6 +443,11 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
             ),
         },
         "execution": {
+            **{
+                name: {key: item for key, item in asdict(value).items() if item is not None}
+                for name in ("sizing", "stop_loss", "take_profit")
+                if (value := getattr(execution, name)) is not None
+            },
             "signal_timing": _enum_value(execution.signal_timing),
             "fill_timing": _enum_value(execution.fill_timing),
             "price_source": _enum_value(execution.price_source),
@@ -389,8 +458,36 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
             "intrabar_exit_policy": _enum_value(execution.intrabar_exit_policy),
             "commission_bps": float(execution.commission_bps),
             "slippage_bps": float(execution.slippage_bps),
+            **(
+                {
+                    "execution_mode": execution.execution_mode,
+                    "spread": execution.spread,
+                    "candle_quote": execution.candle_quote,
+                    **(
+                        {"max_position_quantity": execution.max_position_quantity}
+                        if execution.max_position_quantity is not None
+                        else {}
+                    ),
+                }
+                if execution.execution_mode == "orders"
+                else {}
+            ),
+            **(
+                {"intrabar_execution_policy": execution.intrabar_execution_policy.value}
+                if execution.intrabar_execution_policy is not None
+                else {}
+            ),
+            **(
+                {"max_entries_per_day": execution.max_entries_per_day}
+                if execution.max_entries_per_day is not None
+                else {}
+            ),
+            **(
+                {"daily_schedule": asdict(execution.daily_schedule)}
+                if execution.daily_schedule is not None
+                else {}
+            ),
         },
-        "persist_result": bool(request.persist_result),
         "run_metadata": deepcopy(request.run_metadata),
     }
 
@@ -398,7 +495,11 @@ def _backtest_request_payload(request: BacktestRequest) -> Dict[str, Any]:
 def _backtest_request_from_payload(
     payload: Mapping[str, Any], *, schema_version: int
 ) -> BacktestRequest:
-    _validate_payload_fields("Backtest request", payload, _REQUEST_PAYLOAD_FIELDS)
+    _validate_payload_fields(
+        "Backtest request",
+        payload,
+        _REQUEST_PAYLOAD_FIELDS | (set(payload) & {"market_min_move", "instrument"}),
+    )
     strategy = _mapping_field(payload, "strategy")
     execution = _mapping_field(payload, "execution")
     _validate_payload_fields(
@@ -406,7 +507,26 @@ def _backtest_request_from_payload(
         strategy,
         _STRATEGY_PAYLOAD_FIELDS | ({"strategy_version"} if schema_version == 3 else set()),
     )
-    _validate_payload_fields("Backtest execution", execution, _EXECUTION_PAYLOAD_FIELDS)
+    _validate_payload_fields(
+        "Backtest execution",
+        execution,
+        _EXECUTION_PAYLOAD_FIELDS
+        | (
+            set(execution)
+            & {
+                "sizing",
+                "stop_loss",
+                "take_profit",
+                "daily_schedule",
+                "max_entries_per_day",
+                "execution_mode",
+                "spread",
+                "candle_quote",
+                "max_position_quantity",
+                "intrabar_execution_policy",
+            }
+        ),
+    )
 
     symbols = payload["symbols"]
     if not isinstance(symbols, (list, tuple)) or not all(
@@ -429,6 +549,8 @@ def _backtest_request_from_payload(
     return BacktestRequest(
         symbols=list(symbols),
         exchange=exchange,
+        market_min_move=payload.get("market_min_move"),
+        instrument=InstrumentSpec(**payload["instrument"]) if payload.get("instrument") else None,
         timeframe=str(payload["timeframe"]),
         start_ms=int(payload["start_ms"]),
         end_ms=int(payload["end_ms"]),
@@ -438,6 +560,15 @@ def _backtest_request_from_payload(
             strategy_version=(int(strategy["strategy_version"]) if schema_version == 3 else None),
         ),
         execution=ExecutionConfig(
+            sizing=SizingPolicy(**execution["sizing"]) if execution.get("sizing") else None,
+            stop_loss=(
+                ProtectionSetting(**execution["stop_loss"]) if execution.get("stop_loss") else None
+            ),
+            take_profit=(
+                ProtectionSetting(**execution["take_profit"])
+                if execution.get("take_profit")
+                else None
+            ),
             signal_timing=SignalTiming(execution["signal_timing"]),
             fill_timing=FillTiming(execution["fill_timing"]),
             price_source=PriceSource(execution["price_source"]),
@@ -448,10 +579,16 @@ def _backtest_request_from_payload(
             intrabar_exit_policy=IntrabarExitPolicy(execution["intrabar_exit_policy"]),
             commission_bps=float(execution["commission_bps"]),
             slippage_bps=float(execution["slippage_bps"]),
+            execution_mode=execution.get("execution_mode", "targets"),
+            spread=execution.get("spread", 0.0),
+            candle_quote=execution.get("candle_quote"),
+            max_position_quantity=execution.get("max_position_quantity"),
+            intrabar_execution_policy=execution.get("intrabar_execution_policy"),
+            daily_schedule=DailyTradingSchedule.from_payload(execution.get("daily_schedule")),
+            max_entries_per_day=execution.get("max_entries_per_day"),
         ),
         initial_capital=float(payload["initial_capital"]),
         data_granularity=DataGranularity(payload["data_granularity"]),
-        persist_result=bool(payload["persist_result"]),
         run_metadata=deepcopy(dict(run_metadata)) if run_metadata is not None else None,
         engine=BacktestEngine(payload["engine"]),
     )

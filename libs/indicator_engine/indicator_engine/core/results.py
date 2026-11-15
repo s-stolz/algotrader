@@ -38,7 +38,6 @@ class ResultBuffer:
         self.param_ids = np.array(list(param_ids), dtype=object)
         self.param_names = list(param_names) if param_names is not None else []
         self.param_values = list(param_values) if param_values is not None else []
-        self.asset_index = {asset: i for i, asset in enumerate(self.assets)}
         self.history = history
         self.allow_out_of_order = allow_out_of_order
         self.dtype = dtype

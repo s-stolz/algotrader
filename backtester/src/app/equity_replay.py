@@ -53,7 +53,11 @@ def descriptor(request: BacktestRequest, closes: Sequence[tuple[int, float]]) ->
         raise ReplayUnavailableError("unsupported_replay_shape")
     digest = hashlib.sha256()
     digest.update(DOMAIN_MARKER)
-    for identity in (request.exchange or "", str(request.symbols[0]), request.timeframe):
+    for identity in (
+        request.exchange or "",
+        str(request.symbols[0]),
+        "M1" if request.execution.execution_mode == "orders" else request.timeframe,
+    ):
         encoded = identity.encode("utf-8")
         digest.update(struct.pack(">I", len(encoded)))
         digest.update(encoded)
@@ -110,6 +114,7 @@ def replay(
     cash = float(request.initial_capital)
     if not math.isfinite(cash) or cash <= 0:
         raise ReplayUnavailableError("unsupported_replay_shape")
+    multiplier = request.instrument.contract_multiplier if request.instrument else 1.0
     quantity = 0.0
     fill_index = 0
     points: list[dict[str, float | int]] = []
@@ -117,11 +122,13 @@ def replay(
     for timestamp, close in closes:
         while fill_index < len(fills) and fills[fill_index].timestamp_ms == timestamp:
             fill = fills[fill_index]
-            cash, quantity = _apply_fill(fill, fill_index, request.symbols[0], cash, quantity)
+            cash, quantity = _apply_fill(
+                fill, fill_index, request.symbols[0], cash, quantity, multiplier
+            )
             fill_index += 1
         if fill_index < len(fills) and fills[fill_index].timestamp_ms < timestamp:
             raise ReplayUnavailableError("unsupported_replay_shape")
-        equity = cash + quantity * close
+        equity = cash + quantity * close * multiplier
         if not math.isfinite(equity):
             raise ReplayUnavailableError("unsupported_replay_shape")
         peak = max(peak, equity)
@@ -170,6 +177,7 @@ def _apply_fill(
     symbol: str,
     cash: float,
     quantity: float,
+    multiplier: float = 1.0,
 ) -> tuple[float, float]:
     if (
         fill.sequence != sequence
@@ -182,7 +190,7 @@ def _apply_fill(
     ):
         raise ReplayUnavailableError("unsupported_replay_shape")
     signed = fill.quantity if fill.side == OrderSide.BUY else -fill.quantity
-    cash -= signed * fill.price + fill.fees
+    cash -= signed * fill.price * multiplier + fill.fees
     quantity += signed
     if not math.isfinite(cash) or not math.isfinite(quantity):
         raise ReplayUnavailableError("unsupported_replay_shape")

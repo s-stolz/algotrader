@@ -27,7 +27,7 @@ describe('IndicatorSearchModal', () => {
     vi.mocked(fetchAvailableIndicators).mockResolvedValue([sma]);
   });
 
-  it('loads indicators through the typed client and requests indicators with market context', async () => {
+  it('loads Indicators and requests them with Market context', async () => {
     const currentMarketStore = useCurrentMarketStore();
     const currentTimeframeStore = useCurrentTimeframeStore();
     const indicatorsStore = useIndicatorsStore();
@@ -40,7 +40,9 @@ describe('IndicatorSearchModal', () => {
       timezone: 'UTC',
     });
     currentTimeframeStore.setCurrentTimeframe({ label: 'M5', value: 'M5' });
-    const requestIndicator = vi.spyOn(indicatorsStore, 'requestIndicator').mockResolvedValue('indicator-1');
+    const requestIndicator = vi
+      .spyOn(indicatorsStore, 'requestIndicator')
+      .mockResolvedValue('indicator-1');
     const wrapper = mount(IndicatorSearchModal, {
       global: {
         stubs: {
@@ -61,15 +63,41 @@ describe('IndicatorSearchModal', () => {
 
     expect(fetchAvailableIndicators).toHaveBeenCalledOnce();
 
-    (wrapper.vm as unknown as {
-      onApplyIndicator: (indicator: AvailableIndicator) => void;
-    }).onApplyIndicator(sma);
+    (
+      wrapper.vm as unknown as {
+        onApplyIndicator: (indicator: AvailableIndicator) => void;
+      }
+    ).onApplyIndicator(sma);
 
-    expect(requestIndicator).toHaveBeenCalledWith(null, 3, {
-      symbol: 'EURUSD',
-      timeframe: 'M5',
-      limit: 500,
-      exchange: 'FX',
-    }, {});
+    expect(requestIndicator).toHaveBeenCalledWith(
+      null,
+      3,
+      {
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+        limit: 500,
+        exchange: 'FX',
+      },
+      {},
+    );
+  });
+  it('filters by typed name and applies the visible Indicator once', async () => {
+    vi.mocked(fetchAvailableIndicators).mockResolvedValue([
+      sma,
+      { id: 4, name: 'EMA' },
+    ]);
+    const request = vi
+      .spyOn(useIndicatorsStore(), 'requestIndicator')
+      .mockResolvedValue('indicator-1');
+    const wrapper = mount(IndicatorSearchModal, {
+      global: { stubs: { BaseModal: { template: '<div><slot /></div>' } } },
+    });
+    await flushPromises();
+    await wrapper.get('input').setValue('sm');
+    const choices = wrapper.findAll('button.indicator-choice');
+    expect(choices.map((button) => button.text())).toEqual(['SMA']);
+    await choices[0].trigger('click');
+    expect(request).toHaveBeenCalledOnce();
+    wrapper.unmount();
   });
 });

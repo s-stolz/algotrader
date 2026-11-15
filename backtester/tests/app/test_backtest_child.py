@@ -20,6 +20,7 @@ from app.backtest_child import (
     execute_backtest_child,
 )
 from domain.enums import BacktestEngine
+from domain.progress import STAGES, CandleProgress, observe_progress, report_progress
 from domain.types import (
     BacktestRequest,
     BacktestRequestSnapshot,
@@ -44,6 +45,21 @@ class _FailingHistoricalAdapter:
 
 
 class TestBacktestChildExecution(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "linux", "requires Linux subreaping")
+    def test_progress_crosses_supervisor_without_changing_terminal_protocol(self):
+        stages = []
+        counts = []
+        executor = ProcessBacktestChildExecutor(execute_fn=_report_progress_then_return)
+        result = executor.execute(
+            BacktestRequestSnapshot.from_request(_request()),
+            on_progress=stages.append,
+            on_simulation=lambda done, total: counts.append((done, total)),
+        )
+        self.assertIsInstance(result, CompactBacktestResult)
+        self.assertEqual(counts[-1], (5017, 10000))
+        self.assertEqual(stages[-1], "calculating_results")
+        self.assertEqual(stages, sorted(set(stages), key=STAGES.index))
+
     def test_cancellation_after_result_still_stops_a_child_waiting_to_exit(self) -> None:
         cancellation = Event()
         parent, child, process = MagicMock(), MagicMock(), MagicMock()
@@ -140,18 +156,20 @@ class TestBacktestChildExecution(unittest.TestCase):
     def test_vectorized_and_event_driven_children_run_full_market_data_path(self) -> None:
         for engine in (BacktestEngine.VECTORIZED, BacktestEngine.EVENT_DRIVEN):
             with self.subTest(engine=engine):
-                request = replace(_request(), engine=engine, persist_result=True)
+                request = replace(_request(), engine=engine)
                 adapter = _FakeHistoricalAdapter(_bars())
 
-                compact = execute_backtest_child(
-                    BacktestRequestSnapshot.from_request(request),
-                    data_adapter=adapter,
-                )
+                stages = []
+                with observe_progress(stages.append):
+                    compact = execute_backtest_child(
+                        BacktestRequestSnapshot.from_request(request),
+                        data_adapter=adapter,
+                    )
+                self.assertEqual(stages, list(STAGES[:-1]))
 
                 if not isinstance(compact, CompactBacktestResult):
                     self.fail(f"Expected successful child result, got {compact!r}")
                 self.assertEqual(compact.request.engine, engine)
-                self.assertFalse(compact.request.persist_result)
                 self.assertEqual(compact.diagnostics["engine"], engine.value)
                 self.assertGreater(len(compact.fills), 0)
                 self.assertGreaterEqual(compact.execution_duration_ms, 0)
@@ -159,6 +177,11 @@ class TestBacktestChildExecution(unittest.TestCase):
                 self.assertFalse(hasattr(compact, "equity_curve"))
                 self.assertIsNotNone(compact.replay_descriptor)
                 self.assertEqual(compact.to_result().replay_descriptor, compact.replay_descriptor)
+                chart = compact.diagnostics["chart_indicators"]
+                assert isinstance(chart, dict)
+                self.assertEqual(compact.to_result().diagnostics["chart_indicators"], chart)
+                self.assertIsNot(compact.to_result().diagnostics["chart_indicators"], chart)
+                self.assertEqual(len(chart["items"]), 2)
 
     def test_missing_candles_explain_how_to_correct_the_request(self) -> None:
         outcome = execute_backtest_child(
@@ -236,7 +259,9 @@ def _return_process_identity(
         request=snapshot.to_request(),
         fills=[],
         trades=[],
-        metrics={},
+        metrics={
+            "profit_factor": None,
+        },
         diagnostics={"process_id": os.getpid()},
         execution_duration_ms=0,
     )
@@ -253,3 +278,15 @@ def _fail_observation() -> None:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _report_progress_then_return(snapshot):
+    for stage in STAGES[:-1]:
+        report_progress(stage)
+        if stage == "simulating":
+            progress = CandleProgress(10000)
+            for _ in range(5017):
+                progress.begin_candle()
+            progress.report()
+        time.sleep(0.3)
+    return _return_process_identity(snapshot)

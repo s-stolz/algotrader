@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Sequence
+from typing import Dict, Literal, Sequence
 
 import numpy as np
 from domain.enums import TradeDirection
@@ -13,16 +13,22 @@ def compute_metrics(
     *,
     equity_curve: Sequence[PortfolioSnapshot],
     trades: Sequence[Trade],
-) -> Dict[str, float]:
+) -> Dict[str, float | Literal["infinity"] | None]:
     """Compute minimal M1 metrics."""
 
     direction_metrics = _direction_metrics(trades)
+    profit = sum(t.realized_pnl for t in trades if t.realized_pnl > 0)
+    loss = -sum(t.realized_pnl for t in trades if t.realized_pnl < 0)
+    profit_factor: float | Literal["infinity"] | None = (
+        profit / loss if loss else "infinity" if profit else None
+    )
 
     if not equity_curve:
         return {
             "total_return_pct": 0.0,
             "max_drawdown_pct": 0.0,
             **direction_metrics,
+            "profit_factor": profit_factor,
         }
 
     equity = np.asarray([snap.equity for snap in equity_curve], dtype=np.float64)
@@ -37,9 +43,11 @@ def compute_metrics(
     max_drawdown_pct = float(np.min(drawdown) * 100.0)
 
     return {
+        "ending_equity": final,
         "total_return_pct": float(total_return_pct),
         "max_drawdown_pct": max_drawdown_pct,
         **direction_metrics,
+        "profit_factor": profit_factor,
     }
 
 

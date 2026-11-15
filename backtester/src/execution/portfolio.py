@@ -16,6 +16,7 @@ def build_equity_curve(
     executed_notional: ArrayLike,
     executed_fees: ArrayLike,
     initial_capital: float,
+    contract_multiplier: float = 1.0,
 ) -> list[PortfolioSnapshot]:
     """Build account snapshots from execution and close-based mark-to-market.
 
@@ -45,7 +46,7 @@ def build_equity_curve(
 
     cash = float(initial_capital) + np.cumsum(-notional - fees)
     position = np.cumsum(delta)
-    equity = cash + position * closes
+    equity = cash + position * closes * contract_multiplier
 
     snapshots: list[PortfolioSnapshot] = []
     for idx in range(ts.size):

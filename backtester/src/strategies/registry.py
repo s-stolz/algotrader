@@ -8,7 +8,16 @@ import math
 import pkgutil
 from dataclasses import dataclass
 from types import UnionType
-from typing import Annotated, Callable, Mapping, Union, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Callable,
+    Literal,
+    Mapping,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from domain.types import StrategyConfig
 
@@ -23,6 +32,7 @@ class ParameterInfo:
     exclusive_maximum: bool = False
     choices: tuple[int | float | str, ...] | None = None
     description: str | None = None
+    purpose: str | None = None
     display_name: str | None = None
 
 
@@ -33,6 +43,7 @@ class RegisteredStrategy:
     builder: Callable[..., StrategyDefinition]
     display_name: str | None = None
     validator: Callable[[Mapping[str, object]], None] | None = None
+    execution_mode: Literal["targets", "orders"] = "targets"
 
 
 class InvalidParameterCombinationError(ValueError):
@@ -69,13 +80,18 @@ def register_strategy(
     *,
     display_name: str | None = None,
     validator: Callable[[Mapping[str, object]], None] | None = None,
+    execution_mode: Literal["targets", "orders"] = "targets",
 ) -> Callable[[Callable[..., StrategyDefinition]], Callable[..., StrategyDefinition]]:
     def decorate(builder: Callable[..., StrategyDefinition]) -> Callable[..., StrategyDefinition]:
         if not strategy_id or type(strategy_version) is not int or strategy_version <= 0:
             raise ValueError("Strategy identity requires an ID and positive integer version")
         if strategy_id in _REGISTRY:
             raise ValueError(f"Duplicate strategy_id {strategy_id!r}")
-        entry = RegisteredStrategy(strategy_id, strategy_version, builder, display_name, validator)
+        if execution_mode not in ("targets", "orders"):
+            raise ValueError("Unsupported strategy execution mode")
+        entry = RegisteredStrategy(
+            strategy_id, strategy_version, builder, display_name, validator, execution_mode
+        )
         _parameter_schema(entry)
         _REGISTRY[strategy_id] = entry
         return builder
@@ -111,6 +127,7 @@ def strategy_catalog() -> list[dict[str, object]]:
             "strategy_version": entry.strategy_version,
             "display_name": entry.display_name or entry.strategy_id,
             "parameters": _parameter_schema(entry),
+            "execution_mode": entry.execution_mode,
         }
         for entry in sorted(_REGISTRY.values(), key=lambda item: item.strategy_id)
     ]
@@ -138,6 +155,7 @@ def _parameter_schema(entry: RegisteredStrategy) -> list[dict[str, object]]:
             ("choices", list(metadata.choices) if metadata.choices is not None else None),
             ("description", metadata.description),
             ("display_name", metadata.display_name),
+            ("purpose", metadata.purpose),
         ):
             if value is not None:
                 field[key] = value
@@ -180,6 +198,8 @@ def _parameter_type(
 
 
 def _validate_metadata(name: str, kind: str, metadata: ParameterInfo) -> None:
+    if metadata.purpose not in (None, "sizing", "stop_loss", "take_profit"):
+        raise ValueError(f"Unknown parameter purpose for {name}")
     _validate_bounds(name, metadata)
     if metadata.choices is None:
         return
@@ -250,7 +270,7 @@ def validate_parameters(config: StrategyConfig) -> StrategyConfig:
 
 
 def validate_parameter_value(field: Mapping[str, object], value: object) -> object:
-    """Apply the standalone parameter rules to one sweep axis value."""
+    """Validate one parameter value against its strategy schema."""
     try:
         return _validated_value(field, {str(field["name"]): value})
     except ValueError as exc:

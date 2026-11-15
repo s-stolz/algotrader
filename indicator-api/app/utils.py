@@ -5,10 +5,6 @@ import pandas as pd
 from indicator_engine.core.tensor import Tensor
 
 
-def _is_int(v: Any) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
-
-
 def _to_epoch_ms(value: Any) -> int | None:
     if pd.isna(value):
         return None
@@ -30,44 +26,6 @@ def _to_epoch_ms(value: Any) -> int | None:
     if pd.isna(ts):
         return None
     return int(ts.value // 1_000_000)
-
-
-def estimate_warmup(metadata: dict, params: dict) -> int:
-    """Estimate indicator warmup (lookback) using per-indicator metadata.
-
-    Supported metadata keys (all optional):
-      - warmup (int): explicit override.
-      - warmup_params (list[str]): parameter names to consider.
-      - warmup_mode ("max" | "sum"): how to combine warmup_params values (default: max).
-      - warmup_buffer (int): extra bars to add (default: 2).
-
-    Fallbacks:
-      - If no hints and no explicit warmup: return 1.
-    """
-    explicit_val = metadata.get("warmup")
-    if _is_int(explicit_val):
-        return int(explicit_val)  # type: ignore[arg-type]
-
-    warmup_params = metadata.get("warmup_params", [])
-    if not isinstance(warmup_params, list):  # guard
-        warmup_params = []
-    mode = metadata.get("warmup_mode", "max")
-    buffer = metadata.get("warmup_buffer", 0)
-    numeric_values: list[int] = []
-    for name in warmup_params:
-        val = params.get(name)
-        if _is_int(val):
-            numeric_values.append(int(val))  # type: ignore[arg-type]
-
-    if not numeric_values:
-        return 1
-
-    if mode == "sum":
-        base = sum(numeric_values)
-    else:  # default max
-        base = max(numeric_values)
-
-    return max(1, base + (buffer if _is_int(buffer) else 0))
 
 
 def prepare_parameters(

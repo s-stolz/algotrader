@@ -17,6 +17,7 @@ from domain.enums import (
     PriceSource,
     TradeDirection,
 )
+from domain.progress import observe_progress
 from domain.types import (
     BacktestRequest,
     BacktestResult,
@@ -95,7 +96,8 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertAlmostEqual(result.trades[0].realized_pnl, 3.0)
         self.assertEqual(result.equity_curve[-1].positions, {"AAPL": -1.0})
         self.assertEqual(result.equity_curve[-1].equity, 10_008.0)
-        self.assertAlmostEqual(result.metrics["trade_count"], 1.0)
+        self.assertEqual(result.metrics["trade_count"], 1.0)
+        self.assertEqual(result.metrics["profit_factor"], "infinity")
 
     def test_event_driven_engine_does_not_call_vectorized_execution_helpers(self) -> None:
         tree = ast.parse(inspect.getsource(event_driven_engine))
@@ -128,13 +130,58 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
         self.assertEqual(forbidden_imports, [])
         self.assertEqual(forbidden_calls, [])
 
-    def test_indicator_strategy_requires_complete_pre_start_bootstrap(self) -> None:
+    def test_indicator_strategy_completes_warmup_inside_requested_window(self) -> None:
+        start_ms = 1_700_000_000_000
+        bars = self._build_bars()
+        # A market closure during warmup must not count as additional candles.
+        bars.loc[2:, "timestamp_ms"] += 2 * 86_400_000
+        end_ms = int(bars["timestamp_ms"].iloc[-1]) + 60_000
+        results = [
+            run_backtest(
+                request=self._build_request(engine=engine, start_ms=start_ms, end_ms=end_ms),
+                bars=bars,
+            )
+            for engine in BacktestEngine
+        ]
+
+        self.assertEqual(results[0].fills, results[1].fills)
+        self.assertEqual(results[0].equity_curve, results[1].equity_curve)
+        self.assertEqual(results[0].replay_descriptor, results[1].replay_descriptor)
+        self.assertEqual(
+            [point.timestamp_ms for point in results[1].equity_curve],
+            bars["timestamp_ms"].iloc[2:].tolist(),
+        )
+        self.assertGreater(len(results[1].fills), 0)
+        self.assertTrue(
+            all(fill.timestamp_ms > bars["timestamp_ms"].iloc[2] for fill in results[1].fills)
+        )
+
+    def test_progress_counts_in_window_warmup_and_excludes_bootstrap(self):
+        bars = self._build_bars()
+        for start_index in (0, 3):
+            updates = []
+            request = self._build_request(
+                engine=BacktestEngine.EVENT_DRIVEN,
+                start_ms=int(bars.timestamp_ms.iloc[start_index]),
+                end_ms=int(bars.timestamp_ms.iloc[-1]) + 60_000,
+            )
+            with observe_progress(
+                lambda stage: None, lambda done, total: updates.append((done, total))
+            ):
+                observed = run_backtest(request=request, bars=bars)
+            plain = run_backtest(request=request, bars=bars)
+            self.assertEqual(observed.fills, plain.fills)
+            self.assertEqual(observed.equity_curve, plain.equity_curve)
+            total = len(bars) - start_index
+            self.assertEqual(updates, [(0, total), (total, total)])
+
+    def test_indicator_strategy_rejects_window_that_never_completes_warmup(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
-            "Event-driven.*insufficient warmup.*sma_fast.*sma_slow",
+            "No executable bars remain after warmup/feature trimming",
         ):
             run_backtest(
-                request=self._build_request(start_ms=1_700_000_000_000),
+                request=self._build_request(start_ms=1_700_000_000_000, end_ms=1_700_000_120_000),
                 bars=self._build_bars(),
             )
 
@@ -254,7 +301,7 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
             ValueError,
             "Event-driven.*runtime invalid feature.*timestamp_ms "
             f"{start_ms + minute}.*symbol AAPL.*runtime_bad",
-        ) as raised:
+        ):
             run_backtest(
                 request=self._build_request(
                     strategy=StrategyConfig(strategy_id=strategy.strategy_id),
@@ -264,8 +311,6 @@ class TestEventDrivenBacktestIntegration(unittest.TestCase):
                 bars=bars,
                 strategy=strategy,
             )
-
-        self.assertNotIn("insufficient warmup", str(raised.exception))
 
     def test_event_driven_diagnostics_include_sequential_processing_counters(self) -> None:
         result = run_backtest(request=self._build_request(), bars=self._build_bars())

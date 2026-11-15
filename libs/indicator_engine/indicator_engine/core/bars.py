@@ -53,7 +53,6 @@ class BarBuffer:
         self.assets = np.array(list(assets), dtype=object)
         self.fields = np.array(list(fields), dtype=object)
         self.asset_index = {asset: i for i, asset in enumerate(self.assets)}
-        self.field_index = {field: i for i, field in enumerate(self.fields)}
         self.history = history
         self.allow_out_of_order = allow_out_of_order
         self.dtype = dtype
@@ -136,26 +135,6 @@ class BarBuffer:
         self._data[pos, :, :] = np.nan
         self._update_row(pos, row, asset_mask)
         return True
-
-    def append_partial(
-        self,
-        timestamp_ms: int,
-        row: np.ndarray,
-        asset_ids: Iterable,
-    ) -> bool:
-        """Append a row for a subset of assets, filling others with NaN."""
-        mask = np.zeros(len(self.assets), dtype=bool)
-        full = np.full((len(self.assets), len(self.fields)), np.nan, dtype=self.dtype)
-        asset_ids = list(asset_ids)
-        if row.shape[0] != len(asset_ids):
-            raise ValueError("row first dimension must match asset_ids length")
-        for i, asset in enumerate(asset_ids):
-            if asset not in self.asset_index:
-                raise KeyError(f"Asset not found in buffer: {asset}")
-            idx = self.asset_index[asset]
-            mask[idx] = True
-            full[idx, :] = row[i, :]
-        return self.append(timestamp_ms, full, mask)
 
     def view(self) -> BarTensor:
         """Return an ordered BarTensor snapshot of the buffer."""

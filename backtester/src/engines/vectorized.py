@@ -17,6 +17,7 @@ from domain.enums import (
     SignalTiming,
     TradeAccountingPolicy,
 )
+from domain.progress import report_progress
 from domain.types import (
     BacktestRequest,
     BacktestResult,
@@ -52,13 +53,35 @@ def run_vectorized_backtest(
     request: BacktestRequest,
     bars: pd.DataFrame,
     strategy: StrategyDefinition,
+    execution_bars: pd.DataFrame | None = None,
 ) -> BacktestResult:
     """Run a vectorized bar backtest for one symbol."""
+    if request.execution.execution_mode == "orders":
+        from data.order_inputs import prepare_order_inputs
+
+        from engines.order_vectorized import run_order_vectorized
+
+        featured, minutes = prepare_order_inputs(
+            request=request, bars=bars, strategy=strategy, execution_bars=execution_bars
+        )
+        return run_order_vectorized(
+            request=request, strategy_bars=featured, execution_bars=minutes, strategy=strategy
+        )
+    if strategy.order_model is not None:
+        raise ValueError("Order strategies require execution_mode=orders")
+
     _validate_vectorized_request(request)
+    daily_controls = (
+        request.execution.daily_schedule is not None
+        or request.execution.max_entries_per_day is not None
+    )
+    if daily_controls and strategy.bar_model is None:
+        raise ValueError("Daily execution controls require a declarative bar strategy")
 
     symbol = request.symbols[0]
     normalized = _normalize_bars(bars=bars, symbol=symbol)
 
+    report_progress("simulating")
     feature_matrix = _build_feature_matrix(normalized)
     execution_targets = strategy.build_execution_targets(
         feature_matrix,
@@ -77,7 +100,33 @@ def run_vectorized_backtest(
     low_prices = normalized["low"].to_numpy(dtype="float64")
     close_prices = normalized["close"].to_numpy(dtype="float64")
 
+    if request.execution.sizing is not None:
+        from data.order_bars import close_timestamps
+        from execution.target_arrays import TargetExecutionArrays
+
+        from engines.sized_targets_vectorized import run_sized_targets
+
+        signals = strategy.require_v1_parity_model().build_signals(
+            feature_matrix, allowed_directions=request.execution.allowed_directions
+        )
+        signal_values = _extract_signal_values(
+            signal_matrix=signals, symbol=symbol, expected_size=timestamp_ms.size
+        )
+        return run_sized_targets(
+            request,
+            strategy,
+            TargetExecutionArrays(
+                timestamp_ms,
+                np.column_stack((open_prices, high_prices, low_prices, close_prices)),
+                signal_values,
+                np.asarray(close_timestamps(normalized, request.timeframe), dtype=np.int64),
+                target_values,
+            ),
+        )
+
     protective_exit = _protective_exit_for_strategy(strategy)
+    if daily_controls and protective_exit is None:
+        protective_exit = ProtectiveExitSpec()
     if protective_exit is None:
         fill_result = generate_fills_from_targets(
             symbol=symbol,
@@ -89,7 +138,9 @@ def run_vectorized_backtest(
             commission_bps=float(request.execution.commission_bps),
         )
     else:
-        signal_matrix = strategy.require_v1_parity_model().build_signals(feature_matrix)
+        signal_matrix = strategy.require_v1_parity_model().build_signals(
+            feature_matrix, allowed_directions=request.execution.allowed_directions
+        )
         signal_values = _extract_signal_values(
             signal_matrix=signal_matrix,
             symbol=symbol,
@@ -105,12 +156,15 @@ def run_vectorized_backtest(
             signal_values=signal_values,
             stop_loss_pct=protective_exit.stop_loss_pct,
             take_profit_pct=protective_exit.take_profit_pct,
+            daily_schedule=request.execution.daily_schedule,
+            max_entries_per_day=request.execution.max_entries_per_day,
             intrabar_exit_policy=request.execution.intrabar_exit_policy,
             gap_policy=request.execution.gap_policy,
             slippage_bps=float(request.execution.slippage_bps),
             commission_bps=float(request.execution.commission_bps),
         )
 
+    report_progress("calculating_results")
     equity_curve = build_equity_curve(
         symbol=symbol,
         timestamp_ms=timestamp_ms,
@@ -324,8 +378,8 @@ def _normalize_bars(*, bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
     if filtered.empty:
         raise ValueError(f"No bars found for symbol {symbol}")
 
-    filtered.sort_values("timestamp_ms", inplace=True)
-    filtered.reset_index(drop=True, inplace=True)
+    filtered = filtered.sort_values("timestamp_ms")
+    filtered = filtered.reset_index(drop=True)
 
     return filtered
 

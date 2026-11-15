@@ -7,7 +7,7 @@ Date: 2026-05-16
 ## Context
 
 AlgoTrader runs multiple processes with shared host, port, Redis, TimescaleDB,
-logging, broker, ingestion, and webserver settings. Some values are non-secret
+logging, broker, ingestion, and realtime-service settings. Some values are non-secret
 topology while others are local secrets. Hand-editing runtime env files would
 spread configuration knowledge across generated artifacts and increase the risk
 of committing secrets.
@@ -39,6 +39,5 @@ them through `make validate-config`. Generated env files are not edited by hand.
 Non-secret shared defaults remain tracked in `config/topology.yaml`. An optional
 `config/topology.local.yaml`, ignored by Git, overrides known fields recursively
 before validation and environment generation. Explicit null values replace defaults;
-omitted fields retain them. A tracked example documents the local format. The
-backtester CLI applies these overrides when reading topology directly. This lets
+omitted fields retain them. A tracked example documents the local format. This lets
 local and server clones use different tuning without modifying tracked defaults.

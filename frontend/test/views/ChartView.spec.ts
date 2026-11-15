@@ -1,3 +1,5 @@
+import { useBacktestOverlayStore } from '@/stores/backtestOverlayStore';
+import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, h } from 'vue';
@@ -36,10 +38,15 @@ const NButtonStub = defineComponent({
   name: 'NButton',
   emits: ['click'],
   setup(_, { attrs, emit, slots }) {
-    return () => h('button', {
-      ...attrs,
-      onClick: () => emit('click'),
-    }, slots.default?.());
+    return () =>
+      h(
+        'button',
+        {
+          ...attrs,
+          onClick: () => emit('click'),
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -52,10 +59,11 @@ const ChartAreaModeStub = defineComponent({
     },
   },
   setup(props) {
-    return () => h('div', {
-      'data-testid': 'chart-area-mode',
-      'data-interaction-mode': props.interactionMode,
-    });
+    return () =>
+      h('div', {
+        'data-testid': 'chart-area-mode',
+        'data-interaction-mode': props.interactionMode,
+      });
   },
 });
 
@@ -66,7 +74,7 @@ describe('ChartView startup', () => {
     vi.mocked(fetchMarkets).mockReset();
   });
 
-  it('fetches markets and initializes the current market when persisted state is invalid', async () => {
+  it('fetches Markets and replaces invalid persisted selection', async () => {
     vi.mocked(fetchMarkets).mockResolvedValue([marketA]);
     const currentMarketStore = useCurrentMarketStore();
     currentMarketStore.setMarket(marketB);
@@ -87,6 +95,33 @@ describe('ChartView startup', () => {
     expect(currentMarketStore.symbol).toBe('EURUSD');
     expect(currentMarketStore.exchange).toBe('FX');
     expect(currentMarketStore.symbol_id).toBe(1);
+  });
+
+  it('restores indicators before chart mount and run after markets load', async () => {
+    let finish!: () => void;
+    const indicators = useIndicatorsStore();
+    vi.spyOn(indicators, 'restorePersistedIndicators').mockReturnValue(
+      new Promise((done) => {
+        finish = done;
+      }),
+    );
+    const restoreRun = vi
+      .spyOn(useBacktestOverlayStore(), 'restorePersistedSelection')
+      .mockResolvedValue(null);
+    vi.mocked(fetchMarkets).mockResolvedValue([marketA]);
+    const wrapper = mount(ChartView, {
+      global: { stubs: { ChartArea: ChartAreaModeStub, TheTopBar: true } },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chart-area-mode"]').exists()).toBe(
+      false,
+    );
+    expect(restoreRun).not.toHaveBeenCalled();
+    finish();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chart-area-mode"]').exists()).toBe(true);
+    expect(restoreRun).toHaveBeenCalledOnce();
+    wrapper.unmount();
   });
 
   it('owns Chart Interaction Mode as non-persisted chart UI state', async () => {
@@ -117,42 +152,66 @@ describe('ChartView startup', () => {
     });
     await flushPromises();
 
-    const panButton = wrapper.find('[data-testid="chart-interaction-mode-pan"]');
-    const measureButton = wrapper.find('[data-testid="chart-interaction-mode-measure"]');
+    const panButton = wrapper.find(
+      '[data-testid="chart-interaction-mode-pan"]',
+    );
+    const measureButton = wrapper.find(
+      '[data-testid="chart-interaction-mode-measure"]',
+    );
     expect(panButton.exists()).toBe(true);
     expect(measureButton.exists()).toBe(true);
     expect(panButton.text()).toBe('');
     expect(measureButton.text()).toBe('');
-    expect(wrapper.find('[data-testid="chart-interaction-mode-pan-tooltip"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="chart-interaction-mode-measure-tooltip"]').exists()).toBe(
-      false,
-    );
+    expect(
+      wrapper
+        .find('[data-testid="chart-interaction-mode-pan-tooltip"]')
+        .exists(),
+    ).toBe(false);
+    expect(
+      wrapper
+        .find('[data-testid="chart-interaction-mode-measure-tooltip"]')
+        .exists(),
+    ).toBe(false);
     expect(panButton.attributes('aria-pressed')).toBe('true');
     expect(measureButton.attributes('aria-pressed')).toBe('false');
-    expect(panButton.classes()).toContain('chart-interaction-mode-button--active');
-    expect(measureButton.classes()).not.toContain('chart-interaction-mode-button--active');
-    expect(wrapper.find('[data-testid="chart-area-mode"]').attributes('data-interaction-mode')).toBe(
-      'pan',
+    expect(panButton.classes()).toContain(
+      'chart-interaction-mode-button--active',
     );
+    expect(measureButton.classes()).not.toContain(
+      'chart-interaction-mode-button--active',
+    );
+    expect(
+      wrapper
+        .find('[data-testid="chart-area-mode"]')
+        .attributes('data-interaction-mode'),
+    ).toBe('pan');
 
     await measureButton.trigger('click');
 
     expect(panButton.attributes('aria-pressed')).toBe('false');
     expect(measureButton.attributes('aria-pressed')).toBe('true');
-    expect(panButton.classes()).not.toContain('chart-interaction-mode-button--active');
-    expect(measureButton.classes()).toContain('chart-interaction-mode-button--active');
-    expect(wrapper.find('[data-testid="chart-area-mode"]').attributes('data-interaction-mode')).toBe(
-      'measure',
+    expect(panButton.classes()).not.toContain(
+      'chart-interaction-mode-button--active',
     );
+    expect(measureButton.classes()).toContain(
+      'chart-interaction-mode-button--active',
+    );
+    expect(
+      wrapper
+        .find('[data-testid="chart-area-mode"]')
+        .attributes('data-interaction-mode'),
+    ).toBe('measure');
 
     currentMarketStore.setMarket(marketB);
     currentTimeframeStore.setCurrentTimeframe({ label: 'H1', value: 'H1' });
     await flushPromises();
 
     expect(measureButton.attributes('aria-pressed')).toBe('true');
-    expect(wrapper.find('[data-testid="chart-area-mode"]').attributes('data-interaction-mode')).toBe(
-      'measure',
-    );
+    expect(
+      wrapper
+        .find('[data-testid="chart-area-mode"]')
+        .attributes('data-interaction-mode'),
+    ).toBe('measure');
 
     wrapper.unmount();
     setActivePinia(createPinia());
@@ -181,10 +240,14 @@ describe('ChartView startup', () => {
     await flushPromises();
 
     expect(
-      freshWrapper.find('[data-testid="chart-interaction-mode-pan"]').attributes('aria-pressed'),
+      freshWrapper
+        .find('[data-testid="chart-interaction-mode-pan"]')
+        .attributes('aria-pressed'),
     ).toBe('true');
     expect(
-      freshWrapper.find('[data-testid="chart-area-mode"]').attributes('data-interaction-mode'),
+      freshWrapper
+        .find('[data-testid="chart-area-mode"]')
+        .attributes('data-interaction-mode'),
     ).toBe('pan');
   });
 });

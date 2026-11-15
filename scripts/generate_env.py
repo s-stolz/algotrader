@@ -40,7 +40,7 @@ DOCKER_RESOURCE_PATHS = {
     "indicator_api": "services.indicator_api.resources",
     "backtester_api": "services.backtester.api.resources",
     "broker_service": "services.broker_service.resources",
-    "webserver": "services.webserver.resources",
+    "realtime_service": "services.realtime_service.resources",
     "frontend": "services.frontend.resources",
     "backtester_worker": "services.backtester.worker.resources",
     "ingestion_service": "services.ingestion_service.resources",
@@ -218,19 +218,21 @@ def build_env(
     broker_log_level = required(topology, "services.broker_service.logging.level")
     broker_log_format = required(topology, "services.broker_service.logging.format")
 
-    webserver_host = required(topology, "services.webserver.network.host")
-    webserver_ws_port = required(topology, "services.webserver.network.websocket.port")
-    webserver_ws_published_port = required(
-        topology, "services.webserver.network.websocket.published_port"
+    realtime_service_ws_port = required(
+        topology, "services.realtime_service.network.websocket.port"
     )
-    webserver_health_port = required(topology, "services.webserver.network.health.port")
-    webserver_health_published_port = required(
-        topology, "services.webserver.network.health.published_port"
+    realtime_service_ws_published_port = required(
+        topology, "services.realtime_service.network.websocket.published_port"
     )
-    webserver_log_level = required(topology, "services.webserver.logging.level")
-    webserver_log_format = required(topology, "services.webserver.logging.format")
+    realtime_service_health_port = required(
+        topology, "services.realtime_service.network.health.port"
+    )
+    realtime_service_health_published_port = required(
+        topology, "services.realtime_service.network.health.published_port"
+    )
+    realtime_service_log_level = required(topology, "services.realtime_service.logging.level")
+    realtime_service_log_format = required(topology, "services.realtime_service.logging.format")
 
-    frontend_host = required(topology, "services.frontend.network.host")
     frontend_port = required(topology, "services.frontend.network.port")
     frontend_published_port = required(topology, "services.frontend.network.published_port")
 
@@ -248,20 +250,18 @@ def build_env(
     timescaledb_db = required(topology, "infrastructure.timescaledb.database.name")
     timescaledb_echo = required(topology, "infrastructure.timescaledb.database.echo")
 
-    webserver_redis_block_ms = required(topology, "services.webserver.consumer.block_ms")
-    webserver_redis_batch_size = required(topology, "services.webserver.consumer.batch_size")
-    webserver_stream_queue_size = required(topology, "services.webserver.streams.queue_size")
-    webserver_max_stream_length = required(topology, "services.webserver.streams.max_length")
+    realtime_service_redis_block_ms = required(
+        topology, "services.realtime_service.consumer.block_ms"
+    )
+    realtime_service_redis_batch_size = required(
+        topology, "services.realtime_service.consumer.batch_size"
+    )
 
     ingestion_log_level = required(topology, "services.ingestion_service.logging.level")
     ingestion_log_format = required(topology, "services.ingestion_service.logging.format")
     ingestion_batch_size = required(topology, "services.ingestion_service.consumer.batch_size")
     ingestion_block_ms = required(topology, "services.ingestion_service.consumer.block_ms")
 
-    backtester_worker_poll_interval = required(
-        topology,
-        "services.backtester.worker.poll_interval_seconds",
-    )
     backtester_worker_heartbeat_interval = required(
         topology,
         "services.backtester.worker.heartbeat.interval_seconds",
@@ -270,9 +270,9 @@ def build_env(
         topology,
         "services.backtester.worker.heartbeat.stale_after_seconds",
     )
-    backtester_max_sweep_candidate_count = required(
+    backtester_max_backtest_candidate_count = required(
         topology,
-        "services.backtester.sweeps.max_candidate_count",
+        "services.backtester.backtests.max_candidate_count",
     )
 
     broker_redis_stream_db = required(topology, "services.broker_service.streams.redis_db")
@@ -302,7 +302,6 @@ def build_env(
         "DATABASE_ACCESSOR_HOST": stringify(db_api_host),
         "DATABASE_ACCESSOR_PORT": stringify(db_api_port),
         "DATABASE_ACCESSOR_PUBLISHED_PORT": stringify(db_api_published_port),
-        "DATABASE_ACCESSOR_BASE_URL": f"http://{db_api_host}:{db_api_port}",
         "DATABASE_ACCESSOR_LOG_LEVEL": stringify(db_api_log_level),
         "DATABASE_ACCESSOR_LOG_FORMAT": stringify(db_api_log_format),
         "INDICATOR_API_HOST": stringify(indicator_host),
@@ -314,35 +313,32 @@ def build_env(
         "BACKTESTER_API_HOST": stringify(backtester_host),
         "BACKTESTER_API_PORT": stringify(backtester_port),
         "BACKTESTER_API_PUBLISHED_PORT": stringify(backtester_published_port),
-        "BACKTESTER_API_BASE_URL": f"http://{backtester_host}:{backtester_port}",
         "BACKTESTER_LOG_LEVEL": stringify(backtester_log_level),
         "BACKTESTER_LOG_FORMAT": stringify(backtester_log_format),
-        "BACKTESTER_WORKER_POLL_INTERVAL_SECONDS": stringify(backtester_worker_poll_interval),
         "BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS": stringify(
             backtester_worker_heartbeat_interval
         ),
         "BACKTESTER_WORKER_STALE_AFTER_SECONDS": stringify(backtester_worker_stale_after),
-        "BACKTESTER_MAX_SWEEP_CANDIDATE_COUNT": stringify(backtester_max_sweep_candidate_count),
+        "BACKTESTER_MAX_BACKTEST_CANDIDATE_COUNT": stringify(
+            backtester_max_backtest_candidate_count
+        ),
         "BROKER_SERVICE_HOST": stringify(broker_host),
         "BROKER_SERVICE_PORT": stringify(broker_port),
         "BROKER_SERVICE_PUBLISHED_PORT": stringify(broker_published_port),
         "BROKER_SERVICE_BASE_URL": f"http://{broker_host}:{broker_port}",
         "BROKER_LOG_LEVEL": stringify(broker_log_level),
         "BROKER_LOG_FORMAT": stringify(broker_log_format),
-        "WEBSERVER_HOST": stringify(webserver_host),
-        "WEBSERVER_WS_PORT": stringify(webserver_ws_port),
-        "WEBSERVER_WS_PUBLISHED_PORT": stringify(webserver_ws_published_port),
-        "WEBSERVER_HEALTH_PORT": stringify(webserver_health_port),
-        "WEBSERVER_HEALTH_PUBLISHED_PORT": stringify(webserver_health_published_port),
-        "WEBSERVER_LOG_LEVEL": stringify(webserver_log_level),
-        "WEBSERVER_LOG_FORMAT": stringify(webserver_log_format),
-        "FRONTEND_HOST": stringify(frontend_host),
+        "REALTIME_SERVICE_WS_PORT": stringify(realtime_service_ws_port),
+        "REALTIME_SERVICE_WS_PUBLISHED_PORT": stringify(realtime_service_ws_published_port),
+        "REALTIME_SERVICE_HEALTH_PORT": stringify(realtime_service_health_port),
+        "REALTIME_SERVICE_HEALTH_PUBLISHED_PORT": stringify(realtime_service_health_published_port),
+        "REALTIME_SERVICE_LOG_LEVEL": stringify(realtime_service_log_level),
+        "REALTIME_SERVICE_LOG_FORMAT": stringify(realtime_service_log_format),
         "FRONTEND_PORT": stringify(frontend_port),
         "FRONTEND_PUBLISHED_PORT": stringify(frontend_published_port),
         "REDIS_HOST": stringify(redis_host),
         "REDIS_PORT": stringify(redis_port),
         "REDIS_PUBLISHED_PORT": stringify(redis_published_port),
-        "REDIS_DB": stringify(redis_db),
         "REDIS_URL": redis_url,
         "TIMESCALEDB_HOST": stringify(timescaledb_host),
         "TIMESCALEDB_PORT": stringify(timescaledb_port),
@@ -355,18 +351,14 @@ def build_env(
         "VITE_PROXY_DATA_ACCESSOR_TARGET": f"http://{db_api_host}:{db_api_port}",
         "VITE_PROXY_BACKTESTER_TARGET": f"http://{backtester_host}:{backtester_port}",
         "VITE_PROXY_INDICATOR_TARGET": f"http://{indicator_host}:{indicator_port}",
-        "VITE_WS_URL": f"ws://{public_host}:{webserver_ws_published_port}",
+        "VITE_WS_URL": f"ws://{public_host}:{realtime_service_ws_published_port}",
         **history_env,
         "INGESTION_LOG_LEVEL": stringify(ingestion_log_level),
         "INGESTION_LOG_FORMAT": stringify(ingestion_log_format),
-        "LOG_LEVEL": stringify(ingestion_log_level),
-        "LOG_FORMAT": stringify(ingestion_log_format),
         "CONSUMER_BATCH_SIZE": stringify(ingestion_batch_size),
         "CONSUMER_BLOCK_MS": stringify(ingestion_block_ms),
-        "WEBSERVER_REDIS_BLOCK_MS": stringify(webserver_redis_block_ms),
-        "WEBSERVER_REDIS_BATCH_SIZE": stringify(webserver_redis_batch_size),
-        "WEBSERVER_STREAM_QUEUE_SIZE": stringify(webserver_stream_queue_size),
-        "WEBSERVER_MAX_STREAM_LENGTH": stringify(webserver_max_stream_length),
+        "REALTIME_SERVICE_REDIS_BLOCK_MS": stringify(realtime_service_redis_block_ms),
+        "REALTIME_SERVICE_REDIS_BATCH_SIZE": stringify(realtime_service_redis_batch_size),
         "BROKER_REDIS_URL": broker_redis_url,
         "BROKER_TOKEN_REDIS_KEY": "broker:auth:ctrader:current",
         "BROKER_TOKEN_REFRESH_EARLY_SECONDS": "604800",

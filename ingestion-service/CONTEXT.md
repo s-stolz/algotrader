@@ -22,7 +22,7 @@ Candles through database-accessor-api. Shared payloads are in
   query parameter conventions at these boundaries.
 
 History configuration is described in [config context](../config/CONTEXT.md).
-For parsing changes, also inspect indicator-api and webserver consumers; storage
+For parsing changes, also inspect indicator-api and realtime-service consumers; storage
 write changes reach [accessor context](../database-accessor-api/CONTEXT.md).
 
 ## Verification

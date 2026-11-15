@@ -31,8 +31,8 @@ def main():  # noqa: C901
     )
     parser.add_argument("--backtester-python", help="Backtester acceptance interpreter")
     parser.add_argument("--output", type=Path, help="New evidence directory (must not exist)")
-    parser.add_argument("--timescale-image", default="timescale/timescaledb:latest-pg17")
-    parser.add_argument("--redis-image", default="redis:7-alpine")
+    parser.add_argument("--timescale-image", default="timescale/timescaledb:2.31.0-pg18")
+    parser.add_argument("--redis-image", default="redis:8.10.3-alpine")
     args = parser.parse_args()
     output = args.output or Path(tempfile.mkdtemp(prefix="recovery-smoke-")) / "evidence"
     output.mkdir(parents=True, exist_ok=False)
@@ -227,7 +227,7 @@ def main():  # noqa: C901
             RECOVERY_MIGRATION_TEST_USER=user,
             RUN_BACKTEST_EXECUTION_INTEGRATION_TESTS="1",
             BACKTESTER_TEST_PYTHON=args.backtester_python or args.python,
-            BACKTEST_BATCH_TEST_DATABASE_URL=f"postgresql+asyncpg://{user}:{password}@127.0.0.1:{db_port}/{database}",
+            BACKTEST_TEST_DATABASE_URL=f"postgresql+asyncpg://{user}:{password}@127.0.0.1:{db_port}/{database}",
         )
         config = output / "integration-config"
         config.mkdir()

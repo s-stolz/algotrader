@@ -5,15 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
+from .history import InputHistory, InputHistoryPlan
+
 
 @dataclass(frozen=True)
 class IndicatorSpec:
     """Static metadata for an indicator implementation.
 
-    The `warmup` method returns the number of bars required to produce
-    stable outputs for a given parameter set. This is used by engines
-    to fetch enough history and to trim initial NaNs.
+    The `warmup` method returns the minimum bar count before output is ready.
+    `plan_history` additionally accounts for anchored calculation history;
+    a minimum warmup alone does not describe a cumulative indicator's inputs.
     """
+
     id: str
     name: str
     description: str = ""
@@ -24,6 +27,20 @@ class IndicatorSpec:
     supports_update: bool = False
     supports_vectorized: bool = False
     warmup_fn: Optional[Callable[[Dict[str, Any]], int]] = None
+    output_assets: Optional[List[str]] = None
+    input_history: InputHistory = field(default_factory=InputHistory)
+    input_history_fn: Optional[Callable[[Dict[str, Any]], InputHistory]] = None
+
+    def resolve_input_history(self, params: Dict[str, Any]) -> InputHistory:
+        return (
+            self.input_history if self.input_history_fn is None else self.input_history_fn(params)
+        )
+
+    def plan_history(self, *, start_ms: int, params: Dict[str, Any]) -> InputHistoryPlan:
+        """Resolve required input history before an adapter fetches candles."""
+        return self.resolve_input_history(params).plan(
+            start_ms=start_ms, warmup_bars=self.warmup(params)
+        )
 
     def warmup(self, params: Dict[str, Any]) -> int:
         if self.warmup_fn is None:

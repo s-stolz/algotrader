@@ -38,6 +38,16 @@ from domain.types import (
 
 
 class TestDomainTypes(unittest.TestCase):
+    def test_daily_entry_limit_requires_a_positive_integer_or_none(self) -> None:
+        self.assertIsNone(ExecutionConfig().max_entries_per_day)
+        self.assertEqual(ExecutionConfig(max_entries_per_day=1).max_entries_per_day, 1)
+        for value in (0, -1, True, 1.5, "2"):
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(ValueError, "max_entries_per_day"),
+            ):
+                ExecutionConfig(max_entries_per_day=cast(Any, value))
+
     def test_backtest_request_defaults(self) -> None:
         request = BacktestRequest(
             symbols=["AAPL"],
@@ -52,7 +62,6 @@ class TestDomainTypes(unittest.TestCase):
         self.assertEqual(request.data_granularity, DataGranularity.BAR)
         self.assertEqual(request.engine, BacktestEngine.VECTORIZED)
         self.assertIsNone(request.exchange)
-        self.assertFalse(request.persist_result)
         self.assertIsNone(request.run_metadata)
         self.assertEqual(request.execution.commission_bps, 0.0)
         self.assertEqual(request.execution.slippage_bps, 0.0)
@@ -135,7 +144,6 @@ class TestDomainTypes(unittest.TestCase):
             execution=ExecutionConfig(),
             initial_capital=10_000.0,
             exchange="NASDAQ",
-            persist_result=True,
             run_metadata={"label": "m0-smoke"},
         )
         fill = Fill(
@@ -165,15 +173,12 @@ class TestDomainTypes(unittest.TestCase):
             fills=[fill],
             trades=[trade],
             equity_curve=[snapshot],
-            metrics={"return_pct": 0.01},
+            metrics={"profit_factor": None, "return_pct": 0.01},
             diagnostics={"engine": "vectorized"},
-            backtest_run_id="run-1",
-            persisted_at=1_700_000_130_000,
         )
 
         self.assertEqual(result.request.strategy.strategy_id, "sma_crossover")
         self.assertEqual(result.fills[0].side, OrderSide.BUY)
-        self.assertEqual(result.backtest_run_id, "run-1")
         self.assertEqual(result.metrics["return_pct"], 0.01)
         self.assertEqual(result.trades[0].fees, 0.0)
         self.assertEqual(result.trades[0].exit_reason, ExitReason.SIGNAL)
@@ -208,7 +213,6 @@ class TestDomainTypes(unittest.TestCase):
             ),
             initial_capital=25_000.0,
             data_granularity=DataGranularity.BAR,
-            persist_result=True,
             run_metadata={
                 "label": "exchange-preservation",
                 "tags": ["smoke", "durable"],
@@ -219,6 +223,9 @@ class TestDomainTypes(unittest.TestCase):
         snapshot = BacktestRequestSnapshot.from_request(request)
         restored = snapshot.to_request()
 
+        self.assertNotIn("daily_schedule", snapshot.payload["execution"])
+        self.assertNotIn("max_entries_per_day", snapshot.payload["execution"])
+        self.assertIsNone(restored.execution.daily_schedule)
         self.assertEqual(snapshot.schema_version, 2)
         self.assertEqual(snapshot.payload["exchange"], "FX")
         self.assertEqual(
@@ -312,6 +319,8 @@ class TestDomainTypes(unittest.TestCase):
             exit_reason=ExitReason.SIGNAL,
         )
         run = BacktestRunRecord(
+            backtest_id="backtest-1",
+            run_ordinal=0,
             run_id="run-1",
             status=BacktestRunStatus.QUEUED,
             submitted_at_ms=1_778_848_205_123,

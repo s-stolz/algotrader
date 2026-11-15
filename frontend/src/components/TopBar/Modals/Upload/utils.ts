@@ -50,11 +50,20 @@ export function getColumnMapping(headerLine: string[]): UploadColumnMapping {
     const column = headerLine[index];
     const lowerCaseColumn = column.toLowerCase();
 
-    if (lowerCaseColumn.includes('timestamp') || lowerCaseColumn.includes('datetime')) {
+    if (
+      lowerCaseColumn.includes('timestamp') ||
+      lowerCaseColumn.includes('datetime')
+    ) {
       mapping[index] = 'timestamp';
-    } else if (lowerCaseColumn.includes('date') && !lowerCaseColumn.includes('time')) {
+    } else if (
+      lowerCaseColumn.includes('date') &&
+      !lowerCaseColumn.includes('time')
+    ) {
       mapping[index] = 'date';
-    } else if (lowerCaseColumn.includes('time') && !lowerCaseColumn.includes('date')) {
+    } else if (
+      lowerCaseColumn.includes('time') &&
+      !lowerCaseColumn.includes('date')
+    ) {
       mapping[index] = 'time';
     } else if (lowerCaseColumn.includes('open')) {
       mapping[index] = 'open';
@@ -64,7 +73,10 @@ export function getColumnMapping(headerLine: string[]): UploadColumnMapping {
       mapping[index] = 'low';
     } else if (lowerCaseColumn.includes('close')) {
       mapping[index] = 'close';
-    } else if (lowerCaseColumn.includes('volume') || lowerCaseColumn.includes('vol')) {
+    } else if (
+      lowerCaseColumn.includes('volume') ||
+      lowerCaseColumn.includes('vol')
+    ) {
       mapping[index] = 'volume';
     }
   }
@@ -111,7 +123,12 @@ export async function parseCsvToCandles(
       if (!line) continue;
 
       const cols = line.split(separator).map((col) => col.trim());
-      const candle = createCandleFromRow(cols, fieldToIndex, getTimestamp, rowCount);
+      const candle = createCandleFromRow(
+        cols,
+        fieldToIndex,
+        getTimestamp,
+        rowCount,
+      );
 
       if (candle) {
         batchCandles.push(candle);
@@ -131,7 +148,9 @@ export async function parseCsvToCandles(
   return allCandles;
 }
 
-export function getFieldToIndexMapping(columnMapping: UploadColumnMapping): UploadFieldToIndexMapping {
+export function getFieldToIndexMapping(
+  columnMapping: UploadColumnMapping,
+): UploadFieldToIndexMapping {
   const fieldToIndex: UploadFieldToIndexMapping = {};
 
   Object.entries(columnMapping).forEach(([index, field]) => {
@@ -143,9 +162,13 @@ export function getFieldToIndexMapping(columnMapping: UploadColumnMapping): Uplo
   return fieldToIndex;
 }
 
-export function validateRequiredFields(fieldToIndex: UploadFieldToIndexMapping): void {
+export function validateRequiredFields(
+  fieldToIndex: UploadFieldToIndexMapping,
+): void {
   const hasTimestamp = typeof fieldToIndex.timestamp === 'number';
-  const hasDateAndTime = typeof fieldToIndex.date === 'number' && typeof fieldToIndex.time === 'number';
+  const hasDateAndTime =
+    typeof fieldToIndex.date === 'number' &&
+    typeof fieldToIndex.time === 'number';
 
   if (!hasTimestamp && !hasDateAndTime) {
     throw new Error(
@@ -153,7 +176,13 @@ export function validateRequiredFields(fieldToIndex: UploadFieldToIndexMapping):
     );
   }
 
-  const requiredFields: UploadColumnField[] = ['open', 'high', 'low', 'close', 'volume'];
+  const requiredFields: UploadColumnField[] = [
+    'open',
+    'high',
+    'low',
+    'close',
+    'volume',
+  ];
   for (const field of requiredFields) {
     if (typeof fieldToIndex[field] !== 'number') {
       throw new Error(`Missing required field: ${field}`);
@@ -161,9 +190,13 @@ export function validateRequiredFields(fieldToIndex: UploadFieldToIndexMapping):
   }
 }
 
-function getTimestampFunction(fieldToIndex: UploadFieldToIndexMapping): TimestampReader {
+function getTimestampFunction(
+  fieldToIndex: UploadFieldToIndexMapping,
+): TimestampReader {
   const hasTimestamp = typeof fieldToIndex.timestamp === 'number';
-  const hasDateAndTime = typeof fieldToIndex.date === 'number' && typeof fieldToIndex.time === 'number';
+  const hasDateAndTime =
+    typeof fieldToIndex.date === 'number' &&
+    typeof fieldToIndex.time === 'number';
 
   if (hasTimestamp) {
     return (cols) => getTimestampFromTimestamp(cols, fieldToIndex);
@@ -184,15 +217,21 @@ function getMappedColumn(
   field: UploadColumnField,
 ): string {
   const index = fieldToIndex[field];
-  return typeof index === 'number' ? cols[index] ?? '' : '';
+  return typeof index === 'number' ? (cols[index] ?? '') : '';
 }
 
-function getTimestampFromTimestamp(cols: string[], fieldToIndex: UploadFieldToIndexMapping): number {
+function getTimestampFromTimestamp(
+  cols: string[],
+  fieldToIndex: UploadFieldToIndexMapping,
+): number {
   const date = new Date(getMappedColumn(cols, fieldToIndex, 'timestamp'));
   return date.getTime();
 }
 
-function getTimestampFromDateAndTime(cols: string[], fieldToIndex: UploadFieldToIndexMapping): number {
+function getTimestampFromDateAndTime(
+  cols: string[],
+  fieldToIndex: UploadFieldToIndexMapping,
+): number {
   const dateStr = getMappedColumn(cols, fieldToIndex, 'date').trim();
   const timeStr = getMappedColumn(cols, fieldToIndex, 'time').trim();
 
@@ -202,7 +241,11 @@ function getTimestampFromDateAndTime(cols: string[], fieldToIndex: UploadFieldTo
   return date.getTime();
 }
 
-export function readFileChunk(file: File, start: number, end: number): Promise<string> {
+export function readFileChunk(
+  file: File,
+  start: number,
+  end: number,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -213,7 +256,8 @@ export function readFileChunk(file: File, start: number, end: number): Promise<s
 
       reject(new Error('Expected text result while reading CSV chunk'));
     };
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read CSV chunk'));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error('Failed to read CSV chunk'));
     reader.readAsText(file.slice(start, end));
   });
 }

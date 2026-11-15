@@ -9,7 +9,6 @@ TEST_ROOT = BACKTESTER_ROOT / "tests"
 
 ROOT_LAYOUT_TESTS = {
     "test_layout.py",
-    "test_skeleton_imports.py",
 }
 
 

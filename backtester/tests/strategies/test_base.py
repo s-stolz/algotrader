@@ -4,14 +4,65 @@ from unittest.mock import patch
 
 import pandas as pd
 from data.indicators import build_feature_frame
-from domain.enums import AllowedDirections
+from domain.enums import AllowedDirections, StrategySignal
 from domain.types import ExecutionArrayBundle, FeatureMatrix, SignalMatrix
-from strategies.base import IndicatorFeatureRequirement, ProtectiveExitSpec, StrategyDefinition
+from strategies.base import (
+    BarStrategyModel,
+    IndicatorFeatureRequirement,
+    ProtectiveExitSpec,
+    StrategyDefinition,
+)
 from strategies.conditions import ConditionRule
 from strategies.examples.sma_crossover import build_sma_crossover_strategy
 
 
 class TestStrategyDefinition(unittest.TestCase):
+    def test_flat_action_overrides_directional_signals_and_missing_inputs(self) -> None:
+        model = BarStrategyModel(
+            entry_conditions=(ConditionRule.above("long", "zero"),),
+            exit_conditions=(ConditionRule.above("short", "zero"),),
+            flat_conditions=(ConditionRule.above("flatten", "zero"),),
+            entry_filters=(ConditionRule.below("flatten", "long"),),
+            exit_filters=(ConditionRule.below("flatten", "short"),),
+            target_quantity=3.0,
+        )
+        values = {
+            "long": [1.0, 1.0, 0.0, 0.0, 0.0],
+            "short": [0.0, 1.0, 1.0, 1.0, 0.0],
+            "flatten": [0.0, 1.0, 0.0, 1.0, 0.0],
+            "zero": [0.0] * 5,
+            "indicators_available": [1.0, 0.0, 1.0, 0.0, 1.0],
+        }
+        features = FeatureMatrix(timestamp_ms=list(range(5)), features_by_symbol={"TEST": values})
+        for directions in AllowedDirections:
+            with self.subTest(directions=directions):
+                signals = model.build_signals(features, allowed_directions=directions)
+                self.assertEqual(
+                    signals.signals_by_symbol["TEST"],
+                    [1, StrategySignal.FLAT, -1, StrategySignal.FLAT, 0],
+                )
+                previous = None
+                for index, signal in enumerate(signals.signals_by_symbol["TEST"]):
+                    current = {key: sequence[index] for key, sequence in values.items()}
+                    self.assertEqual(
+                        model.evaluate_sequential_signal(
+                            previous=previous, current=current, allowed_directions=directions
+                        ),
+                        signal,
+                    )
+                    previous = current
+                targets = model.build_positions(signals, allowed_directions=directions)
+                self.assertEqual(
+                    targets.target_quantity_by_symbol["TEST"],
+                    [
+                        0.0 if directions == AllowedDirections.SHORT_ONLY else 3.0,
+                        0.0,
+                        0.0 if directions == AllowedDirections.LONG_ONLY else -3.0,
+                        0.0,
+                        0.0,
+                    ],
+                )
+
     def test_indicator_feature_requirement_captures_typed_indicator_mapping(self) -> None:
         requirement = IndicatorFeatureRequirement(
             feature_name="sma_fast",

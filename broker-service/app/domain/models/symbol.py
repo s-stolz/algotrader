@@ -11,3 +11,6 @@ class Symbol:
     pip_position: int
     commission: int = 0
     commission_type: str | None = None
+    minimum_quantity: float | None = None
+    quantity_step: float | None = None
+    lot_size: float | None = None

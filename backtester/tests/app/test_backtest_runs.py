@@ -4,7 +4,6 @@ import unittest
 from dataclasses import replace
 
 from app.backtest_runs import (
-    BacktestRunConflictError,
     BacktestRunNotFoundError,
     BacktestRunService,
     InvalidBacktestRequestError,
@@ -85,32 +84,6 @@ class _FakeRunRepository:
 
 
 class TestBacktestRunService(unittest.TestCase):
-    def test_submit_persists_immutable_queued_run(self) -> None:
-        repository = _FakeRunRepository()
-        service = BacktestRunService(
-            repository=repository,
-            new_run_id=lambda: "run-123",
-            now_ms=lambda: 1_780_921_805_123,
-        )
-        request = _valid_request()
-
-        submitted = service.submit(request)
-
-        self.assertEqual(submitted.run_id, "run-123")
-        self.assertEqual(submitted.status, BacktestRunStatus.QUEUED)
-        self.assertEqual(submitted.submitted_at_ms, 1_780_921_805_123)
-        self.assertEqual(submitted.request_snapshot.to_request().strategy.strategy_version, 1)
-        self.assertEqual(submitted.request_snapshot.schema_version, 3)
-        self.assertEqual(
-            submitted.request_snapshot.payload["strategy"]["parameters"]["stop_loss_pct"], None
-        )
-        self.assertEqual(
-            submitted.request_snapshot.payload["execution"]["allowed_directions"],
-            "long_and_short",
-        )
-        self.assertNotIn("allow_short", submitted.request_snapshot.payload["execution"])
-        self.assertEqual(repository.created_runs, [submitted])
-
     def test_submit_accepts_allowed_direction_modes_before_persistence(self) -> None:
         for direction in AllowedDirections:
             with self.subTest(direction=direction.value):
@@ -121,7 +94,7 @@ class TestBacktestRunService(unittest.TestCase):
                     execution=ExecutionConfig(allowed_directions=direction),
                 )
 
-                submitted = service.submit(request)
+                submitted = _seed_run(service, request)
 
                 self.assertEqual(
                     submitted.request_snapshot.to_request().execution, request.execution
@@ -139,7 +112,7 @@ class TestBacktestRunService(unittest.TestCase):
         request = replace(request, start_ms=request.end_ms)
 
         with self.assertRaisesRegex(InvalidBacktestRequestError, "start_ms must be less"):
-            service.submit(request)
+            _seed_run(service, request)
 
         self.assertEqual(repository.created_runs, [])
 
@@ -158,7 +131,7 @@ class TestBacktestRunService(unittest.TestCase):
                     InvalidBacktestRequestError,
                     "integer epoch milliseconds",
                 ):
-                    service.submit(request)
+                    _seed_run(service, request)
 
                 self.assertEqual(repository.created_runs, [])
 
@@ -177,7 +150,7 @@ class TestBacktestRunService(unittest.TestCase):
                 service = BacktestRunService(repository=repository)
 
                 with self.assertRaisesRegex(InvalidBacktestRequestError, message):
-                    service.submit(request)
+                    _seed_run(service, request)
 
                 self.assertEqual(repository.created_runs, [])
 
@@ -220,7 +193,7 @@ class TestBacktestRunService(unittest.TestCase):
                 service = BacktestRunService(repository=repository)
 
                 with self.assertRaisesRegex(ValueError, message):
-                    service.submit(request)
+                    _seed_run(service, request)
 
                 self.assertEqual(repository.created_runs, [])
 
@@ -239,7 +212,7 @@ class TestBacktestRunService(unittest.TestCase):
                     InvalidBacktestRequestError,
                     "Unsupported execution configuration",
                 ):
-                    service.submit(replace(_valid_request(), execution=execution))
+                    _seed_run(service, replace(_valid_request(), execution=execution))
 
                 self.assertEqual(repository.created_runs, [])
 
@@ -247,12 +220,10 @@ class TestBacktestRunService(unittest.TestCase):
         repository = _FakeRunRepository()
         service = BacktestRunService(
             repository=repository,
-            new_run_id=lambda: "run-123",
-            now_ms=lambda: 1_780_921_805_123,
         )
-        submitted = service.submit(_valid_request())
+        submitted = _seed_run(service, _valid_request())
 
-        self.assertEqual(service.get("run-123"), submitted)
+        self.assertEqual(service.get("run-1"), submitted)
         with self.assertRaisesRegex(BacktestRunNotFoundError, "run-missing"):
             service.get("run-missing")
 
@@ -260,17 +231,15 @@ class TestBacktestRunService(unittest.TestCase):
         repository = _FakeRunRepository()
         service = BacktestRunService(
             repository=repository,
-            new_run_id=lambda: "run-123",
-            now_ms=lambda: 1_780_921_805_123,
         )
-        queued = service.submit(_valid_request())
+        queued = _seed_run(service, _valid_request())
         repository.runs_by_id["run-123"] = replace(
             queued,
             status=BacktestRunStatus.SUCCEEDED,
             started_at_ms=1_780_921_860_000,
             completed_at_ms=1_780_922_100_000,
             result_schema_version=3,
-            metrics={"trade_count": 1},
+            metrics={"profit_factor": None, "trade_count": 1},
             diagnostics={"bars": 10},
         )
         fills = [
@@ -325,54 +294,6 @@ class TestBacktestRunService(unittest.TestCase):
         with self.assertRaisesRegex(BacktestRunNotFoundError, "run-missing"):
             service.get_trades("run-missing")
 
-    def test_delete_allows_terminal_runs_and_rejects_active_runs(self) -> None:
-        repository = _FakeRunRepository()
-        service = BacktestRunService(
-            repository=repository,
-            new_run_id=lambda: "run-base",
-            now_ms=lambda: 1_780_921_805_123,
-        )
-        queued = service.submit(_valid_request())
-        repository.runs_by_id = {
-            "run-queued": replace(queued, run_id="run-queued"),
-            "run-running": replace(
-                queued,
-                run_id="run-running",
-                status=BacktestRunStatus.RUNNING,
-            ),
-            "run-succeeded": replace(
-                queued,
-                run_id="run-succeeded",
-                status=BacktestRunStatus.SUCCEEDED,
-            ),
-            "run-failed": replace(
-                queued,
-                run_id="run-failed",
-                status=BacktestRunStatus.FAILED,
-            ),
-            "run-cancelled": replace(
-                queued,
-                run_id="run-cancelled",
-                status=BacktestRunStatus.CANCELLED,
-            ),
-        }
-
-        service.delete("run-succeeded")
-        service.delete("run-failed")
-        service.delete("run-cancelled")
-
-        self.assertEqual(
-            repository.deleted_run_ids, ["run-succeeded", "run-failed", "run-cancelled"]
-        )
-        for run_id in ("run-queued", "run-running"):
-            with self.subTest(run_id=run_id):
-                with self.assertRaisesRegex(BacktestRunConflictError, "Cancel and settle"):
-                    service.delete(run_id)
-                self.assertIn(run_id, repository.runs_by_id)
-
-        with self.assertRaisesRegex(BacktestRunNotFoundError, "run-missing"):
-            service.delete("run-missing")
-
 
 def _valid_request() -> BacktestRequest:
     return BacktestRequest(
@@ -397,3 +318,21 @@ def _valid_request() -> BacktestRequest:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _seed_run(service: BacktestRunService, request: BacktestRequest):
+    from typing import cast
+
+    from app.backtest_runs import _validate_submission
+    from domain.enums import BacktestRunStatus
+    from domain.types import BacktestRequestSnapshot, BacktestRunRecord
+
+    run = BacktestRunRecord(
+        run_id="run-1",
+        backtest_id="backtest-1",
+        run_ordinal=0,
+        status=BacktestRunStatus.QUEUED,
+        submitted_at_ms=1000,
+        request_snapshot=BacktestRequestSnapshot.from_request(_validate_submission(request)),
+    )
+    return cast(_FakeRunRepository, service._repository).create(run)

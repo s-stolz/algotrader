@@ -48,7 +48,9 @@ export const useCandlesticksStore = defineStore('candlesticks', () => {
     }
   }
 
-  function updateCandle(candleData: CandleUpdateMessage | null | undefined): void {
+  function updateCandle(
+    candleData: CandleUpdateMessage | null | undefined,
+  ): void {
     if (!isCandle(candleData)) return;
 
     const newCandle: ChartCandle = {
@@ -68,13 +70,12 @@ export const useCandlesticksStore = defineStore('candlesticks', () => {
     }
 
     if (last.time === newCandle.time) {
-      const isNoOp = (
+      const isNoOp =
         last.open === newCandle.open &&
         last.high === newCandle.high &&
         last.low === newCandle.low &&
         last.close === newCandle.close &&
-        last.volume === newCandle.volume
-      );
+        last.volume === newCandle.volume;
       if (!isNoOp) {
         data.value[data.value.length - 1] = newCandle;
       }

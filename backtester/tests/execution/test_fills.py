@@ -5,7 +5,6 @@ from domain.enums import ExitReason, GapPolicy, OrderSide
 from execution.fills import (
     generate_fills_from_targets,
     generate_fills_from_targets_with_protective_exits,
-    generate_fills_from_targets_with_stop_loss,
 )
 
 
@@ -205,8 +204,8 @@ class TestFillGeneration(unittest.TestCase):
         self.assertEqual(result.fills[0].take_profit_price, 90.0)
         np.testing.assert_allclose(result.executed_delta, np.array([0.0, 0.0, 0.0]))
 
-    def test_stop_loss_wrapper_long_exit_uses_low_prices(self) -> None:
-        result = generate_fills_from_targets_with_stop_loss(
+    def test_stop_loss_long_exit_uses_low_prices(self) -> None:
+        result = generate_fills_from_targets_with_protective_exits(
             symbol="AAPL",
             timestamp_ms=[1, 2, 3],
             open_prices=[99.0, 100.0, 101.0],
@@ -229,8 +228,8 @@ class TestFillGeneration(unittest.TestCase):
         )
         np.testing.assert_allclose(result.executed_delta, np.array([0.0, 0.0, 0.0]))
 
-    def test_stop_loss_wrapper_short_cover_uses_high_prices(self) -> None:
-        result = generate_fills_from_targets_with_stop_loss(
+    def test_stop_loss_short_cover_uses_high_prices(self) -> None:
+        result = generate_fills_from_targets_with_protective_exits(
             symbol="AAPL",
             timestamp_ms=[1, 2, 3],
             open_prices=[99.0, 100.0, 101.0],

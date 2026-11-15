@@ -1,3 +1,12 @@
+export class HttpResponseError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export type QueryParams = Record<string, string | number | null | undefined>;
 
 export function buildQueryString(params: QueryParams): string {
@@ -22,8 +31,11 @@ export async function parseJsonResponse(
   failureMessage: string,
 ): Promise<unknown> {
   if (!response.ok) {
-    throw new Error(`${failureMessage}: ${response.statusText || response.status}`);
+    throw new HttpResponseError(
+      `${failureMessage}: ${response.statusText || response.status}`,
+      response.status,
+    );
   }
 
-  return await response.json() as unknown;
+  return (await response.json()) as unknown;
 }

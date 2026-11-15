@@ -1,5 +1,13 @@
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { marketPricePrecision } from './priceFormatting';
+import { isChartSeriesType } from './seriesTypes';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { IndicatorDataPoint, JsonObject } from '@/types/contracts';
+import { OpeningRangeOverlays } from './openingRange/lifecycle';
+import {
+  colorIndicatorPoint,
+  resolveIndicatorPlotStyle,
+} from './indicatorPlotStyle';
 
 import type {
   ChartSeriesInfo,
@@ -27,30 +35,23 @@ export interface IndicatorChartManager {
 
 type IndicatorsStore = ReturnType<typeof useIndicatorsStore>;
 
-const CHART_SERIES_TYPES = new Set<ChartSeriesType>([
-  'line',
-  'area',
-  'bar',
-  'baseline',
-  'candlestick',
-  'histogram',
-]);
-
-function isChartSeriesType(value: string | undefined): value is ChartSeriesType {
-  return value !== undefined && CHART_SERIES_TYPES.has(value as ChartSeriesType);
-}
-
-function toChartSeriesOptions(options: JsonObject | undefined): ChartSeriesOptions {
-  return options ? { ...options } as ChartSeriesOptions : {};
+function toChartSeriesOptions(
+  options: JsonObject | undefined,
+): ChartSeriesOptions {
+  const chartOptions = { ...options };
+  delete chartOptions.negativeColor;
+  return chartOptions as ChartSeriesOptions;
 }
 
 export class IndicatorManager {
   public readonly indicatorsStore: IndicatorsStore;
   private readonly chartManager: IndicatorChartManager;
+  private readonly ranges: OpeningRangeOverlays;
 
   constructor(chartManager: IndicatorChartManager) {
     this.indicatorsStore = useIndicatorsStore();
     this.chartManager = chartManager;
+    this.ranges = new OpeningRangeOverlays(chartManager.series);
   }
 
   async addIndicatorSeries(id: string): Promise<void> {
@@ -60,8 +61,8 @@ export class IndicatorManager {
     }
 
     const { info, data, paneIndex } = indicator;
-
-    if (!data.length) {
+    if (info.indicator_id === 'opening_range') {
+      this.ranges.update(indicator);
       return;
     }
 
@@ -74,48 +75,108 @@ export class IndicatorManager {
         continue;
       }
 
-      const transformedData = this.transformIndicatorData(data, outputKey);
+      const style = resolveIndicatorPlotStyle(indicator, outputKey);
+      const transformedData = this.transformIndicatorData(
+        data,
+        outputKey,
+        outputInfo.type,
+        style,
+      );
 
-      if (transformedData.length > 0) {
-        const seriesOptions: ChartSeriesOptions = {
-          crosshairMarkerVisible: false,
-          lastValueVisible: false,
-          priceLineVisible: false,
-          ...toChartSeriesOptions(outputInfo.plotOptions),
-        };
-        const seriesKey = `${id}_${outputKey}`;
+      const seriesOptions: ChartSeriesOptions = {
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        ...toChartSeriesOptions(style),
+        ...this.priceOptions(paneIndex),
+      };
+      const seriesKey = `${id}_${outputKey}`;
+      if (this.chartManager.series.has(seriesKey)) continue;
 
-        this.chartManager.addSeries(
-          seriesKey,
-          outputInfo.type,
-          transformedData,
-          seriesOptions,
-          paneIndex,
-        );
-      }
+      const series = this.chartManager.addSeries(
+        seriesKey,
+        outputInfo.type,
+        transformedData,
+        seriesOptions,
+        paneIndex,
+      );
+      if (outputInfo.type === 'histogram') series?.setSeriesOrder(0);
     }
+    await this.updateMissingPaneHtmlElements();
   }
 
-  transformIndicatorData(data: readonly IndicatorDataPoint[], outputKey: string): ChartValuePoint[] {
+  private priceOptions(paneIndex: number | undefined): ChartSeriesOptions {
+    const minMove = useCurrentMarketStore().min_move;
+    if (
+      paneIndex !== 0 ||
+      !minMove ||
+      !Number.isFinite(minMove) ||
+      minMove <= 0
+    )
+      return {};
+    return {
+      priceFormat: {
+        type: 'price',
+        minMove,
+        precision: marketPricePrecision(minMove),
+      },
+    };
+  }
+
+  transformIndicatorData(
+    data: readonly IndicatorDataPoint[],
+    outputKey: string,
+    outputType?: string,
+    style?: JsonObject,
+  ): ChartValuePoint[] {
     const points: ChartValuePoint[] = [];
 
     for (const item of data) {
       const time = Math.floor(Number(item.timestamp_ms) / 1000);
       const value = item[outputKey];
 
-      if (!Number.isFinite(time) || typeof value !== 'number' || !Number.isFinite(value)) {
+      if (
+        !Number.isFinite(time) ||
+        typeof value !== 'number' ||
+        !Number.isFinite(value)
+      ) {
         continue;
       }
 
-      points.push({ time, value });
+      points.push(colorIndicatorPoint({ time, value }, outputType, style));
     }
 
     return points;
   }
 
-  updateIndicatorStyles(id: string, outputKey: string, newStyles: ChartSeriesOptions): boolean {
+  updateIndicatorStyles(
+    id: string,
+    outputKey: string,
+    newStyles: ChartSeriesOptions & { negativeColor?: string },
+  ): boolean {
+    const indicator = this.indicatorsStore.getById(id);
+    if (indicator) indicator.styles[outputKey] = { ...newStyles } as JsonObject;
+    if (indicator?.info.indicator_id === 'opening_range') {
+      this.ranges.update(indicator);
+      return true;
+    }
     const seriesKey = `${id}_${outputKey}`;
-    return this.chartManager.updateSeriesOptions(seriesKey, newStyles);
+    const style = indicator
+      ? resolveIndicatorPlotStyle(indicator, outputKey)
+      : (newStyles as JsonObject);
+    const series = this.chartManager.series.get(seriesKey);
+    if (series?.type === 'histogram') {
+      this.chartManager.setSeriesData(
+        seriesKey,
+        series.data
+          .filter((point): point is ChartValuePoint => 'value' in point)
+          .map((point) => colorIndicatorPoint(point, series.type, style)),
+      );
+    }
+    return this.chartManager.updateSeriesOptions(seriesKey, {
+      ...toChartSeriesOptions(style),
+      ...this.priceOptions(indicator?.paneIndex),
+    });
   }
 
   removeIndicatorSeriesAndData(id: string): void {
@@ -129,6 +190,10 @@ export class IndicatorManager {
     if (!indicator) return;
 
     const { info, data } = indicator;
+    if (info.indicator_id === 'opening_range') {
+      this.ranges.update(indicator);
+      return;
+    }
 
     for (const outputKey of Object.keys(info.outputs)) {
       if (outputKey === 'timestamp') continue;
@@ -136,14 +201,28 @@ export class IndicatorManager {
       const seriesKey = `${id}_${outputKey}`;
       const seriesInfo = this.chartManager.series.get(seriesKey);
 
-      if (!seriesInfo) continue;
+      if (!seriesInfo) {
+        void this.addIndicatorSeries(id);
+        continue;
+      }
 
-      const transformed = this.transformIndicatorData(data, outputKey);
+      if (indicator.paneIndex === 0) {
+        this.chartManager.updateSeriesOptions(seriesKey, this.priceOptions(0));
+      }
+      const transformed = this.transformIndicatorData(
+        data,
+        outputKey,
+        info.outputs[outputKey]?.type,
+        resolveIndicatorPlotStyle(indicator, outputKey),
+      );
       this.chartManager.setSeriesData(seriesKey, transformed);
     }
   }
 
-  updateIndicatorSeriesPoint(id: string, point: IndicatorDataPoint | null): void {
+  updateIndicatorSeriesPoint(
+    id: string,
+    point: IndicatorDataPoint | null,
+  ): void {
     const indicator = this.indicatorsStore.getById(id);
     if (!indicator || !point) {
       return;
@@ -165,11 +244,19 @@ export class IndicatorManager {
       }
 
       const seriesKey = `${id}_${outputKey}`;
-      this.chartManager.updateSeriesPoint(seriesKey, { time, value });
+      this.chartManager.updateSeriesPoint(
+        seriesKey,
+        colorIndicatorPoint(
+          { time, value },
+          indicator.info.outputs[outputKey]?.type,
+          resolveIndicatorPlotStyle(indicator, outputKey),
+        ),
+      );
     }
   }
 
   removeIndicatorSeries(id: string): void {
+    this.ranges.remove(id);
     const indicator = this.indicatorsStore.getById(id);
     if (!indicator) return;
 
@@ -185,9 +272,22 @@ export class IndicatorManager {
 
   async updateMissingPaneHtmlElements(): Promise<void> {
     for (const indicator of this.indicatorsStore.all) {
-      if (indicator.paneHtmlElement === null) {
-        const paneHtmlElement = await this.chartManager.getPaneHtmlElement(indicator.paneIndex);
-        this.indicatorsStore.updateIndicatorPaneElement(indicator._id, paneHtmlElement);
+      const hasSeries = Object.keys(indicator.info.outputs).some((output) =>
+        this.chartManager.series.has(`${indicator._id}_${output}`),
+      );
+      const hasRangePane =
+        indicator.info.indicator_id === 'opening_range' &&
+        this.chartManager.series.has('ohlc');
+      if (indicator.paneHtmlElement === null && (hasSeries || hasRangePane)) {
+        const paneHtmlElement = await this.chartManager.getPaneHtmlElement(
+          indicator.paneIndex,
+        );
+        if (this.indicatorsStore.getById(indicator._id) === indicator) {
+          this.indicatorsStore.updateIndicatorPaneElement(
+            indicator._id,
+            paneHtmlElement,
+          );
+        }
       }
     }
   }
@@ -196,9 +296,10 @@ export class IndicatorManager {
     const allIndicatorIds = Array.from(this.indicatorsStore.indicators.keys());
 
     for (const id of allIndicatorIds) {
-      this.removeIndicatorSeriesAndData(id);
+      this.removeIndicatorSeries(id);
+      this.indicatorsStore.updateIndicatorPaneElement(id, null);
     }
 
-    this.indicatorsStore.clear();
+    void this.indicatorsStore.unsubscribeAllLive();
   }
 }

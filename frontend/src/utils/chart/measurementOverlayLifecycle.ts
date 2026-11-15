@@ -25,7 +25,10 @@ export function setMeasurementOverlayPrimitive(
     primitives.set(key, nextPrimitive);
     return true;
   } catch (error) {
-    console.error(`Failed to set measurement overlay for series '${key}':`, error);
+    console.error(
+      `Failed to set measurement overlay for series '${key}':`,
+      error,
+    );
     return false;
   }
 }
@@ -47,7 +50,10 @@ export function clearMeasurementOverlayPrimitive(
     primitives.delete(key);
     return true;
   } catch (error) {
-    console.error(`Failed to clear measurement overlay for series '${key}':`, error);
+    console.error(
+      `Failed to clear measurement overlay for series '${key}':`,
+      error,
+    );
     return false;
   }
 }

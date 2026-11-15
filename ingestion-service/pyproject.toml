@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ingestion-service"
+version = "0.0.0"
+readme = "README.md"
+requires-python = ">=3.12,<3.16"
+dependencies = [
+    "algotrader-logger",
+    "db-accessor-client",
+    "redis>=7.1.0",
+    "httpx>=0.28.1",
+]
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
