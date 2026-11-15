@@ -7,7 +7,10 @@ import { ref } from 'vue';
 export const useMarketsStore = defineStore('markets', () => {
   const all = ref<Market[]>([]);
 
+  const fetchError = ref<string | null>(null);
+
   async function fetch(): Promise<void> {
+    fetchError.value = null;
     try {
       all.value = await fetchMarkets();
       const current = useCurrentMarketStore();
@@ -16,12 +19,14 @@ export const useMarketsStore = defineStore('markets', () => {
       );
       if (refreshed) current.setMarket(refreshed);
     } catch (err) {
+      fetchError.value = 'Couldn’t load markets.';
       console.error('Failed to fetch markets:', err);
     }
   }
 
   return {
     all,
+    fetchError,
     fetch,
   };
 });

@@ -1,5 +1,14 @@
 <template>
   <main class="chart-workspace">
+    <BaseAsyncState
+      v-if="!initialized"
+      style="flex: 1"
+      :kind="initializationFailed ? 'error' : 'loading'"
+      :label="initializationFailed ? 'Chart unavailable' : 'Loading Chart'"
+      :message="initializationFailed ? 'Couldn’t initialize Chart.' : ''"
+      :retry="initializationFailed"
+      @retry="initializeChartView"
+    />
     <TheTopBar
       v-if="initialized"
       v-model:chart-interaction-mode="chartInteractionMode"
@@ -15,7 +24,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onActivated, onBeforeUnmount, onDeactivated, ref } from 'vue';
+import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 import ChartArea from '@/components/Chart/ChartArea.vue';
 import {
   DEFAULT_CHART_INTERACTION_MODE,
@@ -32,6 +42,20 @@ defineOptions({
 });
 
 const initialized = ref(false);
+const initializationFailed = ref(false);
+let initializing = false;
+let ready = false;
+let active = true;
+onActivated(() => {
+  active = true;
+  if (ready) initialized.value = true;
+});
+onDeactivated(() => {
+  active = false;
+});
+onBeforeUnmount(() => {
+  active = false;
+});
 const indicatorsStore = useIndicatorsStore();
 const overlayStore = useBacktestOverlayStore();
 const marketsStore = useMarketsStore();
@@ -42,6 +66,7 @@ const chartInteractionMode = ref<ChartInteractionMode>(
 
 async function fetchMarketsAndInitCurrent(): Promise<void> {
   await marketsStore.fetch();
+  if (marketsStore.fetchError) throw new Error(marketsStore.fetchError);
 
   if (marketsStore.all.length === 0) {
     return;
@@ -55,11 +80,19 @@ async function fetchMarketsAndInitCurrent(): Promise<void> {
 }
 
 async function initializeChartView(): Promise<void> {
-  await Promise.all([
+  if (initializing || ready) return;
+  initializing = true;
+  initializationFailed.value = false;
+  const results = await Promise.allSettled([
     fetchMarketsAndInitCurrent(),
     indicatorsStore.restorePersistedIndicators(),
   ]);
-  initialized.value = true;
+  initializing = false;
+  initializationFailed.value = results.some(
+    (result) => result.status === 'rejected',
+  );
+  ready = !initializationFailed.value;
+  if (active && ready) initialized.value = true;
 }
 
 let hasRestoredOverlay = false;
