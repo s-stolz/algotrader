@@ -50,7 +50,7 @@ import { NIcon, NInput } from 'naive-ui';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import { fetchAvailableIndicators } from '@/api/indicatorClient';
 import BaseModal from '@/components/Common/BaseModal.vue';
-import { SearchOutline } from '@/icons';
+import SearchOutline from '@vicons/ionicons5/es/SearchOutline';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useCurrentTimeframeStore } from '@/stores/currentTimeframeStore';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';

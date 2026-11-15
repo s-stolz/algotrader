@@ -1,11 +1,9 @@
 import { h } from 'vue';
 import { NButton, NIcon, NTooltip } from 'naive-ui';
-import {
-  CopyOutline,
-  DocumentTextOutline,
-  BarChartOutline,
-  StopCircleOutline,
-} from '@vicons/ionicons5';
+import CopyOutline from '@vicons/ionicons5/es/CopyOutline';
+import DocumentTextOutline from '@vicons/ionicons5/es/DocumentTextOutline';
+import BarChartOutline from '@vicons/ionicons5/es/BarChartOutline';
+import StopCircleOutline from '@vicons/ionicons5/es/StopCircleOutline';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import { runName as comparisonRunLabel } from '../../backtestWorkspaceRuns';
 import {

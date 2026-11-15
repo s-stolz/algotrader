@@ -1,14 +1,12 @@
 import { h } from 'vue';
 import { designTokens } from '@/design/tokens';
 import { NIcon, NTooltip } from 'naive-ui';
-import {
-  TimeOutline,
-  PlayCircleOutline,
-  HourglassOutline,
-  CheckmarkCircleOutline,
-  CloseCircleOutline,
-  BanOutline,
-} from '@vicons/ionicons5';
+import TimeOutline from '@vicons/ionicons5/es/TimeOutline';
+import PlayCircleOutline from '@vicons/ionicons5/es/PlayCircleOutline';
+import HourglassOutline from '@vicons/ionicons5/es/HourglassOutline';
+import CheckmarkCircleOutline from '@vicons/ionicons5/es/CheckmarkCircleOutline';
+import CloseCircleOutline from '@vicons/ionicons5/es/CloseCircleOutline';
+import BanOutline from '@vicons/ionicons5/es/BanOutline';
 import type {
   BacktestRun,
   BacktestRunStatus,

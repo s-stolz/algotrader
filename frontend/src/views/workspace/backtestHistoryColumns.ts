@@ -1,7 +1,8 @@
 import { h } from 'vue';
 import { designTokens } from '@/design/tokens';
 import { NButton, NIcon, NTag, type DataTableColumns } from 'naive-ui';
-import { CopyOutline, TrashOutline } from '@vicons/ionicons5';
+import CopyOutline from '@vicons/ionicons5/es/CopyOutline';
+import TrashOutline from '@vicons/ionicons5/es/TrashOutline';
 import {
   backtestName,
   formatUtcDate,

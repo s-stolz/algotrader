@@ -20,7 +20,7 @@
 </template>
 <script setup lang="ts">
 import { NButton, NIcon, NSpin } from 'naive-ui';
-import { PlaySkipForwardOutline } from '@/icons';
+import PlaySkipForwardOutline from '@vicons/ionicons5/es/PlaySkipForwardOutline';
 defineProps<{ ready: boolean; loading: boolean }>();
 defineEmits<{ activate: [] }>();
 </script>

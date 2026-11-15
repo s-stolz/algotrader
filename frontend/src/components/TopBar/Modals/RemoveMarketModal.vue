@@ -61,7 +61,7 @@ import { NButton, NIcon } from 'naive-ui';
 import { deleteCandles } from '@/api/candleClient';
 import { deleteMarket } from '@/api/marketClient';
 import BaseModal from '@/components/Common/BaseModal.vue';
-import { WarningOutline } from '@/icons';
+import WarningOutline from '@vicons/ionicons5/es/WarningOutline';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { Market } from '@/types/contracts';
 

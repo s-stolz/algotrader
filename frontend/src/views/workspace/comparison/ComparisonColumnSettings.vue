@@ -69,7 +69,8 @@
 </template>
 <script setup lang="ts">
 import { NButton, NIcon } from 'naive-ui';
-import { OptionsOutline, RefreshOutline } from '@vicons/ionicons5';
+import OptionsOutline from '@vicons/ionicons5/es/OptionsOutline';
+import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import BaseCheckbox from '@/components/Common/BaseCheckbox.vue';
 import type { WorkspaceComparison } from './useWorkspaceComparison';

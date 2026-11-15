@@ -85,7 +85,7 @@
 import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 
 import { NButton, NIcon, NTag } from 'naive-ui';
-import { AddOutline } from '@vicons/ionicons5';
+import AddOutline from '@vicons/ionicons5/es/AddOutline';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import BacktestHistoryFilters from '@/views/workspace/BacktestHistoryFilters.vue';
 import { createHistoryColumns } from '@/views/workspace/backtestHistoryColumns';

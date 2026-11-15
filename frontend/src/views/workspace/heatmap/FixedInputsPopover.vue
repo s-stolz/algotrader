@@ -58,7 +58,8 @@
 <script setup lang="ts">
 import { nextTick, ref, useId, watch } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
-import { OptionsOutline, CloseOutline } from '@vicons/ionicons5';
+import OptionsOutline from '@vicons/ionicons5/es/OptionsOutline';
+import CloseOutline from '@vicons/ionicons5/es/CloseOutline';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import type { HeatmapDimension } from '@/types/backtest/heatmapSnapshot';

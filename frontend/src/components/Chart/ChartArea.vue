@@ -122,7 +122,8 @@ import {
   type ChartInteractionMode,
 } from './chartInteractionMode';
 import Indicator from './Indicator/Indicator.vue';
-import { CloseCircleOutline, SyncOutline } from '@/icons';
+import CloseCircleOutline from '@vicons/ionicons5/es/CloseCircleOutline';
+import SyncOutline from '@vicons/ionicons5/es/SyncOutline';
 
 export default defineComponent({
   name: 'ChartArea',

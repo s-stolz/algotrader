@@ -70,7 +70,9 @@
 import { computed, ref, watch } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
 
-import { AlertCircleOutline, SettingsOutline, TrashOutline } from '@/icons';
+import AlertCircleOutline from '@vicons/ionicons5/es/AlertCircleOutline';
+import SettingsOutline from '@vicons/ionicons5/es/SettingsOutline';
+import TrashOutline from '@vicons/ionicons5/es/TrashOutline';
 import BasePopover from '@/components/Common/BasePopover.vue';
 import { useModalStore } from '@/stores/modalStore';
 

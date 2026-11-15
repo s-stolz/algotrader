@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { NButton, NIcon, NSpin } from 'naive-ui';
-import {
-  AlertCircleOutline,
-  FileTrayOutline,
-  RefreshOutline,
-  InformationCircleOutline,
-} from '@vicons/ionicons5';
+import AlertCircleOutline from '@vicons/ionicons5/es/AlertCircleOutline';
+import FileTrayOutline from '@vicons/ionicons5/es/FileTrayOutline';
+import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline';
+import InformationCircleOutline from '@vicons/ionicons5/es/InformationCircleOutline';
 withDefaults(
   defineProps<{
     kind: 'loading' | 'error' | 'empty' | 'info';

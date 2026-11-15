@@ -157,7 +157,8 @@ import {
 
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import BaseModal from '@/components/Common/BaseModal.vue';
-import { AddCircleOutline, SearchOutline } from '@/icons';
+import AddCircleOutline from '@vicons/ionicons5/es/AddCircleOutline';
+import SearchOutline from '@vicons/ionicons5/es/SearchOutline';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useMarketsStore } from '@/stores/marketsStore';
 import type { Market } from '@/types/contracts';

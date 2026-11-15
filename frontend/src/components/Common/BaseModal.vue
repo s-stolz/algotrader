@@ -43,7 +43,7 @@
 import { computed, ref } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
 
-import { CloseCircleOutline } from '@/icons';
+import CloseCircleOutline from '@vicons/ionicons5/es/CloseCircleOutline';
 import { useModalStore } from '@/stores/modalStore';
 
 defineOptions({

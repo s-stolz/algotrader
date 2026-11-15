@@ -98,7 +98,8 @@ import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 
 import { watch } from 'vue';
 import { NButton, NIcon, NTag } from 'naive-ui';
-import { PauseOutline, PlayOutline } from '@vicons/ionicons5';
+import PauseOutline from '@vicons/ionicons5/es/PauseOutline';
+import PlayOutline from '@vicons/ionicons5/es/PlayOutline';
 import type { Backtest, BacktestRun } from '@/types/backtesterContracts';
 import ExperimentName from '@/components/Backtest/ExperimentName.vue';
 import BacktestProgress from '@/components/Backtest/inspection/BacktestProgress.vue';

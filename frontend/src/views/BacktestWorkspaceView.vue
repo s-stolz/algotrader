@@ -70,7 +70,8 @@
 import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 
 import { NButton, NIcon } from 'naive-ui';
-import { ArrowBackOutline, AddOutline } from '@vicons/ionicons5';
+import ArrowBackOutline from '@vicons/ionicons5/es/ArrowBackOutline';
+import AddOutline from '@vicons/ionicons5/es/AddOutline';
 import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 import BacktestHistory from '@/views/workspace/BacktestHistory.vue';
 import BacktestInspection from '@/views/workspace/BacktestInspection.vue';

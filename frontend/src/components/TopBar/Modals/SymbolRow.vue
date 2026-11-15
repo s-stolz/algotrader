@@ -38,13 +38,11 @@ import { computed, h } from 'vue';
 import BaseDropdown from '@/components/Common/BaseDropdown.vue';
 import { NButton, NIcon, type DropdownOption } from 'naive-ui';
 
-import {
-  CloudUploadOutline,
-  CloudDownloadOutline,
-  CreateOutline,
-  EllipsisHorizontalCircleOutline,
-  TrashOutline,
-} from '@/icons';
+import CloudUploadOutline from '@vicons/ionicons5/es/CloudUploadOutline';
+import CloudDownloadOutline from '@vicons/ionicons5/es/CloudDownloadOutline';
+import CreateOutline from '@vicons/ionicons5/es/CreateOutline';
+import EllipsisHorizontalCircleOutline from '@vicons/ionicons5/es/EllipsisHorizontalCircleOutline';
+import TrashOutline from '@vicons/ionicons5/es/TrashOutline';
 import type { Market } from '@/types/contracts';
 
 defineOptions({

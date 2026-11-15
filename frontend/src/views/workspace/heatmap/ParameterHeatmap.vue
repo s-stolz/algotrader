@@ -98,7 +98,7 @@
 <script setup lang="ts">
 import { toRef } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
-import { RefreshOutline } from '@vicons/ionicons5';
+import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 import type { Backtest, BacktestRun } from '@/types/backtesterContracts';

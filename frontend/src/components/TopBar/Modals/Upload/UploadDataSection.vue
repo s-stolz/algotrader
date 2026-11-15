@@ -54,7 +54,7 @@ import {
   type UploadOnChange,
 } from 'naive-ui';
 
-import { CloudUploadOutline } from '@/icons';
+import CloudUploadOutline from '@vicons/ionicons5/es/CloudUploadOutline';
 
 defineOptions({
   name: 'UploadDataSection',

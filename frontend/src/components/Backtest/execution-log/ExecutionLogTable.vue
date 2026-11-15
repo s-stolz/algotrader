@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
-import { LocateOutline } from '@/icons';
+import LocateOutline from '@vicons/ionicons5/es/LocateOutline';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import {
   executionLogItemKey,

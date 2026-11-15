@@ -87,7 +87,8 @@ import {
 } from '@/components/Chart/chartInteractionMode';
 import TimeframeDropdown from '@/components/TopBar/TimeframeDropdown.vue';
 import TopBarModals from '@/components/TopBar/Modals/TopBarModals.vue';
-import { HandRightOutline, ResizeOutline } from '@/icons';
+import HandRightOutline from '@vicons/ionicons5/es/HandRightOutline';
+import ResizeOutline from '@vicons/ionicons5/es/ResizeOutline';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useModalStore } from '@/stores/modalStore';
 
