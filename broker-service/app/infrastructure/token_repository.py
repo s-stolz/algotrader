@@ -10,6 +10,9 @@ class CtraderTokenState:
     refresh_token: str
     expires_at: int
     issued_at: int
+    client_id: str = ""
+    account_id: str = ""
+    environment: str = ""
 
 
 class RedisTokenRepository:
@@ -36,16 +39,50 @@ class RedisTokenRepository:
             refresh_token=refresh_token,
             expires_at=expires_at,
             issued_at=issued_at,
+            client_id=values.get("client_id", ""),
+            account_id=values.get("account_id", ""),
+            environment=values.get("environment", ""),
         )
 
     async def set_current_token(self, state: CtraderTokenState) -> None:
-        mapping: dict[str, Any] = {
+        await self._redis.hset(self._key, mapping=self._mapping(state))
+
+    async def compare_and_set_current_token(
+        self, previous: CtraderTokenState, state: CtraderTokenState
+    ) -> bool:
+        script = """
+        if redis.call('HGET', KEYS[1], 'access_token') ~= ARGV[1]
+            or redis.call('HGET', KEYS[1], 'refresh_token') ~= ARGV[2]
+            or (redis.call('HGET', KEYS[1], 'client_id') or '') ~= ARGV[3]
+            or (redis.call('HGET', KEYS[1], 'account_id') or '') ~= ARGV[4]
+            or (redis.call('HGET', KEYS[1], 'environment') or '') ~= ARGV[5] then
+            return 0
+        end
+        redis.call('HSET', KEYS[1], unpack(ARGV, 6))
+        return 1
+        """
+        arguments = [
+            previous.access_token,
+            previous.refresh_token,
+            previous.client_id,
+            previous.account_id,
+            previous.environment,
+        ]
+        for field, value in self._mapping(state).items():
+            arguments.extend((field, value))
+        return bool(await self._redis.eval(script, 1, self._key, *arguments))
+
+    @staticmethod
+    def _mapping(state: CtraderTokenState) -> dict[str, str]:
+        return {
             "access_token": state.access_token,
             "refresh_token": state.refresh_token,
             "expires_at": str(state.expires_at),
             "issued_at": str(state.issued_at),
+            "client_id": state.client_id,
+            "account_id": state.account_id,
+            "environment": state.environment,
         }
-        await self._redis.hset(self._key, mapping=mapping)
 
     @staticmethod
     def _decode(value: Any) -> str:

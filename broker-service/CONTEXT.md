@@ -65,3 +65,20 @@ uses it for verified prefills. Optional metadata may be absent. Display precisio
 is only `suggested_min_move`, and lot size is never a contract multiplier.
 Account-scoped caches prevent equal names or broker IDs from resolving against
 another account's catalogue. Local Market IDs remain distinct from broker IDs.
+
+## Local authorization
+
+`python -m app.onboarding authorize` handles initial browser authorization and
+same-account reconnect without starting the API or a second refresh loop. See
+[broker setup usage](README.md#local-browser-authorization). The terminal supplies
+user-owned application credentials through environment variables. The callback
+requires a browser-bound session and matching OAuth state when returned; when the
+provider omits state, explicit browser-to-terminal pairing and account selection
+are required. Real-provider state echo behavior still needs manual acceptance.
+
+Credential output is atomically written with mode `0600`, including actual issue
+and expiry times. Redis token state binds client ID, account, and environment.
+Reconnect requires the existing account ID and a stopped broker; the new state
+replaces Redis explicitly. Runtime refresh uses compare-and-set, preventing an
+in-flight old refresh from overwriting a reconnection. Existing unbound developer
+token state is bound to its configured connection at the first startup.

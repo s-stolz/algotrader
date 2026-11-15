@@ -42,3 +42,64 @@ class RedisTokenRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TokenReplacementRedisTests(unittest.IsolatedAsyncioTestCase):
+    async def test_refresh_compare_and_set_fences_replacement_in_real_redis(self) -> None:
+        import asyncio
+        import os
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        from redis.asyncio import Redis
+
+        if os.getenv("RUN_BROKER_TOKEN_REDIS_TESTS") != "1":
+            self.skipTest("Set RUN_BROKER_TOKEN_REDIS_TESTS=1 for isolated Redis integration")
+        executable = shutil.which("redis-server")
+        if executable is None:
+            self.skipTest("redis-server is required")
+        with tempfile.TemporaryDirectory(prefix="broker-token-") as directory:
+            socket = str(Path(directory) / "redis.sock")
+            process = subprocess.Popen(
+                [
+                    executable,
+                    "--port",
+                    "0",
+                    "--unixsocket",
+                    socket,
+                    "--save",
+                    "",
+                    "--appendonly",
+                    "no",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            client = Redis(unix_socket_path=socket)
+            try:
+                for _ in range(100):
+                    if Path(socket).exists():
+                        break
+                    await asyncio.sleep(0.02)
+                await client.ping()
+                repository = RedisTokenRepository(client, "test-token")
+                original = CtraderTokenState("access", "refresh", 200, 100, "client", "12", "demo")
+                refreshed = CtraderTokenState(
+                    "rotated", "rotated-refresh", 300, 200, "client", "12", "demo"
+                )
+                reconnected = CtraderTokenState(
+                    "new-grant", "new-refresh", 400, 300, "new-client", "12", "demo"
+                )
+                await repository.set_current_token(original)
+                self.assertTrue(await repository.compare_and_set_current_token(original, refreshed))
+                await repository.set_current_token(reconnected)
+                self.assertFalse(
+                    await repository.compare_and_set_current_token(refreshed, original)
+                )
+                self.assertEqual(await repository.get_current_token(), reconnected)
+            finally:
+                await client.aclose()
+                process.terminate()
+                await asyncio.to_thread(process.wait, timeout=5)

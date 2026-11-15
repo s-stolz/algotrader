@@ -56,9 +56,12 @@ class CtraderCredentials:
     token_url: str
     access_token_expires_in_seconds: int
     token_request_timeout_seconds: float
+    account_id: str = ""
+    access_token_issued_at: int | None = None
+    access_token_expires_at: int | None = None
 
     @classmethod
-    def from_env(cls) -> "CtraderCredentials":
+    def from_env(cls, *, require_tokens: bool = True) -> "CtraderCredentials":
         host_type = _read_str("CTRADER_HOST_TYPE").lower()
         if host_type not in {"demo", "live"}:
             raise ValueError("CTRADER_HOST_TYPE must be one of: demo, live")
@@ -67,8 +70,11 @@ class CtraderCredentials:
             client_id=_read_str("CTRADER_CLIENT_ID"),
             secret=_read_str("CTRADER_SECRET"),
             host_type=host_type,  # type: ignore[arg-type]
-            access_token=_read_str("CTRADER_ACCESS_TOKEN"),
-            refresh_token=_read_str("CTRADER_REFRESH_TOKEN"),
+            access_token=_read_str("CTRADER_ACCESS_TOKEN", None if require_tokens else ""),
+            refresh_token=_read_str("CTRADER_REFRESH_TOKEN", None if require_tokens else ""),
+            account_id=_read_str("ACCOUNT_ID", ""),
+            access_token_issued_at=_read_optional_int("CTRADER_ACCESS_TOKEN_ISSUED_AT"),
+            access_token_expires_at=_read_optional_int("CTRADER_ACCESS_TOKEN_EXPIRES_AT"),
             token_url=_read_str("CTRADER_TOKEN_URL", "https://openapi.ctrader.com/apps/token"),
             access_token_expires_in_seconds=_read_int(
                 "CTRADER_ACCESS_TOKEN_EXPIRES_IN_SECONDS",

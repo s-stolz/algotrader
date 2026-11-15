@@ -18,6 +18,14 @@ class FakeTokenRepository:
     async def set_current_token(self, state: CtraderTokenState) -> None:
         self.state = state
 
+    async def compare_and_set_current_token(
+        self, previous: CtraderTokenState, state: CtraderTokenState
+    ) -> bool:
+        if self.state != previous:
+            return False
+        self.state = state
+        return True
+
 
 class FakeOAuthClient:
     def __init__(self) -> None:
@@ -94,3 +102,70 @@ class TokenLifecycleManagerTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TokenBindingTests(unittest.IsolatedAsyncioTestCase):
+    def credentials(self, **changes) -> CtraderCredentials:
+        from dataclasses import replace
+
+        return replace(
+            CtraderCredentials(
+                "client",
+                "secret",
+                "demo",
+                "env-access",
+                "env-refresh",
+                "https://example.com",
+                120,
+                10,
+                account_id="12",
+            ),
+            **changes,
+        )
+
+    async def test_bootstrap_uses_actual_expiry_instead_of_restart_time(self) -> None:
+        repo = FakeTokenRepository()
+        manager = TokenLifecycleManager(
+            Settings(broker_token_refresh_early_seconds=1),
+            self.credentials(access_token_issued_at=100, access_token_expires_at=9999999999),
+            repo,
+            FakeOAuthClient(),
+        )
+        await manager.startup()
+        assert repo.state is not None
+        self.assertEqual((repo.state.issued_at, repo.state.expires_at), (100, 9999999999))
+        self.assertEqual(
+            (repo.state.client_id, repo.state.account_id, repo.state.environment),
+            ("client", "12", "demo"),
+        )
+        await manager.shutdown()
+
+    async def test_another_application_cannot_reuse_stored_tokens(self) -> None:
+        original = CtraderTokenState("old", "old", 9999999999, 100, "other-client", "12", "demo")
+        repo = FakeTokenRepository(original)
+        manager = TokenLifecycleManager(Settings(), self.credentials(), repo, FakeOAuthClient())
+        with self.assertRaisesRegex(RuntimeError, "another connection"):
+            await manager.startup()
+        self.assertEqual(repo.state, original)
+
+    async def test_refresh_cannot_overwrite_explicit_reconnection(self) -> None:
+        from unittest.mock import AsyncMock
+
+        original = CtraderTokenState("old", "old", 1, 0, "client", "12", "demo")
+        replacement = CtraderTokenState(
+            "new-session", "new-refresh", 9999999999, 100, "client", "12", "demo"
+        )
+        repo = FakeTokenRepository(original)
+
+        async def refresh(_token):
+            repo.state = replacement
+            return RefreshResult("stale-access", "stale-refresh", 120, 100)
+
+        oauth = AsyncMock()
+        oauth.refresh_access_token.side_effect = refresh
+        manager = TokenLifecycleManager(
+            Settings(broker_token_refresh_max_retries=0), self.credentials(), repo, oauth
+        )
+        with self.assertRaisesRegex(RuntimeError, "were replaced"):
+            await manager.startup()
+        self.assertEqual(repo.state, replacement)

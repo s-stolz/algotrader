@@ -145,3 +145,40 @@ Run via the package entrypoint installed by `make venv SERVICE=broker-service`:
 cd broker-service
 .venv/bin/broker-service-test
 ```
+
+## Local browser authorization
+
+Register your own application at <https://openapi.ctrader.com/> and wait for
+approval. Add the exact redirect URI `http://localhost:8080/redirect`; the
+Playground redirect cannot be used by this command. Supply `CTRADER_CLIENT_ID`,
+`CTRADER_SECRET`, and `CTRADER_HOST_TYPE` (`demo` or `live`) through a protected
+environment file. Do not put credentials in command arguments.
+
+The packaged installer invokes:
+
+```sh
+python -m app.onboarding authorize --scope accounts --output /config/broker.env --bind-address 0.0.0.0
+```
+
+Use an interactive container with `/config` mounted and publish only
+`127.0.0.1:8080:8080`. The container bind override permits Docker forwarding;
+without that override the command listens only on loopback. Choose `trading`
+instead of `accounts` only to authorize broker orders. Open the printed local
+link, authorize in cTrader, enter the browser pairing code if requested, then
+select the displayed broker account in the terminal. The command writes no tokens
+to standard output. A callback with mismatched state is rejected; state omission
+requires explicit terminal pairing because the provider documentation does not
+promise state echo. Test the complete flow with a real demo account before
+claiming provider acceptance.
+
+For reconnect, stop the broker service first while leaving Redis running. Add
+`--expected-account-id EXISTING_ID --replace-token-state` and supply
+`BROKER_REDIS_URL` on the installation's Compose network. Other accounts or
+environments are rejected. The protected output includes `ACCOUNT_ID`, application
+credentials, tokens, `CTRADER_ACCESS_TOKEN_ISSUED_AT`, and
+`CTRADER_ACCESS_TOKEN_EXPIRES_AT`. Preserve these timestamps when generating the
+runtime environment. If Redis communication fails after validation, retain the
+protected output for recovery; do not start the broker until setup completes.
+
+Protocol references: [application registration](https://help.ctrader.com/open-api/api-application/)
+and [authorization and refresh](https://help.ctrader.com/open-api/account-authentication/).

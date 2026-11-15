@@ -28,6 +28,15 @@ class CtraderOAuthClient:
         payload = await asyncio.to_thread(self._refresh_request, refresh_token)
         return self._parse_result(payload, refresh_token)
 
+    async def exchange_authorization_code(self, code: str, redirect_uri: str) -> RefreshResult:
+        payload = await asyncio.to_thread(
+            self._token_request,
+            {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri},
+        )
+        if "expiresIn" not in payload and "expires_in" not in payload:
+            raise RuntimeError("Authorization response missing expires_in")
+        return self._parse_result(payload, "")
+
     def _parse_result(self, payload: dict[str, Any], refresh_token: str) -> RefreshResult:
         if payload.get("errorCode"):
             code = str(payload["errorCode"])
@@ -81,6 +90,7 @@ class CtraderOAuthClient:
                 raw = response.read().decode("utf-8")
         except HTTPError as exc:
             # Error bodies and request URLs can echo credentials.
+            exc.close()
             raise RuntimeError(f"Token request failed (HTTP {exc.code})") from None
         except URLError:
             raise RuntimeError("Token endpoint could not be reached") from None

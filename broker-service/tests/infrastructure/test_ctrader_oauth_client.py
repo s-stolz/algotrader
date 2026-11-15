@@ -88,3 +88,32 @@ class CtraderOAuthClientTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, "invalid expires_in"):
                 await client.refresh_access_token("old")
+
+    async def test_code_exchange_requires_actual_expiry_and_returns_rotated_tokens(self) -> None:
+        client = CtraderOAuthClient(
+            CtraderCredentials("id", "secret", "demo", "", "", "https://example.com/token", 120, 10)
+        )
+        with patch.object(
+            client,
+            "_token_request",
+            return_value={"accessToken": "access", "refreshToken": "refresh", "expiresIn": 60},
+        ) as request:
+            result = await client.exchange_authorization_code(
+                "code", "http://localhost:8080/redirect"
+            )
+        self.assertEqual(result.expires_in, 60)
+        self.assertEqual(
+            request.call_args.args[0],
+            {
+                "grant_type": "authorization_code",
+                "code": "code",
+                "redirect_uri": "http://localhost:8080/redirect",
+            },
+        )
+        with patch.object(
+            client,
+            "_token_request",
+            return_value={"accessToken": "access", "refreshToken": "refresh"},
+        ):
+            with self.assertRaisesRegex(RuntimeError, "missing expires_in"):
+                await client.exchange_authorization_code("code", "http://localhost:8080/redirect")

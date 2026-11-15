@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import replace
 from typing import Awaitable, Callable, Protocol
 
 from app.infrastructure.ctrader_oauth_client import RefreshResult
@@ -16,6 +17,10 @@ class TokenRepository(Protocol):
     async def get_current_token(self) -> CtraderTokenState | None: ...
 
     async def set_current_token(self, state: CtraderTokenState) -> None: ...
+
+    async def compare_and_set_current_token(
+        self, previous: CtraderTokenState, state: CtraderTokenState
+    ) -> bool: ...
 
 
 class OAuthClient(Protocol):
@@ -55,16 +60,40 @@ class TokenLifecycleManager:
             state = await self._repository.get_current_token()
             if state is None:
                 now = int(time.time())
+                issued_at = self._credentials.access_token_issued_at or now
+                expires_at = self._credentials.access_token_expires_at
+                if expires_at is None:
+                    expires_at = issued_at + self._credentials.access_token_expires_in_seconds
                 state = CtraderTokenState(
                     access_token=self._credentials.access_token,
                     refresh_token=self._credentials.refresh_token,
-                    expires_at=now + self._credentials.access_token_expires_in_seconds,
-                    issued_at=now,
+                    expires_at=expires_at,
+                    issued_at=issued_at,
+                    client_id=self._credentials.client_id,
+                    account_id=self._credentials.account_id,
+                    environment=self._credentials.host_type,
                 )
                 await self._repository.set_current_token(state)
                 self._source = "env"
             else:
                 self._source = "redis"
+                if (
+                    (state.client_id and state.client_id != self._credentials.client_id)
+                    or (state.account_id and state.account_id != self._credentials.account_id)
+                    or (state.environment and state.environment != self._credentials.host_type)
+                ):
+                    raise RuntimeError(
+                        "Stored broker credentials belong to another connection; "
+                        "reconnect explicitly"
+                    )
+                if not state.client_id:
+                    state = replace(
+                        state,
+                        client_id=self._credentials.client_id,
+                        account_id=self._credentials.account_id,
+                        environment=self._credentials.host_type,
+                    )
+                    await self._repository.set_current_token(state)
 
             self._token_state = state
             logger.info(
@@ -158,13 +187,20 @@ class TokenLifecycleManager:
                 result = await self._oauth_client.refresh_access_token(
                     self._token_state.refresh_token
                 )
-                self._token_state = CtraderTokenState(
+                previous = self._token_state
+                next_state = CtraderTokenState(
                     access_token=result.access_token,
                     refresh_token=result.refresh_token,
                     issued_at=result.issued_at,
                     expires_at=result.issued_at + result.expires_in,
+                    client_id=self._credentials.client_id,
+                    account_id=self._credentials.account_id,
+                    environment=self._credentials.host_type,
                 )
-                await self._repository.set_current_token(self._token_state)
+                if not await self._repository.compare_and_set_current_token(previous, next_state):
+                    self._running = False
+                    raise RuntimeError("Broker credentials were replaced; restart the broker")
+                self._token_state = next_state
                 self._source = "refresh"
                 self._last_refresh_error = None
                 self._last_refresh_at = int(time.time())
@@ -182,6 +218,6 @@ class TokenLifecycleManager:
                     attempt + 1,
                     attempts + 1,
                 )
-                if attempt >= attempts:
+                if not self._running or attempt >= attempts:
                     raise
                 await asyncio.sleep(delay_seconds)
