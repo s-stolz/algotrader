@@ -64,31 +64,16 @@ The service:
 3. Continuously consumes new candle data from Redis
 4. Transforms and batches data before writing via HTTP POST
 
-## Historical download range
+## Market sources and history
 
-The tracked default downloads the last **90 days** for markets without stored
-candles. For machine-specific values, create `config/topology.local.yaml`:
+Broker Markets bound to the configured account collect live M1 candles from their
+creation boundary. Custom Markets use uploaded data and never start broker requests.
+New Markets are discovered without restarting ingestion. Selecting Skip in the history
+dialog does not disable live collection or recovery after interruptions.
 
-```yaml
-services:
-  ingestion_service:
-    history:
-      lookback_days: 30
-      start_date: null
-```
+Historical downloads are explicit requests from the market's Download historical data
+menu. They extend older data without replacing existing candles. The legacy global
+lookback configuration no longer schedules initial history for new broker Markets.
 
-For a fixed start, use `lookback_days: null` and `start_date: "2024-01-01"`.
-Exactly one option must be active. Dates start at midnight UTC; days are calendar
-days, including weekends. The boundary is resolved once when the service starts.
-
-Run `make config` and recreate ingestion-service to apply the generated values
-(`INGESTION_HISTORY_LOOKBACK_DAYS` / `INGESTION_HISTORY_START_DATE`). Direct process
-launches must load the generated environment as usual.
-
-Existing markets include the latest stored candle in recovery, never earlier than the
-configured boundary. Reconnect recovery uses the same rule. Reducing the range
-does not delete stored candles; increasing it does not fetch older history for
-already populated markets. Older-history backfill remains a separate operation.
-
-For durable pending work, protected startup and rollout, read the
+For durable pending recovery and protected startup, read the
 [recovery contract](../docs/contracts/recovery.md).

@@ -12,11 +12,13 @@ Candles through database-accessor-api. Shared payloads are in
   under durable recovery protection, even when no new Candle has arrived.
 - `app/stream_consumer.py` withholds the latest open Candle. It emits the previous
   Candle only when a newer timestamp arrives; this protects closed-candle storage.
-- Resolve the configured lookback or UTC start date once per service instance.
-  Empty Markets fetch from that inclusive boundary; populated Markets include
-  their latest Candle, bounded by that boundary. Startup and reconnect use
-  the same rule. Changing the boundary neither deletes history nor fills older
-  history before an existing latest Candle.
+- Only Markets bound to the configured cTrader account/environment enter ingestion.
+  Custom Markets never start broker subscriptions or recovery. Reconciliation discovers
+  new and removed Markets without a restart; removal cancels and drains owned tasks.
+- New broker Markets start at their server-owned `live_start_ms`, not the legacy
+  global history lookback. Empty-market restarts retain that activation boundary;
+  populated Markets recover from their latest Candle, bounded by activation.
+  Existing pending recovery and live guards remain authoritative before either.
 - `app/broker_client.py` adapts historical trendbars and stream control;
   `app/db_client.py` wraps the shared accessor client. Keep broker and storage
   query parameter conventions at these boundaries.

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 from app.config import load_config
-from main import IngestionService
+from main import IngestionService, SymbolRuntimeState
 
 
 class BackfillRangeTests(unittest.TestCase):
@@ -54,14 +54,17 @@ class BackfillRangeTests(unittest.TestCase):
             ):
                 load_config()
 
-    def test_empty_and_existing_markets_respect_inclusive_history_boundary(self) -> None:
+    def test_empty_and_existing_markets_respect_live_activation_boundary(self) -> None:
         service = object.__new__(IngestionService)
-        service._history_start_ms = self.NOW - 90 * 86_400_000
+        activation_ms = self.NOW - 90 * 86_400_000
+        service.runtime_states = [
+            SymbolRuntimeState(1, "EURUSD", "", "unused", live_start_ms=activation_ms)
+        ]
         service.db_client = Mock()
         service.logger = Mock()
         for latest, expected in [
-            (None, service._history_start_ms),
-            ({"timestamp_ms": service._history_start_ms - 86400000}, service._history_start_ms),
+            (None, activation_ms),
+            ({"timestamp_ms": activation_ms - 86400000}, activation_ms),
             ({"timestamp_ms": self.NOW - 120000}, self.NOW - 120000),
         ]:
             with self.subTest(latest=latest):

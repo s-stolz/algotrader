@@ -29,6 +29,9 @@ class SymbolRuntimeState:
     handoff_start_ms: int | None = None
     continuity: str | None = None
     live_boundary_ms: int | None = None
+    live_start_ms: int = 0
+    active: bool = True
+    tasks: set[asyncio.Task] = field(default_factory=set)
 
 
 class IngestionService:
@@ -76,7 +79,6 @@ class IngestionService:
     def __init__(self):
         """Initialize the ingestion service."""
         self.config = load_config()
-        self._history_start_ms = self.config.history_start_ms(self._utc_now_ms())
         self.logger = setup_logging(self.config.log_level, self.config.log_format)
 
         self.db_client = DatabaseClient()
@@ -113,7 +115,6 @@ class IngestionService:
     async def startup(self) -> None:
         """Initialize connections and load configuration."""
         self.logger.info("Starting ingestion service...")
-        self.logger.info(f"History download boundary: {self._ms_to_iso(self._history_start_ms)}")
 
         self.redis = Redis.from_url(
             self.config.redis_url,
@@ -133,25 +134,75 @@ class IngestionService:
             backoff_max_seconds=self.config.recovery_backoff_max_seconds,
         )
 
-        if not self.markets:
-            self.logger.warning(
-                "No markets found in database. Waiting for markets to be created..."
-            )
-            return
+        self._install_market_states(self.markets)
 
-        self.runtime_states = [
-            SymbolRuntimeState(
+    def _eligible_markets(self, markets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return [
+            market
+            for market in markets
+            if market.get("source_type") == "broker"
+            and market.get("broker_provider") == "ctrader"
+            and str(market.get("broker_account_id")) == self.config.broker_account_id
+            and market.get("broker_environment") == self.config.broker_environment
+            and type(market.get("broker_symbol_id")) is int
+            and market["broker_symbol_id"] > 0
+            and type(market.get("live_start_ms")) is int
+            and market["live_start_ms"] >= 0
+        ]
+
+    def _install_market_states(self, markets: List[Dict[str, Any]]) -> None:
+        assert self.consumer is not None
+        for market in self._eligible_markets(markets):
+            if market["symbol_id"] in self._state_by_id:
+                continue
+            state = SymbolRuntimeState(
                 symbol_id=market["symbol_id"],
                 symbol=market["symbol"],
                 exchange=market.get("exchange", ""),
                 stream_key=self.consumer.get_stream_key(market["symbol"], self.TIMEFRAME_CODE_M1),
+                live_start_ms=market["live_start_ms"],
             )
-            for market in self.markets
-        ]
-        self._state_by_id = {state.symbol_id: state for state in self.runtime_states}
-        self.logger.info(
-            f"Loaded {len(self.markets)} markets: {[m['symbol'] for m in self.markets]}"
-        )
+            self.runtime_states.append(state)
+            self._state_by_id[state.symbol_id] = state
+
+    def _own_market_task(self, state: SymbolRuntimeState, coroutine) -> asyncio.Task:
+        task = self._own_task(coroutine)
+        state.tasks.add(task)
+        task.add_done_callback(state.tasks.discard)
+        return task
+
+    async def reconcile_markets(self) -> None:
+        markets = await self._db_call(self.db_client.get_markets)
+        eligible_ids = {market["symbol_id"] for market in self._eligible_markets(markets)}
+        for state in list(self.runtime_states):
+            if state.symbol_id in eligible_ids:
+                continue
+            state.active = False
+            state.live_ready.clear()
+            tasks = list(state.tasks)
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self.runtime_states.remove(state)
+            del self._state_by_id[state.symbol_id]
+            try:
+                await self.broker_client.stop_trendbar_stream(state.symbol, timeframe="M1")
+            except Exception:
+                self.logger.exception("Could not stop removed Market %s", state.symbol_id)
+        previous_ids = set(self._state_by_id)
+        self.markets = markets
+        self._install_market_states(markets)
+        for state in self.runtime_states:
+            if state.symbol_id not in previous_ids:
+                self._own_market_task(state, self._start_market(state))
+
+    async def _monitor_markets(self) -> None:
+        while not self._shutdown:
+            try:
+                await self.reconcile_markets()
+            except Exception:
+                self.logger.exception("Market reconciliation failed; existing sources retained")
+            await asyncio.sleep(2)
 
     async def _load_markets(self) -> List[Dict[str, Any]]:
         """Retry dependency initialization before any Market can admit live writes."""
@@ -170,18 +221,15 @@ class IngestionService:
         return []
 
     def _get_frozen_watermark(self, symbol: str, exchange: str) -> int:
+        state = next(
+            state
+            for state in self.runtime_states
+            if state.symbol == symbol and state.exchange == exchange
+        )
         latest_candle = self.db_client.get_latest_m1_candle(symbol, exchange=exchange or None)
-        if not latest_candle:
-            fallback = self._history_start_ms
-            self.logger.info(
-                f"{symbol} M1: No data in database, using fallback watermark "
-                f"{self._ms_to_iso(fallback)}"
-            )
-            return fallback
-
-        latest_ts = max(int(latest_candle["timestamp_ms"]), self._history_start_ms)
-        self.logger.info(f"{symbol} M1: Frozen startup watermark at {self._ms_to_iso(latest_ts)}")
-        return latest_ts
+        if latest_candle is None:
+            return state.live_start_ms
+        return max(int(latest_candle["timestamp_ms"]), state.live_start_ms)
 
     async def _backfill_symbol(
         self,
@@ -270,7 +318,7 @@ class IngestionService:
                     exchange or None,
                 )
             self.logger.info(
-                f"Wrote {len(chunk)} candles for {symbol} " f"(chunk {chunk_num}/{total_chunks})"
+                f"Wrote {len(chunk)} candles for {symbol} (chunk {chunk_num}/{total_chunks})"
             )
 
     async def observe_continuity(self, symbol_id: int, continuity: str | None) -> None:
@@ -450,7 +498,7 @@ class IngestionService:
 
     async def _start_market(self, state: SymbolRuntimeState) -> None:
         backoff = max(1, self.config.recovery_backoff_initial_seconds)
-        while not self._shutdown:
+        while not self._shutdown and state.active:
             try:
                 async with state.protection_lock:
                     # Load accepted work BEFORE a fresh latest snapshot or stream setup.
@@ -484,10 +532,11 @@ class IngestionService:
                     state.live_boundary_ms = start
                     state.recovery_requested.set()
                     state.live_ready.set()
-                    self._own_task(self._recover_market(state))
+                    self._own_market_task(state, self._recover_market(state))
                     assert self.consumer is not None
                     self.consumer_tasks.append(
-                        self._own_task(
+                        self._own_market_task(
+                            state,
                             self.consumer.consume_stream(
                                 stream_key=state.stream_key,
                                 symbol_id=state.symbol_id,
@@ -495,7 +544,7 @@ class IngestionService:
                                 start_id=tail_id,
                                 continuity_callback=self.observe_continuity,
                                 interruption_callback=self.observe_interruption,
-                            )
+                            ),
                         )
                     )
                 return
@@ -511,11 +560,11 @@ class IngestionService:
 
     async def _recover_market(self, state: SymbolRuntimeState) -> None:
         async with state.recovery_lock:
-            while not self._shutdown:
+            while not self._shutdown and state.active:
                 await state.recovery_requested.wait()
                 state.recovery_requested.clear()
                 backoff = max(1, self.config.recovery_backoff_initial_seconds)
-                while not self._shutdown:
+                while not self._shutdown and state.active:
                     pending = None
                     try:
                         # Release scarce capacity before sleeping, including on persistence failure.
@@ -576,7 +625,7 @@ class IngestionService:
         if self.consumer is None:
             raise RuntimeError("Consumer is not initialized")
         for state in self.runtime_states:
-            self._own_task(self._start_market(state))
+            self._own_market_task(state, self._start_market(state))
 
     async def _is_broker_connected(self) -> bool:
         """Require an available broker-service and authenticated cTrader connection."""
@@ -593,7 +642,7 @@ class IngestionService:
 
     async def _recover_symbol_after_reconnect(self, state: SymbolRuntimeState) -> None:
         backoff = max(1, self.config.recovery_backoff_initial_seconds)
-        while not self._shutdown:
+        while not self._shutdown and state.active:
             try:
                 state.live_ready.clear()
                 async with state.protection_lock:
@@ -621,7 +670,10 @@ class IngestionService:
 
     async def _run_recovery(self) -> None:
         await asyncio.gather(
-            *(self._recover_symbol_after_reconnect(state) for state in self.runtime_states)
+            *(
+                self._own_market_task(state, self._recover_symbol_after_reconnect(state))
+                for state in self.runtime_states
+            )
         )
 
     def _trigger_recovery(self) -> None:
@@ -702,6 +754,7 @@ class IngestionService:
             if self.runtime_states:
                 await self.start_consumers()
 
+            self._own_task(self._monitor_markets())
             self._health_monitor_task = asyncio.create_task(self._monitor_broker_connectivity())
 
             while not self._shutdown:

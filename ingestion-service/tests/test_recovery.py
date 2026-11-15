@@ -32,7 +32,18 @@ async def eventually(predicate):
 class Storage:
     def __init__(self, symbols=("BTC",)):
         self.markets = [
-            dict(symbol_id=i + 1, symbol=s, exchange="TEST") for i, s in enumerate(symbols)
+            dict(
+                symbol_id=i + 1,
+                symbol=s,
+                exchange="TEST",
+                source_type="broker",
+                broker_provider="ctrader",
+                broker_account_id="12345",
+                broker_environment="demo",
+                broker_symbol_id=i + 1,
+                live_start_ms=BOUNDARY,
+            )
+            for i, s in enumerate(symbols)
         ]
         self.rows = {s: {BOUNDARY: dict(timestamp_ms=BOUNDARY, close=1)} for s in symbols}
         self.pending = {}
@@ -218,6 +229,8 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
         redis = redis or RedisInput()
         config = replace(
             load_config(),
+            broker_account_id="12345",
+            broker_environment="demo",
             history_lookback_days=lookback,
             history_start_date=None,
             startup_backfill_concurrency=1,
@@ -426,8 +439,9 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         await eventually(
-            lambda: RESUMED in storage.rows["BTC"]
-            and not service._state_by_id[1].live_ready.is_set()
+            lambda: (
+                RESUMED in storage.rows["BTC"] and not service._state_by_id[1].live_ready.is_set()
+            )
         )
         self.assertNotIn(RESUMED + 60000, storage.rows["BTC"])
         storage.fail_save.clear()
@@ -517,9 +531,11 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
         broker.allow_history.set()
         service, _ = await self.start(storage, broker, lookback=1)
         await eventually(
-            lambda: any(k[0] == 1 for k in storage.pending)
-            and not any(k[0] == 2 for k in storage.pending)
-            and any(s == "GOOD" for s, _, _ in broker.requests)
+            lambda: (
+                any(k[0] == 1 for k in storage.pending)
+                and not any(k[0] == 2 for k in storage.pending)
+                and any(s == "GOOD" for s, _, _ in broker.requests)
+            )
         )
         self.assertFalse(storage.rows["GOOD"])  # No synthetic candles during inactivity.
         await service.shutdown()
@@ -716,14 +732,15 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(closed, [True])
             self.assertEqual(next(iter(storage.pending.values()))["next_ms"], BOUNDARY)
 
-    async def test_empty_start_date_today_can_complete_without_open_minute(self):
+    async def test_empty_market_recovers_only_since_activation(self):
         storage, broker = Storage(), Broker()
         storage.rows["BTC"].clear()
+        storage.markets[0]["live_start_ms"] = RESUMED
         broker.allow_history.set()
         service, _ = await self.start(storage, broker, lookback=1)
         await eventually(lambda: bool(broker.requests))
         await eventually(lambda: not storage.pending)
-        self.assertTrue(all(start >= NOW - 86400000 for _, start, _ in broker.requests))
+        self.assertTrue(all(start >= RESUMED for _, start, _ in broker.requests))
         self.assertEqual(load_config().history_start_ms(NOW), NOW - 90 * 86400000)
         configured = replace(
             load_config(), history_start_date="2026-10-18", history_lookback_days=None

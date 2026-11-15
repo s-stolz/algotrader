@@ -66,7 +66,17 @@ class HistoricalIngestionTests(unittest.IsolatedAsyncioTestCase):
         self.service.db_client._client.base_url = ACCESSOR_URL
         # Avoid unrelated configured Markets and use the actual startup Market loading path.
         self.service.db_client.get_markets = lambda: [
-            {"symbol_id": self.symbol_id, "symbol": self.symbol, "exchange": "VIBE9"}
+            {
+                "symbol_id": self.symbol_id,
+                "symbol": self.symbol,
+                "exchange": "VIBE9",
+                "source_type": "broker",
+                "broker_provider": "ctrader",
+                "broker_symbol_id": 1,
+                "broker_account_id": self.service.config.broker_account_id,
+                "broker_environment": self.service.config.broker_environment,
+                "live_start_ms": BOUNDARY,
+            }
         ]
         redis = Mock()
         from unittest.mock import AsyncMock
