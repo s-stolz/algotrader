@@ -73,6 +73,9 @@ describe('trade chart navigation', () => {
     const old = deferred<ReturnType<typeof backtestRun>>();
     vi.mocked(getBacktestRun).mockReturnValueOnce(old.promise);
     const first = navigation.open('old-run', 100, router);
+    await vi.waitFor(() =>
+      expect(getBacktestRun).toHaveBeenCalledWith('old-run'),
+    );
     await navigation.open('run-123', 200, router);
     old.resolve(backtestRun({ run_id: 'old-run' }));
     await first;
@@ -83,13 +86,23 @@ describe('trade chart navigation', () => {
     expect(getBacktestRun).not.toHaveBeenCalled();
     expect(navigation.destination?.timestampMs).toBe(300);
   });
+  it('skips run reads superseded while the client module is loading', async () => {
+    const router = await routerFixture();
+    const navigation = useTradeNavigationStore();
+    const first = navigation.open('old-run', 100, router);
+    await navigation.open('run-123', 200, router);
+    await first;
+    expect(getBacktestRun).toHaveBeenCalledOnce();
+    expect(getBacktestRun).toHaveBeenCalledWith('run-123');
+    expect(navigation.destination?.timestampMs).toBe(200);
+  });
   it('does not switch the chart when the user leaves during artifact loading', async () => {
     const router = await routerFixture();
     const fills = deferred<[]>();
     vi.mocked(fetchBacktestFills).mockReturnValue(fills.promise);
     const navigation = useTradeNavigationStore();
     const work = navigation.open('run-123', 100, router);
-    await Promise.resolve();
+    await vi.waitFor(() => expect(fetchBacktestFills).toHaveBeenCalled());
     await router.push('/other');
     fills.resolve([]);
     await work;
@@ -103,6 +116,9 @@ describe('trade chart navigation', () => {
     vi.mocked(getBacktestRun).mockReturnValueOnce(pending.promise);
     const navigation = useTradeNavigationStore();
     const work = navigation.open('run-123', 100, router);
+    await vi.waitFor(() =>
+      expect(getBacktestRun).toHaveBeenCalledWith('run-123'),
+    );
     useCurrentTimeframeStore().setCurrentTimeframe({
       label: 'H4',
       value: 'H4',

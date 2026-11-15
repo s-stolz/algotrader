@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, shallowRef } from 'vue';
 import type { Router } from 'vue-router';
-import { getBacktestRun } from '@/api/backtesterClient';
 import { useBacktestOverlayStore } from './backtestOverlayStore';
 import { useMarketsStore } from './marketsStore';
 import { useCurrentMarketStore } from './currentMarketStore';
@@ -45,6 +44,8 @@ export const useTradeNavigationStore = defineStore('tradeNavigation', () => {
       const originalContext = context();
       const canSelect = () => isCurrent() && context() === originalContext;
       if (overlay.selectedRun?.run_id !== runId) {
+        const { getBacktestRun } = await import('@/api/backtesterClient');
+        if (!canSelect()) return;
         const run = await getBacktestRun(runId);
         if (!canSelect()) return;
         const selection = await overlay.selectRun(run, canSelect);

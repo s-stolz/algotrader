@@ -3,11 +3,6 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import {
-  fetchBacktestClosedTrades,
-  fetchBacktestFills,
-  getBacktestRun,
-} from '@/api/backtesterClient';
-import {
   BACKTEST_RESULT_SCHEMA_VERSION,
   type BacktestClosedTrade,
   type BacktestFill,
@@ -195,6 +190,10 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     error.value = null;
 
     try {
+      const { fetchBacktestClosedTrades, fetchBacktestFills } =
+        await import('@/api/backtesterClient');
+      if (revision !== selectionRevision || !isCurrent())
+        return unavailable('Selection changed.');
       const [trades, runFills] = await Promise.all([
         fetchBacktestClosedTrades(run.run_id),
         fetchBacktestFills(run.run_id),
@@ -234,6 +233,9 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
     isLoading.value = true;
     error.value = null;
     try {
+      const { getBacktestRun, fetchBacktestClosedTrades, fetchBacktestFills } =
+        await import('@/api/backtesterClient');
+      if (revision !== selectionRevision) return null;
       const run = await getBacktestRun(runId);
       if (revision !== selectionRevision) return null;
       const selectability = getSelectableBacktestRun(run);
