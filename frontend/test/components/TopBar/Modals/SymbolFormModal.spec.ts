@@ -178,6 +178,7 @@ describe('SymbolFormModal', () => {
     await flushPromises();
 
     const expectedPayload: MarketCreatePayload = {
+      source_type: 'custom',
       symbol: 'EURUSD',
       exchange: 'FX',
       min_move: 0.00001,
@@ -206,7 +207,10 @@ describe('SymbolFormModal', () => {
     ).toEqual(['error', 'error']);
     await wrapper.get('input[placeholder="Symbol"]').setValue(' eurusd ');
     await wrapper.get('input[placeholder="Exchange"]').setValue(' fx ');
-    wrapper.getComponent(BaseSelect).vm.$emit('update:value', 'Forex');
+    wrapper
+      .findAllComponents(BaseSelect)
+      .at(-1)!
+      .vm.$emit('update:value', 'Forex');
     await wrapper
       .get('input[placeholder="Settlement currency"]')
       .setValue('USD');
@@ -220,6 +224,7 @@ describe('SymbolFormModal', () => {
     await wrapper.get('.new-symbol-button').trigger('click');
     await flushPromises();
     expect(createMarket).toHaveBeenCalledWith({
+      source_type: 'custom',
       symbol: 'EURUSD',
       exchange: 'FX',
       min_move: 0.00001,
@@ -259,6 +264,7 @@ describe('SymbolFormModal', () => {
     const { symbol_id: _identity, ...fields } = market;
     expect(updateMarket).toHaveBeenCalledWith(7, {
       ...fields,
+      source_type: 'custom',
       symbol: 'EURUSDNEW',
     });
     expect(createMarket).not.toHaveBeenCalled();

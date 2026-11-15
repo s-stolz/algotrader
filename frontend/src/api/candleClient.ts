@@ -46,7 +46,7 @@ export async function uploadCandleBatch(
   payload: CandleBatchPayload,
 ): Promise<CandleBatchResponse> {
   const responsePayload = await parseJsonResponse(
-    await fetch(CANDLES_BASE_URL, {
+    await fetch(`${CANDLES_BASE_URL}/upload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

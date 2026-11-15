@@ -7,6 +7,9 @@
     <td class="actions-cell">
       <span class="market-info">
         <span class="market-type">{{ market.market_type }}</span>
+        <span class="market-type">{{
+          market.source_type === 'broker' ? 'Broker' : 'Custom'
+        }}</span>
         {{ market.exchange }}
       </span>
       <BaseDropdown
@@ -31,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { h } from 'vue';
+import { computed, h } from 'vue';
 import BaseDropdown from '@/components/Common/BaseDropdown.vue';
 import { NButton, NIcon, type DropdownOption } from 'naive-ui';
 
@@ -59,23 +62,27 @@ const emit = defineEmits<{
   (event: 'edit-market', market: Market): void;
 }>();
 
-const menuOptions: DropdownOption[] = [
+const menuOptions = computed<DropdownOption[]>(() => [
   {
     label: 'Edit symbol',
     key: 'edit',
     icon: () => h(NIcon, null, { default: () => h(CreateOutline) }),
   },
-  {
-    label: 'Upload Data',
-    key: 'upload',
-    icon: () => h(NIcon, null, { default: () => h(CloudUploadOutline) }),
-  },
+  ...(props.market.source_type === 'broker'
+    ? []
+    : [
+        {
+          label: 'Upload Data',
+          key: 'upload',
+          icon: () => h(NIcon, null, { default: () => h(CloudUploadOutline) }),
+        },
+      ]),
   {
     label: 'Remove',
     key: 'remove',
     icon: () => h(NIcon, null, { default: () => h(TrashOutline) }),
   },
-];
+]);
 
 function onRowClick(): void {
   emit('market-click', props.market);
@@ -86,7 +93,7 @@ function onMenuSelect(key: string | number): void {
     emit('edit-market', props.market);
   } else if (key === 'remove') {
     emit('remove-market', props.market);
-  } else if (key === 'upload') {
+  } else if (key === 'upload' && props.market.source_type !== 'broker') {
     emit('upload-data', props.market);
   }
 }

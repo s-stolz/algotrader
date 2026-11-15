@@ -20,6 +20,30 @@ export function createDevServerProxy(
   env: DevServerEnv,
 ): Record<string, ProxyOptions> {
   return {
+    '/api/broker': {
+      target: serviceTarget(
+        env,
+        'VITE_PROXY_BROKER_TARGET',
+        'BROKER_SERVICE_HOST',
+        'broker-service',
+        'BROKER_SERVICE_PORT',
+        '8050',
+      ),
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/api\/broker/, ''),
+    },
+    '/api/ingestion': {
+      target: serviceTarget(
+        env,
+        'VITE_PROXY_INGESTION_TARGET',
+        'INGESTION_API_HOST',
+        'ingestion-service',
+        'INGESTION_API_PORT',
+        '8000',
+      ),
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/api\/ingestion/, ''),
+    },
     '/api/data-accessor': {
       target: serviceTarget(
         env,

@@ -5,6 +5,23 @@
     :title="market ? 'Edit symbol' : 'New symbol'"
   >
     <div id="new-symbol-input-wrapper">
+      <div class="symbol-field symbol-field-wide">
+        <span>Data source</span>
+        <BaseSelect
+          v-if="!market"
+          v-model:value="sourceType"
+          aria-label="Data source"
+          :options="sourceOptions"
+          @update:value="resetBrokerSelection"
+        />
+        <span v-else>{{
+          isBroker ? 'Connected broker' : 'Custom · CSV uploads'
+        }}</span>
+        <BrokerInstrumentPicker
+          v-if="isBroker && !market"
+          @verified="applyBrokerInstrument"
+        />
+      </div>
       <div class="symbol-field">
         <SymbolFieldLabel label="Symbol"
           >Broker instrument code, such as EURUSD or BTCUSD.</SymbolFieldLabel
@@ -15,6 +32,7 @@
             style: 'text-transform: uppercase;',
           }"
           v-model:value="symbol"
+          :disabled="isBroker"
           :status="validSymbol || symbol === undefined ? 'success' : 'error'"
           placeholder="Symbol"
           aria-label="Symbol"
@@ -31,6 +49,7 @@
             style: 'text-transform: uppercase;',
           }"
           v-model:value="exchange"
+          :disabled="isBroker"
           :status="
             validExchange || exchange === undefined ? 'success' : 'error'
           "
@@ -47,9 +66,16 @@
           class="new-symbol-input"
           v-model:value="minMove"
           aria-label="Minimum price move"
-          min="0"
-          step="0.0001"
+          :min="0"
+          :step="0.0001"
         />
+        <span
+          v-if="brokerInstrument?.suggested_min_move"
+          class="specification-hint"
+        >
+          Display precision suggests {{ brokerInstrument.suggested_min_move }}.
+          Enter the verified tick size.
+        </span>
       </div>
       <div class="symbol-field">
         <SymbolFieldLabel label="Market type"
@@ -131,6 +157,7 @@
       <n-button
         round
         class="new-symbol-button"
+        :loading="saving"
         @click="addSymbol"
       >
         {{ market ? 'Save symbol' : 'Add symbol' }}
@@ -140,6 +167,8 @@
 </template>
 
 <script setup lang="ts">
+import BrokerInstrumentPicker from './markets/BrokerInstrumentPicker.vue';
+import type { BrokerInstrument } from '@/types/brokerContracts';
 import SymbolFieldLabel from './SymbolFieldLabel.vue';
 import BaseSelect from '@/components/Common/BaseSelect.vue';
 import { computed, ref } from 'vue';
@@ -160,6 +189,17 @@ interface BaseModalExpose {
 }
 
 const props = defineProps<{ market?: Market | null }>();
+const emit = defineEmits<{ created: [market: Market] }>();
+const sourceType = ref<'custom' | 'broker'>(
+  props.market?.source_type ?? 'custom',
+);
+const sourceOptions = [
+  { label: 'Connected broker', value: 'broker' },
+  { label: 'Custom · CSV uploads', value: 'custom' },
+];
+const isBroker = computed(() => sourceType.value === 'broker');
+const brokerInstrument = ref<BrokerInstrument | null>(null);
+const saving = ref(false);
 const marketsStore = useMarketsStore();
 const symbolForm = ref<BaseModalExpose | null>(null);
 const symbol = ref<string | null | undefined>(props.market?.symbol);
@@ -196,12 +236,17 @@ const validMarketType = computed(
 function setInvalidInputs(): void {
   if (!validSymbol.value) symbol.value = null;
   if (!validExchange.value) exchange.value = null;
-  if (!validMinMove.value) minMove.value = 0.00001;
+  if (!validMinMove.value) minMove.value = null;
   if (!validMarketType.value) marketType.value = null;
 }
 
 async function addSymbol(): Promise<void> {
+  if (saving.value) return;
   error.value = '';
+  if (isBroker.value && !props.market && !brokerInstrument.value) {
+    error.value = 'Select and verify a broker instrument.';
+    return;
+  }
   setInvalidInputs();
   if (
     !currency.value.trim() ||
@@ -226,7 +271,17 @@ async function addSymbol(): Promise<void> {
     return;
   }
 
+  const binding = props.market ?? brokerInstrument.value;
   const newMarket: MarketCreatePayload = {
+    source_type: sourceType.value,
+    ...(isBroker.value && binding
+      ? {
+          broker_provider: binding.broker_provider,
+          broker_account_id: binding.broker_account_id,
+          broker_environment: binding.broker_environment,
+          broker_symbol_id: binding.broker_symbol_id,
+        }
+      : {}),
     symbol: symbol.value!.toUpperCase().trim(),
     exchange: exchange.value!.toUpperCase().trim(),
     min_move: minMove.value!,
@@ -238,15 +293,45 @@ async function addSymbol(): Promise<void> {
     quantity_step: step.value!,
   };
 
+  saving.value = true;
   try {
-    if (props.market) await updateMarket(props.market.symbol_id, newMarket);
-    else await createMarket(newMarket);
+    const result = props.market
+      ? await updateMarket(props.market.symbol_id, newMarket)
+      : await createMarket(newMarket);
     await marketsStore.fetch();
     symbolForm.value?.close();
+    if (!props.market)
+      emit('created', { ...newMarket, symbol_id: result.symbol_id });
   } catch (cause) {
     error.value =
       cause instanceof Error ? cause.message : 'Unable to save symbol';
+  } finally {
+    saving.value = false;
   }
+}
+
+function resetBrokerSelection() {
+  brokerInstrument.value = null;
+  symbol.value = undefined;
+  exchange.value = undefined;
+  minMove.value = isBroker.value ? null : 0.00001;
+  marketType.value = undefined;
+  timezone.value = isBroker.value ? '' : 'UTC';
+  currency.value = '';
+  multiplier.value = minimum.value = step.value = null;
+}
+
+function applyBrokerInstrument(instrument: BrokerInstrument | null) {
+  brokerInstrument.value = instrument;
+  symbol.value = instrument?.symbol;
+  exchange.value = instrument?.exchange;
+  minMove.value = null;
+  marketType.value = instrument?.market_type;
+  timezone.value = instrument?.timezone ?? '';
+  currency.value = instrument?.settlement_currency ?? '';
+  multiplier.value = null;
+  minimum.value = instrument?.minimum_quantity ?? null;
+  step.value = instrument?.quantity_step ?? null;
 }
 </script>
 

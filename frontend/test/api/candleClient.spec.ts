@@ -137,24 +137,28 @@ describe('candle API client', () => {
       deleted_count: 4,
     });
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/data-accessor/candles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        symbol: 'EURUSD',
-        exchange: 'FX',
-        candles: [
-          {
-            timestamp_ms: 1_700_000_000_000,
-            open: 1,
-            high: 2,
-            low: 0.5,
-            close: 1.5,
-            volume: 100,
-          },
-        ],
-      }),
-    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/data-accessor/candles/upload',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: 'EURUSD',
+          exchange: 'FX',
+          candles: [
+            {
+              timestamp_ms: 1_700_000_000_000,
+              open: 1,
+              high: 2,
+              low: 0.5,
+              close: 1.5,
+              volume: 100,
+            },
+          ],
+        }),
+      },
+    );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       '/api/data-accessor/candles/EURUSD?exchange=FX',

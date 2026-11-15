@@ -24,4 +24,17 @@ describe('Vite development proxy configuration', () => {
 
     expect(proxy['/api/backtester'].target).toBe('http://backtester-api:8020');
   });
+  it('routes broker discovery and history requests through their service proxies', () => {
+    const proxy = createDevServerProxy({});
+    expect(proxy['/api/broker'].target).toBe('http://broker-service:8050');
+    expect(proxy['/api/ingestion'].target).toBe(
+      'http://ingestion-service:8000',
+    );
+    expect(proxy['/api/broker'].rewrite?.('/api/broker/connection')).toBe(
+      '/connection',
+    );
+    expect(
+      proxy['/api/ingestion'].rewrite?.('/api/ingestion/history-downloads'),
+    ).toBe('/history-downloads');
+  });
 });
