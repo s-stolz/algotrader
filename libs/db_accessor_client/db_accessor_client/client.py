@@ -103,6 +103,66 @@ class DatabaseAccessorClient(_BaseClient):
     def get_market_coverage(self, market_id: int) -> dict[str, Any]:
         return self._request("GET", f"/markets/id/{market_id}/coverage")
 
+    def create_history_download_job(self, data: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/history-download-jobs", json=data)
+
+    def list_history_download_jobs(
+        self, market_id: int | None = None, active_only: bool = False, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        return self._request(
+            "GET",
+            "/history-download-jobs",
+            params=_build_params(
+                market_id=market_id,
+                active_only=active_only,
+                limit=limit,
+            ),
+        )
+
+    def get_history_download_job(self, job_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/history-download-jobs/{job_id}")
+
+    def claim_history_download_job(
+        self, job_id: str, owner_token: str, lease_seconds: int = 120
+    ) -> dict[str, Any] | None:
+        return self._request(
+            "POST",
+            f"/history-download-jobs/{job_id}/claim",
+            json=dict(
+                owner_token=owner_token,
+                lease_seconds=lease_seconds,
+            ),
+        )
+
+    def heartbeat_history_download_job(
+        self, job_id: str, owner_token: str, revision: int, lease_seconds: int = 120
+    ) -> dict[str, Any] | None:
+        return self._request(
+            "POST",
+            f"/history-download-jobs/{job_id}/heartbeat",
+            json=dict(
+                owner_token=owner_token,
+                revision=revision,
+                lease_seconds=lease_seconds,
+            ),
+        )
+
+    def commit_history_download_page(
+        self, job_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return self._request("POST", f"/history-download-jobs/{job_id}/pages", json=data)
+
+    def transition_history_download_job(
+        self, job_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return self._request("POST", f"/history-download-jobs/{job_id}/transition", json=data)
+
+    def cancel_history_download_job(self, job_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/history-download-jobs/{job_id}/cancel")
+
+    def retry_history_download_job(self, job_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/history-download-jobs/{job_id}/retry")
+
     def stream_candles(
         self,
         *,
@@ -479,6 +539,66 @@ class AsyncDatabaseAccessorClient(_BaseClient):
 
     async def get_market_coverage(self, market_id: int) -> dict[str, Any]:
         return await self._request("GET", f"/markets/id/{market_id}/coverage")
+
+    async def create_history_download_job(self, data: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/history-download-jobs", json=data)
+
+    async def list_history_download_jobs(
+        self, market_id: int | None = None, active_only: bool = False, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        return await self._request(
+            "GET",
+            "/history-download-jobs",
+            params=_build_params(
+                market_id=market_id,
+                active_only=active_only,
+                limit=limit,
+            ),
+        )
+
+    async def get_history_download_job(self, job_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/history-download-jobs/{job_id}")
+
+    async def claim_history_download_job(
+        self, job_id: str, owner_token: str, lease_seconds: int = 120
+    ) -> dict[str, Any] | None:
+        return await self._request(
+            "POST",
+            f"/history-download-jobs/{job_id}/claim",
+            json=dict(
+                owner_token=owner_token,
+                lease_seconds=lease_seconds,
+            ),
+        )
+
+    async def heartbeat_history_download_job(
+        self, job_id: str, owner_token: str, revision: int, lease_seconds: int = 120
+    ) -> dict[str, Any] | None:
+        return await self._request(
+            "POST",
+            f"/history-download-jobs/{job_id}/heartbeat",
+            json=dict(
+                owner_token=owner_token,
+                revision=revision,
+                lease_seconds=lease_seconds,
+            ),
+        )
+
+    async def commit_history_download_page(
+        self, job_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return await self._request("POST", f"/history-download-jobs/{job_id}/pages", json=data)
+
+    async def transition_history_download_job(
+        self, job_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return await self._request("POST", f"/history-download-jobs/{job_id}/transition", json=data)
+
+    async def cancel_history_download_job(self, job_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/history-download-jobs/{job_id}/cancel")
+
+    async def retry_history_download_job(self, job_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/history-download-jobs/{job_id}/retry")
 
     async def stream_candles(
         self,

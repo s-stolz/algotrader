@@ -71,3 +71,10 @@ They require the completion frame and reject truncated responses. See
 Market reads include their immutable broker/custom source. Both accessor clients
 support `get_market_by_id` and `get_market_coverage`; coverage describes stored M1
 bounds and count without asserting that internal gaps are absent.
+
+Historical download methods carry accepted requests and fenced worker operations
+through `/history-download-jobs`. Claim, heartbeat, page, and transition return a
+job or null for lost ownership; callers must not interpret null as confirmation of
+a write. HTTP 404/409 retain their normal error semantics. Both transports preserve
+owner tokens, revisions, and expected cursors; page receipts include authoritative
+counts so replay after a lost response cannot inflate progress.

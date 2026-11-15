@@ -89,6 +89,11 @@ async def delete_market(session, symbol_id: int):
     :return: Number of rows in candles deleted
     :rtype: int
     """
+    from app.history_downloads.storage import ensure_no_active_job, lock_market
+
+    market = await lock_market(session, symbol_id)
+    if market["source_type"] == "broker":
+        await ensure_no_active_job(session, symbol_id)
     stmt = delete(candles).where(candles.c.symbol_id == symbol_id)
     candles_result = await session.execute(stmt)
 

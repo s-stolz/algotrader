@@ -7,6 +7,7 @@ from app import backtest_execution, crud, historical_candles, market_cache, reco
 from app.backtest_execution_log import get_execution_log
 from app.candle_pages import forward_candles
 from app.database import get_db
+from app.history_downloads.routes import router as history_download_router
 from app.market_sources import (
     BrokerVerificationUnavailableError,
     MarketSourceConflictError,
@@ -67,6 +68,7 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(RequestLoggingMiddleware)
+app.include_router(history_download_router)
 
 
 @app.get("/")
@@ -400,7 +402,13 @@ async def delete_market(
     if symbol_id is None:
         raise HTTPException(status_code=404, detail="Market not found")
 
-    deleted = await crud.delete_market(db, symbol_id)
+    try:
+        deleted = await crud.delete_market(db, symbol_id)
+    except (IntegrityError, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Cancel the active historical download first"
+        ) from exc
     await market_cache.refresh_market_cache(db)
     if deleted:
         return {"status": "deleted", "deleted_count": deleted}

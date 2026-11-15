@@ -78,6 +78,64 @@ candles = Table(
 
 json_document = JSON().with_variant(JSONB(), "postgresql")
 
+history_download_jobs = Table(
+    "history_download_jobs",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("request_id", String(36), nullable=False, unique=True),
+    Column(
+        "market_id", Integer, ForeignKey("markets.symbol_id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("status", String(16), nullable=False),
+    Column("start_ms", BigInteger, nullable=True),
+    Column("candle_count", Integer, nullable=True),
+    Column("end_exclusive_ms", BigInteger, nullable=False),
+    Column("cursor_ms", BigInteger, nullable=False),
+    Column("fetched_count", BigInteger, nullable=False, server_default="0"),
+    Column("inserted_count", BigInteger, nullable=False, server_default="0"),
+    Column("source_snapshot", json_document, nullable=False),
+    Column("owner_token", String(128), nullable=True),
+    Column("revision", BigInteger, nullable=False),
+    Column("lease_expires_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("created_at", TIMESTAMP(timezone=True), nullable=False),
+    Column("updated_at", TIMESTAMP(timezone=True), nullable=False),
+    Column("failure_reason", Text, nullable=True),
+    Column("availability_reason", Text, nullable=True),
+    Column("first_inserted_ms", BigInteger, nullable=True),
+    Column("last_inserted_ms", BigInteger, nullable=True),
+    CheckConstraint(
+        "status IN ('queued', 'downloading', 'completed', 'failed', 'cancelled')",
+        name="history_download_jobs_status_check",
+    ),
+    CheckConstraint(
+        "(start_ms IS NOT NULL AND start_ms >= 0 AND start_ms % 60000 = 0 "
+        "AND candle_count IS NULL AND cursor_ms >= start_ms) OR "
+        "(start_ms IS NULL AND candle_count IS NOT NULL AND candle_count > 0)",
+        name="history_download_jobs_selector_check",
+    ),
+    CheckConstraint(
+        "cursor_ms >= 0 AND cursor_ms <= end_exclusive_ms AND cursor_ms % 60000 = 0 "
+        "AND end_exclusive_ms % 60000 = 0 AND fetched_count >= inserted_count "
+        "AND inserted_count >= 0 AND revision > 0",
+        name="history_download_jobs_progress_check",
+    ),
+    CheckConstraint(
+        "(status = 'downloading' AND owner_token IS NOT NULL AND lease_expires_at IS NOT NULL) "
+        "OR (status <> 'downloading' AND owner_token IS NULL AND lease_expires_at IS NULL)",
+        name="history_download_jobs_owner_check",
+    ),
+)
+Index(
+    "history_download_jobs_one_active_market",
+    history_download_jobs.c.market_id,
+    unique=True,
+    postgresql_where=history_download_jobs.c.status.in_(("queued", "downloading")),
+    sqlite_where=history_download_jobs.c.status.in_(("queued", "downloading")),
+)
+Index(
+    "history_download_jobs_created", history_download_jobs.c.created_at, history_download_jobs.c.id
+)
+
 backtests = Table(
     "backtests",
     metadata,

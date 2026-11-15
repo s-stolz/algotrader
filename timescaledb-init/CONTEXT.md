@@ -73,3 +73,9 @@ bindings. Database constraints reject incomplete or mixed bindings, and the
 source-preservation trigger prevents changing a broker instrument under existing
 Candles. New broker Markets record a minute-aligned live activation boundary;
 no existing data is deleted or automatically connected to a broker.
+
+V024 persists historical download requests separately from Markets and recovery.
+A partial unique index permits one queued/downloading request per Market. Immutable
+request snapshots, owner/lease constraints, and the Market deletion trigger protect
+accepted work. Page inserts and progress are committed together by the accessor;
+aggregate refresh must finish before a request is marked completed.

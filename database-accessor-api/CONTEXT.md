@@ -129,3 +129,25 @@ or stored Candles. Custom rows retain editable names and instrument specificatio
 returns raw M1 oldest/latest timestamps and count, not a completeness assertion.
 `POST /candles/upload` accepts CSV batches only for Custom Markets. Internal live
 insertion and authoritative recovery retain their existing separate semantics.
+
+## Historical download storage
+
+`app/history_downloads/` owns persistence primitives for user-requested historical
+extensions; ingestion owns scheduling and provider policy. Acceptance locks the
+Market, freezes its source and exclusive oldest-Candle boundary, and enforces one
+active request per Market. A request ID is idempotent only for the same selector.
+
+Claims use expiring owner tokens and revisions. A page validates the owner,
+revision, and backward cursor, then inserts only absent Candles and commits its
+counts/cursor in the same transaction. Cancellation takes the same lock and fences
+further writes immediately. Retry retains confirmed progress. Market deletion is
+blocked while a job is queued or downloading. Completed transitions refresh the
+inserted range's aggregate buckets through a separate autocommit connection while
+the job remains locked; a refresh failure cannot mark the job completed.
+
+Run `tests/history_downloads/test_storage_postgres.py` against a disposable
+Timescale database whose name starts `vibe9_`, using
+`HISTORY_DOWNLOAD_TEST_DATABASE_URL`. Each test owns a unique schema and applies
+V023/V024, exercising acceptance/claim/page races, expiry, cancellation, preserved
+Candle values, and historical aggregate visibility. Unit tests use SQLite for API
+validation and conditional-operation behavior, not PostgreSQL locking evidence.
