@@ -24,6 +24,25 @@ a response failure never proves that nothing committed. The response's
 `written_candles` counts upserted rows (including replacements), and
 `total_candles` counts input rows. Ordinary live response fields are unchanged.
 
+## Market identity fencing
+
+Ordinary and authoritative historical JSON batches accept an optional
+`market_id`. Source-aware ingestion supplies the local Market ID captured by its
+runtime state, together with symbol and exchange. The accessor bypasses its name
+cache, locks that exact row, and verifies the supplied identity before each batch
+of at most 4000 rows. It revalidates after each batch commit. A deleted ID returns
+404; a symbol/exchange mismatch returns 409. Neither case falls back to another
+Market created later with the same name.
+
+Legacy requests that omit `market_id` retain their name-based behavior.
+`POST /candles/upload` first verifies Custom eligibility and binds that Market's
+ID even when an older CSV payload omits it; a conflicting supplied ID is rejected.
+This prevents an in-flight upload or broker write from crossing into a replacement
+Market after deletion. Earlier committed batches retain the partial-write
+semantics above. See [Market sources](market-data.md#source-identity).
+
+## Storage and acceptance
+
 No schema change is required. Native upsert of compressed Candles requires
 TimescaleDB 2.11+ and PostgreSQL 14+; the deployed Compose image uses PostgreSQL 17.
 See [Timescale compression DML support](https://github.com/timescale/docs/blob/latest/api/compression/index.md).

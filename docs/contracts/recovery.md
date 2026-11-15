@@ -7,7 +7,10 @@ historical completeness and does not infer outages from missing minutes.
 
 Ingestion owns recovery policy. The accessor owns durable transactions; shared
 sync/async clients preserve their conditional results. Candle authority and
-partial-write behavior remain in [Candle persistence](candles.md).
+partial-write behavior remain in [Candle persistence](candles.md). Live and
+recovery writes carry their captured local Market ID; accessor row locks and
+identity checks prevent an old in-flight batch from resolving by name into a
+deleted-and-recreated Market. See [write identity fencing](candles.md#market-identity-fencing).
 
 ## Persistence API
 

@@ -37,6 +37,11 @@ writes remain separate because broker live collection and recovery still write
 Broker Markets. Hiding an upload action in the frontend is not the eligibility
 check.
 
+Live and recovery writes also carry the captured local `market_id`. The accessor
+locks and verifies that identity before each committed batch, never falling back
+to a replacement Market with the same symbol/exchange. Custom uploads bind their
+verified Market ID too. See [write identity fencing](candles.md#market-identity-fencing).
+
 ## Source-aware collection and live transport
 
 Ingestion reconciles stored Markets every two seconds. Only Broker Markets bound
