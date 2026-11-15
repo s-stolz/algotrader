@@ -9,6 +9,7 @@ interface reaches them; paths in this table are relative to the repository root.
 | WebSocket protocol, subscriptions, Redis fanout | [realtime-service/CONTEXT.md](../realtime-service/CONTEXT.md) |
 | cTrader, broker commands, tick/trendbar publication | [broker-service/CONTEXT.md](../broker-service/CONTEXT.md) |
 | Closed-candle ingestion, history backfill, reconnect recovery | [ingestion-service/CONTEXT.md](../ingestion-service/CONTEXT.md) |
+| Broker/Custom Market sources, requested historical downloads | [market-data contracts](contracts/market-data.md), then affected area context |
 | Market/candle queries, durable persistence transactions | [database-accessor-api/CONTEXT.md](../database-accessor-api/CONTEXT.md) |
 | Historical/live indicators | [indicator-api/CONTEXT.md](../indicator-api/CONTEXT.md) |
 | Simulation, strategies, execution, metrics | [backtester/CONTEXT.md](../backtester/CONTEXT.md) |

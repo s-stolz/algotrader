@@ -6,7 +6,14 @@ streams live charts, and runs historical backtests.
 ## Vocabulary
 
 - **Market:** configured instrument identified by `symbol_id`, with `symbol`,
-  `exchange`, `market_type`, `min_move`, and `timezone` metadata.
+  `exchange`, `market_type`, `min_move`, and `timezone` metadata, and an immutable
+  Broker or Custom source.
+- **Broker Market:** a Market bound to one instrument of the connected broker
+  account/environment; supports live collection and historical download.
+- **Custom Market:** a Market populated through CSV, without broker collection.
+- **Historical Download:** an accepted one-time request to extend a Broker
+  Market's older M1 history; distinct from interruption recovery or a saved
+  history-depth setting.
 - **Symbol:** broker-facing instrument name, such as `EURUSD`; broker metadata
   and stored Market identity must be resolved at their boundary.
 - **Candle:** OHLCV bar; expanded JSON fields are `timestamp_ms`, `open`, `high`,
@@ -34,6 +41,9 @@ For Backtest/Run commands, Strategy Version, saved results, or Equity Replay, re
 [backtest contracts](docs/contracts/backtests.md). For simulation and trade
 terminology, read [backtester context](backtester/CONTEXT.md).
 
+For Market source identity and Historical Download lifecycle, read
+[market-data contracts](docs/contracts/market-data.md).
+
 ## System Flow
 
 `broker-service` publishes cTrader ticks and candles to Redis.
@@ -41,6 +51,9 @@ terminology, read [backtester context](backtester/CONTEXT.md).
 writes through `database-accessor-api` to TimescaleDB. `indicator-api` calculates
 historical and live series using `libs/indicator_engine`. `realtime-service` manages
 source subscriptions and fans Redis updates out to the frontend over WebSocket.
+Ingestion also owns background Historical Downloads; the accessor supplies their
+durable job and insert-only page transactions. Broker source bindings gate all
+live acquisition, while Custom Markets retain historical analysis.
 
 `backtester` loads historical candles through `libs/db_accessor_client`; its API
 queues requests and its worker executes them. It owns lifecycle policy and the
@@ -60,10 +73,14 @@ Delivery and recovery details live in the
   - Candles: `candles:{account_id}:{symbol}:{timeframe}`
   - Ticks: `ticks:{account_id}:{symbol}`
   - Indicators: `indicators:{account_id}:{exchange}:{symbol}:{timeframe}:{stream_id}`
+  - Historical Download invalidations: `history:downloads:events`
 - Broker historical trendbars use `fromTs` / `toTs`; database candle queries use
   `start_ms` / `end_ms`.
 - Timescale stores M1 candles in `candles`; higher Timeframes use continuous
   aggregates or direct bucketing.
+- Live browser subscriptions identify a Market by `market_id`, never symbol alone.
+- Market source and Historical Download invariants are owned by
+  [market-data contracts](docs/contracts/market-data.md).
 - WebSocket message shapes are owned by [realtime-service context](realtime-service/CONTEXT.md).
 - Durable Backtest/Run invariants are owned by
   [backtest contracts](docs/contracts/backtests.md), including versioned snapshots,

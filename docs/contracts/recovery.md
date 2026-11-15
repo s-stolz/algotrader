@@ -53,9 +53,10 @@ subsequent boundary saves leave that old boundary durable. A failed guard begin
 never permits Candle writes. A lost guard-finish response is safe: every Candle
 write was already confirmed; any remaining guard can be recovered or replayed.
 
-Startup loads pending work and the guard before looking up latest or applying a
-fresh lookback. A surviving guard is merged into pending recovery with its original
-boundary, even if a partial/uncertain batch moved latest or the lookback shortened.
+Startup loads pending work and the guard before looking up latest or applying the
+Market's live activation boundary. A surviving guard is merged into pending
+recovery with its original boundary, even if a partial/uncertain batch moved
+latest forward.
 Only after the pending save succeeds can that guard be retired. Failure between
 those operations leaves at least the guard or pending work durable. The same
 promotion applies to dependency recovery in a surviving process. Every later live
@@ -70,10 +71,14 @@ capped backoff before starting any Market consumers. These initialization tasks
 are owned and drained during shutdown. Each Market then starts independently.
 Before selecting a new latest-Candle boundary,
 load existing pending work and any live write guard. Their earliest boundary is
-authoritative even if a newer live row exists or a rolling lookback has advanced.
-With neither pending work nor a guard, use the
-latest stored M1 timestamp, bounded by the process's configured history boundary;
-an empty Market uses that boundary inclusively.
+authoritative even if a newer live row exists.
+With neither pending work nor a guard, use the later of the latest stored M1
+timestamp and the Market's immutable `live_start_ms`; an empty Market uses
+`live_start_ms` inclusively. This is the server-recorded creation minute, not a
+historical lookback. Only Broker Markets bound to the configured account and
+environment enter recovery. Custom Markets have no broker activity. Ingestion
+reconciles newly added and removed Markets without a restart. See
+[Market source identity](market-data.md#source-identity).
 
 Capture the Redis tail before starting the broker subscription. After subscription
 setup succeeds, capture the closed historical target and durably begin/merge
@@ -232,11 +237,19 @@ connection URLs and credentials are not logged by startup/recovery policy.
 
 ## Configuration and upgrade
 
-`services.ingestion_service.history.lookback_days` or quoted UTC `services.ingestion_service.history.start_date` selects the fresh
-history boundary. Set the unused value to null, regenerate config, and restart
-ingestion. The default remains 90 days; a changed policy does not
-clip accepted pending work. Expanding the policy does not audit older history
-before an existing Market's latest Candle.
+The legacy `services.ingestion_service.history.lookback_days` and
+`services.ingestion_service.history.start_date` inputs remain parseable for
+developer configuration compatibility; they no longer schedule historical
+lookback on new Broker Markets. Source activation uses `live_start_ms`. Users
+request older history through [Historical Downloads](market-data.md#download-requests),
+a separate insert-only job lifecycle. Neither those requests nor configuration
+changes clip accepted interruption recovery or live write guards.
+
+V023 classifies existing Markets as Custom without deleting Candles; their
+broker collection stops until users create new verified Broker Markets. Deploy
+source-aware accessor, ingestion, realtime, indicator, and frontend consumers
+together. Older ingestion versions ignore this source distinction and must not
+run against the new rollout.
 
 The existing ledgered V001–V017 migrations and their checksums remain unchanged.
 `timescaledb-init/migrations/V018__pending_recovery.sql` adds pending state and
@@ -262,7 +275,7 @@ For existing volumes:
    stopped. Retained legacy Redis rows may remain: protected startup snapshots the
    tail and recovers from the database boundary through subscription establishment;
    any legacy rows arriving after that tail follow the untrusted-data policy above.
-4. Deploy the compatible ingestion consumer, regenerate history settings, and start
+4. Deploy the compatible ingestion consumer, regenerate configuration, and start
    it through protected startup. Confirm durable pending state before relying on
    fresh live delivery, then confirm history/progress completion. Do not activate
    an older ingestion consumer against this rollout: it cannot enforce continuity.
