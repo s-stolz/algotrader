@@ -60,7 +60,7 @@ it('keeps Custom indicator history without acquiring or accepting broker updates
   expect(store.getById(id!)?.data).toEqual([{ timestamp_ms: 60000, sma: 1 }]);
 });
 
-it('requires the subscribed market and stops accepting messages after switching to Custom', async () => {
+it('rejects mismatched markets and live updates after switching to Custom', async () => {
   const broker = seedBrokerMarket();
   const store = useIndicatorsStore();
   const id = await store.requestIndicator(null, 1, {

@@ -134,6 +134,12 @@ describe('background history download dialog', () => {
     expect(fetchHistoryDownloads).toHaveBeenCalledTimes(2);
     expect(model.current.value?.revision).toBe(4);
     expect(model.connected.value).toBe(true);
+    events.get('historyDownloadsConnection')?.({
+      market_id: 7,
+      connected: true,
+    });
+    await flushPromises();
+    expect(fetchHistoryDownloads).toHaveBeenCalledTimes(3);
     events.get('disconnected')?.({});
     expect(model.connected.value).toBe(false);
     wrapper.unmount();

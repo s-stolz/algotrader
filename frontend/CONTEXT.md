@@ -6,6 +6,9 @@ and behavior that is easy to break when changing them.
 
 ## Market sources and history downloads
 
+Source binding, history requests, and delivery recovery follow the
+[market-data contract](../docs/contracts/market-data.md).
+
 - A Broker Market is bound to the setup-selected account, environment, and broker
   instrument. A Custom Market receives CSV data only. Source and broker identity
   cannot change after creation; existing records without a source are Custom.
