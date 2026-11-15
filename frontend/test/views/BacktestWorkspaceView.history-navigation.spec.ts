@@ -24,17 +24,16 @@ describe('production Backtest Workspace: history-navigation', () => {
       global: {
         plugins: [pinia],
         stubs: {
-          BacktestCreationDrawer: true,
           BacktestOverview: true,
           EquityReplayCharts: true,
         },
       },
     });
     await flushPromises();
-    expect(wrapper.getComponent(BacktestCreationDrawer).props('show')).toBe(
-      false,
-    );
+    expect(wrapper.findComponent(BacktestCreationDrawer).exists()).toBe(false);
     await wrapper.get('[data-testid="workspace-create"]').trigger('click');
+    await vi.dynamicImportSettled();
+    await flushPromises();
     expect(wrapper.getComponent(BacktestCreationDrawer).props('show')).toBe(
       true,
     );

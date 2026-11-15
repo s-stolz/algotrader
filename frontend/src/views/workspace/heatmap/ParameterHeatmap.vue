@@ -105,7 +105,8 @@ import type { Backtest, BacktestRun } from '@/types/backtesterContracts';
 import { useParameterHeatmap } from './useParameterHeatmap';
 import { heatmapMetrics } from './heatmapMetrics';
 import FixedInputsPopover from './FixedInputsPopover.vue';
-import HeatmapPlot from './HeatmapPlot.vue';
+import { lazyComponent } from '@/components/Common/lazyComponent';
+const HeatmapPlot = lazyComponent(() => import('./HeatmapPlot.vue'), 'heatmap');
 const props = defineProps<{
   saved: { backtest: Backtest; runs: BacktestRun[] };
   pending: boolean;

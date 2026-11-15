@@ -5,7 +5,7 @@ import {
   mountWorkspace,
 } from './backtestWorkspaceFixtures';
 import { flushPromises } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { useBacktestWorkspaceStore } from '@/stores/backtestWorkspaceStore';
 import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 import BaseStepModal from '@/components/Common/BaseStepModal.vue';
@@ -42,6 +42,8 @@ describe('Backtest creation session reset', () => {
       const wrapper = mountWorkspace();
       await flushPromises();
       await wrapper.get('[data-testid="workspace-create"]').trigger('click');
+      await vi.dynamicImportSettled();
+      await flushPromises();
       const previous = wrapper.getComponent(BacktestCreationDrawer);
       previous.getComponent(BaseStepModal).vm.$emit('update:step', 2);
       await flushPromises();
@@ -58,9 +60,13 @@ describe('Backtest creation session reset', () => {
       expect(store.creationDraft?.name).toBe('Previous experiment');
       previous.vm.$emit(event, 'accepted-experiment');
       await flushPromises();
-      const fresh = wrapper.getComponent(BacktestCreationDrawer);
-      expect(fresh.props('show')).toBe(false);
+      expect(wrapper.findComponent(BacktestCreationDrawer).exists()).toBe(
+        false,
+      );
       await wrapper.get('[data-testid="workspace-create"]').trigger('click');
+      await vi.dynamicImportSettled();
+      await flushPromises();
+      const fresh = wrapper.getComponent(BacktestCreationDrawer);
       expect(fresh.props('show')).toBe(true);
       expect(fresh.getComponent(BaseStepModal).props('step')).toBe(0);
       expect(store.creationDraft).toMatchObject({

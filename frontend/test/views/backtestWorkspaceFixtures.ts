@@ -3,7 +3,7 @@ export const refreshActivity = vi.fn();
 import { fetchExecutionLog } from '@/api/executionLogClient';
 import { installBacktestSocket } from '../backtestEventSocket';
 import { flushPromises, mount } from '@vue/test-utils';
-import { h } from 'vue';
+import { defineComponent, h } from 'vue';
 import DesignScope from '@/components/Common/DesignScope.vue';
 
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
@@ -204,7 +204,11 @@ export function mountWorkspace(includeBacktestDetail = false) {
       plugins: [pinia],
       provide: { [refreshBacktestActivityKey as symbol]: refreshActivity },
       stubs: {
-        EquityReplayCharts: true,
+        EquityReplayCharts: defineComponent({
+          name: 'EquityReplayCharts',
+          props: ['series', 'sampled', 'loading'],
+          template: '<div />',
+        }),
         BacktestOverview: !includeBacktestDetail,
       },
     },
@@ -269,7 +273,14 @@ export function fill(sequence: number, side: 'buy' | 'sell'): BacktestFill {
 
 export let pinia: Pinia;
 export function setupWorkspaceTests() {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // These suites exercise workspace behavior; route tests cover download timing.
+    await Promise.all([
+      import('@/views/workspace/BacktestInspection.vue'),
+      import('@/views/BacktestCreationDrawer.vue'),
+      import('@/views/workspace/heatmap/HeatmapPlot.vue'),
+      import('@/views/EquityReplayCharts.vue'),
+    ]);
     refreshActivity.mockClear();
     installBacktestSocket();
     pinia = createPinia();

@@ -38,11 +38,15 @@
 <script setup lang="ts">
 import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 import ReplayLoading from './ReplayLoading.vue';
-
-import EquityReplayCharts from '@/views/EquityReplayCharts.vue';
+import { lazyComponent } from '@/components/Common/lazyComponent';
 import { equityUnavailableReason } from '@/views/backtestWorkspaceRuns';
 import { workspaceReplay } from '@/views/workspace/comparison/workspaceReplay';
 import type { BacktestWorkspace } from '@/views/workspace/useBacktestWorkspace';
+
+const EquityReplayCharts = lazyComponent(
+  () => import('@/views/EquityReplayCharts.vue'),
+  'equity replay',
+);
 const props = defineProps<{ inspection: BacktestWorkspace['inspection'] }>();
 const { selectedComparisonIds, analysis } = props.inspection;
 const {

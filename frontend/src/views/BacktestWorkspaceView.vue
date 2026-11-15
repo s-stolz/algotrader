@@ -30,6 +30,7 @@
     </header>
 
     <BacktestCreationDrawer
+      v-if="creationLoadSession === creationSession"
       :key="creationSession"
       v-model:show="creationOpen"
       @submitted="createdBacktest"
@@ -60,6 +61,7 @@
     />
 
     <BacktestInspection
+      v-if="hasOpenedInspection"
       :workspace="workspace"
       :comparison="comparison"
     />
@@ -68,15 +70,36 @@
 
 <script setup lang="ts">
 import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
-
-import { NButton, NIcon } from 'naive-ui';
+import { NButton, NIcon, NModal } from 'naive-ui';
+import { h, ref, watch } from 'vue';
+import { lazyComponent } from '@/components/Common/lazyComponent';
 import ArrowBackOutline from '@vicons/ionicons5/es/ArrowBackOutline';
 import AddOutline from '@vicons/ionicons5/es/AddOutline';
-import BacktestCreationDrawer from '@/views/BacktestCreationDrawer.vue';
 import BacktestHistory from '@/views/workspace/BacktestHistory.vue';
-import BacktestInspection from '@/views/workspace/BacktestInspection.vue';
 import { useBacktestWorkspace } from '@/views/workspace/useBacktestWorkspace';
 import { useWorkspaceComparison } from '@/views/workspace/comparison/useWorkspaceComparison';
+
+const BacktestCreationDrawer = lazyComponent(
+  () => import('@/views/BacktestCreationDrawer.vue'),
+  'Backtest setup',
+  (state, attrs) =>
+    h(
+      NModal,
+      {
+        show: Boolean(attrs.show),
+        preset: 'card',
+        title: 'Create Backtest',
+        style: { width: 'min(720px, 90vw)' },
+        'onUpdate:show': attrs['onUpdate:show'] as
+          ((value: boolean) => void) | undefined,
+      },
+      () => state,
+    ),
+);
+const BacktestInspection = lazyComponent(
+  () => import('@/views/workspace/BacktestInspection.vue'),
+  'Backtest details',
+);
 defineOptions({ name: 'BacktestWorkspaceView' });
 const workspace = useBacktestWorkspace();
 const comparison = useWorkspaceComparison(workspace);
@@ -88,6 +111,22 @@ const {
   createdBacktest,
   selectionNotice,
 } = workspace;
+const hasOpenedInspection = ref(false);
+watch(
+  page,
+  (value) => {
+    if (value === 'analysis') hasOpenedInspection.value = true;
+  },
+  { immediate: true },
+);
+const creationLoadSession = ref<number | null>(null);
+watch(
+  [creationOpen, creationSession],
+  ([open, session]) => {
+    if (open) creationLoadSession.value = session;
+  },
+  { immediate: true },
+);
 const { cancelError, deleteError } = workspace.commands;
 </script>
 <style scoped>

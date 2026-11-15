@@ -99,6 +99,7 @@ export async function openWorkspace(path = '/backtests/backtest-1') {
     global: { plugins: [pinia, router], stubs: { EquityReplayCharts: true } },
   });
   onTestFinished(() => wrapper.unmount());
+  await vi.dynamicImportSettled();
   await flushPromises();
   return wrapper;
 }
