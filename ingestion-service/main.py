@@ -1,7 +1,6 @@
 """Main entry point for the ingestion service."""
 
 import asyncio
-import signal
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Dict, List, Optional, cast
@@ -9,8 +8,12 @@ from typing import Any, Awaitable, Dict, List, Optional, cast
 from app.broker_client import BrokerClient
 from app.config import load_config
 from app.db_client import DatabaseClient
+from app.history.events import HistoryEvents
+from app.history.service import HistoryDownloads
+from app.history.store import HistoryStore
 from app.logger import setup_logging
 from app.stream_consumer import StreamConsumer
+from db_accessor_client import AsyncDatabaseAccessorClient
 from redis.asyncio import Redis
 
 
@@ -88,6 +91,9 @@ class IngestionService:
         )
         self.redis: Redis | None = None
         self.consumer: StreamConsumer | None = None
+        self.history: HistoryDownloads | None = None
+        self._history_store: AsyncDatabaseAccessorClient | None = None
+        self.ready = asyncio.Event()
 
         self.markets: List[Dict[str, Any]] = []
         self.runtime_states: List[SymbolRuntimeState] = []
@@ -135,6 +141,20 @@ class IngestionService:
         )
 
         self._install_market_states(self.markets)
+
+    def _start_history_downloads(self) -> None:
+        assert self.redis is not None
+        self._history_store = AsyncDatabaseAccessorClient()
+        self.history = HistoryDownloads(
+            cast(HistoryStore, self._history_store),
+            self.broker_client,
+            HistoryEvents(self.redis),
+            self.config.broker_account_id,
+            self.config.broker_environment,
+            self.config.startup_backfill_concurrency,
+            self._history_semaphore,
+        )
+        self._own_task(self.history.run())
 
     def _eligible_markets(self, markets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return [
@@ -732,6 +752,11 @@ class IngestionService:
             if self._recovery_task:
                 await asyncio.gather(self._recovery_task, return_exceptions=True)
 
+            if self.history is not None:
+                await self.history.stop()
+            if self._history_store is not None:
+                await self._history_store.aclose()
+
             if self.redis:
                 await self.redis.close()
                 self.logger.info("Closed Redis connection")
@@ -754,6 +779,8 @@ class IngestionService:
             if self.runtime_states:
                 await self.start_consumers()
 
+            self._start_history_downloads()
+            self.ready.set()
             self._own_task(self._monitor_markets())
             self._health_monitor_task = asyncio.create_task(self._monitor_broker_connectivity())
 
@@ -769,19 +796,14 @@ class IngestionService:
 
 
 async def main():
-    """Main entry point."""
+    import uvicorn
+    from app.http_api import create_app
+
     service = IngestionService()
-
-    loop = asyncio.get_event_loop()
-
-    def handle_shutdown(sig):
-        service.logger.info(f"Received signal {sig}")
-        asyncio.create_task(service.shutdown())
-
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda s=sig: handle_shutdown(s))
-
-    await service.run()
+    server = uvicorn.Server(
+        uvicorn.Config(create_app(service), host="0.0.0.0", port=service.config.api_port)
+    )
+    await server.serve()
 
 
 if __name__ == "__main__":

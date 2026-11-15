@@ -172,6 +172,21 @@ class ProcessRecoveryTests(unittest.TestCase):
                     return self.reply(503, {"detail": "controlled latest lookup failure"})
                 with httpx.Client(base_url=accessor_url) as client:
                     result = client.get(self.path)
+                if parsed.path == "/markets" and result.is_success:
+                    # The controlled broker fixture supplies source metadata while the
+                    # disposable accessor exercises real candle/recovery transactions.
+                    markets = result.json()
+                    for market in markets:
+                        if market["symbol_id"] == symbol_id:
+                            market.update(
+                                source_type="broker",
+                                broker_provider="ctrader",
+                                broker_account_id=account,
+                                broker_environment="demo",
+                                broker_symbol_id=1,
+                                live_start_ms=BOUNDARY,
+                            )
+                    return self.reply(200, markets)
                 return self.reply(result.status_code, result.content)
 
             def do_POST(self):
@@ -227,6 +242,8 @@ class ProcessRecoveryTests(unittest.TestCase):
             BROKER_SERVICE_HOST="127.0.0.1",
             BROKER_SERVICE_PORT=str(port),
             ACCOUNT_ID=account,
+            CTRADER_HOST_TYPE="demo",
+            INGESTION_API_PORT="0",
             REDIS_URL=redis_url,
             INGESTION_HISTORY_LOOKBACK_DAYS="1825",
             INGESTION_HISTORY_START_DATE="",
@@ -244,7 +261,9 @@ class ProcessRecoveryTests(unittest.TestCase):
             str(
                 RESUMED + 30000
                 if handoff_phase
-                else BOUNDARY + 120000 if phase == "sessions" or runtime_phase else NOW
+                else BOUNDARY + 120000
+                if phase == "sessions" or runtime_phase
+                else NOW
             )
         )
         clock.close()
@@ -318,8 +337,10 @@ class ProcessRecoveryTests(unittest.TestCase):
                 redis.xadd(stream, bar(RESUMED - 120000))
                 redis.xadd(stream, bar(RESUMED - 60000))
                 wait_for(
-                    lambda: pending() is None
-                    and any(r["timestamp_ms"] == RESUMED - 120000 for r in stored())
+                    lambda: (
+                        pending() is None
+                        and any(r["timestamp_ms"] == RESUMED - 120000 for r in stored())
+                    )
                 )
                 self.assertTrue(all(end < RESUMED for _, end in history_requests))
                 session = "a"
@@ -343,8 +364,10 @@ class ProcessRecoveryTests(unittest.TestCase):
                 redis.xadd(stream, bar(RESUMED + 60000, session=session))
                 redis.xadd(stream, bar(RESUMED + 120000, session=session))
                 wait_for(
-                    lambda: pending() is None
-                    and any(r["timestamp_ms"] == RESUMED + 60000 for r in stored())
+                    lambda: (
+                        pending() is None
+                        and any(r["timestamp_ms"] == RESUMED + 60000 for r in stored())
+                    )
                 )
                 rows = {r["timestamp_ms"]: r for r in stored()}
                 self.assertIn(RESUMED, rows)
@@ -387,8 +410,10 @@ class ProcessRecoveryTests(unittest.TestCase):
                     clock_path.write_text(str(BOUNDARY + 180000))
                     redis.xadd(stream, bar(BOUNDARY + 180000))
                     wait_for(
-                        lambda: pending() is None
-                        and any(r["timestamp_ms"] == BOUNDARY + 120000 for r in stored())
+                        lambda: (
+                            pending() is None
+                            and any(r["timestamp_ms"] == BOUNDARY + 120000 for r in stored())
+                        )
                     )
                 faults["history"] = True
                 clock_path.write_text(str(NOW))
@@ -427,8 +452,10 @@ class ProcessRecoveryTests(unittest.TestCase):
                         before_restart_requests = len(history_requests)
                         child = launch()
                         wait_for(
-                            lambda: len(history_requests) > before_restart_requests
-                            and pending() is None
+                            lambda: (
+                                len(history_requests) > before_restart_requests
+                                and pending() is None
+                            )
                         )
                         rows = {r["timestamp_ms"]: r for r in stored()}
                         self.assertEqual(rows[BOUNDARY + 86400000]["close"], 9)

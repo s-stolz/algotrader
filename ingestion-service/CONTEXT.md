@@ -76,3 +76,27 @@ live batch remains unconfirmed until its entire persistence callback succeeds.
 live Candle write. Partial commits and lost receipts cannot hide it behind a
 newer latest Candle; normal successful live writes retire it without scheduling
 history. See the [guard contract](../docs/contracts/recovery.md#durable-live-write-guards).
+
+## Explicit history downloads
+
+`app/history/` owns one-time download acceptance, execution, notification retry, and
+shutdown recovery. `app/http_api.py` exposes `/history-downloads` and `/health` on
+`INGESTION_API_PORT` (8000). The same process runs live ingestion and the history
+queue; readiness stays false until dependency initialization succeeds.
+
+The accessor freezes each request's source and upper boundary and fences all
+insert-only pages with owner/revision/cursor. The worker scans complete daily M1
+windows backwards, includes the requested UTC date, and counts actual inserted
+candles. Empty windows do not imply exhaustion. Each attempt is limited to 3660
+windows; reaching that budget fails with a resumable explanation. Only reaching
+the Unix epoch can complete an undersupplied count with an availability reason.
+Explicit cancellation fences writes immediately. Shutdown releases owned work to
+queued where possible; interrupted processes recover after the 120-second lease.
+The worker renews leases every 30 seconds during broker retrieval. Completion waits
+for the accessor to refresh aggregates for inserted history.
+
+History invalidations use Redis `history:downloads:events`, field `event` containing
+JSON `historyDownloadChanged` with `market_id`, `job_id`, and `revision`. Failed
+publications remain queued, including terminal changes. Startup and recovery
+republish recent snapshots. The browser reads authoritative state after events
+and WebSocket reconnect; closing it never cancels work.
