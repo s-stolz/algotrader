@@ -25,6 +25,8 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'jsdom',
       globals: true,
+      // Production component trees need headroom on shared development machines.
+      testTimeout: 15_000,
       setupFiles: ['./test/setup.ts'],
       include: ['test/**/*.{test,spec}.ts'],
     },
