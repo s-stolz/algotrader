@@ -114,7 +114,7 @@ and behavior that is easy to break when changing them.
   `src/views/BacktestCreationDrawer.vue`. Its feature-local `creation/` sections
   share `useBacktestCreation.ts`, which owns draft/selection retention, reuse revisions,
   preview generations/debounce cleanup, and submission identity. `src/App.vue`
-  keeps routed views alive:
+  loads the Backtest Workspace on first navigation and keeps routed views alive:
   navigation preserves drafts, history filters, and comparison selections.
 - Creation retains an optional experiment name alongside draft fields. Names
   are top-level creation properties; omit them from stateless preview.

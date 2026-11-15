@@ -47,6 +47,7 @@ describe('application activity', () => {
     try {
       await flushPromises();
       expect(wrapper.findComponent(BacktestActivity).exists()).toBe(false);
+      expect(fetchBacktestQueue).not.toHaveBeenCalled();
       await router.push('/backtests');
       await flushPromises();
       const activity = wrapper.getComponent(BacktestActivity);
