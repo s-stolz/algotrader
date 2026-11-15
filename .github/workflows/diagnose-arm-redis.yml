@@ -1,0 +1,49 @@
+name: Diagnose immutable ARM Redis
+on:
+  push:
+    branches: [codex/v001-arm-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: docker/setup-qemu-action@v4
+      - name: Compare exact release CPU limit with unthrottled emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir diagnostics
+          image=redis@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+          docker pull --platform linux/arm64 "$image"
+          docker version > diagnostics/docker-version.txt
+          uname -a > diagnostics/runner.txt
+          for variant in release unthrottled; do
+            limits=()
+            if [[ "$variant" == release ]]; then limits=(--cpus 0.25); fi
+            container="redis-diagnostic-$variant"
+            docker run -d --name "$container" --platform linux/arm64 "${limits[@]}" \
+              --memory-reservation 256m --health-cmd 'redis-cli ping' \
+              --health-interval 5s --health-timeout 3s --health-retries 5 \
+              --health-start-period 5s "$image" \
+              redis-server --appendonly yes --loglevel warning
+            for observation in {1..18}; do
+              sleep 5
+              docker inspect --format '{{json .State}}' "$container" >> "diagnostics/$variant-state.jsonl"
+            done
+            docker logs "$container" > "diagnostics/$variant.log" 2>&1
+            docker inspect "$container" > "diagnostics/$variant-inspect.json"
+            cat "diagnostics/$variant.log" "diagnostics/$variant-state.jsonl"
+            docker rm -fv "$container"
+          done
+      - name: Preserve diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: immutable-arm-redis-diagnostics
+          path: diagnostics/
+      - name: Clean isolated diagnostic containers
+        if: always()
+        run: docker rm -fv redis-diagnostic-release redis-diagnostic-unthrottled || true
