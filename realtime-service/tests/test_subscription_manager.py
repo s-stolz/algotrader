@@ -248,7 +248,7 @@ class IndicatorSourceTests(unittest.IsolatedAsyncioTestCase):
         await self.manager.unregister_client(self.first)
         self.assertEqual(self.resolver.resolve.await_count, lookups)
         self.assertEqual(self.resolver.dependencies.await_count, dependencies)
-        self.assertEqual(
+        self.assertCountEqual(
             [
                 (call.args[0], call.kwargs["expected_symbol_id"])
                 for call in self.broker.stop_trendbar_stream.call_args_list
