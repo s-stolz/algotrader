@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from typing import Any
 
 from db_accessor_client import DatabaseAccessorClientError
@@ -41,13 +42,10 @@ class HistoryDownloads:
     async def create(self, request: HistoryRequest) -> Job:
         market = await self.store.get_market_by_id(request.market_id)
         require_broker_market(market, self.account_id, self.environment)
-        job = await self.store.create_history_download_job(request.storage_payload())
-        self.events.changed(job)
-        return job
+        return await self._mutate(self.store.create_history_download_job(request.storage_payload()))
 
     async def cancel(self, job_id: str) -> Job:
-        job = await self.store.cancel_history_download_job(job_id)
-        self.events.changed(job)
+        job = await self._mutate(self.store.cancel_history_download_job(job_id))
         task = self.tasks.get(job_id)
         if task is not None:
             task.cancel()
@@ -57,9 +55,16 @@ class HistoryDownloads:
         previous = await self.store.get_history_download_job(job_id)
         market = await self.store.get_market_by_id(previous["market_id"])
         require_broker_market(market, self.account_id, self.environment)
-        job = await self.store.retry_history_download_job(job_id)
-        self.events.changed(job)
-        return job
+        return await self._mutate(self.store.retry_history_download_job(job_id))
+
+    async def _mutate(self, operation: Awaitable[Job]) -> Job:
+        try:
+            changed = await operation
+        except (DatabaseAccessorClientError, asyncio.CancelledError):
+            self.events.request_resnapshot()
+            raise
+        self.events.changed(changed)
+        return changed
 
     async def run(self) -> None:
         try:

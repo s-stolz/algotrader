@@ -73,3 +73,59 @@ class HistoryServiceTests(unittest.IsolatedAsyncioTestCase):
         finally:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+    async def test_lost_queued_cancellation_receipt_resnapshots_without_an_active_worker(self):
+        store = Store(job())
+        original_cancel = store.cancel_history_download_job
+
+        async def cancel_with_lost_receipt(job_id):
+            await original_cancel(job_id)
+            raise DatabaseAccessorClientError("Cancellation receipt lost")
+
+        store.cancel_history_download_job = cancel_with_lost_receipt
+        redis = AsyncMock()
+        events = HistoryEvents(redis)
+        await events.flush()
+        self.assertFalse(events.resnapshot_pending)
+        redis.xadd.reset_mock()
+        service = HistoryDownloads(
+            cast(HistoryStore, store),
+            cast(BrokerClient, Broker()),
+            events,
+            "12345",
+            "demo",
+            1,
+            asyncio.Semaphore(1),
+        )
+        with self.assertRaises(DatabaseAccessorClientError):
+            await service.cancel(store.job["id"])
+        self.assertEqual(store.job["status"], "cancelled")
+        self.assertFalse(service.tasks)
+        self.assertTrue(events.resnapshot_pending)
+        task = asyncio.create_task(service.run())
+        try:
+            async with asyncio.timeout(2):
+                while redis.xadd.await_count == 0:
+                    await asyncio.sleep(0)
+            self.assertIn("historyDownloadsResnapshot", redis.xadd.call_args.args[1]["event"])
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def test_cancelled_command_await_also_requests_an_authoritative_resnapshot(self):
+        store = Store(job())
+        store.cancel_history_download_job = AsyncMock(side_effect=asyncio.CancelledError)
+        events = HistoryEvents(AsyncMock())
+        await events.flush()
+        service = HistoryDownloads(
+            cast(HistoryStore, store),
+            cast(BrokerClient, Broker()),
+            events,
+            "12345",
+            "demo",
+            1,
+            asyncio.Semaphore(1),
+        )
+        with self.assertRaises(asyncio.CancelledError):
+            await service.cancel(store.job["id"])
+        self.assertTrue(events.resnapshot_pending)

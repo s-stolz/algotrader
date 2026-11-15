@@ -107,5 +107,7 @@ publications remain queued, including terminal changes. Startup and recovery
 reliably publish a global `historyDownloadsResnapshot` hint so every subscribed
 Market rereads authoritative state, including jobs outside recent-list limits.
 Finished worker tasks remain owned until their final snapshot has been queued
-for notification (or their deleted job returns 404). The browser reads after
+for notification (or their deleted job returns 404). Uncertain command receipts
+also request a global resnapshot, even when cancelling queued work leaves no
+active worker to emit its final revision. The browser reads after
 change hints and WebSocket reconnect; closing it never cancels work.
