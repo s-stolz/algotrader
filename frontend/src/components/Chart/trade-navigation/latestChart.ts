@@ -15,6 +15,7 @@ export function createLatestChart(options: {
   candles: ReturnType<typeof useCandlesticksStore>;
   loadedSession: Ref<string | null>;
   sync: () => void;
+  reset: (scrollToRealtime: boolean) => void;
 }) {
   const indicators = useIndicatorsStore();
   let pending = false;
@@ -40,10 +41,7 @@ export function createLatestChart(options: {
       pending = true;
       options.navigation.cancel();
       const revision = options.navigation.revision;
-      options.loadedSession.value = null;
-      options.rendering.resetIndicatorReadouts();
-      options.rendering.state.pendingIndicatorMessages.clear();
-      options.rendering.state.shouldScrollToRealTime = true;
+      options.reset(true);
       options.candles.clear();
       options.rendering.renderCandlesticks([]);
       // Let cancellation watchers finish before starting the replacement session.

@@ -231,12 +231,7 @@ export default defineComponent({
               indicators: indicatorsStore,
               infrastructure,
               render: rendering.renderCandlesticks,
-              reset: () => {
-                loadedSession.value = null;
-                rendering.state.shouldScrollToRealTime = false;
-                rendering.resetIndicatorReadouts();
-                rendering.state.pendingIndicatorMessages.clear();
-              },
+              reset: () => resetNavigation(false),
               initializeIndicators: async (key) => {
                 loadedSession.value = sessionIdentity(key);
                 indicatorsStore.requestAllIndicators(
@@ -272,6 +267,7 @@ export default defineComponent({
       rendering,
       candles: candlesticksStore,
       loadedSession,
+      reset: resetNavigation,
     });
     let consumedDestination: number | null = null;
     function syncChartSession() {
@@ -309,11 +305,14 @@ export default defineComponent({
         if (minMove && minMove > 0) infrastructure.setMinMove(minMove);
       },
     );
-    function syncNavigation() {
+    function resetNavigation(scrollToRealtime: boolean) {
       loadedSession.value = null;
       rendering.resetIndicatorReadouts();
       rendering.state.pendingIndicatorMessages.clear();
-      rendering.state.shouldScrollToRealTime = true;
+      rendering.state.shouldScrollToRealTime = scrollToRealtime;
+    }
+    function syncNavigation() {
+      resetNavigation(true);
       syncChartSession();
     }
     watch(
