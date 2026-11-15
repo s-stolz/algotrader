@@ -8,5 +8,5 @@ export function resolveWebsocketUrl(
   if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
     throw new Error('WebSocket URL must use ws or wss');
   }
-  return url.toString();
+  return /^wss?:\/\//.test(configured) ? configured : url.toString();
 }
