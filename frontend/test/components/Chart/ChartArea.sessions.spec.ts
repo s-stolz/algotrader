@@ -33,6 +33,7 @@ describe('ChartArea sessions', () => {
     expect(session.setSession).toHaveBeenLastCalledWith(
       eurUsdM5Key,
       expect.any(Function),
+      undefined,
     );
 
     currentTimeframeStore.setCurrentTimeframe({ label: 'H1', value: 'H1' });
@@ -41,6 +42,7 @@ describe('ChartArea sessions', () => {
     expect(session.setSession).toHaveBeenLastCalledWith(
       { ...eurUsdM5Key, timeframe: 'H1' },
       expect.any(Function),
+      undefined,
     );
 
     currentMarketStore.setMarket({
@@ -56,6 +58,7 @@ describe('ChartArea sessions', () => {
     expect(session.setSession).toHaveBeenLastCalledWith(
       { symbol: 'GBPUSD', exchange: 'CFD', timeframe: 'H1' },
       expect.any(Function),
+      undefined,
     );
   });
 
@@ -228,5 +231,34 @@ describe('ChartArea sessions', () => {
       timestamp_ms: 1_000,
       sma: 1.2,
     });
+  });
+});
+
+describe('pending indicator messages across chart contexts', () => {
+  setupChartAreaTests();
+  it('drops a queued old-context indicator update before the next paint', async () => {
+    const { indicatorsStore, currentTimeframeStore } = setupStores('M5');
+    const id = indicatorsStore.addIndicator(indicatorInfo, [], 1);
+    const wrapper = mountChartArea();
+    await flushPromises();
+    const paints: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      paints.push(callback);
+      return paints.length;
+    });
+    for (const handler of chartAreaMocks.indicatorHandlers)
+      handler({
+        type: 'indicatorUpdate',
+        clientIndicatorId: id,
+        timestamp_ms: 600_000,
+        values: { sma: 123 },
+      });
+    currentTimeframeStore.setCurrentTimeframe({ label: 'H1', value: 'H1' });
+    await flushPromises();
+    for (const paint of paints) paint(0);
+    expect(
+      chartAreaMocks.infrastructure.indicatorManager.updateIndicatorSeriesPoint,
+    ).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 });

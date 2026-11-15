@@ -13,3 +13,4 @@ export { default as HandRightOutline } from '@vicons/ionicons5/es/HandRightOutli
 export { default as ResizeOutline } from '@vicons/ionicons5/es/ResizeOutline';
 export { default as SyncOutline } from '@vicons/ionicons5/es/SyncOutline';
 export { default as CreateOutline } from '@vicons/ionicons5/es/CreateOutline';
+export { default as LocateOutline } from '@vicons/ionicons5/es/LocateOutline';

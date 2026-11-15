@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { NButton, NIcon } from 'naive-ui';
+import { LocateOutline } from '@/icons';
 import BaseDataTable from '@/components/Common/BaseDataTable.vue';
 import {
   executionLogItemKey,
@@ -9,6 +11,7 @@ const props = defineProps<{
   items: ExecutionLogItem[];
   currency: string | null;
 }>();
+const emit = defineEmits<{ jump: [timestampMs: number] }>();
 const timeline = computed(() =>
   props.items.map((item) => ({
     key: executionLogItemKey(item),
@@ -89,7 +92,15 @@ function time(value: number) {
             ><small>{{ row.trade.symbol }}</small></td
           >
           <td class="leg">Exit</td
-          ><td>{{ time(row.trade.exit_timestamp_ms) }}</td
+          ><td
+            >{{ time(row.trade.exit_timestamp_ms) }}
+            <n-button
+              text
+              circle
+              title="Go to exit"
+              aria-label="Go to exit"
+              @click="emit('jump', row.trade.exit_timestamp_ms)"
+              ><n-icon><LocateOutline /></n-icon></n-button></td
           ><td class="number">{{
             executionNumber.format(row.trade.exit_price)
           }}</td>
@@ -122,7 +133,15 @@ function time(value: number) {
         </tr>
         <tr
           ><td class="leg">Entry</td
-          ><td>{{ time(row.trade.entry_timestamp_ms) }}</td
+          ><td
+            >{{ time(row.trade.entry_timestamp_ms) }}
+            <n-button
+              text
+              circle
+              title="Go to entry"
+              aria-label="Go to entry"
+              @click="emit('jump', row.trade.entry_timestamp_ms)"
+              ><n-icon><LocateOutline /></n-icon></n-button></td
           ><td
             class="number"
             data-interior-cell

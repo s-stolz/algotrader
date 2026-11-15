@@ -54,6 +54,13 @@
       </div>
     </Teleport>
 
+    <span
+      v-if="tradeNavigation.loading"
+      class="history-loading"
+      role="status"
+      >Loading history…</span
+    >
+
     <span class="legend">
       <span class="legend-value">O: <span ref="legendOpen">-</span></span>
       <span class="legend-value">H: <span ref="legendHigh">-</span></span>
@@ -80,6 +87,8 @@ import {
   getCurrentInstance,
   markRaw,
   onBeforeUnmount,
+  onActivated,
+  onDeactivated,
   onMounted,
   ref,
   toRefs,
@@ -87,6 +96,10 @@ import {
   type PropType,
 } from 'vue';
 import { NButton, NIcon } from 'naive-ui';
+import { TradeHistory } from './trade-navigation/tradeHistory';
+import { waitForIndicatorRequest } from '@/stores/indicators/pendingRequests';
+import { createTradeHistoryAdapter } from './trade-navigation/tradeHistoryAdapter';
+import { useTradeNavigationStore } from '@/stores/tradeNavigationStore';
 import { useCandlesticksStore } from '@/stores/candlesticksStore';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import { useCurrentMarketStore } from '@/stores/currentMarketStore';
@@ -116,6 +129,7 @@ export default defineComponent({
     },
   },
   setup(props, { expose }) {
+    const tradeNavigation = useTradeNavigationStore();
     const candlesticksStore = useCandlesticksStore();
     const indicatorsStore = useIndicatorsStore();
     const currentMarketStore = useCurrentMarketStore();
@@ -171,12 +185,15 @@ export default defineComponent({
           : null;
       },
     });
+    let active = true;
+    let runIndicatorLoad: Promise<void> = Promise.resolve();
     function syncRunIndicators() {
       const run = backtestOverlayStore.selectedRun;
       runIndicators.invalidate(backtestOverlayStore.selectedRunId);
       rendering.refreshBacktestMarkers();
       const key = currentChartSessionKey();
       if (
+        active &&
         run &&
         backtestOverlayStore.matchesChart &&
         rendering.state.isReady &&
@@ -184,7 +201,7 @@ export default defineComponent({
         key.symbol &&
         key.timeframe
       ) {
-        void runIndicators.load(run, {
+        runIndicatorLoad = runIndicators.load(run, {
           symbol: key.symbol,
           timeframe: key.timeframe,
           exchange: key.exchange ?? null,
@@ -200,6 +217,35 @@ export default defineComponent({
         createChartSessionAdapter({
           candlesticksStore,
           indicatorsStore,
+          tradeHistory: new TradeHistory(
+            createTradeHistoryAdapter({
+              candles: candlesticksStore,
+              indicators: indicatorsStore,
+              infrastructure,
+              render: rendering.renderCandlesticks,
+              reset: () => {
+                loadedSession.value = null;
+                rendering.state.shouldScrollToRealTime = false;
+                rendering.resetIndicatorReadouts();
+                rendering.state.pendingIndicatorMessages.clear();
+              },
+              initializeIndicators: async (key) => {
+                loadedSession.value = sessionIdentity(key);
+                indicatorsStore.requestAllIndicators(
+                  key.symbol,
+                  key.timeframe,
+                  key.exchange,
+                );
+                await Promise.all([
+                  runIndicatorLoad,
+                  ...indicatorsStore.all.map(waitForIndicatorRequest),
+                ]);
+              },
+              loading: (value) => {
+                tradeNavigation.loading = value;
+              },
+            }),
+          ),
           currentChartSessionKey,
           renderCandlesticks: rendering.renderCandlesticks,
           shouldScrollToRealTime: () => rendering.state.shouldScrollToRealTime,
@@ -209,10 +255,33 @@ export default defineComponent({
         }),
       ),
     );
+    let consumedDestination: number | null = null;
     function syncChartSession() {
+      if (
+        !active ||
+        (tradeNavigation.preparing && !tradeNavigation.destination)
+      )
+        return;
+      const destination = tradeNavigation.destination;
+      if (
+        destination &&
+        destination.id !== consumedDestination &&
+        !rendering.state.isReady
+      )
+        return;
+      const timestamp =
+        destination &&
+        destination.id !== consumedDestination &&
+        destination.runId === backtestOverlayStore.selectedRunId &&
+        backtestOverlayStore.matchesChart &&
+        rendering.state.isReady
+          ? destination.timestampMs
+          : undefined;
+      if (timestamp !== undefined) consumedDestination = destination!.id;
       void session.setSession(
         currentChartSessionKey(),
         rendering.updateCurrentCandle,
+        timestamp,
       );
     }
     watch(
@@ -224,6 +293,7 @@ export default defineComponent({
     function syncNavigation() {
       loadedSession.value = null;
       rendering.resetIndicatorReadouts();
+      rendering.state.pendingIndicatorMessages.clear();
       rendering.state.shouldScrollToRealTime = true;
       syncChartSession();
     }
@@ -247,13 +317,47 @@ export default defineComponent({
     );
     watch(
       () => backtestOverlayStore.selectedRunId,
-      rendering.refreshBacktestMarkers,
+      (runId) => {
+        if (
+          tradeNavigation.destination &&
+          tradeNavigation.destination.runId !== runId
+        )
+          tradeNavigation.cancel();
+        rendering.refreshBacktestMarkers();
+      },
     );
     watch(
       () => backtestOverlayStore.closedTrades,
       rendering.refreshBacktestMarkers,
     );
     watch(() => props.interactionMode, measurement.applyInteractionMode);
+    watch(
+      () => tradeNavigation.revision,
+      () => {
+        loadedSession.value = null;
+        void session.stop();
+        runIndicators.invalidate(backtestOverlayStore.selectedRunId);
+      },
+    );
+    watch(
+      () => [
+        tradeNavigation.destination,
+        tradeNavigation.preparing,
+        rendering.state.isReady,
+      ],
+      syncChartSession,
+    );
+    onActivated(() => {
+      active = true;
+      syncChartSession();
+    });
+    onDeactivated(() => {
+      active = false;
+      loadedSession.value = null;
+      tradeNavigation.cancel();
+      runIndicators.invalidate(backtestOverlayStore.selectedRunId);
+      void session.stop();
+    });
     onMounted(rendering.initializeChartComponent);
     onBeforeUnmount(() => {
       runIndicators.dispose();
@@ -282,6 +386,7 @@ export default defineComponent({
       onWheelPassive: rendering.onWheelPassive,
     });
     return {
+      tradeNavigation,
       chartContainer,
       restoreBacktestView,
       runIndicatorError: runIndicators.error,
@@ -300,6 +405,15 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.history-loading {
+  position: absolute;
+  right: var(--design-space-md);
+  top: var(--design-space-sm);
+  color: var(--design-color-muted);
+  font-size: var(--design-text-secondary);
+  pointer-events: none;
+}
+
 .chart-wrapper {
   position: relative;
   width: 100%;

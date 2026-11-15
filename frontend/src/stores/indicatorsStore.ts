@@ -1,3 +1,4 @@
+import { createIndicatorLiveBuffer } from './indicators/forwardHistory';
 import { trackIndicatorRequests } from './indicators/pendingRequests';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
@@ -59,6 +60,7 @@ export type {
 } from './indicators/types';
 
 export const useIndicatorsStore = defineStore('indicators', () => {
+  const forwardLive = createIndicatorLiveBuffer();
   const requestIndicator = trackIndicatorRequests(loadIndicator, getById);
   const indicators = reactive(new Map<string, StoreIndicator>());
   const paneCount = ref(1);
@@ -290,6 +292,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     exchange: string | null,
     options: IndicatorCoverageOptions,
   ): Promise<void> {
+    if (forwardLive.active) return;
     const indicator = indicators.get(_id);
     const range = getLoadedCandleRange(options);
     if (!indicator || !range || !indicator.data.length) return;
@@ -382,6 +385,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     message: IndicatorUpdateMessage | null | undefined,
   ): IndicatorDataPoint | null {
     if (!message || message.type !== 'indicatorUpdate') return null;
+    if (forwardLive.receive(message)) return null;
 
     const indicator = indicators.get(message.clientIndicatorId);
     if (!indicator) return null;
@@ -440,24 +444,14 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     } catch (error) {
       console.error('Failed to unsubscribe indicator stream:', error);
     } finally {
-      liveSubscriptions.delete(_id);
+      if (liveSubscriptions.get(_id) === payload) liveSubscriptions.delete(_id);
     }
   }
 
   async function unsubscribeAllLive(): Promise<void> {
-    const subscriptions = Array.from(liveSubscriptions.entries());
-    for (const [id, payload] of subscriptions) {
-      try {
-        await wsService.send(
-          'unsubscribeIndicator',
-          toSubscriptionPayload(payload),
-        );
-      } catch (error) {
-        console.error('Failed to unsubscribe indicator stream:', error);
-      } finally {
-        liveSubscriptions.delete(id);
-      }
-    }
+    await Promise.all(
+      [...liveSubscriptions.keys()].map(unsubscribeIndicatorLive),
+    );
   }
 
   async function resubscribeAllLive(
@@ -532,6 +526,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
   }
 
   return {
+    forwardHistory: forwardLive,
     indicators,
     restorePersistedIndicators,
     paneCount,

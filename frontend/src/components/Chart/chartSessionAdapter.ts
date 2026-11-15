@@ -1,3 +1,4 @@
+import type { TradeHistory } from './trade-navigation/tradeHistory';
 import { recoverIndicatorHistory } from '@/stores/indicators/recovery';
 import { toChartCandle } from '@/types/contracts';
 import { fetchCandles as fetchHistoricalCandles } from '@/api/candleClient';
@@ -13,6 +14,7 @@ import type {
 } from './chartSession';
 
 interface ChartSessionAdapterOptions {
+  tradeHistory?: TradeHistory;
   candlesticksStore: ReturnType<typeof useCandlesticksStore>;
   indicatorsStore: ReturnType<typeof useIndicatorsStore>;
   currentChartSessionKey: () => ChartSessionKeyInput;
@@ -25,6 +27,7 @@ interface ChartSessionAdapterOptions {
 }
 
 export function createChartSessionAdapter({
+  tradeHistory,
   candlesticksStore,
   indicatorsStore,
   currentChartSessionKey,
@@ -51,6 +54,7 @@ export function createChartSessionAdapter({
   });
 
   return {
+    tradeHistory,
     recovery: {
       on: (event, handler) => wsService.on(event, handler),
       off: (event, handler) => wsService.off(event, handler),
@@ -105,7 +109,7 @@ export function createChartSessionAdapter({
       });
     },
     requestIndicators: (key) => {
-      indicatorsStore.requestAllIndicators(
+      return indicatorsStore.requestAllIndicators(
         key.symbol,
         key.timeframe,
         key.exchange,

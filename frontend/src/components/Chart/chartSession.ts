@@ -1,3 +1,4 @@
+import type { TradeHistory } from './trade-navigation/tradeHistory';
 import { ChartRecovery, type ChartRecoveryAdapter } from './chartRecovery';
 import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
 
@@ -33,6 +34,7 @@ export interface ChartSessionOlderHistorySignal {
 
 export interface ChartSessionSubscriptionsAdapter {
   recovery: ChartRecoveryAdapter;
+  tradeHistory?: TradeHistory;
   subscribeCandles(key: ChartSessionKey): Promise<void> | void;
   unsubscribeCandles(key: ChartSessionKey): Promise<void> | void;
   onCandleUpdate(handler: ChartSessionCandleHandler): void;
@@ -154,11 +156,14 @@ export class ChartSession {
   async setSession(
     input: ChartSessionKeyInput | null | undefined,
     receiveLiveCandle: ChartSessionLiveCandleReceiver,
+    tradeTimestampMs?: number,
   ): Promise<void> {
     const nextKey = normalizeSessionKey(input);
 
     if (sessionKeysEqual(this.activeKey, nextKey)) {
       this.liveCandleReceiver = receiveLiveCandle;
+      if (tradeTimestampMs !== undefined)
+        await this.jumpToTrade(tradeTimestampMs);
       return;
     }
 
@@ -167,6 +172,7 @@ export class ChartSession {
     const previousKey = this.activeKey;
     const previousListener = this.listener;
 
+    this.adapter.tradeHistory?.cancel();
     this.recovery.stop();
     this.activeKey = null;
     this.listener = null;
@@ -215,7 +221,12 @@ export class ChartSession {
       return;
     }
 
-    await this.fetchCandlesForSession(nextKey, revision, indicatorCleanup);
+    if (tradeTimestampMs !== undefined) {
+      await indicatorCleanup;
+      if (revision === this.revision) await this.jumpToTrade(tradeTimestampMs);
+    } else {
+      await this.fetchCandlesForSession(nextKey, revision, indicatorCleanup);
+    }
   }
 
   async stop(): Promise<void> {
@@ -223,6 +234,7 @@ export class ChartSession {
     const previousKey = this.activeKey;
     const previousListener = this.listener;
 
+    this.adapter.tradeHistory?.cancel();
     this.recovery.stop();
     this.activeKey = null;
     this.listener = null;
@@ -234,15 +246,29 @@ export class ChartSession {
       this.adapter.offCandleUpdate(previousListener);
     }
 
+    this.adapter.resetIndicatorHistory?.();
+    const indicatorCleanup = this.startIndicatorCleanup();
     if (previousKey) {
       await this.unsubscribe(previousKey);
     }
 
-    await this.unsubscribeIndicators();
+    await indicatorCleanup;
+  }
+
+  async jumpToTrade(timestampMs: number): Promise<void> {
+    const key = this.activeKey;
+    if (!key || !this.adapter.tradeHistory) return;
+    const revision = ++this.revision;
+    this.resetOlderHistoryPagingState();
+    this.recovery.start(key);
+    const complete = await this.adapter.tradeHistory.load(key, timestampMs);
+    if (complete && this.isCurrentSession(key, revision))
+      this.recovery.historyLoaded(this.adapter.tradeHistory.lastTimestamp);
   }
 
   requestOlderHistory(signal: ChartSessionOlderHistorySignal): void {
-    if (!this.activeKey) return;
+    if (!this.activeKey || this.adapter.tradeHistory?.blocksOlderHistory)
+      return;
     if (signal.scrollToRealtime) return;
     if (signal.barsBefore >= OLDER_HISTORY_BARS_BEFORE_THRESHOLD) return;
 
@@ -257,6 +283,7 @@ export class ChartSession {
     if (!this.activeKey || !this.liveCandleReceiver) return;
     if (!candleMatchesSession(message, this.activeKey)) return;
 
+    if (this.adapter.tradeHistory?.receive(message)) return;
     this.recovery.record(message);
     if (this.bufferLiveCandleIfFetchInFlight(message, this.activeKey)) {
       return;

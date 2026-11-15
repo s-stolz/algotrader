@@ -2,11 +2,19 @@
 import BaseAsyncState from '@/components/Common/BaseAsyncState.vue';
 
 import { computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { useTradeNavigationStore } from '@/stores/tradeNavigationStore';
 import { EXECUTION_LOG_PAGE_SIZE } from '@/types/backtest/executionLog';
 import { NPagination, NScrollbar, NSwitch } from 'naive-ui';
 import ExecutionLogTable from '@/components/Backtest/execution-log/ExecutionLogTable.vue';
 import { useExecutionLogStore } from '@/stores/executionLogStore';
 const log = useExecutionLogStore();
+const router = useRouter();
+const navigation = useTradeNavigationStore();
+function jump(timestampMs: number) {
+  if (log.selectedRun)
+    void navigation.open(log.selectedRun.run_id, timestampMs, router);
+}
 const label = computed(() =>
   log.selectedRun
     ? `Run #${log.selectedRun.run_ordinal + 1} · ${log.selectedRun.symbols.join(', ')}`
@@ -48,6 +56,7 @@ const label = computed(() =>
         v-else
         :items="log.items"
         :currency="log.selectedRun.currency"
+        @jump="jump"
       />
     </n-scrollbar>
     <nav

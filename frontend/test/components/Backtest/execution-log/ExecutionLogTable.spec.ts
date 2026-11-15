@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import ExecutionLogTable from '@/components/Backtest/execution-log/ExecutionLogTable.vue';
-import { tradeItem } from '../../../executionLogFixtures';
+import { tradeItem, orderItem } from '../../../executionLogFixtures';
 
 describe('execution prices and quantities', () => {
   it('preserves distinct fractional prices and small executed quantities', () => {
@@ -21,4 +21,20 @@ describe('execution prices and quantities', () => {
     expect(rows[1].findAll('td')[2].text()).toBe('1.08456');
     wrapper.unmount();
   });
+});
+
+it('emits each trade endpoint and provides no jump for unexecuted orders', async () => {
+  const item = tradeItem(0);
+  if (item.kind !== 'trade') throw new Error('Expected trade');
+  const wrapper = mount(ExecutionLogTable, {
+    props: { items: [item, orderItem()], currency: null },
+  });
+  await wrapper.get('[aria-label="Go to entry"]').trigger('click');
+  await wrapper.get('[aria-label="Go to exit"]').trigger('click');
+  expect(wrapper.emitted('jump')).toEqual([
+    [item.trade.entry_timestamp_ms],
+    [item.trade.exit_timestamp_ms],
+  ]);
+  expect(wrapper.findAll('button')).toHaveLength(2);
+  wrapper.unmount();
 });

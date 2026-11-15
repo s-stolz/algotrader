@@ -59,7 +59,8 @@ async function initializeChartView(): Promise<void> {
     indicatorsStore.restorePersistedIndicators(),
   ]);
   initialized.value = true;
-  if (marketsStore.all.length) void overlayStore.restorePersistedSelection();
+  if (marketsStore.all.length && !overlayStore.selectedRun)
+    void overlayStore.restorePersistedSelection();
 }
 
 void initializeChartView();

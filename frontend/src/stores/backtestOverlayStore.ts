@@ -171,6 +171,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
 
   async function selectRun(
     run: BacktestRun,
+    isCurrent: () => boolean = () => true,
   ): Promise<BacktestRunSelectability> {
     const revision = ++selectionRevision;
     isLoading.value = false;
@@ -198,7 +199,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
         fetchBacktestClosedTrades(run.run_id),
         fetchBacktestFills(run.run_id),
       ]);
-      if (revision !== selectionRevision)
+      if (revision !== selectionRevision || !isCurrent())
         return unavailable('Selection changed.');
       const timeframe = normalizeTimeframeCode(run.request.timeframe);
 
@@ -216,7 +217,7 @@ export const useBacktestOverlayStore = defineStore('backtestOverlay', () => {
 
       return selectability;
     } catch (err) {
-      if (revision !== selectionRevision)
+      if (revision !== selectionRevision || !isCurrent())
         return unavailable('Selection changed.');
       error.value =
         err instanceof Error ? err.message : 'Failed to select Backtest.';
