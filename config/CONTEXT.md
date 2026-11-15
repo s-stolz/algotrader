@@ -57,3 +57,15 @@ and optional service replacements own installed versions. Host and Docker
 installations use `scripts/python_environment.py`; see the
 [installation workflow](../README.md#shared-constraints-and-service-packages).
 Services use separate Python 3.12–3.15 environments (containers use 3.15.2) because several own an `app` package.
+
+## Packaged installations
+
+The release controller uses the same topology and generator inside its image.
+It keeps inputs in the per-user configuration directory and renders the four env
+files there. Broker account/environment are shared only with services that validate
+Market source binding; application credentials and tokens stay broker-only. OAuth
+bootstrap expiry timestamps are preserved when supplied.
+
+Ingestion exposes its history-request API on the configured internal port (8000
+by default); development publishes 8060, while release access uses the frontend
+proxy. The release frontend serves `/ws` and API paths on one loopback port.

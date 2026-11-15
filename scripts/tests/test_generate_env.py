@@ -24,6 +24,23 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
 
         self.assertEqual(list(actual), expected)
 
+    def test_broker_binding_and_actual_expiry_reach_only_their_consumers(self) -> None:
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        shared, database, runtime, broker = generate_env.build_env(
+            topology,
+            {
+                "ACCOUNT_ID": "123",
+                "CTRADER_HOST_TYPE": "demo",
+                "CTRADER_SECRET": "private",
+                "CTRADER_ACCESS_TOKEN_ISSUED_AT": "1700000000",
+                "CTRADER_ACCESS_TOKEN_EXPIRES_AT": "1700003600",
+            },
+        )
+        self.assertEqual(runtime, {"ACCOUNT_ID": "123", "CTRADER_HOST_TYPE": "demo"})
+        self.assertEqual(broker["CTRADER_ACCESS_TOKEN_EXPIRES_AT"], "1700003600")
+        self.assertNotIn("CTRADER_SECRET", shared | database | runtime)
+        self.assertEqual(shared["VITE_PROXY_INGESTION_TARGET"], "http://ingestion-service:8000")
+
     def test_component_tuning_changes_only_its_runtime_variables(self) -> None:
         cases = (
             (

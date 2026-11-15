@@ -1,0 +1,36 @@
+"""Release topology boundaries independent of local developer configuration."""
+
+import unittest
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class ReleaseComposeTests(unittest.TestCase):
+    def test_only_the_frontend_is_exposed_on_loopback(self):
+        services = yaml.safe_load((ROOT / "release/compose.yaml").read_text())["services"]
+        for name, service in services.items():
+            self.assertNotIn("build", service)
+            self.assertNotIn("container_name", service)
+            self.assertEqual(service["restart"], "unless-stopped")
+            self.assertNotIn("/var/run/docker.sock", str(service))
+            if name == "frontend":
+                self.assertEqual(service["ports"], ["127.0.0.1:${ALGOTRADER_UI_PORT:-8088}:8080"])
+            else:
+                self.assertNotIn("ports", service)
+            for env_file in service.get("env_file", []):
+                self.assertEqual(env_file["format"], "raw")
+
+    def test_persistent_state_is_independent_of_release_files(self):
+        compose = yaml.safe_load((ROOT / "release/compose.yaml").read_text())
+        self.assertEqual(set(compose["volumes"]), {"timescaledb_data", "redis_data"})
+        self.assertEqual(
+            compose["services"]["timescaledb"]["volumes"], ["timescaledb_data:/var/lib/postgresql"]
+        )
+        self.assertEqual(compose["services"]["redis"]["volumes"], ["redis_data:/data"])
+
+
+if __name__ == "__main__":
+    unittest.main()

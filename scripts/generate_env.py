@@ -257,6 +257,12 @@ def build_env(
         topology, "services.realtime_service.consumer.batch_size"
     )
 
+    ingestion_host = required(topology, "services.ingestion_service.network.host")
+    ingestion_port = required(topology, "services.ingestion_service.network.port")
+    ingestion_published_port = required(
+        topology, "services.ingestion_service.network.published_port"
+    )
+
     ingestion_log_level = required(topology, "services.ingestion_service.logging.level")
     ingestion_log_format = required(topology, "services.ingestion_service.logging.format")
     ingestion_batch_size = required(topology, "services.ingestion_service.consumer.batch_size")
@@ -299,6 +305,7 @@ def build_env(
     shared_env = {
         "MODE": stringify(mode),
         "PUBLIC_HOST": stringify(public_host),
+        "DATABASE_ACCESSOR_API_BASE_URL": f"http://{db_api_host}:{db_api_port}",
         "DATABASE_ACCESSOR_HOST": stringify(db_api_host),
         "DATABASE_ACCESSOR_PORT": stringify(db_api_port),
         "DATABASE_ACCESSOR_PUBLISHED_PORT": stringify(db_api_published_port),
@@ -350,6 +357,11 @@ def build_env(
         "POSTGRES_DB": stringify(timescaledb_db),
         "VITE_PROXY_DATA_ACCESSOR_TARGET": f"http://{db_api_host}:{db_api_port}",
         "VITE_PROXY_BACKTESTER_TARGET": f"http://{backtester_host}:{backtester_port}",
+        "VITE_PROXY_BROKER_TARGET": f"http://{broker_host}:{broker_port}",
+        "VITE_PROXY_INGESTION_TARGET": f"http://{ingestion_host}:{ingestion_port}",
+        "INGESTION_API_HOST": stringify(ingestion_host),
+        "INGESTION_API_PORT": stringify(ingestion_port),
+        "INGESTION_API_PUBLISHED_PORT": stringify(ingestion_published_port),
         "VITE_PROXY_INDICATOR_TARGET": f"http://{indicator_host}:{indicator_port}",
         "VITE_WS_URL": f"ws://{public_host}:{realtime_service_ws_published_port}",
         **history_env,
@@ -380,6 +392,7 @@ def build_env(
     db_secrets_env: dict[str, str] = {}
     runtime_secrets_env = {
         "ACCOUNT_ID": secrets.get("ACCOUNT_ID", ""),
+        "CTRADER_HOST_TYPE": secrets.get("CTRADER_HOST_TYPE", ""),
     }
     broker_secrets_env = {
         "CTRADER_CLIENT_ID": secrets.get("CTRADER_CLIENT_ID", ""),
@@ -388,6 +401,10 @@ def build_env(
         "CTRADER_REFRESH_TOKEN": secrets.get("CTRADER_REFRESH_TOKEN", ""),
         "CTRADER_HOST_TYPE": secrets.get("CTRADER_HOST_TYPE", ""),
     }
+
+    for key in ("CTRADER_ACCESS_TOKEN_ISSUED_AT", "CTRADER_ACCESS_TOKEN_EXPIRES_AT"):
+        if secrets.get(key):
+            broker_secrets_env[key] = secrets[key]
 
     timescaledb_password = secrets.get("TIMESCALEDB_PASSWORD", "")
     db_secrets_env["TIMESCALEDB_PASSWORD"] = timescaledb_password

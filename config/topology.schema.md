@@ -23,7 +23,7 @@ existing generated environment variables; YAML nesting does not change their nam
 | `services.backtester.api` | `network`, `resources` |
 | `services.backtester.worker` | `resources`, `heartbeat` |
 | `services.broker_service` | `network`, `logging`, `resources`, `streams`, `ctrader` |
-| `services.ingestion_service` | `logging`, `resources`, `consumer`, `history` |
+| `services.ingestion_service` | `network`, `logging`, `resources`, `consumer`, `history` |
 | `services.realtime_service` | `network`, `logging`, `resources`, `consumer` |
 | `services.frontend` | `network`, `resources` |
 | `infrastructure.redis` | `network`, `resources`, `database` |

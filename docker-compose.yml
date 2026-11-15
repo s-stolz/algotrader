@@ -16,6 +16,7 @@ services:
     env_file:
       - ./config/.env.shared
       - ./config/.env.secrets.db
+      - ./config/.env.secrets.runtime
     command: [
       "uvicorn",
       "main:app",
@@ -101,6 +102,7 @@ services:
         condition: service_healthy
     env_file:
       - ./config/.env.shared
+      - ./config/.env.secrets.runtime
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${INDICATOR_API_PORT:-8010}/health"]
@@ -156,6 +158,7 @@ services:
     env_file:
       - ./config/.env.shared
       - ./config/.env.secrets.broker
+      - ./config/.env.secrets.runtime
     command: [
       "uvicorn",
       "app.main:app",
@@ -175,6 +178,8 @@ services:
 
   ingestion-service:
     container_name: ingestion-service
+    ports:
+      - "${INGESTION_API_PUBLISHED_PORT:-8060}:${INGESTION_API_PORT:-8000}"
     cpus: ${COMPOSE_INGESTION_SERVICE_CPUS:?Run make config}
     mem_reservation: ${COMPOSE_INGESTION_SERVICE_MEMORY_RESERVATION:?Run make config}
     build:

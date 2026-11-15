@@ -1,0 +1,272 @@
+# Generated release template; images are pinned by release.json.
+services:
+  database-accessor-api:
+    cpus: ${COMPOSE_DATABASE_ACCESSOR_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_DATABASE_ACCESSOR_API_MEMORY_RESERVATION:?Run make
+      config}
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    env_file:
+    - path: /config/.env.shared
+      format: raw
+    - path: /config/.env.secrets.db
+      format: raw
+    - path: /config/.env.secrets.runtime
+      format: raw
+    command:
+    - uvicorn
+    - main:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - ${DATABASE_ACCESSOR_PORT:-8000}
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:${DATABASE_ACCESSOR_PORT:-8000}/health
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    image: ${IMAGE_DATABASE_ACCESSOR_API:?Use the release launcher}
+    stop_grace_period: 60s
+  backtester-api:
+    cpus: ${COMPOSE_BACKTESTER_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BACKTESTER_API_MEMORY_RESERVATION:?Run make config}
+    image: ${IMAGE_BACKTESTER:?Use the release launcher}
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+    env_file:
+    - path: /config/.env.shared
+      format: raw
+    command:
+    - python
+    - main.py
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import os, urllib.request; urllib.request.urlopen(f"http://localhost:{os.getenv('BACKTESTER_API_PORT',
+        '8020')}/health")
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 60s
+  backtester-worker:
+    hostname: backtester-worker
+    cpus: ${COMPOSE_BACKTESTER_WORKER_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BACKTESTER_WORKER_MEMORY_RESERVATION:?Run make config}
+    image: ${IMAGE_BACKTESTER:?Use the release launcher}
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+    env_file:
+    - path: /config/.env.shared
+      format: raw
+    command:
+    - python
+    - worker.py
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+  indicator-api:
+    cpus: ${COMPOSE_INDICATOR_API_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_INDICATOR_API_MEMORY_RESERVATION:?Run make config}
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+    env_file:
+    - path: /config/.env.shared
+      format: raw
+    - path: /config/.env.secrets.runtime
+      format: raw
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:${INDICATOR_API_PORT:-8010}/health
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    image: ${IMAGE_INDICATOR_API:?Use the release launcher}
+    stop_grace_period: 60s
+  timescaledb:
+    cpus: ${COMPOSE_TIMESCALEDB_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_TIMESCALEDB_MEMORY_RESERVATION:?Run make config}
+    image: ${IMAGE_TIMESCALEDB:?Use the release launcher}
+    env_file:
+    - path: /config/.env.shared
+      format: raw
+    - path: /config/.env.secrets.db
+      format: raw
+    command:
+    - postgres
+    - -c
+    - max_locks_per_transaction=128
+    - -c
+    - log_min_messages=warning
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U $$POSTGRES_USER
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 60s
+    volumes:
+    - timescaledb_data:/var/lib/postgresql
+  broker-service:
+    cpus: ${COMPOSE_BROKER_SERVICE_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_BROKER_SERVICE_MEMORY_RESERVATION:?Run make config}
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+    - path: /config/.env.shared
+      format: raw
+    - path: /config/.env.secrets.broker
+      format: raw
+    - path: /config/.env.secrets.runtime
+      format: raw
+    command:
+    - uvicorn
+    - app.main:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - ${BROKER_SERVICE_PORT:-8050}
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:${BROKER_SERVICE_PORT:-8050}/health
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    image: ${IMAGE_BROKER_SERVICE:?Use the release launcher}
+    stop_grace_period: 60s
+  ingestion-service:
+    cpus: ${COMPOSE_INGESTION_SERVICE_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_INGESTION_SERVICE_MEMORY_RESERVATION:?Run make config}
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      broker-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+    - path: /config/.env.shared
+      format: raw
+    - path: /config/.env.secrets.runtime
+      format: raw
+    restart: unless-stopped
+    image: ${IMAGE_INGESTION_SERVICE:?Use the release launcher}
+    stop_grace_period: 60s
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen("http://localhost:8000/health")
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+  realtime-service:
+    cpus: ${COMPOSE_REALTIME_SERVICE_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_REALTIME_SERVICE_MEMORY_RESERVATION:?Run make config}
+    depends_on:
+      redis:
+        condition: service_healthy
+      broker-service:
+        condition: service_healthy
+    env_file:
+    - path: /config/.env.shared
+      format: raw
+    - path: /config/.env.secrets.runtime
+      format: raw
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:${REALTIME_SERVICE_HEALTH_PORT:-8080}/health
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    image: ${IMAGE_REALTIME_SERVICE:?Use the release launcher}
+    stop_grace_period: 60s
+  frontend:
+    cpus: ${COMPOSE_FRONTEND_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_FRONTEND_MEMORY_RESERVATION:?Run make config}
+    depends_on:
+      database-accessor-api:
+        condition: service_healthy
+      backtester-api:
+        condition: service_healthy
+      indicator-api:
+        condition: service_healthy
+      broker-service:
+        condition: service_healthy
+      realtime-service:
+        condition: service_healthy
+      ingestion-service:
+        condition: service_healthy
+    image: ${IMAGE_FRONTEND:?Use the release launcher}
+    restart: unless-stopped
+    stop_grace_period: 60s
+    ports:
+    - 127.0.0.1:${ALGOTRADER_UI_PORT:-8088}:8080
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --quiet
+      - --spider
+      - http://127.0.0.1:8080/health
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  redis:
+    cpus: ${COMPOSE_REDIS_CPUS:?Run make config}
+    mem_reservation: ${COMPOSE_REDIS_MEMORY_RESERVATION:?Run make config}
+    image: ${IMAGE_REDIS:?Use the release launcher}
+    command: redis-server --appendonly yes --loglevel warning
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    stop_grace_period: 60s
+    volumes:
+    - redis_data:/data
+volumes:
+  timescaledb_data: {}
+  redis_data: {}

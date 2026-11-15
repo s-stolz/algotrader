@@ -75,6 +75,10 @@ services:
       request_timeout_seconds: 20.0
 
   ingestion_service:
+    network:
+      host: ingestion-service
+      port: 8000
+      published_port: 8060
     history:
       lookback_days: 90
       start_date: null
