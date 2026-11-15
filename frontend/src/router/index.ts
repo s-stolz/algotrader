@@ -5,7 +5,7 @@ import {
 } from 'vue-router';
 
 import ChartView from '@/views/ChartView.vue';
-import BacktestWorkspaceView from '@/views/BacktestWorkspaceView.vue';
+const BacktestWorkspaceView = () => import('@/views/BacktestWorkspaceView.vue');
 
 const routes: RouteRecordRaw[] = [
   { path: '/', component: ChartView },

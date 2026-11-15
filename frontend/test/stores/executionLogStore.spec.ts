@@ -14,7 +14,7 @@ beforeEach(() => {
 
 describe('execution log selection and paging', () => {
   it(
-    'starts hidden, strips diagnostics, preloads one page, ' +
+    'starts hidden, strips diagnostics, defers the first page, ' +
       'and reads each requested page',
     async () => {
       const store = useExecutionLogStore();
@@ -30,7 +30,15 @@ describe('execution log selection and paging', () => {
       await flushPromises();
       expect(store.isOpen).toBe(false);
       expect(store.selectedRun).not.toHaveProperty('diagnostics');
+      expect(fetchExecutionLog).not.toHaveBeenCalled();
+      expect(store.items).toEqual([]);
+      store.isOpen = true;
+      await flushPromises();
       expect(store.items).toHaveLength(10);
+      store.isOpen = false;
+      store.isOpen = true;
+      await flushPromises();
+      expect(fetchExecutionLog).toHaveBeenCalledOnce();
       store.setPage(3);
       await flushPromises();
       expect(fetchExecutionLog).toHaveBeenLastCalledWith(
@@ -56,6 +64,24 @@ describe('execution log selection and paging', () => {
       expect(fetchExecutionLog).toHaveBeenCalledTimes(3);
     },
   );
+  it('discards a pending read when selecting another run with the panel closed', async () => {
+    const pending = deferred<ExecutionLogPage>();
+    vi.mocked(fetchExecutionLog).mockReturnValueOnce(pending.promise);
+    const store = useExecutionLogStore();
+    store.selectRun(backtestRun());
+    const signal = vi.mocked(fetchExecutionLog).mock.calls[0][3]!;
+    store.selectRun(backtestRun({ run_id: 'new' }), false);
+    pending.resolve(logPage());
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    expect(store.items).toEqual([]);
+    expect(store.loading).toBe(false);
+    expect(fetchExecutionLog).toHaveBeenCalledOnce();
+    vi.mocked(fetchExecutionLog).mockResolvedValueOnce(logPage('new'));
+    store.isOpen = true;
+    await flushPromises();
+    expect(store.items).toEqual(logPage('new').items);
+  });
   it.each(['resolve', 'reject'] as const)(
     'ignores an old run request that later %ss',
     async (outcome) => {

@@ -410,7 +410,6 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     }: IndicatorLiveSubscriptionInput,
   ): Promise<void> {
     if (
-      historicalMode.value ||
       !_id ||
       !symbol ||
       !timeframe ||
@@ -420,7 +419,7 @@ export const useIndicatorsStore = defineStore('indicators', () => {
       return;
 
     const market = findLiveMarket(symbol, exchange);
-    if (!market) return;
+    if (!market || historicalMode.value) return;
     const payload: IndicatorLiveSubscription = {
       market_id: market.symbol_id,
       symbol,

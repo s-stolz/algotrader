@@ -62,7 +62,12 @@ describe('docked execution workspace', () => {
         expect(wrapper.find('[role="separator"]').exists()).toBe(false);
         const split = wrapper.getComponent(NSplit);
         expect(split.props('size')).toBe(1);
-        store.selectRun(backtestRun());
+        store.selectRun(backtestRun(), false);
+        await flushPromises();
+        expect(wrapper.find('#execution-log-panel').exists()).toBe(false);
+        store.isOpen = true;
+        await flushPromises();
+        await vi.dynamicImportSettled();
         await flushPromises();
         const panel = wrapper.get('#execution-log-panel').element;
         expect(split.props('size')).toBe(0.48);

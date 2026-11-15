@@ -51,7 +51,9 @@
             ><span /></div
         ></template>
         <template #2
-          ><ExecutionLogPanel v-show="executionLog.consumesSpace"
+          ><ExecutionLogPanel
+            v-if="hasOpenedExecutionLog"
+            v-show="executionLog.consumesSpace"
         /></template>
       </n-split>
     </div>
@@ -59,15 +61,27 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, provide, ref } from 'vue';
-import BacktestActivity from '@/components/Backtest/activity/BacktestActivity.vue';
+import {
+  defineAsyncComponent,
+  defineComponent,
+  provide,
+  ref,
+  watch,
+} from 'vue';
 import { refreshBacktestActivityKey } from '@/components/Backtest/activity/activityContext';
 import { NSplit } from 'naive-ui';
 import { useExecutionLogStore } from '@/stores/executionLogStore';
-import ExecutionLogPanel from '@/components/Backtest/execution-log/ExecutionLogPanel.vue';
 import DesignScope from '@/components/Common/DesignScope.vue';
 import WorkspaceNavigation from '@/components/Workspace/WorkspaceNavigation.vue';
 import { wsService } from './utils/websocketService';
+
+const BacktestActivity = defineAsyncComponent(
+  () => import('@/components/Backtest/activity/BacktestActivity.vue'),
+);
+
+const ExecutionLogPanel = defineAsyncComponent(
+  () => import('@/components/Backtest/execution-log/ExecutionLogPanel.vue'),
+);
 
 export default defineComponent({
   name: 'App',
@@ -85,7 +99,16 @@ export default defineComponent({
     provide(refreshBacktestActivityKey, () => {
       void activity.value?.refresh();
     });
-    return { executionLog: useExecutionLogStore(), activity };
+    const executionLog = useExecutionLogStore();
+    const hasOpenedExecutionLog = ref(false);
+    watch(
+      () => executionLog.consumesSpace,
+      (visible) => {
+        if (visible) hasOpenedExecutionLog.value = true;
+      },
+      { immediate: true },
+    );
+    return { executionLog, activity, hasOpenedExecutionLog };
   },
 
   beforeUnmount() {

@@ -140,7 +140,8 @@ export default defineComponent({
       default: DEFAULT_CHART_INTERACTION_MODE,
     },
   },
-  setup(props, { expose }) {
+  emits: ['candles-loaded'],
+  setup(props, { expose, emit }) {
     const tradeNavigation = useTradeNavigationStore();
     const candlesticksStore = useCandlesticksStore();
     const indicatorsStore = useIndicatorsStore();
@@ -257,6 +258,7 @@ export default defineComponent({
           shouldScrollToRealTime: () => rendering.state.shouldScrollToRealTime,
           onCandlesLoaded: (key) => {
             loadedSession.value = sessionIdentity(key);
+            emit('candles-loaded');
           },
         }),
       ),

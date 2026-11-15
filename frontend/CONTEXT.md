@@ -139,7 +139,7 @@ Source binding, history requests, and delivery recovery follow the
   `src/views/BacktestCreationDrawer.vue`. Its feature-local `creation/` sections
   share `useBacktestCreation.ts`, which owns draft/selection retention, reuse revisions,
   preview generations/debounce cleanup, and submission identity. `src/App.vue`
-  keeps routed views alive:
+  loads the Backtest Workspace on first navigation and keeps routed views alive:
   navigation preserves drafts, history filters, and comparison selections.
 - Creation retains an optional experiment name alongside draft fields. Names
   are top-level creation properties; omit them from stateless preview.
@@ -274,6 +274,9 @@ unexecuted Orders. Normal workspace/member reads omit diagnostics. Opening a Run
 Chart still fetches full diagnostics and execution artifacts because chart indicators,
 pending-entry lines and execution overlays need them; it selects the log without opening it.
 The log selection is session-only and separate from persisted chart overlay selection.
+Fetch its first page only when the panel opens; preserve loaded pages across toggles.
+On chart startup, restore the persisted overlay after the first current-session
+Candle snapshot loads, so optional backtester reads follow chart history.
 The symbol menu edits specifications through stable IDs. Refresh selected Market
 metadata after edits and resolve Run selections by saved ID or current Market names.
 
