@@ -4,13 +4,13 @@ import {
   type RouteRecordRaw,
 } from 'vue-router';
 
-import ChartView from '@/views/ChartView.vue';
-const BacktestWorkspaceView = () => import('@/views/BacktestWorkspaceView.vue');
+import ChartWorkspaceRoute from '@/views/ChartWorkspaceRoute.vue';
+import BacktestWorkspaceRoute from '@/views/BacktestWorkspaceRoute.vue';
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', component: ChartView },
-  { path: '/backtests', component: BacktestWorkspaceView },
-  { path: '/backtests/:id', component: BacktestWorkspaceView },
+  { path: '/', component: ChartWorkspaceRoute },
+  { path: '/backtests', component: BacktestWorkspaceRoute },
+  { path: '/backtests/:id', component: BacktestWorkspaceRoute },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
 
