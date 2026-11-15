@@ -145,7 +145,9 @@ class Broker:
         self.entered = asyncio.Event()
         self.fail = False
 
-    async def stream_trendbars(self, symbol, *, timeframe, start_time, end_time):
+    async def stream_trendbars(
+        self, symbol, *, timeframe, start_time, end_time, expected_symbol_id=None
+    ):
         self.requests.append((start_time, end_time))
         self.entered.set()
         await self.gate.wait()

@@ -33,6 +33,7 @@ class BrokerClient:
         start_time: str | int | None = None,
         end_time: str | int | None = None,
         limit: int | None = None,
+        expected_symbol_id: int | None = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream historical trendbars from the broker-service.
 
@@ -63,6 +64,8 @@ class BrokerClient:
 
         if limit:
             params["limit"] = limit
+        if expected_symbol_id is not None:
+            params["expected_symbol_id"] = expected_symbol_id
 
         try:
             logger.debug(f"Streaming trendbars: {url} with params {params}")
@@ -114,6 +117,7 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str = "M1",
+        expected_symbol_id: int | None = None,
     ) -> Dict[str, Any]:
         """Start a live trendbar stream that publishes to Redis.
 
@@ -125,9 +129,9 @@ class BrokerClient:
             Stream status dictionary
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbar-stream/start"
-        params = {
-            "timeframe": timeframe,
-        }
+        params: dict[str, Any] = {"timeframe": timeframe}
+        if expected_symbol_id is not None:
+            params["expected_symbol_id"] = expected_symbol_id
 
         try:
             logger.info(f"Starting trendbar stream for {symbol} {timeframe}")
@@ -147,7 +151,9 @@ class BrokerClient:
             logger.error(f"Error starting trendbar stream: {e}")
             raise
 
-    async def stop_trendbar_stream(self, symbol: str, timeframe: str = "M1") -> Dict[str, Any]:
+    async def stop_trendbar_stream(
+        self, symbol: str, timeframe: str = "M1", expected_symbol_id: int | None = None
+    ) -> Dict[str, Any]:
         """Stop a live trendbar stream.
 
         Args:
@@ -158,7 +164,9 @@ class BrokerClient:
             Stream status dictionary
         """
         url = f"{self.base_url}/symbols/{symbol}/trendbar-stream/stop"
-        params = {"timeframe": timeframe}
+        params: dict[str, Any] = {"timeframe": timeframe}
+        if expected_symbol_id is not None:
+            params["expected_symbol_id"] = expected_symbol_id
 
         try:
             logger.info(f"Stopping trendbar stream for {symbol} {timeframe}")

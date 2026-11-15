@@ -33,6 +33,7 @@ class SymbolRuntimeState:
     continuity: str | None = None
     live_boundary_ms: int | None = None
     live_start_ms: int = 0
+    broker_symbol_id: int | None = None
     active: bool = True
     tasks: set[asyncio.Task] = field(default_factory=set)
 
@@ -181,6 +182,7 @@ class IngestionService:
                 exchange=market.get("exchange", ""),
                 stream_key=self.consumer.get_stream_key(market["symbol"], self.TIMEFRAME_CODE_M1),
                 live_start_ms=market["live_start_ms"],
+                broker_symbol_id=market["broker_symbol_id"],
             )
             self.runtime_states.append(state)
             self._state_by_id[state.symbol_id] = state
@@ -206,7 +208,9 @@ class IngestionService:
             self.runtime_states.remove(state)
             del self._state_by_id[state.symbol_id]
             try:
-                await self.broker_client.stop_trendbar_stream(state.symbol, timeframe="M1")
+                await self.broker_client.stop_trendbar_stream(
+                    state.symbol, timeframe="M1", expected_symbol_id=state.broker_symbol_id
+                )
             except Exception:
                 self.logger.exception("Could not stop removed Market %s", state.symbol_id)
         previous_ids = set(self._state_by_id)
@@ -284,6 +288,7 @@ class IngestionService:
                 )
             return
 
+        state = self._state_by_id[symbol_id]
         candles: List[Dict[str, Any]] = []
         seen: set[int] = set()
         async for candle in self.broker_client.stream_trendbars(
@@ -291,6 +296,7 @@ class IngestionService:
             timeframe=timeframe,
             start_time=from_ts,
             end_time=to_ts,
+            expected_symbol_id=state.broker_symbol_id,
         ):
             timestamp = int(candle["t"])
             if not from_ts <= timestamp <= to_ts or timestamp % 60000:
@@ -301,7 +307,6 @@ class IngestionService:
             candles.append(candle)
 
         if candles:
-            state = self._state_by_id[symbol_id]
             mapped = [self._format_candle_for_db(candle) for candle in candles]
             await self._write_candles_in_chunks(
                 state.symbol, state.exchange, mapped, historical_interval=(from_ts, to_ts)
@@ -545,7 +550,9 @@ class IngestionService:
                         )
                     async with self._stream_semaphore:
                         tail_id = await self._get_stream_tail_id(state.stream_key)
-                        await self.broker_client.start_trendbar_stream(state.symbol, timeframe="M1")
+                        await self.broker_client.start_trendbar_stream(
+                            state.symbol, timeframe="M1", expected_symbol_id=state.broker_symbol_id
+                        )
                     # Time is captured after subscription: history bridges the tail/setup interval.
                     async with self._boundary_semaphore:
                         await self._save_recovery(state, "startup", start)
@@ -670,7 +677,9 @@ class IngestionService:
                     async with self._boundary_semaphore:
                         await self._save_recovery(state, "broker-reconnect", None)
                     async with self._stream_semaphore:
-                        await self.broker_client.start_trendbar_stream(state.symbol, timeframe="M1")
+                        await self.broker_client.start_trendbar_stream(
+                            state.symbol, timeframe="M1", expected_symbol_id=state.broker_symbol_id
+                        )
                     # Include all closed minutes elapsed during subscription retries.
                     async with self._boundary_semaphore:
                         await self._save_recovery(state, "broker-reconnect", None)

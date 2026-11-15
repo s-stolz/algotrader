@@ -35,6 +35,9 @@ class IngestionHistoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_download_does_not_report_or_store_partial_success(self):
         service = IngestionService.__new__(IngestionService)
         service.logger = logging.getLogger("test-history")
+        service._state_by_id = {
+            1: SymbolRuntimeState(1, "EURUSD", "FX", "unused", broker_symbol_id=11)
+        }
         service.broker_client = Mock()
         service.db_client = Mock()
 
@@ -70,6 +73,9 @@ class IngestionHistoryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_broker_candle_prevents_historical_writes(self):
         service = IngestionService.__new__(IngestionService)
+        service._state_by_id = {
+            1: SymbolRuntimeState(1, "EURUSD", "FX", "unused", broker_symbol_id=11)
+        }
         service.logger = logging.getLogger("test-history")
         service.db_client = Mock()
         service.broker_client = Mock()

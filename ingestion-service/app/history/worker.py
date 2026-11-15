@@ -119,7 +119,11 @@ class HistoryWorker:
         candles: dict[int, dict[str, Any]] = {}
         async with self.capacity:
             async for raw in self.broker.stream_trendbars(
-                source["symbol"], timeframe="M1", start_time=start, end_time=end - 1
+                source["symbol"],
+                timeframe="M1",
+                start_time=start,
+                end_time=end - 1,
+                expected_symbol_id=source["broker_symbol_id"],
             ):
                 timestamp = int(raw["t"])
                 if not start <= timestamp < end or timestamp % MINUTE_MS:

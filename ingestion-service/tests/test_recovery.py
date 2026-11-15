@@ -193,11 +193,14 @@ class Broker:
         self.fail = set()
         self.empty = set()
         self.on_start = lambda: None
+        self.expected_ids = []
 
     async def start_trendbar_stream(self, symbol, **kwargs):
+        self.expected_ids.append(kwargs.get("expected_symbol_id"))
         self.on_start()
 
     async def stream_trendbars(self, symbol, start_time, end_time, **kwargs):
+        self.expected_ids.append(kwargs.get("expected_symbol_id"))
         self.requests.append((symbol, start_time, end_time))
         await self.allow_history.wait()
         if symbol in self.fail:
@@ -262,6 +265,8 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
         service, _ = await self.start(storage, broker, now=lambda: BOUNDARY + 120000)
         await eventually(lambda: bool(broker.requests) and not storage.pending)
         self.assertEqual(subscriptions, {"BTC"})
+        self.assertTrue(broker.expected_ids)
+        self.assertEqual(set(broker.expected_ids), {1})
         subscriptions.clear()
         await service._run_recovery()
         await eventually(lambda: not storage.pending)

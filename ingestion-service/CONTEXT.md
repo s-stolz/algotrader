@@ -19,6 +19,9 @@ Candles through database-accessor-api. Shared payloads are in
   global history lookback. Empty-market restarts retain that activation boundary;
   populated Markets recover from their latest Candle, bounded by activation.
   Existing pending recovery and live guards remain authoritative before either.
+- Every broker acquisition carries the stored `broker_symbol_id` as
+  `expected_symbol_id`. A remapped broker name must fail before fetching or
+  subscribing; removal releases the original bound subscription ID.
 - `app/broker_client.py` adapts historical trendbars and stream control;
   `app/db_client.py` wraps the shared accessor client. Keep broker and storage
   query parameter conventions at these boundaries.
