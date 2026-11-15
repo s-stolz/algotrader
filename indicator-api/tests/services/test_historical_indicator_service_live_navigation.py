@@ -9,7 +9,7 @@ import pandas as pd
 from app.schemas_live import LiveIndicatorStreamRequest
 from app.services.candle_cache import CandleCache
 from app.services.historical_indicator_service import run_historical_indicator
-from app.services.live_indicator_manager import LiveIndicatorManager
+from app.services.live_indicator_manager import LiveIndicatorManager, LiveStreamSpec
 
 
 def candles(times, close):
@@ -117,3 +117,36 @@ class LiveHistoryNavigationTests(unittest.IsolatedAsyncioTestCase):
         tail = cache.get_tail(exchange=None, symbol="TEST", timeframe="M1", bars=2)
         assert tail is not None
         self.assertEqual(tail["close"].tolist(), [100.0, 100.0])
+
+    async def test_current_chart_reuses_warmup_for_sma_5_and_20(self):
+        cache = CandleCache()
+        manager = LiveIndicatorManager(cache)
+        current = candles([i * 60000 for i in range(500)], 100.0)
+        with (
+            patch("app.services.candle_cache.time.time", return_value=30_010.0),
+            patch(
+                "app.services.historical_indicator_service.get_candles",
+                new=AsyncMock(return_value=current),
+            ),
+            patch(
+                "app.services.live_indicator_manager.get_candles",
+                new=AsyncMock(return_value=current),
+            ) as reads,
+        ):
+            for window in (5, 20):
+                await run_historical_indicator(
+                    indicator_id=1,
+                    symbol="BTCUSD",
+                    exchange=None,
+                    timeframe="M1",
+                    start_ms=None,
+                    end_ms=30_000_000,
+                    limit=500,
+                    custom_parameters={"window": window},
+                    candle_cache=cache,
+                )
+                count, source = await manager._seed_warmup(
+                    LiveStreamSpec("123", "BTCUSD", "M1", 1, None, {"window": window}), Mock()
+                )
+                self.assertEqual((count, source), (window, "cache"))
+            reads.assert_not_awaited()

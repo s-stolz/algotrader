@@ -6,6 +6,7 @@ import inspect
 import json
 import math
 import os
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -315,6 +316,7 @@ class LiveIndicatorManager:
         source = "cache"
 
         if warmup_df is None or warmup_df.empty or len(warmup_df) < warmup:
+            read_started_at = time.time()
             warmup_df = await get_candles(
                 symbol=spec.symbol,
                 timeframe=spec.timeframe,
@@ -324,6 +326,14 @@ class LiveIndicatorManager:
                 exchange=spec.exchange,
             )
             source = "database"
+            self.candle_cache.put_current(
+                exchange=spec.exchange,
+                symbol=spec.symbol,
+                timeframe=spec.timeframe,
+                candles=warmup_df,
+                end_ms=None,
+                read_started_at=read_started_at,
+            )
 
         if warmup_df is None or warmup_df.empty:
             return 0, "none"

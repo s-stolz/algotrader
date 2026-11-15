@@ -4,6 +4,7 @@ import time
 from collections import OrderedDict
 
 import pandas as pd
+from db_accessor_client import timeframe_to_minutes
 
 
 class CandleCache:
@@ -24,6 +25,7 @@ class CandleCache:
         symbol: str,
         timeframe: str,
         candles: pd.DataFrame,
+        valid_until: float | None = None,
     ) -> None:
         if candles is None or candles.empty:
             return
@@ -31,11 +33,48 @@ class CandleCache:
         self._evict_expired()
         key = self._cache_key(exchange=exchange, symbol=symbol, timeframe=timeframe)
         self._store.pop(key, None)
-        self._store[key] = (time.time() + self.ttl_seconds, candles.copy())
+        expires_at = time.time() + self.ttl_seconds
+        if valid_until is not None:
+            expires_at = min(expires_at, valid_until)
+        self._store[key] = (expires_at, candles.copy())
         self._store.move_to_end(key)
 
         while len(self._store) > self.max_entries:
             self._store.popitem(last=False)
+
+    def put_current(
+        self,
+        *,
+        exchange: str | None,
+        symbol: str,
+        timeframe: str,
+        candles: pd.DataFrame,
+        end_ms: int | None,
+        read_started_at: float,
+    ) -> None:
+        if candles is None or candles.empty:
+            return
+        # Storage can advance at every M1 close, including within larger bars.
+        valid_until = (read_started_at // 60 + 1) * 60
+        if time.time() >= valid_until:
+            return
+        if end_ms is not None:
+            minutes = timeframe_to_minutes(timeframe)
+            # Calendar-sized buckets need authoritative latest reads instead.
+            if minutes > 1440 or 1440 % minutes:
+                return
+            period_ms = minutes * 60_000
+            bucket_ms = int(read_started_at * 1000) // period_ms * period_ms
+            last_ms = int(pd.Timestamp(candles.index[-1]).value // 1_000_000)
+            if end_ms < bucket_ms or not bucket_ms - period_ms <= last_ms <= bucket_ms:
+                return
+        self.put(
+            exchange=exchange,
+            symbol=symbol,
+            timeframe=timeframe,
+            candles=candles,
+            valid_until=valid_until,
+        )
 
     def get_tail(
         self,

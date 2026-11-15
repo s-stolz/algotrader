@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import pandas as pd
@@ -72,6 +73,7 @@ async def _fetch_single_asset_candles(
     exchange: Optional[str],
     candle_cache: CandleCache,
 ) -> pd.DataFrame:
+    read_started_at = time.time()
     candles = await get_candles(
         symbol=symbol,
         timeframe=timeframe_code,
@@ -80,14 +82,14 @@ async def _fetch_single_asset_candles(
         limit=fetch_limit,
         exchange=exchange,
     )
-    # Bounded chart history cannot establish the current live warmup window.
-    if end_ms is None:
-        candle_cache.put(
-            exchange=exchange,
-            symbol=symbol,
-            timeframe=timeframe_code,
-            candles=candles,
-        )
+    candle_cache.put_current(
+        exchange=exchange,
+        symbol=symbol,
+        timeframe=timeframe_code,
+        candles=candles,
+        end_ms=end_ms,
+        read_started_at=read_started_at,
+    )
     return candles
 
 
