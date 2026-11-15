@@ -261,9 +261,7 @@ class ProcessRecoveryTests(unittest.TestCase):
             str(
                 RESUMED + 30000
                 if handoff_phase
-                else BOUNDARY + 120000
-                if phase == "sessions" or runtime_phase
-                else NOW
+                else BOUNDARY + 120000 if phase == "sessions" or runtime_phase else NOW
             )
         )
         clock.close()
