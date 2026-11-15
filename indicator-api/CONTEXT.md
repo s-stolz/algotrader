@@ -18,7 +18,9 @@ parameters, response formatting, and live-stream lifecycle.
   retain their existing warmup path.
 - `app/services/live_indicator_manager.py` owns live specs, Redis input, warmup
   seeding, update-engine calls, and Redis output. `app/services/candle_cache.py`
-  supplies recent warmup data.
+  supplies recent warmup data. Only history reads without an upper time bound
+  may populate that cache; bounded chart pages must not replace the current
+  warmup window with prices from the past. A cache miss loads current candles.
 - These paths adapt Candles differently. Changes to shape, warmup, or field order
   must check both; common formatting helpers live in `app/utils.py`.
 - Live output uses the Indicator stream name in [root context](../CONTEXT.md),
