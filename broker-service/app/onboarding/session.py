@@ -62,12 +62,12 @@ def _prompt_account(
             if choice in ("", "y", "yes"):
                 return candidates[0]
             if choice in ("n", "no"):
-                raise ValueError("Account selection cancelled. Run setup again when ready.")
+                raise ValueError("Account selection cancelled.")
             announce("Enter Y to connect or N to cancel.")
         else:
             choice = read(f"Select an account [1-{len(candidates)}], or q to cancel: ").strip()
             if choice.lower() == "q":
-                raise ValueError("Account selection cancelled. Run setup again when ready.")
+                raise ValueError("Account selection cancelled.")
             choices = {str(number): account for number, account in enumerate(candidates, start=1)}
             if choice in choices:
                 return choices[choice]

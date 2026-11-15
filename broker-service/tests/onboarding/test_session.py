@@ -105,6 +105,17 @@ class OnboardingSessionTests(unittest.IsolatedAsyncioTestCase):
         announce.assert_called_once()
         self.assertIn("login 42", announce.call_args.args[0])
 
+    def test_reconnect_cancellation_does_not_direct_user_to_initial_setup(self) -> None:
+        with self.assertRaises(ValueError) as error:
+            select_account(
+                [Account(account_id=12), Account(account_id=42)],
+                "demo",
+                expected_account_id="42",
+                read=Mock(return_value="n"),
+                announce=Mock(),
+            )
+        self.assertEqual(str(error.exception), "Account selection cancelled.")
+
     def test_missing_account_fails_before_prompting(self) -> None:
         for accounts, expected in (
             ([], None),
