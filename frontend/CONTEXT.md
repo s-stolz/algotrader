@@ -36,7 +36,8 @@ and behavior that is easy to break when changing them.
   indicator messages, and reconnect recovery stays off until the window reaches
   the present. `chartSession.ts` owns cancellation; `trade-navigation/latestChart.ts`
   clears the historical window and reuses the normal latest-500 snapshot and live
-  workflow for return-to-live.
+  workflow for return-to-live only when the present is not loaded. Already-live
+  windows retain data and zoom; the action only scrolls if the latest bar is offscreen.
 - Historical paging uses Lightweight Charts' `shiftVisibleRangeOnNewBar: false`.
   Version 5.3.0 fixes base-index compensation during dragging; rely on that behavior
   rather than restoring the viewport after each page or intercepting gestures.

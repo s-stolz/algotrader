@@ -265,9 +265,9 @@ export default defineComponent({
     );
     const latestChart = createLatestChart({
       session,
+      infrastructure,
       navigation: tradeNavigation,
       key: currentChartSessionKey,
-      receive: rendering.updateCurrentCandle,
       sync: syncChartSession,
       rendering,
       candles: candlesticksStore,
