@@ -1,12 +1,16 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTradeHistoryAdapter } from '@/components/Chart/trade-navigation/tradeHistoryAdapter';
 import { useCandlesticksStore } from '@/stores/candlesticksStore';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
 import type { ChartInfrastructure } from '@/utils/chart';
 import { chartCandle, candleUpdate } from '../chartSession.fixtures';
 
-beforeEach(() => setActivePinia(createPinia()));
+beforeEach(() => {
+  setActivePinia(createPinia());
+  vi.useFakeTimers();
+});
+afterEach(() => vi.useRealTimers());
 describe('trade viewport and history', () => {
   it.each([120, 5])(
     'preserves a %s-bar zoom and respects later panning',
@@ -42,6 +46,7 @@ describe('trade viewport and history', () => {
         from: width < 11 ? 11 - width : 0,
         to: width < 11 ? 11 : width,
       });
+      vi.advanceTimersByTime(20);
       scale.getVisibleLogicalRange.mockReturnValue({ from: 3, to: 63 });
       adapter.append([chartCandle(3_300_000)], null);
       expect(scale.setVisibleLogicalRange).toHaveBeenLastCalledWith({

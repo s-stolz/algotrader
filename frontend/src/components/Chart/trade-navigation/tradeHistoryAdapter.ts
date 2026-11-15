@@ -24,9 +24,22 @@ export function createTradeHistoryAdapter(
   const { candles, indicators, infrastructure } = options;
   const timeScale = () => infrastructure.chartManager.chart?.timeScale();
   let width = 50;
+  let pendingRange: { from: number; to: number } | null = null;
+  let rangeFrame: number | null = null;
+  function restoreRange(range: { from: number; to: number }) {
+    // The chart applies ranges on its next frame. Fast batches must preserve
+    // that pending destination instead of reading the previous viewport.
+    pendingRange = range;
+    timeScale()?.setVisibleLogicalRange(range);
+    if (rangeFrame !== null) cancelAnimationFrame(rangeFrame);
+    rangeFrame = requestAnimationFrame(() => {
+      pendingRange = null;
+      rangeFrame = null;
+    });
+  }
   function append(incoming: readonly ChartCandle[], targetMs: number | null) {
     const scale = timeScale();
-    const range = scale?.getVisibleLogicalRange();
+    const range = pendingRange ?? scale?.getVisibleLogicalRange();
     candles.replace([...candles.data, ...incoming]);
     options.render(candles.data);
     if (targetMs !== null) {
@@ -35,12 +48,12 @@ export function createTradeHistoryAdapter(
         index -= 1;
       const margin = Math.min(10, Math.max(0, width - 1));
       const from = Math.max(0, index - margin);
-      scale?.setVisibleLogicalRange({ from, to: from + width });
-    } else if (range) scale?.setVisibleLogicalRange(range);
+      restoreRange({ from, to: from + width });
+    } else if (range) restoreRange(range);
   }
   return {
     prepare() {
-      const range = timeScale()?.getVisibleLogicalRange();
+      const range = pendingRange ?? timeScale()?.getVisibleLogicalRange();
       if (range) width = range.to - range.from;
       options.reset();
       indicators.forwardHistory.begin();
@@ -84,7 +97,7 @@ export function createTradeHistoryAdapter(
     extendIndicators: (key, batch, signal) =>
       extendIndicatorHistory(indicators, key, batch, signal),
     finish(live) {
-      const range = timeScale()?.getVisibleLogicalRange();
+      const range = pendingRange ?? timeScale()?.getVisibleLogicalRange();
       const merged = new Map(
         candles.data.map((candle) => [candle.timestamp_ms, candle]),
       );
@@ -95,7 +108,7 @@ export function createTradeHistoryAdapter(
       );
       options.render(candles.data);
       indicators.forwardHistory.finish(indicators);
-      if (range) timeScale()?.setVisibleLogicalRange(range);
+      if (range) restoreRange(range);
     },
     cancel: (hold) => indicators.forwardHistory.discard(hold),
     loading: options.loading,
