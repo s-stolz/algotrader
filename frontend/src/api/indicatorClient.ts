@@ -30,6 +30,7 @@ export async function requestIndicator(
   indicatorId: number,
   query: IndicatorQuery,
   body: IndicatorRequestBody = {},
+  signal?: AbortSignal,
 ): Promise<IndicatorResponse> {
   const payload = await parseJsonResponse(
     await fetch(
@@ -45,6 +46,7 @@ export async function requestIndicator(
         },
       ),
       {
+        signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

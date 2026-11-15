@@ -18,6 +18,7 @@ export async function fetchCandles(
   symbol: string,
   timeframe: string,
   options: CandleFetchOptions = {},
+  signal?: AbortSignal,
 ): Promise<ChartCandle[]> {
   const payload = await parseJsonResponse(
     await fetch(
@@ -28,6 +29,7 @@ export async function fetchCandles(
         limit: options.limit,
         exchange: options.exchange,
       }),
+      { signal },
     ),
     'Failed to fetch candles',
   );
