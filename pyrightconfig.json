@@ -7,7 +7,9 @@
     "libs/db_accessor_client",
     "libs/indicator_engine",
     "scripts/python_environment.py",
-    "release/installer"
+    "release/installer",
+    "release/build_bundle.py",
+    "release/smoke.py"
   ],
   "exclude": [
     "backtester",
