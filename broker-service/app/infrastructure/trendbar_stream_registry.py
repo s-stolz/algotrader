@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass, field, replace
 from typing import Awaitable, Callable, Dict, Tuple
 
+from app.domain.instrument_binding import verify_instrument_binding
 from app.domain.models import Trendbar
 from app.domain.value_objects import (
     AccountId,
@@ -23,7 +24,7 @@ TrendbarHandler = Callable[[Trendbar], Awaitable[None]]
 TrendbarPublisher = Callable[[AccountId, str, Timeframe, Trendbar], Awaitable[None]]
 
 TrendbarSubscribeFn = Callable[
-    [int, str, Timeframe, TrendbarHandler],
+    [int, str, Timeframe, TrendbarHandler, int | None],
     Awaitable[TrendbarSubscription],
 ]
 TrendbarUnsubscribeFn = Callable[[TrendbarSubscription], Awaitable[None]]
@@ -67,12 +68,14 @@ class TrendbarStreamRegistry:
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
+        expected_symbol_id: int | None = None,
     ) -> TrendbarStreamStatus:
         normalized_symbol = symbol.upper()
         key = (int(account_id), normalized_symbol, timeframe.value)
         async with self._lock:
             existing = self._streams.get(key)
             if existing is not None:
+                verify_instrument_binding(expected_symbol_id, existing.subscription.symbol_id)
                 return self._to_status(existing)
 
             if len(self._streams) >= self._settings.broker_max_trendbar_streams:
@@ -138,6 +141,7 @@ class TrendbarStreamRegistry:
                     normalized_symbol,
                     timeframe,
                     on_trendbar,
+                    expected_symbol_id,
                 )
             except BaseException:
                 self._streams.pop(key, None)
@@ -154,10 +158,14 @@ class TrendbarStreamRegistry:
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
+        expected_symbol_id: int | None = None,
     ) -> None:
         key = (int(account_id), symbol.upper(), timeframe.value)
         async with self._lock:
-            entry = self._streams.pop(key, None)
+            entry = self._streams.get(key)
+            if entry is not None:
+                verify_instrument_binding(expected_symbol_id, entry.subscription.symbol_id)
+                self._streams.pop(key)
         if entry is None:
             return
 

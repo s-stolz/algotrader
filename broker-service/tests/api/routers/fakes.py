@@ -78,7 +78,7 @@ class FakeAccountService:
 
 
 class FakeMarketDataService:
-    async def list_symbols(self, account_id: AccountId | None = None):
+    async def list_symbols(self, account_id: AccountId | None = None, *, refresh=False):
         return [SymbolDescriptor(symbol_id=SymbolId(1), symbol_name="EURUSD", enabled=True)]
 
     async def get_symbol(self, account_id: AccountId, symbol: str):
@@ -91,12 +91,14 @@ class FakeMarketDataService:
             commission_type="USD_PER_LOT",
         )
 
-    async def start_tick_stream(self, account_id: AccountId, symbol: str, options):
+    async def start_tick_stream(
+        self, account_id: AccountId, symbol: str, options, expected_symbol_id=None
+    ):
         return TickStreamStatus(
             running=True, started_at=100.0, last_tick_at=101.0, uptime_seconds=1.0
         )
 
-    async def stop_tick_stream(self, account_id: AccountId, symbol: str):
+    async def stop_tick_stream(self, account_id: AccountId, symbol: str, expected_symbol_id=None):
         return None
 
     async def tick_stream_status(self, account_id: AccountId, symbol: str):
@@ -112,6 +114,7 @@ class FakeMarketDataService:
         from_ts: int,
         to_ts: int | None,
         limit: int | None,
+        expected_symbol_id=None,
     ):
         yield Trendbar(
             o=Decimal("1.1"),
@@ -123,17 +126,19 @@ class FakeMarketDataService:
         )
 
     async def start_trendbar_stream(
-        self, account_id: AccountId, symbol: str, timeframe: Timeframe, options=None
+        self, account_id: AccountId, symbol: str, timeframe: Timeframe, expected_symbol_id=None
     ):
         return TrendbarStreamStatus(
             running=True, started_at=100.0, last_bar_at=101.0, uptime_seconds=1.0
         )
 
-    async def stop_trendbar_stream(self, account_id: AccountId, symbol: str, timeframe: Timeframe):
+    async def stop_trendbar_stream(
+        self, account_id: AccountId, symbol: str, timeframe: Timeframe, expected_symbol_id=None
+    ):
         return None
 
     async def trendbar_stream_status(
-        self, account_id: AccountId, symbol: str, timeframe: Timeframe
+        self, account_id: AccountId, symbol: str, timeframe: Timeframe, expected_symbol_id=None
     ):
         return TrendbarStreamStatus(
             running=True, started_at=100.0, last_bar_at=101.0, uptime_seconds=1.0

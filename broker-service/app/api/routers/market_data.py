@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterator
+from typing import Annotated, Any, AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -16,6 +16,7 @@ from app.api.serialization import (
 )
 from app.api.service_protocols import MarketDataServicePort
 from app.api.validation import parse_tick_stream_body, read_json_body
+from app.domain.instrument_binding import BrokerInstrumentMismatchError
 from app.domain.value_objects import (
     AccountId,
     TickStreamOptions,
@@ -74,17 +75,22 @@ async def start_tick_stream(
     max_stream_length: int | None = Query(default=None, ge=100, alias="maxStreamLength"),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataServicePort = Depends(get_market_data_service),
+    expected_symbol_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> TickStreamStatusBody:
     normalized_symbol = symbol.upper()
     body_values: tuple[int | None, int | None] | None = None
     if request.headers.get("content-length") not in {None, "0"}:
         body_values = parse_tick_stream_body(await read_json_body(request))
 
-    status = await service.start_tick_stream(
-        account_id,
-        normalized_symbol,
-        _options_from_inputs(queue_size, max_stream_length, body_values),
-    )
+    try:
+        status = await service.start_tick_stream(
+            account_id,
+            normalized_symbol,
+            _options_from_inputs(queue_size, max_stream_length, body_values),
+            expected_symbol_id,
+        )
+    except BrokerInstrumentMismatchError as exc:
+        raise HTTPException(409, str(exc)) from exc
     return serialize_tick_stream_status(status)
 
 
@@ -93,9 +99,13 @@ async def stop_tick_stream(
     symbol: str,
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataServicePort = Depends(get_market_data_service),
+    expected_symbol_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> dict[str, str]:
     normalized_symbol = symbol.upper()
-    await service.stop_tick_stream(account_id, normalized_symbol)
+    try:
+        await service.stop_tick_stream(account_id, normalized_symbol, expected_symbol_id)
+    except BrokerInstrumentMismatchError as exc:
+        raise HTTPException(409, str(exc)) from exc
     return {"status": "stopped", "symbol": normalized_symbol}
 
 
@@ -121,6 +131,7 @@ async def stream_trendbars(
     limit: int | None = Query(default=None, ge=1),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataServicePort = Depends(get_market_data_service),
+    expected_symbol_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> StreamingResponse:
     tf = timeframe
     _from_ts = from_ts
@@ -142,6 +153,7 @@ async def stream_trendbars(
                 _from_ts,
                 _to_ts,
                 _limit,
+                expected_symbol_id,
             ):
                 bar_dict = {
                     "o": float(trendbar.o),
@@ -154,16 +166,19 @@ async def stream_trendbars(
                 }
                 count += 1
                 yield json.dumps(bar_dict) + "\n"
-            yield json.dumps(
-                {
-                    "type": "complete",
-                    "version": 1,
-                    "count": count,
-                    "fromTs": _from_ts,
-                    "toTs": _to_ts,
-                    "limit": _limit,
-                }
-            ) + "\n"
+            yield (
+                json.dumps(
+                    {
+                        "type": "complete",
+                        "version": 1,
+                        "count": count,
+                        "fromTs": _from_ts,
+                        "toTs": _to_ts,
+                        "limit": _limit,
+                    }
+                )
+                + "\n"
+            )
         except Exception:
             logger.exception(
                 "Trendbar stream interrupted due to upstream request failure "
@@ -173,6 +188,7 @@ async def stream_trendbars(
                 _from_ts,
                 _to_ts,
                 _limit,
+                expected_symbol_id,
             )
             yield json.dumps({"type": "error", "message": "Historical download failed"}) + "\n"
 
@@ -192,15 +208,17 @@ async def start_trendbar_stream(
     timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataServicePort = Depends(get_market_data_service),
+    expected_symbol_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> TrendbarStreamStatusBody:
     tf = timeframe
     normalized_symbol = symbol.upper()
 
-    status = await service.start_trendbar_stream(
-        account_id,
-        normalized_symbol,
-        tf,
-    )
+    try:
+        status = await service.start_trendbar_stream(
+            account_id, normalized_symbol, tf, expected_symbol_id
+        )
+    except BrokerInstrumentMismatchError as exc:
+        raise HTTPException(409, str(exc)) from exc
     return serialize_trendbar_stream_status(status)
 
 
@@ -210,10 +228,14 @@ async def stop_trendbar_stream(
     timeframe: Timeframe = Query(..., description="Timeframe enum, e.g. M1, H1"),
     account_id: AccountId = Depends(get_account_id),
     service: MarketDataServicePort = Depends(get_market_data_service),
+    expected_symbol_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> dict[str, str]:
     tf = timeframe
     normalized_symbol = symbol.upper()
-    await service.stop_trendbar_stream(account_id, normalized_symbol, tf)
+    try:
+        await service.stop_trendbar_stream(account_id, normalized_symbol, tf, expected_symbol_id)
+    except BrokerInstrumentMismatchError as exc:
+        raise HTTPException(409, str(exc)) from exc
     return {"status": "stopped", "symbol": normalized_symbol, "timeframe": tf.value}
 
 

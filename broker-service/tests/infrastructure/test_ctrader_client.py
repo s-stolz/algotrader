@@ -230,3 +230,81 @@ class ReconnectTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InstrumentBindingTests(unittest.IsolatedAsyncioTestCase):
+    def client(self, resolved_id: int):
+        from app.domain.models import Symbol
+        from app.domain.value_objects import SymbolDescriptor, SymbolId
+
+        credentials = CtraderCredentials(
+            "id", "secret", "demo", "a", "r", "https://example.com", 120, 10
+        )
+        with patch.object(CtraderClient, "_create_client"):
+            client = CtraderClient(credentials)
+        client._authorized_accounts.add(123)
+        cache = client._symbol_cache_for(123)
+        cache.store_descriptor(SymbolDescriptor(SymbolId(1), "EURUSD", True))
+        cache.store_full_symbol(Symbol(1, "EURUSD", 5, 4))
+        current = ProtoOASymbolsListRes(ctidTraderAccountId=123)
+        current.symbol.add(symbolId=resolved_id, symbolName="EURUSD", enabled=True)
+        send = AsyncMock(return_value=current)
+        spots = AsyncMock()
+        trendbars = AsyncMock()
+        history = AsyncMock(return_value=[])
+        client._send_request = send
+        client._subscribe_spots = spots
+        client._subscribe_live_trendbar = trendbars
+        client._fetch_trendbar_chunk = history
+        return client, send, spots, trendbars, history
+
+    async def test_name_remap_is_rejected_before_history_or_live_acquisition(self) -> None:
+        from app.domain.instrument_binding import BrokerInstrumentMismatchError
+        from app.domain.value_objects import AccountId
+
+        for operation in ("history", "tick", "candle"):
+            with self.subTest(operation=operation):
+                client, send, spots, trendbars, history = self.client(resolved_id=2)
+                with self.assertRaises(BrokerInstrumentMismatchError):
+                    if operation == "history":
+                        _ = [
+                            bar
+                            async for bar in client.stream_trendbars(
+                                AccountId(123),
+                                "EURUSD",
+                                Timeframe.M1,
+                                0,
+                                59999,
+                                None,
+                                expected_symbol_id=1,
+                            )
+                        ]
+                    elif operation == "tick":
+                        await client.register_tick_handler(
+                            123, "EURUSD", AsyncMock(), expected_symbol_id=1
+                        )
+                    else:
+                        await client.register_trendbar_handler(
+                            123, "EURUSD", Timeframe.M1, AsyncMock(), expected_symbol_id=1
+                        )
+                history.assert_not_awaited()
+                spots.assert_not_awaited()
+                trendbars.assert_not_awaited()
+                self.assertEqual(
+                    send.call_args.args[0].__class__.__name__,
+                    "ProtoOASymbolsListReq",
+                )
+
+    async def test_matching_source_is_refreshed_then_acquired_by_expected_id(self) -> None:
+        from app.domain.value_objects import AccountId
+
+        client, send, _spots, _trendbars, history = self.client(resolved_id=1)
+        bars = [
+            bar
+            async for bar in client.stream_trendbars(
+                AccountId(123), "EURUSD", Timeframe.M1, 0, 59999, None, expected_symbol_id=1
+            )
+        ]
+        self.assertEqual(bars, [])
+        self.assertEqual(history.call_args.args[1], 1)
+        self.assertEqual(send.await_count, 1)

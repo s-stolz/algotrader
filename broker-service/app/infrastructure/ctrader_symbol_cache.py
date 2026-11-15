@@ -86,16 +86,18 @@ class SymbolCache:
         account_id: int,
         authorize_fn: "AuthorizeFn",
         send_request_fn: "SendRequestFn",
+        *,
+        force_refresh: bool = False,
     ) -> None:
         """Ensure the light symbol cache is populated.
 
         Fetches symbols list from API if cache is empty.
         """
-        if self.is_populated:
+        if self.is_populated and not force_refresh:
             return
 
         async with self._populate_lock:
-            if self.is_populated:
+            if self.is_populated and not force_refresh:
                 return
 
             await authorize_fn(account_id)
@@ -112,6 +114,8 @@ class SymbolCache:
                 )
             res = cast(ProtoOASymbolsListRes, res)
 
+            self._by_name.clear()
+            self._by_id.clear()
             for light in res.symbol:
                 enabled = light.enabled if light.HasField("enabled") else None
                 descriptor = SymbolDescriptor(

@@ -71,10 +71,13 @@ class MarketDataPort(Protocol):
         from_ts: int,
         to_ts: int | None,
         limit: int | None,
+        expected_symbol_id: int | None = None,
     ) -> AsyncIterator[Trendbar]: ...
 
     @abstractmethod
-    async def list_symbols(self, account_id: AccountId | None = None) -> list[SymbolDescriptor]: ...
+    async def list_symbols(
+        self, account_id: AccountId | None = None, *, refresh: bool = False
+    ) -> list[SymbolDescriptor]: ...
 
     @abstractmethod
     async def get_symbol(self, account_id: AccountId, symbol: str) -> Symbol: ...
@@ -107,10 +110,13 @@ class StreamRegistryPort(Protocol):
         account_id: AccountId,
         symbol: str,
         options: TickStreamOptions,
+        expected_symbol_id: int | None = None,
     ) -> TickStreamStatus: ...
 
     @abstractmethod
-    async def stop_tick_stream(self, account_id: AccountId, symbol: str) -> None: ...
+    async def stop_tick_stream(
+        self, account_id: AccountId, symbol: str, expected_symbol_id: int | None = None
+    ) -> None: ...
 
     @abstractmethod
     async def get_tick_stream_status(
@@ -125,6 +131,7 @@ class TrendbarStreamRegistryPort(Protocol):
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
+        expected_symbol_id: int | None = None,
     ) -> TrendbarStreamStatus: ...
 
     @abstractmethod
@@ -133,6 +140,7 @@ class TrendbarStreamRegistryPort(Protocol):
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
+        expected_symbol_id: int | None = None,
     ) -> None: ...
 
     @abstractmethod

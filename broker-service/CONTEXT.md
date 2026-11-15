@@ -82,3 +82,8 @@ Reconnect requires the existing account ID and a stopped broker; the new state
 replaces Redis explicitly. Runtime refresh uses compare-and-set, preventing an
 in-flight old refresh from overwriting a reconnection. Existing unbound developer
 token state is bound to its configured connection at the first startup.
+
+Source-bound history and live acquisitions require `expected_symbol_id` from the
+stored Market binding. Fresh catalogue resolution must match before any provider
+history/subscription request; cleanup verifies the original subscription handle
+instead of re-resolving a possibly renamed instrument. See [history contracts](HISTORY.md#bound-broker-instruments).

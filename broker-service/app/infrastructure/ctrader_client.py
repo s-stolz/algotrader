@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Mapping, Tuple, cast
 
 from app.application.interfaces import BrokerPort, MarketDataPort
+from app.domain.instrument_binding import BrokerInstrumentMismatchError, verify_instrument_binding
 from app.domain.models import Account, Deal, Order, Position, Symbol, Tick, Trendbar
 from app.domain.value_objects import (
     AccountId,
@@ -422,9 +423,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
         from_ts: int,
         to_ts: int | None,
         limit: int | None,
+        expected_symbol_id: int | None = None,
     ) -> AsyncIterator[Trendbar]:
         """Exhaust finite windows, paging backwards as cTrader's count requires."""
-        info = await self._get_symbol(int(account_id), symbol.upper())
+        info = await self._get_symbol(int(account_id), symbol.upper(), expected_symbol_id)
         final_to = to_ts if to_ts is not None else int(time.time() * 1000)
         window_span = 10000 * _timeframe_to_minutes(timeframe) * 60 * 1000
         current_from = from_ts
@@ -466,12 +468,15 @@ class CtraderClient(BrokerPort, MarketDataPort):
     async def list_symbols(
         self,
         account_id: AccountId,
+        *,
+        refresh: bool = False,
     ) -> list[SymbolDescriptor]:
         cache = self._symbol_cache_for(int(account_id))
         await cache.ensure_populated(
             int(account_id),
             self._authorize_account,
             self._send_request,
+            force_refresh=refresh,
         )
 
         return cache.get_all_descriptors()
@@ -489,8 +494,9 @@ class CtraderClient(BrokerPort, MarketDataPort):
         account_id: int,
         symbol: str,
         handler: TickHandler,
+        expected_symbol_id: int | None = None,
     ) -> TickSubscription:
-        full_info = await self._get_symbol(account_id, symbol.upper())
+        full_info = await self._get_symbol(account_id, symbol.upper(), expected_symbol_id)
 
         key = (account_id, full_info.symbol_id)
         token = str(uuid.uuid4())
@@ -544,8 +550,9 @@ class CtraderClient(BrokerPort, MarketDataPort):
         symbol: str,
         timeframe: Timeframe,
         handler: TrendbarHandler,
+        expected_symbol_id: int | None = None,
     ) -> TrendbarSubscription:
-        full_info = await self._get_symbol(account_id, symbol.upper())
+        full_info = await self._get_symbol(account_id, symbol.upper(), expected_symbol_id)
 
         key = (account_id, full_info.symbol_id, timeframe.value)
         token = str(uuid.uuid4())
@@ -960,14 +967,25 @@ class CtraderClient(BrokerPort, MarketDataPort):
             self._symbol_caches[account_id] = SymbolCache()
         return self._symbol_caches[account_id]
 
-    async def _get_symbol(self, account_id: int, name: str) -> Symbol:
-        """Get full symbol info (with digits, pip position, etc.)."""
-        return await self._symbol_cache_for(account_id).get_or_fetch_symbol(
-            account_id,
-            name,
-            self._authorize_account,
-            self._send_request,
+    async def _get_symbol(
+        self, account_id: int, name: str, expected_symbol_id: int | None = None
+    ) -> Symbol:
+        cache = self._symbol_cache_for(account_id)
+        if expected_symbol_id is not None:
+            await cache.ensure_populated(
+                account_id, self._authorize_account, self._send_request, force_refresh=True
+            )
+            descriptor = cache.get_by_name(name.upper())
+            if descriptor is None or descriptor.enabled is False:
+                raise BrokerInstrumentMismatchError(
+                    "Stored broker instrument is no longer available"
+                )
+            verify_instrument_binding(expected_symbol_id, descriptor.symbol_id)
+        symbol = await cache.get_or_fetch_symbol(
+            account_id, name, self._authorize_account, self._send_request
         )
+        verify_instrument_binding(expected_symbol_id, symbol.symbol_id)
+        return symbol
 
     @staticmethod
     def _is_rate_limit_error(description: str | None) -> bool:

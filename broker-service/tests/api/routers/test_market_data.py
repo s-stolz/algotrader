@@ -43,6 +43,34 @@ class MarketDataRouterTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(response["running"])
 
+    async def test_expected_symbol_id_query_reaches_acquisition_and_cleanup(self) -> None:
+        service = FakeMarketDataService()
+        start = AsyncMock(wraps=service.start_trendbar_stream)
+        stop = AsyncMock(wraps=service.stop_trendbar_stream)
+        service.start_trendbar_stream = start
+        service.stop_trendbar_stream = stop
+        app = FastAPI()
+        app.include_router(market_data.router)
+        app.dependency_overrides[get_account_id] = lambda: AccountId(123)
+        app.dependency_overrides[get_market_data_service] = lambda: service
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://broker"
+        ) as client:
+            response = await client.get(
+                "/symbols/EURUSD/trendbar-stream/start?timeframe=M1&expected_symbol_id=7"
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(start.call_args.args[-1], 7)
+            response = await client.get(
+                "/symbols/EURUSD/trendbar-stream/stop?timeframe=M1&expected_symbol_id=7"
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(stop.call_args.args[-1], 7)
+            response = await client.get(
+                "/symbols/EURUSD/trendbar-stream/start?timeframe=M1&expected_symbol_id=0"
+            )
+            self.assertEqual(response.status_code, 422)
+
 
 # Load the real ingestion consumer without colliding with the broker's `app` package.
 INGESTION = Path(__file__).resolve().parents[4] / "ingestion-service"

@@ -54,3 +54,17 @@ FastAPI route and cTrader adapter using controlled provider responses. It covers
 capped short pages, empty windows, empty completion, failure before/after delivery,
 incomplete EOF, and count/bound verification.
 The suite requires broker and ingestion dependencies, including `httpx`.
+
+## Bound broker instruments
+
+Source-aware callers pass `expected_symbol_id` with the stored broker instrument
+ID when requesting history or starting Tick/Candle streams. Before acquiring
+provider data, the adapter refreshes the configured account catalogue and rejects
+name-to-ID changes. A cached symbol name never overrides the stored source ID.
+Legacy callers may omit the parameter; ingestion and source-aware live clients
+must supply it. Setup instrument verification also refreshes its catalogue.
+
+Stream stop requests accept the same parameter but compare it with the captured
+subscription handle, without resolving the current catalogue. This permits
+cleanup after a remap while preventing an old source from stopping a different
+instrument's stream. Existing subscriptions cannot be reused with another ID.

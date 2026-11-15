@@ -50,7 +50,7 @@ async def verify_instrument(
         raise HTTPException(409, "Instrument must belong to the configured broker account")
     selected_account = AccountId(int(connection["account_id"]))
     try:
-        instruments = await service.list_symbols(selected_account)
+        instruments = await service.list_symbols(selected_account, refresh=True)
         instrument = next(
             (
                 item

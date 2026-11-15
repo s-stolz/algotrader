@@ -57,7 +57,9 @@ class PositionServicePort(Protocol):
 
 
 class MarketDataServicePort(Protocol):
-    async def list_symbols(self, account_id: AccountId | None = None) -> list[SymbolDescriptor]: ...
+    async def list_symbols(
+        self, account_id: AccountId | None = None, *, refresh: bool = False
+    ) -> list[SymbolDescriptor]: ...
 
     async def get_symbol(self, account_id: AccountId, symbol: str) -> Symbol: ...
 
@@ -66,9 +68,12 @@ class MarketDataServicePort(Protocol):
         account_id: AccountId,
         symbol: str,
         options: TickStreamOptions,
+        expected_symbol_id: int | None = None,
     ) -> TickStreamStatus: ...
 
-    async def stop_tick_stream(self, account_id: AccountId, symbol: str) -> None: ...
+    async def stop_tick_stream(
+        self, account_id: AccountId, symbol: str, expected_symbol_id: int | None = None
+    ) -> None: ...
 
     async def tick_stream_status(self, account_id: AccountId, symbol: str) -> TickStreamStatus: ...
 
@@ -80,6 +85,7 @@ class MarketDataServicePort(Protocol):
         from_ts: int,
         to_ts: int | None,
         limit: int | None,
+        expected_symbol_id: int | None = None,
     ) -> AsyncIterator[Trendbar]: ...
 
     async def start_trendbar_stream(
@@ -87,6 +93,7 @@ class MarketDataServicePort(Protocol):
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
+        expected_symbol_id: int | None = None,
     ) -> TrendbarStreamStatus: ...
 
     async def stop_trendbar_stream(
@@ -94,6 +101,7 @@ class MarketDataServicePort(Protocol):
         account_id: AccountId,
         symbol: str,
         timeframe: Timeframe,
+        expected_symbol_id: int | None = None,
     ) -> None: ...
 
     async def trendbar_stream_status(

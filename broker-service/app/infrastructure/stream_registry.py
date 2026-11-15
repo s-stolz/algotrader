@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable, Dict, Tuple
 
 from app.application.interfaces import StreamRegistryPort
+from app.domain.instrument_binding import verify_instrument_binding
 from app.domain.models import Tick
 from app.domain.value_objects import AccountId, TickStreamOptions, TickStreamStatus, Timeframe
 from app.settings import Settings
@@ -48,7 +49,7 @@ class StreamEntry:
 class StreamRegistry(StreamRegistryPort):
     def __init__(
         self,
-        subscribe_fn: Callable[[int, str, TickHandler], Awaitable[TickSubscription]],
+        subscribe_fn: Callable[[int, str, TickHandler, int | None], Awaitable[TickSubscription]],
         unsubscribe_fn: Callable[[TickSubscription], Awaitable[None]],
         publisher: TickPublisher,
         settings: Settings,
@@ -65,10 +66,14 @@ class StreamRegistry(StreamRegistryPort):
         account_id: AccountId,
         symbol: str,
         options: TickStreamOptions,
+        expected_symbol_id: int | None = None,
     ) -> TickStreamStatus:
         async with self._lock:
             key = (int(account_id), symbol)
             if key in self._streams:
+                verify_instrument_binding(
+                    expected_symbol_id, self._streams[key].subscription.symbol_id
+                )
                 return self._to_status(self._streams[key])
 
             if len(self._streams) >= self._settings.broker_max_symbol_streams:
@@ -88,7 +93,9 @@ class StreamRegistry(StreamRegistryPort):
                     queue.put_nowait(tick)
                 entry.last_tick_at = tick.t / 1000
 
-            subscription = await self._subscribe_fn(int(account_id), symbol, push_tick)
+            subscription = await self._subscribe_fn(
+                int(account_id), symbol, push_tick, expected_symbol_id
+            )
             writer_task = asyncio.create_task(self._writer(queue, subscription))
 
             entry = StreamEntry(
@@ -114,10 +121,15 @@ class StreamRegistry(StreamRegistryPort):
                     symbol,
                 )
 
-    async def stop_tick_stream(self, account_id: AccountId, symbol: str) -> None:
+    async def stop_tick_stream(
+        self, account_id: AccountId, symbol: str, expected_symbol_id: int | None = None
+    ) -> None:
         async with self._lock:
             key = (int(account_id), symbol)
-            entry = self._streams.pop(key, None)
+            entry = self._streams.get(key)
+            if entry is not None:
+                verify_instrument_binding(expected_symbol_id, entry.subscription.symbol_id)
+                self._streams.pop(key)
         if entry is None:
             return
         entry.writer_task.cancel()

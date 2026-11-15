@@ -25,7 +25,7 @@ async def main():  # noqa: C901
     faults = {"remaining": 0, "block": False}
     handler = None
 
-    async def subscribe(account_id, name, timeframe, callback):
+    async def subscribe(account_id, name, timeframe, callback, expected_symbol_id=None):
         nonlocal handler
         handler = callback
         return TrendbarSubscription(account_id, name, 1, timeframe, "test")

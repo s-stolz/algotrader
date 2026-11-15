@@ -17,7 +17,7 @@ class TrendbarStreamRegistryTests(unittest.IsolatedAsyncioTestCase):
         published: list[Trendbar] = []
         handler: Callable[[Trendbar], Awaitable[None]] | None = None
 
-        async def subscribe_fn(account_id, symbol, timeframe, callback):
+        async def subscribe_fn(account_id, symbol, timeframe, callback, expected_symbol_id=None):
             nonlocal handler
             handler = callback
             return TrendbarSubscription(
@@ -87,3 +87,37 @@ class TrendbarStreamRegistryTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BoundTrendbarStreamTests(unittest.IsolatedAsyncioTestCase):
+    async def test_mismatched_start_or_stop_preserves_original_subscription(self) -> None:
+        from unittest.mock import AsyncMock
+
+        from app.domain.instrument_binding import BrokerInstrumentMismatchError
+
+        subscription = TrendbarSubscription(123, "EURUSD", 1, Timeframe.M1, "token")
+        subscribe = AsyncMock(return_value=subscription)
+        unsubscribe = AsyncMock()
+        registry = TrendbarStreamRegistry(subscribe, unsubscribe, AsyncMock(), Settings())
+        try:
+            await registry.start_trendbar_stream(
+                AccountId(123), "EURUSD", Timeframe.M1, expected_symbol_id=1
+            )
+            self.assertEqual(subscribe.call_args.args[-1], 1)
+            with self.assertRaises(BrokerInstrumentMismatchError):
+                await registry.start_trendbar_stream(
+                    AccountId(123), "EURUSD", Timeframe.M1, expected_symbol_id=2
+                )
+            with self.assertRaises(BrokerInstrumentMismatchError):
+                await registry.stop_trendbar_stream(
+                    AccountId(123), "EURUSD", Timeframe.M1, expected_symbol_id=2
+                )
+            self.assertEqual(registry.active_stream_count(), 1)
+            unsubscribe.assert_not_awaited()
+            await registry.stop_trendbar_stream(
+                AccountId(123), "EURUSD", Timeframe.M1, expected_symbol_id=1
+            )
+            unsubscribe.assert_awaited_once_with(subscription)
+            subscribe.assert_awaited_once()
+        finally:
+            await registry.shutdown()
