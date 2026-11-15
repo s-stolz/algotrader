@@ -113,13 +113,13 @@ class Lifecycle:
         render_configuration(self.locations, record)
         # Record identity before startup so a failed startup is safely resumable with start.
         write_json(self.locations.record, record)
-        self.docker.compose(record, ["up", "--detach", "--wait", "--wait-timeout", "240"])
+        self.docker.compose(record, ["up", "--detach", "--wait", "--wait-timeout", "360"])
         self.check_ready(record)
 
     def start(self) -> None:
         record = self.current()
         render_configuration(self.locations, record)
-        self.docker.compose(record, ["up", "--detach", "--wait", "--wait-timeout", "240"])
+        self.docker.compose(record, ["up", "--detach", "--wait", "--wait-timeout", "360"])
         record["stopped"] = False
         write_json(self.locations.record, record)
         self.check_ready(record)
@@ -271,7 +271,7 @@ class Lifecycle:
             backup = self.backup(record, old_release)
         except BaseException:
             if not record.get("stopped"):
-                self.docker.compose(record, ["up", "--detach", "--wait", "--wait-timeout", "240"])
+                self.docker.compose(record, ["up", "--detach", "--wait", "--wait-timeout", "360"])
             else:
                 self.docker.compose(record, ["stop", "--timeout", "60"])
             raise
@@ -303,7 +303,7 @@ class Lifecycle:
                     "--detach",
                     "--wait",
                     "--wait-timeout",
-                    "240",
+                    "360",
                     *INTERNAL_SERVICES,
                 ],
             )
@@ -325,7 +325,7 @@ class Lifecycle:
                     "--detach",
                     "--wait",
                     "--wait-timeout",
-                    "240",
+                    "360",
                     *ADMISSION_SERVICES,
                 ],
             )

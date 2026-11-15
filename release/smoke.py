@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -22,6 +23,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def run(args: list[str], *, env: dict[str, str] | None = None) -> None:
     subprocess.run(args, env=env, check=True)
+
+
+def wait_for_frontend(fetch: list[str]) -> None:
+    for _ in range(60):
+        ready = subprocess.run(
+            [*fetch, "http://localhost:8080/health"], capture_output=True, check=False
+        )
+        if ready.returncode == 0:
+            return
+        time.sleep(0.5)
+    raise RuntimeError("Production frontend did not become ready")
 
 
 def smoke(manifest: Path, platform: str) -> None:
@@ -87,7 +99,7 @@ def smoke(manifest: Path, platform: str) -> None:
                     "-d",
                     "--wait",
                     "--wait-timeout",
-                    "240",
+                    "360",
                     "timescaledb",
                     "redis",
                     "database-accessor-api",
@@ -179,6 +191,7 @@ print("Custom market and uploaded candle persisted")
                 env=environment,
             )
             fetch = ["docker", "exec", project + "-frontend", "wget", "--quiet", "-O", "-"]
+            wait_for_frontend(fetch)
             root_html = subprocess.check_output([*fetch, "http://localhost:8080/"]).decode()
             asset = re.search(r'src="(/assets/[^"]+\.js)"', root_html)
             if asset is None:

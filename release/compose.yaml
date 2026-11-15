@@ -123,8 +123,8 @@ services:
       - pg_isready -h 127.0.0.1 -U $$POSTGRES_USER
       interval: 5s
       timeout: 3s
-      retries: 5
-      start_period: 10s
+      retries: 24
+      start_period: 120s
     restart: unless-stopped
     stop_grace_period: 60s
     volumes:
