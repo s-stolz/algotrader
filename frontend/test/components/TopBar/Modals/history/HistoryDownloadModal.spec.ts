@@ -47,21 +47,25 @@ beforeEach(() => {
 it.each(['queued', 'downloading'] as const)(
   'labels an accepted %s offer Close and preserves its background request',
   async (status) => {
-    vi.mocked(requestHistoryDownload).mockResolvedValue({
-      id: 'job-1',
-      market_id: 7,
-      status,
-      start_ms: null,
-      candle_count: 10000,
-      end_exclusive_ms: 180000,
-      cursor_ms: 180000,
-      fetched_count: 0,
-      inserted_count: 0,
-      revision: 1,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
-      failure_reason: null,
-      availability_reason: null,
+    vi.mocked(requestHistoryDownload).mockImplementation(async () => {
+      const accepted = {
+        id: 'job-1',
+        market_id: 7,
+        status,
+        start_ms: null,
+        candle_count: 10000,
+        end_exclusive_ms: 180000,
+        cursor_ms: 180000,
+        fetched_count: 0,
+        inserted_count: 0,
+        revision: 1,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+        failure_reason: null,
+        availability_reason: null,
+      };
+      vi.mocked(fetchHistoryDownloads).mockResolvedValue([accepted]);
+      return accepted;
     });
     const wrapper = mount(HistoryDownloadModal, {
       props: { market, offer: true },

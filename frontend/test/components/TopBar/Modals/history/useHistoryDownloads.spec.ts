@@ -71,10 +71,15 @@ beforeEach(() => {
     candle_count: 2,
   });
   vi.mocked(fetchHistoryDownloads).mockResolvedValue([]);
-  vi.mocked(requestHistoryDownload).mockResolvedValue(job());
-  vi.mocked(changeHistoryDownload).mockResolvedValue(
-    job({ status: 'cancelled', revision: 2 }),
-  );
+  vi.mocked(requestHistoryDownload).mockImplementation(async () => {
+    vi.mocked(fetchHistoryDownloads).mockResolvedValue([job()]);
+    return job();
+  });
+  vi.mocked(changeHistoryDownload).mockImplementation(async () => {
+    const cancelled = job({ status: 'cancelled', revision: 2 });
+    vi.mocked(fetchHistoryDownloads).mockResolvedValue([cancelled]);
+    return cancelled;
+  });
 });
 
 describe('background history download dialog', () => {
@@ -142,6 +147,56 @@ describe('background history download dialog', () => {
     expect(fetchHistoryDownloads).toHaveBeenCalledTimes(3);
     events.get('disconnected')?.({});
     expect(model.connected.value).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('removes a previously active job absent from the reconnect snapshot', async () => {
+    vi.mocked(fetchHistoryDownloads).mockResolvedValue([job()]);
+    const { model, wrapper } = mountModel();
+    await flushPromises();
+    expect(model.active.value).toBe(true);
+    vi.mocked(fetchHistoryDownloads).mockResolvedValue([
+      job({ id: 'newer-job', status: 'completed' }),
+    ]);
+    events.get('historyDownloadsConnection')?.({
+      market_id: 7,
+      connected: true,
+    });
+    await flushPromises();
+    expect(model.downloads.value.map((item) => item.id)).toEqual(['newer-job']);
+    expect(model.active.value).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('preserves a command receipt while an older snapshot is in flight', async () => {
+    vi.mocked(fetchHistoryDownloads).mockResolvedValue([job()]);
+    const { model, wrapper } = mountModel();
+    await flushPromises();
+    let resolveSnapshot!: (jobs: HistoryDownload[]) => void;
+    vi.mocked(fetchHistoryDownloads).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSnapshot = resolve;
+        }),
+    );
+    const refresh = model.refresh();
+    const cancel = model.change('cancel');
+    await flushPromises();
+    expect(model.current.value?.status).toBe('cancelled');
+    let resolveFollowup!: (jobs: HistoryDownload[]) => void;
+    vi.mocked(fetchHistoryDownloads).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFollowup = resolve;
+        }),
+    );
+    resolveSnapshot([]);
+    await flushPromises();
+    expect(model.current.value?.status).toBe('cancelled');
+    resolveFollowup([job({ revision: 1 })]);
+    await Promise.all([refresh, cancel]);
+    expect(model.current.value?.revision).toBe(2);
+    expect(model.active.value).toBe(false);
     wrapper.unmount();
   });
 

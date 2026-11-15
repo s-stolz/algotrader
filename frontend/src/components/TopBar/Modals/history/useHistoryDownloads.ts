@@ -36,12 +36,27 @@ export function useHistoryDownloads(marketId: number) {
   let dirty = false;
   let request: HistoryDownloadRequest | null = null;
   let requestSignature = '';
+  let receiptSequence = 0;
+  const receiptSequences = new Map<string, number>();
 
-  function install(jobs: HistoryDownload[]) {
-    const byId = new Map(downloads.value.map((job) => [job.id, job]));
+  function install(jobs: HistoryDownload[], snapshotBoundary?: number) {
+    const previous = new Map(downloads.value.map((job) => [job.id, job]));
+    // An authoritative list replaces membership, except receipts newer than its request.
+    const byId = new Map(
+      downloads.value
+        .filter(
+          (job) =>
+            snapshotBoundary === undefined ||
+            (receiptSequences.get(job.id) ?? 0) > snapshotBoundary,
+        )
+        .map((job) => [job.id, job]),
+    );
     for (const job of jobs) {
-      if ((byId.get(job.id)?.revision ?? -1) <= job.revision)
-        byId.set(job.id, job);
+      const existing = previous.get(job.id);
+      byId.set(
+        job.id,
+        existing && existing.revision > job.revision ? existing : job,
+      );
     }
     downloads.value = [...byId.values()]
       .sort(
@@ -50,6 +65,9 @@ export function useHistoryDownloads(marketId: number) {
           right.created_at.localeCompare(left.created_at),
       )
       .slice(0, 100);
+    for (const id of receiptSequences.keys()) {
+      if (!byId.has(id)) receiptSequences.delete(id);
+    }
   }
 
   function refresh(): Promise<void> {
@@ -59,13 +77,14 @@ export function useHistoryDownloads(marketId: number) {
       while (alive && dirty) {
         dirty = false;
         try {
+          const snapshotBoundary = receiptSequence;
           const [nextCoverage, jobs] = await Promise.all([
             fetchMarketCoverage(marketId),
             fetchHistoryDownloads(marketId),
           ]);
           if (!alive) return;
           coverage.value = nextCoverage;
-          install(jobs);
+          install(jobs, snapshotBoundary);
           error.value = '';
         } catch (cause) {
           if (alive)
@@ -138,6 +157,7 @@ export function useHistoryDownloads(marketId: number) {
     try {
       const job = await action();
       if (!alive) return;
+      receiptSequences.set(job.id, ++receiptSequence);
       install([job]);
       await refresh();
     } catch (cause) {
