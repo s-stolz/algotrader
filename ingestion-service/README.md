@@ -77,3 +77,15 @@ lookback configuration no longer schedules initial history for new broker Market
 
 For durable pending recovery and protected startup, read the
 [recovery contract](../docs/contracts/recovery.md).
+
+## Worker process acceptance
+
+`tests/history/test_process_integration.py` requires an empty disposable accessor
+backed by PostgreSQL/Timescale, with the current schema and a controlled broker
+verification fixture accepting the test account. It supplies its own historical
+broker HTTP double; no live broker credentials are needed.
+
+Set `HISTORY_DOWNLOAD_PROCESS_ACCESSOR_URL` to that loopback accessor and run
+`make test ingestion-service`. The test kills a worker after a committed page,
+waits for the real 120-second lease to expire, and verifies restart, counts,
+preserved candles, and explicit cancellation. Without that variable it is skipped.
