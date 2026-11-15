@@ -17,6 +17,7 @@ function fixture() {
   const base = createFakeAdapter();
   const done = deferred<void>();
   const history: TradeHistoryAdapter = {
+    getRange: vi.fn(() => null),
     prepare: vi.fn(),
     fetchBefore: vi.fn(async () => [chartCandle(300_000)]),
     fetchAfter: vi.fn(async () => {

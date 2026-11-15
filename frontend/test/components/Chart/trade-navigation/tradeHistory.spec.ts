@@ -9,6 +9,7 @@ const batch = (start: number, length = 500) =>
   Array.from({ length }, (_, i) => chartCandle((start + i) * 300_000));
 function fixture() {
   const adapter: TradeHistoryAdapter = {
+    getRange: vi.fn(() => null),
     prepare: vi.fn(),
     historical: vi.fn(),
     loading: vi.fn(),
