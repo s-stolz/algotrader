@@ -28,15 +28,27 @@ export function heatmapChart(
   selectedIds: string[],
 ): EChartsOption {
   const selected = new Set(selectedIds);
+  // Native selection lifts outlines above adjacent cells. Comparison owns the
+  // membership; ECharts must not toggle a second, independent selection state.
+  const selection = {
+    selectedMode: false as const,
+    selectedMap: Object.fromEntries(
+      cells.map((cell) => [
+        cell.run?.run_id ?? `${cell.x}:${cell.y}`,
+        !!cell.run && selected.has(cell.run.run_id),
+      ]),
+    ),
+    select: {
+      itemStyle: { borderWidth: 2, borderColor: chart.heatmapSelection },
+    },
+  };
   const item = (cell: HeatmapCell, score: number) => ({
+    name: cell.run?.run_id ?? `${cell.x}:${cell.y}`,
     value: [cell.x, cell.y, score],
     cell,
     itemStyle: {
-      borderWidth: cell.run && selected.has(cell.run.run_id) ? 3 : 1,
-      borderColor:
-        cell.run && selected.has(cell.run.run_id)
-          ? chart.heatmapSelection
-          : designTokens.color.panel,
+      borderWidth: 6,
+      borderColor: designTokens.color.panel,
     },
     label: {
       show: cell.value === Infinity,
@@ -97,12 +109,14 @@ export function heatmapChart(
     series: [
       {
         type: 'heatmap',
+        ...selection,
         data: cells
           .filter((cell) => cell.state === 'ready' && !pending)
           .map((cell) => item(cell, metricScore(cell.value!, bounds, metric))),
       },
       {
         type: 'heatmap',
+        ...selection,
         data: cells
           .filter((cell) => cell.state !== 'ready' || pending)
           .map((cell) => ({
