@@ -22,3 +22,11 @@ backtester/private/
 
 **/*.egg-info
 **/build
+
+# Never bake local setup, credentials, or agent scratch artifacts into releases.
+**/.env
+**/.env.*
+config/topology.local.yaml
+.scratch
+.agents
+.codex

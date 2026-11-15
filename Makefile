@@ -106,6 +106,7 @@ verify-python:
 verify:
 	$(MAKE) verify-python
 	$(MAKE) test frontend
+	$(MAKE) test-release
 
 test:
 	@status=0; \
@@ -165,3 +166,10 @@ backtester database-accessor-api db_accessor_client ingestion-service broker-ser
 .PHONY: smoke-recovery
 smoke-recovery:
 	$(PYTHON) scripts/smoke_recovery.py
+
+.PHONY: test-release
+test-release:
+	$(PYTHON) -m unittest discover -s release/tests -p 'test_*.py'
+	$(PYTHON) -m ruff check release
+	$(PYTHON) -m black --check release
+	bash -n release/algotrader.sh

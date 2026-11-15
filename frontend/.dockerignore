@@ -4,3 +4,7 @@ dist
 .vscode
 .DS_Store
 *.log
+
+.env
+.env.*
+.scratch

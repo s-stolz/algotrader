@@ -5,6 +5,19 @@ visualizing live and historical charts with
 [Lightweight Charts](https://tradingview.github.io/lightweight-charts/), and running
 historical backtests with fixed or varying parameters.
 
+## Install a versioned release
+
+Download a release ZIP from [GitHub Releases](https://github.com/s-stolz/algotrader/releases),
+extract it, and run `bash ./algotrader.sh setup` on macOS/Linux or
+`powershell -ExecutionPolicy Bypass -File .\algotrader.ps1 setup` on Windows.
+Docker with Compose is the only host prerequisite. The wizard uses your own
+cTrader application credentials and stores configuration locally.
+
+See the [installation and upgrade guide](release/README.md) for directory choices,
+OAuth prerequisites, lifecycle commands, backups, and release publishing.
+Windows support is experimental until validated with Docker Desktop. The
+source-based development workflow below remains available independently.
+
 ## Architecture
 
 ```mermaid

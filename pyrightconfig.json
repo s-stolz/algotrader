@@ -6,7 +6,8 @@
     "libs/algotrader_logger",
     "libs/db_accessor_client",
     "libs/indicator_engine",
-    "scripts/python_environment.py"
+    "scripts/python_environment.py",
+    "release/installer"
   ],
   "exclude": [
     "backtester",
