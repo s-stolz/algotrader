@@ -9,6 +9,7 @@ description = "WebSocket server for real-time market data streaming"
 requires-python = ">=3.12,<3.16"
 dependencies = [
     "algotrader-logger",
+    "db-accessor-client",
     "websockets>=16.0",
     "redis>=7.1.0",
     "httpx>=0.28.1",

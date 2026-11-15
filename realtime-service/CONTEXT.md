@@ -15,15 +15,15 @@ stream start/stop. Shared Redis fields and timestamps live in
 
 Frontend to realtime-service messages are flat JSON objects:
 
-- `{"type": "subscribeCandles", "symbol": "EURUSD", "timeframe": "M1"}`
-- `{"type": "unsubscribeCandles", "symbol": "EURUSD", "timeframe": "M1"}`
-- `{"type": "subscribeIndicator", "symbol": "...", "timeframe": "...", ...}`
-- `{"type": "unsubscribeIndicator", "symbol": "...", "timeframe": "...", ...}`
+- `{"type": "subscribeCandles", "market_id": 1, "timeframe": "M1"}`
+- `{"type": "unsubscribeCandles", "market_id": 1, "timeframe": "M1"}`
+- `{"type": "subscribeIndicator", "market_id": 1, "timeframe": "...", ...}`
+- `{"type": "unsubscribeIndicator", "market_id": 1, "timeframe": "...", ...}`
 
 Realtime service to frontend live updates are flat JSON objects:
 
-- `candleUpdate` with expanded candle fields.
-- `indicatorUpdate` with `clientIndicatorId`, `streamId`, `timestamp_ms`, and `values`.
+- `candleUpdate` with `market_id` and expanded candle fields.
+- `indicatorUpdate` with `market_id`, `clientIndicatorId`, `streamId`, `timestamp_ms`, and `values`.
   Optional `replay: true` marks a corrected historical point. Consumers merge it
   into loaded history and redraw without rewinding the live tail. Redis uses
   `replay: "1"`; ordinary updates omit the marker.
@@ -36,9 +36,17 @@ Realtime service to frontend control messages are flat JSON objects:
 - `indicatorUnsubscribed` after indicator unsubscription succeeds.
 - `error` with an `error` string when message handling fails.
 
+A positive `market_id` is mandatory for all live subscription commands. Stored
+Market identity supplies the symbol and exchange; client-supplied labels are not
+authority. Only Broker Markets bound to the configured cTrader account and
+environment may acquire live sources. Custom Markets remain historical-only,
+even when their symbol matches a connected broker instrument.
+
 Source streams are reference counted; upstream streams are shared across clients.
 Indicator dependencies come from indicator-api's `GET /indicators/{id}` metadata:
-use `inputs` when present, otherwise the chart symbol. Each subscription retains
+use `inputs` when present, otherwise the chart Market. Resolve every dependency
+to one Broker Market in the same exchange/account/environment before acquiring
+any source; missing or ambiguous inputs reject the whole subscription. Each subscription retains
 all dependencies; partial startup rolls them back, and disconnect releases them.
 Indicator subscription mutations are serialized so concurrent clients share one
 upstream indicator session. Install the metadata endpoint before this consumer.

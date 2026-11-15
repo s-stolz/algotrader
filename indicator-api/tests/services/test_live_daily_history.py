@@ -8,7 +8,7 @@ from app.services.live_indicator_manager import LiveStreamSpec
 
 class DailyHistoryTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.spec = LiveStreamSpec("123", "EURUSD", "H1", 5, None, {})
+        self.spec = LiveStreamSpec("123", "EURUSD", "H1", 5, None, {}, market_id=1)
         self.storage = Mock(
             get_market=AsyncMock(return_value={"symbol_id": 1}),
             get_pending_recovery=AsyncMock(return_value=None),

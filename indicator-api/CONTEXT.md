@@ -5,6 +5,13 @@ parameters, response formatting, and live-stream lifecycle.
 
 ## Historical and Live Paths
 
+Live stream requests require the durable `market_id`. The live manager validates
+the stored Broker Market against the configured cTrader account/environment and
+resolves every declared input to a Broker Market in the same exchange. Custom
+Markets never acquire live streams; their historical calculations remain available.
+The Market identity participates in stream identity, preventing same-symbol
+datasets from sharing a live session.
+
 - `app/services/historical_indicator_service.py` fetches Candles, prepares
   parameters/warmup, invokes the batch engine, and formats the response.
   Responses wrap `indicator_info` and `indicator_data` under `data`.

@@ -12,6 +12,8 @@ from app.services.candle_cache import CandleCache
 from app.services.historical_indicator_service import run_historical_indicator
 from app.services.live_indicator_manager import LiveIndicatorManager
 
+from tests.live_market_fixtures import live_market_resolver
+
 
 class RollingRangeIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_historical_and_live_outputs(self):
@@ -48,18 +50,19 @@ class RollingRangeIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[-1]["highest_high"], 9)
         self.assertEqual(rows[-1]["lowest_low"], 1)
         cache = CandleCache()
-        cache.put(exchange=None, symbol="TEST", timeframe="M1", candles=candles)
+        cache.put(exchange="BROKER", symbol="TEST", timeframe="M1", candles=candles)
         queue = asyncio.Queue()
 
         async def read(*args, **kwargs):
             return await queue.get()
 
         redis = Mock(xread=AsyncMock(side_effect=read), xadd=AsyncMock(), close=AsyncMock())
-        manager = LiveIndicatorManager(cache)
+        manager = LiveIndicatorManager(cache, live_market_resolver("TEST"))
         manager._redis = redis
         try:
             await manager.start_stream(
                 LiveIndicatorStreamRequest(
+                    market_id=1,
                     account_id="123",
                     symbol="TEST",
                     timeframe="M1",
@@ -76,7 +79,7 @@ class RollingRangeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                             "candles:123:TEST:M1",
                             [
                                 (
-                                    f"{i+1}-0",
+                                    f"{i + 1}-0",
                                     dict(
                                         t=str(timestamp),
                                         o="5",

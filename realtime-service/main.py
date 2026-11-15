@@ -14,6 +14,7 @@ from app.broker_client import BrokerClient
 from app.indicator_api_client import IndicatorApiClient
 from app.redis_consumer import RedisConsumer
 from app.subscription_manager import SubscriptionManager
+from db_accessor_client.market_sources import BrokerMarketResolver
 from redis.asyncio import Redis
 from websockets.asyncio.server import ServerConnection
 
@@ -60,6 +61,7 @@ class WebSocketServer:
             self.broker_client,
             self.redis_consumer,
             self.indicator_api_client,
+            BrokerMarketResolver(self.config["account_id"], self.config["broker_environment"]),
         )
 
         self.redis_consumer.subscription_manager = self.subscription_manager
@@ -137,15 +139,15 @@ class WebSocketServer:
         message: dict,
     ) -> None:
         assert self.subscription_manager is not None
-        symbol = message.get("symbol")
+        market_id = self._market_id(message)
         timeframe = message.get("timeframe")
 
-        if not symbol or not isinstance(timeframe, str):
-            raise ValueError("Missing symbol or timeframe")
+        if not isinstance(timeframe, str):
+            raise ValueError("Missing timeframe")
 
-        await self.subscription_manager.subscribe_candles(client_id, symbol, timeframe)
+        await self.subscription_manager.subscribe_candles(client_id, market_id, timeframe)
         await websocket.send(
-            json.dumps({"type": "subscribed", "symbol": symbol, "timeframe": timeframe})
+            json.dumps({"type": "subscribed", "market_id": market_id, "timeframe": timeframe})
         )
 
     async def _handle_unsubscribe_candles_message(
@@ -154,13 +156,13 @@ class WebSocketServer:
         message: dict,
     ) -> None:
         assert self.subscription_manager is not None
-        symbol = message.get("symbol")
+        market_id = self._market_id(message)
         timeframe = message.get("timeframe")
 
-        if not symbol or not isinstance(timeframe, str):
-            raise ValueError("Missing symbol or timeframe")
+        if not isinstance(timeframe, str):
+            raise ValueError("Missing timeframe")
 
-        await self.subscription_manager.unsubscribe_candles(client_id, symbol, timeframe)
+        await self.subscription_manager.unsubscribe_candles(client_id, market_id, timeframe)
 
     async def _handle_subscribe_indicator_message(
         self,
@@ -169,35 +171,28 @@ class WebSocketServer:
         message: dict,
     ) -> None:
         assert self.subscription_manager is not None
-        symbol = message.get("symbol")
+        market_id = self._market_id(message)
         timeframe = message.get("timeframe")
         indicator_id = message.get("indicatorId")
         client_indicator_id = message.get("clientIndicatorId")
         parameters = message.get("parameters") or {}
-        exchange = message.get("exchange")
 
-        if (
-            not symbol
-            or not isinstance(timeframe, str)
-            or indicator_id is None
-            or client_indicator_id is None
-        ):
+        if not isinstance(timeframe, str) or indicator_id is None or client_indicator_id is None:
             raise ValueError("Missing symbol, timeframe, indicatorId, or clientIndicatorId")
 
         result = await self.subscription_manager.subscribe_indicator(
             client_id=client_id,
-            symbol=symbol,
+            market_id=market_id,
             timeframe=timeframe,
             indicator_id=int(indicator_id),
             parameters=parameters,
-            exchange=exchange,
             client_indicator_id=str(client_indicator_id),
         )
         await websocket.send(
             json.dumps(
                 {
                     "type": "indicatorSubscribed",
-                    "symbol": symbol,
+                    "market_id": market_id,
                     "timeframe": timeframe,
                     "indicatorId": int(indicator_id),
                     "clientIndicatorId": str(client_indicator_id),
@@ -213,42 +208,41 @@ class WebSocketServer:
         message: dict,
     ) -> None:
         assert self.subscription_manager is not None
-        symbol = message.get("symbol")
+        market_id = self._market_id(message)
         timeframe = message.get("timeframe")
         indicator_id = message.get("indicatorId")
         client_indicator_id = message.get("clientIndicatorId")
         parameters = message.get("parameters") or {}
-        exchange = message.get("exchange")
 
-        if (
-            not symbol
-            or not isinstance(timeframe, str)
-            or indicator_id is None
-            or client_indicator_id is None
-        ):
+        if not isinstance(timeframe, str) or indicator_id is None or client_indicator_id is None:
             raise ValueError("Missing symbol, timeframe, indicatorId, or clientIndicatorId")
 
         await self.subscription_manager.unsubscribe_indicator(
             client_id=client_id,
-            symbol=symbol,
+            market_id=market_id,
             timeframe=timeframe,
             indicator_id=int(indicator_id),
             parameters=parameters,
-            exchange=exchange,
-            client_indicator_id=str(client_indicator_id),
         )
 
         await websocket.send(
             json.dumps(
                 {
                     "type": "indicatorUnsubscribed",
-                    "symbol": symbol,
+                    "market_id": market_id,
                     "timeframe": timeframe,
                     "indicatorId": int(indicator_id),
                     "clientIndicatorId": str(client_indicator_id),
                 }
             )
         )
+
+    @staticmethod
+    def _market_id(message: dict) -> int:
+        market_id = message.get("market_id")
+        if isinstance(market_id, bool) or not isinstance(market_id, int) or market_id <= 0:
+            raise ValueError("A positive market_id is required")
+        return market_id
 
     async def health_handler(self, request):
         return web.Response(text='{"status": "healthy"}', content_type="application/json")
@@ -327,6 +321,7 @@ async def main():
         "broker_service_url": broker_service_url,
         "indicator_api_url": indicator_api_url,
         "account_id": os.getenv("ACCOUNT_ID"),
+        "broker_environment": os.getenv("CTRADER_HOST_TYPE", ""),
         "redis_block_ms": int(os.getenv("REALTIME_SERVICE_REDIS_BLOCK_MS", "5000")),
         "redis_batch_size": int(os.getenv("REALTIME_SERVICE_REDIS_BATCH_SIZE", "100")),
     }

@@ -17,6 +17,8 @@ from indicator_engine import BarTensor, ParamGrid, get_batch_engine
 from indicator_engine.catalog import IndicatorCatalog, IndicatorRegistration
 from indicator_engine.indicators.sma import SMA
 
+from tests.live_market_fixtures import live_market_resolver
+
 
 class SingleRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_one_registration_drives_catalog_batch_and_live_stream_policy(self):
@@ -47,8 +49,9 @@ class SingleRegistrationTests(unittest.IsolatedAsyncioTestCase):
             },
             index=pd.to_datetime([-60000, 0], unit="ms", utc=True),
         )
-        cache.put(exchange=None, symbol="TEST", timeframe="M1", candles=candles)
+        cache.put(exchange="BROKER", symbol="TEST", timeframe="M1", candles=candles)
         request = LiveIndicatorStreamRequest(
+            market_id=1,
             account_id="123",
             symbol="TEST",
             timeframe="M1",
@@ -81,7 +84,7 @@ class SingleRegistrationTests(unittest.IsolatedAsyncioTestCase):
                 "fixture_average", bars, ParamGrid({"window": 2})
             )
             self.assertEqual(float(np.asarray(result.tensor.data).reshape(-1)[-1]), 2.0)
-            manager = LiveIndicatorManager(cache)
+            manager = LiveIndicatorManager(cache, live_market_resolver("TEST"))
             manager._redis = Mock(xread=AsyncMock(return_value=[]), close=AsyncMock())
             try:
                 started = await manager.start_stream(request)
@@ -93,4 +96,6 @@ class SingleRegistrationTests(unittest.IsolatedAsyncioTestCase):
             with patch("app.INDICATOR_CATALOG", disabled):
                 self.assertFalse(get_indicator_metadata(42)["supports_live"])
                 with self.assertRaisesRegex(ValueError, "fixture_average is not supported"):
-                    await LiveIndicatorManager(cache).start_stream(request)
+                    await LiveIndicatorManager(cache, live_market_resolver("TEST")).start_stream(
+                        request
+                    )

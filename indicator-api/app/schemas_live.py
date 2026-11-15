@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class LiveIndicatorStreamRequest(BaseModel):
+    market_id: int = Field(gt=0, strict=True)
     account_id: str
     symbol: str
     timeframe: str
@@ -33,6 +34,7 @@ class LiveIndicatorStopResponse(BaseModel):
 
 
 class LiveIndicatorStatusResponse(BaseModel):
+    market_id: int
     stream_id: str
     running: bool
     account_id: str

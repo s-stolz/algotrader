@@ -8,12 +8,19 @@ from app.schemas_live import LiveIndicatorStreamRequest
 from app.services.candle_cache import CandleCache
 from app.services.live_indicator_manager import LiveIndicatorManager
 
+from tests.live_market_fixtures import live_market_resolver
+
 
 class LiveCandleCompatibilityTests(unittest.IsolatedAsyncioTestCase):
     async def test_opening_range_rejects_live_streaming_without_daily_history(self):
-        manager = LiveIndicatorManager(CandleCache())
+        manager = LiveIndicatorManager(CandleCache(), live_market_resolver())
         request = LiveIndicatorStreamRequest(
-            account_id="123", symbol="TEST", timeframe="M5", indicator_id=7, parameters={}
+            market_id=1,
+            account_id="123",
+            symbol="TEST",
+            timeframe="M5",
+            indicator_id=7,
+            parameters={},
         )
         with self.assertRaisesRegex(ValueError, "opening_range is not supported"):
             await manager.start_stream(request)
@@ -21,7 +28,7 @@ class LiveCandleCompatibilityTests(unittest.IsolatedAsyncioTestCase):
     async def test_live_indicator_values_ignore_continuity_without_exposing_metadata(self):
         cache = CandleCache()
         cache.put(
-            exchange=None,
+            exchange="BROKER",
             symbol="EURUSD",
             timeframe="M1",
             candles=pd.DataFrame(
@@ -41,9 +48,10 @@ class LiveCandleCompatibilityTests(unittest.IsolatedAsyncioTestCase):
             return await queue.get()
 
         redis = Mock(xread=AsyncMock(side_effect=read), xadd=AsyncMock(), close=AsyncMock())
-        manager = LiveIndicatorManager(cache)
+        manager = LiveIndicatorManager(cache, live_market_resolver())
         manager._redis = redis
         request = LiveIndicatorStreamRequest(
+            market_id=1,
             account_id="123",
             symbol="EURUSD",
             timeframe="M1",
@@ -76,3 +84,55 @@ class LiveCandleCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(set(call.args[1]), {"t", "s", "i", "d"})
         finally:
             await manager.shutdown()
+
+    async def test_custom_market_is_rejected_before_redis_start(self):
+        resolver = live_market_resolver()
+        resolver.resolve.side_effect = ValueError("Custom markets do not support broker data")
+        manager = LiveIndicatorManager(CandleCache(), resolver)
+        manager._ensure_redis = AsyncMock()
+        with self.assertRaisesRegex(ValueError, "Custom"):
+            await manager.start_stream(
+                LiveIndicatorStreamRequest(
+                    market_id=1,
+                    account_id="123",
+                    symbol="EURUSD",
+                    timeframe="M1",
+                    indicator_id=1,
+                )
+            )
+        manager._ensure_redis.assert_not_awaited()
+        resolver.dependencies.assert_not_awaited()
+
+    async def test_mismatched_account_is_rejected_before_market_lookup(self):
+        resolver = live_market_resolver()
+        manager = LiveIndicatorManager(CandleCache(), resolver)
+        with self.assertRaisesRegex(ValueError, "connected broker account"):
+            await manager.start_stream(
+                LiveIndicatorStreamRequest(
+                    market_id=1,
+                    account_id="456",
+                    symbol="EURUSD",
+                    timeframe="M1",
+                    indicator_id=1,
+                )
+            )
+        resolver.resolve.assert_not_awaited()
+
+    async def test_custom_basket_dependency_is_rejected_before_redis_start(self):
+        resolver = live_market_resolver()
+        resolver.dependencies.side_effect = ValueError(
+            "Live input USDJPY requires one connected broker market"
+        )
+        manager = LiveIndicatorManager(CandleCache(), resolver)
+        manager._ensure_redis = AsyncMock()
+        with self.assertRaisesRegex(ValueError, "Live input"):
+            await manager.start_stream(
+                LiveIndicatorStreamRequest(
+                    market_id=1,
+                    account_id="123",
+                    symbol="EURUSD",
+                    timeframe="M1",
+                    indicator_id=5,
+                )
+            )
+        manager._ensure_redis.assert_not_awaited()

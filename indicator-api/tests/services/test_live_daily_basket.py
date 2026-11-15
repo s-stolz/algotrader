@@ -8,10 +8,14 @@ from app.services.live_daily_basket import LiveDailyBasket
 from app.services.live_indicator_manager import LiveStreamSpec
 from indicator_engine.core.history import UTC_DAY_MS
 
+from tests.live_market_fixtures import live_market_resolver
+
 
 class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.basket = LiveDailyBasket(LiveStreamSpec("123", "EURUSD", "M1", 5, None, {}))
+        self.basket = LiveDailyBasket(
+            LiveStreamSpec("123", "EURUSD", "M1", 5, None, {}, market_id=1)
+        )
         self.redis = Mock(xadd=AsyncMock(), xrevrange=AsyncMock(return_value=[]))
         self.frames = {
             asset: pd.DataFrame({"close": [1.0, 1.01, 1.02]}, index=[-60000, 0, 60000])
@@ -181,9 +185,10 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
 
         self.redis.xread = AsyncMock(side_effect=read)
         self.redis.close = AsyncMock()
-        manager = LiveIndicatorManager(CandleCache())
+        manager = LiveIndicatorManager(CandleCache(), live_market_resolver())
         manager._redis = self.redis
         request = LiveIndicatorStreamRequest(
+            market_id=1,
             account_id="123",
             symbol="EURUSD",
             timeframe="M1",
@@ -251,7 +256,9 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_daily_timeframe_uses_previous_available_candle(self):
-        self.basket = LiveDailyBasket(LiveStreamSpec("123", "EURUSD", "D1", 5, None, {}))
+        self.basket = LiveDailyBasket(
+            LiveStreamSpec("123", "EURUSD", "D1", 5, None, {}, market_id=1)
+        )
         for index, asset in enumerate(self.basket.assets):
             self.frames[asset] = pd.DataFrame(
                 {"close": [1.03]}, index=[-index * UTC_DAY_MS - 60000]
@@ -371,7 +378,9 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
         self.redis.xadd.assert_awaited_once()
 
     async def test_hourly_midnight_waits_for_final_minute_and_ignores_stale_aggregates(self):
-        self.basket = LiveDailyBasket(LiveStreamSpec("123", "EURUSD", "H1", 5, None, {}))
+        self.basket = LiveDailyBasket(
+            LiveStreamSpec("123", "EURUSD", "H1", 5, None, {}, market_id=1)
+        )
         prior = UTC_DAY_MS - 3_600_000
         for asset in self.basket.assets:
             self.frames[asset] = pd.DataFrame({"close": [1.0]}, index=[prior])
@@ -407,7 +416,9 @@ class DailyBasketTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_hourly_reconnect_waits_for_interrupted_bucket_final_minute(self):
         hour = 3_600_000
-        self.basket = LiveDailyBasket(LiveStreamSpec("123", "EURUSD", "H1", 5, None, {}))
+        self.basket = LiveDailyBasket(
+            LiveStreamSpec("123", "EURUSD", "H1", 5, None, {}, market_id=1)
+        )
         for asset in self.basket.assets:
             self.frames[asset] = pd.DataFrame({"close": [1.0]}, index=[-60000])
         self.ingest(0, 1.03)

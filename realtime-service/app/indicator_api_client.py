@@ -23,6 +23,7 @@ class IndicatorApiClient:
     async def start_live_indicator_stream(
         self,
         *,
+        market_id: int,
         symbol: str,
         timeframe: str,
         indicator_id: int,
@@ -31,6 +32,7 @@ class IndicatorApiClient:
     ) -> dict:
         payload = {
             "account_id": self.account_id,
+            "market_id": market_id,
             "symbol": symbol,
             "timeframe": timeframe,
             "indicator_id": indicator_id,
@@ -56,6 +58,7 @@ class IndicatorApiClient:
     async def stop_live_indicator_stream(
         self,
         *,
+        market_id: int,
         symbol: str,
         timeframe: str,
         indicator_id: int,
@@ -64,6 +67,7 @@ class IndicatorApiClient:
     ) -> dict:
         payload = {
             "account_id": self.account_id,
+            "market_id": market_id,
             "symbol": symbol,
             "timeframe": timeframe,
             "indicator_id": indicator_id,

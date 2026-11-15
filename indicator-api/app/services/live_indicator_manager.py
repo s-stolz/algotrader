@@ -14,6 +14,7 @@ import pandas as pd
 import redis.asyncio as aioredis
 from algotrader_logger import get_logger
 from db_accessor_client import normalize_timeframe_code
+from db_accessor_client.market_sources import BrokerMarketResolver
 from indicator_engine import HistoryPolicy, ParamGrid, get_update_engine
 
 from app import ENGINE_REGISTRY, get_engine_id, supports_live
@@ -51,6 +52,7 @@ class LiveStreamSpec:
     indicator_id: int
     exchange: str | None
     parameters: dict[str, Any]
+    market_id: int
 
     @property
     def engine_id(self) -> str:
@@ -91,11 +93,13 @@ class LiveStreamSpec:
             indicator_id=int(request.indicator_id),
             exchange=request.exchange,
             parameters=params,
+            market_id=request.market_id,
         )
 
     def _canonical(self) -> dict[str, Any]:
         return {
             "account_id": self.account_id,
+            "market_id": self.market_id,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
             "indicator_id": self.indicator_id,
@@ -115,8 +119,13 @@ class LiveSession:
 
 
 class LiveIndicatorManager:
-    def __init__(self, candle_cache: CandleCache):
+    def __init__(
+        self, candle_cache: CandleCache, market_resolver: BrokerMarketResolver | None = None
+    ):
         self.candle_cache = candle_cache
+        self.market_resolver = market_resolver or BrokerMarketResolver(
+            os.getenv("ACCOUNT_ID", ""), os.getenv("CTRADER_HOST_TYPE", "")
+        )
         self.redis_host = os.getenv("REDIS_HOST", "redis")
         self.redis_port = int(os.getenv("REDIS_PORT", "6379"))
         self.redis_block_ms = int(os.getenv("INDICATOR_REDIS_BLOCK_MS", "5000"))
@@ -135,6 +144,8 @@ class LiveIndicatorManager:
     ) -> LiveIndicatorStartResponse:
         spec = LiveStreamSpec.from_request(request)
         self._validate_live_indicator(spec)
+        request = await self._resolve_market_request(request)
+        spec = LiveStreamSpec.from_request(request)
 
         async with self._lock:
             existing = self._sessions_by_key.get(spec.signature_key)
@@ -196,16 +207,46 @@ class LiveIndicatorManager:
                 warmup=self._build_warmup_info(spec=spec, seeded_bars=seeded_bars, source=source),
             )
 
+    async def _resolve_market_request(
+        self, request: LiveIndicatorStreamRequest
+    ) -> LiveIndicatorStreamRequest:
+        if request.account_id != self.market_resolver.account_id:
+            raise ValueError("Live indicator account must match the connected broker account")
+        market = await self.market_resolver.resolve(request.market_id)
+        required = ENGINE_REGISTRY.get(get_engine_id(request.indicator_id)).spec.required_assets
+        await self.market_resolver.dependencies(market, required or [])
+        if request.symbol.upper() != market["symbol"].upper():
+            raise ValueError("Live indicator symbol does not match market_id")
+        if request.exchange is not None and request.exchange != market["exchange"]:
+            raise ValueError("Live indicator exchange does not match market_id")
+        return request.model_copy(
+            update={"symbol": market["symbol"], "exchange": market["exchange"]}
+        )
+
     async def stop_stream(
         self,
         request: LiveIndicatorStreamRequest,
     ) -> LiveIndicatorStopResponse:
+        if request.account_id != self.market_resolver.account_id:
+            raise ValueError("Live indicator account must match the connected broker account")
         spec = LiveStreamSpec.from_request(request)
 
         async with self._lock:
-            session = self._sessions_by_key.get(spec.signature_key)
+            session = next(
+                (
+                    item
+                    for item in self._sessions_by_key.values()
+                    if item.spec.market_id == spec.market_id
+                    and item.spec.account_id == spec.account_id
+                    and item.spec.timeframe == spec.timeframe
+                    and item.spec.indicator_id == spec.indicator_id
+                    and item.spec.parameters == spec.parameters
+                ),
+                None,
+            )
             if session is None:
                 return LiveIndicatorStopResponse(stream_id=spec.stream_id, stopped=False)
+            spec = session.spec
 
             session.ref_count = max(0, session.ref_count - 1)
             if session.ref_count > 0:
@@ -236,6 +277,7 @@ class LiveIndicatorManager:
 
             return LiveIndicatorStatusResponse(
                 stream_id=stream_id,
+                market_id=session.spec.market_id,
                 running=session.running,
                 account_id=session.spec.account_id,
                 symbol=session.spec.symbol,
