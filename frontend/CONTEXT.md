@@ -32,6 +32,8 @@ and behavior that is easy to break when changing them.
   run selection/context restoration, and leaves execution-log pagination untouched.
   `components/Chart/trade-navigation/` loads ten predecessor bars and up to 500
   candles from the event, then pages 500 bars toward the edge the user approaches.
+  Retain viewport demand during in-flight reads and recheck the range after each
+  page; continue sequentially until the requested edge has enough loaded bars.
   No automatic catch-up stream runs. Historical windows ignore live candle and
   indicator messages, and reconnect recovery stays off until the window reaches
   the present. `chartSession.ts` owns cancellation; `trade-navigation/latestChart.ts`

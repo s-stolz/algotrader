@@ -24,6 +24,18 @@ export function createTradeHistoryAdapter(
   const timeScale = () => infrastructure.chartManager.chart?.timeScale();
   let width = 50;
   return {
+    getRange() {
+      const range = timeScale()?.getVisibleLogicalRange();
+      const series = infrastructure.getSeries().get('ohlc')?.series;
+      const bars = range && series?.barsInLogicalRange(range);
+      return bars
+        ? {
+            barsBefore: bars.barsBefore,
+            barsAfter: bars.barsAfter,
+            nowMs: performance.now(),
+          }
+        : null;
+    },
     historical(value) {
       indicators.historicalMode = value;
       timeScale()?.applyOptions({ shiftVisibleRangeOnNewBar: !value });

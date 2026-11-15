@@ -12,6 +12,7 @@ export interface ChartSessionOlderHistorySignal {
 
 export interface TradeHistoryAdapter {
   prepare(): void;
+  getRange(): ChartSessionOlderHistorySignal | null;
   fetchBefore(
     key: ChartSessionKey,
     endMs: number,
@@ -43,6 +44,8 @@ export class TradeHistory {
   private busy = false;
   private historical = false;
   private olderExhausted = false;
+  private olderRequested = false;
+  private newerRequested = false;
   private range: ChartSessionOlderHistorySignal | null = null;
 
   constructor(private readonly adapter: TradeHistoryAdapter) {}
@@ -61,6 +64,7 @@ export class TradeHistory {
     this.busy = false;
     this.historical = false;
     this.range = null;
+    this.olderRequested = this.newerRequested = false;
     this.adapter.historical(false);
     this.adapter.loading(false);
   }
@@ -98,9 +102,12 @@ export class TradeHistory {
       this.firstTimestamp = candles[0].timestamp_ms;
       this.lastTimestamp = candles.at(-1)!.timestamp_ms;
       this.adapter.install(candles, timestampMs);
+      this.range ??= this.adapter.getRange();
       await this.adapter.initializeIndicators(key);
       signal.throwIfAborted();
       if (after.length < 500) this.reachedPresent();
+      this.setBusy(false);
+      await this.drainPages();
       return true;
     } catch (error) {
       if (!signal.aborted)
@@ -120,55 +127,81 @@ export class TradeHistory {
   async requestPage(range: ChartSessionOlderHistorySignal): Promise<void> {
     const previous = this.range;
     this.range = range;
-    if (
-      !this.historical ||
-      this.busy ||
-      !this.key ||
-      !this.controller ||
-      !previous
-    )
-      return;
-    const older =
-      range.barsBefore < 100 &&
-      range.barsBefore < previous.barsBefore &&
-      !this.olderExhausted;
-    const newer =
-      range.barsAfter !== undefined &&
-      range.barsAfter < 100 &&
-      previous.barsAfter !== undefined &&
-      range.barsAfter < previous.barsAfter;
-    if (!older && !newer) return;
+    if (previous) {
+      const older = range.barsBefore < previous.barsBefore;
+      const newer =
+        range.barsAfter !== undefined &&
+        previous.barsAfter !== undefined &&
+        range.barsAfter < previous.barsAfter;
+      if (older || newer) {
+        this.olderRequested = older && range.barsBefore < 100;
+        this.newerRequested = newer && range.barsAfter! < 100;
+      }
+    }
+    await this.drainPages();
+  }
+
+  private async drainPages(): Promise<void> {
+    if (!this.historical || this.busy || !this.key || !this.controller) return;
     const { signal } = this.controller;
     const key = this.key;
-    if (this.firstTimestamp === null || this.lastTimestamp === null) return;
     this.setBusy(true);
     try {
-      const candles = older
-        ? await this.adapter.fetchBefore(key, this.firstTimestamp, 500, signal)
-        : await this.adapter.fetchAfter(
-            key,
-            this.lastTimestamp + timeframeToMinutes(key.timeframe) * 60_000,
-            signal,
-          );
-      signal.throwIfAborted();
-      this.adapter.install(candles, null);
-      if (candles.length) {
-        this.firstTimestamp = Math.min(
-          this.firstTimestamp,
-          candles[0].timestamp_ms,
-        );
-        this.lastTimestamp = Math.max(
-          this.lastTimestamp,
-          candles.at(-1)!.timestamp_ms,
-        );
-        await this.adapter.extendIndicators(key, candles, signal);
+      while (!signal.aborted && this.historical && this.range) {
+        const older =
+          this.olderRequested &&
+          !this.olderExhausted &&
+          this.range.barsBefore < 100;
+        const newer =
+          this.newerRequested &&
+          this.range.barsAfter !== undefined &&
+          this.range.barsAfter < 100;
+        if (
+          (!older && !newer) ||
+          this.firstTimestamp === null ||
+          this.lastTimestamp === null
+        )
+          break;
+        const candles = older
+          ? await this.adapter.fetchBefore(
+              key,
+              this.firstTimestamp,
+              500,
+              signal,
+            )
+          : await this.adapter.fetchAfter(
+              key,
+              this.lastTimestamp + timeframeToMinutes(key.timeframe) * 60_000,
+              signal,
+            );
         signal.throwIfAborted();
+        if (candles.length) {
+          const first = Math.min(this.firstTimestamp, candles[0].timestamp_ms);
+          const last = Math.max(
+            this.lastTimestamp,
+            candles.at(-1)!.timestamp_ms,
+          );
+          if (first === this.firstTimestamp && last === this.lastTimestamp)
+            throw new Error('History page did not extend candle coverage');
+          this.firstTimestamp = first;
+          this.lastTimestamp = last;
+          // Account for the page before render callbacks report the updated range.
+          if (older) this.range.barsBefore += candles.length;
+          else if (this.range.barsAfter !== undefined)
+            this.range.barsAfter += candles.length;
+          this.adapter.install(candles, null);
+          await this.adapter.extendIndicators(key, candles, signal);
+          signal.throwIfAborted();
+        }
+        this.range = this.adapter.getRange() ?? this.range;
+        if (older) this.olderExhausted = candles.length < 500;
+        else if (candles.length < 500) this.reachedPresent();
       }
-      if (older) this.olderExhausted = candles.length < 500;
-      else if (candles.length < 500) this.reachedPresent();
     } catch (error) {
-      if (!signal.aborted)
+      if (!signal.aborted) {
+        this.olderRequested = this.newerRequested = false;
         console.error('Failed to page trade history:', error);
+      }
     } finally {
       if (!signal.aborted) this.setBusy(false);
     }
