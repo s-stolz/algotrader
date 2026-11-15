@@ -136,7 +136,8 @@ export default defineComponent({
       default: DEFAULT_CHART_INTERACTION_MODE,
     },
   },
-  setup(props, { expose }) {
+  emits: ['candles-loaded'],
+  setup(props, { expose, emit }) {
     const tradeNavigation = useTradeNavigationStore();
     const candlesticksStore = useCandlesticksStore();
     const indicatorsStore = useIndicatorsStore();
@@ -166,13 +167,11 @@ export default defineComponent({
       canReadIndicators: () => loadedSession.value === sessionIdentity(),
       requestOlderHistory: (request) => session.requestOlderHistory(request),
     });
-    function currentChartSessionKey(): ChartSessionKeyInput {
-      return {
-        symbol: currentMarketStore.symbol,
-        exchange: currentMarketStore.exchange,
-        timeframe: currentTimeframeStore.value,
-      };
-    }
+    const currentChartSessionKey = (): ChartSessionKeyInput => ({
+      symbol: currentMarketStore.symbol,
+      exchange: currentMarketStore.exchange,
+      timeframe: currentTimeframeStore.value,
+    });
     const loadedSession = ref<string | null>(null);
     const sessionIdentity = (key = currentChartSessionKey()) =>
       JSON.stringify([key.symbol, key.exchange ?? null, key.timeframe]);
@@ -254,6 +253,7 @@ export default defineComponent({
           shouldScrollToRealTime: () => rendering.state.shouldScrollToRealTime,
           onCandlesLoaded: (key) => {
             loadedSession.value = sessionIdentity(key);
+            emit('candles-loaded');
           },
         }),
       ),

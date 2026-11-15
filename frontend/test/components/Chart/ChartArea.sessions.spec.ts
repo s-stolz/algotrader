@@ -95,8 +95,9 @@ describe('ChartArea sessions', () => {
 
   it('adapts stores, WebSocket, and chart rendering to the session', async () => {
     const { candlesticksStore, indicatorsStore } = setupStores('M5');
-    mountChartArea();
+    const wrapper = mountChartArea();
     await flushPromises();
+    const loadedEvents = wrapper.emitted('candles-loaded')?.length ?? 0;
     const adapter = latestChartSessionAdapter();
     const handler = vi.fn();
 
@@ -106,6 +107,7 @@ describe('ChartArea sessions', () => {
     adapter.offCandleUpdate(handler);
     await adapter.fetchCandles(eurUsdM5Key);
     await adapter.renderCandles(eurUsdM5Key, [candle(600_000, 2.5)]);
+    expect(wrapper.emitted('candles-loaded')).toHaveLength(loadedEvents + 1);
     await adapter.requestIndicators(eurUsdM5Key);
     await adapter.unsubscribeIndicators();
     await adapter.fetchOlderCandles(eurUsdM5Key, 300_000);

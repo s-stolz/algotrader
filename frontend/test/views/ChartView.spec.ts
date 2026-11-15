@@ -97,7 +97,7 @@ describe('ChartView startup', () => {
     expect(currentMarketStore.symbol_id).toBe(1);
   });
 
-  it('restores indicators before chart mount and run after markets load', async () => {
+  it('restores indicators before chart mount and run after candles load', async () => {
     let finish!: () => void;
     const indicators = useIndicatorsStore();
     vi.spyOn(indicators, 'restorePersistedIndicators').mockReturnValue(
@@ -120,6 +120,11 @@ describe('ChartView startup', () => {
     finish();
     await flushPromises();
     expect(wrapper.find('[data-testid="chart-area-mode"]').exists()).toBe(true);
+    expect(restoreRun).not.toHaveBeenCalled();
+    wrapper.getComponent(ChartAreaModeStub).vm.$emit('candles-loaded');
+    await flushPromises();
+    expect(restoreRun).toHaveBeenCalledOnce();
+    wrapper.getComponent(ChartAreaModeStub).vm.$emit('candles-loaded');
     expect(restoreRun).toHaveBeenCalledOnce();
     wrapper.unmount();
   });

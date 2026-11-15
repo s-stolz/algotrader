@@ -9,6 +9,7 @@
       id="chart-area"
       ref="chartArea"
       :interaction-mode="chartInteractionMode"
+      @candles-loaded="restoreChartOverlay"
     />
   </main>
 </template>
@@ -59,8 +60,13 @@ async function initializeChartView(): Promise<void> {
     indicatorsStore.restorePersistedIndicators(),
   ]);
   initialized.value = true;
-  if (marketsStore.all.length && !overlayStore.selectedRun)
-    void overlayStore.restorePersistedSelection();
+}
+
+let hasRestoredOverlay = false;
+function restoreChartOverlay(): void {
+  if (hasRestoredOverlay) return;
+  hasRestoredOverlay = true;
+  if (!overlayStore.selectedRun) void overlayStore.restorePersistedSelection();
 }
 
 void initializeChartView();
