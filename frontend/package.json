@@ -20,7 +20,7 @@
   "dependencies": {
     "@vue/devtools-api": "8.2.1",
     "echarts": "6.1.0",
-    "lightweight-charts": "5.2.1",
+    "lightweight-charts": "5.3.0",
     "mitt": "3.0.1",
     "pinia": "4.1.0",
     "vue": "3.5.45",
