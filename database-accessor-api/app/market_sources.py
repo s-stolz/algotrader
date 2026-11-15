@@ -45,7 +45,7 @@ async def verify_broker_market(market: dict[str, Any]) -> None:
     ):
         raise MarketSourceConflictError("Market does not belong to the configured broker account")
     host = os.getenv("BROKER_SERVICE_HOST", "broker-service")
-    port = os.getenv("BROKER_SERVICE_PORT", "8050")
+    port = os.getenv("BROKER_SERVICE_PORT", "8080")
     url = f"http://{host}:{port}/setup/instruments/{market['broker_symbol_id']}"
     try:
         async with httpx.AsyncClient(timeout=15) as client:

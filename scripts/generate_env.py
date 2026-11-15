@@ -96,6 +96,8 @@ def merge_topology(topology: dict[str, Any], overrides: dict[str, Any], prefix: 
     """Merge known fields recursively, preserving explicit null overrides."""
     for key, value in overrides.items():
         field = f"{prefix}.{key}" if prefix else key
+        if field == "services.realtime_service.network.health.published_port":
+            continue  # Legacy overrides cannot publish the internal health endpoint.
         if key not in topology:
             raise ValueError(f"Unknown local topology key: {field}")
         if isinstance(topology[key], dict):
@@ -184,10 +186,41 @@ def build_docker_resource_env(topology: dict[str, Any]) -> dict[str, str]:
     return env
 
 
+def validate_network_ports(topology: dict[str, Any]) -> None:
+    published: dict[int, str] = {}
+    networks = (
+        "services.database_accessor_api.network",
+        "services.indicator_api.network",
+        "services.backtester.api.network",
+        "services.broker_service.network",
+        "services.ingestion_service.network",
+        "services.realtime_service.network.websocket",
+        "services.frontend.network",
+        "infrastructure.redis.network",
+        "infrastructure.timescaledb.network",
+    )
+    for path in (*networks, "services.realtime_service.network.health"):
+        fields = ("port", "published_port") if path in networks else ("port",)
+        for field in fields:
+            value = required(topology, f"{path}.{field}")
+            if type(value) is not int or not 1 <= value <= 65535:
+                raise ValueError(f"{path}.{field} must be an integer from 1 to 65535")
+            if field == "published_port" and required(topology, "mode") == "development":
+                if value in published:
+                    raise ValueError(
+                        f"Duplicate published port {value}: {published[value]} and {path}"
+                    )
+                published[value] = path
+    realtime = required(topology, "services.realtime_service.network")
+    if realtime["websocket"]["port"] == realtime["health"]["port"]:
+        raise ValueError("Realtime WebSocket and health ports must differ within their container")
+
+
 def build_env(
     topology: dict[str, Any],
     secrets: dict[str, str],
 ) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    validate_network_ports(topology)
     history_env = build_history_env(topology)
     mode = required(topology, "mode")
     public_host = required(topology, "public.host")
@@ -226,9 +259,6 @@ def build_env(
     )
     realtime_service_health_port = required(
         topology, "services.realtime_service.network.health.port"
-    )
-    realtime_service_health_published_port = required(
-        topology, "services.realtime_service.network.health.published_port"
     )
     realtime_service_log_level = required(topology, "services.realtime_service.logging.level")
     realtime_service_log_format = required(topology, "services.realtime_service.logging.format")
@@ -338,7 +368,6 @@ def build_env(
         "REALTIME_SERVICE_WS_PORT": stringify(realtime_service_ws_port),
         "REALTIME_SERVICE_WS_PUBLISHED_PORT": stringify(realtime_service_ws_published_port),
         "REALTIME_SERVICE_HEALTH_PORT": stringify(realtime_service_health_port),
-        "REALTIME_SERVICE_HEALTH_PUBLISHED_PORT": stringify(realtime_service_health_published_port),
         "REALTIME_SERVICE_LOG_LEVEL": stringify(realtime_service_log_level),
         "REALTIME_SERVICE_LOG_FORMAT": stringify(realtime_service_log_format),
         "FRONTEND_PORT": stringify(frontend_port),

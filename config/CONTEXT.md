@@ -68,6 +68,9 @@ files there. Broker account/environment are shared only with services that valid
 Market source binding; application credentials and tokens stay broker-only. OAuth
 bootstrap expiry timestamps are preserved when supplied.
 
-Ingestion exposes its history-request API on the configured internal port (8000
-by default); development publishes 8060, while release access uses the frontend
-proxy. The release frontend serves `/ws` and API paths on one loopback port.
+HTTP APIs and the realtime WebSocket default to container port 8080. Realtime
+health uses internal-only port 8081. Development publishes APIs and WebSocket on
+localhost ports 18000–18005; 18006 is unused. PostgreSQL, Redis, and Vite retain
+5432, 6379, and 5173, also bound to localhost. Internal port reuse is valid; the
+generator rejects duplicate actual host publications. Legacy health-publication
+overrides are ignored. Release access uses the frontend proxy. The release frontend serves `/ws` and API paths on one loopback port.

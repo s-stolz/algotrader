@@ -40,8 +40,8 @@ Single-endpoint components use:
 ```yaml
 network:
   host: database-accessor-api
-  port: 8000
-  published_port: 8000
+  port: 8080
+  published_port: 18000
 ```
 
 `host` is the internal service hostname. `port` is the internal port;
@@ -53,15 +53,20 @@ Realtime service exposes two named endpoints:
 ```yaml
 network:
   websocket:
-    port: 8765
-    published_port: 8765
-  health:
     port: 8080
-    published_port: 8080
+    published_port: 18005
+  health:
+    port: 8081
 ```
 
 The browser WebSocket URL uses `public.host` and `network.websocket.published_port`.
-Ports are integers; hostnames are strings. Frontend networking needs only `port`
+Ports are integers from 1 through 65535; actual development host publications
+must be unique. Internal ports may be reused across containers. Realtime health
+is internal-only; legacy `health.published_port` overrides are accepted and ignored.
+The WebSocket and health listeners must use different ports within their container.
+Host publications bind to `127.0.0.1`.
+
+Hostnames are strings. Frontend networking needs only `port`
 and `published_port`; no component consumes a configurable frontend hostname.
 
 ## Logging and resources

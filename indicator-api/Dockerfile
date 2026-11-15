@@ -20,6 +20,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 WORKDIR /app
 COPY indicator-api /app
 
-EXPOSE 8010
+EXPOSE 8080
 
 CMD ["python", "main.py"]

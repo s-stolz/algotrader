@@ -465,13 +465,13 @@ def _require_mapping(payload: object, label: str) -> Mapping[str, Any]:
 
 def _default_backtester_url() -> str:
     host = os.getenv("PUBLIC_HOST", "localhost")
-    port = os.getenv("BACKTESTER_API_PUBLISHED_PORT", "8020")
+    port = os.getenv("BACKTESTER_API_PUBLISHED_PORT", "18002")
     return f"http://{host}:{port}"
 
 
 def _default_storage_url() -> str:
     host = os.getenv("PUBLIC_HOST", "localhost")
-    port = os.getenv("DATABASE_ACCESSOR_PUBLISHED_PORT", "8000")
+    port = os.getenv("DATABASE_ACCESSOR_PUBLISHED_PORT", "18000")
     return f"http://{host}:{port}"
 
 

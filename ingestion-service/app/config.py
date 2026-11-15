@@ -25,7 +25,7 @@ class Config:
     recovery_backoff_max_seconds: int
 
     broker_environment: str = "demo"
-    api_port: int = 8000
+    api_port: int = 8080
     history_lookback_days: int | None = 90
     history_start_date: str | None = None
 
@@ -74,12 +74,12 @@ def load_config() -> Config:
     start = os.getenv("INGESTION_HISTORY_START_DATE", "").strip()
     config = Config(
         broker_environment=os.getenv("CTRADER_HOST_TYPE", "demo"),
-        api_port=int(os.getenv("INGESTION_API_PORT", "8000")),
+        api_port=int(os.getenv("INGESTION_API_PORT", "8080")),
         history_lookback_days=int(days) if days else None,
         history_start_date=start or None,
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
         broker_service_host=os.getenv("BROKER_SERVICE_HOST", "broker-service"),
-        broker_service_port=int(os.getenv("BROKER_SERVICE_PORT", "8050")),
+        broker_service_port=int(os.getenv("BROKER_SERVICE_PORT", "8080")),
         broker_account_id=os.getenv("ACCOUNT_ID", "12345"),
         log_level=log_level,
         log_format=log_format,

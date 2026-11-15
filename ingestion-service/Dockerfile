@@ -17,5 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 WORKDIR /app
 COPY ingestion-service /app
 
+EXPOSE 8080
+
 # Run the service
 CMD ["python", "main.py"]

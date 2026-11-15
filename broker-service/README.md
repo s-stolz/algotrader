@@ -62,7 +62,7 @@ under `config/` via `make config`; see [configuration context](../config/CONTEXT
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `BROKER_SERVICE_PORT` | HTTP port for FastAPI | `8050` |
+| `BROKER_SERVICE_PORT` | HTTP port for FastAPI | `8080` |
 | `CTRADER_CLIENT_ID` | cTrader API client ID | (required) |
 | `CTRADER_SECRET` | cTrader API secret | (required) |
 | `CTRADER_HOST_TYPE` | cTrader host type (`demo` or `live`) | (required) |
@@ -108,13 +108,13 @@ does not load them. Set `BROKER_REDIS_URL` to the host-reachable Redis address.
 Then start the API from `broker-service/`:
 
 ```bash
-.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8050
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
 Alternatively, `make up-build` from the repository root loads configuration and
 service networking through Compose.
 
-4. Check health status at `GET http://localhost:8050/meta/health` and explore the API:
+4. Check health status at `GET http://localhost:8080/meta/health` and explore the API:
    - `/accounts` – List trading accounts
    - `/orders` – Manage orders (open, history, place, cancel)
    - `/positions` – View and close positions

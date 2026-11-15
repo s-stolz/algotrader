@@ -23,7 +23,7 @@ def main() -> None:
     uvicorn.run(
         "main:app",
         host=os.getenv("BACKTESTER_API_BIND_HOST", "0.0.0.0"),
-        port=int(os.getenv("BACKTESTER_API_PORT", "8020")),
+        port=int(os.getenv("BACKTESTER_API_PORT", "8080")),
         log_level=os.getenv("BACKTESTER_LOG_LEVEL", "INFO").lower(),
     )
 

@@ -7,8 +7,8 @@ services:
   database_accessor_api:
     network:
       host: database-accessor-api
-      port: 8000
-      published_port: 8000
+      port: 8080
+      published_port: 18000
     logging:
       level: INFO
       format: pretty
@@ -19,8 +19,8 @@ services:
   indicator_api:
     network:
       host: indicator-api
-      port: 8010
-      published_port: 8010
+      port: 8080
+      published_port: 18001
     logging:
       level: INFO
       format: pretty
@@ -35,8 +35,8 @@ services:
     api:
       network:
         host: backtester-api
-        port: 8020
-        published_port: 8020
+        port: 8080
+        published_port: 18002
       resources:
         cpus: 0.5
         memory_reservation_mb: 256
@@ -53,8 +53,8 @@ services:
   broker_service:
     network:
       host: broker-service
-      port: 8050
-      published_port: 8050
+      port: 8080
+      published_port: 18003
     logging:
       level: INFO
       format: pretty
@@ -77,8 +77,8 @@ services:
   ingestion_service:
     network:
       host: ingestion-service
-      port: 8000
-      published_port: 8060
+      port: 8080
+      published_port: 18004
     history:
       lookback_days: 90
       start_date: null
@@ -95,11 +95,10 @@ services:
   realtime_service:
     network:
       websocket:
-        port: 8765
-        published_port: 8765
-      health:
         port: 8080
-        published_port: 8080
+        published_port: 18005
+      health:
+        port: 8081
     logging:
       level: INFO
       format: pretty

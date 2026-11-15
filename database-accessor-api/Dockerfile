@@ -19,6 +19,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 WORKDIR /app
 COPY database-accessor-api /app
 
-EXPOSE 8000
+EXPOSE 8080
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

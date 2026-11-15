@@ -20,6 +20,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 WORKDIR /app
 COPY realtime-service /app
 
-EXPOSE 8765 8080
+EXPOSE 8080 8081
 
 CMD ["python", "-u", "main.py"]

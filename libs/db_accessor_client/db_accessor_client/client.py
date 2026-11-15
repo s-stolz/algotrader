@@ -43,7 +43,7 @@ def _mutation_updated(response: Any) -> bool:
 class _BaseClient:
     def __init__(self) -> None:
         host = os.getenv("DATABASE_ACCESSOR_HOST", "database-accessor-api")
-        port = os.getenv("DATABASE_ACCESSOR_PORT", "8000")
+        port = os.getenv("DATABASE_ACCESSOR_PORT", "8080")
         self.base_url = f"http://{host}:{port}".rstrip("/")
 
     def _url(self, path: str) -> str:

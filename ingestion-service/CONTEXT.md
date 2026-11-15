@@ -87,7 +87,7 @@ history. See the [guard contract](../docs/contracts/recovery.md#durable-live-wri
 
 `app/history/` owns one-time download acceptance, execution, notification retry, and
 shutdown recovery. `app/http_api.py` exposes `/history-downloads` and `/health` on
-`INGESTION_API_PORT` (8000). The same process runs live ingestion and the history
+`INGESTION_API_PORT` (8080). The same process runs live ingestion and the history
 queue; readiness stays false until dependency initialization succeeds.
 
 The accessor freezes each request's source and upper boundary and fences all

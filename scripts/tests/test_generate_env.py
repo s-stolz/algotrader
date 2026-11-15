@@ -39,7 +39,7 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
         self.assertEqual(runtime, {"ACCOUNT_ID": "123", "CTRADER_HOST_TYPE": "demo"})
         self.assertEqual(broker["CTRADER_ACCESS_TOKEN_EXPIRES_AT"], "1700003600")
         self.assertNotIn("CTRADER_SECRET", shared | database | runtime)
-        self.assertEqual(shared["VITE_PROXY_INGESTION_TARGET"], "http://ingestion-service:8000")
+        self.assertEqual(shared["VITE_PROXY_INGESTION_TARGET"], "http://ingestion-service:8080")
 
     def test_component_tuning_changes_only_its_runtime_variables(self) -> None:
         cases = (
@@ -132,6 +132,87 @@ class GeneratedEnvironmentPreservationTests(unittest.TestCase):
         self.assertEqual(shared["REDIS_URL"], "redis://stream-store:6380/2")
         self.assertEqual(shared["BROKER_REDIS_URL"], "redis://stream-store:6380/3")
         self.assertEqual(shared["REDIS_PUBLISHED_PORT"], "16380")
+
+
+class NetworkPortConfigurationTests(unittest.TestCase):
+    def test_compose_publishes_only_loopback_development_endpoints(self) -> None:
+        compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+        shared = generate_env.build_env(generate_env.read_yaml(generate_env.TOPOLOGY_PATH), {})[0]
+        expected = {
+            "database-accessor-api": ("DATABASE_ACCESSOR", 18000, 8080),
+            "indicator-api": ("INDICATOR_API", 18001, 8080),
+            "backtester-api": ("BACKTESTER_API", 18002, 8080),
+            "broker-service": ("BROKER_SERVICE", 18003, 8080),
+            "ingestion-service": ("INGESTION_API", 18004, 8080),
+            "realtime-service": ("REALTIME_SERVICE_WS", 18005, 8080),
+            "frontend": ("FRONTEND", 5173, 5173),
+            "timescaledb": ("TIMESCALEDB", 5432, 5432),
+            "redis": ("REDIS", 6379, 6379),
+        }
+        for name, (prefix, published, internal) in expected.items():
+            with self.subTest(service=name):
+                ports = compose["services"][name]["ports"]
+                self.assertEqual(len(ports), 1)
+                target = (
+                    str(internal)
+                    if name in ("redis", "timescaledb")
+                    else f"${{{prefix}_PORT:-{internal}}}"
+                )
+                self.assertEqual(
+                    ports[0], f"127.0.0.1:${{{prefix}_PUBLISHED_PORT:-{published}}}:{target}"
+                )
+                self.assertEqual(shared[f"{prefix}_PUBLISHED_PORT"], str(published))
+                self.assertEqual(shared[f"{prefix}_PORT"], str(internal))
+        self.assertEqual(shared["REALTIME_SERVICE_HEALTH_PORT"], "8081")
+        self.assertNotIn("REALTIME_SERVICE_HEALTH_PUBLISHED_PORT", shared)
+
+    def test_only_actual_host_publications_must_be_unique(self) -> None:
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        # A host endpoint can use a number shared by isolated container listeners.
+        topology["services"]["frontend"]["network"]["published_port"] = 8080
+        generate_env.build_env(topology, {})
+        for path in (
+            "services.broker_service.network",
+            "services.realtime_service.network.websocket",
+            "infrastructure.redis.network",
+            "infrastructure.timescaledb.network",
+        ):
+            with self.subTest(path=path):
+                topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+                generate_env.required(topology, path)["published_port"] = 18000
+                with self.assertRaisesRegex(ValueError, "Duplicate published port 18000"):
+                    generate_env.build_env(topology, {})
+
+    def test_release_ignores_unused_development_publication_collisions(self) -> None:
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        topology["mode"] = "production"
+        topology["services"]["broker_service"]["network"]["published_port"] = 18000
+        generate_env.build_env(topology, {})
+
+    def test_invalid_ports_and_same_container_listener_conflicts_are_rejected(self) -> None:
+        for field in ("port", "published_port"):
+            for invalid in (0, 65536, -1, True, "8080", 8080.5, None):
+                with self.subTest(field=field, invalid=invalid):
+                    topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+                    topology["services"]["broker_service"]["network"][field] = invalid
+                    with self.assertRaisesRegex(ValueError, "integer from 1 to 65535"):
+                        generate_env.build_env(topology, {})
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        topology["services"]["realtime_service"]["network"]["health"]["port"] = 8080
+        with self.assertRaisesRegex(ValueError, "within their container"):
+            generate_env.build_env(topology, {})
+
+    def test_legacy_health_publication_override_is_ignored(self) -> None:
+        topology = generate_env.read_yaml(generate_env.TOPOLOGY_PATH)
+        expected = generate_env.build_env(topology, {})
+        generate_env.merge_topology(
+            topology,
+            {"services": {"realtime_service": {"network": {"health": {"published_port": 8080}}}}},
+        )
+        self.assertEqual(generate_env.build_env(topology, {}), expected)
+        self.assertNotIn(
+            "published_port", topology["services"]["realtime_service"]["network"]["health"]
+        )
 
 
 class LocalTopologyTests(unittest.TestCase):
@@ -252,8 +333,8 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         shared_env, _, _, _ = generate_env.build_env(topology, {})
 
         self.assertEqual(shared_env["BACKTESTER_API_HOST"], "backtester-api")
-        self.assertEqual(shared_env["BACKTESTER_API_PORT"], "8020")
-        self.assertEqual(shared_env["BACKTESTER_API_PUBLISHED_PORT"], "8020")
+        self.assertEqual(shared_env["BACKTESTER_API_PORT"], "8080")
+        self.assertEqual(shared_env["BACKTESTER_API_PUBLISHED_PORT"], "18002")
         self.assertEqual(shared_env["BACKTESTER_LOG_LEVEL"], "INFO")
         self.assertEqual(shared_env["BACKTESTER_LOG_FORMAT"], "pretty")
         self.assertEqual(shared_env["BACKTESTER_WORKER_HEARTBEAT_INTERVAL_SECONDS"], "5.0")
@@ -261,7 +342,7 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(shared_env["BACKTESTER_MAX_BACKTEST_CANDIDATE_COUNT"], "1000")
         self.assertEqual(
             shared_env["VITE_PROXY_BACKTESTER_TARGET"],
-            "http://backtester-api:8020",
+            "http://backtester-api:8080",
         )
 
     def test_compose_runs_api_and_singleton_worker_from_same_image(self) -> None:
@@ -285,7 +366,7 @@ class BacktesterRuntimeConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(
             api["ports"],
-            ["${BACKTESTER_API_PUBLISHED_PORT:-8020}:${BACKTESTER_API_PORT:-8020}"],
+            ["127.0.0.1:${BACKTESTER_API_PUBLISHED_PORT:-18002}:${BACKTESTER_API_PORT:-8080}"],
         )
         self.assertIn("healthcheck", api)
         self.assertNotIn("ports", worker)

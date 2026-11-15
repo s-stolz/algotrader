@@ -59,7 +59,7 @@ app.include_router(live_indicator_streams_router)
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("INDICATOR_API_PORT", 8010))
+    port = int(os.getenv("INDICATOR_API_PORT", 8080))
     host = os.getenv("INDICATOR_API_BIND_HOST", "0.0.0.0")
 
     uvicorn.run(

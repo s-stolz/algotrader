@@ -59,7 +59,7 @@ describe('frontend bootstrap', () => {
 
     await import('@/main');
 
-    expect(bootstrapMock.connect).toHaveBeenCalledWith('ws://localhost:8765');
+    expect(bootstrapMock.connect).toHaveBeenCalledWith('ws://localhost:18005');
     expect(bootstrapMock.app.use).toHaveBeenCalledWith(bootstrapMock.router);
     expect(bootstrapMock.createPinia).toHaveBeenCalledOnce();
     expect(bootstrapMock.app.use).toHaveBeenCalledWith({ name: 'pinia' });

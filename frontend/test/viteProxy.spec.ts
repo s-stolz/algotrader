@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { createDevServerProxy } from '@/viteProxy';
 
 describe('Vite development proxy configuration', () => {
+  it('uses container HTTP ports for every default API target', () => {
+    const proxy = createDevServerProxy({});
+    for (const target of Object.values(proxy)) {
+      expect(new URL(String(target.target)).port).toBe('8080');
+    }
+  });
   it('proxies public backtester API calls to the backtester service', () => {
     const proxy = createDevServerProxy({
       VITE_PROXY_BACKTESTER_TARGET: 'http://backtester-api:8020',
@@ -26,9 +32,9 @@ describe('Vite development proxy configuration', () => {
   });
   it('routes broker discovery and history requests through their service proxies', () => {
     const proxy = createDevServerProxy({});
-    expect(proxy['/api/broker'].target).toBe('http://broker-service:8050');
+    expect(proxy['/api/broker'].target).toBe('http://broker-service:8080');
     expect(proxy['/api/ingestion'].target).toBe(
-      'http://ingestion-service:8000',
+      'http://ingestion-service:8080',
     );
     expect(proxy['/api/broker'].rewrite?.('/api/broker/connection')).toBe(
       '/connection',

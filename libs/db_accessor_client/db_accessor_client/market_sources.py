@@ -65,7 +65,7 @@ class BrokerMarketResolver:
         self.account_id = account_id
         self.environment = environment
         host = os.getenv("BROKER_SERVICE_HOST", "broker-service")
-        port = os.getenv("BROKER_SERVICE_PORT", "8050")
+        port = os.getenv("BROKER_SERVICE_PORT", "8080")
         self.broker_url = os.getenv("BROKER_SERVICE_BASE_URL", f"http://{host}:{port}").rstrip("/")
 
     async def resolve(self, market_id: int) -> dict[str, Any]:

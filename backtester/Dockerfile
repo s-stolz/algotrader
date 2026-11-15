@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 WORKDIR /app
 COPY backtester /app
 
-EXPOSE 8020
+EXPOSE 8080
 
 # Run the service
 CMD ["python", "main.py"]

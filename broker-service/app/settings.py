@@ -90,7 +90,7 @@ class CtraderCredentials:
 @dataclass(frozen=True, slots=True)
 class Settings:
     app_name: str = "broker-service"
-    service_port: int = 8050
+    service_port: int = 8080
     redis_url: str = "redis://redis:6379/0"
     tick_queue_size: int = 1000
     tick_stream_maxlen: int | None = None
@@ -109,7 +109,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         return cls(
             app_name=_read_str("BROKER_APP_NAME", "broker-service"),
-            service_port=_read_int("BROKER_SERVICE_PORT", 8050),
+            service_port=_read_int("BROKER_SERVICE_PORT", 8080),
             redis_url=_read_str("BROKER_REDIS_URL", "redis://redis:6379/0"),
             tick_queue_size=_read_int("BROKER_TICK_QUEUE_SIZE", 1000),
             tick_stream_maxlen=_read_optional_int("BROKER_TICK_STREAM_MAXLEN"),

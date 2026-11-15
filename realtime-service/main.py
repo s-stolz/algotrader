@@ -282,7 +282,7 @@ class WebSocketServer:
         self.health_runner = web.AppRunner(self.health_app)
         await self.health_runner.setup()
 
-        health_port = self.config.get("health_port", 8080)
+        health_port = self.config.get("health_port", 8081)
         site = web.TCPSite(self.health_runner, "0.0.0.0", health_port)
         await site.start()
         logger.info(f"Health check server running on port {health_port}")
@@ -332,22 +332,22 @@ class WebSocketServer:
 
 async def main():
     broker_host = os.getenv("BROKER_SERVICE_HOST", "broker-service")
-    broker_port = int(os.getenv("BROKER_SERVICE_PORT", "8050"))
+    broker_port = int(os.getenv("BROKER_SERVICE_PORT", "8080"))
     broker_service_url = os.getenv(
         "BROKER_SERVICE_BASE_URL",
         f"http://{broker_host}:{broker_port}",
     )
 
     indicator_host = os.getenv("INDICATOR_API_HOST", "indicator-api")
-    indicator_port = int(os.getenv("INDICATOR_API_PORT", "8010"))
+    indicator_port = int(os.getenv("INDICATOR_API_PORT", "8080"))
     indicator_api_url = os.getenv(
         "INDICATOR_API_BASE_URL",
         f"http://{indicator_host}:{indicator_port}",
     )
 
     config = {
-        "ws_port": int(os.getenv("REALTIME_SERVICE_WS_PORT", "8765")),
-        "health_port": int(os.getenv("REALTIME_SERVICE_HEALTH_PORT", "8080")),
+        "ws_port": int(os.getenv("REALTIME_SERVICE_WS_PORT", "8080")),
+        "health_port": int(os.getenv("REALTIME_SERVICE_HEALTH_PORT", "8081")),
         "redis_host": os.getenv("REDIS_HOST", "redis"),
         "redis_port": int(os.getenv("REDIS_PORT", "6379")),
         "broker_service_url": broker_service_url,
