@@ -21,20 +21,25 @@ def candles(times, close):
 
 class LiveHistoryNavigationTests(unittest.IsolatedAsyncioTestCase):
     async def test_historical_chart_read_cannot_contaminate_first_live_sma(self):
+        for window in (2, 5, 20):
+            with self.subTest(symbol="BTCUSD", timeframe="M1", window=window):
+                await self._assert_first_live_sma(window)
+
+    async def _assert_first_live_sma(self, window):
         cache = CandleCache()
         with patch(
             "app.services.historical_indicator_service.get_candles",
-            new=AsyncMock(return_value=candles([0, 60000], 10.0)),
+            new=AsyncMock(return_value=candles([i * 60000 for i in range(window)], 10.0)),
         ):
             await run_historical_indicator(
                 indicator_id=1,
-                symbol="TEST",
+                symbol="BTCUSD",
                 exchange=None,
                 timeframe="M1",
                 start_ms=0,
-                end_ms=120000,
+                end_ms=window * 60000,
                 limit=None,
-                custom_parameters={"window": 2},
+                custom_parameters={"window": window},
                 candle_cache=cache,
             )
         queue = asyncio.Queue()
@@ -48,26 +53,28 @@ class LiveHistoryNavigationTests(unittest.IsolatedAsyncioTestCase):
         try:
             with patch(
                 "app.services.live_indicator_manager.get_candles",
-                new=AsyncMock(return_value=candles([600000, 660000], 100.0)),
+                new=AsyncMock(
+                    return_value=candles([86_400_000 + i * 60000 for i in range(window)], 100.0)
+                ),
             ):
                 await manager.start_stream(
                     LiveIndicatorStreamRequest(
                         account_id="123",
-                        symbol="TEST",
+                        symbol="BTCUSD",
                         timeframe="M1",
                         indicator_id=1,
-                        parameters={"window": 2},
+                        parameters={"window": window},
                     )
                 )
             await queue.put(
                 [
                     (
-                        "candles:123:TEST:M1",
+                        "candles:123:BTCUSD:M1",
                         [
                             (
                                 "1-0",
                                 {
-                                    "t": "720000",
+                                    "t": str(86_400_000 + window * 60000),
                                     "o": "100",
                                     "h": "100",
                                     "l": "100",
