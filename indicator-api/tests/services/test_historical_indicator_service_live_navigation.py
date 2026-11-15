@@ -11,6 +11,8 @@ from app.services.candle_cache import CandleCache
 from app.services.historical_indicator_service import run_historical_indicator
 from app.services.live_indicator_manager import LiveIndicatorManager
 
+from tests.live_market_fixtures import live_market_resolver
+
 
 def candles(times, close):
     return pd.DataFrame(
@@ -34,7 +36,7 @@ class LiveHistoryNavigationTests(unittest.IsolatedAsyncioTestCase):
             await run_historical_indicator(
                 indicator_id=1,
                 symbol="BTCUSD",
-                exchange=None,
+                exchange="BROKER",
                 timeframe="M1",
                 start_ms=0,
                 end_ms=window * 60000,
@@ -48,7 +50,7 @@ class LiveHistoryNavigationTests(unittest.IsolatedAsyncioTestCase):
             return await queue.get()
 
         redis = Mock(xread=AsyncMock(side_effect=read), xadd=AsyncMock(), close=AsyncMock())
-        manager = LiveIndicatorManager(cache)
+        manager = LiveIndicatorManager(cache, live_market_resolver("BTCUSD"))
         manager._redis = redis
         try:
             with patch(
@@ -59,7 +61,9 @@ class LiveHistoryNavigationTests(unittest.IsolatedAsyncioTestCase):
             ):
                 await manager.start_stream(
                     LiveIndicatorStreamRequest(
+                        market_id=1,
                         account_id="123",
+                        exchange="BROKER",
                         symbol="BTCUSD",
                         timeframe="M1",
                         indicator_id=1,
