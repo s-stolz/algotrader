@@ -1,4 +1,5 @@
 import { fetchCandles } from '@/api/candleClient';
+import { findLiveMarket } from '@/stores/indicators/marketSource';
 import { extendIndicatorHistory } from '@/stores/indicators/forwardHistory';
 import type { ChartCandle } from '@/types/contracts';
 import type { useCandlesticksStore } from '@/stores/candlesticksStore';
@@ -38,7 +39,22 @@ export function createTradeHistoryAdapter(
     },
     historical(value) {
       indicators.historicalMode = value;
+      if (value) void indicators.unsubscribeAllLive();
       timeScale()?.applyOptions({ shiftVisibleRangeOnNewBar: !value });
+    },
+    resumeLive(key) {
+      if (
+        key.source_type !== 'broker' ||
+        !key.market_id ||
+        findLiveMarket(key.symbol, key.exchange)?.symbol_id !== key.market_id
+      )
+        return;
+      for (const indicator of indicators.all)
+        void indicators.subscribeIndicatorLive(indicator._id, {
+          ...key,
+          indicatorId: indicator.indicatorId,
+          parameters: indicators.extractParameterValues(indicator.parameters),
+        });
     },
     prepare() {
       const range = timeScale()?.getVisibleLogicalRange();
