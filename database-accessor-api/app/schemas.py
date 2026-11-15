@@ -91,6 +91,7 @@ class CandleIn(BaseModel):
 
 
 class CandleBatchIn(BaseModel):
+    market_id: StrictInt | None = Field(default=None, gt=0)
     symbol: str
     exchange: str | None = None
     candles: List[CandleIn]

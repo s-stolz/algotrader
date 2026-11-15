@@ -283,10 +283,13 @@ class DatabaseAccessorClient(_BaseClient):
         symbol: str,
         candles: list[dict[str, Any]],
         exchange: str | None = None,
+        market_id: int | None = None,
     ) -> dict[str, Any]:
         payload = {"symbol": symbol, "candles": candles}
         if exchange is not None:
             payload["exchange"] = exchange
+        if market_id is not None:
+            payload["market_id"] = market_id
         return self._request("POST", "/candles", json=payload)
 
     def create_backtest(self, backtest: dict[str, Any]) -> dict[str, Any]:
@@ -417,6 +420,7 @@ class DatabaseAccessorClient(_BaseClient):
         start_ms: int,
         end_ms: int,
         exchange: str | None = None,
+        market_id: int | None = None,
     ) -> dict[str, Any]:
         payload = {
             "symbol": symbol,
@@ -426,6 +430,8 @@ class DatabaseAccessorClient(_BaseClient):
         }
         if exchange is not None:
             payload["exchange"] = exchange
+        if market_id is not None:
+            payload["market_id"] = market_id
         return self._request("POST", "/candles/historical", json=payload)
 
     def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:
@@ -726,10 +732,13 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         symbol: str,
         candles: list[dict[str, Any]],
         exchange: str | None = None,
+        market_id: int | None = None,
     ) -> dict[str, Any]:
         payload = {"symbol": symbol, "candles": candles}
         if exchange is not None:
             payload["exchange"] = exchange
+        if market_id is not None:
+            payload["market_id"] = market_id
         return await self._request("POST", "/candles", json=payload)
 
     async def create_backtest(self, backtest: dict[str, Any]) -> dict[str, Any]:
@@ -866,6 +875,7 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         start_ms: int,
         end_ms: int,
         exchange: str | None = None,
+        market_id: int | None = None,
     ) -> dict[str, Any]:
         payload = {
             "symbol": symbol,
@@ -875,6 +885,8 @@ class AsyncDatabaseAccessorClient(_BaseClient):
         }
         if exchange is not None:
             payload["exchange"] = exchange
+        if market_id is not None:
+            payload["market_id"] = market_id
         return await self._request("POST", "/candles/historical", json=payload)
 
     async def get_pending_recovery(self, symbol_id: int, account_id: str) -> dict[str, Any] | None:

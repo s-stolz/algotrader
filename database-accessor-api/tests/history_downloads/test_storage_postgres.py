@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import httpx
-from app import market_cache
+from app import crud, market_cache
 from app.database import get_db
 from app.models import candles
 from main import app
@@ -362,3 +362,97 @@ class DownloadPostgresTests(unittest.IsolatedAsyncioTestCase):
                 {"id": self.market_id},
             )
             self.assertEqual(volume, 20)
+
+    async def test_explicit_live_write_holds_market_lock_until_candles_commit(self):
+        reached_write = asyncio.Event()
+        release_write = asyncio.Event()
+        original_insert = crud.insert_candles
+
+        async def blocked_insert(session, market_id, values):
+            reached_write.set()
+            await release_write.wait()
+            return await original_insert(session, market_id, values)
+
+        with patch("main.crud.insert_candles", new=blocked_insert):
+            pending = asyncio.create_task(
+                self.client.post(
+                    "/candles",
+                    json=dict(
+                        market_id=self.market_id,
+                        symbol="EURUSD",
+                        exchange="TEST BROKER",
+                        candles=[bar(0)],
+                    ),
+                )
+            )
+            try:
+                await asyncio.wait_for(reached_write.wait(), timeout=5)
+                async with self.engine.begin() as connection:
+                    await connection.execute(text("SET LOCAL lock_timeout = '100ms'"))
+                    with self.assertRaisesRegex(DBAPIError, "lock timeout"):
+                        await connection.execute(
+                            text("DELETE FROM markets WHERE symbol_id=:id"),
+                            {"id": self.market_id},
+                        )
+            finally:
+                release_write.set()
+                response = await asyncio.wait_for(pending, timeout=5)
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_delayed_live_and_recovery_writes_reject_recreated_market_name(self):
+        old_id = self.market_id
+        release_writes = asyncio.Event()
+
+        async def delayed_write(path, extra):
+            await release_writes.wait()
+            return await self.client.post(
+                path,
+                json=dict(
+                    market_id=old_id,
+                    symbol="EURUSD",
+                    exchange="TEST BROKER",
+                    candles=[bar(0, value=2)],
+                    **extra,
+                ),
+            )
+
+        pending = [
+            asyncio.create_task(delayed_write("/candles", {})),
+            asyncio.create_task(
+                delayed_write("/candles/historical", {"start_ms": 0, "end_ms": 59999})
+            ),
+        ]
+        try:
+            deleted = await self.client.delete(
+                "/markets/EURUSD", params={"exchange": "TEST BROKER"}
+            )
+            self.assertEqual(deleted.status_code, 200, deleted.text)
+            with patch("main.verify_broker_market", new=AsyncMock()):
+                created = await self.client.post("/markets", json=SPEC)
+            self.assertEqual(created.status_code, 200, created.text)
+            new_id = created.json()["symbol_id"]
+            self.assertNotEqual(old_id, new_id)
+            async with self.engine.begin() as connection:
+                await connection.execute(
+                    insert(candles).values(
+                        symbol_id=new_id,
+                        timestamp_utc=datetime.fromtimestamp(0, timezone.utc),
+                        open=70,
+                        high=80,
+                        low=60,
+                        close=77,
+                        volume=50,
+                    )
+                )
+        finally:
+            release_writes.set()
+            responses = await asyncio.wait_for(asyncio.gather(*pending), timeout=5)
+        self.assertEqual([response.status_code for response in responses], [404, 404])
+        async with self.engine.connect() as connection:
+            rows = (
+                (await connection.execute(select(candles).where(candles.c.symbol_id == new_id)))
+                .mappings()
+                .all()
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["close"], 77)

@@ -153,3 +153,11 @@ Timescale database whose name starts `vibe9_`, using
 V023/V024, exercising acceptance/claim/page races, expiry, cancellation, preserved
 Candle values, and historical aggregate visibility. Unit tests use SQLite for API
 validation and conditional-operation behavior, not PostgreSQL locking evidence.
+
+`app/candle_write_identity.py` fences ordinary and authoritative Candle writes
+when their JSON payload includes `market_id`. Each committed batch locks and
+checks that ID against the supplied symbol/exchange; missing IDs return 404 and
+changed identity returns 409 without falling back to a newly created namesake.
+CSV uploads bind the Custom Market ID verified at acceptance to the same write
+path. Legacy omitted-ID calls retain name resolution, while ingestion always
+supplies its runtime state's stable ID.

@@ -78,3 +78,8 @@ job or null for lost ownership; callers must not interpret null as confirmation 
 a write. HTTP 404/409 retain their normal error semantics. Both transports preserve
 owner tokens, revisions, and expected cursors; page receipts include authoritative
 counts so replay after a lost response cannot inflate progress.
+
+Both `insert_candles` and `write_historical_candles` accept optional `market_id`
+after `exchange`. Supplying it fences delayed runtime writes against Market
+deletion/recreation. Omitted IDs preserve legacy payloads; a missing explicit ID
+is an error rather than permission to resolve a new Market with the same name.

@@ -3,7 +3,14 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from algotrader_logger import RequestLoggingMiddleware, configure_logging, get_logger
-from app import backtest_execution, crud, historical_candles, market_cache, recovery
+from app import (
+    backtest_execution,
+    candle_write_identity,
+    crud,
+    historical_candles,
+    market_cache,
+    recovery,
+)
 from app.backtest_execution_log import get_execution_log
 from app.candle_pages import forward_candles
 from app.database import get_db
@@ -522,21 +529,39 @@ async def read_latest_candle_by_symbol(
     return candle
 
 
+async def lock_candle_write_market(data: CandleBatchIn, db: AsyncSession) -> int:
+    assert data.market_id is not None
+    try:
+        market_id = await candle_write_identity.lock_market(
+            db, data.market_id, data.symbol, data.exchange
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if market_id is None:
+        raise HTTPException(status_code=404, detail="Expected Market no longer exists")
+    return market_id
+
+
 @app.post("/candles")
 async def insert_candle_batch(data: CandleBatchIn, db: AsyncSession = Depends(get_db)):
-    await market_cache.ensure_market_cache(db)
-    symbol_id = market_cache.resolve_symbol_id(data.symbol, data.exchange)
-    if symbol_id is None:
-        await market_cache.refresh_market_cache(db)
+    if data.market_id is not None:
+        symbol_id = await lock_candle_write_market(data, db)
+    else:
+        await market_cache.ensure_market_cache(db)
         symbol_id = market_cache.resolve_symbol_id(data.symbol, data.exchange)
-    if symbol_id is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+        if symbol_id is None:
+            await market_cache.refresh_market_cache(db)
+            symbol_id = market_cache.resolve_symbol_id(data.symbol, data.exchange)
+        if symbol_id is None:
+            raise HTTPException(status_code=404, detail="Market not found")
 
     candles = [candle.model_dump() for candle in data.candles]
     batch_size = 4000
     total_added = 0
 
     for i in range(0, len(candles), batch_size):
+        if i and data.market_id is not None:
+            await lock_candle_write_market(data, db)
         batch = candles[i : i + batch_size]
         added_candles = await crud.insert_candles(db, symbol_id, batch)
 
@@ -554,7 +579,13 @@ async def upload_candle_batch(data: CandleBatchIn, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=409, detail="Provide an exchange for the uploaded market")
     if matches[0]["source_type"] != "custom":
         raise HTTPException(status_code=409, detail="CSV uploads require a custom market")
-    return await insert_candle_batch(data, db)
+    if data.market_id is not None and data.market_id != matches[0]["symbol_id"]:
+        raise HTTPException(
+            status_code=409, detail="Candle source no longer matches the expected Market"
+        )
+    return await insert_candle_batch(
+        data.model_copy(update={"market_id": matches[0]["symbol_id"]}), db
+    )
 
 
 @app.delete("/candles/{symbol}")
@@ -597,23 +628,28 @@ async def write_historical_candle_batch(
     open_minute = (int(datetime.now(timezone.utc).timestamp() * 1000) // 60000) * 60000
     if data.end_ms >= open_minute:
         raise HTTPException(status_code=422, detail="Historical interval must exclude open M1")
-    await market_cache.ensure_market_cache(db)
-    try:
-        symbol_id = market_cache.resolve_symbol_id(
-            data.symbol, data.exchange, reject_ambiguous=True
-        )
-        if symbol_id is None:
-            await market_cache.refresh_market_cache(db)
+    if data.market_id is not None:
+        symbol_id = await lock_candle_write_market(data, db)
+    else:
+        await market_cache.ensure_market_cache(db)
+        try:
             symbol_id = market_cache.resolve_symbol_id(
                 data.symbol, data.exchange, reject_ambiguous=True
             )
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if symbol_id is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+            if symbol_id is None:
+                await market_cache.refresh_market_cache(db)
+                symbol_id = market_cache.resolve_symbol_id(
+                    data.symbol, data.exchange, reject_ambiguous=True
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if symbol_id is None:
+            raise HTTPException(status_code=404, detail="Market not found")
     values = [candle.model_dump() for candle in data.candles]
     total = 0
     for offset in range(0, len(values), 4000):
+        if offset and data.market_id is not None:
+            await lock_candle_write_market(data, db)
         total += await historical_candles.write_historical_candles(
             db, symbol_id, values[offset : offset + 4000]
         )
