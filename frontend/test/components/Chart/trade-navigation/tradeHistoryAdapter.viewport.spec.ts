@@ -17,7 +17,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }])(
+it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }, { drag: true }])(
   'preserves user gestures between background batches: %j',
   async (gesture) => {
     vi.useFakeTimers();
@@ -57,7 +57,9 @@ it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }])(
       const adapter = createTradeHistoryAdapter({
         candles,
         indicators: useIndicatorsStore(),
-        infrastructure: { chartManager: { chart } } as ChartInfrastructure,
+        infrastructure: {
+          chartManager: { chart, container },
+        } as unknown as ChartInfrastructure,
         render: (data) =>
           series.setData(
             data.map((candle) => ({
@@ -84,6 +86,41 @@ it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }])(
 
       chart.timeScale().setVisibleLogicalRange({ from: 100, to: 180 });
       vi.advanceTimersByTime(50);
+      if ('drag' in gesture) {
+        const pane = container.querySelectorAll('canvas')[1];
+        const mouse = (type: string, x: number) =>
+          pane.dispatchEvent(
+            new MouseEvent(type, {
+              clientX: x,
+              clientY: 100,
+              buttons: 1,
+              bubbles: true,
+            }),
+          );
+        mouse('mousedown', 300);
+        mouse('mousemove', 310);
+        mouse('mousemove', 320);
+        vi.advanceTimersByTime(20);
+        const started = chart.timeScale().getVisibleLogicalRange()!;
+        mouse('mousemove', 330);
+        vi.advanceTimersByTime(20);
+        const moved = chart.timeScale().getVisibleLogicalRange()!;
+        const delta = moved.from - started.from;
+        expect(delta).not.toBe(0);
+        const pending = adapter.append(batch(1530), null);
+        vi.advanceTimersByTime(20);
+        mouse('mousemove', 340);
+        vi.advanceTimersByTime(20);
+        const continued = chart.timeScale().getVisibleLogicalRange()!;
+        expect(continued.from).toBeCloseTo(moved.from + delta);
+        mouse('mouseup', 340);
+        await pending;
+        vi.advanceTimersByTime(20);
+        expect(chart.timeScale().getVisibleLogicalRange()!.from).toBeCloseTo(
+          continued.from,
+        );
+        return;
+      }
       adapter.append(batch(1530), null);
       const beforeWheel = chart.timeScale().getVisibleLogicalRange()!;
       container.firstElementChild!.dispatchEvent(
@@ -93,7 +130,7 @@ it.each([{ deltaX: -100 }, { deltaX: 100 }, { deltaY: 100 }])(
       const scrolled = chart.timeScale().getVisibleLogicalRange()!;
       expect(scrolled.from).not.toBeCloseTo(100);
       adapter.append(batch(2040), null);
-      adapter.finish([]);
+      await adapter.finish([]);
       vi.advanceTimersByTime(50);
       const panned = chart.timeScale().getVisibleLogicalRange()!;
       expect(panned.from).toBeCloseTo(100 + scrolled.from - beforeWheel.from);

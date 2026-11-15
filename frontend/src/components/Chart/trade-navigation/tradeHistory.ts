@@ -15,13 +15,17 @@ export interface TradeHistoryAdapter {
     signal: AbortSignal,
     onBatch: (candles: ChartCandle[]) => Promise<void>,
   ): Promise<void>;
-  append(candles: readonly ChartCandle[], targetMs: number | null): void;
+  append(
+    candles: readonly ChartCandle[],
+    targetMs: number | null,
+  ): void | Promise<void>;
   initializeIndicators(key: ChartSessionKey): Promise<void>;
   extendIndicators(
     key: ChartSessionKey,
     candles: readonly ChartCandle[],
     signal: AbortSignal,
   ): Promise<void>;
+  waitForInteraction?(): Promise<void>;
   finish(live: readonly CandleUpdateMessage[]): void;
   cancel(hold?: boolean): void;
   loading(value: boolean): void;
@@ -86,9 +90,10 @@ export class TradeHistory {
       if (!before.length) throw new Error('Trade candle is unavailable');
       const target = before.at(-1)!;
       const pending = before.slice(0, -1);
-      const install = (candles: ChartCandle[]) => {
+      const install = async (candles: ChartCandle[]) => {
         signal.throwIfAborted();
-        this.adapter.append(candles, initialized ? null : timestampMs);
+        await this.adapter.append(candles, initialized ? null : timestampMs);
+        signal.throwIfAborted();
         if (!initialized) {
           initialized = true;
           indicatorWork = this.adapter
@@ -110,7 +115,7 @@ export class TradeHistory {
         this.lastTimestamp = batch.at(-1)?.timestamp_ms ?? this.lastTimestamp;
         pending.push(...batch);
         while (pending.length >= 510) {
-          install(pending.splice(0, 510));
+          await install(pending.splice(0, 510));
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
           signal.throwIfAborted();
         }
@@ -133,7 +138,7 @@ export class TradeHistory {
             );
             signal.throwIfAborted();
             if (!receivedTarget) throw new Error('Trade candle is unavailable');
-            if (pending.length) install(pending.splice(0));
+            if (pending.length) await install(pending.splice(0));
           }
           await consume(batch);
         },
@@ -144,14 +149,17 @@ export class TradeHistory {
         !pending.some((candle) => candle.timestamp_ms >= target.timestamp_ms)
       )
         throw new Error('Trade candle is unavailable');
-      if (pending.length) install(pending);
+      if (pending.length) await install(pending);
       await indicatorWork;
       signal.throwIfAborted();
       if (indicatorFailure)
         console.error('Failed to extend trade indicators:', indicatorFailure);
+      await this.adapter.waitForInteraction?.();
+      signal.throwIfAborted();
       this.adapter.finish(
         [...this.live.values()].sort((a, b) => a.timestamp_ms - b.timestamp_ms),
       );
+      signal.throwIfAborted();
       this.live.clear();
       this.holdingLive = false;
       return true;

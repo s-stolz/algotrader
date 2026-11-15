@@ -72,6 +72,26 @@ describe('trade history navigation', () => {
     expect(f.history.receive(candleUpdate(1_000_300_000))).toBe(false);
   });
 
+  it('keeps live updates received while waiting for a drag to finish', async () => {
+    const f = fixture();
+    const released = deferred<void>();
+    f.adapter.waitForInteraction = vi.fn(() => released.promise);
+    const work = f.history.load(key, 3_000_001);
+    await Promise.resolve();
+    await f.deliver(future());
+    f.end.resolve();
+    await vi.waitFor(() =>
+      expect(f.adapter.waitForInteraction).toHaveBeenCalled(),
+    );
+    expect(f.adapter.finish).not.toHaveBeenCalled();
+    f.history.receive(candleUpdate(1_000_000_000, 4));
+    released.resolve();
+    expect(await work).toBe(true);
+    expect(f.adapter.finish).toHaveBeenCalledWith([
+      candleUpdate(1_000_000_000, 4),
+    ]);
+  });
+
   it('renders short history near the present on completion', async () => {
     const f = fixture();
     const work = f.history.load(key, 3_000_001);

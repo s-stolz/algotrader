@@ -14,7 +14,7 @@ afterEach(() => vi.useRealTimers());
 describe('trade viewport and history', () => {
   it.each([120, 5])(
     'preserves a %s-bar zoom and respects later panning',
-    (width) => {
+    async (width) => {
       const candles = useCandlesticksStore();
       const indicators = useIndicatorsStore();
       const scale = {
@@ -55,7 +55,10 @@ describe('trade viewport and history', () => {
         from: 3,
         to: 63,
       });
-      adapter.finish([candleUpdate(3_300_000, 4), candleUpdate(3_600_000, 5)]);
+      await adapter.finish([
+        candleUpdate(3_300_000, 4),
+        candleUpdate(3_600_000, 5),
+      ]);
       expect(candles.data).toHaveLength(13);
       expect(candles.data.at(-2)?.close).toBe(4);
       expect(scale.setVisibleLogicalRange).toHaveBeenLastCalledWith({
