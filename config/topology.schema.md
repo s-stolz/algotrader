@@ -136,11 +136,13 @@ retain defaults; explicit `null` replaces a default. Unknown keys and changes fr
 mapping to scalar (or vice versa) are rejected. Copy `topology.local.example.yaml`
 to get started. Keep secrets in `.env.secrets.local`.
 
-`services.ingestion_service.history` requires exactly one active option:
+`services.ingestion_service.history` retains exactly one configured legacy option:
 `lookback_days` (positive integer) or `start_date` (quoted
 `YYYY-MM-DD`, no future dates). Set the other option to `null`, including when
 switching modes in an override. Dates begin at midnight UTC. Run `make config`
 and recreate affected containers after editing overrides.
 
-Accepted pending recovery survives policy changes; see the
-[recovery contract](../docs/contracts/recovery.md).
+These retained fields do not set the activation boundary for source-bound Broker
+Markets, schedule historical downloads, or change accepted recovery/download work.
+See the [recovery contract](../docs/contracts/recovery.md#configuration-and-upgrade) and
+[explicit historical downloads](../docs/contracts/market-data.md).

@@ -22,10 +22,12 @@ holds local secrets. Use their checked-in examples for initial setup.
 
 ## History and Worker Settings
 
-Ingestion selects exactly one of `lookback_days` or quoted UTC `start_date`.
-Changing the boundary affects future ingestion; it does not delete stored history
-or fill older history before an existing latest candle. Read
-[ingestion context](../ingestion-service/CONTEXT.md) for recovery semantics.
+The generator retains `lookback_days` and quoted UTC `start_date` inputs for
+configuration compatibility. They do not control source-bound Broker Market
+activation or schedule historical downloads. Read the
+[recovery contract](../docs/contracts/recovery.md#configuration-and-upgrade) for activation
+boundaries and [Market data](../docs/contracts/market-data.md) for explicit
+historical-download requests.
 
 Backtester heartbeat stale threshold must exceed its heartbeat interval. Heartbeat
 and candidate-limit defaults belong to topology. Heartbeat configuration
@@ -44,11 +46,11 @@ is in [ADR-0003](../docs/adr/0003-generated-runtime-configuration.md).
 
 # Configuration vocabulary
 
-**History policy** selects a fresh ingestion recovery boundary from a rolling
-lookback or a quoted UTC start date. Accepted pending recovery retains its earlier
-boundary when this policy changes. For configuration and deployment obligations,
-read the [recovery contract](../docs/contracts/recovery.md); field types and
-runtime mappings are in [topology schema](topology.schema.md).
+**Legacy history inputs** retain the rolling-lookback and UTC start-date settings
+for compatibility; they are inactive for source-bound Markets. Activation and
+durable pending recovery are owned by the
+[recovery contract](../docs/contracts/recovery.md). Field types and retained runtime
+mappings are in [topology schema](topology.schema.md).
 
 ## Python environments
 
