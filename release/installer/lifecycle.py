@@ -74,8 +74,10 @@ class Lifecycle:
             capture=True,
         )
         connection = json.loads(response)
-        expected = generate_env.read_env(self.locations.config / ".env.secrets.local")
-        if str(connection.get("account_id")) != expected["ACCOUNT_ID"]:
+        if (
+            str(connection.get("account_id")) != record["account_id"]
+            or connection.get("environment") != record["environment"]
+        ):
             raise InstallationError("The running broker did not authenticate the selected account.")
         print(f"AlgoTrader is ready at http://localhost:{record['ui_port']}")
         print("Add a broker market in the application to collect live candles or request history.")
@@ -89,7 +91,10 @@ class Lifecycle:
         prepare_release(self.locations, release)
         port = choose_port(self.docker, release)
         authorize(self.locations, self.docker, release)
+        credentials = generate_env.read_env(self.locations.config / ".env.secrets.local")
         record = {
+            "account_id": credentials["ACCOUNT_ID"],
+            "environment": credentials["CTRADER_HOST_TYPE"],
             "schema_version": 1,
             "project": "algotrader-" + uuid.uuid4().hex[:12],
             "version": release.version,
@@ -104,6 +109,7 @@ class Lifecycle:
 
     def start(self) -> None:
         record = self.current()
+        render_configuration(self.locations, record)
         self.docker.compose(record, ["up", "--detach", "--wait", "--wait-timeout", "240"])
         record["stopped"] = False
         write_json(self.locations.record, record)

@@ -55,6 +55,13 @@ def render_configuration(locations: Locations, record: dict[str, Any]) -> None:
     )
     topology["mode"] = "production"
     values = generate_env.read_env(locations.config / ".env.secrets.local")
+    if record.get("account_id") and (
+        values.get("ACCOUNT_ID") != record["account_id"]
+        or values.get("CTRADER_HOST_TYPE") != record["environment"]
+    ):
+        raise InstallationError(
+            "Account and environment cannot change; use a separate installation."
+        )
     environments = generate_env.build_env(topology, values)
     missing = generate_env.validate(*environments[1:])
     if missing:
@@ -74,6 +81,13 @@ def authorize(
     existing = generate_env.read_env(source)
     draft = generate_env.read_env(locations.config / "onboarding.env")
     defaults = {**draft, **existing}
+    if record is not None and (
+        existing.get("ACCOUNT_ID") != record["account_id"]
+        or existing.get("CTRADER_HOST_TYPE") != record["environment"]
+    ):
+        raise InstallationError(
+            "Account and environment cannot change; use a separate installation."
+        )
     print(f"Register your own cTrader application: {REGISTRATION_URL}")
     print(f"After approval, register this exact redirect URI: {CALLBACK}")
     client_id = ask("Application client ID", defaults.get("CTRADER_CLIENT_ID", ""))
@@ -101,8 +115,9 @@ def authorize(
         "CTRADER_HOST_TYPE": environment,
     }
     if record is not None:
-        inputs["BROKER_REDIS_URL"] = "redis://redis:6379/0"
-        inputs["BROKER_TOKEN_REDIS_KEY"] = "broker:auth:ctrader:current"
+        shared = generate_env.read_env(locations.config / ".env.shared")
+        inputs["BROKER_REDIS_URL"] = shared["BROKER_REDIS_URL"]
+        inputs["BROKER_TOKEN_REDIS_KEY"] = shared["BROKER_TOKEN_REDIS_KEY"]
     protected_write(locations.config / "onboarding.env", generate_env.format_env(inputs))
     output = locations.config / "broker.env"
     command = ["run", "--rm", "--interactive"]
@@ -132,10 +147,10 @@ def authorize(
         "/config/broker.env",
     ]
     if record is not None:
-        command += ["--expected-account-id", existing["ACCOUNT_ID"], "--replace-token-state"]
+        command += ["--expected-account-id", record["account_id"], "--replace-token-state"]
     docker.run(command)
     credentials = generate_env.read_env(output)
-    if record is not None and credentials.get("ACCOUNT_ID") != existing.get("ACCOUNT_ID"):
+    if record is not None and credentials.get("ACCOUNT_ID") != record["account_id"]:
         raise InstallationError("Reconnect must keep the installed account.")
     merged = {**existing, **credentials}
     merged.setdefault("TIMESCALEDB_PASSWORD", secrets.token_hex(32))

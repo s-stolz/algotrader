@@ -36,8 +36,9 @@ not work for this installation.
 Enter that application's client ID and secret. Choose demo or live, then choose
 view-only market data/backtesting or permission to submit broker orders. Open the
 local link shown by setup, approve access in cTrader, and select your account.
-If the browser shows a pairing code, enter it in the terminal. Setup saves tokens
-locally and the broker refreshes them. No AlgoTrader-operated login service is
+The callback must return the matching authorization state; an absent or mismatched
+state stops authorization without replacing credentials. Setup saves tokens locally
+and the broker refreshes them. No AlgoTrader-operated login service is
 involved. If approval or authorization is not ready, rerun setup later.
 
 After setup, add a market in the application. A broker market starts collecting

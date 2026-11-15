@@ -35,6 +35,15 @@ class ConfigurationTests(unittest.TestCase):
             shared = (locations.config / ".env.shared").read_text()
             self.assertNotIn("literal$secret", shared)
             self.assertIn("MODE=production", shared)
+            with self.assertRaisesRegex(Exception, "cannot change"):
+                render_configuration(
+                    locations,
+                    {
+                        "version": "v1.0.0",
+                        "account_id": "another-account",
+                        "environment": "demo",
+                    },
+                )
 
     def test_available_default_port_does_not_prompt(self):
         value = manifest()
@@ -52,6 +61,10 @@ class ConfigurationTests(unittest.TestCase):
                 "CTRADER_CLIENT_ID=id\nCTRADER_SECRET=secret\n"
             )
             (root / ".env.secrets.local").write_text(original)
+            (root / ".env.shared").write_text(
+                "BROKER_REDIS_URL=redis://redis:6379/0\n"
+                "BROKER_TOKEN_REDIS_KEY=broker:auth:ctrader:current\n"
+            )
             docker = Mock()
             docker.host_path.return_value = "/host/config"
             docker.run.side_effect = RuntimeError("authorization rejected")
@@ -62,8 +75,29 @@ class ConfigurationTests(unittest.TestCase):
                 patch("release.installer.configuration.choose", return_value="accounts"),
             ):
                 with self.assertRaises(RuntimeError):
-                    authorize(locations, docker, release, {"project": "algotrader-a"})
+                    authorize(
+                        locations,
+                        docker,
+                        release,
+                        {"project": "algotrader-a", "account_id": "12", "environment": "demo"},
+                    )
             self.assertEqual((root / ".env.secrets.local").read_text(), original)
             arguments = docker.run.call_args.args[0]
             self.assertIn("127.0.0.1:8080:8080", arguments)
             self.assertEqual(arguments[arguments.index("--bind-address") + 1], "0.0.0.0")
+
+    def test_reconnect_rejects_hand_edited_account_binding_before_authentication(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            locations = Locations(root, root, root, root)
+            (root / ".env.secrets.local").write_text("ACCOUNT_ID=other\nCTRADER_HOST_TYPE=demo\n")
+            value = manifest()
+            docker = Mock()
+            with self.assertRaisesRegex(Exception, "cannot change"):
+                authorize(
+                    locations,
+                    docker,
+                    Release(value["version"], value["images"], 18),
+                    {"account_id": "original", "environment": "demo"},
+                )
+            docker.run.assert_not_called()
