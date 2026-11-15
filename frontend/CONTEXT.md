@@ -37,7 +37,9 @@ Source binding, history requests, and delivery recovery follow the
 
 - `src/components/Chart/ChartArea.vue` wires rendering and lifecycle adapters;
   `chartSession.ts` beside it owns market/timeframe transitions, live Candle
-  subscriptions, fetch guards, live-tail buffering, and older-history paging.
+  subscriptions, fetch guards, and live-tail buffering. `chartOlderHistory.ts` owns
+  live-view paging: keep the latest viewport demand, load sequential pages, and
+  recheck coverage after each page until covered, exhausted, or cancelled.
   Keep session sequencing there. Related state and rendering live in
   `src/stores/candlesticksStore.ts`, `src/stores/indicatorsStore.ts`, and
   `src/utils/chart/ChartManager.ts`.
@@ -60,8 +62,9 @@ Source binding, history requests, and delivery recovery follow the
   Retain viewport demand during in-flight reads and recheck the range after each
   page; continue sequentially until the requested edge has enough loaded bars.
   No automatic catch-up stream runs. Historical windows ignore live candle and
-  indicator messages, and reconnect recovery stays off until the window reaches
-  the present. `chartSession.ts` owns cancellation; `trade-navigation/latestChart.ts`
+  indicator messages, retaining only the latest three Candle timestamps. At the
+  present, replay that bounded tail and recover Candles and Indicators inclusively
+  from the final loaded bar so slow indicator requests cannot lose closed bars. `chartSession.ts` owns cancellation; `trade-navigation/latestChart.ts`
   clears the historical window and reuses the normal latest-500 snapshot and live
   workflow for return-to-live only when the present is not loaded. Already-live
   windows retain data and zoom; the action only scrolls if the latest bar is offscreen.

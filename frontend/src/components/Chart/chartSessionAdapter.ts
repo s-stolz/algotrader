@@ -123,6 +123,7 @@ export function createChartSessionAdapter({
       );
     },
     unsubscribeIndicators: () => indicatorsStore.unsubscribeAllLive(),
+    getHistoryRange: () => tradeHistory?.getVisibleRange() ?? null,
     getOldestCandleTimestampMs: () => {
       return candlesticksStore.data[0]?.timestamp_ms ?? null;
     },
