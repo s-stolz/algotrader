@@ -42,6 +42,7 @@ class DatabaseClient:
         symbol: str,
         candles: list[dict[str, Any]],
         exchange: str | None = None,
+        market_id: int | None = None,
     ) -> bool:
         if not candles:
             return True
@@ -51,6 +52,7 @@ class DatabaseClient:
                 symbol=symbol,
                 exchange=exchange,
                 candles=candles,
+                market_id=market_id,
             )
             logger.info(
                 "Wrote %d candles for %s - API response: %s added",
@@ -70,6 +72,7 @@ class DatabaseClient:
         start_ms: int,
         end_ms: int,
         exchange: str | None = None,
+        market_id: int | None = None,
     ) -> bool:
         try:
             self._client.write_historical_candles(
@@ -78,6 +81,7 @@ class DatabaseClient:
                 start_ms=start_ms,
                 end_ms=end_ms,
                 exchange=exchange,
+                market_id=market_id,
             )
             return True
         except DatabaseAccessorClientError:

@@ -131,7 +131,7 @@ class Storage:
             del self.guards[key]
             return True
 
-    def write_candles(self, symbol, candles, exchange=None):
+    def write_candles(self, symbol, candles, exchange=None, market_id=None):
         self.live_writes += 1
         if self.live_writes == self.fail_live_write:
             self.on_live_failure()
@@ -141,7 +141,9 @@ class Storage:
         for item in candles:
             self.rows[symbol].setdefault(item["timestamp_ms"], item)
 
-    def write_historical_candles(self, symbol, candles, start_ms, end_ms, exchange=None):
+    def write_historical_candles(
+        self, symbol, candles, start_ms, end_ms, exchange=None, market_id=None
+    ):
         self.history_writes += 1
         if self.history_writes == self.fail_history_write:
             raise RuntimeError("partial multi-batch write")
@@ -427,9 +429,9 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
         writes = []
         original = storage.write_candles
 
-        def write(symbol, candles, exchange=None):
+        def write(symbol, candles, exchange=None, market_id=None):
             writes.extend(c["timestamp_ms"] for c in candles)
-            original(symbol, candles, exchange)
+            original(symbol, candles, exchange, market_id)
             if any(c["timestamp_ms"] == RESUMED for c in candles):
                 storage.fail_save.add(1)
 
@@ -715,13 +717,13 @@ class DurableRecoveryTests(unittest.IsolatedAsyncioTestCase):
             original = storage.write_historical_candles
             closed = []
 
-            def blocked_write(symbol, candles, start_ms, end_ms, exchange=None):
+            def blocked_write(symbol, candles, start_ms, end_ms, exchange=None, market_id=None):
                 entered.set()
                 release.wait(3)
                 self.assertFalse(closed)
                 if fails:
                     raise RuntimeError("in-flight write failed during shutdown")
-                return original(symbol, candles, start_ms, end_ms, exchange)
+                return original(symbol, candles, start_ms, end_ms, exchange, market_id)
 
             storage.write_historical_candles = blocked_write
             storage.close = lambda: closed.append(True)

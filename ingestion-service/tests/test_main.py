@@ -30,6 +30,7 @@ class IngestionHistoryTests(unittest.IsolatedAsyncioTestCase):
             await service._backfill_symbol(1, "EURUSD", 60000, 200000)
         self.assertEqual(requests[0]["end_time"], 179999)
         saved = service.db_client.write_historical_candles.call_args
+        self.assertEqual(saved.args[-1], 1)
         self.assertEqual([bar["timestamp_ms"] for bar in saved.args[1]], [60000, 120000])
 
     async def test_failed_download_does_not_report_or_store_partial_success(self):

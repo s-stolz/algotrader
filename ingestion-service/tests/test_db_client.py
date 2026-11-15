@@ -44,7 +44,12 @@ class DatabaseClientTests(unittest.TestCase):
         with self.assertRaises(DatabaseAccessorClientError):
             db_client.write_historical_candles("EURUSD", [], 60000, 119999, "FX")
         db_client._client.write_historical_candles.assert_called_once_with(
-            symbol="EURUSD", candles=[], start_ms=60000, end_ms=119999, exchange="FX"
+            symbol="EURUSD",
+            candles=[],
+            start_ms=60000,
+            end_ms=119999,
+            exchange="FX",
+            market_id=None,
         )
 
     def test_write_failure_propagates(self) -> None:
@@ -54,6 +59,29 @@ class DatabaseClientTests(unittest.TestCase):
         db_client._client.insert_candles.side_effect = DatabaseAccessorClientError("boom")
         with self.assertRaises(DatabaseAccessorClientError):
             db_client.write_candles("EURUSD", [{"timestamp_ms": 1000}])
+
+    def test_bound_market_identity_is_forwarded_for_live_and_recovery_writes(self):
+        client = DatabaseClient()
+        self.addCleanup(client.close)
+        client._client = Mock()
+        client._client.insert_candles.return_value = {"added_candles": 1}
+        candles = [{"timestamp_ms": 60000}]
+        client.write_candles("EURUSD", candles, "FX", market_id=7)
+        client.write_historical_candles("EURUSD", candles, 60000, 119999, "FX", market_id=7)
+        self.assertEqual(client._client.insert_candles.call_args.kwargs["market_id"], 7)
+        self.assertEqual(client._client.write_historical_candles.call_args.kwargs["market_id"], 7)
+
+    def test_deleted_market_failure_never_falls_back_to_name_only_write(self):
+        client = DatabaseClient()
+        self.addCleanup(client.close)
+        client._client = Mock()
+        client._client.insert_candles.side_effect = DatabaseAccessorClientError(
+            "Market not found", status_code=404
+        )
+        with self.assertRaises(DatabaseAccessorClientError):
+            client.write_candles("EURUSD", [{"timestamp_ms": 60000}], "FX", market_id=7)
+        self.assertEqual(client._client.insert_candles.call_count, 1)
+        self.assertEqual(client._client.insert_candles.call_args.kwargs["market_id"], 7)
 
 
 if __name__ == "__main__":

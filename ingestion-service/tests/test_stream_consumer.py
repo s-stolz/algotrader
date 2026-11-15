@@ -75,6 +75,7 @@ class StreamConsumerTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, json=dict(json.loads(request.content), write_id="batch"))
         if request.url.path == "/recoveries/live-writes/finish":
             return httpx.Response(200, json={"updated": True})
+        self.assertEqual(json.loads(request.content)["market_id"], 1)
         self.write_calls += 1
         should_fail = self.write_calls == self.fail_write
         if not should_fail or self.ambiguous:

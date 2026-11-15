@@ -309,7 +309,11 @@ class IngestionService:
         if candles:
             mapped = [self._format_candle_for_db(candle) for candle in candles]
             await self._write_candles_in_chunks(
-                state.symbol, state.exchange, mapped, historical_interval=(from_ts, to_ts)
+                state.symbol,
+                state.exchange,
+                mapped,
+                historical_interval=(from_ts, to_ts),
+                market_id=state.symbol_id,
             )
             self.logger.info(f"Backfilled {len(candles)} candles for {symbol} {timeframe}")
         else:
@@ -322,6 +326,8 @@ class IngestionService:
         candles: List[Dict[str, Any]],
         chunk_size: Optional[int] = None,
         historical_interval: tuple[int, int] | None = None,
+        *,
+        market_id: int,
     ) -> None:
         if chunk_size is None:
             chunk_size = self.CHUNK_SIZE
@@ -332,7 +338,9 @@ class IngestionService:
             chunk_num = i // chunk_size + 1
 
             if historical_interval is None:
-                await self._db_call(self.db_client.write_candles, symbol, chunk, exchange or None)
+                await self._db_call(
+                    self.db_client.write_candles, symbol, chunk, exchange or None, market_id
+                )
             else:
                 await self._db_call(
                     self.db_client.write_historical_candles,
@@ -341,6 +349,7 @@ class IngestionService:
                     historical_interval[0],
                     historical_interval[1],
                     exchange or None,
+                    market_id,
                 )
             self.logger.info(
                 f"Wrote {len(chunk)} candles for {symbol} (chunk {chunk_num}/{total_chunks})"
@@ -399,7 +408,9 @@ class IngestionService:
                     self.config.broker_account_id,
                     state.live_boundary_ms,
                 )
-                await self._write_candles_in_chunks(state.symbol, state.exchange, mapped_candles)
+                await self._write_candles_in_chunks(
+                    state.symbol, state.exchange, mapped_candles, market_id=state.symbol_id
+                )
                 state.live_boundary_ms = max(
                     state.live_boundary_ms or 0,
                     max(candle["timestamp_ms"] for candle in mapped_candles),
