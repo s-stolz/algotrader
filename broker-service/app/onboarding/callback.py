@@ -15,7 +15,10 @@ AUTHORIZATION_URI = "https://id.ctrader.com/my/settings/openapi/grantingaccess/"
 @dataclass(frozen=True)
 class AuthorizationCallback:
     code: str
-    pairing_code: str | None = None
+
+
+class AuthorizationStateError(ValueError):
+    pass
 
 
 class CallbackSession:
@@ -56,17 +59,19 @@ class CallbackSession:
         if parsed.path != "/redirect":
             raise ValueError("Unexpected callback path")
         query = parse_qs(parsed.query)
-        if "state" in query and query["state"] != [self.state]:
-            raise ValueError("Authorization state does not match setup")
+        states = query.get("state", [])
+        if len(states) != 1 or not secrets.compare_digest(states[0], self.state):
+            raise AuthorizationStateError(
+                "Authorization state is missing or does not match setup. "
+                "Retry from the setup link; if this repeats, verify cTrader state echo "
+                "with a demo account before using browser onboarding."
+            )
         if "error" in query:
             raise ValueError("Broker authorization was declined")
         codes = query.get("code", [])
         if len(codes) != 1 or not codes[0] or len(codes[0]) > 4096:
             raise ValueError("Authorization code is missing or invalid")
-        # The provider's documented flow does not promise to echo OAuth state.
-        # Without it, require deliberate pairing in the terminal, never auto-accept.
-        pairing_code = None if "state" in query else secrets.token_hex(4).upper()
-        self.result = AuthorizationCallback(codes[0], pairing_code)
+        self.result = AuthorizationCallback(codes[0])
         return self.result
 
 
@@ -100,17 +105,19 @@ def wait_for_callback(
                 self.end_headers()
                 return
             try:
-                result = session.receive(
+                session.receive(
                     self.path, self.headers.get("Host", ""), self.headers.get("Cookie", "")
                 )
+            except AuthorizationStateError as exc:
+                session.error = str(exc)
+                self.send_error(400, "Authorization state rejected. Return to the setup terminal.")
+                return
             except ValueError:
                 self.send_error(
                     400, "Authorization callback rejected. Return to the setup terminal."
                 )
                 return
             text = "Authorization received. Return to the setup terminal to select your account."
-            if result.pairing_code:
-                text = f"Enter this pairing code in your setup terminal: {result.pairing_code}"
             content = text.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -125,8 +132,10 @@ def wait_for_callback(
         server.timeout = 1
         announce("Open this link in your browser: http://localhost:8080" + session.start_path)
         deadline = time.monotonic() + timeout_seconds
-        while session.result is None and time.monotonic() < deadline:
+        while session.result is None and session.error is None and time.monotonic() < deadline:
             server.handle_request()
+        if session.error is not None:
+            raise AuthorizationStateError(session.error)
         if session.result is None:
             raise TimeoutError("Authorization timed out; run setup again")
     return session.result

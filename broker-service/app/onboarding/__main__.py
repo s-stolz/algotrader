@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import getpass
-import secrets
 import sys
 from pathlib import Path
 
@@ -30,14 +28,6 @@ async def authorize(args: argparse.Namespace) -> None:
     print(f"Register this exact redirect URI in your cTrader application: {REDIRECT_URI}")
     session = CallbackSession(credentials.client_id, args.scope)
     callback = await asyncio.to_thread(wait_for_callback, session, bind_address=args.bind_address)
-    if callback.pairing_code:
-        supplied = (
-            getpass.getpass("Enter the pairing code shown in your authorization browser: ")
-            .strip()
-            .upper()
-        )
-        if not secrets.compare_digest(supplied, callback.pairing_code):
-            raise ValueError("Pairing code did not match; run authorization again")
     token = await CtraderOAuthClient(credentials).exchange_authorization_code(
         callback.code, REDIRECT_URI
     )

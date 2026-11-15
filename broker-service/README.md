@@ -164,11 +164,12 @@ Use an interactive container with `/config` mounted and publish only
 `127.0.0.1:8080:8080`. The container bind override permits Docker forwarding;
 without that override the command listens only on loopback. Choose `trading`
 instead of `accounts` only to authorize broker orders. Open the printed local
-link, authorize in cTrader, enter the browser pairing code if requested, then
-select the displayed broker account in the terminal. The command writes no tokens
-to standard output. A callback with mismatched state is rejected; state omission
-requires explicit terminal pairing because the provider documentation does not
-promise state echo. Test the complete flow with a real demo account before
+link, authorize in cTrader, then select the displayed broker account in the
+terminal. The command writes no tokens
+to standard output. Missing or mismatched OAuth state rejects the callback before
+code exchange. Retry from the setup link if that occurs; if cTrader repeatedly
+omits state, browser onboarding cannot proceed securely. Its documentation does
+not promise state echo, so test the complete flow with a real demo account before
 claiming provider acceptance.
 
 For reconnect, stop the broker service first while leaving Redis running. Add

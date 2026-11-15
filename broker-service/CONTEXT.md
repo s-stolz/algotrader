@@ -72,9 +72,9 @@ another account's catalogue. Local Market IDs remain distinct from broker IDs.
 same-account reconnect without starting the API or a second refresh loop. See
 [broker setup usage](README.md#local-browser-authorization). The terminal supplies
 user-owned application credentials through environment variables. The callback
-requires a browser-bound session and matching OAuth state when returned; when the
-provider omits state, explicit browser-to-terminal pairing and account selection
-are required. Real-provider state echo behavior still needs manual acceptance.
+requires a browser-bound session and matching OAuth state. Missing or mismatched
+state fails closed before code exchange; there is no pairing bypass. Real-provider
+state echo behavior still needs manual demo-account acceptance.
 
 Credential output is atomically written with mode `0600`, including actual issue
 and expiry times. Redis token state binds client ID, account, and environment.
