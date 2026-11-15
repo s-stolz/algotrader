@@ -79,7 +79,10 @@ refresh snapshots on subscription and reconnection, including Redis recovery
 while the browser socket stays open. The bridge establishes its cursor on
 `history:downloads:events` before reporting connected. Each Redis row has an
 `event` JSON field. Every gateway reads independently and fans out only to
-subscribers for the event's Market.
+subscribers for the event's Market. A global
+`{"type":"historyDownloadsResnapshot"}` producer event repeats the connected
+signal for every subscribed Market, including sockets already connected. This
+recovers missed terminal changes without relying on bounded recent-job replay.
 
 ## Change Triggers
 

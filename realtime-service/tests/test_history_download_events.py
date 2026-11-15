@@ -111,6 +111,62 @@ class HistoryDownloadBridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(failed, bridge._clients)
         self.assertEqual(messages(healthy), [changed()])
 
+    async def test_producer_restart_refreshes_all_markets_without_gateway_reconnection(self):
+        incoming = asyncio.Queue()
+        redis = Mock(
+            xrevrange=AsyncMock(return_value=[("10-0", {})]),
+            xread=AsyncMock(),
+            aclose=AsyncMock(),
+        )
+
+        async def read(*args, **kwargs):
+            return await incoming.get()
+
+        redis.xread.side_effect = read
+        bridge = HistoryDownloadEventBridge(redis)
+        first = Mock(send=AsyncMock(), close=AsyncMock())
+        second = Mock(send=AsyncMock(), close=AsyncMock())
+        await bridge.subscribe(first, 1)
+        await bridge.subscribe(first, 2)
+        await bridge.subscribe(second, 3)
+        bridge.start()
+
+        async def wait_for(predicate):
+            async with asyncio.timeout(3):
+                while not predicate():
+                    await asyncio.sleep(0.01)
+
+        try:
+            await wait_for(lambda: redis.xread.await_count == 1)
+            unrelated = [
+                (f"{11 + index}-0", {"event": json.dumps(changed(1000 + index))})
+                for index in range(150)
+            ]
+            malformed = {
+                "event": json.dumps({"type": "historyDownloadsResnapshot", "market_id": 1})
+            }
+            await incoming.put([("stream", [*unrelated, ("161-0", malformed)])])
+            await wait_for(lambda: redis.xread.await_count == 2)
+            self.assertEqual(len(messages(first)), 4)
+            self.assertEqual(len(messages(second)), 2)
+
+            await incoming.put(
+                [("stream", [("162-0", {"event": '{"type":"historyDownloadsResnapshot"}'})])]
+            )
+            await wait_for(lambda: redis.xread.await_count == 3)
+            for client, market_ids in ((first, (1, 2)), (second, (3,))):
+                for market_id in market_ids:
+                    connected = {
+                        "type": "historyDownloadsConnection",
+                        "market_id": market_id,
+                        "connected": True,
+                    }
+                    self.assertEqual(messages(client).count(connected), 2)
+            self.assertTrue(bridge._connected)
+            redis.xrevrange.assert_awaited_once()
+        finally:
+            await bridge.close()
+
     def test_malformed_event_is_not_forwarded(self):
         for event in (
             [],
@@ -119,6 +175,8 @@ class HistoryDownloadBridgeTests(unittest.IsolatedAsyncioTestCase):
             {**changed(), "revision": "2"},
             {**changed(), "type": "other"},
             {**changed(), "job_id": ""},
+            {"type": "historyDownloadsResnapshot", "market_id": 1},
+            {"type": "historyDownloadsResnapshot", "revision": 2},
         ):
             with self.subTest(event=event):
                 self.assertIsNone(

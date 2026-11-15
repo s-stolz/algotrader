@@ -144,15 +144,20 @@ an explicit cancellation.
 Ingestion publishes revision hints to Redis `history:downloads:events`, with an
 `event` JSON field containing `historyDownloadChanged`, `market_id`, `job_id`, and
 `revision`. Failed publications retain the latest pending revision for retry,
-including terminal changes; startup/recovery reconciles recent stored jobs.
-Events are invalidations, not authoritative job state.
+including terminal changes. Producer startup and publication recovery also send
+a global `{"type":"historyDownloadsResnapshot"}` event, retried until publication
+is confirmed. This refreshes every subscribed Market regardless of job creation
+order or bounded recent-job lists, covering terminal changes committed before a
+producer crash. Events are invalidations, not authoritative job state.
 
 Browsers use `subscribeHistoryDownloads` / `unsubscribeHistoryDownloads` with
 `market_id` on the existing WebSocket. The gateway sends
 `historyDownloadsConnection` with `market_id` and `connected`. It establishes a
 concrete stream cursor before reporting connected, and signals Redis interruptions
-even while the browser socket stays open. Browsers read authoritative snapshots
-on subscription, reconnection, and change hints. No separate browser polling loop
+even while the browser socket stays open. A producer resnapshot event sends
+`connected: true` again to every subscribed Market without requiring a gateway
+or browser reconnect. Browsers refresh on every such signal, not only a
+false-to-true transition, as well as on subscription and change hints. No separate browser polling loop
 or browser-owned download worker is required.
 
 ## Verification boundaries

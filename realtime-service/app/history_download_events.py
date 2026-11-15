@@ -78,6 +78,8 @@ class HistoryDownloadEventBridge:
             event = json.loads(fields["event"])
         except (KeyError, TypeError, ValueError):
             return None
+        if event == {"type": "historyDownloadsResnapshot"}:
+            return event
         if (
             not isinstance(event, dict)
             or event.get("type") != "historyDownloadChanged"
@@ -110,7 +112,9 @@ class HistoryDownloadEventBridge:
                         for message_id, fields in messages:
                             cursor = message_id
                             event = self._read_event(fields)
-                            if event is not None:
+                            if event is not None and event["type"] == "historyDownloadsResnapshot":
+                                await self._connection(True)
+                            elif event is not None:
                                 await self._broadcast(event)
             except asyncio.CancelledError:
                 raise
