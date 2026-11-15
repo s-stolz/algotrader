@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from dataclasses import dataclass
+from typing import Any
 from urllib import parse, request
 from urllib.error import HTTPError, URLError
 
@@ -24,22 +26,31 @@ class CtraderOAuthClient:
 
     async def refresh_access_token(self, refresh_token: str) -> RefreshResult:
         payload = await asyncio.to_thread(self._refresh_request, refresh_token)
-        if payload.get("errorCode"):
-            raise RuntimeError(f"Token refresh failed (code {payload['errorCode']})")
-        access_token = str(payload.get("access_token", "")).strip()
-        if not access_token:
-            raise RuntimeError("Refresh response missing access_token")
+        return self._parse_result(payload, refresh_token)
 
-        next_refresh_token = str(payload.get("refresh_token", refresh_token)).strip()
+    def _parse_result(self, payload: dict[str, Any], refresh_token: str) -> RefreshResult:
+        if payload.get("errorCode"):
+            code = str(payload["errorCode"])
+            safe_code = code if re.fullmatch(r"[A-Z0-9_]{1,64}", code) else "UNKNOWN"
+            raise RuntimeError(f"Token refresh failed (code {safe_code})")
+        access_token = str(payload.get("accessToken", payload.get("access_token", ""))).strip()
+        if not access_token:
+            raise RuntimeError("Token response missing access_token")
+        next_refresh_token = str(
+            payload.get("refreshToken", payload.get("refresh_token", refresh_token))
+        ).strip()
+        if not next_refresh_token:
+            raise RuntimeError("Token response missing refresh_token")
         expires_in = payload.get(
-            "expires_in",
-            self._credentials.access_token_expires_in_seconds,
+            "expiresIn",
+            payload.get("expires_in", self._credentials.access_token_expires_in_seconds),
         )
         try:
-            expires_in_seconds = max(1, int(expires_in))
+            expires_in_seconds = int(expires_in)
+            if expires_in_seconds <= 0:
+                raise ValueError("Nonpositive expiry")
         except (TypeError, ValueError) as exc:
-            raise RuntimeError("Refresh response has invalid expires_in") from exc
-
+            raise RuntimeError("Token response has invalid expires_in") from exc
         return RefreshResult(
             access_token=access_token,
             refresh_token=next_refresh_token,
@@ -47,37 +58,36 @@ class CtraderOAuthClient:
             issued_at=int(time.time()),
         )
 
-    def _refresh_request(self, refresh_token: str) -> dict:
-        body = parse.urlencode(
+    def _refresh_request(self, refresh_token: str) -> dict[str, Any]:
+        return self._token_request({"grant_type": "refresh_token", "refresh_token": refresh_token})
+
+    def _token_request(self, parameters: dict[str, str]) -> dict[str, Any]:
+        query = parse.urlencode(
             {
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
+                **parameters,
                 "client_id": self._credentials.client_id,
                 "client_secret": self._credentials.secret,
             }
-        ).encode("utf-8")
+        )
         req = request.Request(
-            self._credentials.token_url,
-            data=body,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
+            f"{self._credentials.token_url}?{query}",
+            headers={"Accept": "application/json"},
+            method="GET",
         )
         try:
             with request.urlopen(
-                req,
-                timeout=self._credentials.token_request_timeout_seconds,
+                req, timeout=self._credentials.token_request_timeout_seconds
             ) as response:
                 raw = response.read().decode("utf-8")
         except HTTPError as exc:
-            detail = exc.read().decode("utf-8") if exc.fp else str(exc)
-            raise RuntimeError(f"Token refresh failed ({exc.code}): {detail}") from exc
-        except URLError as exc:
-            raise RuntimeError(f"Token refresh failed: {exc.reason}") from exc
-
+            # Error bodies and request URLs can echo credentials.
+            raise RuntimeError(f"Token request failed (HTTP {exc.code})") from None
+        except URLError:
+            raise RuntimeError("Token endpoint could not be reached") from None
         try:
             decoded = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("Token refresh returned invalid JSON") from exc
+        except json.JSONDecodeError:
+            raise RuntimeError("Token endpoint returned invalid JSON") from None
         if not isinstance(decoded, dict):
-            raise RuntimeError("Token refresh returned non-object payload")
+            raise RuntimeError("Token endpoint returned non-object payload")
         return decoded
