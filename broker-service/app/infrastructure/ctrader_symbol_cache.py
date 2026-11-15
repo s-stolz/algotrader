@@ -123,9 +123,9 @@ class SymbolCache:
                     symbol_name=light.symbolName.upper(),
                     enabled=enabled,
                     quote_asset_id=light.quoteAssetId if light.HasField("quoteAssetId") else None,
-                    category_id=light.symbolCategoryId
-                    if light.HasField("symbolCategoryId")
-                    else None,
+                    category_id=(
+                        light.symbolCategoryId if light.HasField("symbolCategoryId") else None
+                    ),
                 )
                 self.store_descriptor(descriptor)
 
