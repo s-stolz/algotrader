@@ -33,8 +33,10 @@ class LiveContinuityTests(unittest.IsolatedAsyncioTestCase):
     def client(self, real_subscriptions=False):
         with patch.object(CtraderClient, "_create_client", return_value=Mock()):
             client = CtraderClient(Mock(access_token="test"))
-        client._symbol_cache.store_descriptor(SymbolDescriptor(SymbolId(1), "EURUSD", True))
-        client._symbol_cache.store_full_symbol(Symbol(1, "EURUSD", 5, 4))
+        client._symbol_cache_for(123).store_descriptor(
+            SymbolDescriptor(SymbolId(1), "EURUSD", True)
+        )
+        client._symbol_cache_for(123).store_full_symbol(Symbol(1, "EURUSD", 5, 4))
         if not real_subscriptions:
             client._subscribe_spots = AsyncMock()
             client._subscribe_live_trendbar = AsyncMock()
@@ -221,8 +223,10 @@ class LiveContinuityTests(unittest.IsolatedAsyncioTestCase):
                 client = self.client(real_subscriptions=True)
                 client._loop = asyncio.get_running_loop()
                 client._app_authenticated.set()
-                client._symbol_cache.store_descriptor(SymbolDescriptor(SymbolId(2), "GBPUSD", True))
-                client._symbol_cache.store_full_symbol(Symbol(2, "GBPUSD", 5, 4))
+                client._symbol_cache_for(123).store_descriptor(
+                    SymbolDescriptor(SymbolId(2), "GBPUSD", True)
+                )
+                client._symbol_cache_for(123).store_full_symbol(Symbol(2, "GBPUSD", 5, 4))
                 requests, delays = [], []
                 subscribed = set()
                 failing = False

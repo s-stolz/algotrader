@@ -72,8 +72,8 @@ def provider_history(timestamps, page_limit=1, fail_after=None, count_ignores_st
             token_request_timeout_seconds=1,
         )
     )
-    client._symbol_cache.store_descriptor(SymbolDescriptor(SymbolId(1), "EURUSD", True))
-    client._symbol_cache.store_full_symbol(Symbol(1, "EURUSD", 5, 4))
+    client._symbol_cache_for(123).store_descriptor(SymbolDescriptor(SymbolId(1), "EURUSD", True))
+    client._symbol_cache_for(123).store_full_symbol(Symbol(1, "EURUSD", 5, 4))
     calls = []
 
     async def send(request):

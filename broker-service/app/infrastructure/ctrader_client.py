@@ -133,7 +133,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         self._application_auth_task: asyncio.Task[None] | None = None
 
         # Symbol cache
-        self._symbol_cache = SymbolCache()
+        self._symbol_caches: dict[int, SymbolCache] = {}
 
         # Tick streaming state
         self._tick_handlers: Dict[Tuple[int, int], Dict[str, TickHandler]] = {}
@@ -219,7 +219,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
     async def get_open_orders(self, account_id: AccountId) -> list[Order]:
         data = await self._reconcile(account_id)
-        return [map_order(order, self._symbol_cache.get_by_id) for order in data.order]
+        return [
+            map_order(order, self._symbol_cache_for(int(account_id)).get_by_id)
+            for order in data.order
+        ]
 
     async def get_order_history(
         self,
@@ -244,7 +247,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
             )
 
         res = cast(ProtoOAOrderListRes, res)
-        return [map_order(order, self._symbol_cache.get_by_id) for order in res.order]
+        return [
+            map_order(order, self._symbol_cache_for(int(account_id)).get_by_id)
+            for order in res.order
+        ]
 
     async def place_order(
         self,
@@ -294,7 +300,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
     async def get_open_positions(self, account_id: AccountId) -> list[Position]:
         data = await self._reconcile(account_id)
-        return [map_position(pos, self._symbol_cache.get_by_id) for pos in data.position]
+        return [
+            map_position(pos, self._symbol_cache_for(int(account_id)).get_by_id)
+            for pos in data.position
+        ]
 
     async def get_deal_history(
         self,
@@ -319,7 +328,9 @@ class CtraderClient(BrokerPort, MarketDataPort):
             )
 
         res = cast(ProtoOADealListRes, res)
-        return [map_deal(deal, self._symbol_cache.get_by_id) for deal in res.deal]
+        return [
+            map_deal(deal, self._symbol_cache_for(int(account_id)).get_by_id) for deal in res.deal
+        ]
 
     async def close_position(
         self,
@@ -456,17 +467,20 @@ class CtraderClient(BrokerPort, MarketDataPort):
         self,
         account_id: AccountId,
     ) -> list[SymbolDescriptor]:
-        await self._symbol_cache.ensure_populated(
+        cache = self._symbol_cache_for(int(account_id))
+        await cache.ensure_populated(
             int(account_id),
             self._authorize_account,
             self._send_request,
         )
 
-        return self._symbol_cache.get_all_descriptors()
+        return cache.get_all_descriptors()
 
     async def get_symbol(self, account_id: AccountId, symbol: str) -> Symbol:
         symbol_data = await self._get_symbol(int(account_id), symbol.upper())
-        return symbol_data
+        return await self._symbol_cache_for(int(account_id)).enrich_metadata(
+            int(account_id), symbol_data, self._send_request
+        )
 
     # ---------------------------------------------------------- tick streaming
 
@@ -737,7 +751,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         if not handlers:
             return
 
-        info = self._symbol_cache.get_full_by_id(event.symbolId)
+        info = self._symbol_cache_for(event.ctidTraderAccountId).get_full_by_id(event.symbolId)
         if not info:
             logger.warning("No symbol info for symbol_id=%s", event.symbolId)
             return
@@ -757,7 +771,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         continuity = continuity or self._continuity
         if continuity != self._continuity:
             return
-        info = self._symbol_cache.get_full_by_id(event.symbolId)
+        info = self._symbol_cache_for(event.ctidTraderAccountId).get_full_by_id(event.symbolId)
         if not info:
             logger.warning("No symbol info for trendbar symbol_id=%s", event.symbolId)
             return
@@ -941,9 +955,14 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
         return res
 
+    def _symbol_cache_for(self, account_id: int) -> SymbolCache:
+        if account_id not in self._symbol_caches:
+            self._symbol_caches[account_id] = SymbolCache()
+        return self._symbol_caches[account_id]
+
     async def _get_symbol(self, account_id: int, name: str) -> Symbol:
         """Get full symbol info (with digits, pip position, etc.)."""
-        return await self._symbol_cache.get_or_fetch_symbol(
+        return await self._symbol_cache_for(account_id).get_or_fetch_symbol(
             account_id,
             name,
             self._authorize_account,

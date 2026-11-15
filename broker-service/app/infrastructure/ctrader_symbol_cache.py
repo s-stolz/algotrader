@@ -1,14 +1,21 @@
 import asyncio
 import logging
+from dataclasses import replace
 from typing import TYPE_CHECKING, Dict, cast
 
 from app.domain.models import Symbol
 from app.domain.value_objects import SymbolDescriptor, SymbolId
 from app.infrastructure.ctrader_mappers import map_symbol_data
 from ctrader_open_api.messages.OpenApiMessages_pb2 import (
+    ProtoOAAssetClassListReq,
+    ProtoOAAssetClassListRes,
+    ProtoOAAssetListReq,
+    ProtoOAAssetListRes,
     ProtoOAErrorRes,
     ProtoOASymbolByIdReq,
     ProtoOASymbolByIdRes,
+    ProtoOASymbolCategoryListReq,
+    ProtoOASymbolCategoryListRes,
     ProtoOASymbolsListReq,
     ProtoOASymbolsListRes,
 )
@@ -40,6 +47,9 @@ class SymbolCache:
         # Full symbol cache: id -> Symbol (with digits, pip position, etc.)
         self._full_by_id: Dict[int, Symbol] = {}
         self._populate_lock = asyncio.Lock()
+        self._metadata_lock = asyncio.Lock()
+        self._assets: dict[int, str] | None = None
+        self._categories: dict[int, str] | None = None
 
     @property
     def is_populated(self) -> bool:
@@ -103,11 +113,15 @@ class SymbolCache:
             res = cast(ProtoOASymbolsListRes, res)
 
             for light in res.symbol:
-                enabled = getattr(light, "enabled", None)
+                enabled = light.enabled if light.HasField("enabled") else None
                 descriptor = SymbolDescriptor(
                     symbol_id=SymbolId(light.symbolId),
                     symbol_name=light.symbolName.upper(),
                     enabled=enabled,
+                    quote_asset_id=light.quoteAssetId if light.HasField("quoteAssetId") else None,
+                    category_id=light.symbolCategoryId
+                    if light.HasField("symbolCategoryId")
+                    else None,
                 )
                 self.store_descriptor(descriptor)
 
@@ -157,7 +171,7 @@ class SymbolCache:
             )
         res = cast(ProtoOASymbolByIdRes, res)
 
-        if not res.symbol:
+        if not res.symbol or res.symbol[0].symbolId != descriptor.symbol_id:
             raise ValueError(f"Symbol details not found for {name}")
 
         symbol = map_symbol_data(descriptor, res.symbol[0])
@@ -165,8 +179,61 @@ class SymbolCache:
 
         return symbol
 
+    async def enrich_metadata(
+        self, account_id: int, symbol: Symbol, send_request_fn: "SendRequestFn"
+    ) -> Symbol:
+        try:
+            async with self._metadata_lock:
+                if self._assets is None:
+                    assets = await send_request_fn(
+                        ProtoOAAssetListReq(ctidTraderAccountId=account_id)
+                    )
+                    if not isinstance(assets, ProtoOAAssetListRes):
+                        raise RuntimeError("Broker asset catalogue unavailable")
+                    self._assets = {asset.assetId: asset.name for asset in assets.asset}
+                if self._categories is None:
+                    categories = await send_request_fn(
+                        ProtoOASymbolCategoryListReq(ctidTraderAccountId=account_id)
+                    )
+                    classes = await send_request_fn(
+                        ProtoOAAssetClassListReq(ctidTraderAccountId=account_id)
+                    )
+                    if not isinstance(categories, ProtoOASymbolCategoryListRes) or not isinstance(
+                        classes, ProtoOAAssetClassListRes
+                    ):
+                        raise RuntimeError("Broker instrument classification unavailable")
+                    class_names = {item.id: item.name for item in classes.assetClass}
+                    self._categories = {
+                        item.id: class_names.get(item.assetClassId, item.name)
+                        for item in categories.symbolCategory
+                    }
+        except Exception:
+            logger.warning("Optional instrument metadata unavailable for account=%s", account_id)
+        descriptor = self.get_by_id(symbol.symbol_id)
+        if descriptor is None:
+            raise RuntimeError("Broker instrument is missing from its account catalogue")
+        category = (self._categories or {}).get(descriptor.category_id or -1, "").casefold().strip()
+        market_types = {
+            "forex": "Forex",
+            "fx": "Forex",
+            "currencies": "Forex",
+            "crypto": "Crypto",
+            "cryptocurrency": "Crypto",
+            "cryptocurrencies": "Crypto",
+            "stocks": "Stock",
+            "shares": "Stock",
+            "equities": "Stock",
+        }
+        return replace(
+            symbol,
+            settlement_currency=(self._assets or {}).get(descriptor.quote_asset_id or -1),
+            market_type=market_types.get(category),
+        )
+
     def clear(self) -> None:
         """Clear all caches."""
         self._by_name.clear()
         self._by_id.clear()
         self._full_by_id.clear()
+        self._assets = None
+        self._categories = None

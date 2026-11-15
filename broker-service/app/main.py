@@ -12,6 +12,7 @@ from app.api.routers import (
     meta,
     orders,
     positions,
+    setup,
 )
 from app.infrastructure.config import ServiceContainer
 from app.infrastructure.logging import configure_logging
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(positions.router)
     app.include_router(deals.router)
     app.include_router(market_data.router)
+    app.include_router(setup.router)
 
     @app.get("/health")
     async def health():

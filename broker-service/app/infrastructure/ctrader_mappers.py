@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Callable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.domain.models import Account, Deal, Order, Position, Symbol, Tick, Trendbar
 from app.domain.models.deal import ClosePositionDetail
@@ -306,6 +307,7 @@ def map_symbol_data(info: SymbolDescriptor, symbol_data) -> Symbol:
             symbol_data.stepVolume / 100 if getattr(symbol_data, "stepVolume", 0) > 0 else None
         ),
         lot_size=(symbol_data.lotSize / 100 if getattr(symbol_data, "lotSize", 0) > 0 else None),
+        timezone=_symbol_timezone(getattr(symbol_data, "scheduleTimeZone", "")),
     )
 
 
@@ -345,3 +347,12 @@ def _decimal_or_none(value: float | int | None) -> Decimal | None:
     if value is None:
         return None
     return Decimal(str(value))
+
+
+def _symbol_timezone(value: str) -> str | None:
+    if not value:
+        return None
+    try:
+        return ZoneInfo(value).key
+    except (ZoneInfoNotFoundError, ValueError):
+        return None

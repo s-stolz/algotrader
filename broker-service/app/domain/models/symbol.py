@@ -14,3 +14,6 @@ class Symbol:
     minimum_quantity: float | None = None
     quantity_step: float | None = None
     lot_size: float | None = None
+    timezone: str | None = None
+    settlement_currency: str | None = None
+    market_type: str | None = None

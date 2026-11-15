@@ -27,6 +27,7 @@ class ServiceContainer:
         self.instance_id = uuid.uuid4().hex
         self.settings = settings
         credentials = settings.load_credentials()
+        self.credentials = credentials
 
         self.redis: Redis = Redis.from_url(settings.redis_url)
         self.token_repository = RedisTokenRepository(

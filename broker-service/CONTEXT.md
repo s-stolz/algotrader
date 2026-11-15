@@ -54,3 +54,14 @@ does not establish completed historical recovery.
 
 For subscription restoration, queued-event ordering and consumer compatibility,
 read [live publication continuity](../docs/contracts/recovery.md#live-publication-continuity).
+
+## Installation catalogue
+
+`GET /connection` verifies the configured `ACCOUNT_ID` against the authorized
+account and environment. `GET /setup/instruments/{broker_symbol_id}` verifies an
+enabled instrument in that account and returns its immutable source binding.
+The accessor uses this endpoint before creating a Broker Market; the frontend
+uses it for verified prefills. Optional metadata may be absent. Display precision
+is only `suggested_min_move`, and lot size is never a contract multiplier.
+Account-scoped caches prevent equal names or broker IDs from resolving against
+another account's catalogue. Local Market IDs remain distinct from broker IDs.

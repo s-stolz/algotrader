@@ -17,6 +17,8 @@ class SymbolDescriptor:
     symbol_id: SymbolId
     symbol_name: str
     enabled: bool | None = None
+    quote_asset_id: int | None = None
+    category_id: int | None = None
 
 
 class TradeSide(str, Enum):
