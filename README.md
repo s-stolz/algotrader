@@ -7,16 +7,17 @@ historical backtests with fixed or varying parameters.
 
 ## Install a versioned release
 
-Download a release ZIP from [GitHub Releases](https://github.com/s-stolz/algotrader/releases),
-extract it, and run `bash ./algotrader.sh setup` on macOS/Linux or
-`powershell -ExecutionPolicy Bypass -File .\algotrader.ps1 setup` on Windows.
-Docker with Compose is the only host prerequisite. The wizard uses your own
-cTrader application credentials and stores configuration locally.
+Download **`algotrader-VERSION.zip`** from
+[GitHub Releases](https://github.com/s-stolz/algotrader/releases/latest).
+The same installer is used on macOS, Linux, and Windows. GitHub’s **Source code**
+archives are for development, not installation.
 
-See the [installation and upgrade guide](release/README.md) for directory choices,
-OAuth prerequisites, lifecycle commands, backups, and release publishing.
-Windows support is experimental until validated with Docker Desktop. The
-source-based development workflow below remains available independently.
+Follow the short [installation guide](release/README.md) to prepare Docker,
+register your cTrader application, and run the setup wizard. Windows support is
+experimental until validated with Docker Desktop.
+
+For an existing installation, see [commands and upgrades](release/docs/operations.md).
+To change the application’s source, use the development workflow below.
 
 ## Architecture
 
@@ -69,14 +70,14 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 
 *Using this link costs you nothing extra but helps fund the development of new features and improvements.*
 
-## Prerequisites
+## Development prerequisites
 
 - [Docker](https://docs.docker.com/get-started/get-docker/) with the Compose v2 plugin (`docker compose`).
 - GNU Make (`make`).
 - Node 26 active LTS for frontend development (`nvm use` reads `.nvmrc`).
 - Python 3.12–3.15 (`python3.15` recommended) with venv support, and PyYAML for host-side config generation.
 
-## Getting Started
+## Set up a development checkout
 
 1. Clone the repository:
    ```sh
@@ -90,8 +91,9 @@ If AlgoTrader has helped you with your algorithmic trading journey, you can supp
 3. Edit `config/topology.yaml` for shared non-secret settings (ports, hosts, tuning), and edit `config/.env.secrets.local` for credentials/secrets.
    For machine-specific non-secret values, copy `config/topology.local.example.yaml`
    to `config/topology.local.yaml` and edit only the overrides you need. This file is
-   ignored by Git. Ingestion history defaults to 90 days; choose `lookback_days` or
-   a quoted `start_date`, setting the other to `null`.
+   ignored by Git. Request historical market data through the application after
+   adding a broker market; the legacy ingestion lookback settings do not schedule
+   downloads.
 4. Generate runtime env files from shared topology + local overrides + local secrets:
    ```sh
    make config
@@ -116,7 +118,7 @@ This will build and start all necessary services as defined in the `docker-compo
 
 Compose starts two processes from the same backtester image:
 
-- `backtester-api` exposes the public API on `http://localhost:8020` by default
+- `backtester-api` exposes the public API on `http://localhost:18002` by default
   and provides `GET /health`.
 - `backtester-worker` is a singleton worker that claims and executes one durable
   run at a time.
