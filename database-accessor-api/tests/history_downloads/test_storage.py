@@ -215,7 +215,7 @@ class DownloadStorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored["inserted_count"], 0)
         self.assertEqual(stored["cursor_ms"], 600000)
 
-    async def test_completed_waits_for_aggregate_refresh_and_failure_preserves_owner(self):
+    async def test_completed_waits_for_aggregate_refresh(self):
         job = await self.claim(await self.accept(candle_count=2))
         job = (await self.page(job)).json()
         path = f"/history-download-jobs/{job['id']}/transition"
@@ -228,6 +228,25 @@ class DownloadStorageTests(unittest.IsolatedAsyncioTestCase):
             refresh.assert_awaited_once()
         self.assertEqual(response.json()["status"], "completed")
         self.assertIsNone(response.json()["owner_token"])
+
+    async def test_refresh_failure_preserves_owner_revision_and_confirmed_raw_pages(self):
+        job = await self.claim(await self.accept(candle_count=2))
+        job = (await self.page(job)).json()
+        rows_before = self.connection.execute(select(candles)).mappings().all()
+        payload = dict(owner_token=job["owner_token"], revision=job["revision"], status="completed")
+        with patch(
+            "app.history_downloads.aggregates.refresh_inserted_history",
+            new=AsyncMock(side_effect=RuntimeError("aggregate refresh failed")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "aggregate refresh failed"):
+                await self.client.post(
+                    f"/history-download-jobs/{job['id']}/transition", json=payload
+                )
+        current = (await self.client.get(f"/history-download-jobs/{job['id']}")).json()
+        self.assertEqual(current, job)
+        self.assertEqual(current["status"], "downloading")
+        self.assertEqual(current["inserted_count"], 2)
+        self.assertEqual(self.connection.execute(select(candles)).mappings().all(), rows_before)
 
 
 class StorageSession(Session):

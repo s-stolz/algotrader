@@ -144,6 +144,8 @@ further writes immediately. Retry retains confirmed progress. Market deletion is
 blocked while a job is queued or downloading. Completed transitions refresh the
 inserted range's aggregate buckets through a separate autocommit connection while
 the job remains locked; a refresh failure cannot mark the job completed.
+Failed or cancelled refresh connections are discarded so backend-local refresh
+locks cannot block the next attempt.
 
 Run `tests/history_downloads/test_storage_postgres.py` against a disposable
 Timescale database whose name starts `vibe9_`, using

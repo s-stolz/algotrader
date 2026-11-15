@@ -13,7 +13,16 @@ async def refresh_inserted_history(session, job) -> None:
     # while refreshing on a separate autocommit connection.
     async with session.bind.connect() as connection:
         connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
-        await refresh_views(connection, job)
+        try:
+            await refresh_views(connection, job)
+        except BaseException as failure:
+            # A failed Timescale refresh can retain backend-local refresh locks.
+            # Discard that connection so a retry can acquire them again.
+            try:
+                await connection.invalidate()
+            except BaseException:
+                failure.add_note("Discarding the failed aggregate connection also failed.")
+            raise
 
 
 async def refresh_views(connection, job) -> None:

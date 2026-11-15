@@ -13,9 +13,9 @@ from app import market_cache
 from app.database import get_db
 from app.models import candles
 from main import app
-from sqlalchemy import insert, text
+from sqlalchemy import insert, select, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 DATABASE_URL = os.getenv("HISTORY_DOWNLOAD_TEST_DATABASE_URL")
@@ -284,3 +284,81 @@ class DownloadPostgresTests(unittest.IsolatedAsyncioTestCase):
                 {"id": self.market_id},
             )
             self.assertEqual(result.scalar_one(), 60)
+
+    async def test_real_refresh_failure_keeps_confirmed_pages_and_allows_completion_retry(self):
+        async with self.engine.begin() as connection:
+            await connection.execute(text("""
+                CREATE FUNCTION fail_download_refresh(value DOUBLE PRECISION)
+                RETURNS DOUBLE PRECISION LANGUAGE plpgsql IMMUTABLE AS $$
+                BEGIN
+                    RAISE EXCEPTION 'forced aggregate refresh failure';
+                END;
+                $$
+            """))
+            await connection.execute(text("""
+                CREATE MATERIALIZED VIEW candles_agg_m5 WITH (timescaledb.continuous) AS
+                SELECT symbol_id, time_bucket(INTERVAL '5 minutes', timestamp_utc) AS bucket,
+                       first(fail_download_refresh(open), timestamp_utc) AS open,
+                       max(high) AS high, min(low) AS low,
+                       last(close, timestamp_utc) AS close, sum(volume) AS volume
+                FROM candles GROUP BY symbol_id, bucket WITH NO DATA
+            """))
+        job = await self.claim((await self.accept()).json()["id"])
+        job = await self.page(job)
+        job = await self.page(job, 0, [])
+        payload = dict(owner_token=job["owner_token"], revision=job["revision"], status="completed")
+        async with self.engine.connect() as connection:
+            rows_before = (
+                (
+                    await connection.execute(
+                        select(candles)
+                        .where(candles.c.symbol_id == self.market_id)
+                        .order_by(candles.c.timestamp_utc)
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        with self.assertRaises(DBAPIError) as failed_refresh:
+            await self.client.post(f"/history-download-jobs/{job['id']}/transition", json=payload)
+        self.assertIn("refresh_continuous_aggregate", failed_refresh.exception.statement or "")
+        current = (await self.client.get(f"/history-download-jobs/{job['id']}")).json()
+        self.assertEqual(current, job)
+        self.assertEqual(current["status"], "downloading")
+        self.assertEqual(current["inserted_count"], 2)
+        async with self.engine.begin() as connection:
+            rows_after = (
+                (
+                    await connection.execute(
+                        select(candles)
+                        .where(candles.c.symbol_id == self.market_id)
+                        .order_by(candles.c.timestamp_utc)
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            self.assertEqual(rows_after, rows_before)
+            await connection.execute(text("""
+                CREATE OR REPLACE FUNCTION fail_download_refresh(value DOUBLE PRECISION)
+                RETURNS DOUBLE PRECISION LANGUAGE plpgsql IMMUTABLE AS $$
+                BEGIN
+                    RETURN value;
+                END;
+                $$
+            """))
+        completed = await self.client.post(
+            f"/history-download-jobs/{job['id']}/transition", json=payload
+        )
+        self.assertEqual(completed.status_code, 200, completed.text)
+        self.assertEqual(completed.json()["status"], "completed")
+        self.assertEqual(completed.json()["inserted_count"], 2)
+        async with self.engine.connect() as connection:
+            volume = await connection.scalar(
+                text(
+                    "SELECT volume FROM candles_agg_m5 "
+                    "WHERE symbol_id=:id AND bucket=to_timestamp(300)"
+                ),
+                {"id": self.market_id},
+            )
+            self.assertEqual(volume, 20)
