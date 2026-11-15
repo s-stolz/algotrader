@@ -8,6 +8,7 @@ import {
   getBacktestRun,
   listBacktestRuns,
 } from '@/api/backtesterClient';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
 import { useModalStore } from '@/stores/modalStore';
 import type { BacktestRun } from '@/types/backtesterContracts';
 import type { Market } from '@/types/contracts';
@@ -185,18 +186,23 @@ describe('TopBarModals', () => {
       },
     });
 
+    expect(wrapper.findComponent(SymbolSearchModalStub).exists()).toBe(false);
+    modalStore.openModal('symbolSearch');
+    await flushPromises();
     await wrapper.find('.open-symbol-form').trigger('click');
     expect(modalStore.activeModal).toBe('symbolForm');
 
     await wrapper.find('.remove-market').trigger('click');
     expect(modalStore.activeModal).toBe('removeMarket');
     await wrapper.find('.market-removed').trigger('click');
-    expect(updateCurrentMarket).toHaveBeenCalledWith(market);
+    expect(useCurrentMarketStore().symbol_id).toBe(market.symbol_id);
+    expect(modalStore.activeModal).toBeNull();
 
     await wrapper.find('.upload-data').trigger('click');
     expect(modalStore.activeModal).toBe('uploadData');
     await wrapper.find('.upload-successful').trigger('click');
-    expect(updateCurrentMarket).toHaveBeenCalledWith(market);
+    expect(useCurrentMarketStore().symbol_id).toBe(market.symbol_id);
+    expect(modalStore.activeModal).toBeNull();
   });
 
   it('does not mount the retired Backtest history modal', async () => {

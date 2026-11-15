@@ -1,7 +1,7 @@
 <template>
   <div>
     <SymbolSearchModal
-      ref="symbolSearchModal"
+      v-if="hasOpenedSymbolSearch"
       v-show="modalStore.isModalOpen('symbolSearch')"
       @open-symbol-form-modal="onOpenSymbolFormModal"
       @remove-market="onRemoveMarket"
@@ -34,29 +34,78 @@
 </template>
 
 <script setup lang="ts">
-import HistoryDownloadModal from './history/HistoryDownloadModal.vue';
-import { ref, type ComponentPublicInstance } from 'vue';
-
-import IndicatorSearchModal from '@/components/TopBar/Modals/IndicatorSearchModal.vue';
-import RemoveMarketModal from '@/components/TopBar/Modals/RemoveMarketModal.vue';
-import SymbolFormModal from '@/components/TopBar/Modals/SymbolFormModal.vue';
-import SymbolSearchModal from '@/components/TopBar/Modals/SymbolSearchModal.vue';
-import UploadDataModal from '@/components/TopBar/Modals/Upload/UploadDataModal.vue';
+import { h, ref, watch } from 'vue';
+import { useCurrentMarketStore } from '@/stores/currentMarketStore';
+import { lazyComponent } from '@/components/Common/lazyComponent';
+import BaseModal from '@/components/Common/BaseModal.vue';
 import { useModalStore } from '@/stores/modalStore';
 import type { Market } from '@/types/contracts';
+
+const HistoryDownloadModal = lazyComponent(
+  () => import('./history/HistoryDownloadModal.vue'),
+  'Download historical data',
+  (state) =>
+    h(
+      BaseModal,
+      { modalId: 'historyDownload', title: 'Download historical data' },
+      () => state,
+    ),
+);
+const IndicatorSearchModal = lazyComponent(
+  () => import('./IndicatorSearchModal.vue'),
+  'Indicator',
+  (state) =>
+    h(
+      BaseModal,
+      { modalId: 'indicatorSearch', title: 'Indicator' },
+      () => state,
+    ),
+);
+const RemoveMarketModal = lazyComponent(
+  () => import('./RemoveMarketModal.vue'),
+  'Remove Market',
+  (state) =>
+    h(
+      BaseModal,
+      { modalId: 'removeMarket', title: 'Remove Market' },
+      () => state,
+    ),
+);
+const SymbolFormModal = lazyComponent(
+  () => import('./SymbolFormModal.vue'),
+  'Market',
+  (state) =>
+    h(BaseModal, { modalId: 'symbolForm', title: 'Market' }, () => state),
+);
+const SymbolSearchModal = lazyComponent(
+  () => import('./SymbolSearchModal.vue'),
+  'Symbol',
+  (state) =>
+    h(BaseModal, { modalId: 'symbolSearch', title: 'Symbol' }, () => state),
+);
+const UploadDataModal = lazyComponent(
+  () => import('./Upload/UploadDataModal.vue'),
+  'Upload Data',
+  (state) =>
+    h(BaseModal, { modalId: 'uploadData', title: 'Upload Data' }, () => state),
+);
 
 defineOptions({
   name: 'TopBarModals',
 });
 
-type SymbolSearchModalInstance = ComponentPublicInstance & {
-  updateCurrentMarket: (market: Market) => void;
-};
-
 const modalStore = useModalStore();
-const symbolSearchModal = ref<SymbolSearchModalInstance | null>(null);
 const marketToDownload = ref<Market | null>(null);
 const offerDownload = ref(false);
+const hasOpenedSymbolSearch = ref(false);
+watch(
+  () => modalStore.isModalOpen('symbolSearch'),
+  (open) => {
+    if (open) hasOpenedSymbolSearch.value = true;
+  },
+  { immediate: true },
+);
+const currentMarket = useCurrentMarketStore();
 const marketToEdit = ref<Market | null>(null);
 const marketToRemove = ref<Market | null>(null);
 const marketToUpload = ref<Market | null>(null);
@@ -96,14 +145,16 @@ function onUploadData(market: Market): void {
 
 function onUploadSuccessful(): void {
   if (marketToUpload.value) {
-    symbolSearchModal.value?.updateCurrentMarket(marketToUpload.value);
+    currentMarket.setMarket(marketToUpload.value);
+    modalStore.closeModal();
   }
   marketToUpload.value = null;
 }
 
 function onMarketRemoved(): void {
   if (marketToRemove.value) {
-    symbolSearchModal.value?.updateCurrentMarket(marketToRemove.value);
+    currentMarket.setMarket(marketToRemove.value);
+    modalStore.closeModal();
   }
   marketToRemove.value = null;
 }

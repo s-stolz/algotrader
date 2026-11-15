@@ -70,6 +70,10 @@ it('does not offer broker downloads for custom market creation or menu events', 
   const wrapper = render();
   const custom = { ...broker, source_type: 'custom' };
   wrapper.getComponent(form).vm.$emit('created', custom);
+  await nextTick();
+  expect(wrapper.findComponent(history).exists()).toBe(false);
+  useModalStore().openModal('symbolSearch');
+  await nextTick();
   wrapper.getComponent(search).vm.$emit('download-history', custom);
   await nextTick();
   expect(wrapper.findComponent(history).exists()).toBe(false);
