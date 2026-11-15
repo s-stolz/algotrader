@@ -125,7 +125,17 @@ and project, preserving the original volumes. Use the archived image digests.
    and installer images. Its `config/.env.secrets.db` supplies PostgreSQL credentials.
 2. Create fresh named volumes, for example `algotrader-recovery-db` and
    `algotrader-recovery-redis`. Start the archived database image on the first volume
-   with the archived database env file, without publishing a port. Wait for readiness.
+   with **both** archived env files, without publishing a port. `.env.shared`
+   supplies the database name/user; `.env.secrets.db` supplies its password.
+   Set `TIMESCALE_IMAGE` to the archived TimescaleDB image digest, then run:
+
+   ```sh
+   docker volume create algotrader-recovery-db
+   docker run --detach --name recovery-db --env-file /path/to/recovered/config/.env.shared --env-file /path/to/recovered/config/.env.secrets.db --mount type=volume,source=algotrader-recovery-db,target=/var/lib/postgresql "$TIMESCALE_IMAGE"
+   docker exec recovery-db pg_isready -h 127.0.0.1 -U postgres
+   ```
+
+   Wait until the TCP readiness command succeeds; use the archived user if customized.
 3. In that disposable database container, replace its empty bootstrap database
    before importing. Run these commands separately, using the archived database
    name/user when customized:
@@ -133,7 +143,7 @@ and project, preserving the original volumes. Use the archived image digests.
    ```sh
    docker exec recovery-db dropdb -U postgres finance_data
    docker exec recovery-db createdb -U postgres finance_data
-   docker exec recovery-db psql -U postgres -d finance_data -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION timescaledb;'
+   docker exec recovery-db psql -U postgres -d finance_data -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS timescaledb;'
    docker exec recovery-db psql -U postgres -d finance_data -v ON_ERROR_STOP=1 -c 'SELECT timescaledb_pre_restore();'
    ```
 
