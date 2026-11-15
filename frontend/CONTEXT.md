@@ -12,7 +12,9 @@ and behavior that is easy to break when changing them.
 
 - `src/components/Chart/ChartArea.vue` wires rendering and lifecycle adapters;
   `chartSession.ts` beside it owns market/timeframe transitions, live Candle
-  subscriptions, fetch guards, live-tail buffering, and older-history paging.
+  subscriptions, fetch guards, and live-tail buffering. `chartOlderHistory.ts` owns
+  live-view paging: keep the latest viewport demand, load sequential pages, and
+  recheck coverage after each page until covered, exhausted, or cancelled.
   Keep session sequencing there. Related state and rendering live in
   `src/stores/candlesticksStore.ts`, `src/stores/indicatorsStore.ts`, and
   `src/utils/chart/ChartManager.ts`.

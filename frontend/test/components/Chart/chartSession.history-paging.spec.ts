@@ -87,6 +87,7 @@ describe('chart session older history paging', () => {
     });
     await vi.waitFor(() => {
       expect(adapter.fetchOlderCandles).toHaveBeenCalledOnce();
+      expect(adapter.requestOlderIndicators).toHaveBeenCalledOnce();
     });
 
     expect(adapter.fetchOlderCandles).toHaveBeenCalledWith(
@@ -168,7 +169,7 @@ describe('chart session older history paging', () => {
       });
 
       expect(adapter.fetchOlderCandles).toHaveBeenCalledOnce();
-      expect(adapter.requestOlderIndicators).toHaveBeenCalledOnce();
+      expect(adapter.requestOlderIndicators).not.toHaveBeenCalled();
 
       olderCandles.resolve([chartCandle(0)]);
       olderIndicators.resolve();
@@ -178,8 +179,9 @@ describe('chart session older history paging', () => {
     },
   );
 
-  it('honors the older history cooldown after a page load settles', async () => {
+  it('does not repeat requests after reaching the oldest candle', async () => {
     const { adapter } = createFakeAdapter();
+    vi.mocked(adapter.fetchOlderCandles).mockResolvedValue([]);
     const session = createChartSession(adapter);
 
     await session.setSession(
@@ -214,8 +216,76 @@ describe('chart session older history paging', () => {
       nowMs: 1_400,
     });
     await vi.waitFor(() => {
-      expect(adapter.fetchOlderCandles).toHaveBeenCalledTimes(2);
-      expect(adapter.requestOlderIndicators).toHaveBeenCalledTimes(2);
+      expect(adapter.fetchOlderCandles).toHaveBeenCalledOnce();
+      expect(adapter.requestOlderIndicators).toHaveBeenCalledOnce();
     });
   });
+});
+
+it('fills a wide live viewport when render reports demand during an in-flight page', async () => {
+  const { adapter } = createFakeAdapter();
+  const session = createChartSession(adapter);
+  let oldest = 1_000_000_000;
+  let remaining = -900;
+  vi.mocked(adapter.getOldestCandleTimestampMs).mockImplementation(
+    () => oldest,
+  );
+  vi.mocked(adapter.fetchOlderCandles).mockImplementation(async () =>
+    Array.from({ length: 500 }, (_, i) =>
+      chartCandle(oldest - (500 - i) * 300_000),
+    ),
+  );
+  vi.mocked(adapter.prependOlderCandles).mockImplementation((_key, candles) => {
+    oldest = candles[0].timestamp_ms;
+  });
+  vi.mocked(adapter.renderOlderCandles).mockImplementation(() => {
+    remaining += 500;
+    session.requestOlderHistory({ barsBefore: remaining, nowMs: 2000 });
+  });
+  await session.setSession({ symbol: 'EURUSD', timeframe: 'M5' }, vi.fn());
+  session.requestOlderHistory({ barsBefore: remaining, nowMs: 1000 });
+  await vi.waitFor(() =>
+    expect(adapter.fetchOlderCandles).toHaveBeenCalledTimes(2),
+  );
+  expect(remaining).toBe(100);
+  await session.stop();
+});
+
+it('rechecks the current viewport after a page instead of continuing stale demand', async () => {
+  const { adapter } = createFakeAdapter();
+  const session = createChartSession(adapter);
+  const page = deferred<ReturnType<typeof chartCandle>[]>();
+  let oldest = 300_000;
+  adapter.getHistoryRange = () => ({ barsBefore: 1000, nowMs: 2000 });
+  vi.mocked(adapter.getOldestCandleTimestampMs).mockImplementation(
+    () => oldest,
+  );
+  vi.mocked(adapter.fetchOlderCandles).mockReturnValue(page.promise);
+  vi.mocked(adapter.prependOlderCandles).mockImplementation((_key, data) => {
+    oldest = data[0].timestamp_ms;
+  });
+  await session.setSession({ symbol: 'EURUSD', timeframe: 'M5' }, vi.fn());
+  session.requestOlderHistory({ barsBefore: -900, nowMs: 1000 });
+  page.resolve(
+    Array.from({ length: 500 }, (_, i) => chartCandle(-(500 - i) * 300_000)),
+  );
+  await vi.waitFor(() =>
+    expect(adapter.requestOlderIndicators).toHaveBeenCalledOnce(),
+  );
+  expect(adapter.fetchOlderCandles).toHaveBeenCalledOnce();
+  await session.stop();
+});
+
+it('discards a pending older page when the chart session stops', async () => {
+  const { adapter } = createFakeAdapter();
+  const session = createChartSession(adapter);
+  const page = deferred<ReturnType<typeof chartCandle>[]>();
+  vi.mocked(adapter.fetchOlderCandles).mockReturnValue(page.promise);
+  await session.setSession({ symbol: 'EURUSD', timeframe: 'M5' }, vi.fn());
+  session.requestOlderHistory({ barsBefore: -900, nowMs: 1000 });
+  await session.stop();
+  page.resolve([chartCandle(0)]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(adapter.prependOlderCandles).not.toHaveBeenCalled();
+  expect(adapter.requestOlderIndicators).not.toHaveBeenCalled();
 });

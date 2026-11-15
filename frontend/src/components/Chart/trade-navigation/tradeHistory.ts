@@ -53,6 +53,10 @@ export class TradeHistory {
 
   constructor(private readonly adapter: TradeHistoryAdapter) {}
 
+  getVisibleRange(): ChartSessionOlderHistorySignal | null {
+    return this.adapter.getRange();
+  }
+
   get blocksOlderHistory() {
     return this.historical;
   }
