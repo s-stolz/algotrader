@@ -28,7 +28,7 @@ def run(args: list[str], *, env: dict[str, str] | None = None) -> None:
 def wait_for_frontend(fetch: list[str]) -> None:
     for _ in range(60):
         ready = subprocess.run(
-            [*fetch, "http://localhost:8080/health"], capture_output=True, check=False
+            [*fetch, "http://127.0.0.1:8080/health"], capture_output=True, check=False
         )
         if ready.returncode == 0:
             return
@@ -192,17 +192,17 @@ print("Custom market and uploaded candle persisted")
             )
             fetch = ["docker", "exec", project + "-frontend", "wget", "--quiet", "-O", "-"]
             wait_for_frontend(fetch)
-            root_html = subprocess.check_output([*fetch, "http://localhost:8080/"]).decode()
+            root_html = subprocess.check_output([*fetch, "http://127.0.0.1:8080/"]).decode()
             asset = re.search(r'src="(/assets/[^"]+\.js)"', root_html)
             if asset is None:
                 raise RuntimeError("Production frontend did not serve its compiled entrypoint")
-            if not subprocess.check_output([*fetch, "http://localhost:8080" + asset.group(1)]):
+            if not subprocess.check_output([*fetch, "http://127.0.0.1:8080" + asset.group(1)]):
                 raise RuntimeError("Production frontend asset is empty")
             candles = json.loads(
                 subprocess.check_output(
                     [
                         *fetch,
-                        "http://localhost:8080/api/data-accessor/candles/SMOKE?exchange=CSV&timeframe=M1&limit=1",
+                        "http://127.0.0.1:8080/api/data-accessor/candles/SMOKE?exchange=CSV&timeframe=M1&limit=1",
                     ]
                 )
             )
