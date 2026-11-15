@@ -32,20 +32,46 @@ def select_account(
         raise ValueError(
             "The expected broker account was not authorized; existing configuration is unchanged"
         )
-    for account in candidates:
+    if requested_account_id is not None:
+        selected = next(
+            (account for account in candidates if str(account.account_id) == requested_account_id),
+            None,
+        )
+        if selected is None:
+            raise ValueError(
+                "Selected account does not match an authorized account for this installation"
+            )
+        return selected
+    return _prompt_account(candidates, environment, read, announce)
+
+
+def _prompt_account(
+    candidates: list[Account],
+    environment: str,
+    read: Callable[[str], str],
+    announce: Callable[[str], None],
+) -> Account:
+    for number, account in enumerate(candidates, start=1):
         announce(
-            f"Account {account.account_id}: {account.broker_name or 'Broker'} / "
+            f"{number}. {account.broker_name or 'Broker'} / "
             f"login {account.trader_login or account.account_id} ({environment})"
         )
-    account_id = requested_account_id or read("Enter the account ID to connect: ").strip()
-    selected = next(
-        (account for account in candidates if str(account.account_id) == account_id), None
-    )
-    if selected is None:
-        raise ValueError(
-            "Selected account does not match an authorized account for this installation"
-        )
-    return selected
+    while True:
+        if len(candidates) == 1:
+            choice = read("Connect to this account? [Y/n]: ").strip().lower()
+            if choice in ("", "y", "yes"):
+                return candidates[0]
+            if choice in ("n", "no"):
+                raise ValueError("Account selection cancelled. Run setup again when ready.")
+            announce("Enter Y to connect or N to cancel.")
+        else:
+            choice = read(f"Select an account [1-{len(candidates)}], or q to cancel: ").strip()
+            if choice.lower() == "q":
+                raise ValueError("Account selection cancelled. Run setup again when ready.")
+            choices = {str(number): account for number, account in enumerate(candidates, start=1)}
+            if choice in choices:
+                return choices[choice]
+            announce(f"Enter a number from 1 to {len(candidates)}, or q to cancel.")
 
 
 async def discover_accounts(credentials: CtraderCredentials) -> list[Account]:
