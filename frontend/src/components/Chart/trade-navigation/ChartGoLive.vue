@@ -1,10 +1,12 @@
 <template>
-  <span
+  <div
     v-if="loading"
     class="history-loading"
     role="status"
-    >Loading history…</span
+    aria-label="Loading history"
   >
+    <n-spin :size="18" />
+  </div>
   <n-button
     class="chart-go-live"
     circle
@@ -17,7 +19,7 @@
   </n-button>
 </template>
 <script setup lang="ts">
-import { NButton, NIcon } from 'naive-ui';
+import { NButton, NIcon, NSpin } from 'naive-ui';
 import { PlaySkipForwardOutline } from '@/icons';
 defineProps<{ ready: boolean; loading: boolean }>();
 defineEmits<{ activate: [] }>();
@@ -27,8 +29,7 @@ defineEmits<{ activate: [] }>();
   position: absolute;
   right: var(--design-space-md);
   top: var(--design-space-sm);
-  color: var(--design-color-muted);
-  font-size: var(--design-text-secondary);
+  z-index: 2;
   pointer-events: none;
 }
 
