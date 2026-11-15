@@ -139,8 +139,12 @@ Source binding, history requests, and delivery recovery follow the
   `src/views/BacktestCreationDrawer.vue`. Its feature-local `creation/` sections
   share `useBacktestCreation.ts`, which owns draft/selection retention, reuse revisions,
   preview generations/debounce cleanup, and submission identity. `src/App.vue`
-  loads the Backtest Workspace on first navigation and keeps routed views alive:
-  navigation preserves drafts, history filters, and comparison selections.
+  keeps routed views alive: navigation preserves drafts, history filters, and
+  comparison selections. `ChartWorkspaceRoute.vue` and `BacktestWorkspaceRoute.vue`
+  are lightweight route shells: navigation and its slide animation start immediately,
+  with a loading state while the requested workspace downloads. `lazyComponent.ts`
+  forwards props, events, and slots, provides retry, and delays mounting downloads
+  that complete while a kept-alive consumer is inactive until reactivation.
 - Creation retains an optional experiment name alongside draft fields. Names
   are top-level creation properties; omit them from stateless preview.
   History/detail names and member labels share `backtestWorkspaceRuns.ts`; use
@@ -284,3 +288,29 @@ For progressive Equity Replay, `useWorkspaceAnalysis` owns stream admission,
 cancellation, provisional previews, and manual retry. Transport parsing lives in
 `api/equityReplayStream.ts`; verified results remain separate from previews. See
 [streaming replay contracts](../docs/contracts/backtests.md#streaming-equity-replay).
+
+## Loading Boundaries
+
+- Application startup owns navigation, theme, shared transport, and execution-log
+  selection state. Both workspace implementations load only on first navigation.
+- Chart toolbar dialogs load on first opening. Keep Symbol search mounted after
+  its first use to retain the search; other dialogs retain their existing close
+  lifecycle. Loading and retry states use the dialog shell so clicks respond immediately.
+- Backtest history does not mount creation or inspection. Creation loads on first
+  opening per creation session and stays mounted across close/reopen; a submitted
+  session does not initialize the next draft until requested. Inspection loads on
+  first analysis and retains its existing session within Backtests, avoiding duplicate
+  member reads on history/detail switches. Route-level KeepAlive pauses consumers
+  when leaving the Backtest Workspace.
+- Heatmap rendering and Equity Replay charts load when their data makes them visible.
+  Shared models stay with their existing owners; form steps and small controls are
+  kept together to avoid fragmenting one interaction into many downloads.
+- Import icons from their individual package modules. Icon and rendering barrels
+  can expand the development module graph even when production removes unused exports.
+- Chart overlay restoration and trade navigation import the backtester client only
+  when a selected Run needs data; a plain chart does not import replay transport.
+- Shared Market/Timeframe state, backtest overlay selection, contracts, and transport
+  legitimately cross views. Keep chart rendering and indicator calculation owners
+  out of the backtest history graph. `test/router/index.loading-boundaries.spec.ts`
+  checks those import boundaries; navigation and creation tests check activation
+  and request timing.
