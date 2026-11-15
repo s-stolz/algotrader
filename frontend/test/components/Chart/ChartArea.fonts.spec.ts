@@ -39,6 +39,7 @@ describe('ChartArea font readiness', () => {
     adapter.renderCandles(eurUsdM5Key, [candle(300_000)]);
     latestLiveCandleReceiver()({
       type: 'candleUpdate',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M5',
       ...candle(300_000),
@@ -74,6 +75,7 @@ describe('ChartArea font readiness', () => {
       for (const handler of chartAreaMocks.indicatorHandlers) {
         handler({
           type: 'indicatorUpdate',
+          market_id: 1,
           clientIndicatorId: id,
           timestamp_ms: timestampMs,
           values,
@@ -133,6 +135,7 @@ describe('ChartArea font readiness', () => {
       for (const handler of chartAreaMocks.indicatorHandlers) {
         handler({
           type: 'indicatorUpdate',
+          market_id: 1,
           clientIndicatorId: id,
           timestamp_ms: timestampMs,
           values: { sma: 2 },
@@ -161,6 +164,7 @@ describe('ChartArea font readiness', () => {
     for (const handler of chartAreaMocks.indicatorHandlers) {
       handler({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: id,
         timestamp_ms: 120_000,
         values: { sma: 2 },

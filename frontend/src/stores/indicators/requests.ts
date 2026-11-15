@@ -34,6 +34,7 @@ export function toSubscriptionPayload(
   subscription: IndicatorLiveSubscription,
 ): WebSocketSendPayload {
   return {
+    market_id: subscription.market_id,
     symbol: subscription.symbol,
     timeframe: subscription.timeframe,
     exchange: subscription.exchange,

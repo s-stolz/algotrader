@@ -1,3 +1,4 @@
+import { resolveWebsocketUrl } from './utils/websocketUrl';
 import './assets/main.css';
 
 import { createApp } from 'vue';
@@ -12,6 +13,6 @@ installDesignProperties(document.documentElement);
 const app = createApp(App);
 
 const websocketUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8765';
-wsService.connect(websocketUrl);
+wsService.connect(resolveWebsocketUrl(websocketUrl, window.location.href));
 
 app.use(router).use(createPinia()).mount('#app');

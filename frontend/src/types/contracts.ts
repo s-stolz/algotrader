@@ -74,7 +74,15 @@ export interface TimeframeOption {
   value: TimeframeCode;
 }
 
-export interface Market {
+export interface MarketSource {
+  source_type?: 'custom' | 'broker';
+  broker_provider?: 'ctrader' | null;
+  broker_account_id?: string | null;
+  broker_environment?: 'demo' | 'live' | null;
+  broker_symbol_id?: number | null;
+}
+
+export interface Market extends MarketSource {
   settlement_currency?: string;
   contract_multiplier?: number;
   minimum_quantity?: number;
@@ -88,7 +96,7 @@ export interface Market {
   timezone: string;
 }
 
-export interface MarketCreatePayload {
+export interface MarketCreatePayload extends MarketSource {
   settlement_currency: string;
   contract_multiplier: number;
   minimum_quantity: number;
@@ -165,6 +173,7 @@ export interface IndicatorRequestBody {
 }
 
 export interface StoredCurrentMarket {
+  source_type?: 'custom' | 'broker';
   exchange: string | null;
   market_type: string | null;
   min_move: number | null;
@@ -208,7 +217,27 @@ export function isMarket(value: unknown): value is Market {
     isNonEmptyString(value.exchange) &&
     isNonEmptyString(value.market_type) &&
     isFiniteNumber(value.min_move) &&
-    isNonEmptyString(value.timezone)
+    isNonEmptyString(value.timezone) &&
+    isMarketSource(value)
+  );
+}
+
+function isMarketSource(value: Record<string, unknown>): boolean {
+  if (value.source_type === undefined || value.source_type === 'custom') {
+    return [
+      'broker_provider',
+      'broker_account_id',
+      'broker_environment',
+      'broker_symbol_id',
+    ].every((key) => value[key] === undefined || value[key] === null);
+  }
+  return (
+    value.source_type === 'broker' &&
+    value.broker_provider === 'ctrader' &&
+    isNonEmptyString(value.broker_account_id) &&
+    ['demo', 'live'].includes(String(value.broker_environment)) &&
+    Number.isInteger(value.broker_symbol_id) &&
+    Number(value.broker_symbol_id) > 0
   );
 }
 
@@ -361,7 +390,10 @@ export function isStoredCurrentMarket(
     isNullableString(value.market_type) &&
     isNullableNumber(value.min_move) &&
     isNullableString(value.symbol) &&
-    isNullableNumber(value.symbol_id)
+    isNullableNumber(value.symbol_id) &&
+    (value.source_type === undefined ||
+      value.source_type === 'custom' ||
+      value.source_type === 'broker')
   );
 }
 

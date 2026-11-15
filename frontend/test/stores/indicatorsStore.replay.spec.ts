@@ -1,3 +1,4 @@
+import { seedBrokerMarket } from '../fixtures/brokerMarket';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { useIndicatorsStore } from '@/stores/indicatorsStore';
@@ -25,7 +26,10 @@ const info: IndicatorInfo = {
   parameters: {},
 };
 
-beforeEach(() => setActivePinia(createPinia()));
+beforeEach(() => {
+  setActivePinia(createPinia());
+  seedBrokerMarket();
+});
 
 it('silently repairs earlier points without rewinding the live tail', () => {
   const store = useIndicatorsStore();
@@ -38,8 +42,16 @@ it('silently repairs earlier points without rewinding the live tail', () => {
     5,
   );
   const version = store.getById(id)!.dataVersion;
+  void store.subscribeIndicatorLive(id, {
+    symbol: 'EURUSD',
+    exchange: 'FX',
+    timeframe: 'M1',
+    indicatorId: 5,
+    parameters: {},
+  });
   const message = {
     type: 'indicatorUpdate' as const,
+    market_id: 1,
     clientIndicatorId: id,
     timestamp_ms: 1000,
     values: { EUR: 1.5 },
@@ -98,8 +110,16 @@ it('limits replay to loaded history without trimming a newer live tail', () => {
     ],
     5,
   );
+  void store.subscribeIndicatorLive(id, {
+    symbol: 'EURUSD',
+    exchange: 'FX',
+    timeframe: 'M1',
+    indicatorId: 5,
+    parameters: {},
+  });
   const message = {
     type: 'indicatorUpdate' as const,
+    market_id: 1,
     clientIndicatorId: id,
     timestamp_ms: 3000,
     values: { EUR: 3 },

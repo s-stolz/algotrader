@@ -75,6 +75,7 @@ describe('shared frontend contract validators', () => {
     expect(
       isCandleUpdateMessage({
         type: 'candleUpdate',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M1',
         timestamp_ms: 1_700_000_000_000,
@@ -89,6 +90,7 @@ describe('shared frontend contract validators', () => {
     expect(
       isIndicatorUpdateMessage({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: 'client-1',
         streamId: 'stream-1',
         symbol: 'EURUSD',
@@ -100,11 +102,16 @@ describe('shared frontend contract validators', () => {
     ).toBe(true);
 
     expect(
-      isCandleUpdateMessage({ type: 'candleUpdate', symbol: 'EURUSD' }),
+      isCandleUpdateMessage({
+        type: 'candleUpdate',
+        market_id: 1,
+        symbol: 'EURUSD',
+      }),
     ).toBe(false);
     expect(
       isIndicatorUpdateMessage({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: 'client-1',
         values: null,
       }),
@@ -114,11 +121,13 @@ describe('shared frontend contract validators', () => {
   it('validates WebSocket control messages', () => {
     const candleSubscribed = {
       type: 'subscribed',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M1',
     };
     const indicatorSubscribed = {
       type: 'indicatorSubscribed',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M1',
       indicatorId: 1,
@@ -127,6 +136,7 @@ describe('shared frontend contract validators', () => {
     };
     const indicatorUnsubscribed = {
       type: 'indicatorUnsubscribed',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M1',
       indicatorId: 1,
@@ -148,6 +158,7 @@ describe('shared frontend contract validators', () => {
     expect(
       isIndicatorSubscribedMessage({
         type: 'indicatorSubscribed',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M1',
         clientIndicatorId: 'client-1',
@@ -156,6 +167,7 @@ describe('shared frontend contract validators', () => {
     expect(
       isIndicatorUnsubscribedMessage({
         type: 'indicatorUnsubscribed',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M1',
         indicatorId: 1,

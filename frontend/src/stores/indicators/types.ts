@@ -37,6 +37,7 @@ export interface IndicatorStoreQuery {
 }
 
 export interface IndicatorLiveSubscription {
+  market_id: number;
   symbol: string;
   timeframe: string;
   exchange: string | null;
@@ -47,7 +48,7 @@ export interface IndicatorLiveSubscription {
 
 export type IndicatorLiveSubscriptionInput = Omit<
   IndicatorLiveSubscription,
-  'clientIndicatorId'
+  'clientIndicatorId' | 'market_id'
 >;
 
 export interface StoreIndicator {

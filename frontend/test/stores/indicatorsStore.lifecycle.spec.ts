@@ -1,3 +1,4 @@
+import { seedBrokerMarket } from '../fixtures/brokerMarket';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -56,6 +57,7 @@ describe('Indicator configuration and request lifecycle', () => {
   });
   beforeEach(() => {
     setActivePinia(createPinia());
+    seedBrokerMarket();
     vi.mocked(requestIndicator).mockReset();
     vi.mocked(wsService.send).mockReset().mockResolvedValue();
     vi.spyOn(Date, 'now').mockReturnValue(12345);
@@ -130,6 +132,13 @@ describe('Indicator configuration and request lifecycle', () => {
   it('keeps newer live values while historical data is prepended', async () => {
     const store = useIndicatorsStore();
     const id = store.addIndicator(info, response(2_000).data.indicator_data, 1);
+    void store.subscribeIndicatorLive(id, {
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M1',
+      indicatorId: 1,
+      parameters: {},
+    });
     store.updateIndicatorData(id, response(2_000).data.indicator_data);
     const older = deferred<IndicatorResponse>();
     vi.mocked(requestIndicator).mockReturnValueOnce(older.promise);
@@ -140,6 +149,7 @@ describe('Indicator configuration and request lifecycle', () => {
     });
     const livePoint = store.handleLiveUpdate({
       type: 'indicatorUpdate',
+      market_id: 1,
       clientIndicatorId: id,
       timestamp_ms: 3_000,
       values: { sma: 9 },
@@ -215,6 +225,7 @@ describe('Indicator configuration and request lifecycle', () => {
     expect(store.liveSubscriptions.size).toBe(0);
     expect(store.paneCount).toBe(1);
     expect(wsService.send).toHaveBeenCalledWith('unsubscribeIndicator', {
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M1',
       exchange: 'FX',
@@ -225,6 +236,7 @@ describe('Indicator configuration and request lifecycle', () => {
     expect(
       store.handleLiveUpdate({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: id,
         timestamp_ms: 2_000,
         values: { sma: 2 },

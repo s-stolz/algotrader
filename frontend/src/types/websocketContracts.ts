@@ -1,4 +1,9 @@
 import {
+  isHistoryEvent,
+  type HistoryDownloadChanged,
+  type HistoryDownloadsConnection,
+} from './historyDownloadContracts';
+import {
   isBacktestEventMessage,
   type BacktestEventMessage,
 } from './backtestEventContracts';
@@ -11,12 +16,14 @@ import {
 } from './transportValues';
 
 export interface CandleUpdateMessage extends Candle {
+  market_id: number;
   type: 'candleUpdate';
   symbol: string;
   timeframe: string;
 }
 
 export interface IndicatorUpdateMessage {
+  market_id: number;
   type: 'indicatorUpdate';
   clientIndicatorId: string;
   streamId?: string;
@@ -29,14 +36,16 @@ export interface IndicatorUpdateMessage {
 }
 
 export interface CandleSubscribedMessage {
+  market_id: number;
   type: 'subscribed';
-  symbol: string;
+  symbol?: string;
   timeframe: string;
 }
 
 export interface IndicatorSubscribedMessage {
+  market_id: number;
   type: 'indicatorSubscribed';
-  symbol: string;
+  symbol?: string;
   timeframe: string;
   indicatorId: number;
   clientIndicatorId: string;
@@ -44,8 +53,9 @@ export interface IndicatorSubscribedMessage {
 }
 
 export interface IndicatorUnsubscribedMessage {
+  market_id: number;
   type: 'indicatorUnsubscribed';
-  symbol: string;
+  symbol?: string;
   timeframe: string;
   indicatorId: number;
   clientIndicatorId: string;
@@ -63,6 +73,8 @@ export type WebSocketControlMessage =
   | WebSocketErrorMessage;
 
 export type WebSocketInboundMessage =
+  | HistoryDownloadChanged
+  | HistoryDownloadsConnection
   | BacktestEventMessage
   | CandleUpdateMessage
   | IndicatorUpdateMessage
@@ -85,6 +97,8 @@ export function isCandleUpdateMessage(
   return (
     isRecord(value) &&
     value.type === 'candleUpdate' &&
+    Number.isInteger(value.market_id) &&
+    Number(value.market_id) > 0 &&
     isNonEmptyString(value.symbol) &&
     isNonEmptyString(value.timeframe) &&
     isCandle(value)
@@ -97,6 +111,8 @@ export function isIndicatorUpdateMessage(
   return (
     isRecord(value) &&
     value.type === 'indicatorUpdate' &&
+    Number.isInteger(value.market_id) &&
+    Number(value.market_id) > 0 &&
     isNonEmptyString(value.clientIndicatorId) &&
     isFiniteNumber(value.timestamp_ms) &&
     value.timestamp_ms > 0 &&
@@ -123,7 +139,9 @@ export function isCandleSubscribedMessage(
   return (
     isRecord(value) &&
     value.type === 'subscribed' &&
-    isNonEmptyString(value.symbol) &&
+    Number.isInteger(value.market_id) &&
+    Number(value.market_id) > 0 &&
+    (value.symbol === undefined || isNonEmptyString(value.symbol)) &&
     isNonEmptyString(value.timeframe)
   );
 }
@@ -134,7 +152,9 @@ export function isIndicatorSubscribedMessage(
   return (
     isRecord(value) &&
     value.type === 'indicatorSubscribed' &&
-    isNonEmptyString(value.symbol) &&
+    Number.isInteger(value.market_id) &&
+    Number(value.market_id) > 0 &&
+    (value.symbol === undefined || isNonEmptyString(value.symbol)) &&
     isNonEmptyString(value.timeframe) &&
     isFiniteNumber(value.indicatorId) &&
     isNonEmptyString(value.clientIndicatorId) &&
@@ -150,7 +170,9 @@ export function isIndicatorUnsubscribedMessage(
   return (
     isRecord(value) &&
     value.type === 'indicatorUnsubscribed' &&
-    isNonEmptyString(value.symbol) &&
+    Number.isInteger(value.market_id) &&
+    Number(value.market_id) > 0 &&
+    (value.symbol === undefined || isNonEmptyString(value.symbol)) &&
     isNonEmptyString(value.timeframe) &&
     isFiniteNumber(value.indicatorId) &&
     isNonEmptyString(value.clientIndicatorId)
@@ -180,6 +202,7 @@ export function isWebSocketInboundMessage(
   value: unknown,
 ): value is WebSocketInboundMessage {
   return (
+    isHistoryEvent(value) ||
     isBacktestEventMessage(value) ||
     isCandleUpdateMessage(value) ||
     isIndicatorUpdateMessage(value) ||

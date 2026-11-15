@@ -1,3 +1,4 @@
+import { seedBrokerMarket } from '../../fixtures/brokerMarket';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { requestIndicator } from '@/api/indicatorClient';
@@ -30,6 +31,7 @@ const response: IndicatorResponse = {
 const key = { symbol: 'EURUSD', exchange: 'FX', timeframe: 'M5' };
 beforeEach(() => {
   setActivePinia(createPinia());
+  seedBrokerMarket();
   vi.resetAllMocks();
 });
 
@@ -76,10 +78,16 @@ describe('forward indicator history', () => {
   it('ignores live values while historical and accepts them after returning live', () => {
     const store = useIndicatorsStore();
     const id = store.addIndicator(info, [], 1);
+    void store.subscribeIndicatorLive(id, {
+      ...key,
+      indicatorId: 1,
+      parameters: {},
+    });
     store.historicalMode = true;
     expect(
       store.handleLiveUpdate({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: id,
         timestamp_ms: 600_000,
         values: { sma: 3 },
@@ -90,6 +98,7 @@ describe('forward indicator history', () => {
     store.historicalMode = false;
     store.handleLiveUpdate({
       type: 'indicatorUpdate',
+      market_id: 1,
       clientIndicatorId: id,
       timestamp_ms: 600_000,
       values: { sma: 3 },

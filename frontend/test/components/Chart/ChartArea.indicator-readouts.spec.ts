@@ -94,6 +94,7 @@ describe('ChartArea indicator readouts', () => {
       chartAreaMocks.crosshairHandler?.({ ...hover(9), seriesData: new Map() });
       latestLiveCandleReceiver()({
         type: 'candleUpdate',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M5',
         timestamp_ms: 300_000,

@@ -81,6 +81,10 @@
 
 <script lang="ts">
 import {
+  createMarketSessionKey,
+  chartSessionIdentity,
+} from './chartSessionIdentity';
+import {
   computed,
   defineComponent,
   getCurrentInstance,
@@ -167,15 +171,14 @@ export default defineComponent({
       requestOlderHistory: (request) => session.requestOlderHistory(request),
     });
     function currentChartSessionKey(): ChartSessionKeyInput {
-      return {
-        symbol: currentMarketStore.symbol,
-        exchange: currentMarketStore.exchange,
-        timeframe: currentTimeframeStore.value,
-      };
+      return createMarketSessionKey(
+        currentMarketStore,
+        currentTimeframeStore.value,
+      );
     }
     const loadedSession = ref<string | null>(null);
     const sessionIdentity = (key = currentChartSessionKey()) =>
-      JSON.stringify([key.symbol, key.exchange ?? null, key.timeframe]);
+      chartSessionIdentity(key);
     const runIndicators = createBacktestIndicators({
       store: indicatorsStore,
       manager: infrastructure.indicatorManager,
@@ -316,12 +319,7 @@ export default defineComponent({
       rendering.state.shouldScrollToRealTime = true;
       syncChartSession();
     }
-    watch(
-      () =>
-        `${currentMarketStore.symbol || ''}|${currentMarketStore.exchange || ''}`,
-      syncNavigation,
-    );
-    watch(() => currentTimeframeStore.value, syncNavigation);
+    watch(() => sessionIdentity(), syncNavigation);
     syncNavigation();
     watch(
       () => [

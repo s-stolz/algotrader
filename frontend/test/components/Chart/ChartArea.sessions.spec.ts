@@ -47,6 +47,7 @@ describe('ChartArea sessions', () => {
 
     currentMarketStore.setMarket({
       symbol_id: 2,
+      source_type: 'broker',
       symbol: 'GBPUSD',
       exchange: 'CFD',
       market_type: 'forex',
@@ -56,7 +57,13 @@ describe('ChartArea sessions', () => {
     await flushPromises();
 
     expect(session.setSession).toHaveBeenLastCalledWith(
-      { symbol: 'GBPUSD', exchange: 'CFD', timeframe: 'H1' },
+      {
+        market_id: 2,
+        source_type: 'broker',
+        symbol: 'GBPUSD',
+        exchange: 'CFD',
+        timeframe: 'H1',
+      },
       expect.any(Function),
       undefined,
     );
@@ -70,6 +77,7 @@ describe('ChartArea sessions', () => {
 
     const message: CandleUpdateMessage = {
       type: 'candleUpdate',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M5',
       timestamp_ms: 600_000,
@@ -113,10 +121,12 @@ describe('ChartArea sessions', () => {
     adapter.resetIndicatorHistory?.();
 
     expect(chartAreaMocks.wsSend).toHaveBeenCalledWith('subscribeCandles', {
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M5',
     });
     expect(chartAreaMocks.wsSend).toHaveBeenCalledWith('unsubscribeCandles', {
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M5',
     });
@@ -217,6 +227,7 @@ describe('ChartArea sessions', () => {
 
     const message: IndicatorUpdateMessage = {
       type: 'indicatorUpdate',
+      market_id: 1,
       clientIndicatorId: indicatorId,
       timestamp_ms: 1_000,
       values: { sma: 1.2 },
@@ -250,6 +261,7 @@ describe('pending indicator messages across chart contexts', () => {
     for (const handler of chartAreaMocks.indicatorHandlers)
       handler({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: id,
         timestamp_ms: 600_000,
         values: { sma: 123 },

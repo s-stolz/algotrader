@@ -72,6 +72,7 @@ describe('ChartArea overlays', () => {
     useMarketsStore().all = [
       {
         symbol_id: 1,
+        source_type: 'broker',
         symbol: 'EURUSD',
         exchange: 'FX',
         market_type: 'forex',
@@ -309,6 +310,7 @@ describe('ChartArea overlays', () => {
 
     const message: CandleUpdateMessage = {
       type: 'candleUpdate',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M5',
       timestamp_ms: 900_000,

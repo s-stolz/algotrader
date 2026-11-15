@@ -20,7 +20,13 @@ describe('chart navigation lifecycle', () => {
     await wrapper.get('[aria-label="Go to latest candle"]').trigger('click');
     await flushPromises();
     expect(latestChartSession().setSession).toHaveBeenLastCalledWith(
-      { symbol: 'EURUSD', timeframe: 'M5', exchange: 'FX' },
+      {
+        market_id: 1,
+        source_type: 'broker',
+        symbol: 'EURUSD',
+        timeframe: 'M5',
+        exchange: 'FX',
+      },
       expect.any(Function),
     );
     expect(useTradeNavigationStore().destination).toBeNull();
@@ -49,7 +55,13 @@ describe('chart navigation lifecycle', () => {
     visible.value = true;
     await flushPromises();
     expect(session.setSession).toHaveBeenLastCalledWith(
-      { symbol: 'EURUSD', exchange: 'FX', timeframe: 'H1' },
+      {
+        market_id: 1,
+        source_type: 'broker',
+        symbol: 'EURUSD',
+        exchange: 'FX',
+        timeframe: 'H1',
+      },
       expect.any(Function),
       undefined,
     );

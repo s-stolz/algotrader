@@ -1,3 +1,4 @@
+import { seedBrokerMarket } from '../../fixtures/brokerMarket';
 import { createPinia, setActivePinia, disposePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
@@ -33,6 +34,7 @@ describe('persisted manual indicators', () => {
     vi.mocked(requestIndicator).mockReset();
     vi.mocked(wsService.send).mockClear();
     setActivePinia(createPinia());
+    seedBrokerMarket();
     vi.mocked(fetchAvailableIndicators)
       .mockReset()
       .mockResolvedValue([{ id: 9, indicator_id: 'sma', name: 'SMA' }]);
@@ -55,6 +57,7 @@ describe('persisted manual indicators', () => {
     expect(saved).not.toContain('timestamp_ms');
     expect(saved).not.toContain('run-1');
     setActivePinia(createPinia());
+    seedBrokerMarket();
     const restored = useIndicatorsStore();
     await restored.restorePersistedIndicators();
     expect(restored.all).toHaveLength(2);
@@ -160,6 +163,7 @@ describe('persisted manual indicators', () => {
       }),
     );
     setActivePinia(createPinia());
+    seedBrokerMarket();
     const restored = useIndicatorsStore();
     await restored.restorePersistedIndicators();
     await nextTick();

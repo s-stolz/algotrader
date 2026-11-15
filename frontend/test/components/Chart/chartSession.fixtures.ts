@@ -28,6 +28,7 @@ export function candleUpdate(
 ): CandleUpdateMessage {
   return {
     type: 'candleUpdate',
+    market_id: 1,
     symbol: 'EURUSD',
     timeframe: 'M5',
     timestamp_ms: timestampMs,

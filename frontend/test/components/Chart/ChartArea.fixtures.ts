@@ -1,3 +1,4 @@
+import { seedBrokerMarket } from '../../fixtures/brokerMarket';
 import { mount } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
@@ -191,11 +192,15 @@ export const candle = (timestampMs: number, close = 1.5): ChartCandle => ({
 });
 
 export const eurUsdM5Key: ChartSessionKey = {
+  market_id: 1,
+  source_type: 'broker',
   symbol: 'EURUSD',
   exchange: 'FX',
   timeframe: 'M5',
 };
 export const eurUsdM15Key: ChartSessionKey = {
+  market_id: 1,
+  source_type: 'broker',
   symbol: 'EURUSD',
   exchange: 'FX',
   timeframe: 'M15',
@@ -275,13 +280,25 @@ export function setupStores(timeframe: TimeframeCode = 'M5') {
   const candlesticksStore = useCandlesticksStore();
   const indicatorsStore = useIndicatorsStore();
 
-  currentMarketStore.setMarket({
+  seedBrokerMarket({
     symbol_id: 1,
     symbol: 'EURUSD',
     exchange: 'FX',
     market_type: 'forex',
     min_move: 0.0001,
     timezone: 'UTC',
+  });
+  const addIndicator = indicatorsStore.addIndicator;
+  vi.spyOn(indicatorsStore, 'addIndicator').mockImplementation((...args) => {
+    const id = addIndicator(...args);
+    void indicatorsStore.subscribeIndicatorLive(id, {
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe,
+      indicatorId: args[2],
+      parameters: {},
+    });
+    return id;
   });
   currentTimeframeStore.setCurrentTimeframe({
     label: timeframe,

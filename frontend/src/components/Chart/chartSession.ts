@@ -6,17 +6,18 @@ import {
 import type { ChartRecovery, ChartRecoveryAdapter } from './chartRecovery';
 import type { CandleUpdateMessage, ChartCandle } from '@/types/contracts';
 
-export interface ChartSessionKeyInput {
-  symbol?: string | null;
-  exchange?: string | null;
-  timeframe?: string | null;
-}
-
-export interface ChartSessionKey {
-  symbol: string;
-  exchange: string | null;
-  timeframe: string;
-}
+import {
+  normalizeSessionKey,
+  cloneSessionKey,
+  sessionKeysEqual,
+  candleMatchesSession,
+  type ChartSessionKey,
+  type ChartSessionKeyInput,
+} from './chartSessionIdentity';
+export type {
+  ChartSessionKey,
+  ChartSessionKeyInput,
+} from './chartSessionIdentity';
 
 export type ChartSessionCandleHandler = (message: CandleUpdateMessage) => void;
 export type ChartSessionLiveCandleReceiver = (
@@ -89,49 +90,6 @@ interface InFlightOlderHistoryLoad {
   revision: number;
 }
 
-function normalizeSessionKey(
-  input: ChartSessionKeyInput | null | undefined,
-): ChartSessionKey | null {
-  if (!input?.symbol || !input.timeframe) {
-    return null;
-  }
-
-  return {
-    symbol: input.symbol,
-    exchange: input.exchange ?? null,
-    timeframe: input.timeframe,
-  };
-}
-
-function cloneSessionKey(key: ChartSessionKey): ChartSessionKey {
-  return {
-    symbol: key.symbol,
-    exchange: key.exchange,
-    timeframe: key.timeframe,
-  };
-}
-
-function sessionKeysEqual(
-  left: ChartSessionKey | null,
-  right: ChartSessionKey | null,
-): boolean {
-  if (left === right) return true;
-  if (!left || !right) return false;
-
-  return (
-    left.symbol === right.symbol &&
-    left.exchange === right.exchange &&
-    left.timeframe === right.timeframe
-  );
-}
-
-function candleMatchesSession(
-  message: CandleUpdateMessage,
-  key: ChartSessionKey,
-): boolean {
-  return message.symbol === key.symbol && message.timeframe === key.timeframe;
-}
-
 export class ChartSession {
   private activeKey: ChartSessionKey | null = null;
   private listener: ChartSessionCandleHandler | null = null;
@@ -198,7 +156,8 @@ export class ChartSession {
 
     this.adapter.resetIndicatorHistory?.();
     this.activeKey = cloneSessionKey(nextKey);
-    if (tradeTimestampMs === undefined) this.recovery.start(this.activeKey);
+    if (tradeTimestampMs === undefined && nextKey.source_type !== 'custom')
+      this.recovery.start(this.activeKey);
     this.liveCandleReceiver = receiveLiveCandle;
     this.listener = (message) => {
       this.handleCandleUpdate(message);
@@ -343,6 +302,7 @@ export class ChartSession {
   }
 
   private async subscribe(key: ChartSessionKey): Promise<void> {
+    if (key.source_type === 'custom') return;
     try {
       await this.adapter.subscribeCandles(cloneSessionKey(key));
     } catch (error) {
@@ -355,6 +315,7 @@ export class ChartSession {
   }
 
   private async unsubscribe(key: ChartSessionKey): Promise<void> {
+    if (key.source_type === 'custom') return;
     try {
       await this.adapter.unsubscribeCandles(cloneSessionKey(key));
     } catch (error) {

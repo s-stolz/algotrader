@@ -198,6 +198,7 @@ describe('WebSocket service', () => {
     socket.receive(
       JSON.stringify({
         type: 'candleUpdate',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M1',
         timestamp_ms: 1_700_000_000_000,
@@ -211,16 +212,20 @@ describe('WebSocket service', () => {
     socket.receive(
       JSON.stringify({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: 'client-1',
         timestamp_ms: 1_700_000_000_000,
         values: { sma: 1.2, signal: null },
       }),
     );
 
-    socket.receive(JSON.stringify({ type: 'candleUpdate', symbol: 'EURUSD' }));
+    socket.receive(
+      JSON.stringify({ type: 'candleUpdate', market_id: 1, symbol: 'EURUSD' }),
+    );
     socket.receive(
       JSON.stringify({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: 'client-1',
       }),
     );
@@ -232,6 +237,7 @@ describe('WebSocket service', () => {
     expect(candleHandler).toHaveBeenCalledOnce();
     expect(candleHandler).toHaveBeenCalledWith({
       type: 'candleUpdate',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M1',
       timestamp_ms: 1_700_000_000_000,
@@ -244,6 +250,7 @@ describe('WebSocket service', () => {
     expect(indicatorHandler).toHaveBeenCalledOnce();
     expect(indicatorHandler).toHaveBeenCalledWith({
       type: 'indicatorUpdate',
+      market_id: 1,
       clientIndicatorId: 'client-1',
       timestamp_ms: 1_700_000_000_000,
       values: { sma: 1.2, signal: null },
@@ -268,6 +275,7 @@ describe('WebSocket service', () => {
     socket.receive(
       JSON.stringify({
         type: 'subscribed',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M1',
       }),
@@ -275,6 +283,7 @@ describe('WebSocket service', () => {
     socket.receive(
       JSON.stringify({
         type: 'indicatorSubscribed',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M1',
         indicatorId: 1,
@@ -285,6 +294,7 @@ describe('WebSocket service', () => {
     socket.receive(
       JSON.stringify({
         type: 'indicatorUnsubscribed',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M1',
         indicatorId: 1,
@@ -306,6 +316,7 @@ describe('WebSocket service', () => {
     mockSockets[0].open();
     const message = {
       type: 'indicatorUpdate',
+      market_id: 1,
       clientIndicatorId: 'strength',
       timestamp_ms: 1_700_000_000_000,
       values: { EUR: 1.5 },

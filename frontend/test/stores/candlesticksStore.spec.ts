@@ -65,6 +65,7 @@ describe('candlesticks store', () => {
     store.updateCandle({
       ...candle(1_000, 1.6),
       type: 'candleUpdate',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M1',
     });
@@ -73,6 +74,7 @@ describe('candlesticks store', () => {
     store.updateCandle({
       ...candle(2_000, 1.7),
       type: 'candleUpdate',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M1',
     });
@@ -81,6 +83,7 @@ describe('candlesticks store', () => {
     store.updateCandle({
       ...candle(500, 1.8),
       type: 'candleUpdate',
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'M1',
     });

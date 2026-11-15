@@ -71,6 +71,7 @@ it('restores live Bollinger delivery when the chart remounts with retained store
       for (const handler of chartAreaMocks.indicatorHandlers)
         handler({
           type: 'indicatorUpdate',
+          market_id: 1,
           clientIndicatorId: id,
           timestamp_ms: timestamp,
           values: { lower: 1.1, mid: 1.6, upper: 2.1 },

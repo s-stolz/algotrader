@@ -81,15 +81,21 @@ export function createChartSessionAdapter({
         recoverIndicatorHistory(indicatorsStore, query, isCurrent, signal),
     },
     subscribeCandles: (key) =>
-      wsService.send('subscribeCandles', {
-        symbol: key.symbol,
-        timeframe: key.timeframe,
-      }),
+      key.source_type === 'broker' && key.market_id
+        ? wsService.send('subscribeCandles', {
+            market_id: key.market_id,
+            symbol: key.symbol,
+            timeframe: key.timeframe,
+          })
+        : undefined,
     unsubscribeCandles: (key) =>
-      wsService.send('unsubscribeCandles', {
-        symbol: key.symbol,
-        timeframe: key.timeframe,
-      }),
+      key.source_type === 'broker' && key.market_id
+        ? wsService.send('unsubscribeCandles', {
+            market_id: key.market_id,
+            symbol: key.symbol,
+            timeframe: key.timeframe,
+          })
+        : undefined,
     onCandleUpdate: (handler) => {
       wsService.on('candleUpdate', handler);
     },

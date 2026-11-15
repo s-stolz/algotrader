@@ -1,3 +1,4 @@
+import { seedBrokerMarket } from '../../fixtures/brokerMarket';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { recoverIndicatorHistory } from '@/stores/indicators/recovery';
@@ -39,6 +40,7 @@ const response = (
 });
 beforeEach(() => {
   setActivePinia(createPinia());
+  seedBrokerMarket();
   vi.clearAllMocks();
   vi.mocked(requestIndicator).mockReset();
 });
@@ -47,15 +49,24 @@ afterEach(() => vi.restoreAllMocks());
 it('corrects duplicates while preserving old history and fresh samples', async () => {
   const store = useIndicatorsStore();
   const id = store.addIndicator(info, [point(0)], 1);
+  void store.subscribeIndicatorLive(id, {
+    symbol: 'EURUSD',
+    exchange: 'FX',
+    timeframe: 'M1',
+    indicatorId: 1,
+    parameters: {},
+  });
   const version = store.getById(id)!.dataVersion;
   store.handleLiveUpdate({
     type: 'indicatorUpdate',
+    market_id: 1,
     clientIndicatorId: id,
     timestamp_ms: 60_000,
     values: { sma: 8 },
   });
   store.handleLiveUpdate({
     type: 'indicatorUpdate',
+    market_id: 1,
     clientIndicatorId: id,
     timestamp_ms: 120_000,
     values: { sma: 9 },
@@ -74,12 +85,14 @@ it('corrects duplicates while preserving old history and fresh samples', async (
   ) => void;
   listener({
     type: 'indicatorUpdate',
+    market_id: 1,
     clientIndicatorId: id,
     timestamp_ms: 240_000,
     values: { sma: 10 },
   });
   listener({
     type: 'indicatorUpdate',
+    market_id: 1,
     clientIndicatorId: id,
     timestamp_ms: 300_000,
     values: { sma: 11 },

@@ -45,6 +45,7 @@ describe('currentMarketStore', () => {
     expect(
       JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_MARKET) ?? '{}'),
     ).toEqual({
+      source_type: 'custom',
       exchange: 'ALT',
       market_type: 'Forex',
       min_move: 0.0001,

@@ -1,4 +1,8 @@
 import { trackIndicatorRequests } from './indicators/pendingRequests';
+import {
+  findLiveMarket,
+  matchesCurrentBrokerMarket,
+} from './indicators/marketSource';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
@@ -384,6 +388,10 @@ export const useIndicatorsStore = defineStore('indicators', () => {
   ): IndicatorDataPoint | null {
     if (!message || message.type !== 'indicatorUpdate') return null;
     if (historicalMode.value) return null;
+    if (!matchesCurrentBrokerMarket(message.market_id)) return null;
+    const subscription = liveSubscriptions.get(message.clientIndicatorId);
+    if (!subscription || subscription.market_id !== message.market_id)
+      return null;
 
     const indicator = indicators.get(message.clientIndicatorId);
     if (!indicator) return null;
@@ -410,7 +418,10 @@ export const useIndicatorsStore = defineStore('indicators', () => {
     )
       return;
 
+    const market = findLiveMarket(symbol, exchange);
+    if (!market) return;
     const payload: IndicatorLiveSubscription = {
+      market_id: market.symbol_id,
       symbol,
       timeframe,
       exchange,

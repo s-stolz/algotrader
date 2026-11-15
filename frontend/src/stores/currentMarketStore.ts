@@ -34,6 +34,7 @@ function readStoredMarket(): StoredCurrentMarket {
 
 export const useCurrentMarketStore = defineStore('currentMarket', () => {
   const stored = readStoredMarket();
+  const source_type = ref<'custom' | 'broker'>(stored.source_type ?? 'custom');
   const exchange = ref<string | null>(stored.exchange);
   const market_type = ref<string | null>(stored.market_type);
   const min_move = ref<number | null>(stored.min_move);
@@ -42,6 +43,7 @@ export const useCurrentMarketStore = defineStore('currentMarket', () => {
 
   function snapshot(): StoredCurrentMarket {
     return {
+      source_type: source_type.value,
       exchange: exchange.value,
       market_type: market_type.value,
       min_move: min_move.value,
@@ -51,6 +53,7 @@ export const useCurrentMarketStore = defineStore('currentMarket', () => {
   }
 
   function setMarket(market: CurrentMarketInput): void {
+    source_type.value = market.source_type ?? 'custom';
     exchange.value = market.exchange;
     market_type.value = market.market_type;
     min_move.value = market.min_move;
@@ -73,6 +76,7 @@ export const useCurrentMarketStore = defineStore('currentMarket', () => {
   }
 
   return {
+    source_type,
     exchange,
     market_type,
     min_move,

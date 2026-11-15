@@ -134,6 +134,7 @@ describe('chart session subscription ownership', () => {
       for (const handler of handlers) {
         handler({
           type: 'candleUpdate',
+          market_id: 1,
           symbol: 'EURUSD',
           timeframe: 'M5',
           timestamp_ms: 300_000,
@@ -172,6 +173,7 @@ describe('chart session subscription ownership', () => {
     for (const handler of handlers) {
       handler({
         type: 'candleUpdate',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M1',
         timestamp_ms: 60_000,
@@ -183,6 +185,7 @@ describe('chart session subscription ownership', () => {
       });
       handler({
         type: 'candleUpdate',
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M5',
         timestamp_ms: 300_000,

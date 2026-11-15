@@ -1,3 +1,4 @@
+import { seedBrokerMarket } from '../fixtures/brokerMarket';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -60,6 +61,7 @@ function deferred<T>() {
 describe('indicators store', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    seedBrokerMarket();
     vi.mocked(requestIndicatorClient).mockReset();
     vi.mocked(wsService.send).mockReset();
     vi.mocked(wsService.send).mockResolvedValue();
@@ -116,6 +118,7 @@ describe('indicators store', () => {
         hasExpandedHistory: false,
       });
       expect(wsService.send).toHaveBeenCalledWith('subscribeIndicator', {
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M5',
         exchange: 'FX',
@@ -124,6 +127,7 @@ describe('indicators store', () => {
         clientIndicatorId: localId,
       });
       expect(store.liveSubscriptions.get(localId!)).toEqual({
+        market_id: 1,
         symbol: 'EURUSD',
         timeframe: 'M5',
         exchange: 'FX',
@@ -405,10 +409,18 @@ describe('indicators store', () => {
   it('merges same-timestamp live updates, accepts newer points, and ignores older points', () => {
     const store = useIndicatorsStore();
     const localId = store.addIndicator(indicatorInfo, [], 1);
+    void store.subscribeIndicatorLive(localId, {
+      symbol: 'EURUSD',
+      exchange: 'FX',
+      timeframe: 'M1',
+      indicatorId: 1,
+      parameters: {},
+    });
 
     expect(
       store.handleLiveUpdate({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: localId,
         timestamp_ms: 2_000,
         values: { sma: 1.2 },
@@ -418,6 +430,7 @@ describe('indicators store', () => {
     expect(
       store.handleLiveUpdate({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: localId,
         timestamp_ms: 2_000,
         values: { signal: 1.3 },
@@ -427,6 +440,7 @@ describe('indicators store', () => {
     expect(
       store.handleLiveUpdate({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: localId,
         timestamp_ms: 1_000,
         values: { sma: 0.9 },
@@ -436,6 +450,7 @@ describe('indicators store', () => {
     expect(
       store.handleLiveUpdate({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: localId,
         timestamp_ms: 3_000,
         values: { sma: 1.4 },
@@ -455,6 +470,7 @@ describe('indicators store', () => {
     });
 
     expect(store.liveSubscriptions.get('client-1')).toEqual({
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'H1',
       exchange: null,
@@ -463,6 +479,7 @@ describe('indicators store', () => {
       clientIndicatorId: 'client-1',
     });
     expect(wsService.send).toHaveBeenCalledWith('subscribeIndicator', {
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'H1',
       exchange: null,
@@ -475,6 +492,7 @@ describe('indicators store', () => {
 
     expect(store.liveSubscriptions.has('client-1')).toBe(false);
     expect(wsService.send).toHaveBeenCalledWith('unsubscribeIndicator', {
+      market_id: 1,
       symbol: 'EURUSD',
       timeframe: 'H1',
       exchange: null,

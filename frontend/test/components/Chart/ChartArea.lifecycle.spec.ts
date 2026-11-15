@@ -85,6 +85,7 @@ describe('ChartArea lifecycle', () => {
     for (const handler of chartAreaMocks.indicatorHandlers) {
       handler({
         type: 'indicatorUpdate',
+        market_id: 1,
         clientIndicatorId: 'indicator-1',
         timestamp_ms: 300_000,
         values: { sma: 1.2 },

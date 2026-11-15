@@ -1,3 +1,7 @@
+import type {
+  HistoryDownloadChanged,
+  HistoryDownloadsConnection,
+} from '@/types/historyDownloadContracts';
 import { BACKTEST_PROGRESS_STAGES } from '@/types/backtestEventContracts';
 import type {
   BacktestChangedMessage,
@@ -18,6 +22,8 @@ import {
 
 export interface WebSocketServiceEventMap {
   ready: undefined;
+  historyDownloadChanged: HistoryDownloadChanged;
+  historyDownloadsConnection: HistoryDownloadsConnection;
   backtestChanged: BacktestChangedMessage;
   backtestConnection: BacktestConnectionMessage;
   backtestHealth: BacktestHealthMessage;
@@ -112,6 +118,12 @@ export class WebSocketService {
       }
 
       switch (message.type) {
+        case 'historyDownloadChanged':
+          this.emit('historyDownloadChanged', message);
+          return;
+        case 'historyDownloadsConnection':
+          this.emit('historyDownloadsConnection', message);
+          return;
         case 'backtestConnection':
           this.backtestsConnected = message.connected;
           this.emit('backtestConnection', message);
@@ -242,8 +254,11 @@ function subscriptionKey(
   const topic = type.replace(/^(un)?subscribe/, '');
   if (topic === type) return null;
   if (topic === 'Backtests') return topic;
-  if (topic === 'Candles') return `${topic}:${data.symbol}:${data.timeframe}`;
-  if (topic === 'Indicator') return `${topic}:${data.clientIndicatorId}`;
+  if (topic === 'HistoryDownloads') return `${topic}:${data.market_id}`;
+  if (topic === 'Candles')
+    return `${topic}:${data.market_id}:${data.timeframe}`;
+  if (topic === 'Indicator')
+    return `${topic}:${data.market_id}:${data.clientIndicatorId}`;
   return null;
 }
 
