@@ -113,7 +113,7 @@
     </div>
     <template #footer>
       <n-button @click="modal?.close()">{{
-        offer ? 'Skip' : 'Close'
+        offer && !current ? 'Skip' : 'Close'
       }}</n-button>
       <n-button
         v-if="!active"
