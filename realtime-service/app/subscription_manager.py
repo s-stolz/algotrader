@@ -75,16 +75,17 @@ class SubscriptionManager:
             client_subs = self._client_subscriptions(client_id)
             if sub_key in client_subs:
                 return
-            await self._increment_source_dependency(symbol, timeframe)
+            await self._increment_source_dependency(market, timeframe)
             count = self.subscription_counts.get(sub_key, 0)
             try:
                 if count == 0:
                     await self.redis_consumer.start_candle_stream(symbol, timeframe)
             except Exception:
-                await self._decrement_source_dependency(symbol, timeframe)
+                await self._decrement_source_dependency(market, timeframe)
                 raise
             self.candle_meta_by_sub_key[sub_key] = {
                 "market_id": market_id,
+                "broker_symbol_id": market["broker_symbol_id"],
                 "symbol": symbol,
                 "timeframe": timeframe,
             }
@@ -112,7 +113,7 @@ class SubscriptionManager:
                     self.redis_consumer.stop_stream(
                         self.redis_consumer.get_candle_stream_key(meta["symbol"], meta["timeframe"])
                     )
-            await self._decrement_source_dependency(meta["symbol"], meta["timeframe"])
+            await self._decrement_source_dependency(meta, meta["timeframe"])
 
     async def subscribe_indicator(
         self,
@@ -130,25 +131,23 @@ class SubscriptionManager:
         timeframe = timeframe.upper()
         params = parameters or {}
         sub_key = self._make_indicator_sub_key(market_id, timeframe, indicator_id, params)
+        metadata = await self.indicator_api_client.get_indicator_metadata(indicator_id)
+        if not metadata.get("supports_live", True):
+            raise ValueError("Indicator does not support live streaming")
+        sources = await self.market_resolver.dependencies(market, metadata.get("inputs") or [])
         async with self._subscription_lock:
             client_subs = self._client_subscriptions(client_id)
+            meta = self.indicator_meta_by_sub_key.get(sub_key)
+            if meta is not None and [
+                (source["symbol_id"], source["broker_symbol_id"]) for source in sources
+            ] != [(source["symbol_id"], source["broker_symbol_id"]) for source in meta["sources"]]:
+                raise ValueError("Live indicator inputs changed; reopen the subscription")
             if sub_key in client_subs:
                 self.client_indicator_bindings[client_id][sub_key] = client_indicator_id
                 return {
                     "stream_id": self.indicator_meta_by_sub_key[sub_key]["stream_id"],
                     "already_subscribed": True,
                 }
-            meta = self.indicator_meta_by_sub_key.get(sub_key)
-            if meta is None:
-                metadata = await self.indicator_api_client.get_indicator_metadata(indicator_id)
-                if not metadata.get("supports_live", True):
-                    raise ValueError("Indicator does not support live streaming")
-                inputs = await self.market_resolver.dependencies(
-                    market, metadata.get("inputs") or []
-                )
-                sources = [item["symbol"].upper() for item in inputs]
-            else:
-                sources = meta["sources"]
             acquired = []
             started = None
             try:
@@ -249,22 +248,30 @@ class SubscriptionManager:
             raise ValueError(f"Client {client_id} not found")
         return subscriptions
 
-    async def _increment_source_dependency(self, symbol: str, timeframe: str) -> None:
-        source_key = self._make_source_key(symbol, timeframe)
+    async def _increment_source_dependency(self, market: dict, timeframe: str) -> None:
+        symbol = market["symbol"].upper()
+        expected_symbol_id = market["broker_symbol_id"]
+        source_key = self._make_source_key(symbol, timeframe, expected_symbol_id)
         count = self.source_dependency_counts.get(source_key, 0)
         if count == 0:
-            await self.broker_client.start_trendbar_stream(symbol, timeframe)
+            await self.broker_client.start_trendbar_stream(
+                symbol, timeframe, expected_symbol_id=expected_symbol_id
+            )
         self.source_dependency_counts[source_key] = count + 1
 
-    async def _decrement_source_dependency(self, symbol: str, timeframe: str) -> None:
-        source_key = self._make_source_key(symbol, timeframe)
+    async def _decrement_source_dependency(self, market: dict, timeframe: str) -> None:
+        symbol = market["symbol"].upper()
+        expected_symbol_id = market["broker_symbol_id"]
+        source_key = self._make_source_key(symbol, timeframe, expected_symbol_id)
         count = self.source_dependency_counts.get(source_key, 0)
         if count > 1:
             self.source_dependency_counts[source_key] = count - 1
         elif count == 1:
             self.source_dependency_counts.pop(source_key)
             try:
-                await self.broker_client.stop_trendbar_stream(symbol, timeframe)
+                await self.broker_client.stop_trendbar_stream(
+                    symbol, timeframe, expected_symbol_id=expected_symbol_id
+                )
             except Exception:
                 logger.exception("Failed stopping trendbar stream for %s %s", symbol, timeframe)
 
@@ -333,8 +340,8 @@ class SubscriptionManager:
         return f"candle:{market_id}:{timeframe}"
 
     @staticmethod
-    def _make_source_key(symbol: str, timeframe: str) -> str:
-        return f"source:{symbol}:{timeframe}"
+    def _make_source_key(symbol: str, timeframe: str, broker_symbol_id: int) -> str:
+        return f"source:{broker_symbol_id}:{symbol}:{timeframe}"
 
     @staticmethod
     def _make_indicator_sub_key(

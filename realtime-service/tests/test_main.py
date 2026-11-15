@@ -71,7 +71,7 @@ class MarketMessageTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_history_subscription_validates_source_before_registering(self):
         self.manager.market_resolver = Mock(
-            resolve=AsyncMock(side_effect=ValueError("Custom market"))
+            resolve_stored=AsyncMock(side_effect=ValueError("Custom market"))
         )
         bridge = Mock(subscribe=AsyncMock())
         self.server.history_download_events = bridge
@@ -89,7 +89,7 @@ class MarketMessageTests(unittest.IsolatedAsyncioTestCase):
         bridge.subscribe.assert_not_awaited()
 
     async def test_history_unsubscribe_does_not_require_deleted_market_lookup(self):
-        self.manager.market_resolver = Mock(resolve=AsyncMock())
+        self.manager.market_resolver = Mock(resolve_stored=AsyncMock())
         bridge = Mock(unsubscribe=Mock())
         self.server.history_download_events = bridge
         await self.server.handle_message(
@@ -103,4 +103,4 @@ class MarketMessageTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         bridge.unsubscribe.assert_called_once_with(self.socket, 7)
-        self.manager.market_resolver.resolve.assert_not_awaited()
+        self.manager.market_resolver.resolve_stored.assert_not_awaited()

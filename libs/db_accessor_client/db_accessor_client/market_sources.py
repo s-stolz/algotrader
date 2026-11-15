@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any
+
+import httpx
 
 from .client import AsyncDatabaseAccessorClient
 
@@ -61,8 +64,16 @@ class BrokerMarketResolver:
     def __init__(self, account_id: str, environment: str):
         self.account_id = account_id
         self.environment = environment
+        host = os.getenv("BROKER_SERVICE_HOST", "broker-service")
+        port = os.getenv("BROKER_SERVICE_PORT", "8050")
+        self.broker_url = os.getenv("BROKER_SERVICE_BASE_URL", f"http://{host}:{port}").rstrip("/")
 
     async def resolve(self, market_id: int) -> dict[str, Any]:
+        market = await self.resolve_stored(market_id)
+        await self.verify([market])
+        return market
+
+    async def resolve_stored(self, market_id: int) -> dict[str, Any]:
         if isinstance(market_id, bool) or not isinstance(market_id, int) or market_id <= 0:
             raise ValueError("A positive market_id is required")
         async with AsyncDatabaseAccessorClient() as client:
@@ -73,9 +84,38 @@ class BrokerMarketResolver:
         self, chart_market: Mapping[str, Any], symbols: Sequence[str]
     ) -> list[dict[str, Any]]:
         if not symbols:
-            return [require_broker_market(chart_market, self.account_id, self.environment)]
-        async with AsyncDatabaseAccessorClient() as client:
-            markets = await client.get_markets(exchange=str(chart_market["exchange"]))
-        return resolve_broker_dependencies(
-            markets, symbols, chart_market, self.account_id, self.environment
-        )
+            resolved = [require_broker_market(chart_market, self.account_id, self.environment)]
+        else:
+            async with AsyncDatabaseAccessorClient() as client:
+                markets = await client.get_markets(exchange=str(chart_market["exchange"]))
+            resolved = resolve_broker_dependencies(
+                markets, symbols, chart_market, self.account_id, self.environment
+            )
+        await self.verify(resolved)
+        return resolved
+
+    async def verify(self, markets: Sequence[Mapping[str, Any]]) -> None:
+        async with httpx.AsyncClient(timeout=30) as client:
+            for market in markets:
+                response = await client.get(
+                    f"{self.broker_url}/setup/instruments/{market['broker_symbol_id']}",
+                    params={"account_id": self.account_id},
+                )
+                response.raise_for_status()
+                actual = response.json()
+                if not isinstance(actual, dict) or any(
+                    actual.get(field) != market[field]
+                    for field in (
+                        "source_type",
+                        "broker_provider",
+                        "broker_account_id",
+                        "broker_environment",
+                        "broker_symbol_id",
+                    )
+                ):
+                    raise ValueError("Broker instrument no longer matches the stored Market source")
+                if any(
+                    str(actual.get(field, "")).strip().upper() != str(market[field]).strip().upper()
+                    for field in ("symbol", "exchange")
+                ):
+                    raise ValueError("Broker instrument identity changed; create a new Market")

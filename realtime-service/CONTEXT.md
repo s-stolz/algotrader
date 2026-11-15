@@ -39,7 +39,10 @@ Realtime service to frontend control messages are flat JSON objects:
 A positive `market_id` is mandatory for all live subscription commands. Stored
 Market identity supplies the symbol and exchange; client-supplied labels are not
 authority. Only Broker Markets bound to the configured cTrader account and
-environment may acquire live sources. Custom Markets remain historical-only,
+environment may acquire live sources. Acquisition refreshes broker instrument
+verification and passes the frozen broker ID to stream start/stop; source
+reference counts include that ID. Reusing an indicator session still verifies all
+of its source identities. Custom Markets remain historical-only,
 even when their symbol matches a connected broker instrument.
 
 Source streams are reference counted; upstream streams are shared across clients.
@@ -70,7 +73,9 @@ shapes, read [real-time delivery](../docs/contracts/backtests.md#real-time-deliv
 ## History download delivery
 
 `subscribeHistoryDownloads` and `unsubscribeHistoryDownloads` require `market_id`.
-Only connected Broker Markets may subscribe. `historyDownloadChanged` carries
+Only Broker Markets bound to the configured connection may subscribe. This
+checks stored eligibility without requiring the broker to be online, so failures
+and cancellation remain visible during broker outages. `historyDownloadChanged` carries
 `market_id`, `job_id`, and `revision`; clients read authoritative job snapshots
 from ingestion rather than treating events as state.
 

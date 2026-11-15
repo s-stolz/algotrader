@@ -7,7 +7,9 @@ parameters, response formatting, and live-stream lifecycle.
 
 Live stream requests require the durable `market_id`. The live manager validates
 the stored Broker Market against the configured cTrader account/environment and
-resolves every declared input to a Broker Market in the same exchange. Custom
+resolves every declared input to a Broker Market in the same exchange. It verifies
+each stored instrument ID and identity against the broker's refreshed catalogue
+before reading live Redis sources, including reuse of an existing session. Custom
 Markets never acquire live streams; their historical calculations remain available.
 The Market identity participates in stream identity, preventing same-symbol
 datasets from sharing a live session.

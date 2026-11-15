@@ -19,10 +19,13 @@ class BrokerClient:
         self,
         symbol: str,
         timeframe: str,
+        *,
+        expected_symbol_id: int,
     ) -> dict:
         url = f"{self.base_url}/symbols/{symbol}/trendbar-stream/start"
         params = {
             "timeframe": timeframe,
+            "expected_symbol_id": expected_symbol_id,
         }
 
         try:
@@ -38,9 +41,11 @@ class BrokerClient:
             logger.error(f"Error starting trendbar stream for {symbol} {timeframe}: {e}")
             raise
 
-    async def stop_trendbar_stream(self, symbol: str, timeframe: str) -> dict:
+    async def stop_trendbar_stream(
+        self, symbol: str, timeframe: str, *, expected_symbol_id: int
+    ) -> dict:
         url = f"{self.base_url}/symbols/{symbol}/trendbar-stream/stop"
-        params = {"timeframe": timeframe}
+        params = {"timeframe": timeframe, "expected_symbol_id": expected_symbol_id}
 
         try:
             response = await self.client.get(

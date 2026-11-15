@@ -21,11 +21,21 @@ class IndicatorSourceTests(unittest.IsolatedAsyncioTestCase):
         )
         self.resolver = Mock(
             resolve=AsyncMock(
-                return_value={"symbol_id": 1, "symbol": "EURUSD", "exchange": "BROKER"}
+                return_value={
+                    "symbol_id": 1,
+                    "broker_symbol_id": 10,
+                    "symbol": "EURUSD",
+                    "exchange": "BROKER",
+                }
             ),
             dependencies=AsyncMock(
                 side_effect=lambda market, symbols: [
-                    {"symbol": symbol} for symbol in symbols or [market["symbol"]]
+                    {
+                        "symbol_id": ASSETS.index(symbol) + 1,
+                        "broker_symbol_id": ASSETS.index(symbol) + 10,
+                        "symbol": symbol,
+                    }
+                    for symbol in symbols or [market["symbol"]]
                 ]
             ),
         )
@@ -50,7 +60,7 @@ class IndicatorSourceTests(unittest.IsolatedAsyncioTestCase):
         await self.subscribe(self.second)
         self.assertEqual(self.broker.start_trendbar_stream.await_count, 7)
         self.assertEqual(self.api.start_live_indicator_stream.await_count, 1)
-        self.assertEqual(self.manager.source_dependency_counts["source:EURUSD:M1"], 3)
+        self.assertEqual(self.manager.source_dependency_counts["source:10:EURUSD:M1"], 3)
         await self.manager.unregister_client(self.first)
         self.broker.stop_trendbar_stream.assert_not_awaited()
         await self.manager.unregister_client(self.second)
@@ -64,8 +74,10 @@ class IndicatorSourceTests(unittest.IsolatedAsyncioTestCase):
         self.broker.start_trendbar_stream.side_effect = [None, RuntimeError("source failed")]
         with self.assertRaisesRegex(RuntimeError, "source failed"):
             await self.subscribe(self.second)
-        self.assertEqual(self.manager.source_dependency_counts, {"source:EURUSD:M1": 1})
-        self.broker.stop_trendbar_stream.assert_awaited_once_with("USDJPY", "M1")
+        self.assertEqual(self.manager.source_dependency_counts, {"source:10:EURUSD:M1": 1})
+        self.broker.stop_trendbar_stream.assert_awaited_once_with(
+            "USDJPY", "M1", expected_symbol_id=11
+        )
         self.api.start_live_indicator_stream.assert_not_awaited()
         self.assertFalse(self.manager.client_subscriptions[self.second])
 
@@ -89,9 +101,13 @@ class IndicatorSourceTests(unittest.IsolatedAsyncioTestCase):
     async def test_ordinary_indicator_uses_chart_symbol(self):
         self.api.get_indicator_metadata.return_value = {"inputs": [], "supports_live": True}
         await self.subscribe(self.first)
-        self.broker.start_trendbar_stream.assert_awaited_once_with("EURUSD", "M1")
+        self.broker.start_trendbar_stream.assert_awaited_once_with(
+            "EURUSD", "M1", expected_symbol_id=10
+        )
         await self.manager.unregister_client(self.first)
-        self.broker.stop_trendbar_stream.assert_awaited_once_with("EURUSD", "M1")
+        self.broker.stop_trendbar_stream.assert_awaited_once_with(
+            "EURUSD", "M1", expected_symbol_id=10
+        )
 
     async def test_concurrent_subscribers_share_one_basket_session(self):
         import asyncio
@@ -163,7 +179,7 @@ class IndicatorSourceTests(unittest.IsolatedAsyncioTestCase):
         self.manager.clients[self.first] = first
         self.manager.clients[self.second] = second
         self.resolver.resolve.side_effect = [
-            {"symbol_id": 1, "symbol": "EURUSD", "exchange": "BROKER"},
+            {"symbol_id": 1, "broker_symbol_id": 10, "symbol": "EURUSD", "exchange": "BROKER"},
             ValueError("Custom markets do not support broker data"),
         ]
         await self.manager.subscribe_candles(self.first, 1, "M1")
@@ -181,10 +197,63 @@ class IndicatorSourceTests(unittest.IsolatedAsyncioTestCase):
             self.manager.subscribe_candles(self.first, 1, "M1"),
             self.manager.subscribe_candles(self.second, 1, "M1"),
         )
-        self.broker.start_trendbar_stream.assert_awaited_once_with("EURUSD", "M1")
+        self.broker.start_trendbar_stream.assert_awaited_once_with(
+            "EURUSD", "M1", expected_symbol_id=10
+        )
         self.consumer.start_candle_stream.assert_awaited_once_with("EURUSD", "M1")
         await self.manager.unregister_client(self.first)
         self.consumer.stop_stream.assert_not_called()
         await self.manager.unregister_client(self.second)
         self.consumer.stop_stream.assert_called_once()
-        self.broker.stop_trendbar_stream.assert_awaited_once_with("EURUSD", "M1")
+        self.broker.stop_trendbar_stream.assert_awaited_once_with(
+            "EURUSD", "M1", expected_symbol_id=10
+        )
+
+    async def test_each_basket_source_acquires_its_frozen_broker_id(self):
+        await self.subscribe(self.first)
+        self.assertEqual(
+            [
+                (call.args[0], call.kwargs["expected_symbol_id"])
+                for call in self.broker.start_trendbar_stream.call_args_list
+            ],
+            [(symbol, 10 + index) for index, symbol in enumerate(ASSETS)],
+        )
+        await self.manager.unregister_client(self.first)
+        self.assertEqual(
+            [
+                (call.args[0], call.kwargs["expected_symbol_id"])
+                for call in self.broker.stop_trendbar_stream.call_args_list
+            ],
+            [(symbol, 10 + index) for index, symbol in enumerate(ASSETS)],
+        )
+
+    async def test_cached_indicator_subscription_still_verifies_basket_identity(self):
+        await self.subscribe(self.first)
+        starts = self.broker.start_trendbar_stream.await_count
+        self.resolver.dependencies.side_effect = ValueError("Broker instrument identity changed")
+        with self.assertRaisesRegex(ValueError, "identity changed"):
+            await self.subscribe(self.second)
+        self.assertEqual(self.broker.start_trendbar_stream.await_count, starts)
+        self.assertFalse(self.manager.client_subscriptions[self.second])
+
+    async def test_disconnect_uses_captured_identity_after_market_or_broker_becomes_unavailable(
+        self,
+    ):
+        await self.manager.subscribe_candles(self.first, 1, "M1")
+        await self.subscribe(self.first)
+        lookups = self.resolver.resolve.await_count
+        dependencies = self.resolver.dependencies.await_count
+        self.resolver.resolve.side_effect = ValueError("Market deleted")
+        self.resolver.dependencies.side_effect = ConnectionError("Broker unavailable")
+        await self.manager.unregister_client(self.first)
+        self.assertEqual(self.resolver.resolve.await_count, lookups)
+        self.assertEqual(self.resolver.dependencies.await_count, dependencies)
+        self.assertEqual(
+            [
+                (call.args[0], call.kwargs["expected_symbol_id"])
+                for call in self.broker.stop_trendbar_stream.call_args_list
+            ],
+            [(symbol, 10 + index) for index, symbol in enumerate(ASSETS)],
+        )
+        self.assertFalse(self.manager.source_dependency_counts)
+        self.assertFalse(self.manager.subscription_counts)

@@ -50,3 +50,98 @@ class BrokerMarketTests(unittest.TestCase):
         for sources in ([other], [source, source]):
             with self.subTest(sources=sources), self.assertRaises(ValueError):
                 resolve_broker_dependencies(sources, ["USDJPY"], chart, "123", "demo")
+
+
+class BrokerMarketVerificationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_acquisition_rechecks_current_instrument_even_after_successful_lookup(self):
+        from unittest.mock import AsyncMock, Mock, patch
+
+        from db_accessor_client.market_sources import BrokerMarketResolver
+
+        market = broker_market()
+        storage = Mock(get_market_by_id=AsyncMock(return_value=market))
+        storage_context = Mock(
+            __aenter__=AsyncMock(return_value=storage), __aexit__=AsyncMock(return_value=False)
+        )
+        broker = Mock(get=AsyncMock())
+        broker_context = Mock(
+            __aenter__=AsyncMock(return_value=broker), __aexit__=AsyncMock(return_value=False)
+        )
+        broker.get.side_effect = [
+            Mock(json=Mock(return_value=market), raise_for_status=Mock()),
+            Mock(
+                json=Mock(return_value=market | {"broker_symbol_id": 99}), raise_for_status=Mock()
+            ),
+        ]
+        resolver = BrokerMarketResolver("123", "demo")
+        with (
+            patch(
+                "db_accessor_client.market_sources.AsyncDatabaseAccessorClient",
+                return_value=storage_context,
+            ),
+            patch(
+                "db_accessor_client.market_sources.httpx.AsyncClient", return_value=broker_context
+            ),
+        ):
+            self.assertEqual(await resolver.resolve(1), market)
+            with self.assertRaisesRegex(ValueError, "no longer matches"):
+                await resolver.resolve(1)
+        self.assertEqual(broker.get.await_count, 2)
+        self.assertTrue(broker.get.call_args.args[0].endswith("/setup/instruments/10"))
+        self.assertEqual(broker.get.call_args.kwargs["params"], {"account_id": "123"})
+
+    async def test_every_basket_dependency_is_verified_against_current_broker_identity(self):
+        from unittest.mock import AsyncMock, Mock, patch
+
+        from db_accessor_client.market_sources import BrokerMarketResolver
+
+        chart = broker_market()
+        dependency = broker_market("USDJPY", symbol_id=2, broker_symbol_id=20)
+        storage = Mock(get_markets=AsyncMock(return_value=[chart, dependency]))
+        storage_context = Mock(
+            __aenter__=AsyncMock(return_value=storage), __aexit__=AsyncMock(return_value=False)
+        )
+        broker = Mock(get=AsyncMock())
+        broker_context = Mock(
+            __aenter__=AsyncMock(return_value=broker), __aexit__=AsyncMock(return_value=False)
+        )
+        broker.get.side_effect = [
+            Mock(json=Mock(return_value=chart), raise_for_status=Mock()),
+            Mock(
+                json=Mock(return_value=dependency | {"symbol": "RENAMED"}), raise_for_status=Mock()
+            ),
+        ]
+        resolver = BrokerMarketResolver("123", "demo")
+        with (
+            patch(
+                "db_accessor_client.market_sources.AsyncDatabaseAccessorClient",
+                return_value=storage_context,
+            ),
+            patch(
+                "db_accessor_client.market_sources.httpx.AsyncClient", return_value=broker_context
+            ),
+        ):
+            with self.assertRaisesRegex(ValueError, "identity changed"):
+                await resolver.dependencies(chart, ["EURUSD", "USDJPY"])
+        self.assertEqual(broker.get.await_count, 2)
+
+    async def test_status_subscription_can_resolve_stored_source_while_broker_is_offline(self):
+        from unittest.mock import AsyncMock, Mock, patch
+
+        from db_accessor_client.market_sources import BrokerMarketResolver
+
+        market = broker_market()
+        storage = Mock(get_market_by_id=AsyncMock(return_value=market))
+        context = Mock(
+            __aenter__=AsyncMock(return_value=storage), __aexit__=AsyncMock(return_value=False)
+        )
+        resolver = BrokerMarketResolver("123", "demo")
+        with (
+            patch(
+                "db_accessor_client.market_sources.AsyncDatabaseAccessorClient",
+                return_value=context,
+            ),
+            patch("db_accessor_client.market_sources.httpx.AsyncClient") as broker_http,
+        ):
+            self.assertEqual(await resolver.resolve_stored(1), market)
+        broker_http.assert_not_called()

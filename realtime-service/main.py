@@ -154,7 +154,7 @@ class WebSocketServer:
         assert self.subscription_manager is not None
         market_id = self._market_id(message)
         if message["type"] == "subscribeHistoryDownloads":
-            await self.subscription_manager.market_resolver.resolve(market_id)
+            await self.subscription_manager.market_resolver.resolve_stored(market_id)
             if self.history_download_events is not None:
                 await self.history_download_events.subscribe(websocket, market_id)
         elif self.history_download_events is not None:

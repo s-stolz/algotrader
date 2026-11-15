@@ -53,8 +53,13 @@ from that stored Market and refuses Custom sources before acquiring a broker
 subscription. Indicator live requests enforce the same rule independently.
 Every multi-input indicator dependency must resolve to one eligible Broker Market
 in the same exchange/account/environment. Missing or ambiguous inputs reject the
-subscription before any dependency is acquired. Historical calculations remain
-available for Custom Markets.
+subscription before any dependency is acquired. Before each acquisition, the
+stored instrument ID and name are verified against the broker's refreshed
+catalogue, including every basket input and reused indicator session. Broker
+stream/history requests carry `expected_symbol_id`; a remapped name is rejected
+instead of silently switching instruments. Stream cleanup retains the original
+ID rather than resolving a changed name. Historical calculations remain available
+for Custom Markets.
 
 Candle and indicator fanout includes `market_id`. Symbol text is not sufficient
 to route a live update: a Custom EURUSD dataset must not receive a Broker EURUSD
