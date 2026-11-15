@@ -95,6 +95,8 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(observed, ["v1.0.0"])
         self.assertEqual(self.locations.installed()["version"], self.target.version)
         self.assertNotIn("pending_upgrade", self.locations.installed())
+        self.assertEqual(self.locations.installed()["ui_port"], 8088)
+        self.assertEqual(self.locations.installed()["project"], self.record["project"])
 
     def test_downgrade_is_rejected_before_docker_mutation(self):
         old = manifest("v0.9.0")
@@ -154,6 +156,28 @@ class LifecycleTests(unittest.TestCase):
         last_command = self.docker.compose.call_args_list[-1].args[1]
         self.assertEqual(last_command[0], "up")
 
+    def test_callback_conflict_does_not_stop_broker_or_mark_reconnect_pending(self):
+        self.docker.run.side_effect = InstallationError("port is already allocated")
+        with patch("release.installer.lifecycle.authorize") as authorize:
+            with self.assertRaisesRegex(InstallationError, "Cannot reserve localhost:8080"):
+                self.lifecycle.reconnect()
+        authorize.assert_not_called()
+        self.docker.compose.assert_not_called()
+        self.assertNotIn("pending_reconnect", self.locations.installed())
+
+    def test_start_and_reconnect_preserve_saved_ui_and_storage_identity(self):
+        self.record.update(account_id="123", environment="demo")
+        write_json(self.locations.record, self.record)
+        with (
+            patch.object(self.lifecycle, "check_ready"),
+            patch("release.installer.lifecycle.authorize"),
+        ):
+            self.lifecycle.start()
+            self.lifecycle.reconnect()
+        saved = self.locations.installed()
+        self.assertEqual(saved["ui_port"], 8088)
+        self.assertEqual(saved["project"], self.record["project"])
+
     def test_recovery_guide_is_embedded_without_readme_heading_dependencies(self):
         folder = self.locations.state / "recovery"
         folder.mkdir()
@@ -167,3 +191,13 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn("timescaledb_pre_restore", instructions)
         self.assertIn("timescaledb_post_restore", instructions)
         self.assertIn("algotrader-123456abcdef", instructions)
+
+    def test_setup_checks_callback_before_credentials_or_installation_record(self):
+        self.locations.record.unlink()
+        self.docker.run.side_effect = ["", InstallationError("address already in use")]
+        with patch("release.installer.lifecycle.authorize") as authorize:
+            with self.assertRaisesRegex(InstallationError, "localhost:8080"):
+                self.lifecycle.setup(self.target)
+        authorize.assert_not_called()
+        self.assertFalse(self.locations.record.exists())
+        self.docker.compose.assert_not_called()

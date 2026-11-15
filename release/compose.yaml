@@ -20,14 +20,14 @@ services:
     - --host
     - 0.0.0.0
     - --port
-    - ${DATABASE_ACCESSOR_PORT:-8000}
+    - ${DATABASE_ACCESSOR_PORT:-8080}
     restart: unless-stopped
     healthcheck:
       test:
       - CMD
       - curl
       - -f
-      - http://localhost:${DATABASE_ACCESSOR_PORT:-8000}/health
+      - http://localhost:${DATABASE_ACCESSOR_PORT:-8080}/health
       interval: 5s
       timeout: 3s
       retries: 5
@@ -55,7 +55,7 @@ services:
       - python
       - -c
       - import os, urllib.request; urllib.request.urlopen(f"http://localhost:{os.getenv('BACKTESTER_API_PORT',
-        '8020')}/health")
+        '8080')}/health")
       interval: 5s
       timeout: 3s
       retries: 5
@@ -95,7 +95,7 @@ services:
       - CMD
       - curl
       - -f
-      - http://localhost:${INDICATOR_API_PORT:-8010}/health
+      - http://localhost:${INDICATOR_API_PORT:-8080}/health
       interval: 5s
       timeout: 3s
       retries: 5
@@ -148,14 +148,14 @@ services:
     - --host
     - 0.0.0.0
     - --port
-    - ${BROKER_SERVICE_PORT:-8050}
+    - ${BROKER_SERVICE_PORT:-8080}
     restart: unless-stopped
     healthcheck:
       test:
       - CMD
       - curl
       - -f
-      - http://localhost:${BROKER_SERVICE_PORT:-8050}/health
+      - http://localhost:${BROKER_SERVICE_PORT:-8080}/health
       interval: 5s
       timeout: 3s
       retries: 5
@@ -187,7 +187,7 @@ services:
       - CMD
       - python
       - -c
-      - import urllib.request; urllib.request.urlopen("http://localhost:8000/health")
+      - import urllib.request; urllib.request.urlopen("http://localhost:8080/health")
       interval: 5s
       timeout: 3s
       retries: 24
@@ -211,7 +211,7 @@ services:
       - CMD
       - curl
       - -f
-      - http://localhost:${REALTIME_SERVICE_HEALTH_PORT:-8080}/health
+      - http://localhost:${REALTIME_SERVICE_HEALTH_PORT:-8081}/health
       interval: 5s
       timeout: 3s
       retries: 5
@@ -238,7 +238,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 60s
     ports:
-    - 127.0.0.1:${ALGOTRADER_UI_PORT:-8088}:8080
+    - 127.0.0.1:${ALGOTRADER_UI_PORT:-8000}:8080
     healthcheck:
       test:
       - CMD

@@ -163,11 +163,11 @@ def smoke(manifest: Path, platform: str) -> None:
     import urllib.request
     for path, payload in [("markets", {market!r}), ("candles/upload", {candle_batch!r})]:
         request = urllib.request.Request(
-            "http://localhost:8000/" + path, data=json.dumps(payload).encode(),
+            "http://localhost:8080/" + path, data=json.dumps(payload).encode(),
             headers={{"Content-Type": "application/json"}},
         )
         urllib.request.urlopen(request).read()
-    market = json.load(urllib.request.urlopen("http://localhost:8000/markets/SMOKE?exchange=CSV"))
+    market = json.load(urllib.request.urlopen("http://localhost:8080/markets/SMOKE?exchange=CSV"))
     assert market["source_type"] == "custom"
     print("Custom market and uploaded candle persisted")
     """

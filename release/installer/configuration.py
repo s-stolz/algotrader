@@ -48,12 +48,48 @@ def prepare_release(locations: Locations, release: Release) -> None:
     protected_write(folder / "topology.yaml", generate_env.TOPOLOGY_PATH.read_bytes())
 
 
+def apply_release_network(topology: dict[str, Any]) -> None:
+    """Packaged listeners and proxy targets are fixed, including legacy overrides."""
+    topology["mode"] = "production"
+    services = topology["services"]
+    for name in ("database_accessor_api", "indicator_api", "broker_service", "ingestion_service"):
+        services[name]["network"]["port"] = 8080
+    services["backtester"]["api"]["network"]["port"] = 8080
+    services["realtime_service"]["network"]["websocket"]["port"] = 8080
+    services["realtime_service"]["network"]["health"]["port"] = 8081
+    services["frontend"]["network"]["port"] = 8080
+    topology["infrastructure"]["timescaledb"]["network"]["port"] = 5432
+    topology["infrastructure"]["redis"]["network"]["port"] = 6379
+
+
+def require_callback_port(docker: Docker, release: Release) -> None:
+    try:
+        docker.run(
+            [
+                "run",
+                "--rm",
+                "--publish",
+                "127.0.0.1:8080:8080",
+                "--entrypoint",
+                "true",
+                release.images["installer"],
+            ]
+        )
+    except InstallationError as exc:
+        raise InstallationError(
+            "Cannot reserve localhost:8080 for the cTrader callback. Close the application "
+            "or stop the development service using port 8080, then rerun setup or reconnect. "
+            "Keep the registered redirect URI http://localhost:8080/redirect. "
+            f"Docker reported: {exc}"
+        ) from exc
+
+
 def render_configuration(locations: Locations, record: dict[str, Any]) -> None:
     topology = generate_env.load_topology(
         locations.release_dir(record["version"]) / "topology.yaml",
         locations.config / "topology.local.yaml",
     )
-    topology["mode"] = "production"
+    apply_release_network(topology)
     values = generate_env.read_env(locations.config / ".env.secrets.local")
     if record.get("account_id") and (
         values.get("ACCOUNT_ID") != record["account_id"]
@@ -159,7 +195,7 @@ def authorize(
     (locations.config / "onboarding.env").unlink(missing_ok=True)
 
 
-def choose_port(docker: Docker, release: Release, default: int = 8088) -> int:
+def choose_port(docker: Docker, release: Release, default: int = 8000) -> int:
     value = str(default)
     while True:
         if not value.isdigit() or not 1024 <= int(value) <= 65535 or int(value) == 8080:

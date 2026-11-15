@@ -12,7 +12,13 @@ from typing import Any
 
 from scripts import generate_env
 
-from .configuration import authorize, choose_port, prepare_release, render_configuration
+from .configuration import (
+    authorize,
+    choose_port,
+    prepare_release,
+    render_configuration,
+    require_callback_port,
+)
 from .docker import Docker, bind_mount
 from .model import InstallationError, Locations, Release, protected_write, version_key, write_json
 
@@ -77,7 +83,7 @@ class Lifecycle:
                 "python",
                 "-c",
                 "import urllib.request; print(urllib.request.urlopen("
-                "'http://localhost:8050/connection', timeout=30).read().decode())",
+                "'http://localhost:8080/connection', timeout=30).read().decode())",
             ],
             capture=True,
         )
@@ -99,6 +105,7 @@ class Lifecycle:
         self.docker.pull(release)
         prepare_release(self.locations, release)
         port = choose_port(self.docker, release)
+        require_callback_port(self.docker, release)
         authorize(self.locations, self.docker, release)
         credentials = generate_env.read_env(self.locations.config / ".env.secrets.local")
         record = {
@@ -133,7 +140,10 @@ class Lifecycle:
 
     def status(self) -> None:
         record = self.current(allow_pending=True)
+        print(f"Installation: {record['project']}")
         print(f"Installed version: {record['version']}")
+        print(f"Application: http://localhost:{record['ui_port']}")
+        print("Services: " + ("explicitly stopped" if record.get("stopped") else "enabled"))
         if record.get("pending_upgrade"):
             print(f"Upgrade needs recovery: {record['pending_upgrade']['backup']}/RECOVERY.md")
         if record.get("pending_reconnect"):
@@ -143,6 +153,7 @@ class Lifecycle:
     def reconnect(self) -> None:
         record = self.current(allow_reconnect=True)
         release = Release.read(self.locations.release_dir(record["version"]) / "release.json")
+        require_callback_port(self.docker, release)
         self.docker.compose(record, ["up", "--detach", "--wait", "redis"])
         self.docker.compose(record, ["stop", "--timeout", "60", "broker-service"])
         record["pending_reconnect"] = True

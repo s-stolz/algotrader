@@ -1,9 +1,12 @@
 """The installer uses canonical configuration inputs without exposing secrets."""
 
+import copy
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+import yaml
 
 from release.installer.configuration import authorize, choose_port, render_configuration
 from release.installer.model import Locations, Release
@@ -49,7 +52,7 @@ class ConfigurationTests(unittest.TestCase):
         value = manifest()
         release = Release(value["version"], value["images"], 18)
         with patch("release.installer.configuration.ask") as ask:
-            self.assertEqual(choose_port(Mock(), release), 8088)
+            self.assertEqual(choose_port(Mock(), release), 8000)
         ask.assert_not_called()
 
     def test_reconnect_preserves_previous_config_when_authorization_fails(self):
@@ -101,3 +104,57 @@ class ConfigurationTests(unittest.TestCase):
                     {"account_id": "original", "environment": "demo"},
                 )
             docker.run.assert_not_called()
+
+
+class LegacyReleaseConfigurationTests(unittest.TestCase):
+    def test_legacy_network_overrides_do_not_change_new_packaged_endpoints(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            locations = Locations(root / "config", root / "data", root / "state", root / "bundle")
+            locations.config.mkdir()
+            release_dir = locations.release_dir("v0.0.2")
+            release_dir.mkdir(parents=True)
+            (release_dir / "topology.yaml").write_bytes(generate_env.TOPOLOGY_PATH.read_bytes())
+            override = {
+                "services": {
+                    "database_accessor_api": {
+                        "network": {"port": 8000},
+                        "resources": {"cpus": 1.75},
+                        "logging": {"level": "DEBUG"},
+                    },
+                    "indicator_api": {"network": {"port": 8010, "published_port": 8000}},
+                    "backtester": {"api": {"network": {"port": 8020}}},
+                    "broker_service": {"network": {"port": 8050}},
+                    "ingestion_service": {"network": {"port": 8000}},
+                    "realtime_service": {
+                        "network": {
+                            "websocket": {"port": 8765},
+                            "health": {"port": 8080, "published_port": 8080},
+                        }
+                    },
+                }
+            }
+            original = yaml.safe_dump(override)
+            (locations.config / "topology.local.yaml").write_text(original)
+            secrets = {key: "value" for key in generate_env.REQUIRED_SECRETS}
+            secrets.update(ACCOUNT_ID="123", CTRADER_HOST_TYPE="demo")
+            (locations.config / ".env.secrets.local").write_text(generate_env.format_env(secrets))
+            record = {"version": "v0.0.2", "ui_port": 8088, "project": "algotrader-123456abcdef"}
+            saved = copy.deepcopy(record)
+            render_configuration(locations, record)
+            shared = generate_env.read_env(locations.config / ".env.shared")
+            for key in (
+                "DATABASE_ACCESSOR_PORT",
+                "INDICATOR_API_PORT",
+                "BACKTESTER_API_PORT",
+                "BROKER_SERVICE_PORT",
+                "INGESTION_API_PORT",
+                "REALTIME_SERVICE_WS_PORT",
+                "FRONTEND_PORT",
+            ):
+                self.assertEqual(shared[key], "8080", key)
+            self.assertEqual(shared["REALTIME_SERVICE_HEALTH_PORT"], "8081")
+            self.assertEqual(shared["COMPOSE_DATABASE_ACCESSOR_API_CPUS"], "1.75")
+            self.assertEqual(shared["DATABASE_ACCESSOR_LOG_LEVEL"], "DEBUG")
+            self.assertEqual((locations.config / "topology.local.yaml").read_text(), original)
+            self.assertEqual(record, saved)
