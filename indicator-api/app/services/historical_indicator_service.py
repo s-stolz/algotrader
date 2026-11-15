@@ -80,12 +80,14 @@ async def _fetch_single_asset_candles(
         limit=fetch_limit,
         exchange=exchange,
     )
-    candle_cache.put(
-        exchange=exchange,
-        symbol=symbol,
-        timeframe=timeframe_code,
-        candles=candles,
-    )
+    # Bounded chart history cannot establish the current live warmup window.
+    if end_ms is None:
+        candle_cache.put(
+            exchange=exchange,
+            symbol=symbol,
+            timeframe=timeframe_code,
+            candles=candles,
+        )
     return candles
 
 
