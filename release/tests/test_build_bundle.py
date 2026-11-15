@@ -1,6 +1,9 @@
 """Release gates prevent incomplete or private downloads from being published."""
 
+import hashlib
 import json
+import posixpath
+import re
 import tempfile
 import unittest
 import zipfile
@@ -30,6 +33,22 @@ class BundleTests(unittest.TestCase):
                     value["images"]["installer"],
                 )
                 self.assertIn("SHA256SUMS", archive.namelist())
+                for doc in ("operations.md", "recovery.md", "publishing.md"):
+                    self.assertIn("docs/" + doc, archive.namelist())
+                for line in archive.read("SHA256SUMS").decode().splitlines():
+                    checksum, name = line.split("  ", 1)
+                    self.assertEqual(hashlib.sha256(archive.read(name)).hexdigest(), checksum)
+                for name in archive.namelist():
+                    if not name.endswith(".md"):
+                        continue
+                    for link in re.findall(r"\[[^\]]+\]\(([^)]+)\)", archive.read(name).decode()):
+                        if ":" in link or link.startswith("#"):
+                            continue
+                        target = posixpath.normpath(
+                            posixpath.join(posixpath.dirname(name), link.split("#")[0])
+                        )
+                        self.assertIn(target, archive.namelist(), (name, link))
+
                 self.assertEqual(archive.getinfo("algotrader.sh").external_attr >> 16, 0o100755)
 
     def test_missing_component_refuses_bundle(self):

@@ -205,6 +205,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          args=(--verify-tag --generate-notes)
+          notes="Download [algotrader-${RELEASE_TAG}.zip](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/algotrader-${RELEASE_TAG}.zip) for macOS, Windows, or Linux. Extract it and follow README.md. Source code archives are for development; .sha256 verifies the installer download."
+          args=(--verify-tag --generate-notes --notes "$notes")
           if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
           gh release create "$RELEASE_TAG" output/*.zip output/*.sha256 "${args[@]}"

@@ -230,10 +230,7 @@ class Lifecycle:
     def write_recovery(
         self, folder: Path, record: dict[str, Any], release: Release, settings: dict[str, str]
     ) -> None:
-        guide = (Path(__file__).resolve().parents[1] / "README.md").read_text()
-        recovery = guide.split("## Manual recovery into fresh storage\n", 1)[1].split(
-            "## Publishing releases", 1
-        )[0]
+        recovery = (Path(__file__).resolve().parents[1] / "docs/recovery.md").read_text()
         instructions = (
             f"# Recover {record['version']}\n\n"
             "Application writers are stopped. "

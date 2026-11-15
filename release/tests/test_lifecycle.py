@@ -153,3 +153,17 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.locations.installed()["version"], self.target.version)
         last_command = self.docker.compose.call_args_list[-1].args[1]
         self.assertEqual(last_command[0], "up")
+
+    def test_recovery_guide_is_embedded_without_readme_heading_dependencies(self):
+        folder = self.locations.state / "recovery"
+        folder.mkdir()
+        self.lifecycle.write_recovery(
+            folder,
+            self.record,
+            self.target,
+            {"POSTGRES_DB": "finance_data", "POSTGRES_USER": "postgres"},
+        )
+        instructions = (folder / "RECOVERY.md").read_text()
+        self.assertIn("timescaledb_pre_restore", instructions)
+        self.assertIn("timescaledb_post_restore", instructions)
+        self.assertIn("algotrader-123456abcdef", instructions)

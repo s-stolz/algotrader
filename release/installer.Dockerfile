@@ -6,4 +6,5 @@ COPY config/topology.yaml ./config/topology.yaml
 COPY release/installer ./installer
 COPY release/compose.yaml ./release/compose.yaml
 COPY release/README.md ./README.md
+COPY release/docs ./docs
 ENTRYPOINT ["python3", "-m", "installer"]

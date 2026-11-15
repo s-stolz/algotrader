@@ -55,6 +55,8 @@ def assemble(version: str, digests: Path, output: Path) -> Path:
         "algotrader.ps1": (ROOT / "release/algotrader.ps1").read_bytes(),
         "README.md": (ROOT / "release/README.md").read_bytes(),
     }
+    for path in sorted((ROOT / "release/docs").glob("*.md")):
+        files["docs/" + path.name] = path.read_bytes()
     files["SHA256SUMS"] = "".join(
         f"{hashlib.sha256(content).hexdigest()}  {name}\n"
         for name, content in sorted(files.items())
