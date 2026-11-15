@@ -60,7 +60,7 @@ describe('production ECharts options', () => {
       expect(svg).toContain('#252a33');
       expect(svg).toContain('×');
       expect(svg).toContain('∞');
-      expect(svg).toContain('stroke-width="3"');
+      expect(svg).toContain('stroke-width="2"');
       chart.setOption(
         heatmapChart(
           cells,
