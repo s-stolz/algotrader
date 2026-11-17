@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import time
 import unittest
+from unittest.mock import AsyncMock, patch
 
 from app.infrastructure.ctrader_oauth_client import RefreshResult
 from app.infrastructure.token_lifecycle import TokenLifecycleManager
@@ -169,3 +172,118 @@ class TokenBindingTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, "were replaced"):
             await manager.startup()
         self.assertEqual(repo.state, replacement)
+
+    async def test_startup_keeps_rotated_pair_until_redis_recovers(self) -> None:
+        original = CtraderTokenState("old", "old-refresh", 1, 0, "client", "12", "demo")
+        repo = FakeTokenRepository(original)
+        oauth = AsyncMock()
+        oauth.refresh_access_token.return_value = RefreshResult(
+            "new", "new-refresh", 7200, int(time.time())
+        )
+        manager = TokenLifecycleManager(
+            Settings(
+                broker_token_refresh_max_retries=0,
+                broker_token_refresh_early_seconds=10,
+                broker_token_refresh_retry_delay_seconds=1,
+            ),
+            self.credentials(),
+            repo,
+            oauth,
+        )
+        write = repo.compare_and_set_current_token
+        attempts = []
+
+        async def save(previous, rotated):
+            attempts.append(rotated)
+            if len(attempts) == 1:
+                raise ConnectionError("Redis unavailable")
+            return await write(previous, rotated)
+
+        with (
+            patch.object(repo, "compare_and_set_current_token", side_effect=save),
+            self.assertLogs("app.infrastructure.token_lifecycle", level="ERROR"),
+        ):
+            await manager.startup()
+        await manager.shutdown()
+        oauth.refresh_access_token.assert_awaited_once_with("old-refresh")
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(attempts[0], attempts[1])
+        self.assertEqual(repo.state, attempts[0])
+
+    async def test_scheduled_refresh_retries_notification_and_survives_restart(self) -> None:
+        repo = FakeTokenRepository()
+        oauth = AsyncMock()
+        oauth.refresh_access_token.return_value = RefreshResult(
+            "rotated", "rotated-refresh", 7200, int(time.time())
+        )
+        settings = Settings(
+            broker_token_refresh_max_retries=0,
+            broker_token_refresh_early_seconds=10,
+            broker_token_refresh_retry_delay_seconds=1,
+        )
+        manager = TokenLifecycleManager(settings, self.credentials(), repo, oauth)
+        notified = asyncio.Event()
+        calls = []
+
+        async def notify():
+            calls.append(manager.get_access_token())
+            if len(calls) == 1:
+                raise ConnectionError("Session temporarily unavailable")
+            notified.set()
+
+        manager.set_token_refreshed_callback(notify)
+        with (
+            patch.object(manager, "_seconds_until_refresh", side_effect=[0, 3600]),
+            self.assertLogs("app.infrastructure.token_lifecycle", level="ERROR"),
+        ):
+            await manager.startup()
+            try:
+                await asyncio.wait_for(notified.wait(), timeout=5)
+            finally:
+                await manager.shutdown()
+
+        self.assertEqual(calls, ["rotated", "rotated"])
+        oauth.refresh_access_token.assert_awaited_once_with("env-refresh")
+        restarted = TokenLifecycleManager(settings, self.credentials(), repo, oauth)
+        await restarted.startup()
+        self.assertEqual(restarted.get_access_token(), "rotated")
+        await restarted.shutdown()
+        self.assertEqual(oauth.refresh_access_token.await_count, 1)
+
+    async def test_shutdown_retries_unpersisted_rotation_before_stopping(self) -> None:
+        repo = FakeTokenRepository()
+        oauth = AsyncMock()
+        oauth.refresh_access_token.return_value = RefreshResult(
+            "rotated", "rotated-refresh", 7200, int(time.time())
+        )
+        settings = Settings(
+            broker_token_refresh_retry_delay_seconds=60, broker_token_refresh_early_seconds=10
+        )
+        manager = TokenLifecycleManager(settings, self.credentials(), repo, oauth)
+        failed = asyncio.Event()
+        callback = AsyncMock()
+        manager.set_token_refreshed_callback(callback)
+        persist = repo.compare_and_set_current_token
+
+        async def fail_first_write(previous, rotated):
+            if not failed.is_set():
+                failed.set()
+                raise ConnectionError("Redis temporarily unavailable")
+            return await persist(previous, rotated)
+
+        with (
+            patch.object(
+                repo, "compare_and_set_current_token", side_effect=fail_first_write
+            ) as save,
+            patch.object(manager, "_seconds_until_refresh", return_value=0),
+            self.assertLogs("app.infrastructure.token_lifecycle", level="ERROR"),
+        ):
+            await manager.startup()
+            await asyncio.wait_for(failed.wait(), timeout=3)
+            await asyncio.wait_for(manager.shutdown(), timeout=3)
+
+        self.assertEqual(save.await_count, 2)
+        assert repo.state is not None
+        self.assertEqual(repo.state.refresh_token, "rotated-refresh")
+        oauth.refresh_access_token.assert_awaited_once_with("env-refresh")
+        callback.assert_not_awaited()

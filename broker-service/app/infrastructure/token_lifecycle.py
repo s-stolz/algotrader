@@ -41,8 +41,10 @@ class TokenLifecycleManager:
         self._oauth_client = oauth_client
         self._lock = asyncio.Lock()
         self._refresh_task: asyncio.Task[None] | None = None
-        self._running = False
+        self._stopped = asyncio.Event()
+        self._stopped.set()
         self._token_state: CtraderTokenState | None = None
+        self._pending_rotation: CtraderTokenState | None = None
         self._source = "unknown"
         self._last_refresh_error: str | None = None
         self._last_refresh_at: int | None = None
@@ -56,7 +58,7 @@ class TokenLifecycleManager:
 
     async def startup(self) -> None:
         async with self._lock:
-            self._running = True
+            self._stopped.clear()
             state = await self._repository.get_current_token()
             if state is None:
                 now = int(time.time())
@@ -103,15 +105,26 @@ class TokenLifecycleManager:
             )
 
             if self._needs_refresh_now(state):
-                await self._refresh_with_retries()
+                await self._refresh_with_retries(starting=True)
             self._schedule_next_refresh()
 
     async def shutdown(self) -> None:
+        self._stopped.set()
         async with self._lock:
-            self._running = False
             if self._refresh_task:
                 self._refresh_task.cancel()
                 self._refresh_task = None
+            previous = self._token_state
+            rotated = self._pending_rotation
+            if previous is not None and rotated is not None and previous != rotated:
+                try:
+                    async with asyncio.timeout(5):
+                        await self._persist_rotation(previous, rotated)
+                except Exception:
+                    logger.exception(
+                        "Could not persist rotated cTrader tokens before shutdown. "
+                        "Broker reconnection may be required."
+                    )
 
     def get_access_token(self) -> str:
         if self._token_state is None:
@@ -146,7 +159,7 @@ class TokenLifecycleManager:
         return max(0.0, float(refresh_at - int(time.time())))
 
     def _schedule_next_refresh(self) -> None:
-        if not self._running or self._token_state is None:
+        if self._stopped.is_set() or self._token_state is None:
             return
         delay = self._seconds_until_refresh(self._token_state)
         self._schedule_refresh_in(delay)
@@ -161,7 +174,7 @@ class TokenLifecycleManager:
         try:
             await asyncio.sleep(delay)
             async with self._lock:
-                if not self._running:
+                if self._stopped.is_set():
                     return
                 await self._refresh_with_retries()
                 self._schedule_next_refresh()
@@ -170,54 +183,74 @@ class TokenLifecycleManager:
         except Exception:
             logger.exception("Scheduled token refresh task failed")
             async with self._lock:
-                if self._running:
+                if not self._stopped.is_set():
                     retry_delay = float(
                         max(1, self._settings.broker_token_refresh_retry_delay_seconds)
                     )
                     self._schedule_refresh_in(retry_delay)
 
-    async def _refresh_with_retries(self) -> None:
-        if self._token_state is None:
-            raise RuntimeError("Token state missing during refresh")
-
-        attempts = max(0, self._settings.broker_token_refresh_max_retries)
+    async def _refresh_with_retries(self, *, starting: bool = False) -> None:
+        max_retries = max(0, self._settings.broker_token_refresh_max_retries)
         delay_seconds = max(1, self._settings.broker_token_refresh_retry_delay_seconds)
-        for attempt in range(attempts + 1):
+        attempts = 0
+        while not self._stopped.is_set():
+            attempts += 1
             try:
-                result = await self._oauth_client.refresh_access_token(
-                    self._token_state.refresh_token
-                )
-                previous = self._token_state
-                next_state = CtraderTokenState(
-                    access_token=result.access_token,
-                    refresh_token=result.refresh_token,
-                    issued_at=result.issued_at,
-                    expires_at=result.issued_at + result.expires_in,
-                    client_id=self._credentials.client_id,
-                    account_id=self._credentials.account_id,
-                    environment=self._credentials.host_type,
-                )
-                if not await self._repository.compare_and_set_current_token(previous, next_state):
-                    self._running = False
-                    raise RuntimeError("Broker credentials were replaced; restart the broker")
-                self._token_state = next_state
-                self._source = "refresh"
+                await self._refresh()
                 self._last_refresh_error = None
-                self._last_refresh_at = int(time.time())
-                if self._token_refreshed_callback is not None:
-                    await self._token_refreshed_callback()
-                logger.info(
-                    "Successfully refreshed cTrader access token (expires_at=%s)",
-                    self._token_state.expires_at,
-                )
                 return
             except Exception as exc:
                 self._last_refresh_error = str(exc)
-                logger.exception(
-                    "Failed to refresh cTrader token (attempt=%s/%s)",
-                    attempt + 1,
-                    attempts + 1,
+                logger.exception("Failed to refresh cTrader token (attempt=%s)", attempts)
+                # Exiting startup would discard the only copy of a rotated pair
+                # if Redis is temporarily unavailable.
+                awaiting_first_write = (
+                    starting
+                    and self._pending_rotation is not None
+                    and (self._pending_rotation != self._token_state)
                 )
-                if not self._running or attempt >= attempts:
+                if self._stopped.is_set() or (attempts > max_retries and not awaiting_first_write):
                     raise
-                await asyncio.sleep(delay_seconds)
+                try:
+                    await asyncio.wait_for(self._stopped.wait(), timeout=delay_seconds)
+                except TimeoutError:
+                    pass
+
+    async def _refresh(self) -> None:
+        previous = self._token_state
+        if previous is None:
+            raise RuntimeError("Token state missing during refresh")
+
+        if self._pending_rotation is None:
+            result = await self._oauth_client.refresh_access_token(previous.refresh_token)
+            self._pending_rotation = replace(
+                previous,
+                access_token=result.access_token,
+                refresh_token=result.refresh_token,
+                issued_at=result.issued_at,
+                expires_at=result.issued_at + result.expires_in,
+                client_id=self._credentials.client_id,
+                account_id=self._credentials.account_id,
+                environment=self._credentials.host_type,
+            )
+
+        rotated = self._pending_rotation
+        if previous != rotated:
+            await self._persist_rotation(previous, rotated)
+        if self._token_refreshed_callback is not None:
+            await self._token_refreshed_callback()
+        self._pending_rotation = None
+        logger.info(
+            "Successfully refreshed cTrader access token (expires_at=%s)", rotated.expires_at
+        )
+
+    async def _persist_rotation(
+        self, previous: CtraderTokenState, rotated: CtraderTokenState
+    ) -> None:
+        if not await self._repository.compare_and_set_current_token(previous, rotated):
+            self._stopped.set()
+            self._pending_rotation = None
+            raise RuntimeError("Broker credentials were replaced; restart the broker")
+        self._token_state = rotated
+        self._source = "refresh"
+        self._last_refresh_at = int(time.time())

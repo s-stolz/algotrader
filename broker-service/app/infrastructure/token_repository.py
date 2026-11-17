@@ -70,7 +70,10 @@ class RedisTokenRepository:
         ]
         for field, value in self._mapping(state).items():
             arguments.extend((field, value))
-        return bool(await self._redis.eval(script, 1, self._key, *arguments))
+        if await self._redis.eval(script, 1, self._key, *arguments):
+            return True
+        # A prior write may have succeeded before its acknowledgement was lost.
+        return await self.get_current_token() == state
 
     @staticmethod
     def _mapping(state: CtraderTokenState) -> dict[str, str]:

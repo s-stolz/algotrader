@@ -94,7 +94,12 @@ class TokenReplacementRedisTests(unittest.IsolatedAsyncioTestCase):
                 )
                 await repository.set_current_token(original)
                 self.assertTrue(await repository.compare_and_set_current_token(original, refreshed))
+                # Replay the same rotation after its first acknowledgement was lost.
+                self.assertTrue(await repository.compare_and_set_current_token(original, refreshed))
                 await repository.set_current_token(reconnected)
+                self.assertFalse(
+                    await repository.compare_and_set_current_token(original, refreshed)
+                )
                 self.assertFalse(
                     await repository.compare_and_set_current_token(refreshed, original)
                 )
