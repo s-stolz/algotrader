@@ -120,6 +120,84 @@ class ReconnectTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(self.client.is_connected)
 
+    async def test_token_invalidation_restores_only_the_affected_account_streams(self):
+        from importlib import import_module
+
+        common_messages = import_module("ctrader_open_api.messages.OpenApiCommonMessages_pb2")
+
+        self.client._app_authenticated.set()
+        for account in (123, 456):
+            self.client._authorized_accounts.add(account)
+            self.client._tick_handlers[(account, 1)] = {"tick": AsyncMock()}
+            self.client._trendbar_handlers[(account, 1, "M1")] = {"bar": AsyncMock()}
+            self.client._active_tick_streams.add((account, 1))
+            self.client._active_trendbar_streams.add((account, 1, "M1"))
+
+        invalidated = getattr(OpenApiMessages_pb2, "ProtoOAAccountsTokenInvalidatedEvent")(
+            ctidTraderAccountIds=[123]
+        )
+        wrapped = getattr(common_messages, "ProtoMessage")(
+            payloadType=invalidated.payloadType, payload=invalidated.SerializeToString()
+        )
+        requests = []
+
+        async def respond(request):
+            requests.append((type(request).__name__, request.ctidTraderAccountId))
+            return ProtoOAAccountAuthRes(ctidTraderAccountId=request.ctidTraderAccountId)
+
+        with patch.object(self.client, "_send_request", side_effect=respond):
+            await self.client.access_token_refreshed()
+            await self._finish_restoration()
+            self.assertEqual(requests, [])
+            self.client._on_message(self.client._client, wrapped)
+            await self._finish_restoration()
+        self.assertEqual(
+            requests,
+            [
+                ("ProtoOAAccountAuthReq", 123),
+                ("ProtoOASubscribeSpotsReq", 123),
+                ("ProtoOASubscribeLiveTrendbarReq", 123),
+            ],
+        )
+        self.assertTrue(self.client.is_connected)
+
+    async def test_invalidation_during_authorization_discards_stale_receipt(self):
+        from importlib import import_module
+
+        common_messages = import_module("ctrader_open_api.messages.OpenApiCommonMessages_pb2")
+        self.client._app_authenticated.set()
+        account = 123
+        self.client._access_token_provider = Mock(side_effect=["old", "replacement"])
+        sent = asyncio.Event()
+        first_response = asyncio.Event()
+        tokens = []
+
+        async def respond(request):
+            tokens.append(request.accessToken)
+            if len(tokens) == 1:
+                sent.set()
+                await first_response.wait()
+            return ProtoOAAccountAuthRes(ctidTraderAccountId=account)
+
+        with patch.object(self.client, "_send_request", side_effect=respond):
+            auth = asyncio.create_task(self.client._authorize_account(account))
+            await sent.wait()
+            invalidated = getattr(OpenApiMessages_pb2, "ProtoOAAccountDisconnectEvent")(
+                ctidTraderAccountId=account
+            )
+            wrap = getattr(common_messages, "ProtoMessage")
+            self.client._on_message(
+                self.client._client,
+                wrap(payloadType=invalidated.payloadType, payload=invalidated.SerializeToString()),
+            )
+            first_response.set()
+            with self.assertRaisesRegex(RuntimeError, "account session changed"):
+                await auth
+            await self.client.access_token_refreshed()
+            self.assertNotIn(account, self.client._authorized_accounts)
+            await self.client._authorize_account(account)
+        self.assertEqual(tokens, ["old", "replacement"])
+
     async def test_rejected_subscription_retries_without_duplicate_successful_spots(self):
         self.client._app_authenticated.set()
         self.client._trendbar_handlers[(123, 1, "M1")] = {"bar": AsyncMock()}

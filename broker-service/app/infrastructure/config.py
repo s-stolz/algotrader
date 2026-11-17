@@ -47,7 +47,7 @@ class ServiceContainer:
             access_token_provider=self.token_lifecycle.get_access_token,
         )
         self.token_lifecycle.set_token_refreshed_callback(
-            self.broker_client.reset_authorized_accounts,
+            self.broker_client.access_token_refreshed,
         )
         self.redis_publisher = RedisStreamsPublisher(
             self.redis,

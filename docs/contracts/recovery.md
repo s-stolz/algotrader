@@ -116,7 +116,10 @@ Historical responses and public Candle/WebSocket fields retain their existing sh
 
 Broker transport identity is randomly initialized on each process start and
 changed by the actual cTrader disconnect callback before dispatch to the asyncio
-loop. Live event dispatch captures that identity. A dispatch delayed across the
+loop. A server-side account disconnect or token invalidation changes the identity
+for each affected account, even when the underlying application socket stays open.
+The broker uses the current access token to authorize and restore its desired
+spot and trendbar subscriptions. Live event dispatch captures the session identity. A dispatch delayed across the
 change is discarded; subsequent history recovers it. The stream registry stamps each Candle's transport session before queueing it.
 The single FIFO writer assigns a random publication identity for that queued
 session and the stream's current loss revision. Already queued old transport

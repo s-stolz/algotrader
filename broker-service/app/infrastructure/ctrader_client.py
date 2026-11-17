@@ -37,7 +37,9 @@ from ctrader_open_api.endpoints import EndPoints
 from ctrader_open_api.messages.OpenApiMessages_pb2 import (
     ProtoOAAccountAuthReq,
     ProtoOAAccountAuthRes,
+    ProtoOAAccountDisconnectEvent,
     ProtoOAAccountLogoutReq,
+    ProtoOAAccountsTokenInvalidatedEvent,
     ProtoOAApplicationAuthReq,
     ProtoOAApplicationAuthRes,
     ProtoOACancelOrderReq,
@@ -129,6 +131,8 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
         # Shutdown state
         self._continuity = "v1:" + uuid.uuid4().hex
+        self._account_continuity: dict[int, str] = {}
+        self._restore_again = False
         self._shutting_down = False
         self._subscription_restore_task: asyncio.Task[None] | None = None
         self._application_auth_task: asyncio.Task[None] | None = None
@@ -195,8 +199,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
     def is_connected(self) -> bool:
         return self._app_authenticated.is_set()
 
-    async def reset_authorized_accounts(self) -> None:
-        self._authorized_accounts.clear()
+    async def access_token_refreshed(self) -> None:
+        # The server event identifies which sessions were dropped. It can arrive
+        # before or after OAuth returns; a restore always reads the current token.
+        self._request_subscription_restoration()
 
     # ------------------------------------------------------------- BrokerPort
 
@@ -501,12 +507,10 @@ class CtraderClient(BrokerPort, MarketDataPort):
         key = (account_id, full_info.symbol_id)
         token = str(uuid.uuid4())
         async with self._tick_lock:
-            handlers = self._tick_handlers.setdefault(key, {})
-            handlers[token] = handler
-
             if key not in self._active_tick_streams:
                 await self._subscribe_spots(account_id, full_info.symbol_id)
                 self._active_tick_streams.add(key)
+            self._tick_handlers.setdefault(key, {})[token] = handler
 
         return TickSubscription(
             account_id=account_id,
@@ -651,6 +655,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
         # Twisted serializes transport callbacks. Capture identity there, before
         # dispatching event coroutines, so queued old events cannot inherit it.
         self._continuity = "v1:" + uuid.uuid4().hex
+        self._account_continuity.clear()
         if self._shutting_down:
             logger.info("Disconnected from cTrader (graceful shutdown)")
         else:
@@ -670,15 +675,21 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
     def _application_authenticated(self) -> None:
         self._app_authenticated.set()
-        if self._shutting_down:
+        self._request_subscription_restoration()
+
+    def _request_subscription_restoration(self) -> None:
+        if self._shutting_down or not self.is_connected:
             return
-        if self._subscription_restore_task is not None:
-            self._subscription_restore_task.cancel()
+        task = self._subscription_restore_task
+        if task and not task.done() and not task.cancelling():
+            self._restore_again = True
+            return
         self._subscription_restore_task = asyncio.create_task(self._restore_subscriptions())
 
     async def _restore_subscriptions(self) -> None:
         delay = 1
         while not self._shutting_down and self.is_connected:
+            self._restore_again = False
             unfinished = False
             # Registration and restoration share one lock order. Retain handlers
             # but acknowledge active subscriptions only after upstream success.
@@ -686,20 +697,19 @@ class CtraderClient(BrokerPort, MarketDataPort):
                 spot_keys = set(self._tick_handlers) | {
                     (account_id, symbol_id) for account_id, symbol_id, _ in self._trendbar_handlers
                 }
-                for account_id, symbol_id in sorted(spot_keys):
-                    if (account_id, symbol_id) not in self._active_tick_streams:
-                        try:
-                            await self._authorize_account(account_id)
-                            await self._subscribe_spots(account_id, symbol_id)
-                            self._active_tick_streams.add((account_id, symbol_id))
-                        except Exception:
-                            unfinished = True
-                            logger.exception(
-                                "Failed to restore cTrader spots; account=%s symbol_id=%s retry=%s",
-                                account_id,
-                                symbol_id,
-                                delay,
-                            )
+                for account_id, symbol_id in sorted(spot_keys - self._active_tick_streams):
+                    try:
+                        await self._authorize_account(account_id)
+                        await self._subscribe_spots(account_id, symbol_id)
+                        self._active_tick_streams.add((account_id, symbol_id))
+                    except Exception:
+                        unfinished = True
+                        logger.exception(
+                            "Failed to restore cTrader spots; account=%s symbol_id=%s retry=%s",
+                            account_id,
+                            symbol_id,
+                            delay,
+                        )
                 for key in list(self._trendbar_handlers):
                     if key not in self._active_trendbar_streams:
                         account_id, symbol_id, timeframe = key
@@ -721,10 +731,23 @@ class CtraderClient(BrokerPort, MarketDataPort):
                                 timeframe,
                                 delay,
                             )
+            if self._restore_again:
+                continue
             if not unfinished:
                 return
             await asyncio.sleep(delay)
             delay = min(30, delay * 2)
+
+    def _session_continuity(self, account_id: int) -> str:
+        return self._account_continuity.get(account_id, self._continuity)
+
+    def _invalidate_account_subscriptions(self, accounts: set[int]) -> None:
+        self._authorized_accounts.difference_update(accounts)
+        self._active_tick_streams = {k for k in self._active_tick_streams if k[0] not in accounts}
+        self._active_trendbar_streams = {
+            k for k in self._active_trendbar_streams if k[0] not in accounts
+        }
+        self._request_subscription_restoration()
 
     def _on_message(self, client: Client, message) -> None:
         if self._loop is None:
@@ -735,25 +758,38 @@ class CtraderClient(BrokerPort, MarketDataPort):
             self._loop.call_soon_threadsafe(self._application_authenticated)
             return
 
-        if payload_type == ProtoOAAccountAuthRes().payloadType:
-            proto = cast(ProtoOAAccountAuthRes, Protobuf.extract(message))
-            self._authorized_accounts.add(proto.ctidTraderAccountId)
+        if payload_type in (
+            ProtoOAAccountsTokenInvalidatedEvent().payloadType,
+            ProtoOAAccountDisconnectEvent().payloadType,
+        ):
+            proto = Protobuf.extract(message)
+            if isinstance(proto, ProtoOAAccountsTokenInvalidatedEvent):
+                accounts = set(proto.ctidTraderAccountIds)
+            else:
+                accounts = {cast(ProtoOAAccountDisconnectEvent, proto).ctidTraderAccountId}
+            for account in accounts:
+                self._account_continuity[account] = "v1:" + uuid.uuid4().hex
+            self._loop.call_soon_threadsafe(self._invalidate_account_subscriptions, accounts)
             return
 
         if payload_type == ProtoOASpotEvent().payloadType:
             event = cast(ProtoOASpotEvent, Protobuf.extract(message))
-            asyncio.run_coroutine_threadsafe(self._emit_tick(event), self._loop)
+            continuity = self._session_continuity(event.ctidTraderAccountId)
+            asyncio.run_coroutine_threadsafe(self._emit_tick(event, continuity), self._loop)
 
             if event.trendbar:
                 asyncio.run_coroutine_threadsafe(
-                    self._emit_trendbars(event, self._continuity), self._loop
+                    self._emit_trendbars(event, continuity), self._loop
                 )
             return
 
-    async def _emit_tick(self, event: ProtoOASpotEvent) -> None:
+    async def _emit_tick(self, event: ProtoOASpotEvent, continuity: str | None = None) -> None:
         """Emit tick events to registered handlers."""
         key = (event.ctidTraderAccountId, event.symbolId)
+        continuity = continuity or self._session_continuity(key[0])
         async with self._tick_lock:
+            if continuity != self._session_continuity(key[0]):
+                return
             handlers = list(self._tick_handlers.get(key, {}).values())
         if not handlers:
             return
@@ -775,8 +811,8 @@ class CtraderClient(BrokerPort, MarketDataPort):
 
     async def _emit_trendbars(self, event: ProtoOASpotEvent, continuity: str | None = None) -> None:
         """Emit live trendbars from a spot event to registered handlers."""
-        continuity = continuity or self._continuity
-        if continuity != self._continuity:
+        continuity = continuity or self._session_continuity(event.ctidTraderAccountId)
+        if continuity != self._session_continuity(event.ctidTraderAccountId):
             return
         info = self._symbol_cache_for(event.ctidTraderAccountId).get_full_by_id(event.symbolId)
         if not info:
@@ -797,7 +833,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             async with self._trendbar_lock:
                 handlers = list(self._trendbar_handlers.get(key, {}).values())
 
-            if continuity != self._continuity:
+            if continuity != self._session_continuity(event.ctidTraderAccountId):
                 return
             if not handlers:
                 continue
@@ -824,7 +860,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
     async def _subscribe_spots(self, account_id: int, symbol_id: int) -> None:
         req = ProtoOASubscribeSpotsReq(ctidTraderAccountId=account_id)
         req.symbolId.append(symbol_id)
-        response = await self._send_request(req)
+        response = await self._send_account_session_request(account_id, req)
         if isinstance(response, ProtoOAErrorRes):
             error_res = cast(ProtoOAErrorRes, response)
             raise RuntimeError(
@@ -838,7 +874,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
     ) -> None:
         req = ProtoOAUnsubscribeSpotsReq(ctidTraderAccountId=account_id)
         req.symbolId.append(symbol_id)
-        await self._send_request(req)
+        await self._send_account_session_request(account_id, req)
 
     async def _subscribe_live_trendbar(
         self, account_id: int, symbol_id: int, timeframe: Timeframe
@@ -849,7 +885,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             symbolId=symbol_id,
             period=ProtoOATrendbarPeriod.Value(timeframe.value),
         )
-        response = await self._send_request(req)
+        response = await self._send_account_session_request(account_id, req)
         if isinstance(response, ProtoOAErrorRes):
             error_res = cast(ProtoOAErrorRes, response)
             raise RuntimeError(
@@ -868,7 +904,14 @@ class CtraderClient(BrokerPort, MarketDataPort):
             symbolId=symbol_id,
             period=ProtoOATrendbarPeriod.Value(timeframe.value),
         )
-        await self._send_request(req)
+        await self._send_account_session_request(account_id, req)
+
+    async def _send_account_session_request(self, account_id: int, request: Message) -> Message:
+        continuity = self._session_continuity(account_id)
+        response = await self._send_request(request)
+        if continuity != self._session_continuity(account_id):
+            raise RuntimeError("cTrader account session changed during request")
+        return response
 
     async def _send_request(self, message: Message, timeout: float | None = None) -> Message:
         await self._app_authenticated.wait()
@@ -921,7 +964,7 @@ class CtraderClient(BrokerPort, MarketDataPort):
             ctidTraderAccountId=account_id,
             accessToken=self._access_token_provider(),
         )
-        res = await self._send_request(req)
+        res = await self._send_account_session_request(account_id, req)
         if isinstance(res, ProtoOAErrorRes):
             raise RuntimeError(
                 f"cTrader account authorization failed (code {res.errorCode}): {res.description}"

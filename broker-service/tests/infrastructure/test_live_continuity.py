@@ -128,6 +128,73 @@ class LiveContinuityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(redis.xadd.await_count, 1)
         self.assertEqual(redis.xadd.call_args.args[1]["t"], "120000")
 
+    async def test_account_invalidation_changes_published_session_and_discards_stale_bar(self):
+        from importlib import import_module
+
+        common_messages = import_module("ctrader_open_api.messages.OpenApiCommonMessages_pb2")
+        client = self.client()
+        client._loop = asyncio.get_running_loop()
+        redis = Mock(xadd=AsyncMock())
+        await self.registry(client, redis)
+        await client._emit_trendbars(self.event(1))
+        async with client._trendbar_lock:
+            stale = asyncio.create_task(client._emit_trendbars(self.event(2)))
+            await asyncio.sleep(0)
+            event = getattr(OpenApiMessages_pb2, "ProtoOAAccountsTokenInvalidatedEvent")(
+                ctidTraderAccountIds=[123]
+            )
+            client._on_message(
+                client._client,
+                getattr(common_messages, "ProtoMessage")(
+                    payloadType=event.payloadType, payload=event.SerializeToString()
+                ),
+            )
+        await stale
+        await client._emit_trendbars(self.event(3))
+        async with asyncio.timeout(1):
+            while redis.xadd.await_count < 2:
+                await asyncio.sleep(0)
+        rows = [call.args[1] for call in redis.xadd.await_args_list]
+        self.assertEqual([row["t"] for row in rows], ["60000", "180000"])
+        self.assertNotEqual(rows[0]["continuity"], rows[1]["continuity"])
+
+    async def test_tick_start_interrupted_by_account_loss_leaves_no_handler_to_restore(self):
+        from importlib import import_module
+
+        common_messages = import_module("ctrader_open_api.messages.OpenApiCommonMessages_pb2")
+        client = self.client(real_subscriptions=True)
+        client._loop = asyncio.get_running_loop()
+        client._app_authenticated.set()
+        sent, receipt = asyncio.Event(), asyncio.Event()
+
+        async def respond(_request):
+            sent.set()
+            await receipt.wait()
+            return getattr(OpenApiMessages_pb2, "ProtoOASubscribeSpotsRes")(ctidTraderAccountId=123)
+
+        with patch.object(client, "_send_request", side_effect=respond) as send:
+            registering = asyncio.create_task(
+                client.register_tick_handler(123, "EURUSD", AsyncMock())
+            )
+            await asyncio.wait_for(sent.wait(), 1)
+            invalid = getattr(OpenApiMessages_pb2, "ProtoOAAccountDisconnectEvent")(
+                ctidTraderAccountId=123
+            )
+            client._on_message(
+                client._client,
+                getattr(common_messages, "ProtoMessage")(
+                    payloadType=invalid.payloadType, payload=invalid.SerializeToString()
+                ),
+            )
+            receipt.set()
+            with self.assertRaisesRegex(RuntimeError, "account session changed"):
+                await registering
+            assert client._subscription_restore_task is not None
+            await client._subscription_restore_task
+        self.assertEqual(send.await_count, 1)
+        self.assertFalse(client._tick_handlers)
+        self.assertFalse(client._active_tick_streams)
+
     async def test_failed_stream_start_retries_without_orphan_duplicate_handlers(self):
         client = self.client()
         client._subscribe_live_trendbar = AsyncMock(
