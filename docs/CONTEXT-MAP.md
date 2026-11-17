@@ -23,6 +23,7 @@ interface reaches them; paths in this table are relative to the repository root.
 | Build, run, tests | [commands](agent/COMMANDS.md) |
 | Code/test conventions | [coding conventions](agent/CODING-CONVENTIONS.md) |
 | Verification or documentation maintenance | [workflow](agent/WORKFLOW.md) |
+| GitHub issue creation, claims, dependencies, or completion | [project lifecycle](agents/github-project.md) |
 
 ## References by Purpose
 
