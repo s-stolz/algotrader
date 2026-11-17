@@ -102,10 +102,21 @@ class Lifecycle:
             raise InstallationError(
                 "This installation already exists. Use start, reconnect, or upgrade."
             )
+        print(f"\n[1/3] Prepare AlgoTrader {release.version}", flush=True)
         self.docker.pull(release)
         prepare_release(self.locations, release)
         port = choose_port(self.docker, release)
         require_callback_port(self.docker, release)
+        print(
+            "\n[2/3] Connect your cTrader account\n"
+            "Use your existing cTrader-compatible broker account.\n\n"
+            "--- Optional broker signup ---\n"
+            "If you open an IC Trading account through this affiliate link,\n"
+            "the AlgoTrader maintainer may earn a commission.\n"
+            "https://www.ictrading.com?camp=86158\n"
+            "------------------------------\n",
+            flush=True,
+        )
         authorize(self.locations, self.docker, release)
         credentials = generate_env.read_env(self.locations.config / ".env.secrets.local")
         record = {
@@ -120,6 +131,7 @@ class Lifecycle:
         render_configuration(self.locations, record)
         # Record identity before startup so a failed startup is safely resumable with start.
         write_json(self.locations.record, record)
+        print("\n[3/3] Start services and check the broker connection", flush=True)
         self.docker.compose(record, ["up", "--detach", "--wait", "--wait-timeout", "360"])
         self.check_ready(record)
 

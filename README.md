@@ -7,6 +7,10 @@ historical backtests with fixed or varying parameters.
 
 ## Install a versioned release
 
+**Broker account.** You can use your existing cTrader demo or live account.
+If you need an account, IC Trading is one option. The AlgoTrader maintainer may
+earn a commission if you sign up through this [IC Trading affiliate link](https://www.ictrading.com?camp=86158).
+
 Download **`algotrader-VERSION.zip`** from
 [GitHub Releases](https://github.com/s-stolz/algotrader/releases/latest).
 The same installer is used on macOS, Linux, and Windows. GitHub’s **Source code**
@@ -65,12 +69,6 @@ This project is in active development and may undergo significant changes. **Bac
 Trading in derivative instruments—including futures, options, CFDs, Forex, and
 certificates—carries significant risk and may not be appropriate for all
 investors. There is a possibility of losing the entire initial investment or even more. **Use this project at your own risk.**
-
-## Support the Project
-
-If AlgoTrader has helped you with your algorithmic trading journey, you can support its continued development by using my [IC Trading affiliate link](https://www.ictrading.com?camp=86158) when opening a trading account. IC Trading offers competitive spreads and reliable execution for algorithmic traders.
-
-*Using this link costs you nothing extra but helps fund the development of new features and improvements.*
 
 ## Development prerequisites
 

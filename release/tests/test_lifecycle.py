@@ -1,7 +1,9 @@
 """Upgrade admission, backup ordering and failure containment."""
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -201,3 +203,31 @@ class LifecycleTests(unittest.TestCase):
         authorize.assert_not_called()
         self.assertFalse(self.locations.record.exists())
         self.docker.compose.assert_not_called()
+
+    def test_optional_referral_is_visible_before_fresh_broker_authorization(self):
+        self.locations.record.unlink()
+        output = io.StringIO()
+        link = "https://www.ictrading.com?camp=86158"
+
+        def authorize(*args):
+            self.assertEqual(output.getvalue().count(link), 1)
+            self.assertIn("Optional broker signup", output.getvalue())
+            self.assertIn("may earn a commission", output.getvalue())
+            self.locations.config.mkdir()
+            (self.locations.config / ".env.secrets.local").write_text(
+                "ACCOUNT_ID=123\nCTRADER_HOST_TYPE=demo\n"
+            )
+
+        with (
+            redirect_stdout(output),
+            patch("release.installer.lifecycle.authorize", side_effect=authorize),
+            patch.object(self.lifecycle, "check_ready"),
+        ):
+            self.lifecycle.setup(self.target)
+            self.assertEqual(output.getvalue().count(link), 1)
+            output.seek(0)
+            output.truncate()
+            self.lifecycle.start()
+            with self.assertRaisesRegex(InstallationError, "already exists"):
+                self.lifecycle.setup(self.target)
+            self.assertNotIn(link, output.getvalue())

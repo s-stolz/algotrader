@@ -2,6 +2,10 @@
 
 ## 1. Prepare Docker and your cTrader application
 
+**Broker account.** Use your existing cTrader demo or live account. If you need
+an account, IC Trading is one option. The AlgoTrader maintainer may earn a
+commission if you sign up through this [IC Trading affiliate link](https://www.ictrading.com?camp=86158).
+
 Install [Docker with Compose](https://docs.docker.com/get-started/get-docker/)
 and start it. Use Compose 2.30 or newer and Linux containers. You do not need
 Git, Python, Node, or Make.

@@ -25,10 +25,11 @@ def ask(label: str, default: str = "", *, hidden: bool = False) -> str:
 
 
 def choose(label: str, options: dict[str, str], default: str) -> str:
+    print(f"\n{label}")
     for key, description in options.items():
-        print(f"  {key}: {description}")
+        print(f"  {key:<8} {description}")
     while True:
-        value = ask(label, default)
+        value = ask("Your choice", default)
         if value in options:
             return value
         print("Choose one of the listed values.")
@@ -125,12 +126,17 @@ def authorize(
         raise InstallationError(
             "Account and environment cannot change; use a separate installation."
         )
-    print(f"Register your own cTrader application: {REGISTRATION_URL}")
-    print(f"After approval, register this exact redirect URI: {CALLBACK}")
+    print("Use the client ID and secret from your approved cTrader Open API application.")
+    print(f"Application registration guide\n  {REGISTRATION_URL}")
+    print(f"Save this exact redirect URI in the application settings\n  {CALLBACK}\n")
     client_id = ask("Application client ID", defaults.get("CTRADER_CLIENT_ID", ""))
-    client_secret = ask(
-        "Application secret (blank keeps existing)", defaults.get("CTRADER_SECRET", ""), hidden=True
+    saved_secret = defaults.get("CTRADER_SECRET", "")
+    secret_label = (
+        "Application secret (hidden, Enter keeps saved secret)"
+        if saved_secret
+        else "Application secret (hidden)"
     )
+    client_secret = ask(secret_label, saved_secret, hidden=True)
     if not client_id or not client_secret:
         raise InstallationError("Application credentials are required; rerun setup after approval.")
     environment = defaults.get("CTRADER_HOST_TYPE", "demo")
@@ -141,7 +147,7 @@ def authorize(
     scope = choose(
         "Broker access",
         {
-            "accounts": "Market data and backtesting",
+            "accounts": "View-only access for market data and backtesting",
             "trading": "Market data, backtesting, and permission to submit broker orders",
         },
         "accounts",
