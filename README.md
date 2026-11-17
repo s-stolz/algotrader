@@ -16,7 +16,9 @@ Follow the short [installation guide](release/README.md) to prepare Docker,
 register your cTrader application, and run the setup wizard. Windows support is
 experimental until validated with Docker Desktop.
 
-For an existing installation, see [commands and upgrades](release/docs/operations.md).
+Already installed? Run `upgrade` from your launcher to check for the latest
+stable release. Users on v0.0.1 need one more manual download. See the
+[upgrade guide](release/docs/operations.md#upgrade).
 To change the application’s source, use the development workflow below.
 
 ## Architecture

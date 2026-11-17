@@ -2,9 +2,15 @@
 param(
     [ValidateSet('setup', 'start', 'stop', 'status', 'reconnect', 'upgrade')]
     [string]$Command = 'setup',
-    [string]$Directory = ''
+    [string]$Directory = '',
+    [switch]$Prerelease,
+    [switch]$FromBundle
 )
 $ErrorActionPreference = 'Stop'
+if (($Prerelease -or $FromBundle) -and $Command -ne 'upgrade') {
+    throw '-Prerelease and -FromBundle require the upgrade command.'
+}
+if ($Prerelease -and $FromBundle) { throw 'Choose one upgrade option.' }
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw 'Install Docker Desktop: https://docs.docker.com/desktop/setup/install/windows-install/'
 }
@@ -35,11 +41,22 @@ $StateDirectory = Join-Path $Directory 'state'
 foreach ($Path in @($ConfigDirectory, $DataDirectory, $StateDirectory)) {
     New-Item -ItemType Directory -Force -Path $Path | Out-Null
 }
-$ImagePath = Join-Path $PSScriptRoot 'installer-image.txt'
-if (-not (Test-Path $ImagePath) -or -not (Test-Path (Join-Path $PSScriptRoot 'release.json'))) {
+$BundleDirectory = $PSScriptRoot
+$Record = Join-Path $StateDirectory 'installation.json'
+if ($Command -ne 'setup' -and -not $FromBundle -and (Test-Path -LiteralPath $Record)) {
+    $Installed = (Get-Content -LiteralPath $Record -Raw | ConvertFrom-Json).version
+    if ($Installed -cmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+        $AcceptedBundle = Join-Path $DataDirectory "releases/$Installed"
+        if (Test-Path -LiteralPath (Join-Path $AcceptedBundle 'installer-image.txt')) {
+            $BundleDirectory = $AcceptedBundle
+        }
+    }
+}
+$ImagePath = Join-Path $BundleDirectory 'installer-image.txt'
+if (-not (Test-Path -LiteralPath $ImagePath) -or -not (Test-Path -LiteralPath (Join-Path $BundleDirectory 'release.json'))) {
     throw 'Download and extract a complete AlgoTrader release ZIP first.'
 }
-$InstallerImage = (Get-Content -Raw $ImagePath).Trim()
+$InstallerImage = (Get-Content -LiteralPath $ImagePath -Raw).Trim()
 if ($InstallerImage -notmatch '^ghcr\.io/[a-z0-9./_-]+@sha256:[0-9a-f]{64}$') {
     throw 'Invalid installer image in release bundle.'
 }
@@ -48,11 +65,18 @@ $DockerArguments = @(
     'run', '--rm', '--interactive', '--tty', '--name', $ControllerName,
     '--volume', '/var/run/docker.sock:/var/run/docker.sock',
     '--volume', "${ConfigDirectory}:/config", '--volume', "${DataDirectory}:/data",
-    '--volume', "${StateDirectory}:/state", '--volume', "${PSScriptRoot}:/bundle:ro",
+    '--volume', "${StateDirectory}:/state", '--volume', "${BundleDirectory}:/bundle:ro",
     '--env', "ALGOTRADER_CONTROLLER_NAME=$ControllerName",
     '--env', "ALGOTRADER_INSTALLER_IMAGE=$InstallerImage",
-    $InstallerImage, $Command
+    $InstallerImage
 )
+if ($Command -eq 'upgrade') {
+    if ($FromBundle) { $DockerArguments += 'apply-bundle' }
+    else {
+        $DockerArguments += 'update'
+        if ($Prerelease) { $DockerArguments += '--prerelease' }
+    }
+} else { $DockerArguments += $Command }
 Write-Host "Configuration: $ConfigDirectory"
 Write-Host "State and backups: $StateDirectory"
 & docker @DockerArguments

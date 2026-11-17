@@ -45,6 +45,7 @@ def prepare_release(locations: Locations, release: Release) -> None:
                 f"Release {release.version} changed. Published releases are immutable."
             )
         protected_write(target, source.read_bytes())
+    protected_write(folder / "installer-image.txt", release.images["installer"] + "\n")
     protected_write(folder / "topology.yaml", generate_env.TOPOLOGY_PATH.read_bytes())
 
 

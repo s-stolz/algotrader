@@ -4,13 +4,20 @@ set -euo pipefail
 bundle_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 command_name=setup
 installation_dir=""
+upgrade_option=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     setup|start|stop|status|reconnect|upgrade) command_name="$1"; shift ;;
     --directory) installation_dir="${2:?--directory requires a path}"; shift 2 ;;
-    *) echo "Usage: $0 [setup|start|stop|status|reconnect|upgrade] [--directory PATH]" >&2; exit 2 ;;
+    --prerelease|--from-bundle)
+      [[ -z "$upgrade_option" ]] || { echo "Choose one upgrade option." >&2; exit 2; }
+      upgrade_option="$1"; shift ;;
+    *) echo "Usage: $0 [setup|start|stop|status|reconnect|upgrade] [--directory PATH] [--prerelease|--from-bundle]" >&2; exit 2 ;;
   esac
 done
+if [[ -n "$upgrade_option" && "$command_name" != upgrade ]]; then
+  echo "$upgrade_option requires the upgrade command." >&2; exit 2
+fi
 if ! command -v docker >/dev/null 2>&1; then
   echo "Install Docker with Compose: https://docs.docker.com/get-started/get-docker/" >&2
   exit 1
@@ -66,6 +73,13 @@ if [[ -n "$installation_dir" ]]; then
 fi
 umask 077
 mkdir -p "$config_dir" "$data_dir" "$state_dir"
+if [[ "$command_name" != setup && "$upgrade_option" != --from-bundle && -f "$state_dir/installation.json" ]]; then
+  # The controller writes the accepted version as a top-level, two-space-indented JSON field.
+  installed="$(sed -nE 's/^  "version": "(v[0-9A-Za-z.-]+)",?$/\1/p' "$state_dir/installation.json")"
+  if [[ "$installed" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ && -f "$data_dir/releases/$installed/installer-image.txt" ]]; then
+    bundle_dir="$data_dir/releases/$installed"
+  fi
+fi
 if [[ ! -f "$bundle_dir/installer-image.txt" || ! -f "$bundle_dir/release.json" ]]; then
   echo "Download and extract a complete AlgoTrader release ZIP first." >&2
   exit 1
@@ -86,4 +100,12 @@ args=(run --rm "${interactive[@]}" --name "$controller_name"
   --env "ALGOTRADER_HOST_UID=$(id -u)" --env "ALGOTRADER_HOST_GID=$(id -g)")
 echo "Configuration: $config_dir"
 echo "State and backups: $state_dir"
+if [[ "$command_name" == upgrade ]]; then
+  if [[ "$upgrade_option" == --from-bundle ]]; then
+    exec docker "${args[@]}" "$installer_image" apply-bundle
+  elif [[ "$upgrade_option" == --prerelease ]]; then
+    exec docker "${args[@]}" "$installer_image" update --prerelease
+  fi
+  exec docker "${args[@]}" "$installer_image" update
+fi
 exec docker "${args[@]}" "$installer_image" "$command_name"

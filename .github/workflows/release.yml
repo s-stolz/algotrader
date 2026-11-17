@@ -69,6 +69,12 @@ jobs:
       - name: Parse shell launcher
         if: runner.os != 'Windows'
         run: bash -n release/algotrader.sh
+      - name: Exercise the Windows launcher
+        if: runner.os == 'Windows'
+        run: python -m unittest release.tests.test_launchers.PowerShellLauncherTests
+      - name: Exercise the macOS and Linux launcher
+        if: runner.os != 'Windows'
+        run: python3 -m unittest release.tests.test_launchers.LauncherTests
 
   images:
     needs: [verify, launchers]
@@ -205,7 +211,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          notes="Download [algotrader-${RELEASE_TAG}.zip](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/algotrader-${RELEASE_TAG}.zip) for macOS, Windows, or Linux. Extract it and follow README.md. Source code archives are for development; .sha256 verifies the installer download."
+          notes="For a new installation, download [algotrader-${RELEASE_TAG}.zip](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/algotrader-${RELEASE_TAG}.zip) for macOS, Windows, or Linux. Extract it and follow README.md. For an existing installation, follow the [upgrade guide](https://github.com/${GITHUB_REPOSITORY}/blob/${RELEASE_TAG}/release/docs/operations.md#upgrade), including the one-time download for v0.0.1 users."
           args=(--verify-tag --generate-notes --notes "$notes")
           if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
           gh release create "$RELEASE_TAG" output/*.zip output/*.sha256 "${args[@]}"

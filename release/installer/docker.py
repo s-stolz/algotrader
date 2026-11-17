@@ -7,6 +7,7 @@ import io
 import json
 import os
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -112,6 +113,21 @@ class Docker:
         for name, image in release.images.items():
             print(f"Downloading {name}…", flush=True)
             self.run(["pull", image])
+
+    def apply_upgrade(self, bundle: Path, release: Release, installed_version: str) -> None:
+        name = "algotrader-upgrade-" + uuid.uuid4().hex
+        image = release.images["installer"]
+        args = ["run", "--rm", "--name", name]
+        for mount in ("/config", "/data", "/state", "/var/run/docker.sock"):
+            args.extend(["--mount", bind_mount(self.sources[mount], mount)])
+        args.extend(["--mount", bind_mount(self.host_path(bundle), "/bundle", readonly=True)])
+        args.extend(["--env", "ALGOTRADER_CONTROLLER_NAME=" + name])
+        args.extend(["--env", "ALGOTRADER_INSTALLER_IMAGE=" + image])
+        args.extend(["--env", "ALGOTRADER_UPGRADE_FROM=" + installed_version])
+        for variable in ("ALGOTRADER_HOST_UID", "ALGOTRADER_HOST_GID"):
+            if variable in os.environ:
+                args.extend(["--env", variable])
+        self.run([*args, image, "upgrade"])
 
     def sql(self, record: dict[str, Any], query: str) -> str:
         settings = generate_env.read_env(self.locations.config / ".env.shared")

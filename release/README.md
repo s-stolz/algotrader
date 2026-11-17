@@ -65,7 +65,7 @@ installation. Setup lets you choose another port if needed.
 Add a broker market to collect live candles and optionally download older data.
 Choose a Custom market to upload CSV data instead.
 
-## Stop and start
+## After setup
 
 From the same extracted folder, replace `setup` with `stop`, `start`, or `status`.
 For example, on macOS/Linux:
@@ -75,10 +75,15 @@ bash ./algotrader.sh stop
 bash ./algotrader.sh start
 ```
 
-Stopping preserves your data. Use the launcher from your installed version; keep
-its extracted folder. If you used a custom directory option, use it for later
-commands too.
+Stopping preserves your data. Keep the extracted folder for future commands. If
+you chose a custom installation directory, supply it for later commands too.
 
-For [upgrading](docs/operations.md#upgrade), [reconnecting, directory options,
-and settings](docs/operations.md), or [recovering a failed upgrade](docs/recovery.md),
-follow the linked guides. Maintainers can read [publishing releases](docs/publishing.md).
+To check for the latest stable version, run `bash ./algotrader.sh upgrade`
+on macOS or Linux, or
+`powershell -ExecutionPolicy Bypass -File .\algotrader.ps1 upgrade` on Windows.
+The launcher shows the installed and available versions and asks before upgrading.
+See the [upgrade guide](docs/operations.md#upgrade) for alpha releases and the
+one-time download for v0.0.1.
+
+For broker reconnection, directory options, and settings, see
+[Manage an installation](docs/operations.md).

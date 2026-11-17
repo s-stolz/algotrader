@@ -27,6 +27,7 @@ cTrader authorization with a demo account, including the registered redirect and
 account selection. Windows needs an end-to-end Docker Desktop acceptance run;
 launcher syntax checks alone do not establish Windows installation support.
 
-Before calling an upgrade tested, install an earlier release into disposable
-storage, upgrade it, and check its saved application port, credentials, markets,
-candles, and backtests. Never use a real installation as a disposable test stack.
+To test an upgrade, install an earlier release into disposable storage with a
+sample market and candles. Run `upgrade` from its launcher, confirm the offered
+version, then run `status` from the same folder. Check the saved application
+port, broker account, credentials, markets, candles, and backtests.

@@ -14,7 +14,7 @@ The setup wizard suggests these directories:
 
 To choose another root, use `--directory /path/to/AlgoTrader` on macOS/Linux or
 `-Directory C:\path\AlgoTrader` on Windows. Use the same override for subsequent
-commands, including commands from a newly downloaded release ZIP. Each directory
+commands, including upgrades. Each directory
 has an independent Compose project and named database/Redis volumes. Keep the
 configuration and state directories private: they contain credentials and backups.
 
@@ -27,9 +27,8 @@ bash ./algotrader.sh start
 bash ./algotrader.sh reconnect
 ```
 
-Use the launcher from your **installed version's** release ZIP for these commands.
-An older or newer controller is rejected before changing runtime configuration.
-Use a newer ZIP only for the explicit `upgrade` command.
+Keep the extracted launcher folder. After an upgrade you can use it to manage
+the newly installed version.
 
 `stop` preserves volumes. Services resume when Docker restarts unless explicitly
 stopped. `reconnect` can change access permissions or application credentials, but
@@ -67,18 +66,36 @@ cTrader redirect `http://localhost:8080/redirect` unchanged.
 
 ## Upgrade
 
-Download and extract the desired newer release ZIP, then run its launcher with
-`upgrade` and the same installation-directory override, if any:
+From your launcher folder, check for the latest stable release. On macOS or
+Linux, run
 
 ```sh
 bash ./algotrader.sh upgrade
 ```
 
-Upgrades are explicit; there is no automatic update or downgrade. Alpha releases
-are selected explicitly in the same way. The installer downloads images first,
-blocks new backtest submissions, and refuses an upgrade while runs are queued,
-running, cancelling, or an execution slot is held/faulted. Finish or cancel those
-runs before retrying.
+On Windows, run
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\algotrader.ps1 upgrade
+```
+
+Use the same directory option you used for setup. The launcher shows the installed
+and available versions. Confirm to download the release ZIP, verify its checksum,
+and upgrade your installation. To include prereleases such as alpha builds in the
+search, add `--prerelease` on macOS or Linux, or `-Prerelease` on Windows.
+
+**Upgrading from v0.0.1?** Download and extract a newer installer ZIP that
+includes this guide, available from [GitHub Releases](https://github.com/s-stolz/algotrader/releases).
+From the **new** folder run `bash ./algotrader.sh upgrade --from-bundle` or
+`powershell -ExecutionPolicy Bypass -File .\algotrader.ps1 upgrade -FromBundle`,
+using the directory of your existing installation. Keep the new launcher folder.
+For subsequent updates, use the regular `upgrade` command above.
+
+### What happens to my data?
+
+The installer downloads images first, blocks new backtest submissions, and
+refuses an upgrade while runs are queued, running, cancelling, or an execution
+slot is held or faulted. Finish or cancel active runs before retrying.
 
 After all application writers stop, it creates a validated PostgreSQL dump, a
 stopped-Redis archive, and a configuration/old-release archive under
